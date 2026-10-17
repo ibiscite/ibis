@@ -1,0 +1,89 @@
+---
+source: crates/ibis-core/tests/fixtures.rs
+expression: csl
+---
+[
+  {
+    "DOI": "10.0000/example.2021.001",
+    "author": [
+      {
+        "family": "Müller",
+        "given": "Jörg"
+      },
+      {
+        "family": "García",
+        "given": "Ana"
+      }
+    ],
+    "citation-key": "mueller2021",
+    "container-title": "Journal of Memory Studies",
+    "id": "mueller2021",
+    "issued": {
+      "date-parts": [
+        [
+          2021,
+          3
+        ]
+      ]
+    },
+    "page": "12–34",
+    "title": "Sleep and REM memory consolidation in NASA crews",
+    "type": "article-journal"
+  },
+  {
+    "DOI": "10.0000/complete.2024.003",
+    "ISSN": "0000-0000",
+    "author": [
+      {
+        "family": "Lindqvist",
+        "given": "Sara"
+      },
+      {
+        "family": "Ndlovu",
+        "given": "Thabo"
+      }
+    ],
+    "citation-key": "complete2024",
+    "container-title": "Journal of Complete Metadata",
+    "id": "complete2024",
+    "issue": "3",
+    "issued": {
+      "date-parts": [
+        [
+          2024,
+          7,
+          15
+        ]
+      ]
+    },
+    "page": "101–125",
+    "publisher": "Synthetic Society",
+    "title": "Every field a citation needs",
+    "type": "article-journal",
+    "volume": "12"
+  },
+  {
+    "ISBN": "978-0-00-000000-0",
+    "author": [
+      {
+        "family": "Moreau",
+        "given": "Élise"
+      }
+    ],
+    "citation-key": "edition2017",
+    "collection-title": "Synthetic Monographs",
+    "edition": "2",
+    "id": "edition2017",
+    "issued": {
+      "date-parts": [
+        [
+          2017
+        ]
+      ]
+    },
+    "publisher": "Example Press",
+    "publisher-place": "Lyon",
+    "title": "A Book with Every Detail",
+    "type": "book"
+  }
+]

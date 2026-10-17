@@ -1,0 +1,97 @@
+---
+source: crates/ibis-core/tests/fixtures.rs
+expression: "summary(\"damaged.bib\")"
+---
+{
+  "references": [
+    {
+      "authors": [
+        "Ada First"
+      ],
+      "container": null,
+      "doi": null,
+      "issued": {
+        "year": 2020
+      },
+      "key": "good1",
+      "keywords": [],
+      "language": null,
+      "title": "Loads before the damage",
+      "type": "article-journal",
+      "url": null,
+      "variables": {}
+    },
+    {
+      "authors": [],
+      "container": null,
+      "doi": null,
+      "issued": {
+        "year": 2022
+      },
+      "key": "undefinedmacro",
+      "keywords": [],
+      "language": null,
+      "title": "Uses an undefined string macro",
+      "type": "article-journal",
+      "url": null,
+      "variables": {}
+    },
+    {
+      "authors": [
+        "Cy Third"
+      ],
+      "container": null,
+      "doi": null,
+      "issued": {
+        "year": 2024
+      },
+      "key": "good2",
+      "keywords": [],
+      "language": null,
+      "title": "Loads after the damage",
+      "type": "article-journal",
+      "url": null,
+      "variables": {}
+    },
+    {
+      "authors": [
+        "Dee Fourth"
+      ],
+      "container": null,
+      "doi": null,
+      "issued": null,
+      "key": "baddate",
+      "keywords": [],
+      "language": null,
+      "title": "Date that is not a date",
+      "type": "article-journal",
+      "url": null,
+      "variables": {}
+    }
+  ],
+  "warnings": [
+    {
+      "key": "good1",
+      "kind": "duplicate-key",
+      "line": 9,
+      "message": "duplicate key `good1`; the first entry with this key is used"
+    },
+    {
+      "key": "undefinedmacro",
+      "kind": "field",
+      "line": 15,
+      "message": "undefined abbreviation `notdefined`; the field using it is left empty"
+    },
+    {
+      "kind": "syntax",
+      "line": 21,
+      "message": "entry has no citation key; skipped"
+    },
+    {
+      "key": "unclosed",
+      "kind": "syntax",
+      "line": 25,
+      "message": "entry is not closed; skipped"
+    }
+  ]
+}

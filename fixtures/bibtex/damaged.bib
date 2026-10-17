@@ -1,0 +1,39 @@
+% Synthetic damaged file: good entries must survive every problem below.
+
+@article{good1,
+  author = {First, Ada},
+  title  = {Loads before the damage},
+  year   = {2020},
+}
+
+@article{good1,
+  author = {Second, Bob},
+  title  = {Duplicate key, must be reported and skipped},
+  year   = {2021},
+}
+
+@article{undefinedmacro,
+  title   = {Uses an undefined string macro},
+  journal = notdefined,
+  year    = {2022},
+}
+
+@article{,
+  title = {Missing key},
+}
+
+@article{unclosed,
+  title = {This entry never closes},
+  year  = {2023},
+
+@article{good2,
+  author = {Third, Cy},
+  title  = {Loads after the damage},
+  year   = {2024},
+}
+
+@article{baddate,
+  author = {Fourth, Dee},
+  title  = {Date that is not a date},
+  date   = {sometime-ish},
+}

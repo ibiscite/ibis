@@ -1,0 +1,50 @@
+name: App compatibility
+description: Inserting or pasting into a specific app did not work (or worked — that helps too!).
+labels: [compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This builds the public compatibility list. Never paste document contents; describe only what happened.
+  - type: input
+    id: app
+    attributes:
+      label: App and version
+      placeholder: "Overleaf in Firefox 140, Microsoft Word 16.9, Obsidian 1.9, iTerm2 ..."
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system, version and (on Linux) desktop/session
+      placeholder: "Windows 11 24H2 / macOS 26.1 / Fedora KDE Wayland"
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: What happened?
+      options:
+        - Worked correctly
+        - Nothing was inserted
+        - Inserted in the wrong place or window
+        - Inserted with wrong formatting (lost italics, extra characters, doubled brackets...)
+        - Clipboard was not restored or was overwritten
+        - Ibis said it copied instead of inserting
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: Output format
+      placeholder: "IEEE formatted citation / Pandoc [@key] / \\autocite / Typst ..."
+  - type: input
+    id: layout
+    attributes:
+      label: Keyboard layout and input method (if not US English)
+      placeholder: "AZERTY, Dvorak, German, Japanese IME ..."
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else (no private content)

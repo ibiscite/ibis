@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in Ibis does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please share only invented examples. Do not include real library records, document text, clipboard contents, file paths or screenshots of private work. Report security problems privately (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest invented example (for instance a two-line .bib entry) that shows the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ibis version
+      placeholder: "ibis --version"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: "macOS 26.1 / Windows 11 24H2 / Ubuntu 26.04 GNOME Wayland"
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Library source
+      placeholder: "Zotero 10.0.6 (open/closed), BibTeX file from Better BibTeX, RIS from ..."

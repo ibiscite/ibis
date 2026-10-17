@@ -1,0 +1,10 @@
+/target
+**/*.snap.new
+**/*.pending-snap
+.DS_Store
+node_modules/
+*.log
+.env
+
+# Local maintainer notes (never committed)
+/.local/

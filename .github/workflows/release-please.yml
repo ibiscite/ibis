@@ -1,0 +1,30 @@
+name: Release Please
+
+# Keeps a release pull request up to date from Conventional Commits on main.
+# Merging that pull request creates the version tag, GitHub release and
+# changelog entry. Build and signing jobs attach to the tag (added in 0.1).
+#
+# Inactive until the repository variable RELEASE_PLEASE is set to "enabled"
+# (see RELEASING.md), so the job is skipped rather than failing before
+# GitHub Actions is allowed to open pull requests.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    if: vars.RELEASE_PLEASE == 'enabled'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

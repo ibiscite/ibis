@@ -1,0 +1,17 @@
+name: Idea or feature request
+description: Suggest an improvement.
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do, and what gets in the way?
+      description: Describe your situation (what you write, where, with which reference manager).
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would a small, useful improvement look like?
+    validations:
+      required: true

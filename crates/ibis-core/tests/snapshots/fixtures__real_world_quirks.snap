@@ -1,0 +1,255 @@
+---
+source: crates/ibis-core/tests/fixtures.rs
+expression: "summary(\"real-world.bib\")"
+---
+{
+  "references": [
+    {
+      "authors": [
+        "Jörg Müller",
+        "Ana García"
+      ],
+      "container": "Journal of Memory Studies",
+      "doi": "10.0000/example.2021.001",
+      "issued": {
+        "month": 3,
+        "year": 2021
+      },
+      "key": "mueller2021",
+      "keywords": [],
+      "language": null,
+      "title": "Sleep and REM memory consolidation in NASA crews",
+      "type": "article-journal",
+      "url": null,
+      "variables": {
+        "page": "12–34"
+      }
+    },
+    {
+      "authors": [
+        "World Health Organization"
+      ],
+      "container": null,
+      "doi": null,
+      "issued": {
+        "year": 2020
+      },
+      "key": "who2020",
+      "keywords": [],
+      "language": null,
+      "title": "Synthetic Report on Global Sleep",
+      "type": "book",
+      "url": null,
+      "variables": {
+        "publisher": "WHO Press"
+      }
+    },
+    {
+      "authors": [
+        "Jan van der Berg",
+        "John Smith Jr.",
+        "Mary-Kate O'Neil"
+      ],
+      "container": "Names Quarterly",
+      "doi": null,
+      "issued": {
+        "month": 5,
+        "year": 2019
+      },
+      "key": "vanderberg2019",
+      "keywords": [],
+      "language": null,
+      "title": "Particles, suffixes and apostrophes in names",
+      "type": "article-journal",
+      "url": null,
+      "variables": {}
+    },
+    {
+      "authors": [
+        "陈伟",
+        "山田太郎"
+      ],
+      "container": "Proceedings of the Synthetic Conference",
+      "doi": null,
+      "issued": {
+        "year": 2022
+      },
+      "key": "chen2022",
+      "keywords": [],
+      "language": null,
+      "title": "睡眠与记忆的跨语言研究",
+      "type": "paper-conference",
+      "url": null,
+      "variables": {
+        "collection-title": "Lecture Notes in Computer Science",
+        "page": "1-9"
+      }
+    },
+    {
+      "authors": [],
+      "container": "Proceedings of the Synthetic Conference",
+      "doi": null,
+      "issued": {
+        "year": 2022
+      },
+      "key": "conf2022",
+      "keywords": [],
+      "language": null,
+      "title": "Proceedings of the Synthetic Conference",
+      "type": "book",
+      "url": null,
+      "variables": {
+        "collection-title": "Lecture Notes in Computer Science"
+      }
+    },
+    {
+      "authors": [
+        "Layla Haddad"
+      ],
+      "container": "Synthetic Arabic Review",
+      "doi": null,
+      "issued": {
+        "year": 2023
+      },
+      "key": "haddad2023",
+      "keywords": [
+        "sleep",
+        "memory",
+        "Arabic"
+      ],
+      "language": "arabic",
+      "title": "النوم والذاكرة: دراسة اصطناعية",
+      "type": "article-journal",
+      "url": null,
+      "variables": {}
+    },
+    {
+      "authors": [
+        "Anonymous"
+      ],
+      "container": null,
+      "doi": null,
+      "issued": null,
+      "key": "nodate",
+      "keywords": [],
+      "language": null,
+      "title": "An undated synthetic preprint",
+      "type": "document",
+      "url": "https://example.org/papers/100%25-synthetic",
+      "variables": {}
+    },
+    {
+      "authors": [],
+      "container": null,
+      "doi": null,
+      "issued": null,
+      "key": "onlyurl",
+      "keywords": [],
+      "language": null,
+      "title": null,
+      "type": "webpage",
+      "url": "https://example.org/no-title",
+      "variables": {}
+    },
+    {
+      "authors": [
+        "Chidi Okafor"
+      ],
+      "container": null,
+      "doi": null,
+      "issued": {
+        "year": 2018
+      },
+      "key": "nested2018",
+      "keywords": [],
+      "language": null,
+      "title": "A Study of Nested Braces in Titles",
+      "type": "thesis",
+      "url": null,
+      "variables": {
+        "genre": "PhD thesis",
+        "publisher": "Synthetic University"
+      }
+    },
+    {
+      "authors": [
+        "Sara Lindqvist",
+        "Thabo Ndlovu"
+      ],
+      "container": "Journal of Complete Metadata",
+      "doi": "10.0000/complete.2024.003",
+      "issued": {
+        "day": 15,
+        "month": 7,
+        "year": 2024
+      },
+      "key": "complete2024",
+      "keywords": [],
+      "language": null,
+      "title": "Every field a citation needs",
+      "type": "article-journal",
+      "url": null,
+      "variables": {
+        "ISSN": "0000-0000",
+        "issue": "3",
+        "page": "101–125",
+        "publisher": "Synthetic Society",
+        "volume": "12"
+      }
+    },
+    {
+      "authors": [
+        "Élise Moreau"
+      ],
+      "container": null,
+      "doi": null,
+      "issued": {
+        "year": 2017
+      },
+      "key": "edition2017",
+      "keywords": [],
+      "language": null,
+      "title": "A Book with Every Detail",
+      "type": "book",
+      "url": null,
+      "variables": {
+        "ISBN": "978-0-00-000000-0",
+        "collection-title": "Synthetic Monographs",
+        "edition": "2",
+        "publisher": "Example Press",
+        "publisher-place": "Lyon"
+      }
+    },
+    {
+      "authors": [],
+      "container": null,
+      "doi": null,
+      "issued": null,
+      "key": "lonelykey",
+      "keywords": [],
+      "language": null,
+      "title": null,
+      "type": "document",
+      "url": null,
+      "variables": {}
+    },
+    {
+      "authors": [
+        "Νίκος Παπαδόπουλος"
+      ],
+      "container": "Synthetic Greek Review",
+      "doi": null,
+      "issued": {
+        "year": 2020
+      },
+      "key": "greek2020",
+      "keywords": [],
+      "language": null,
+      "title": "Η ΓΝΩΣΙΣ και η μνήμη",
+      "type": "article-journal",
+      "url": null,
+      "variables": {}
+    }
+  ],
+  "warnings": []
+}
