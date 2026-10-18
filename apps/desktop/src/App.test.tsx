@@ -715,3 +715,23 @@ test.each(["backup", "defaults"])("settings recovery from %s stays visible throu
   expect(screen.getByText(notice).getAttribute("role")).toBe("alert");
   expect(screen.getAllByText(notice)).toHaveLength(1);
 });
+
+test.each(["", "sleep"])("an empty loaded library is explained even for query %s", async (query) => {
+  backend({ library_status: () => ({ state: "loaded", has_snapshot: true, name: "empty 研究.bib", snapshot_name: "empty 研究.bib", references: 0, warnings: 0, error: null, note: null }) });
+  render(<App />);
+  await screen.findByText("empty 研究.bib: 0 references");
+  if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
+  await screen.findByText("No references found in empty 研究.bib. Choose a BibTeX or BibLaTeX export with references, then try again.");
+  expect(screen.queryByText("Type to find a reference")).toBeNull();
+  expect(screen.queryByText("No matching references")).toBeNull();
+  expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
+});
+
+
+test.each([false, true])("a failed library open is not described as an empty export (retained: %s)", async (retained) => {
+  backend({ library_status: () => ({ state: "error", has_snapshot: retained, name: "missing B.bib", snapshot_name: retained ? "empty A.bib" : null, references: 0, warnings: 0, error: "The library file is unavailable", note: null }) });
+  render(<App />);
+  await screen.findByRole("alert");
+  expect(document.body.textContent).not.toContain("No references found");
+  expect(document.body.textContent).not.toContain("Choose a BibTeX or BibLaTeX export");
+});
