@@ -406,7 +406,25 @@ fn date_value(
 ) -> Option<Issued> {
     let guarded = entry
         .get(field)
-        .filter(|chunks| date_parser_overflows(&chunks.format_verbatim()));
+        .filter(|chunks| date_parser_overflows(&chunks.format_verbatim()))
+        .or_else(|| {
+            if entry.get(field).is_some() {
+                return None;
+            }
+            let prefix = field.strip_suffix("date")?;
+            let year = entry.get(&format!("{prefix}year"))?;
+            let month_field = format!("{prefix}month");
+            let month = entry.get(&month_field)?.format_verbatim();
+            if !unsafe_date_parts(&month, entry.get(&format!("{prefix}day")).is_some()) {
+                return None;
+            }
+            problems.push(format!(
+                "`{month_field}` could not be read safely; month and day are ignored"
+            ));
+            // Reuse the ordinary chunks fallback to retain a valid year and
+            // report invalid years, without passing malformed parts upstream.
+            Some(year)
+        });
     let value = match guarded {
         Some(chunks) => Ok(PermissiveType::Chunks(chunks.to_vec())),
         None => read(),
@@ -501,6 +519,37 @@ fn date_parser_overflows(raw: &str) -> bool {
             .bytes()
             .take_while(u8::is_ascii_digit)
             .eq(*b"00")
+}
+
+/// Validate only the unchecked numeric boundaries of biblatex 0.12's
+/// separate-parts parser. Month names and all safe syntax still go upstream.
+fn unsafe_date_parts(raw_month: &str, has_day: bool) -> bool {
+    let month = raw_month.trim_start();
+    // Upstream uses Unicode numeric characters, then parses as an ASCII u8.
+    let digits: usize = month.chars().take_while(|c| c.is_numeric()).map(char::len_utf8).sum();
+    let numeric_month = if (1..=2).contains(&digits) {
+        match month[..digits].parse::<u8>() {
+            Ok(1..=12) => true,
+            _ => return true,
+        }
+    } else {
+        false
+    };
+    if has_day {
+        return false;
+    }
+    let rest = &month[digits..];
+    let rest = if numeric_month {
+        rest
+    } else {
+        rest.trim_start_matches(|c: char| c.is_ascii_alphabetic())
+    };
+    let day = rest.trim_start_matches(|c: char| c.is_whitespace() || c == '-');
+    if day.len() == rest.len() {
+        return false;
+    }
+    let digits = day.bytes().take_while(u8::is_ascii_digit).count();
+    digits > 0 && day[..digits].parse::<u8>().is_err()
 }
 
 /// Read as much of `YYYY[-MM[-DD]]` as is valid. Returns the date and

@@ -16,3 +16,8 @@ Rules:
 `bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input
 from #111. The robustness tests also exercise invalid zero months in uncertain
 dates: malformed dates produce field warnings without discarding the reference.
+
+`bibtex/malformed-date-parts.bib` contains separate year/month/day inputs
+from #113: zero months, an oversized day embedded in a month field, and a
+non-Latin numeric month. Unsafe parts produce field warnings and retain
+a valid year rather than discarding the whole reference.

@@ -4,6 +4,98 @@ use ibis_core::bibtex::load_str;
 use proptest::prelude::*;
 
 #[test]
+fn malformed_separate_date_parts_retain_references_with_warnings() {
+    let loaded = load_str(
+        "synthetic.bib",
+        include_str!("../../../fixtures/bibtex/malformed-date-parts.bib"),
+    );
+    assert_eq!(loaded.references.len(), 3);
+    assert_eq!(loaded.warnings.len(), 3);
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .all(|warning| warning.kind == ibis_core::model::WarningKind::Field)
+    );
+    assert!(ibis_core::library::csl_items(&loaded.references).is_ok());
+}
+
+#[test]
+fn unsafe_separate_parts_are_checked_after_macro_expansion_for_every_date_prefix() {
+    for (prefix, csl_field) in [
+        ("", "issued"),
+        ("url", "accessed"),
+        ("orig", "original-date"),
+        ("event", "event-date"),
+    ] {
+        for month in [
+            "0",
+            "00",
+            "13",
+            "99",
+            " 0 trailing",
+            "١",
+            "²",
+            "March 256",
+            "March 999999999999999999999",
+            "3 256",
+            "000 256",
+        ] {
+            let text = format!(
+                "@string{{bad={{{month}}}}}\n@xdata{{p,{prefix}year={{2024}},{prefix}month=bad}}\n@article{{k,title={{Retained}},xdata={{p}}}}"
+            );
+            let loaded = load_str("synthetic.bib", &text);
+            assert_eq!(loaded.references.len(), 1, "{prefix}month={month}");
+            assert_eq!(
+                loaded.references[0].to_csl_json()[csl_field]["date-parts"][0][0].as_i64(),
+                Some(2024),
+                "{prefix}month={month}"
+            );
+            if prefix.is_empty() && month == "١" {
+                assert!(loaded.warnings.is_empty());
+                assert_eq!(
+                    loaded.references[0].to_csl_json()[csl_field]["date-parts"],
+                    serde_json::json!([[2024, 1]])
+                );
+            } else {
+                assert!(!loaded.warnings.is_empty(), "{prefix}month={month}");
+            }
+            assert!(
+                loaded
+                    .warnings
+                    .iter()
+                    .all(|warning| warning.kind == ibis_core::model::WarningKind::Field)
+            );
+        }
+    }
+}
+
+#[test]
+fn safe_separate_parts_and_explicit_date_precedence_keep_their_precision() {
+    for (prefix, csl_field) in [
+        ("", "issued"),
+        ("url", "accessed"),
+        ("orig", "original-date"),
+        ("event", "event-date"),
+    ] {
+        for parts in [
+            format!("{prefix}year={{2024}},{prefix}month={{3}},{prefix}day={{2}}"),
+            format!("{prefix}year={{2024}},{prefix}month={{3 2}}"),
+            format!("{prefix}date={{2024-03-02}},{prefix}year={{2020}},{prefix}month={{0}}"),
+        ] {
+            let loaded = load_str("synthetic.bib", &format!("@article{{k,{parts}}}"));
+            assert_eq!(loaded.references.len(), 1);
+            assert_eq!(
+                loaded.references[0].to_csl_json()[csl_field]["date-parts"],
+                serde_json::json!([[2024, 3, 2]]),
+                "{parts}"
+            );
+            assert!(loaded.warnings.is_empty(), "{parts}: {:?}", loaded.warnings);
+        }
+    }
+}
+
+#[test]
 fn oversized_uncertain_years_keep_the_reference_and_warn() {
     let fixture = include_str!("../../../fixtures/bibtex/oversized-range-year.bib");
     let loaded = load_str("synthetic.bib", fixture);
