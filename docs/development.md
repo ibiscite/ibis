@@ -27,6 +27,8 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
   git worktree remove --force "$dir" 2>/dev/null; git worktree prune
   ```
 
+  This is POSIX shell; on Windows, run it in Git Bash.
+
 - **Stack instead of waiting.** Start the next issue on a branch based on the previous one. After the previous pull request is squash-merged, move the branch onto `main` and confirm the content did not change:
 
   ```sh
@@ -43,6 +45,68 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
 
 Each milestone has a tracking issue (label `tracking`) with a checklist of its issues, decisions taken, and open questions for the maintainer. After each merge, add one line saying what users can now do and what is next. Questions that need the maintainer carry the label `needs:maintainer`.
 
+## Setting up a computer
+
+First install the build tools for your platform (below). Then every platform needs the same tools; their versions come from the repository, so a fresh clone matches CI:
+
+- Rust through [rustup](https://rustup.rs/). `rust-toolchain.toml` selects Rust 1.99.1 with rustfmt and clippy on first use; do not install it by hand.
+- [Node.js](https://nodejs.org/) 22 or newer; CI uses 22.
+- pnpm 11.25.0, pinned in `apps/desktop/package.json` (`packageManager`). Install it with `corepack enable pnpm` or `npm install --global pnpm@11.25.0`.
+- cargo-deny: `cargo install --locked cargo-deny`.
+- actionlint 1.7.12 on `PATH` (see "Workflow linting").
+- Optional: [Pandoc](https://pandoc.org/installing.html), for the citation fidelity test. Without it the test is skipped; `IBIS_REQUIRE_PANDOC=1` makes it fail instead, as in CI. `cargo install --locked cargo-insta` for `cargo insta review`.
+
+Then, from the clone, run the full check:
+
+```sh
+node scripts/check.mjs
+```
+
+### macOS setup
+
+Install the Xcode Command Line Tools: `xcode-select --install`.
+
+### Linux setup
+
+Install a C compiler, pkg-config and the WebKitGTK development packages. On Debian and Ubuntu (the AppIndicator library is for the tray icon):
+
+```sh
+sudo apt-get install build-essential pkg-config libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev patchelf
+```
+
+Other distributions: see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
+
+### Windows setup
+
+CI runs every check on Windows too. Install, in this order:
+
+1. [Git for Windows](https://git-scm.com/download/win). Then clone to a short path, because build output paths are long:
+
+   ```powershell
+   git config --global core.longpaths true
+   git config --global core.autocrlf false
+   git clone https://github.com/ibiscite/ibis C:\src\ibis
+   ```
+
+   `.gitattributes` checks out every text file with LF line endings whatever `core.autocrlf` says. Use an editor that follows `.editorconfig` so new files keep LF too.
+
+2. [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload (MSVC and a Windows SDK).
+3. WebView2. It is part of Windows 11; on Windows 10 install the Evergreen runtime. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
+4. rustup, accepting the default MSVC host (`x86_64-pc-windows-msvc`, or `aarch64-pc-windows-msvc` on Arm).
+5. Node.js, pnpm, cargo-deny and, optionally, Pandoc and cargo-insta, as listed above. If `corepack enable pnpm` is refused for lack of permissions, use `npm install --global pnpm@11.25.0`.
+6. actionlint: download `actionlint_1.7.12_windows_amd64.zip` (or `_arm64`) from the [1.7.12 release](https://github.com/rhysd/actionlint/releases/tag/v1.7.12) and put `actionlint.exe` in a folder on `PATH`.
+
+Open a new terminal so the `PATH` changes apply, then, in `C:\src\ibis`:
+
+```powershell
+node scripts/check.mjs
+cargo test -p ibis-desktop --locked
+pnpm -C apps/desktop install
+pnpm -C apps/desktop tauri dev
+```
+
+The other shell snippets in this document are POSIX shell. On Windows, run them in Git Bash, which comes with Git for Windows.
+
 ## Running the desktop app
 
 ```sh
@@ -51,13 +115,21 @@ pnpm install
 pnpm tauri dev
 ```
 
-Choose a library from the picker or from the menu bar (tray) item. The choice and other preferences are saved in `settings.json` in the app's configuration folder (on macOS `~/Library/Application Support/io.github.ibis-cite.ibis/`):
+Choose a library from the picker or from the menu bar (tray) item. The choice and other preferences are saved in `settings.json` in the app's configuration folder:
+
+- macOS: `~/Library/Application Support/io.github.ibiscite.ibis/`
+- Windows: `%APPDATA%\io.github.ibiscite.ibis\`
+- Linux: `$XDG_CONFIG_HOME/io.github.ibiscite.ibis/`, or `~/.config/io.github.ibiscite.ibis/` when `XDG_CONFIG_HOME` is not set
 
 ```json
-{ "schema_version": 1, "shortcut": "Control+Command+R", "library": "/path/to/refs.bib", "copy_format": "pandoc" }
+{ "schema_version": 1, "shortcut": "CommandOrControl+Alt+R", "library": "/path/to/refs.bib", "copy_format": "pandoc" }
 ```
 
-Every field is optional. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten. For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
+Every field is optional. On Windows, write the library path with forward slashes or doubled backslashes, as JSON requires. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten.
+
+The picker shortcut defaults to Cmd+Shift+Space on macOS and Ctrl+Shift+Space on Windows and Linux. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used.
+
+For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
 
 ## Desktop command contract
 

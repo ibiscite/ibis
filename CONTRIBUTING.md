@@ -33,7 +33,7 @@ A good prompt to start from: *"Read AGENTS.md and CONTRIBUTING.md in this reposi
 
 ## Development setup
 
-You need [Rust](https://rustup.rs/), [Node.js](https://nodejs.org/) 22 or newer and [pnpm](https://pnpm.io/) 11 (`corepack enable pnpm`). On Linux, the desktop app also needs the WebKitGTK development packages listed in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+You need [Rust](https://rustup.rs/) (the version in `rust-toolchain.toml` is selected automatically), [Node.js](https://nodejs.org/) 22 or newer and [pnpm](https://pnpm.io/) 11.25.0, pinned in `apps/desktop/package.json` (`corepack enable pnpm` or `npm install --global pnpm@11.25.0`). Rust also needs the platform's C and C++ build tools, and the desktop app needs WebKitGTK on Linux and WebView2 on Windows 10. Step-by-step setup for macOS, Linux and Windows is in "Setting up a computer" in [docs/development.md](docs/development.md#setting-up-a-computer).
 
 ```sh
 git clone https://github.com/ibiscite/ibis
