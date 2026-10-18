@@ -38,6 +38,16 @@ IBIS_REQUIRE_PANDOC=1 cargo test -p ibis --test fidelity   # differential tests 
 cargo insta review                             # review changed snapshots
 ```
 
+For an optional current-core scale measurement, run
+`cargo test -p ibis-core --release --locked --lib owned_index_100000_reference_measurement -- --ignored --nocapture`.
+The ignored test builds 100,000 synthetic multilingual records and checks common,
+late-key and absent matches at the desktop's 20-result request and 200-result
+backend bound. It checks full identities across sources and prints timings with
+no machine-dependent threshold. A Linux x86_64 run with Rust 1.99.1 measured
+200 ms to index, 31–37 ms mean common searches and 6–9 ms late-key/absent searches
+(ten samples each). This measures core indexing/search only: parsing, native IPC,
+serialization and rendering are separate; it is not an end-to-end picker claim.
+
 CI tests the core and CLI with the declared Rust 1.90 minimum on Linux. The web interface is checked
 and built once on Linux; all three native desktop builds embed that same artifact.
 

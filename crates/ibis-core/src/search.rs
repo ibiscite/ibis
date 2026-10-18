@@ -242,6 +242,57 @@ mod tests {
         }
     }
 
+    /// Manual scale evidence, separated from parsing, IPC and rendering.
+    #[test]
+    #[ignore = "manual synthetic scale measurement; no timing assertion"]
+    fn owned_index_100000_reference_measurement() {
+        use std::time::{Duration, Instant};
+        let refs: Vec<_> = (0..100_000)
+            .map(|i| {
+                let mut r = reference(&format!("ref{i:05}"), "Synthetic research 研究", "García", 2024);
+                r.id.source = if i < 50_000 { "synthetic-a" } else { "synthetic-b" }.into();
+                r.id.native_key = format!("n{:05}", i % 50_000);
+                r
+            })
+            .collect();
+        let expected: Vec<_> = refs.iter().take(200).map(|r| r.id.clone()).collect();
+        let last = refs[99_999].id.clone();
+        let started = Instant::now();
+        let index = OwnedIndex::new(refs);
+        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        eprintln!(
+            "synthetic records=100000 profile={profile} index_build_us={}",
+            started.elapsed().as_micros()
+        );
+        assert_eq!(index.references().len(), 100_000);
+        for (query, limit, count) in [
+            ("research", 20, 20),
+            ("research", 200, 200),
+            ("研究", 20, 20),
+            ("研究", 200, 200),
+            ("ref99999", 20, 1),
+            ("missing-synthetic-term", 20, 0),
+        ] {
+            let mut elapsed = Duration::ZERO;
+            for _ in 0..10 {
+                let started = Instant::now();
+                let hits = index.search(query, limit);
+                elapsed += started.elapsed();
+                assert_eq!(hits.len(), count);
+                let ids: Vec<_> = hits.iter().map(|hit| hit.reference.id.clone()).collect();
+                if count == 1 {
+                    assert_eq!(ids.as_slice(), std::slice::from_ref(&last));
+                } else {
+                    assert_eq!(ids, expected[..count]);
+                }
+            }
+            eprintln!(
+                "query={query:?} limit={limit} returned={count} samples=10 mean_us={}",
+                elapsed.as_micros() / 10
+            );
+        }
+    }
+
     #[test]
     fn accents_and_case_are_ignored() {
         let refs = [reference("garcia2022", "Sueño y memoria", "García", 2022)];
