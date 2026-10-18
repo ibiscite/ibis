@@ -31,3 +31,7 @@ the other data; dedicated tests also cover the 256-level accepted boundary.
 both entry delimiters, safe sibling fields and neighboring references.
 Value-structure tests verify explicit warnings, omission of unsafe fields,
 literal escaped braces, and CSL export without invented author/date metadata.
+
+`bibtex/fuzz-signed-year.bib` is the exact 25-byte synthetic reproducer from
+#155. Date-guard tests require its reference to survive with field warnings
+instead of a caught parser panic, in both debug and release builds.

@@ -409,13 +409,24 @@ fn date_value(
 ) -> Option<Issued> {
     let guarded = entry
         .get(field)
-        .filter(|chunks| date_parser_overflows(&chunks.format_verbatim()))
+        .filter(|chunks| unsafe_date_value(&chunks.format_verbatim()))
+        .map(|chunks| PermissiveType::Chunks(chunks.to_vec()))
         .or_else(|| {
             if entry.get(field).is_some() {
                 return None;
             }
             let prefix = field.strip_suffix("date")?;
-            let year = entry.get(&format!("{prefix}year"))?;
+            let year_field = format!("{prefix}year");
+            let year = entry.get(&year_field)?;
+            let raw_year = year.format_verbatim();
+            if raw_year
+                .trim_start()
+                .strip_prefix(['+', '-'])
+                .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+            {
+                problems.push(format!("`{year_field}` has whitespace after its sign; no date is used"));
+                return Some(PermissiveType::Chunks(year.to_vec()));
+            }
             let month_field = format!("{prefix}month");
             let month = entry.get(&month_field)?.format_verbatim();
             if !unsafe_date_parts(&month, entry.get(&format!("{prefix}day")).is_some()) {
@@ -424,12 +435,16 @@ fn date_value(
             problems.push(format!(
                 "`{month_field}` could not be read safely; month and day are ignored"
             ));
-            // Reuse the ordinary chunks fallback to retain a valid year and
-            // report invalid years, without passing malformed parts upstream.
-            Some(year)
+            // The separate-year parser preserves signs, short years and eras;
+            // the explicit-date fallback below has different syntax and semantics.
+            Some(
+                biblatex::Date::parse_three_fields(year, None, None)
+                    .map(PermissiveType::Typed)
+                    .unwrap_or_else(|_| PermissiveType::Chunks(year.to_vec())),
+            )
         });
     let value = match guarded {
-        Some(chunks) => Ok(PermissiveType::Chunks(chunks.to_vec())),
+        Some(value) => Ok(value),
         None => read(),
     };
     match value {
@@ -501,10 +516,14 @@ fn date_value(
     }
 }
 
-/// biblatex 0.12's X-range parser subtracts before validating the year length
-/// and zero-based month. Route those two unsafe cases through our existing
-/// warned fallback; keep the upstream parser for every other date.
-fn date_parser_overflows(raw: &str) -> bool {
+/// Guard biblatex 0.12's unchecked integer parsing and X-range subtraction.
+/// Unsafe values use the warned fallback; other dates still go upstream.
+fn unsafe_date_value(raw: &str) -> bool {
+    // Non-decimal numerals can satisfy upstream's Unicode numeric predicate
+    // and byte-length check, but its subsequent ASCII integer unwrap panics.
+    if raw.chars().any(|c| c.is_numeric() && !c.is_ascii_digit()) {
+        return true;
+    }
     if !raw.contains(['x', 'X']) {
         return false;
     }
@@ -530,7 +549,10 @@ fn unsafe_date_parts(raw_month: &str, has_day: bool) -> bool {
     let month = raw_month.trim_start();
     // Upstream uses Unicode numeric characters, then parses as an ASCII u8.
     let digits: usize = month.chars().take_while(|c| c.is_numeric()).map(char::len_utf8).sum();
-    let numeric_month = if (1..=2).contains(&digits) {
+    let numeric_month = if digits > 0 {
+        if !(1..=2).contains(&digits) {
+            return true;
+        }
         match month[..digits].parse::<u8>() {
             Ok(1..=12) => true,
             _ => return true,
