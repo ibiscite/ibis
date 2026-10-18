@@ -12,13 +12,15 @@ expression: "summary(\"real-world.bib\")"
       "container": "Journal of Memory Studies",
       "doi": "10.0000/example.2021.001",
       "issued": {
-        "month": 3,
-        "year": 2021
+        "start": {
+          "month": 3,
+          "year": 2021
+        }
       },
       "key": "mueller2021",
       "keywords": [],
       "language": null,
-      "title": "Sleep and REM memory consolidation in NASA crews",
+      "title": "Sleep and <span class=\"nocase\">REM</span> memory consolidation in <span class=\"nocase\">NASA</span> crews",
       "type": "article-journal",
       "url": null,
       "variables": {
@@ -32,12 +34,14 @@ expression: "summary(\"real-world.bib\")"
       "container": null,
       "doi": null,
       "issued": {
-        "year": 2020
+        "start": {
+          "year": 2020
+        }
       },
       "key": "who2020",
       "keywords": [],
       "language": null,
-      "title": "Synthetic Report on Global Sleep",
+      "title": "Synthetic report on global sleep",
       "type": "book",
       "url": null,
       "variables": {
@@ -53,8 +57,10 @@ expression: "summary(\"real-world.bib\")"
       "container": "Names Quarterly",
       "doi": null,
       "issued": {
-        "month": 5,
-        "year": 2019
+        "start": {
+          "month": 5,
+          "year": 2019
+        }
       },
       "key": "vanderberg2019",
       "keywords": [],
@@ -72,7 +78,9 @@ expression: "summary(\"real-world.bib\")"
       "container": "Proceedings of the Synthetic Conference",
       "doi": null,
       "issued": {
-        "year": 2022
+        "start": {
+          "year": 2022
+        }
       },
       "key": "chen2022",
       "keywords": [],
@@ -87,15 +95,17 @@ expression: "summary(\"real-world.bib\")"
     },
     {
       "authors": [],
-      "container": "Proceedings of the Synthetic Conference",
+      "container": null,
       "doi": null,
       "issued": {
-        "year": 2022
+        "start": {
+          "year": 2022
+        }
       },
       "key": "conf2022",
       "keywords": [],
       "language": null,
-      "title": "Proceedings of the Synthetic Conference",
+      "title": "Proceedings of the synthetic conference",
       "type": "book",
       "url": null,
       "variables": {
@@ -109,7 +119,9 @@ expression: "summary(\"real-world.bib\")"
       "container": "Synthetic Arabic Review",
       "doi": null,
       "issued": {
-        "year": 2023
+        "start": {
+          "year": 2023
+        }
       },
       "key": "haddad2023",
       "keywords": [
@@ -117,7 +129,7 @@ expression: "summary(\"real-world.bib\")"
         "memory",
         "Arabic"
       ],
-      "language": "arabic",
+      "language": "ar",
       "title": "النوم والذاكرة: دراسة اصطناعية",
       "type": "article-journal",
       "url": null,
@@ -158,12 +170,14 @@ expression: "summary(\"real-world.bib\")"
       "container": null,
       "doi": null,
       "issued": {
-        "year": 2018
+        "start": {
+          "year": 2018
+        }
       },
       "key": "nested2018",
       "keywords": [],
       "language": null,
-      "title": "A Study of Nested Braces in Titles",
+      "title": "A <span class=\"nocase\">Study of Nested Braces</span> in titles",
       "type": "thesis",
       "url": null,
       "variables": {
@@ -179,9 +193,11 @@ expression: "summary(\"real-world.bib\")"
       "container": "Journal of Complete Metadata",
       "doi": "10.0000/complete.2024.003",
       "issued": {
-        "day": 15,
-        "month": 7,
-        "year": 2024
+        "start": {
+          "day": 15,
+          "month": 7,
+          "year": 2024
+        }
       },
       "key": "complete2024",
       "keywords": [],
@@ -204,12 +220,14 @@ expression: "summary(\"real-world.bib\")"
       "container": null,
       "doi": null,
       "issued": {
-        "year": 2017
+        "start": {
+          "year": 2017
+        }
       },
       "key": "edition2017",
       "keywords": [],
       "language": null,
-      "title": "A Book with Every Detail",
+      "title": "A book with every detail",
       "type": "book",
       "url": null,
       "variables": {
@@ -240,7 +258,9 @@ expression: "summary(\"real-world.bib\")"
       "container": "Synthetic Greek Review",
       "doi": null,
       "issued": {
-        "year": 2020
+        "start": {
+          "year": 2020
+        }
       },
       "key": "greek2020",
       "keywords": [],

@@ -11,6 +11,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use ibis_core::bibtex;
 use ibis_core::cite::{self, CiteItem, KeyFormat, Locator, LocatorLabel};
+use ibis_core::library::{self, SelectError};
 use ibis_core::model::{LoadResult, Reference};
 use ibis_core::search::Index;
 
@@ -60,8 +61,12 @@ enum Command {
     },
     /// Print selected references as CSL-JSON (for Pandoc, citeproc, scripts).
     Csl {
-        #[arg(required = true)]
+        /// Citation keys to export.
+        #[arg(required_unless_present = "all")]
         keys: Vec<String>,
+        /// Export every reference in the given files.
+        #[arg(long, conflicts_with = "keys")]
+        all: bool,
         #[arg(long = "bib", required = true)]
         bib: Vec<PathBuf>,
     },
@@ -157,18 +162,13 @@ fn all_warnings(loaded: &[Loaded]) -> Vec<serde_json::Value> {
 /// Find the one reference with this citation key, refusing to guess when
 /// several files contain it.
 fn resolve<'a>(key: &str, references: &'a [Reference]) -> Result<&'a Reference> {
-    let matches: Vec<&Reference> = references
-        .iter()
-        .filter(|r| r.citekey.as_deref() == Some(key))
-        .collect();
-    match matches.as_slice() {
-        [one] => Ok(one),
-        [] => bail!("key `{key}` was not found in the given files"),
-        many => {
-            let sources = many.iter().map(|r| r.id.source.as_str()).collect::<Vec<_>>().join(", ");
-            bail!("key `{key}` appears in several files ({sources}); pass only the file you mean with --bib")
-        }
-    }
+    library::find_by_key(references, key).map_err(|err| match err {
+        SelectError::Ambiguous { key, sources } => anyhow::anyhow!(
+            "key `{key}` appears in several files ({}); pass only the file you mean with --bib",
+            sources.join(", ")
+        ),
+        other => anyhow::anyhow!("{other} in the given files"),
+    })
 }
 
 fn print_json(value: &impl serde::Serialize) -> Result<()> {
@@ -214,7 +214,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
                         "{:<24} {} ({year}) {}",
                         r.citekey.as_deref().unwrap_or("-"),
                         authors,
-                        r.title.as_deref().unwrap_or("[no title]")
+                        r.title_plain().as_deref().unwrap_or("[no title]")
                     );
                     println!("{:<24} matched: {why}", "");
                 }
@@ -297,14 +297,19 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 ExitCode::from(2)
             })
         }
-        Command::Csl { keys, bib } => {
+        Command::Csl { keys, all, bib } => {
             let loaded = load(&bib)?;
             report_problems(&loaded);
             let references = all_references(&loaded);
-            let mut items = Vec::new();
-            for key in &keys {
-                items.push(resolve(key, &references)?.to_csl_json());
-            }
+            let selected: Vec<&Reference> = if all {
+                references.iter().collect()
+            } else {
+                keys.iter()
+                    .map(|key| resolve(key, &references))
+                    .collect::<Result<_>>()?
+            };
+            let items = library::csl_items(selected)
+                .map_err(|err| anyhow::anyhow!("{err}; pass the files separately with --bib"))?;
             print_json(&items)?;
             Ok(ExitCode::SUCCESS)
         }

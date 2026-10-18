@@ -27,7 +27,7 @@ expression: csl
       ]
     },
     "page": "12–34",
-    "title": "Sleep and REM memory consolidation in NASA crews",
+    "title": "Sleep and <span class=\"nocase\">REM</span> memory consolidation in <span class=\"nocase\">NASA</span> crews",
     "type": "article-journal"
   },
   {
@@ -83,7 +83,7 @@ expression: csl
     },
     "publisher": "Example Press",
     "publisher-place": "Lyon",
-    "title": "A Book with Every Detail",
+    "title": "A book with every detail",
     "type": "book"
   }
 ]

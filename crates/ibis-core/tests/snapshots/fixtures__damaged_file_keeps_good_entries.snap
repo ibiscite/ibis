@@ -11,7 +11,9 @@ expression: "summary(\"damaged.bib\")"
       "container": null,
       "doi": null,
       "issued": {
-        "year": 2020
+        "start": {
+          "year": 2020
+        }
       },
       "key": "good1",
       "keywords": [],
@@ -26,7 +28,9 @@ expression: "summary(\"damaged.bib\")"
       "container": null,
       "doi": null,
       "issued": {
-        "year": 2022
+        "start": {
+          "year": 2022
+        }
       },
       "key": "undefinedmacro",
       "keywords": [],
@@ -43,7 +47,9 @@ expression: "summary(\"damaged.bib\")"
       "container": null,
       "doi": null,
       "issued": {
-        "year": 2024
+        "start": {
+          "year": 2024
+        }
       },
       "key": "good2",
       "keywords": [],
@@ -77,12 +83,6 @@ expression: "summary(\"damaged.bib\")"
       "message": "duplicate key `good1`; the first entry with this key is used"
     },
     {
-      "key": "undefinedmacro",
-      "kind": "field",
-      "line": 15,
-      "message": "undefined abbreviation `notdefined`; the field using it is left empty"
-    },
-    {
       "kind": "syntax",
       "line": 21,
       "message": "entry has no citation key; skipped"
@@ -92,6 +92,18 @@ expression: "summary(\"damaged.bib\")"
       "kind": "syntax",
       "line": 25,
       "message": "entry is not closed; skipped"
+    },
+    {
+      "key": "undefinedmacro",
+      "kind": "field",
+      "line": 15,
+      "message": "undefined abbreviation `notdefined`; the field using it is left empty"
+    },
+    {
+      "key": "baddate",
+      "kind": "field",
+      "line": 35,
+      "message": "date `sometime-ish` could not be read; no date is used"
     }
   ]
 }

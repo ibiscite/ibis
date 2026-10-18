@@ -75,12 +75,13 @@ impl<'a> Index<'a> {
                     .authors
                     .iter()
                     .chain(&r.editors)
+                    .chain(r.other_names.values().flatten())
                     .map(|n| n.display())
                     .collect::<Vec<_>>()
                     .join(" ");
                 let fields = [
                     normalize(r.citekey.as_deref().unwrap_or("")),
-                    normalize(r.title.as_deref().unwrap_or("")),
+                    normalize(&r.title_plain().unwrap_or_default()),
                     normalize(&names),
                     r.year().map(|y| y.to_string()).unwrap_or_default(),
                     normalize(r.doi.as_deref().unwrap_or("")),
@@ -122,7 +123,13 @@ impl<'a> Index<'a> {
                         matched.push(best.0);
                     }
                 }
-                if fields[0] == normalized.trim() {
+                let exact_key = reference
+                    .citekey
+                    .as_deref()
+                    .is_some_and(|k| k.to_lowercase() == query.trim().to_lowercase());
+                if exact_key {
+                    score += 2000;
+                } else if fields[0] == normalized.trim() {
                     score += 1000;
                 } else if fields[1] == normalized.trim() {
                     score += 500;
@@ -175,7 +182,7 @@ fn starts_word(text: &str, term: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Name, PartialDate, RecordId};
+    use crate::model::{Issued, Name, RecordId};
 
     fn reference(key: &str, title: &str, family: &str, year: i32) -> Reference {
         Reference {
@@ -191,7 +198,9 @@ mod tests {
                 ..Name::default()
             }],
             editors: vec![],
-            issued: Some(PartialDate::year(year)),
+            other_names: Default::default(),
+            dates: Default::default(),
+            issued: Some(Issued::year(year)),
             container_title: None,
             doi: None,
             url: None,
@@ -250,6 +259,29 @@ mod tests {
         assert_eq!(index.search("γνωσις", 10)[0].reference.id.native_key, "gr");
         assert_eq!(index.search("ΓΝΏΣΙΣ", 10)[0].reference.id.native_key, "gr");
         assert_eq!(index.search("strasse weiss", 10)[0].reference.id.native_key, "de");
+    }
+
+    #[test]
+    fn exact_key_match_is_exact_not_punctuation_folded() {
+        let refs = [
+            reference("a:b", "Newer", "X", 2024),
+            reference("a-b", "Older", "Y", 2001),
+        ];
+        let index = Index::new(&refs);
+        assert_eq!(index.search("a-b", 10)[0].reference.id.native_key, "a-b");
+        assert_eq!(index.search("a:b", 10)[0].reference.id.native_key, "a:b");
+    }
+
+    #[test]
+    fn translators_and_other_roles_are_searchable() {
+        let refs = crate::bibtex::load_str(
+            "t",
+            "@book{translation,title={Synthetic},translator={Translator, Taylor},year={2024}}\n@book{compilation,title={Another},editor={Compiler, Casey},editortype={compiler},year={2024}}",
+        )
+        .references;
+        let index = Index::new(&refs);
+        assert_eq!(index.search("Translator", 10).len(), 1);
+        assert_eq!(index.search("Compiler", 10).len(), 1);
     }
 
     #[test]

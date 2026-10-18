@@ -33,8 +33,8 @@ fn dates_written_with_non_latin_digits_are_read_not_crashed_on() {
         let result = load_str("t", &format!("@article{{k, title = {{T}}, {field}}}"));
         assert_eq!(result.references.len(), 1, "{field}: {:?}", result.warnings);
         let issued = result.references[0].issued;
-        assert_eq!(issued.map(|d| d.year), Some(year), "{field}");
-        assert_eq!(issued.and_then(|d| d.month), month, "{field}");
+        assert_eq!(issued.map(|d| d.start.year), Some(year), "{field}");
+        assert_eq!(issued.and_then(|d| d.start.month), month, "{field}");
     }
 }
 
@@ -61,7 +61,7 @@ proptest! {
     #[test]
     fn mutated_entries_never_panic(
         prefix in "\\PC{0,40}",
-        field in prop::sample::select(vec!["title", "crossref", "author", "date", "journal", "pages"]),
+        field in prop::sample::select(vec!["title", "crossref", "xdata", "author", "editor", "date", "year", "month", "journal", "pages", "langid"]),
         value in "\\PC{0,40}",
         closer in prop::sample::select(vec!["}", ")", "", "}}", "{"]),
     ) {

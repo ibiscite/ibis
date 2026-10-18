@@ -1,9 +1,12 @@
 //! Source-neutral reference model.
 //!
-//! A [`Reference`] keeps its original source identity and raw text next to the
-//! normalized fields used for search and output. Identity is always the source
-//! plus the native key, never a citation key alone (keys can repeat across
-//! libraries).
+//! A [`Reference`] keeps its original source identity and raw text next to
+//! normalized fields. Meaning is preserved before anything is simplified:
+//! titles keep protected capitalization and italics as CSL rich text, author
+//! lists remember truncation ("and others"), and dates keep ranges and
+//! uncertainty. Plain text for search and display is derived from these.
+//! Identity is always the source plus the native key, never a citation key
+//! alone (keys can repeat across libraries).
 
 use std::collections::BTreeMap;
 
@@ -13,30 +16,59 @@ use serde_json::{Map, Value, json};
 /// Stable identity of a record: which source it came from and its key there.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RecordId {
-    /// Source identifier chosen by the caller, e.g. a file path label or `zotero:group:123`.
+    /// Source identifier, e.g. a canonical file path or `zotero:group:123`.
     pub source: String,
     /// Key of the record inside that source (BibTeX key, Zotero item key, ...).
     pub native_key: String,
 }
 
-/// A personal or organizational name, split the way CSL expects.
+/// A name, split the way CSL expects. Organizations use `literal`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Name {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub family: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub given: Option<String>,
-    /// Particle such as "van der" or "de".
+    /// Particle that is dropped when sorting, e.g. BibTeX's "van der".
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub particle: Option<String>,
+    pub dropping_particle: Option<String>,
+    /// Particle that stays with the family name, e.g. "de" in "de Gaulle" for some styles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub non_dropping_particle: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suffix: Option<String>,
+    /// A name that must not be split, such as an organization.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub literal: Option<String>,
 }
 
+/// Marker for a truncated author list ("and others" in BibTeX).
+pub const OTHERS: &str = "others";
+
 impl Name {
-    /// Name in natural reading order: "given particle family suffix", or
-    /// family name first with no space for Chinese, Japanese and Korean names.
+    /// A literal name.
+    pub fn literal(text: &str) -> Self {
+        Name {
+            literal: Some(text.to_string()),
+            ..Name::default()
+        }
+    }
+
+    /// True for the "and others" marker of a truncated author list.
+    pub fn is_others(&self) -> bool {
+        self.literal.as_deref() == Some(OTHERS)
+    }
+
+    /// Name in natural reading order: "given particle family suffix", family
+    /// name first with no space for Chinese, Japanese and Korean names, and
+    /// "et al." for a truncated list.
     pub fn display(&self) -> String {
+        if self.is_others() {
+            return "et al.".to_string();
+        }
+        if let Some(literal) = &self.literal {
+            return literal.clone();
+        }
         let is_cjk = |s: &Option<String>| s.as_deref().is_some_and(|s| s.chars().any(is_cjk_char));
         if is_cjk(&self.family) && (self.given.is_none() || is_cjk(&self.given)) {
             return [&self.family, &self.given]
@@ -45,12 +77,36 @@ impl Name {
                 .map(String::as_str)
                 .collect();
         }
-        [&self.given, &self.particle, &self.family, &self.suffix]
-            .into_iter()
-            .flatten()
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join(" ")
+        [
+            &self.given,
+            &self.dropping_particle,
+            &self.non_dropping_particle,
+            &self.family,
+            &self.suffix,
+        ]
+        .into_iter()
+        .flatten()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(" ")
+    }
+
+    fn to_csl(&self) -> Value {
+        let mut m = Map::new();
+        let fields = [
+            ("family", &self.family),
+            ("given", &self.given),
+            ("dropping-particle", &self.dropping_particle),
+            ("non-dropping-particle", &self.non_dropping_particle),
+            ("suffix", &self.suffix),
+            ("literal", &self.literal),
+        ];
+        for (key, value) in fields {
+            if let Some(v) = value {
+                m.insert(key.into(), json!(v));
+            }
+        }
+        Value::Object(m)
     }
 }
 
@@ -64,46 +120,7 @@ fn is_cjk_char(c: char) -> bool {
         | '\u{20000}'..='\u{2fa1f}')
 }
 
-/// One bibliographic record from any source.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Reference {
-    pub id: RecordId,
-    /// Citation key used in LaTeX/Pandoc/Typst output, when the source has one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub citekey: Option<String>,
-    /// CSL item type, e.g. `article-journal`.
-    pub item_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub authors: Vec<Name>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub editors: Vec<Name>,
-    /// Publication date, as precise as the source states it.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub issued: Option<PartialDate>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub container_title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub doi: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub abstract_text: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub keywords: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
-    /// Further CSL string variables (`volume`, `issue`, `page`, `publisher`,
-    /// `edition`, `ISBN`, ...), keyed by their CSL variable name.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub variables: BTreeMap<String, String>,
-    /// Original source text of the record, kept verbatim so nothing is lost.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub raw: Option<String>,
-}
-
-/// A date with optional month and day (months and days are 1-based).
+/// A calendar date with optional month and day (1-based).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartialDate {
     pub year: i32,
@@ -131,10 +148,96 @@ impl PartialDate {
     }
 }
 
+/// A publication date: a single date or a range, possibly approximate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Issued {
+    pub start: PartialDate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end: Option<PartialDate>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub circa: bool,
+}
+
+impl Issued {
+    pub fn year(year: i32) -> Self {
+        Issued {
+            start: PartialDate::year(year),
+            end: None,
+            circa: false,
+        }
+    }
+
+    fn to_csl(self) -> Value {
+        let mut parts = vec![self.start.date_parts()];
+        if let Some(end) = self.end {
+            parts.push(end.date_parts());
+        }
+        let mut m = Map::new();
+        m.insert("date-parts".into(), Value::Array(parts));
+        if self.circa {
+            m.insert("circa".into(), json!(true));
+        }
+        Value::Object(m)
+    }
+}
+
+/// One bibliographic record from any source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reference {
+    pub id: RecordId,
+    /// Citation key used in LaTeX/Pandoc/Typst output, when the source has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub citekey: Option<String>,
+    /// CSL item type, e.g. `article-journal`.
+    pub item_type: String,
+    /// Title as CSL rich text: sentence case for English, with protected
+    /// words in `<span class="nocase">` and italics in `<i>`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<Name>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub editors: Vec<Name>,
+    /// Further CSL name variables (`translator`, `container-author`,
+    /// `compiler`, `director`, `contributor`, ...), keyed by CSL name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub other_names: BTreeMap<String, Vec<Name>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issued: Option<Issued>,
+    /// Further CSL date variables (`accessed`, `original-date`, `event-date`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dates: BTreeMap<String, Issued>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doi: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub abstract_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
+    /// BCP 47 language tag, e.g. `en-US`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Further CSL string variables (`volume`, `issue`, `page`, `publisher`,
+    /// `edition`, `ISBN`, ...), keyed by their CSL variable name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub variables: BTreeMap<String, String>,
+    /// Original source text of the record, kept verbatim so nothing is lost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw: Option<String>,
+}
+
 impl Reference {
     /// Publication year, if known.
     pub fn year(&self) -> Option<i32> {
-        self.issued.map(|d| d.year)
+        self.issued.map(|d| d.start.year)
+    }
+
+    /// Title without markup, for search and display.
+    pub fn title_plain(&self) -> Option<String> {
+        self.title.as_deref().map(strip_markup)
     }
 
     /// Convert to a CSL-JSON item for citation processors.
@@ -146,31 +249,16 @@ impl Reference {
         if let Some(key) = &self.citekey {
             item.insert("citation-key".into(), json!(key));
         }
-        let names = |list: &[Name]| -> Value {
-            list.iter()
-                .map(|n| {
-                    let mut m = Map::new();
-                    if let Some(v) = &n.family {
-                        m.insert("family".into(), json!(v));
-                    }
-                    if let Some(v) = &n.given {
-                        m.insert("given".into(), json!(v));
-                    }
-                    if let Some(v) = &n.particle {
-                        m.insert("non-dropping-particle".into(), json!(v));
-                    }
-                    if let Some(v) = &n.suffix {
-                        m.insert("suffix".into(), json!(v));
-                    }
-                    Value::Object(m)
-                })
-                .collect()
-        };
         if !self.authors.is_empty() {
-            item.insert("author".into(), names(&self.authors));
+            item.insert("author".into(), self.authors.iter().map(Name::to_csl).collect());
         }
         if !self.editors.is_empty() {
-            item.insert("editor".into(), names(&self.editors));
+            item.insert("editor".into(), self.editors.iter().map(Name::to_csl).collect());
+        }
+        for (role, names) in &self.other_names {
+            if !names.is_empty() {
+                item.insert(role.clone(), names.iter().map(Name::to_csl).collect());
+            }
         }
         let text_fields = [
             ("title", &self.title),
@@ -185,17 +273,35 @@ impl Reference {
                 item.insert(name.into(), json!(v));
             }
         }
-        if let Some(date) = self.issued {
-            item.insert("issued".into(), json!({ "date-parts": [date.date_parts()] }));
+        if let Some(issued) = self.issued {
+            item.insert("issued".into(), issued.to_csl());
         }
-        for (name, value) in &self.variables {
-            item.entry(name.clone()).or_insert_with(|| json!(value));
+        for (name, date) in &self.dates {
+            item.insert(name.clone(), date.to_csl());
         }
         if !self.keywords.is_empty() {
             item.insert("keyword".into(), json!(self.keywords.join(", ")));
         }
+        for (name, value) in &self.variables {
+            item.entry(name.clone()).or_insert_with(|| json!(value));
+        }
         Value::Object(item)
     }
+}
+
+/// Remove CSL rich-text tags and decode the entities used to escape text.
+pub fn strip_markup(rich: &str) -> String {
+    let mut out = String::with_capacity(rich.len());
+    let mut in_tag = false;
+    for c in rich.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 }
 
 /// Category of a problem found while loading a source.
@@ -206,7 +312,7 @@ pub enum WarningKind {
     Syntax,
     /// A second record used a key that was already taken; it was skipped.
     DuplicateKey,
-    /// The record was loaded, but one field could not be interpreted.
+    /// The record was loaded, but part of it could not be interpreted.
     Field,
 }
 

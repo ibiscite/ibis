@@ -81,3 +81,89 @@ fn unknown_keys_are_errors() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("not found"));
 }
+
+/// Cyclic cross-references once overflowed the stack and aborted the process.
+/// A subprocess proves the binary now reports them and exits normally.
+#[test]
+fn cross_reference_cycles_never_abort_the_process() {
+    for (name, text) in [
+        ("self.bib", "@book{a,title={A},crossref={a}}\n"),
+        (
+            "mutual.bib",
+            "@book{a,title={A},crossref={b}}\n@book{b,title={B},crossref={a}}\n",
+        ),
+        (
+            "xdata.bib",
+            "@book{a,title={A},xdata={b}}\n@book{b,title={B},xdata={a}}\n",
+        ),
+    ] {
+        let file = write("cli-cycles", name, text);
+        let out = ibis(&["check", s(&file)]);
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{name}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(String::from_utf8_lossy(&out.stdout).contains("cycle"), "{name}");
+    }
+}
+
+#[test]
+fn exporting_everything_refuses_duplicate_citation_keys() {
+    let a = write(
+        "cli-all-a",
+        "refs.bib",
+        "@article{same, title={From A}}\n@article{onlya, title={Only A}}\n",
+    );
+    let b = write("cli-all-b", "refs.bib", "@article{same, title={From B}}\n");
+    let out = ibis(&["csl", "--all", "--bib", s(&a), "--bib", s(&b)]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("same"));
+    assert!(ibis(&["csl", "--all", "--bib", s(&a)]).status.success());
+}
+
+/// Doubling an empty abbreviation produces no output but exponential work.
+/// The expansion step budget must stop it; a subprocess with a deadline
+/// proves the binary finishes.
+#[test]
+fn empty_doubling_abbreviations_finish_quickly() {
+    let mut text = String::from("@string{m0=\"\"}\n");
+    for i in 1..=40 {
+        text.push_str(&format!("@string{{m{i}=m{} # m{}}}\n", i - 1, i - 1));
+    }
+    text.push_str("@article{a,title={Synthetic},journal=m40}\n");
+    let file = write("cli-empty-macros", "empty-macros.bib", &text);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .args(["check", s(&file)])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("{e}"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while child.try_wait().ok().flatten().is_none() {
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("ibis check did not finish within 10 seconds");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let out = child.wait_with_output().unwrap_or_else(|e| panic!("{e}"));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("too complex"));
+}
+
+/// Links kept from different paths must not combine into a cycle; this file
+/// once overflowed the stack.
+#[test]
+fn links_from_different_paths_never_form_a_cycle() {
+    let file = write(
+        "cli-graph-cycle",
+        "graph-cycle.bib",
+        "@book{root,title={Root},xdata={a,b}}\n@xdata{a,publisher={Synthetic},xdata={b}}\n@xdata{b,year={2024},xdata={a}}\n",
+    );
+    let out = ibis(&["csl", "--all", "--bib", s(&file)]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(json[0]["id"], "root");
+    assert_eq!(json[0]["publisher"], "Synthetic");
+    assert_eq!(json[0]["issued"]["date-parts"][0][0], 2024);
+}
