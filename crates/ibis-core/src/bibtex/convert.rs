@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use biblatex::{Chunk, ChunksExt, DateValue, EditorType, Entry, PermissiveType, RetrievalError};
 
-use super::resolve::{ESCAPE, LEFT_BRACE, RIGHT_BRACE};
+use super::resolve::{BACKSLASH, ESCAPE, LEFT_BRACE, RIGHT_BRACE};
 use crate::model::{Issued, Name, OTHERS, PartialDate, RecordId, Reference};
 
 /// Convert one entry. Problems that do not prevent loading are pushed to `problems`.
@@ -23,7 +23,7 @@ pub(crate) fn convert(
     let unknown = RefCell::new(BTreeSet::new());
     // A field containing a TeX command that is not understood is kept exactly
     // as written (from the source text), so nothing is silently changed.
-    // Raw values still carry the escaped-brace encoding. It is decoded exactly
+    // Raw values still carry the literal-symbol encoding. It is decoded exactly
     // once: by `clean` for plain fields, by `render` for rich ones.
     let raw_text = |field: &str| own_fields.get(field).map(|v| clean(v));
     let raw_encoded = |field: &str| {
@@ -1116,7 +1116,7 @@ fn strip_tex(text: &str, unknown: &mut BTreeSet<String>) -> String {
 }
 
 /// Collapse internal whitespace (BibTeX values often span lines) and turn
-/// escaped-brace placeholders back into literal braces.
+/// literal-symbol placeholders back into literal braces and backslashes.
 fn clean(s: &str) -> String {
     let joined = s.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut out = String::with_capacity(joined.len());
@@ -1126,6 +1126,7 @@ fn clean(s: &str) -> String {
             ESCAPE => out.extend(chars.next()),
             LEFT_BRACE => out.push('{'),
             RIGHT_BRACE => out.push('}'),
+            BACKSLASH => out.push('\\'),
             c => out.push(c),
         }
     }

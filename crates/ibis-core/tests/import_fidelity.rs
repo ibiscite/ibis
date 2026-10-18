@@ -600,3 +600,46 @@ fn short_titles_reach_csl() {
     );
     assert_eq!(r.to_csl_json()["title-short"], "Short");
 }
+
+#[test]
+fn textbackslash_is_literal_in_titles_and_plain_fields() {
+    let r = load(
+        r"@book{k,title={{A \textbackslash{} B}},subtitle={C \textbackslash{} D},
+        shorttitle={{E \textbackslash{} F}},journaltitle={G \textbackslash{} H},
+        publisher={I \textbackslash{} J},abstract={K \textbackslash{} L},
+        author={{M \textbackslash{} N}},url={https://example.org/\textbackslash},langid={ja}}",
+    );
+    let a = only(&r, "k");
+    assert_eq!(a.title_plain().as_deref(), Some(r"A \ B: C \ D"));
+    assert_eq!(a.to_csl_json()["title-short"], r#"<span class="nocase">E \ F</span>"#);
+    assert_eq!(a.container_title.as_deref(), Some(r"G \ H"));
+    assert_eq!(a.variables.get("publisher").map(String::as_str), Some(r"I \ J"));
+    assert_eq!(a.abstract_text.as_deref(), Some(r"K \ L"));
+    assert_eq!(a.authors[0].literal.as_deref(), Some(r"M \ N"));
+    assert_eq!(a.url.as_deref(), Some(r"https://example.org/\textbackslash"));
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+}
+
+#[test]
+fn literal_backslashes_are_not_commands_or_placeholder_collisions() {
+    let r = load(
+        "@string{slash = {\\textbackslash{}}}\n@xdata{p,publisher=slash # {alpha}}\n\
+         @book{k,title={A \\textbackslash{}alpha \\textbackslash{}unknown \\textbackslash{}\\textbackslash{} \\{B\\} \u{E003}},xdata={p},langid={ja}}\n\
+         @book{u,title={\\textbackslash{}alpha \\unknown \u{E003}},langid={ja}}\n\
+         @book{space,title={A \\textbackslash B},langid={ja}}\n\
+         @book{long,title={\\textbackslashsuffix},langid={ja}}",
+    );
+    let k = only(&r, "k");
+    assert_eq!(
+        k.title_plain().as_deref(),
+        Some("A \\alpha \\unknown \\\\ {B} \u{E003}")
+    );
+    assert_eq!(k.variables.get("publisher").map(String::as_str), Some(r"\alpha"));
+    assert_eq!(
+        only(&r, "u").title_plain().as_deref(),
+        Some("\\textbackslash{}alpha \\unknown \u{E003}")
+    );
+    assert_eq!(only(&r, "long").title_plain().as_deref(), Some(r"\textbackslashsuffix"));
+    assert_eq!(only(&r, "space").title_plain().as_deref(), Some(r"A \B"));
+    assert_eq!(r.warnings.len(), 2, "{:?}", r.warnings);
+}

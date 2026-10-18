@@ -70,18 +70,21 @@ const MAX_VALUE_BYTES: usize = 64 * 1024;
 /// can never be mistaken for grouping braces; mapped back after conversion.
 pub(crate) const LEFT_BRACE: char = '\u{E000}';
 pub(crate) const RIGHT_BRACE: char = '\u{E001}';
+/// A literal backslash must survive the parser's command decoding without
+/// being interpreted as a new command by our subsequent TeX conversion.
+pub(crate) const BACKSLASH: char = '\u{E003}';
 /// Marks a placeholder character that occurred in the source itself, so real
 /// text using these private-use characters is never altered.
 pub(crate) const ESCAPE: char = '\u{E002}';
 
-/// Encode `\\{` and `\\}` as placeholders, escaping placeholder characters
-/// already present in the text. Decoded by `convert::clean`.
-fn encode_escaped_braces(text: &str) -> String {
+/// Encode escaped braces and escape placeholder characters already present.
+/// Decoded by `convert::clean`.
+fn encode_literals(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            LEFT_BRACE | RIGHT_BRACE | ESCAPE => {
+            LEFT_BRACE | RIGHT_BRACE | BACKSLASH | ESCAPE => {
                 out.push(ESCAPE);
                 out.push(c);
             }
@@ -96,6 +99,52 @@ fn encode_escaped_braces(text: &str) -> String {
                 } else {
                     RIGHT_BRACE
                 });
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// `biblatex` decodes this symbol before our TeX conversion; protect it until
+/// final cleaning. Apply only to parser input, retaining resolved source text
+/// for the unchanged fallback used when a field has an unknown command.
+fn protect_backslashes(text: &str) -> String {
+    const BACKSLASH_COMMAND: &str = "textbackslash";
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            ESCAPE => {
+                out.push(c);
+                out.extend(chars.next());
+            }
+            '\\' if chars.peek() == Some(&'\\') => {
+                out.push(c);
+                out.extend(chars.next());
+            }
+            '\\' if chars
+                .clone()
+                .take(BACKSLASH_COMMAND.len())
+                .eq(BACKSLASH_COMMAND.chars())
+                && chars
+                    .clone()
+                    .nth(BACKSLASH_COMMAND.len())
+                    .is_none_or(|c| !c.is_ascii_alphabetic()) =>
+            {
+                out.push(BACKSLASH);
+                for _ in 0..BACKSLASH_COMMAND.len() {
+                    chars.next();
+                }
+                if chars.clone().take(2).eq("{}".chars()) {
+                    chars.next();
+                    chars.next();
+                } else {
+                    // Whitespace terminates the control word, as in TeX.
+                    while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                        chars.next();
+                    }
+                }
             }
             _ => out.push(c),
         }
@@ -355,7 +404,7 @@ impl<'a> Resolver<'a> {
         if DATE_FIELDS.contains(&field) {
             out = ascii_digits(&out);
         }
-        encode_escaped_braces(&dotless_to_plain(&out))
+        encode_literals(&dotless_to_plain(&out))
     }
 
     fn expand_macro(&self, field: &str, name: &str, problems: &mut Vec<String>, report: bool, x: &mut Expansion) {
@@ -586,6 +635,12 @@ fn render_field(name: &str, value: &str) -> String {
     if bare_month {
         format!("  {name} = {value}")
     } else {
+        // URLs are verbatim: command-looking path text remains literal.
+        let value = if name == "url" {
+            value.to_string()
+        } else {
+            protect_backslashes(value)
+        };
         format!("  {name} = {{{value}}}")
     }
 }
