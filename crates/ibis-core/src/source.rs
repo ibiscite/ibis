@@ -119,6 +119,30 @@ pub fn load_library_file(path: &Path, reload: bool) -> Result<LoadResult, Source
     parse(path, &read_library_file(path)?, reload)
 }
 
+/// The exact bytes and source identity seen by a completed load. Pass this to
+/// `SourceWatch::with_snapshot` to avoid parsing an unchanged source again.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SourceSnapshot {
+    source: PathBuf,
+    text: Arc<str>,
+}
+
+/// Load once and retain an observation for the watch-registration gap check.
+/// This compares contents, so same-size edits with preserved timestamps remain
+/// visible. Clones share the bounded source text rather than copying it.
+pub fn load_library_snapshot(path: &Path, reload: bool) -> Result<(LoadResult, SourceSnapshot), SourceError> {
+    let text = read_library_file(path)?;
+    let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
+    let loaded = parse(&source, &text, reload)?;
+    Ok((
+        loaded,
+        SourceSnapshot {
+            source,
+            text: text.into(),
+        },
+    ))
+}
+
 fn parse(path: &Path, text: &str, reload: bool) -> Result<LoadResult, SourceError> {
     parse_with_budget(path, text, reload, bibtex::Budget::for_input(text.len()))
 }
@@ -146,6 +170,24 @@ pub struct SourceWatch {
 impl SourceWatch {
     pub fn new(
         path: &Path,
+        changed: impl FnMut(Result<LoadResult, SourceError>) + Send + 'static,
+    ) -> Result<Self, SourceError> {
+        Self::start(path, None, changed)
+    }
+
+    /// Check once after registration, but publish only if the source differs
+    /// from the completed load. Ordinary notifications retain strict reloads.
+    pub fn with_snapshot(
+        path: &Path,
+        snapshot: SourceSnapshot,
+        changed: impl FnMut(Result<LoadResult, SourceError>) + Send + 'static,
+    ) -> Result<Self, SourceError> {
+        Self::start(path, Some(snapshot), changed)
+    }
+
+    fn start(
+        path: &Path,
+        mut snapshot: Option<SourceSnapshot>,
         mut changed: impl FnMut(Result<LoadResult, SourceError>) + Send + 'static,
     ) -> Result<Self, SourceError> {
         // Keep the selected filename, rather than canonicalizing the file inode.
@@ -198,6 +240,7 @@ impl SourceWatch {
             .name("ibis-library-watch".into())
             .spawn(move || {
                 // Also check once after registration to close the load/watch gap.
+                let mut error_reported = false;
                 while events.recv().is_ok() && !stop.load(Ordering::SeqCst) {
                     loop {
                         if stop.load(Ordering::SeqCst) {
@@ -213,17 +256,28 @@ impl SourceWatch {
                         return;
                     }
                     if failed.swap(false, Ordering::SeqCst) {
+                        error_reported = true;
                         changed(Err(SourceError::WatchUnavailable));
                         continue;
                     }
                     // A selected symlink may now point into a different directory.
                     let candidate = rearm_target(&mut watcher, &path, &target, &mut target_parent)
-                        .and_then(|()| stable_read(&path, &events, &stop));
+                        .and_then(|()| stable_read(&path, &events, &stop, &mut snapshot, error_reported));
                     if !stop.load(Ordering::SeqCst) {
                         if matches!(candidate, Err(SourceError::Changing)) {
                             let _ = retry.try_send(());
                         }
-                        changed(candidate);
+                        match candidate {
+                            Ok(Some(loaded)) => {
+                                error_reported = false;
+                                changed(Ok(loaded));
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                error_reported = true;
+                                changed(Err(error));
+                            }
+                        }
                     }
                 }
             })
@@ -272,7 +326,13 @@ fn rearm_target(
     Ok(())
 }
 
-fn stable_read(path: &Path, events: &Receiver<()>, stopped: &AtomicBool) -> Result<LoadResult, SourceError> {
+fn stable_read(
+    path: &Path,
+    events: &Receiver<()>,
+    stopped: &AtomicBool,
+    snapshot: &mut Option<SourceSnapshot>,
+    error_reported: bool,
+) -> Result<Option<LoadResult>, SourceError> {
     let before = read_library_file(path)?;
     // A zero-length file and a valid prefix can both occur during a save.
     // Require identical observations separated by another quiet interval.
@@ -288,7 +348,20 @@ fn stable_read(path: &Path, events: &Receiver<()>, stopped: &AtomicBool) -> Resu
     if before != after {
         return Err(SourceError::Changing);
     }
-    parse(path, &after, true)
+    let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
+    if snapshot
+        .take()
+        .is_some_and(|previous| previous.source == source && previous.text.as_ref() == after)
+    {
+        // An earlier gap error must clear even if the file returns unchanged.
+        // Only these exact initially accepted bytes retain tolerant loading.
+        return if error_reported {
+            parse(&source, &after, false).map(Some)
+        } else {
+            Ok(None)
+        };
+    }
+    parse(&source, &after, true).map(Some)
 }
 
 impl Drop for SourceWatch {

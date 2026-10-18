@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ibis_core::model::{LoadWarning, RecordId, Reference};
 use ibis_core::search::OwnedIndex;
-use ibis_core::source::{SourceWatch, load_library_file};
+use ibis_core::source::{SourceSnapshot, SourceWatch, load_library_snapshot};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -23,6 +23,8 @@ pub(crate) struct Library {
     pub(crate) path: Option<PathBuf>,
     pub(crate) index: OwnedIndex,
     pub(crate) warnings: Vec<LoadWarning>,
+    /// Exact initial load observation, reused when attaching the watcher.
+    snapshot: Option<SourceSnapshot>,
     /// Why the last attempt to open a library failed, shown until one opens.
     pub(crate) error: Option<String>,
     /// A problem that is not a failure to open, such as an unsaved choice.
@@ -105,8 +107,10 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
 /// Read, parse and index off the main thread. Initial loads tolerate damaged
 /// entries; reloads retain the last good snapshot for demonstrably partial data.
 pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, String> {
-    let loaded = load_library_file(&path, reload).map_err(|error| error.to_string())?;
-    Ok(candidate(path, loaded))
+    let (loaded, snapshot) = load_library_snapshot(&path, reload).map_err(|error| error.to_string())?;
+    let mut library = candidate(path, loaded);
+    library.snapshot = Some(snapshot);
+    Ok(library)
 }
 
 fn candidate(path: PathBuf, loaded: ibis_core::model::LoadResult) -> Library {
@@ -114,6 +118,7 @@ fn candidate(path: PathBuf, loaded: ibis_core::model::LoadResult) -> Library {
         path: Some(path),
         index: OwnedIndex::new(loaded.references),
         warnings: loaded.warnings,
+        snapshot: None,
         error: None,
         note: None,
     }
@@ -136,25 +141,42 @@ fn dialog_path_error(current: LibraryStatus) -> LibraryStatus {
     }
 }
 
+fn take_watch_source(
+    library: &mut Library,
+    requests: &LoadRequests,
+    request: u64,
+) -> Option<(PathBuf, Option<SourceSnapshot>)> {
+    // Check while holding the library lock: an older open must not consume
+    // the source observation belonging to a newly installed library.
+    if requests.0.load(Ordering::SeqCst) != request {
+        return None;
+    }
+    Some((library.path.clone()?, library.snapshot.take()))
+}
+
 fn watch_current(app: &AppHandle, request: u64) {
     let path = app
         .state::<Mutex<Library>>()
         .lock()
         .ok()
-        .and_then(|library| library.path.clone());
-    let Some(path) = path else {
+        .and_then(|mut library| take_watch_source(&mut library, &app.state(), request));
+    let Some((path, snapshot)) = path else {
         return;
     };
     let handle = app.clone();
     let selected = path.clone();
-    let watch = SourceWatch::new(&path, move |loaded| {
+    let changed = move |loaded: Result<ibis_core::model::LoadResult, ibis_core::source::SourceError>| {
         let loaded = loaded
             .map(|loaded| candidate(selected.clone(), loaded))
             .map_err(|e| e.to_string());
         if let Some(status) = install(&handle.state(), &handle.state(), request, loaded) {
             publish(&handle, status);
         }
-    });
+    };
+    let watch = match snapshot {
+        Some(snapshot) => SourceWatch::with_snapshot(&path, snapshot, changed),
+        None => SourceWatch::new(&path, changed),
+    };
     let state = app.state::<LibraryWatch>();
     if let Ok(mut current) = state.0.lock() {
         if app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request {
@@ -372,8 +394,23 @@ mod tests {
         let library = load_library(file, false).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(library.index.references().len(), 1);
         assert_eq!(library.warnings.len(), 1);
+        assert!(library.snapshot.is_some());
         assert_eq!(library.index.search("sleep", 10).len(), 1);
         assert!(load_library(std::env::temp_dir().join("ibis-missing-library.bib"), false).is_err());
+    }
+
+    #[test]
+    fn a_stale_watch_attachment_preserves_the_newer_initial_snapshot() {
+        let file = std::env::temp_dir().join(format!("ibis-watch-generation-{}.bib", std::process::id()));
+        std::fs::write(&file, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
+        let mut library = load_library(file, false).unwrap_or_else(|e| panic!("{e}"));
+        let requests = LoadRequests::default();
+        requests.0.store(2, Ordering::SeqCst);
+        assert!(take_watch_source(&mut library, &requests, 1).is_none());
+        assert!(library.snapshot.is_some());
+        let current = take_watch_source(&mut library, &requests, 2);
+        assert!(current.is_some_and(|(_, snapshot)| snapshot.is_some()));
+        assert!(library.snapshot.is_none());
     }
 
     #[test]

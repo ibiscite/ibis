@@ -206,3 +206,91 @@ fn verbatim_leaf_names_and_ordinary_aliases_watch_the_selected_file() {
         }
     }
 }
+
+#[test]
+fn unchanged_damaged_initial_load_does_not_publish_a_strict_reload() {
+    use ibis_core::source::load_library_snapshot;
+    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let path = dir.path().join("library.bib");
+    std::fs::write(&path, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
+    let (initial, snapshot) = load_library_snapshot(&path, false).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(initial.references.len(), 1);
+    assert_eq!(initial.warnings.len(), 1);
+    let (tx, rx) = mpsc::channel();
+    let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
+        let _ = tx.send(result);
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!(rx.recv_timeout(Duration::from_millis(900)).is_err());
+    std::fs::write(&path, "@misc{updated}").unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        next(&rx).map(|l| l.references[0].id.native_key.clone()),
+        Ok("updated".into())
+    );
+}
+
+#[test]
+fn changes_before_watch_registration_are_still_loaded_even_at_the_same_size() {
+    use ibis_core::source::load_library_snapshot;
+    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let path = dir.path().join("library.bib");
+    std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
+    let (_, snapshot) = load_library_snapshot(&path, false).unwrap_or_else(|e| panic!("{e}"));
+    let modified = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .unwrap_or_else(|e| panic!("{e}"));
+    std::fs::write(&path, "@misc{new}").unwrap_or_else(|e| panic!("{e}"));
+    std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .and_then(|f| f.set_modified(modified))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let (tx, rx) = mpsc::channel();
+    let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
+        let _ = tx.send(result);
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        next(&rx).map(|l| l.references[0].id.native_key.clone()),
+        Ok("new".into())
+    );
+}
+
+#[test]
+fn unchanged_contents_after_a_gap_error_publish_recovery() {
+    use ibis_core::source::load_library_snapshot;
+    for contents in ["@misc{same}", "@misc{same}\n@misc{unfinished,"] {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = dir.path().join("library.bib");
+        std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
+        let (initial, snapshot) = load_library_snapshot(&path, false).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
+        let (tx, rx) = mpsc::channel();
+        let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
+            let _ = tx.send(result);
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+        std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
+        let recovered = next(&rx).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(recovered.references[0].id.native_key, "same");
+        assert_eq!(recovered.warnings.len(), initial.warnings.len());
+    }
+}
+
+#[test]
+fn damaged_changes_in_the_registration_gap_still_use_strict_reloads() {
+    use ibis_core::source::load_library_snapshot;
+    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let path = dir.path().join("library.bib");
+    std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
+    let (initial, snapshot) = load_library_snapshot(&path, false).unwrap_or_else(|e| panic!("{e}"));
+    std::fs::write(&path, "@misc{changed}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
+    let (tx, rx) = mpsc::channel();
+    let _watch = SourceWatch::with_snapshot(&path, snapshot, move |result| {
+        let _ = tx.send(result);
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(next(&rx).err(), Some(SourceError::Incomplete));
+    assert_eq!(initial.references[0].id.native_key, "old");
+}
