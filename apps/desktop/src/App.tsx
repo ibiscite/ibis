@@ -32,6 +32,19 @@ function idKey(id: RecordId): string {
   return `${id.source}\u0000${id.native_key}`;
 }
 
+const FAILURE_MESSAGES = {
+  status: "Library status unavailable. Choose a library to try again.",
+  format: "Saved copy format could not be read. Check Copy as before copying.",
+  shortcut: "Shortcut status is unavailable. Open Ibis from the tray to try again.",
+  choose: "The library chooser is unavailable. Try again.",
+  reload: "Reload is unavailable. Try choosing the library again.",
+  hide: "The picker could not be hidden. Try again.",
+  quit: "Ibis could not quit. Try again.",
+  pickerEvents: "Picker focus updates are unavailable. Restart Ibis to try again.",
+  libraryEvents: "Restart Ibis to restore automatic library updates.",
+} as const;
+type Operation = keyof typeof FAILURE_MESSAGES;
+
 // The picker: search, choose one or more references, copy them as a citation.
 export function App() {
   const [query, setQuery] = useState("");
@@ -52,34 +65,50 @@ export function App() {
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
   const input = useRef<HTMLInputElement>(null);
+  const [failures, setFailures] = useState<Partial<Record<Operation, boolean>>>({});
+  const report = (operation: Operation, failed = true) => {
+    setFailures((previous) => ({ ...previous, [operation]: failed }));
+  };
+  const perform = async (operation: Operation, action: () => Promise<unknown>) => {
+    try { await action(); report(operation, false); }
+    catch { report(operation); }
+  };
 
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
   useEffect(() => {
     let acceptInitialStatus = true;
+    let mounted = true;
+    const subscriptionFailure = (operation: Operation) => {
+      if (mounted) report(operation);
+      else console.error(FAILURE_MESSAGES[operation]);
+      return () => undefined;
+    };
     const focusSearch = () => {
       input.current?.focus();
       input.current?.select();
     };
-    const unlisten = onPickerShown(focusSearch);
+    const unlisten = onPickerShown(focusSearch).catch(() => subscriptionFailure("pickerEvents"));
     const unlistenLibrary = onLibraryChanged((status) => {
       acceptInitialStatus = false;
       setLibrary(status);
+      report("status", false);
       setLibraryVersion((v) => v + 1);
-    });
+    }).catch(() => subscriptionFailure("libraryEvents"));
     libraryStatus()
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
-      .catch(() => { if (acceptInitialStatus) setLibrary(null); });
+      .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     shortcutStatus()
       .then(setShortcut)
-      .catch(() => setShortcut(null));
+      .catch(() => { setShortcut(null); report("shortcut"); });
     copyFormat()
       .then(setFormat)
-      .catch(() => undefined);
+      .catch(() => report("format"));
     return () => {
       acceptInitialStatus = false;
-      void unlisten.then((stop) => stop());
-      void unlistenLibrary.then((stop) => stop());
+      mounted = false;
+      void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
+      void unlistenLibrary.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
     };
   }, []);
 
@@ -108,12 +137,12 @@ export function App() {
           }, 300);
         }
       })
-      .catch((e: unknown) => {
+      .catch(() => {
         // Results of an earlier query must not sit beside this query's error.
         if (current) {
           setResults([]);
           setResultsQuery(query);
-          setError(String(e));
+          setError("Search is unavailable; reload the library and try again.");
         }
       });
     return () => {
@@ -157,14 +186,14 @@ export function App() {
         chosen.map((r) => r.id),
         format,
       );
-    } catch (e: unknown) {
-      setCopyError(String(e));
+    } catch {
+      setCopyError("Copy failed; try again or Reload.");
       return;
     }
     setCopied(outcome);
     setSelected(new Map());
     // Get out of the way so the user can paste, unless there is something to read.
-    if (outcome.warnings.length === 0) void hidePicker();
+    if (outcome.warnings.length === 0) void perform("hide", hidePicker);
   };
 
   return (
@@ -173,10 +202,10 @@ export function App() {
         if (composing(e)) return;
         if (e.key === "Escape") {
           e.preventDefault();
-          void hidePicker();
+          void perform("hide", hidePicker);
         } else if (e.key === "q" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
           e.preventDefault();
-          void quit();
+          void perform("quit", quit);
         }
       }}
     >
@@ -227,6 +256,9 @@ export function App() {
         />
       </div>
       <div className="notices">
+        {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
+          <p role="alert" key={operation}>{FAILURE_MESSAGES[operation]}</p>
+        ))}
         {error && <p role="alert">{error}</p>}
         {copyError && <p role="alert">Nothing was copied: {copyError}</p>}
         {copied && (
@@ -303,7 +335,7 @@ export function App() {
             ) : (
               <>
                 <p>Choose a library to get started</p>
-                <button type="button" aria-label="Choose library to get started" onClick={() => void chooseLibrary()}>
+                <button type="button" aria-label="Choose library to get started" onClick={() => void perform("choose", chooseLibrary)}>
                   Choose library…
                 </button>
               </>
@@ -317,13 +349,13 @@ export function App() {
             {library?.name
               ? `${library.name}: ${library.references} references` +
                 (library.warnings > 0 ? `, ${library.warnings} could not be read fully` : "")
-              : "No library chosen"}
+              : library === null ? "Library status unavailable" : library === undefined ? "Checking library…" : "No library chosen"}
           </span>{" "}
-          <button type="button" className="quiet-button" aria-label="Choose library…" title="Choose a library" onClick={() => void chooseLibrary()}>
+          <button type="button" className="quiet-button" aria-label="Choose library…" title="Choose a library" onClick={() => void perform("choose", chooseLibrary)}>
             Choose…
           </button>
           {library?.name && (
-            <button type="button" className="icon-button" aria-label="Reload" title="Reload library" onClick={() => void reloadLibrary()}>
+            <button type="button" className="icon-button" aria-label="Reload" title="Reload library" onClick={() => void perform("reload", reloadLibrary)}>
               ↻
             </button>
           )}
@@ -345,7 +377,7 @@ export function App() {
             <kbd>↵</kbd> Copy · <kbd>⇧↵</kbd> Add · <kbd>Esc</kbd> Hide
           </small>
           {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
-          <button type="button" className="quiet-button" aria-label="Quit Ibis" onClick={() => void quit()}>
+          <button type="button" className="quiet-button" aria-label="Quit Ibis" onClick={() => void perform("quit", quit)}>
             Quit
           </button>
         </div>

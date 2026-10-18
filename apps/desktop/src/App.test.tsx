@@ -4,7 +4,9 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import axe from "axe-core";
+import * as api from "./api";
 import capability from "../src-tauri/capabilities/default.json";
+import config from "../src-tauri/tauri.conf.json";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -102,7 +104,7 @@ test("errors from the backend are shown, not swallowed", async () => {
     },
   });
   render(<App />);
-  expect((await screen.findByRole("alert")).textContent).toContain("no library is open");
+  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
 });
 
 test("first launch waits for library status and offers a chooser without a search error", async () => {
@@ -131,7 +133,7 @@ test("typed searches without a library and genuine load failures remain visible"
   render(<App />);
   expect((await screen.findByText(/The library could not be opened/)).textContent).toContain("synthetic library is unreadable");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
-  expect((await screen.findByText("Error: no library is open")).getAttribute("role")).toBe("alert");
+  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
 });
 
 test("the empty-state chooser opens the existing dialog and remains available after cancellation", async () => {
@@ -187,7 +189,7 @@ test("a failed status request does not suppress search errors", async () => {
     search: () => { throw new Error("search unavailable"); },
   });
   render(<App />);
-  expect((await screen.findByRole("alert")).textContent).toContain("search unavailable");
+  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
 });
 
 test.each([
@@ -242,7 +244,7 @@ test("a shortcut that could not be registered is explained", async () => {
 test("a failed search clears the results of the previous query", async () => {
   backend({
     search: ({ query }) => {
-      if (query === "diet") throw new Error("search failed");
+      if (query === "diet") throw new Error("SYNTHETIC_PRIVATE_PAYLOAD");
       return query ? [result("smith2020", "Sleep and memory")] : [];
     },
   });
@@ -251,8 +253,9 @@ test("a failed search clears the results of the previous query", async () => {
   fireEvent.change(box, { target: { value: "sleep" } });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
   fireEvent.change(box, { target: { value: "diet" } });
-  expect((await screen.findByRole("alert")).textContent).toContain("search failed");
+  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
   expect(screen.queryByText("Sleep and memory")).toBeNull();
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
 
 test("Quit is available from the picker and from the keyboard", async () => {
@@ -286,7 +289,7 @@ test("the query is searched again when a library finishes opening", async () => 
   });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
-  expect((await screen.findByRole("alert")).textContent).toContain("no library is open");
+  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
   open = true;
   await emit("library:changed", { name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
@@ -349,7 +352,7 @@ test("warnings keep the picker open and failures say nothing was copied", async 
   const calls = backend({
     search: ({ query }) => (query ? [result("a", "First")] : []),
     copy_citation: () => {
-      if (fail) throw new Error("the clipboard could not be written");
+      if (fail) throw new Error("SYNTHETIC_PRIVATE_PAYLOAD");
       return { text: "a", warnings: ["bare keys cannot carry page numbers"] };
     },
   });
@@ -363,6 +366,7 @@ test("warnings keep the picker open and failures say nothing was copied", async 
   fail = true;
   fireEvent.keyDown(box, { key: "Enter" });
   expect((await screen.findByRole("alert")).textContent).toContain("Nothing was copied");
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
 
 test("Enter while composing text with an input method copies nothing", async () => {
@@ -523,6 +527,73 @@ test("combobox focus is separate from citation selection and only additions/remo
   expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(false);
   fireEvent.click(screen.getByText("Second"));
   expect(notice.textContent).toBe("0 references selected for citation");
+});
+
+test("failed status and saved format reads show safe notices without hiding search results", async () => {
+  backend({
+    library_status: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
+    copy_format: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
+    search: () => [result("a", "Available reference")],
+  });
+  render(<App />);
+  await screen.findByText("Available reference");
+  expect(screen.getByText("Library status unavailable. Choose a library to try again.").getAttribute("role")).toBe("alert");
+  expect(screen.getByText("Saved copy format could not be read. Check Copy as before copying.").getAttribute("role")).toBe("alert");
+  expect(screen.getByRole("region", { name: "Library" }).textContent).not.toContain("No library chosen");
+  expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("pandoc");
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+});
+
+test.each([
+  ["choose_library", "The library chooser is unavailable. Try again."],
+  ["reload_library", "Reload is unavailable. Try choosing the library again."],
+  ["hide_picker", "The picker could not be hidden. Try again."],
+  ["quit", "Ibis could not quit. Try again."],
+])("%s failures are reported without rejected IPC payloads", async (command, notice) => {
+  backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
+  render(<App />);
+  await screen.findByRole("button", { name: "Reload" });
+  if (command === "choose_library") fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
+  else if (command === "reload_library") fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+  else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
+    ? { key: "q", ctrlKey: true } : { key: "Escape" });
+  expect((await screen.findByText(notice)).getAttribute("role")).toBe("alert");
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+});
+
+test("copy remains confirmed when hiding after a successful copy fails", async () => {
+  backend({ search: () => [result("a", "First")], copy_citation: () => ({ text: "@a", warnings: [] }),
+    hide_picker: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
+  render(<App />);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByText("The picker could not be hidden. Try again.");
+  expect(screen.getByText("@a")).toBeTruthy();
+  expect(document.body.textContent).not.toContain("Nothing was copied");
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+});
+
+test("event subscription and cleanup failures are handled with safe messages", async () => {
+  const focus = vi.spyOn(api, "onPickerShown").mockRejectedValue(new Error("SYNTHETIC_PRIVATE_PAYLOAD"));
+  const library = vi.spyOn(api, "onLibraryChanged").mockResolvedValue(async () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); });
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    backend();
+    const view = render(<App />);
+    await screen.findByText("Picker focus updates are unavailable. Restart Ibis to try again.");
+    expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+    view.unmount();
+    await waitFor(() => expect(log).toHaveBeenCalledWith("Library event cleanup failed."));
+    expect(log.mock.calls.flat().join(" ")).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+  } finally { focus.mockRestore(); library.mockRestore(); log.mockRestore(); }
+});
+
+test("web permissions grant only event subscriptions and drag-region bootstrap", () => {
+  expect([...capability.permissions].sort()).toEqual([
+    "core:event:allow-listen", "core:event:allow-unlisten",
+    "core:window:allow-internal-toggle-maximize", "core:window:allow-start-dragging",
+  ]);
+  expect(config.app.windows[0]?.maximizable).toBe(false);
 });
 
 test.each([false, true])("axe checks picker structure (library open: %s) and detects a broken combobox", async (open) => {

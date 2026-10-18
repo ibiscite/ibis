@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the picker window: core window functions only. No file system, shell or network access is granted to the web interface.",
-  "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-start-dragging"]
+  "description": "Permissions for picker event subscriptions and drag-region bootstrap only. No file system, shell, network, menu or tray access is granted to the web interface.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-start-dragging"
+  ]
 }
