@@ -1,6 +1,9 @@
 //! The BibTeX reader must never panic, whatever bytes it is given.
 
-use ibis_core::bibtex::load_str;
+use ibis_core::{
+    bibtex::load_str,
+    model::{LoadResult, WarningKind},
+};
 use proptest::prelude::*;
 
 #[test]
@@ -326,12 +329,32 @@ fn deeply_nested_braces_and_long_lines_are_handled() {
     assert_eq!(load_str("t", &long).references.len(), 1);
 }
 
+fn no_caught_parser_panic(loaded: &LoadResult) -> bool {
+    loaded.warnings.iter().all(|warning| {
+        warning.kind != WarningKind::Syntax
+            || warning.message != "entry could not be read safely (parser error); skipped"
+    })
+}
+
+#[test]
+fn field_text_containing_parser_error_is_not_a_caught_panic() {
+    let mut loaded = load_str("synthetic.bib", "@article{k,title={Retained},date={parser error}}");
+    assert_eq!(loaded.references.len(), 1);
+    assert!(loaded.warnings.iter().any(|w| w.kind == WarningKind::Field));
+    assert!(no_caught_parser_panic(&loaded));
+    loaded.warnings[0].message = "entry could not be read safely (parser error); skipped".into();
+    assert!(no_caught_parser_panic(&loaded)); // The full message alone is insufficient.
+    loaded.warnings[0].kind = WarningKind::Syntax;
+    assert!(!no_caught_parser_panic(&loaded));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(512))]
 
     #[test]
     fn arbitrary_text_never_panics(text in any::<String>()) {
-        let _ = load_str("t", &text);
+        let loaded = load_str("t", &text);
+        prop_assert!(no_caught_parser_panic(&loaded));
     }
 
     #[test]
@@ -342,6 +365,7 @@ proptest! {
         closer in prop::sample::select(vec!["}", ")", "", "}}", "{"]),
     ) {
         let text = format!("{prefix}@article{{k, {field} = {{{value}}}{closer}\n@book(b, title={{{value}}})");
-        let _ = load_str("t", &text);
+        let loaded = load_str("t", &text);
+        prop_assert!(no_caught_parser_panic(&loaded));
     }
 }

@@ -18,11 +18,11 @@
 
 mod convert;
 mod lexer;
+mod panic_guard;
 mod resolve;
 
 use std::cell::Cell;
 use std::collections::HashSet;
-use std::panic::AssertUnwindSafe;
 
 use biblatex::Bibliography;
 
@@ -132,9 +132,7 @@ pub(crate) fn load_with_budget(source: &str, text: &str, budget: Budget) -> (Loa
     // `@xdata` entries only supply fields to other entries; they are not
     // references themselves and are never shown or exported.
     for (i, entry) in entries.iter().enumerate().filter(|(_, e)| e.kind != "xdata") {
-        let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            load_entry(source, &resolver, i, entry, raw_texts[i])
-        }));
+        let outcome = panic_guard::attempt(|| load_entry(source, &resolver, i, entry, raw_texts[i]));
         let warn = |kind, message: &str| LoadWarning {
             kind,
             line: Some(entry.line),
