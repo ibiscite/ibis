@@ -1,4 +1,5 @@
 // UI conveniences around the generated Rust command contract.
+import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { commands, type KeyFormat, type LibraryStatus } from "./bindings";
 
@@ -31,18 +32,7 @@ export function onLibraryChanged(handler: (status: LibraryStatus) => void): Prom
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }
 
-// Labels are UI copy; Record requires a label for every Rust format variant.
-const COPY_FORMAT_LABELS: Record<KeyFormat, string> = {
-  pandoc: "Pandoc / Markdown  [@key]",
-  autocite: "BibLaTeX  \\autocite{key}",
-  parencite: "BibLaTeX  \\parencite{key}",
-  textcite: "BibLaTeX  \\textcite{key}",
-  cite: "LaTeX  \\cite{key}",
-  typst: "Typst  @key",
-  keys: "Keys only",
-};
-
-export const COPY_FORMATS = Object.entries(COPY_FORMAT_LABELS).map(([value, label]) => ({
+export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]) => ({
   value: value as KeyFormat,
   label,
 }));

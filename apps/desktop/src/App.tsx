@@ -1,6 +1,6 @@
 import type React from "react";
 import * as nativeApi from "./api";
-import { libraryMessages } from "./messages";
+import { libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { useEffect, useRef, useState } from "react";
 import {
   COPY_FORMATS,
@@ -23,17 +23,6 @@ function idKey(id: RecordId): string {
   return `${id.source}\u0000${id.native_key}`;
 }
 
-const FAILURE_MESSAGES = {
-  status: "Library status unavailable. Choose a library to try again.",
-  format: "Saved copy format could not be read. Check Copy as before copying.",
-  shortcut: "Shortcut status is unavailable. Open Ibis from the tray to try again.",
-  choose: "The library chooser is unavailable. Try again.",
-  reload: "Reload is unavailable. Try choosing the library again.",
-  hide: "The picker could not be hidden. Try again.",
-  quit: "Ibis could not quit. Try again.",
-  pickerEvents: "Picker focus updates are unavailable. Restart Ibis to try again.",
-  libraryEvents: "Restart Ibis to restore automatic library updates.",
-} as const;
 type Operation = keyof typeof FAILURE_MESSAGES;
 
 // A stable provider lets the development gallery use synthetic data without IPC.
@@ -133,7 +122,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           setActive(0);
           setError(null);
           announcementTimer = window.setTimeout(() => {
-            setAnnouncement(`${found.length} ${found.length === 1 ? "result" : "results"}`);
+            setAnnouncement(pickerText.resultCount(found.length));
           }, 300);
         }
       })
@@ -142,7 +131,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         if (current) {
           setResults([]);
           setResultsQuery(query);
-          setError("Search is unavailable; reload the library and try again.");
+          setError(pickerText.searchError);
         }
       });
     return () => {
@@ -187,7 +176,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         format,
       );
     } catch {
-      setCopyError("Copy failed; try again or Reload.");
+      setCopyError(pickerText.copyError);
       return;
     }
     setCopied(outcome);
@@ -198,8 +187,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
 
   const busy = library?.state === "loading" || library?.state === "reloading";
   const loadingMessage = library?.state === "reloading"
-    ? `Reloading ${library.name ?? "library"}…`
-    : `Opening ${library?.name ?? "library"}…`;
+    ? libraryMessages.reloading(library.name)
+    : libraryMessages.opening(library?.name ?? null);
 
   return (
     <main
@@ -216,23 +205,21 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     >
       {shortcut?.error && (
         <p role="status">
-          {shortcut.registered
-            ? `Your shortcut setting was not used: ${shortcut.error}.`
-            : `The shortcut ${shortcut.shortcut} is not available: ${shortcut.error}.`}
+          {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
         </p>
       )}
-      <div className="search-bar" data-tauri-drag-region title="Drag the search bar edge to move the picker">
+      <div className="search-bar" data-tauri-drag-region title={pickerText.dragSearchBar}>
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <circle cx="10.5" cy="10.5" r="6.5" />
           <path d="m16 16 5 5" />
         </svg>
         <label className="visually-hidden" htmlFor="search">
-          Search references
+          {pickerText.searchLabel}
         </label>
         <input
           id="search"
           type="search"
-          placeholder="Search references…"
+          placeholder={pickerText.searchPlaceholder}
           role="combobox"
           aria-expanded={results.length > 0}
           aria-controls="results"
@@ -268,18 +255,18 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           <p role="alert" key={operation}>{FAILURE_MESSAGES[operation]}</p>
         ))}
         {error && <p role="alert">{error}</p>}
-        {copyError && <p role="alert">Nothing was copied: {copyError}</p>}
+        {copyError && <p role="alert">{copyError}</p>}
         {copied && (
           <div role="status" className="copy-notice">
             <p>
-              Copied <code>{copied.text}</code>
+              {pickerText.copied} <code>{copied.text}</code>
             </p>
             {copied.warnings.length > 0 && (
               <>
-                <button type="button" className="dismiss" aria-label="Dismiss copy warnings" onClick={() => setCopied(null)}>
-                  Dismiss
+                <button type="button" className="dismiss" aria-label={pickerText.dismissWarnings} onClick={() => setCopied(null)}>
+                  {pickerText.dismiss}
                 </button>
-                <ul aria-label="Copy warnings">
+                <ul aria-label={pickerText.copyWarnings}>
                   {copied.warnings.map((w) => (
                     <li key={w}>{w}</li>
                   ))}
@@ -289,16 +276,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           </div>
         )}
       </div>
-      <p className="visually-hidden" role="status" aria-label="Citation selection" aria-live="polite" aria-atomic="true">
-        {selectionChanged ? `${selected.size} ${selected.size === 1 ? "reference" : "references"} selected for citation` : ""}
+      <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
+        {selectionChanged ? pickerText.selectionCount(selected.size) : ""}
       </p>
       {selected.size > 0 && (
-        <ul aria-label="Selected references">
+        <ul aria-label={pickerText.selectedReferences}>
           {[...selected.entries()].map(([key, r]) => (
             <li key={key}>
               <code>{r.key}</code>{" "}
-              <button type="button" onClick={() => toggle(r)} aria-label={`Remove ${r.key} from the selection`}>
-                Remove
+              <button type="button" onClick={() => toggle(r)} aria-label={pickerText.removeReference(r.key)}>
+                {pickerText.remove}
               </button>
             </li>
           ))}
@@ -306,12 +293,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       )}
       <div className="results-area">
         <div className="results-heading" aria-hidden="true">
-          <span>References</span><span>{results.length > 0 ? `${results.length} ${results.length === 1 ? "result" : "results"}` : ""}</span>
+          <span>{pickerText.references}</span><span>{results.length > 0 ? pickerText.resultCount(results.length) : ""}</span>
         </div>
-        <p className="visually-hidden" role="status" aria-label="Search results" aria-live="polite" aria-atomic="true">
+        <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {announcement}
         </p>
-        <ul id="results" role="listbox" aria-label="Results">
+        <ul id="results" role="listbox" aria-label={pickerText.results}>
           {results.map((r, i) => (
             <li
               key={idKey(r.id)}
@@ -328,11 +315,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               <span className="result-text">
                 <strong>{r.title}</strong>
                 <span className="result-meta">
-                  {r.authors} · {r.year ?? "n.d."}
+                  {r.authors} · {r.year ?? pickerText.noDate}
                 </span>
               </span>
               <code className="result-key">{r.key}</code>
-              {selected.has(idKey(r.id)) && <span className="visually-hidden">Added to citation</span>}
+              {selected.has(idKey(r.id)) && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
             </li>
           ))}
         </ul>
@@ -340,13 +327,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           <div className="empty-state">
             {library?.name ? (
               <p>{library.has_snapshot && library.references === 0
-                ? `No references found in ${library.snapshot_name}. Choose a BibTeX or BibLaTeX export with references, then try again.`
-                : query ? "No matching references" : "Type to find a reference"}</p>
+                ? libraryMessages.empty(library.snapshot_name)
+                : query ? pickerText.noMatches : pickerText.typeToFind}</p>
             ) : library?.state === "none" ? (
               <>
-                <p>Choose a library to get started</p>
-                <button type="button" aria-label="Choose library to get started" onClick={() => void perform("choose", chooseLibrary)}>
-                  Choose library…
+                <p>{pickerText.firstRun}</p>
+                <button type="button" aria-label={pickerText.firstRunChoose} onClick={() => void perform("choose", chooseLibrary)}>
+                  {pickerText.chooseLibrary}
                 </button>
               </>
             ) : null}
@@ -354,15 +341,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         )}
       </div>
       <footer>
-        <section aria-label="Library" className="library-bar">
-          <span className="library-name" role="status" aria-label="Library status" aria-live="polite" aria-atomic="true">
+        <section aria-label={pickerText.libraryRegion} className="library-bar">
+          <span className="library-name" role="status" aria-label={pickerText.libraryStatus} aria-live="polite" aria-atomic="true">
             {libraryMessages.summary(library)}
           </span>{" "}
-          <button type="button" className="quiet-button" aria-label="Choose library…" title="Choose a library" onClick={() => void perform("choose", chooseLibrary)}>
-            Choose…
+          <button type="button" className="quiet-button" aria-label={pickerText.chooseLibrary} title={pickerText.chooseTitle} onClick={() => void perform("choose", chooseLibrary)}>
+            {pickerText.chooseShort}
           </button>
           {library?.name && (
-            <button type="button" className="icon-button" aria-label="Reload" title="Reload library" onClick={() => void perform("reload", reloadLibrary)}>
+            <button type="button" className="icon-button" aria-label={pickerText.reload} title={pickerText.reloadTitle} onClick={() => void perform("reload", reloadLibrary)}>
               ↻
             </button>
           )}
@@ -370,7 +357,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         </section>
         <div className="footer-tools">
           <label className="visually-hidden" htmlFor="format">
-            Copy as
+            {pickerText.copyAs}
           </label>
           <select id="format" value={format} onChange={(e) => setFormat(e.target.value as CopyFormat)}>
             {COPY_FORMATS.map((f) => (
@@ -380,11 +367,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             ))}
           </select>
           <small className="key-hints">
-            <kbd>↵</kbd> Copy · <kbd>⇧↵</kbd> Add · <kbd>Esc</kbd> Hide
+            <kbd>↵</kbd>{pickerText.keyHints.copy}<kbd>⇧↵</kbd>{pickerText.keyHints.add}<kbd>Esc</kbd>{pickerText.keyHints.hide}
           </small>
           {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
-          <button type="button" className="quiet-button" aria-label="Quit Ibis" onClick={() => void perform("quit", quit)}>
-            Quit
+          <button type="button" className="quiet-button" aria-label={pickerText.quitLabel} onClick={() => void perform("quit", quit)}>
+            {pickerText.quit}
           </button>
         </div>
       </footer>

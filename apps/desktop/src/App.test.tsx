@@ -105,7 +105,7 @@ test("errors from the backend are shown, not swallowed", async () => {
     },
   });
   render(<App />);
-  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
+  expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
 });
 
 test("first launch waits for library status and offers a chooser without a search error", async () => {
@@ -134,7 +134,7 @@ test("typing after a library load failure keeps its single explanation visible",
   render(<App />);
   expect((await screen.findByText(/The library could not be opened/)).textContent).toContain("synthetic library is unreadable");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
-  expect(screen.queryByText("Search is unavailable; reload the library and try again.")).toBeNull();
+  expect(screen.queryByText("Ibis could not search your library. Use Reload, then try again.")).toBeNull();
   expect(screen.getAllByRole("alert")).toHaveLength(1);
 });
 
@@ -191,7 +191,7 @@ test("a failed status request does not suppress search errors", async () => {
     search: () => { throw new Error("search unavailable"); },
   });
   render(<App />);
-  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
+  expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
 });
 
 test.each([
@@ -255,7 +255,7 @@ test("a failed search clears the results of the previous query", async () => {
   fireEvent.change(box, { target: { value: "sleep" } });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
   fireEvent.change(box, { target: { value: "diet" } });
-  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
+  expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
   expect(screen.queryByText("Sleep and memory")).toBeNull();
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
@@ -291,7 +291,7 @@ test("the query is searched again when a library finishes opening", async () => 
   });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
-  expect((await screen.findByText("Search is unavailable; reload the library and try again.")).getAttribute("role")).toBe("alert");
+  expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
   open = true;
   await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
@@ -414,7 +414,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, note: null });
-  await waitFor(() => expect(bar.textContent).toContain("refs.bib: 3 references, 1 could not be read fully"));
+  await waitFor(() => expect(bar.textContent).toContain("refs.bib: 3 references, 1 reading notice"));
   fireEvent.click(screen.getByRole("button", { name: "Reload" }));
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", {
@@ -542,17 +542,17 @@ test("failed status and saved format reads show safe notices without hiding sear
   });
   render(<App />);
   await screen.findByText("Available reference");
-  expect(screen.getByText("Library status unavailable. Choose a library to try again.").getAttribute("role")).toBe("alert");
-  expect(screen.getByText("Saved copy format could not be read. Check Copy as before copying.").getAttribute("role")).toBe("alert");
+  expect(screen.getByText("Ibis could not check your library. Choose the file again.").getAttribute("role")).toBe("alert");
+  expect(screen.getByText("Ibis could not read your saved copy format. Check Copy as before copying.").getAttribute("role")).toBe("alert");
   expect(screen.getByRole("region", { name: "Library" }).textContent).not.toContain("No library chosen");
   expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("pandoc");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
 
 test.each([
-  ["choose_library", "The library chooser is unavailable. Try again."],
-  ["reload_library", "Reload is unavailable. Try choosing the library again."],
-  ["hide_picker", "The picker could not be hidden. Try again."],
+  ["choose_library", "The file chooser did not open. Try again."],
+  ["reload_library", "Ibis could not reload your library. Choose the file again."],
+  ["hide_picker", "Ibis could not hide this window. Try again."],
   ["quit", "Ibis could not quit. Try again."],
 ])("%s failures are reported without rejected IPC payloads", async (command, notice) => {
   backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
@@ -572,7 +572,7 @@ test("copy remains confirmed when hiding after a successful copy fails", async (
   render(<App />);
   await screen.findByText("First");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await screen.findByText("The picker could not be hidden. Try again.");
+  await screen.findByText("Ibis could not hide this window. Try again.");
   expect(screen.getByText("@a")).toBeTruthy();
   expect(document.body.textContent).not.toContain("Nothing was copied");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
@@ -585,7 +585,7 @@ test("event subscription and cleanup failures are handled with safe messages", a
   try {
     backend();
     const view = render(<App />);
-    await screen.findByText("Picker focus updates are unavailable. Restart Ibis to try again.");
+    await screen.findByText("Ibis could not focus the search box. Restart Ibis to try again.");
     expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
     view.unmount();
     await waitFor(() => expect(log).toHaveBeenCalledWith("Library event cleanup failed."));
