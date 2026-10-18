@@ -19,3 +19,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0013 | Crate-specific NCSA exception for isolated fuzzing infrastructure | accepted |
 | 0014 | Share one lockfile across application and fuzz infrastructure | accepted (amends 0013 workspace layout) |
 | 0015 | Autonomous agents work under standing maintainer authorization | accepted (amends 0011) |
+| 0016 | Versioned settings in the platform configuration folder | accepted |
