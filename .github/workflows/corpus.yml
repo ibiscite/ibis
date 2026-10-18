@@ -1,0 +1,69 @@
+name: Open-data corpus
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corpus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  manifest:
+    name: CC0 corpus manifest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Validate recorded provenance and conversion without downloads
+        run: |
+          node --test scripts/corpus.test.mjs
+          node scripts/corpus.mjs check
+
+  corpus:
+    name: Read pinned real-world metadata
+    needs: manifest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Set the generated corpus directory outside the checkout
+        run: echo "CORPUS_DIRECTORY=$RUNNER_TEMP/ibis-corpus" >> "$GITHUB_ENV"
+      - name: Restore pinned CC0 metadata
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}/ibis-corpus/raw
+          key: corpus-wikidata-${{ hashFiles('corpus/manifest.json') }}
+      - name: Download or validate cached revisions and generate test files
+        run: node scripts/corpus.mjs fetch "$CORPUS_DIRECTORY"
+      - name: Load the bibliography and check projected metadata fidelity
+        shell: bash
+        run: |
+          cargo run -p ibis --locked -- csl --all --bib "$CORPUS_DIRECTORY/corpus.bib" > "$CORPUS_DIRECTORY/ibis.csl.json"
+          node scripts/corpus.mjs verify "$CORPUS_DIRECTORY"
+      - name: Preserve reproducible corpus and provenance on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cc0-corpus-failure
+          path: ${{ runner.temp }}/ibis-corpus
+          retention-days: 14

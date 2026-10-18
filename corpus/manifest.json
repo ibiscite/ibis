@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "license": "CC0-1.0",
+  "license_url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+  "retrieved": "2026-10-17",
+  "entities": [
+    {
+      "id": "Q724029",
+      "revision": 2505078028,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q724029.json?revision=2505078028",
+      "sha256": "3dbe1cb14ce3b813e734addc4673b594a72a9883d852cee43efe2b76d7e3583d"
+    },
+    {
+      "id": "Q20124",
+      "revision": 2555924658,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q20124.json?revision=2555924658",
+      "sha256": "e72d9a94dc158f667b0925ddafff0c65a961837b0ed66c430728d184c4534cf5"
+    },
+    {
+      "id": "Q205921",
+      "revision": 2557059473,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q205921.json?revision=2557059473",
+      "sha256": "e9a49f2a8926b9953b8d23921721088d843586266392350c0575f31f6b4635da"
+    },
+    {
+      "id": "Q41567",
+      "revision": 2555899217,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q41567.json?revision=2555899217",
+      "sha256": "2b4b1fdca51154a7aa2144d53210b6ace4095d32b77982ee8f06aaab74a44bc3"
+    },
+    {
+      "id": "Q480",
+      "revision": 2558010319,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q480.json?revision=2558010319",
+      "sha256": "e916f835f4e4d7992ed024910b01c3ae2d84e3e23349e43f9a54f772d1e0170c"
+    },
+    {
+      "id": "Q8269",
+      "revision": 2555907883,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q8269.json?revision=2555907883",
+      "sha256": "8fe0e6096a1f21b1dccb6bbe67aa96c576c113903c9b2f37982d96d16a20c101"
+    },
+    {
+      "id": "Q1259616",
+      "revision": 2515764699,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q1259616.json?revision=2515764699",
+      "sha256": "cb3a55e8c892f090194120af5c950990cd44a54fae6e0b28826e43aa0e3264fd"
+    },
+    {
+      "id": "Q92760",
+      "revision": 2557845182,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q92760.json?revision=2557845182",
+      "sha256": "0dcea0434effc80a04a3dbd956530da1386df8230d99a9cdb63fd44c414ea9ab"
+    },
+    {
+      "id": "Q4883266",
+      "revision": 2517809084,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q4883266.json?revision=2517809084",
+      "sha256": "25358a5825296e1ee3642c1e0042cb0e7445f2885c1e147cd28cd1c54425de6a"
+    },
+    {
+      "id": "Q1035",
+      "revision": 2557836683,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q1035.json?revision=2557836683",
+      "sha256": "65d1238f703e75aaabbdc711abda5e5db52f946278ae1f1ae8e95217b5262256"
+    },
+    {
+      "id": "Q935",
+      "revision": 2557935171,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q935.json?revision=2557935171",
+      "sha256": "220067e2e740a4247ffb3ed91d96b24f8f562657ed40c0e4935887a123171a68"
+    },
+    {
+      "id": "Q692",
+      "revision": 2557000281,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q692.json?revision=2557000281",
+      "sha256": "620a7fcf36ad64dc6f05b41c4f4bd5528166e7c302ee81960f71c47465b44aad"
+    },
+    {
+      "id": "Q5682",
+      "revision": 2558168858,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q5682.json?revision=2558168858",
+      "sha256": "bc2af475982aab977b1211fa38f9b11b87e7033e460296a182ad967ecd058bfd"
+    },
+    {
+      "id": "Q81731",
+      "revision": 2558176488,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q81731.json?revision=2558176488",
+      "sha256": "1110327e4eaefe3f22b9e20aeaca30200a7a4e4878b2aad4c05a782b5f6b3035"
+    },
+    {
+      "id": "Q9294",
+      "revision": 2557927291,
+      "url": "https://www.wikidata.org/wiki/Special:EntityData/Q9294.json?revision=2557927291",
+      "sha256": "b7444849164408686f605b5627e759f166138c70420761249718921d8d875921"
+    }
+  ],
+  "works": [
+    {
+      "id": "Q724029",
+      "language": "en",
+      "type": "article-journal",
+      "discipline": "information theory"
+    },
+    {
+      "id": "Q20124",
+      "language": "en",
+      "type": "book",
+      "discipline": "biology"
+    },
+    {
+      "id": "Q205921",
+      "language": "la",
+      "type": "book",
+      "discipline": "physics"
+    },
+    {
+      "id": "Q41567",
+      "language": "en",
+      "type": "book",
+      "discipline": "drama"
+    },
+    {
+      "id": "Q480",
+      "language": "es",
+      "type": "book",
+      "discipline": "literature"
+    },
+    {
+      "id": "Q8269",
+      "language": "ja",
+      "type": "book",
+      "discipline": "literature"
+    },
+    {
+      "id": "Q1259616",
+      "language": "ar",
+      "type": "book",
+      "discipline": "history"
+    }
+  ]
+}
