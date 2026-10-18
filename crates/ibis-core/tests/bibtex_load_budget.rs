@@ -1,9 +1,41 @@
-//! Distinct hostile aliases must share one load budget.
+//! Bound hostile work without truncating ordinary large libraries.
 
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 use ibis_core::{bibtex::load_str, model::WarningKind};
+
+fn assert_complete(text: &str, count: usize) {
+    let start = Instant::now();
+    let loaded = load_str("synthetic.bib", text);
+    eprintln!(
+        "ordinary library: bytes={}, references={}, warnings={}, elapsed={:?}",
+        text.len(),
+        loaded.references.len(),
+        loaded.warnings.len(),
+        start.elapsed()
+    );
+    assert_eq!(loaded.references.len(), count);
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    assert_eq!(loaded.references[count - 1].id.native_key, format!("k{}", count - 1));
+}
+
+#[test]
+fn two_hundred_long_notes_load_completely() {
+    let note = "x".repeat(65_535);
+    let text: String = (0..200)
+        .map(|i| format!("@article{{k{i},title={{Paper {i}}},year=2024,note={{{note}}}}}\n"))
+        .collect();
+    assert_complete(&text, 200);
+}
+
+#[test]
+fn twenty_thousand_ordinary_ten_field_records_load_completely() {
+    let fields = "title={Small synthetic record},author={Doe, Jane},journal={Sample Journal},year={2024},\
+                  volume={12},number={3},pages={1--9},doi={10.0000/example},url={https://example.org/r},keywords={sample; test}";
+    let text: String = (0..20_000).map(|i| format!("@article{{k{i},{fields}}}\n")).collect();
+    assert_complete(&text, 20_000);
+}
 
 #[test]
 fn distinct_aliases_share_one_load_budget() {

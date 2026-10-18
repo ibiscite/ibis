@@ -41,11 +41,7 @@ impl Budget {
         Self(Cell::new(Some(credits)))
     }
     pub(crate) fn for_input(bytes: usize) -> Self {
-        Self::new(
-            (64 * 1024 * 1024usize)
-                .saturating_add(bytes.saturating_mul(64))
-                .min(512 * 1024 * 1024),
-        )
+        Self::new((64 * 1024 * 1024usize).saturating_add(bytes.saturating_mul(128)))
     }
     fn charge(&self, bytes: usize) -> bool {
         self.0
