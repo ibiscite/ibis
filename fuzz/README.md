@@ -1,16 +1,18 @@
 # Nightly BibTeX fuzzing
 
-This separate cargo-fuzz workspace instruments the private lexer (`split_parse`),
+This cargo-fuzz workspace member instruments the private lexer (`split_parse`),
 the complete resolver/converter (`load_str`) and loaded-reference CSL-JSON
 serialization (`csl_export`). All accept arbitrary bytes through UTF-8 replacement,
-as file loading does. The app's pinned stable toolchain is unchanged.
+as file loading does. It shares the root Cargo.lock and is excluded from default
+application/test members. Instrumentation is enabled only by cargo-fuzz with
+nightly; the app's pinned stable toolchain is unchanged.
 
 ```sh
 rustup toolchain install nightly --profile minimal
 cargo install --locked cargo-fuzz --version 0.13.1
 cargo +nightly fuzz run load_str -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024 -max_len=16384
 node --test scripts/fuzz.test.mjs
-cargo deny --manifest-path fuzz/Cargo.toml check
+cargo deny --locked check
 ```
 
 The scheduled workflow runs each target for 300 seconds with a five-second input
@@ -39,8 +41,9 @@ test or fixture snapshot before changing the implementation. Only synthetic
 fixtures and generated mutations belong in this corpus; never seed personal
 libraries. No application runtime networking is introduced.
 
-The harness follows [cargo-fuzz's isolated-workspace workflow](https://github.com/rust-fuzz/cargo-fuzz/tree/0.13.1)
+The harness follows [cargo-fuzz's shared-workspace workflow](https://github.com/rust-fuzz/cargo-fuzz/tree/0.13.1)
 and [libFuzzer's corpus and resource controls](https://www.llvm.org/docs/LibFuzzer.html).
 The small deletion reducer checks the original signature on every trial, including
 resource failures without sanitizer dedup tokens, with one overall time budget.
-The crate-specific NCSA policy exception is recorded in ADR 0013.
+The crate-specific NCSA policy exception is recorded in ADR 0013; ADR 0014
+amends only its workspace layout.

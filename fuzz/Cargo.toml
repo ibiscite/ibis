@@ -9,13 +9,9 @@ license = "AGPL-3.0-or-later"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4.13"
+libfuzzer-sys = "=0.4.13"
 ibis-core = { path = "../crates/ibis-core" }
 serde_json = "1.0.154"
-
-# Keep nightly instrumentation and fuzz-only dependencies outside the app workspace.
-[workspace]
-members = ["."]
 
 [[bin]]
 name = "split_parse"
@@ -37,3 +33,6 @@ path = "fuzz_targets/csl_export.rs"
 test = false
 doc = false
 bench = false
+
+[lints]
+workspace = true

@@ -62,6 +62,7 @@ cargo +nightly fuzz run load_str -- -max_total_time=60 -timeout=5 -rss_limit_mb=
 Targets are `split_parse`, `load_str` and `csl_export`. The nightly workflow gives
 each 300 seconds with a persistent corpus seeded from synthetic fixtures, and
 minimizes and reports crashes, timeouts and OOMs as deduplicated `area:testing`
-issues. Fixed inputs become fixtures with regression coverage. The isolated fuzz
-workspace uses nightly; the app toolchain stays pinned. See `fuzz/README.md` for
+issues. Fixed inputs become fixtures with regression coverage. Fuzz targets share
+the root lockfile and are outside default application/test members. Only
+cargo-fuzz enables nightly instrumentation; the app toolchain stays pinned. See `fuzz/README.md` for
 reproduction, reporting and resource limits.
