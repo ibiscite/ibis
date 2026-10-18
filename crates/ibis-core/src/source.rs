@@ -14,6 +14,7 @@ use crate::{bibtex, model::LoadResult};
 
 pub const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const SETTLE: Duration = Duration::from_millis(250);
+const MAX_UNAVAILABLE_RETRY: Duration = Duration::from_secs(5);
 
 /// Allowlisted diagnostics: never expose paths, contents or operating system errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -241,7 +242,8 @@ impl SourceWatch {
             .spawn(move || {
                 // Also check once after registration to close the load/watch gap.
                 let mut error_reported = false;
-                while events.recv().is_ok() && !stop.load(Ordering::SeqCst) {
+                let mut unavailable_retry = None;
+                while wait_for_change(&events, unavailable_retry) && !stop.load(Ordering::SeqCst) {
                     loop {
                         if stop.load(Ordering::SeqCst) {
                             return;
@@ -256,6 +258,7 @@ impl SourceWatch {
                         return;
                     }
                     if failed.swap(false, Ordering::SeqCst) {
+                        unavailable_retry = None;
                         error_reported = true;
                         changed(Err(SourceError::WatchUnavailable));
                         continue;
@@ -263,6 +266,11 @@ impl SourceWatch {
                     // A selected symlink may now point into a different directory.
                     let candidate = rearm_target(&mut watcher, &path, &target, &mut target_parent)
                         .and_then(|()| stable_read(&path, &events, &stop, &mut snapshot, error_reported));
+                    unavailable_retry = if matches!(candidate, Err(SourceError::Unavailable)) {
+                        Some(unavailable_retry.map_or(SETTLE, |delay| (delay * 2).min(MAX_UNAVAILABLE_RETRY)))
+                    } else {
+                        None
+                    };
                     if !stop.load(Ordering::SeqCst) {
                         if matches!(candidate, Err(SourceError::Changing)) {
                             let _ = retry.try_send(());
@@ -284,6 +292,16 @@ impl SourceWatch {
             .map_err(|_| SourceError::WatchUnavailable)?;
         let _ = signal.try_send(());
         Ok(Self { stopped, signal })
+    }
+}
+
+// A failed read may outlast the short I/O retries without generating a later
+// notification (for example a Windows editor's exclusive handle). Keep retrying
+// with a capped delay; file events and dropping the watcher interrupt the wait.
+fn wait_for_change(events: &Receiver<()>, unavailable_retry: Option<Duration>) -> bool {
+    match unavailable_retry {
+        Some(delay) => !matches!(events.recv_timeout(delay), Err(RecvTimeoutError::Disconnected)),
+        None => events.recv().is_ok(),
     }
 }
 
