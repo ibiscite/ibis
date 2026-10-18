@@ -14,7 +14,7 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 | Metamorphic tests | Different but equivalent inputs giving different results | `crates/ibis-core/tests/metamorphic.rs`; larger run in `.github/workflows/metamorphic.yml` |
 | Subprocess tests | Process aborts that in-process guards cannot catch (stack overflow) | `crates/ibis-cli/tests/cli.rs` |
 | Differential tests | Loss of meaning, measured against an independent implementation | `crates/ibis-cli/tests/fidelity.rs` (Pandoc); planned nightly on larger corpora (#69) |
-| Fuzzing | Crashes and runaway work on arbitrary bytes | planned nightly (#66) |
+| Fuzzing | Crashes and runaway work on arbitrary bytes | `fuzz/fuzz_targets/`, nightly `.github/workflows/fuzz.yml` |
 | Open-data corpus | Real names, scripts and records synthetic data misses | planned nightly (#68) |
 | Platform harness | Insertion, shortcuts and accessibility on each OS | planned for 0.3 |
 
@@ -49,3 +49,19 @@ precedence is meaningful. Quoted values exclude quote/group syntax that would
 make delimiters semantically different. Failed nightly runs preserve the
 shrunk example and regression seeds as an artifact. Turn reader regressions
 into explicit synthetic fixtures or tests before fixing them.
+
+## Nightly fuzzing
+
+Install `cargo-fuzz` with `cargo install --locked cargo-fuzz --version 0.13.1` and
+nightly with `rustup toolchain install nightly --profile minimal`, then run:
+
+```sh
+cargo +nightly fuzz run load_str -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024 -max_len=16384
+```
+
+Targets are `split_parse`, `load_str` and `csl_export`. The nightly workflow gives
+each 300 seconds with a persistent corpus seeded from synthetic fixtures, and
+minimizes and reports crashes, timeouts and OOMs as deduplicated `area:testing`
+issues. Fixed inputs become fixtures with regression coverage. The isolated fuzz
+workspace uses nightly; the app toolchain stays pinned. See `fuzz/README.md` for
+reproduction, reporting and resource limits.

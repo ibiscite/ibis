@@ -43,6 +43,12 @@ allow = [
     "Zlib",
 ]
 
+# ADR 0013: test-only libFuzzer, isolated in fuzz/Cargo.toml.
+[[licenses.exceptions]]
+name = "libfuzzer-sys"
+version = "=0.4.13"
+allow = ["NCSA"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

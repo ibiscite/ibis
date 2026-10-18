@@ -7,10 +7,13 @@ import { spawnSync } from "node:child_process";
 
 const desktop = { cwd: "apps/desktop" };
 const steps = [
+  ["Fuzz reporter tests", "node", ["--test", "scripts/fuzz.test.mjs"]],
+  ["Fuzz format", "cargo", ["fmt", "--manifest-path", "fuzz/Cargo.toml", "--check"]],
   ["Format", "cargo", ["fmt", "--all", "--check"]],
   ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
   ["Test", "cargo", ["test", "--locked"]],
   ["Dependency policy", "cargo", ["deny", "check"]],
+  ["Fuzz dependency policy", "cargo", ["deny", "--manifest-path", "fuzz/Cargo.toml", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],
   ["Desktop: interface tests", "pnpm", ["test"], desktop],

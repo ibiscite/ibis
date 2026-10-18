@@ -43,6 +43,9 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+      - name: Fuzz reporter tests
+        run: node --test scripts/fuzz.test.mjs
+
   desktop:
     name: Desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -133,3 +136,8 @@ jobs:
 
       - name: Licenses, advisories, sources
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+      - name: Fuzz workspace licenses, advisories, sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: ./fuzz/Cargo.toml
