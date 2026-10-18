@@ -16,6 +16,12 @@ ignore = [
     # macro helper reached through Tauri's GTK bindings on Linux; nothing
     # from it ships in the app. Revisit when the GTK bindings drop it.
     { id = "RUSTSEC-2024-0370", reason = "build-time only, transitive via gtk-rs used by Tauri on Linux; no known vulnerability" },
+    # zbus_names, zvariant and zvariant_derive were merged into zbus 6 (not
+    # vulnerable). They come through tauri-plugin-single-instance, which still
+    # uses zbus 5 for D-Bus on Linux. Revisit when the plugin moves to zbus 6.
+    { id = "RUSTSEC-2026-0370", reason = "merged into zbus 6; transitive via tauri-plugin-single-instance on Linux; no known vulnerability" },
+    { id = "RUSTSEC-2026-0371", reason = "merged into zbus 6; transitive via tauri-plugin-single-instance on Linux; no known vulnerability" },
+    { id = "RUSTSEC-2026-0372", reason = "merged into zbus 6; transitive via tauri-plugin-single-instance on Linux; no known vulnerability" },
 ]
 
 [licenses]
