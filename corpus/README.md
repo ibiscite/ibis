@@ -43,7 +43,7 @@ source remain absent and are listed in `provenance.json`; no date is invented.
 This is deliberately a projection of bibliography fields, not a complete
 Wikidata-to-CSL converter. Unknown source formats fail rather than being guessed.
 Literal backslashes in source fields are currently rejected with a clear error
-because [reader issue #90](https://github.com/ibis-cite/ibis/issues/90) would drop
+because [reader issue #90](https://github.com/ibiscite/ibis/issues/90) would drop
 them; the pinned sample contains none. Other TeX metacharacters are escaped.
 
 To refresh or expand the sample, review the structured-data licence again,

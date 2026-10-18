@@ -65,7 +65,7 @@ fn main() {
         })
         .setup(|app| {
             // Settings live in the app's configuration folder, e.g. on macOS
-            // ~/Library/Application Support/io.github.ibis-cite.ibis/settings.json
+            // ~/Library/Application Support/io.github.ibiscite.ibis/settings.json
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));

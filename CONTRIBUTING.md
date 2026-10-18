@@ -36,7 +36,7 @@ A good prompt to start from: *"Read AGENTS.md and CONTRIBUTING.md in this reposi
 You need [Rust](https://rustup.rs/), [Node.js](https://nodejs.org/) 22 or newer and [pnpm](https://pnpm.io/) 11 (`corepack enable pnpm`). On Linux, the desktop app also needs the WebKitGTK development packages listed in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```sh
-git clone https://github.com/ibis-cite/ibis
+git clone https://github.com/ibiscite/ibis
 cd ibis
 node scripts/check.mjs
 ```

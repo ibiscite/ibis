@@ -10,7 +10,7 @@ default-members = ["crates/ibis-core", "crates/ibis-cli"]
 version = "0.0.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/ibis-cite/ibis"
+repository = "https://github.com/ibiscite/ibis"
 rust-version = "1.90"
 
 [workspace.lints.rust]

@@ -137,7 +137,7 @@ export function verifyExport(expected, actual) {
 
 async function download(resource) {
   const response = await fetch(resource.url, {
-    headers: { "User-Agent": "IbisCorpusTests/0.1 (https://github.com/ibis-cite/ibis)" },
+    headers: { "User-Agent": "IbisCorpusTests/0.1 (https://github.com/ibiscite/ibis)" },
     signal: AbortSignal.timeout(30_000), redirect: "error",
   });
   assert.ok(response.ok, `${resource.id}: HTTP ${response.status}`);
