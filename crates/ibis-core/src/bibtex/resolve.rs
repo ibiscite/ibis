@@ -15,6 +15,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use super::Budget;
 use super::lexer::{Part, RawEntry};
 
 /// Fields that hold dates; digits in other scripts are converted to ASCII
@@ -182,6 +183,7 @@ type Fields = Rc<Vec<(String, String)>>;
 
 /// Everything needed to resolve entries from one file.
 pub(crate) struct Resolver<'a> {
+    pub(super) budget: &'a Budget,
     macros: HashMap<String, Vec<Part>>,
     macro_cache: RefCell<HashMap<(String, bool), Rc<CachedExpansion>>>,
     macro_cache_bytes: Cell<usize>,
@@ -191,6 +193,7 @@ pub(crate) struct Resolver<'a> {
 }
 
 /// An entry ready for parsing, plus problems found while resolving it.
+#[derive(Default)]
 pub(crate) struct Resolved {
     /// One flat entry: own and inherited fields, no links.
     pub source: String,
@@ -208,16 +211,23 @@ struct Walk {
 }
 
 impl<'a> Resolver<'a> {
-    pub(crate) fn new(macros: Vec<(String, Vec<Part>)>, entries: &'a [RawEntry]) -> Self {
+    pub(crate) fn new(macros: Vec<(String, Vec<Part>)>, entries: &'a [RawEntry], budget: &'a Budget) -> Self {
         let mut index = HashMap::new();
         let mut index_folded = HashMap::new();
         for (i, entry) in entries.iter().enumerate() {
+            if !budget.charge(entry.key.len().saturating_mul(6)) {
+                break;
+            }
             index.entry(entry.key.clone()).or_insert(i);
             index_folded.entry(entry.key.to_lowercase()).or_insert(i);
         }
         // Later definitions of the same macro replace earlier ones, as in BibTeX.
         Resolver {
-            macros: macros.into_iter().collect(),
+            budget,
+            macros: macros
+                .into_iter()
+                .take_while(|(name, _)| budget.charge(name.len()))
+                .collect(),
             macro_cache: RefCell::new(HashMap::new()),
             macro_cache_bytes: Cell::new(0),
             entries,
@@ -245,6 +255,14 @@ impl<'a> Resolver<'a> {
         let mut problems = walk.problems;
         let fields: Vec<_> = fields
             .iter()
+            .take_while(|(name, value)| {
+                self.budget.charge(
+                    name.len()
+                        .saturating_add(value.len())
+                        .saturating_mul(8)
+                        .saturating_add(256),
+                )
+            })
             .filter(|(name, value)| {
                 if nesting_exceeds_limit(value) {
                     problems.push(format!(
@@ -257,11 +275,17 @@ impl<'a> Resolver<'a> {
             })
             .collect();
         let entry = &self.entries[i];
+        if !self
+            .budget
+            .charge(entry.kind.len().saturating_add(entry.key.len()).saturating_mul(4))
+        {
+            return Resolved::default();
+        }
         let rendered: Vec<String> = fields.iter().map(|(name, value)| render_field(name, value)).collect();
         let source = format!("@{}{{{},\n{}}}\n", entry.kind, entry.key, rendered.join(",\n"));
         // The same problem can be found many times; report each one once.
         let mut unique = HashSet::new();
-        problems.retain(|p| unique.insert(p.clone()));
+        problems.retain(|p| self.budget.charge(p.len().saturating_mul(4)) && unique.insert(p.clone()));
         Resolved {
             source,
             fields: fields.into_iter().cloned().collect(),
@@ -272,6 +296,9 @@ impl<'a> Resolver<'a> {
     /// Fields of entry `idx` after inheritance, following at most `remaining`
     /// further levels. Memoized by (entry, remaining depth).
     fn effective(&self, idx: usize, remaining: usize, walk: &mut Walk) -> Fields {
+        if !self.budget.charge(0) {
+            return Rc::default();
+        }
         if let Some(fields) = walk.memo.get(&(idx, remaining)) {
             return Rc::clone(fields);
         }
@@ -286,8 +313,23 @@ impl<'a> Resolver<'a> {
         let mut xdata_keys = Vec::new();
         let mut crossref_key = None;
         for field in &entry.fields {
+            if !self
+                .budget
+                .charge(field.name.len().saturating_mul(4).saturating_add(256))
+            {
+                return Rc::default();
+            }
             let mut field_problems = Vec::new();
             let value = self.expand(&field.name, &field.parts, &mut field_problems, report);
+            if !self.budget.charge(
+                value
+                    .len()
+                    .saturating_mul(4)
+                    .saturating_add(field_problems.iter().map(String::len).sum::<usize>())
+                    .saturating_add(field_problems.len().saturating_mul(entry.key.len().saturating_add(128))),
+            ) {
+                return Rc::default();
+            }
             walk.problems.extend(field_problems.into_iter().map(|p| {
                 if root {
                     p
@@ -331,6 +373,15 @@ impl<'a> Resolver<'a> {
             .chain(crossref_key.iter().map(|k| (k.as_str(), true)));
         let mut seen_targets = HashSet::new();
         for (target, is_crossref) in links {
+            if !self.budget.charge(
+                entry
+                    .key
+                    .len()
+                    .saturating_add(target.len().saturating_mul(8))
+                    .saturating_add(256),
+            ) {
+                return Rc::default();
+            }
             let Some(t) = self.find(target) else {
                 walk.problems.push(format!(
                     "`{}` refers to `{target}`, which is not in this file; nothing is inherited from it",
@@ -373,9 +424,16 @@ impl<'a> Resolver<'a> {
         let mut sources: Vec<Vec<(String, String)>> = vec![own];
         let (crossref, xdata): (Vec<_>, Vec<_>) = parents.into_iter().partition(|(_, kind)| kind.is_some());
         for (inherited, crossref_kind) in xdata.into_iter().rev().chain(crossref) {
+            if !self.budget.charge(inherited.len().saturating_mul(32)) {
+                return Rc::default();
+            }
             let mapped = inherited
                 .iter()
                 .filter(|(name, _)| !NOT_INHERITED.contains(&name.as_str()))
+                .take_while(|(name, value)| {
+                    self.budget
+                        .charge(name.len().saturating_add(value.len()).saturating_mul(4))
+                })
                 .flat_map(|(name, value)| {
                     let targets = match crossref_kind {
                         Some(parent_kind) => crossref_targets(parent_kind, &entry.kind, name),
@@ -390,6 +448,13 @@ impl<'a> Resolver<'a> {
         let mut merged_names = HashSet::new();
         for source in &sources {
             for (name, value) in source {
+                if !self.budget.charge(
+                    name.len()
+                        .saturating_mul(4)
+                        .saturating_add(value.len().saturating_mul(8)),
+                ) {
+                    return Rc::default();
+                }
                 if !DATE_PARTS.contains(&name.as_str()) && merged_names.insert(name.as_str()) {
                     merged.push((name.clone(), value.clone()));
                 }
@@ -397,7 +462,9 @@ impl<'a> Resolver<'a> {
         }
         merged.extend(merge_dates(&sources));
         let fields: Fields = Rc::new(merged);
-        walk.memo.insert((idx, remaining), Rc::clone(&fields));
+        if !self.budget.exhausted() {
+            walk.memo.insert((idx, remaining), Rc::clone(&fields));
+        }
         fields
     }
 
@@ -408,13 +475,26 @@ impl<'a> Resolver<'a> {
         let mut x = Expansion::default();
         for part in parts {
             match part {
-                Part::Text(t) | Part::Number(t) => x.out.push_str(t),
+                Part::Text(t) | Part::Number(t) => {
+                    if !self.budget.charge(t.len()) {
+                        return String::new();
+                    }
+                    x.out.push_str(t);
+                }
                 Part::Macro(name) => self.expand_macro(field, name, problems, report, &mut x),
             }
             x.check_size();
-            if x.stopped() {
+            if x.stopped() || self.budget.exhausted() {
                 break;
             }
+        }
+        if !self.budget.charge(
+            field
+                .len()
+                .saturating_add(x.out.len().saturating_mul(8))
+                .saturating_add(256),
+        ) {
+            return String::new();
         }
         if x.stopped() {
             if report {
@@ -439,6 +519,9 @@ impl<'a> Resolver<'a> {
     }
 
     fn expand_macro(&self, field: &str, name: &str, problems: &mut Vec<String>, report: bool, x: &mut Expansion) {
+        if !self.budget.charge(name.len().saturating_mul(4)) {
+            return;
+        }
         // Cache raw, top-level expansions across fields and entries. Month
         // abbreviations differ in month fields; digit/literal normalization
         // still happens afterwards in `expand`. Recursive calls stay uncached
@@ -450,8 +533,12 @@ impl<'a> Resolver<'a> {
             let mut problems = Vec::new();
             self.expand_macro_uncached(field, name, &mut problems, true, &mut expansion);
             let bytes = name.len() + expansion.out.len() + problems.iter().map(String::len).sum::<usize>() + 128;
-            let cached = Rc::new(CachedExpansion { expansion, problems });
-            if bytes <= MAX_MACRO_CACHE_BYTES.saturating_sub(self.macro_cache_bytes.get()) {
+            let cached = Rc::new(CachedExpansion {
+                expansion,
+                problems,
+                bytes,
+            });
+            if !self.budget.exhausted() && bytes <= MAX_MACRO_CACHE_BYTES.saturating_sub(self.macro_cache_bytes.get()) {
                 self.macro_cache_bytes.set(self.macro_cache_bytes.get() + bytes);
                 self.macro_cache.borrow_mut().insert(key, Rc::clone(&cached));
             }
@@ -466,6 +553,9 @@ impl<'a> Resolver<'a> {
                 && x.steps + expanded.steps <= MAX_EXPANSION_STEPS
                 && x.out.len() + expanded.out.len() <= MAX_VALUE_BYTES)
         {
+            if !self.budget.charge(cached.bytes.saturating_mul(4)) {
+                return;
+            }
             x.out.push_str(&expanded.out);
             x.steps += expanded.steps;
             x.too_large |= expanded.too_large;
@@ -486,6 +576,14 @@ impl<'a> Resolver<'a> {
         report: bool,
         x: &mut Expansion,
     ) {
+        if !self.budget.charge(
+            name.len()
+                .saturating_mul(x.stack.len().saturating_add(4))
+                .saturating_add(field.len())
+                .saturating_add(256),
+        ) {
+            return;
+        }
         x.steps += 1;
         if x.steps > MAX_EXPANSION_STEPS {
             x.too_complex = true;
@@ -511,11 +609,16 @@ impl<'a> Resolver<'a> {
             x.stack.push(name.to_string());
             for part in parts {
                 match part {
-                    Part::Text(t) | Part::Number(t) => x.out.push_str(t),
+                    Part::Text(t) | Part::Number(t) => {
+                        if !self.budget.charge(t.len()) {
+                            break;
+                        }
+                        x.out.push_str(t);
+                    }
                     Part::Macro(inner) => self.expand_macro_uncached(field, inner, problems, report, x),
                 }
                 x.check_size();
-                if x.stopped() {
+                if x.stopped() || self.budget.exhausted() {
                     break;
                 }
             }
@@ -565,6 +668,7 @@ struct Expansion {
 }
 
 struct CachedExpansion {
+    bytes: usize,
     expansion: Expansion,
     problems: Vec<String>,
 }
@@ -812,7 +916,7 @@ mod tests {
             .iter()
             .position(|e| e.key == key)
             .unwrap_or_else(|| panic!("no {key}"));
-        Resolver::new(macros, &entries).resolve(i)
+        Resolver::new(macros, &entries, &Budget::new(usize::MAX)).resolve(i)
     }
 
     #[test]
@@ -834,7 +938,8 @@ mod tests {
                 .iter()
                 .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
                 .collect();
-            let resolver = Resolver::new(Vec::new(), &entries);
+            let budget = Budget::new(usize::MAX);
+            let resolver = Resolver::new(Vec::new(), &entries, &budget);
             let start = Instant::now();
             for i in 0..entries.len() {
                 let resolved = resolver.resolve(i);

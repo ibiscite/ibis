@@ -12,7 +12,7 @@
 //!    protected capitalization, italics, truncated author lists, date ranges
 //!    and language tags.
 //!
-//! Good entries always load; every problem becomes a [`LoadWarning`] with a
+//! Completed entries load; every problem becomes a [`LoadWarning`] with a
 //! line number. A failure inside the third-party field parser is contained to
 //! the entry that caused it.
 
@@ -20,6 +20,7 @@ mod convert;
 mod lexer;
 mod resolve;
 
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 
@@ -31,10 +32,48 @@ use crate::model::{LoadResult, LoadWarning, Reference, WarningKind};
 use lexer::{RawEntry, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
 
+const LOAD_LIMIT: &str = "load work limit reached; this entry and remaining entries were skipped";
+
+/// One sticky counter for actual work, including empty operations and byte copies.
+pub(crate) struct Budget(Cell<Option<usize>>);
+impl Budget {
+    pub(crate) fn new(credits: usize) -> Self {
+        Self(Cell::new(Some(credits)))
+    }
+    pub(crate) fn for_input(bytes: usize) -> Self {
+        Self::new(
+            (64 * 1024 * 1024usize)
+                .saturating_add(bytes.saturating_mul(64))
+                .min(512 * 1024 * 1024),
+        )
+    }
+    fn charge(&self, bytes: usize) -> bool {
+        self.0
+            .set(self.0.get().and_then(|n| n.checked_sub(bytes.saturating_add(32))));
+        !self.exhausted()
+    }
+    fn exhausted(&self) -> bool {
+        self.0.get().is_none()
+    }
+}
+
 /// Parse BibTeX/BibLaTeX text. `source` identifies where the text came from
 /// and becomes part of each record's identity.
 pub fn load_str(source: &str, text: &str) -> LoadResult {
+    load_with_budget(source, text, Budget::for_input(text.len())).0
+}
+
+pub(crate) fn load_with_budget(source: &str, text: &str, budget: Budget) -> (LoadResult, bool) {
     let mut result = LoadResult::default();
+    if !budget.charge(text.len()) {
+        result.warnings.push(LoadWarning {
+            kind: WarningKind::Syntax,
+            line: None,
+            key: None,
+            message: LOAD_LIMIT.into(),
+        });
+        return (result, true);
+    }
     let blocks = split_blocks(text);
 
     let mut macros = Vec::new();
@@ -48,6 +87,10 @@ pub fn load_str(source: &str, text: &str) -> LoadResult {
             key,
             message,
         };
+        if !budget.charge(block.text.len().saturating_mul(4).saturating_add(256)) {
+            result.warnings.push(warn(WarningKind::Syntax, None, LOAD_LIMIT.into()));
+            return (result, true);
+        }
         match block.kind.as_str() {
             "comment" | "preamble" => continue,
             "string" => {
@@ -89,7 +132,7 @@ pub fn load_str(source: &str, text: &str) -> LoadResult {
         }
     }
 
-    let resolver = Resolver::new(macros, &entries);
+    let resolver = Resolver::new(macros, &entries, &budget);
     // `@xdata` entries only supply fields to other entries; they are not
     // references themselves and are never shown or exported.
     for (i, entry) in entries.iter().enumerate().filter(|(_, e)| e.kind != "xdata") {
@@ -102,6 +145,19 @@ pub fn load_str(source: &str, text: &str) -> LoadResult {
             key: Some(entry.key.clone()),
             message: message.to_string(),
         };
+        if let Ok(Ok((_, problems))) = &outcome {
+            budget.charge(
+                problems
+                    .iter()
+                    .map(String::len)
+                    .sum::<usize>()
+                    .saturating_add(problems.len().saturating_mul(entry.key.len())),
+            );
+        }
+        if budget.exhausted() {
+            result.warnings.push(warn(WarningKind::Syntax, LOAD_LIMIT));
+            break;
+        }
         match outcome {
             Ok(Ok((reference, problems))) => {
                 result
@@ -116,7 +172,7 @@ pub fn load_str(source: &str, text: &str) -> LoadResult {
             )),
         }
     }
-    result
+    (result, budget.exhausted())
 }
 
 /// Whether a recognized block is demonstrably unfinished, for reload safety.
@@ -133,6 +189,13 @@ fn load_entry(
     raw: &str,
 ) -> Result<(Reference, Vec<String>), String> {
     let resolved = resolver.resolve(i);
+    if !resolver.budget.charge(
+        raw.len()
+            .saturating_add(source.len())
+            .saturating_add(resolved.source.len().saturating_mul(8)),
+    ) {
+        return Err(LOAD_LIMIT.into());
+    }
     let mut problems = resolved.problems;
     let bib = Bibliography::parse(&resolved.source).map_err(|e| format!("{}; skipped", e.kind))?;
     let parsed = bib

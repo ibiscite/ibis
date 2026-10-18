@@ -28,6 +28,8 @@ pub enum SourceError {
     Unreadable,
     #[error("the library file contains an unfinished entry; keeping the last loaded references")]
     Incomplete,
+    #[error("the library exceeded the load work limit; keeping the last loaded references")]
+    LoadLimit,
     #[error("the library file is still changing; keeping the last loaded references")]
     Changing,
     #[error("automatic library updates are unavailable; use Reload to try again")]
@@ -60,11 +62,19 @@ pub fn load_library_file(path: &Path, reload: bool) -> Result<LoadResult, Source
 }
 
 fn parse(path: &Path, text: &str, reload: bool) -> Result<LoadResult, SourceError> {
+    parse_with_budget(path, text, reload, bibtex::Budget::for_input(text.len()))
+}
+
+fn parse_with_budget(path: &Path, text: &str, reload: bool, budget: bibtex::Budget) -> Result<LoadResult, SourceError> {
     if reload && bibtex::has_incomplete_blocks(text) {
         return Err(SourceError::Incomplete);
     }
     let source = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    Ok(bibtex::load_str(&source.to_string_lossy(), text))
+    let (result, limited) = bibtex::load_with_budget(&source.to_string_lossy(), text, budget);
+    if reload && limited {
+        return Err(SourceError::LoadLimit);
+    }
+    Ok(result)
 }
 
 /// Watches the containing directory so editor rename-replacements keep working.
@@ -229,5 +239,32 @@ impl Drop for SourceWatch {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::SeqCst);
         let _ = self.signal.try_send(());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn limited_load_keeps_completed_prefix_and_rejects_reload() {
+        let fields = (0..100).map(|i| format!("f{i}={{v}}")).collect::<Vec<_>>().join(",");
+        let text = format!("@xdata{{p,{fields}}}\n@misc{{good}}\n@misc{{bad,xdata={{p}}}}\n@misc{{suffix}}");
+        let limited = |reload| {
+            parse_with_budget(
+                Path::new("synthetic.bib"),
+                &text,
+                reload,
+                bibtex::Budget::new(32 * 1024),
+            )
+        };
+        let initial = limited(false).unwrap_or_else(|e| panic!("{e}"));
+        let keys: Vec<_> = initial.references.iter().map(|r| r.id.native_key.as_str()).collect();
+        assert_eq!(keys, ["good"]);
+        assert_eq!(initial.warnings.len(), 1);
+        let warning = &initial.warnings[0];
+        assert_eq!((warning.line, warning.key.as_deref()), (Some(3), Some("bad")));
+        assert!(warning.message.contains("load work limit"));
+        assert_eq!(limited(true).err(), Some(SourceError::LoadLimit));
     }
 }
