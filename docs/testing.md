@@ -51,6 +51,32 @@ make delimiters semantically different. Failed nightly runs preserve the
 shrunk example and regression seeds as an artifact. Turn reader regressions
 into explicit synthetic fixtures or tests before fixing them.
 
+## Picker screenshots
+
+Every CI run builds and launches the real debug app on Windows 2025, macOS 15
+and Ubuntu 24.04, including pull requests that change `apps/desktop/`. To capture
+another commit, choose **Actions → CI → Run workflow** and select its branch.
+No development server or app startup switch is needed: the build embeds the web
+interface with `--features tauri/custom-protocol`, and debug windows stay visible
+when they lose focus.
+
+Open the run's **Artifacts** and download `picker-<commit SHA>`. The SHA identifies
+the checked-out source (the merge commit for a pull request). It contains
+`picker-Windows.png`, `picker-macOS.png`, `picker-Linux.png` and startup logs, kept
+for 14 days. The three platform shards are combined after the desktop jobs finish;
+failed jobs can leave a partial artifact. A process that exits during the startup
+wait fails its job; capture errors produce warnings. Check that all three PNGs
+exist and actually show the picker before claiming cross-platform evidence.
+
+The app opens the synthetic `fixtures/bibtex/real-world.bib` through an absolute
+`IBIS_LIBRARY` path, without saving a library preference. Screenshots show the
+initial empty-query view after an eight-second wait: review layout, font rendering,
+scaling, library status and window edges by eye. There is no pixel comparison or
+automated visual verdict. Linux uses a 1280×800 Xvfb display without a desktop
+window manager; its theme and shadows may differ from a user's desktop. These
+images do not establish result-list behavior, typing, focus, shortcuts, clipboard
+integration or screen-reader accessibility; those still need separate checks.
+
 ## Nightly fuzzing
 
 Install `cargo-fuzz` with `cargo install --locked cargo-fuzz --version 0.13.1` and
