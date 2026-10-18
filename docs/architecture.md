@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-                      ┌─ Picker window (web UI, started on demand, exits when idle)
+                      ┌─ Desktop picker (web UI in a Tauri shell; one process for now, ADR 0012)
                       ├─ Command line:  ibis search · ibis cite · ibis check · ibis csl
  ENGINE (Rust) ───────┼─ MCP server (read-only) for AI assistants            [planned]
  small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [planned]

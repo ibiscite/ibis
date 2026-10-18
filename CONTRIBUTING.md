@@ -33,13 +33,15 @@ A good prompt to start from: *"Read AGENTS.md and CONTRIBUTING.md in this reposi
 
 ## Development setup
 
-You need [Rust](https://rustup.rs/) and [Node.js](https://nodejs.org/) 22 or newer.
+You need [Rust](https://rustup.rs/), [Node.js](https://nodejs.org/) 22 or newer and [pnpm](https://pnpm.io/) 11 (`corepack enable pnpm`). On Linux, the desktop app also needs the WebKitGTK development packages listed in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```sh
 git clone https://github.com/ibis-cite/ibis
 cd ibis
 node scripts/check.mjs
 ```
+
+To run the desktop app, see "Running the desktop app" in [docs/development.md](docs/development.md).
 
 `node scripts/check.mjs` runs exactly what CI runs: formatting, lints, tests and the dependency policy. It needs `cargo-deny` (`cargo install --locked cargo-deny`); without it the script reports the run as incomplete rather than passed. It never edits files; run `cargo fmt` to format.
 

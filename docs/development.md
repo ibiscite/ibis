@@ -8,8 +8,40 @@ This project favours small, verified, reversible steps.
 2. **Branch.** One short-lived branch per issue, named `<type>/<issue>-<short-description>`, e.g. `feat/12-zotero-snapshot-reader`.
 3. **Test first.** Add a failing test or fixture that captures the acceptance criteria, then implement.
 4. **Check.** `node scripts/check.mjs` must pass locally.
-5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux.
-6. **Merge.** Squash-merge when checks pass. The pull request title becomes the commit on `main`. `main` is protected and always releasable.
+5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux. The description says what users can now do, how it was verified, and what was not verified.
+6. **Review.** One independent review of the final diff; P1 findings and regressions are fixed before merging, other findings become issues.
+7. **Merge.** Squash-merge when checks pass. The pull request title becomes the commit on `main`. `main` is protected and always releasable; its history is never rewritten.
+
+## Working quickly and safely
+
+CI takes a few minutes per pull request. Most delay comes from waiting, so work is arranged to overlap:
+
+- **Verify the exact commit.** Before pushing, run the full check in a clean checkout of the commit, so uncommitted files cannot make it pass. Reusing one build directory keeps it fast:
+
+  ```sh
+  root=$(git rev-parse --show-toplevel); sha=$(git rev-parse HEAD)
+  dir="$(mktemp -d)/ibis-verify"   # a new, empty path: never someone else's work
+  git worktree add --detach "$dir" "$sha" &&
+    (cd "$dir" && CARGO_TARGET_DIR="$root/target/verify" node scripts/check.mjs) &&
+    git push
+  git worktree remove --force "$dir" 2>/dev/null; git worktree prune
+  ```
+
+- **Stack instead of waiting.** Start the next issue on a branch based on the previous one. After the previous pull request is squash-merged, move the branch onto `main` and confirm the content did not change:
+
+  ```sh
+  tree=$(git rev-parse next-branch^{tree})
+  git fetch origin
+  git rebase --onto origin/main previous-branch next-branch
+  test "$(git rev-parse next-branch^{tree})" = "$tree" && echo unchanged
+  ```
+
+- **Review in parallel.** Run the one independent review of the final diff while CI runs, and save findings in the pull request (fixed, filed as an issue, or rejected with a reason).
+- **Independent work in parallel.** Issues that touch different files can be worked on at the same time, each in its own worktree and branch. Two writers never share a checkout. Shared files (`Cargo.toml`, `Cargo.lock`, `apps/desktop/src-tauri/src/main.rs`, `ROADMAP.md`) are changed by one branch at a time.
+
+## Progress reports
+
+Each milestone has a tracking issue (label `tracking`) with a checklist of its issues, decisions taken, and open questions for the maintainer. After each merge, add one line saying what users can now do and what is next. Questions that need the maintainer carry the label `needs:maintainer`.
 
 ## Running the desktop app
 
