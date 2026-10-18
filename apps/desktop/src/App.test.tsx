@@ -26,6 +26,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     search: () => [],
     hide_picker: () => null,
     copy_format: () => "pandoc",
+    library_status: () => ({ name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
   };
   mockIPC(
     (cmd, args) => {
@@ -124,7 +125,7 @@ test("the query is searched again when a library finishes opening", async () => 
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect((await screen.findByRole("alert")).textContent).toContain("no library is open");
   open = true;
-  await emit("library:changed", { path: "refs.bib", references: 1, warnings: 0, error: null });
+  await emit("library:changed", { name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -230,4 +231,29 @@ test("Enter never copies a result left over from the previous query", async () =
   expect(calls).not.toContain("copy_citation");
   release([result("new", "New result")]);
   await screen.findByText("New result");
+});
+
+test("the library is shown, can be chosen and reloaded, and failures are explained", async () => {
+  const calls = backend({
+    library_status: () => ({ name: null, references: 0, warnings: 0, error: null, note: null }),
+    choose_library: () => null,
+    reload_library: () => null,
+  });
+  render(<App />);
+  const bar = screen.getByRole("region", { name: "Library" });
+  await waitFor(() => expect(bar.textContent).toContain("No library chosen"));
+  fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
+  await waitFor(() => expect(calls).toContain("choose_library"));
+  await emit("library:changed", { name: "refs.bib", references: 3, warnings: 1, error: null, note: null });
+  await waitFor(() => expect(bar.textContent).toContain("refs.bib: 3 references, 1 could not be read fully"));
+  fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+  await waitFor(() => expect(calls).toContain("reload_library"));
+  await emit("library:changed", {
+    name: "refs.bib",
+    references: 3,
+    warnings: 1,
+    error: "cannot read the library file",
+    note: null,
+  });
+  expect((await screen.findByText(/The library could not be opened/)).textContent).toContain("cannot read");
 });

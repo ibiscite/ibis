@@ -4,11 +4,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export interface LibraryStatus {
-  path: string | null;
+  /** File name of the library, if one is open. */
+  name: string | null;
   references: number;
   warnings: number;
   /** Why the last attempt to open a library failed, if it did. */
   error: string | null;
+  /** Something to tell the user that is not a failure to open. */
+  note: string | null;
 }
 
 /** Identity of a record: the source it came from and its key there. */
@@ -26,9 +29,18 @@ export interface SearchResult {
   matched: string[];
 }
 
-/** Start opening a library; the outcome arrives through `onLibraryChanged`. */
-export function openLibrary(path: string): Promise<void> {
-  return invoke("open_library", { path });
+/** Show the system file dialog; the outcome arrives through `onLibraryChanged`. */
+export function chooseLibrary(): Promise<void> {
+  return invoke("choose_library");
+}
+
+/** Open the current library again; the outcome arrives through `onLibraryChanged`. */
+export function reloadLibrary(): Promise<void> {
+  return invoke("reload_library");
+}
+
+export function libraryStatus(): Promise<LibraryStatus> {
+  return invoke<LibraryStatus>("library_status");
 }
 
 export function search(query: string, limit = 20): Promise<SearchResult[]> {

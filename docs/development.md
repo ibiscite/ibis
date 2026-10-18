@@ -11,6 +11,22 @@ This project favours small, verified, reversible steps.
 5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux.
 6. **Merge.** Squash-merge when checks pass. The pull request title becomes the commit on `main`. `main` is protected and always releasable.
 
+## Running the desktop app
+
+```sh
+cd apps/desktop
+pnpm install
+pnpm tauri dev
+```
+
+Choose a library from the picker or from the menu bar (tray) item. The choice and other preferences are saved in `settings.json` in the app's configuration folder (on macOS `~/Library/Application Support/io.github.ibis-cite.ibis/`):
+
+```json
+{ "schema_version": 1, "shortcut": "Control+Command+R", "library": "/path/to/refs.bib", "copy_format": "pandoc" }
+```
+
+Every field is optional. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten. For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
+
 ## Commit messages
 
 [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `ci:`, `chore:`. Breaking changes use `!` (`feat!:`) or a `BREAKING CHANGE:` footer. Commits are signed off (`git commit -s`).

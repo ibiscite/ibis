@@ -2,6 +2,9 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   COPY_FORMATS,
+  chooseLibrary,
+  libraryStatus,
+  reloadLibrary,
   copyCitation,
   copyFormat,
   hidePicker,
@@ -12,6 +15,7 @@ import {
   shortcutStatus,
   type Copied,
   type CopyFormat,
+  type LibraryStatus,
   type RecordId,
   type SearchResult,
   type ShortcutStatus,
@@ -43,6 +47,7 @@ export function App() {
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const [library, setLibrary] = useState<LibraryStatus | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   // When the picker is shown, put the cursor in the search box with the
@@ -53,7 +58,13 @@ export function App() {
       input.current?.select();
     };
     const unlisten = onPickerShown(focusSearch);
-    const unlistenLibrary = onLibraryChanged(() => setLibraryVersion((v) => v + 1));
+    const unlistenLibrary = onLibraryChanged((status) => {
+      setLibrary(status);
+      setLibraryVersion((v) => v + 1);
+    });
+    libraryStatus()
+      .then(setLibrary)
+      .catch(() => setLibrary(null));
     shortcutStatus()
       .then(setShortcut)
       .catch(() => setShortcut(null));
@@ -147,6 +158,24 @@ export function App() {
             : `The shortcut ${shortcut.shortcut} is not available: ${shortcut.error}.`}
         </p>
       )}
+      <section aria-label="Library">
+        <span>
+          {library?.name
+            ? `${library.name}: ${library.references} references` +
+              (library.warnings > 0 ? `, ${library.warnings} could not be read fully` : "")
+            : "No library chosen"}
+        </span>{" "}
+        <button type="button" onClick={() => void chooseLibrary()}>
+          Choose library…
+        </button>
+        {library?.name && (
+          <button type="button" onClick={() => void reloadLibrary()}>
+            Reload
+          </button>
+        )}
+        {library?.error && <p role="alert">The library could not be opened: {library.error}</p>}
+        {library?.note && <p role="status">{library.note}</p>}
+      </section>
       <label htmlFor="search">Search references</label>
       <input
         id="search"
