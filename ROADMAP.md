@@ -5,7 +5,7 @@ Each release is usable on its own. Dates are not promised; scope is. Work is tra
 | Release | Scope |
 | --- | --- |
 | **0.0 Foundation** | Core library, `ibis` command line tool (search, cite, check, CSL-JSON export), BibTeX/BibLaTeX reading that survives damaged files, key-based outputs (Pandoc, BibLaTeX, LaTeX, Typst), fixture corpus, CI on Windows, macOS and Linux. |
-| **0.1 Picker** | Desktop app: global shortcut, search window, copy citation keys or plain citations, choose a library file from the menu bar. One process for now (ADR 0012). Unsigned preview builds. |
+| **0.1 Picker** | Desktop app: global shortcut, search window, copy citation keys or plain citations, choose a library file from the menu bar and reload changes automatically while keeping the last good snapshot. One process for now (ADR 0012). Unsigned preview builds. |
 | **0.2 Zotero and styles** | Zotero libraries with Zotero open or closed (personal and group libraries), formatted citations in any official CSL style with preview, page numbers per reference, multiple references, first-run setup. |
 | **0.3 Insertion** | Insert into the previously active app, destination profiles, clipboard preservation, explicit copy fallback, compatibility matrix for common editors and browsers. |
 | **0.4 Search by meaning** | Local multilingual meaning-based search combined with keyword search, with match explanations. No cloud services. |

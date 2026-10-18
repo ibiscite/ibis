@@ -20,7 +20,7 @@ use ibis_core::settings;
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-use crate::library::{Library, LoadRequests, start_open};
+use crate::library::{Library, LibraryWatch, LoadRequests, start_open};
 use crate::picker::{DialogOpen, ShortcutStatus, configured_shortcut, hides_on_blur, show_picker, toggle_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
@@ -42,6 +42,7 @@ fn main() {
         )
         .manage(Mutex::new(Library::default()))
         .manage(LoadRequests::default())
+        .manage(LibraryWatch::default())
         .manage(DialogOpen::default())
         .manage(Mutex::new(ShortcutStatus::default()))
         .invoke_handler(tauri::generate_handler![

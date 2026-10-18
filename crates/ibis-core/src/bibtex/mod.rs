@@ -119,6 +119,11 @@ pub fn load_str(source: &str, text: &str) -> LoadResult {
     result
 }
 
+/// Whether a recognized block is demonstrably unfinished, for reload safety.
+pub(crate) fn has_incomplete_blocks(text: &str) -> bool {
+    split_blocks(text).iter().any(|block| !block.complete)
+}
+
 /// Resolve, parse and convert one entry.
 fn load_entry(
     source: &str,

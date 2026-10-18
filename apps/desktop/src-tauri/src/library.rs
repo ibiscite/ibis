@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ibis_core::bibtex;
 use ibis_core::model::{LoadWarning, RecordId, Reference};
 use ibis_core::search::OwnedIndex;
+use ibis_core::source::{SourceWatch, load_library_file};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -32,6 +32,10 @@ pub(crate) struct Library {
 /// request never replaces the newer library.
 #[derive(Default)]
 pub(crate) struct LoadRequests(pub(crate) AtomicU64);
+
+/// The platform watcher and its worker stop when replaced or the app exits.
+#[derive(Default)]
+pub(crate) struct LibraryWatch(pub(crate) Mutex<Option<SourceWatch>>);
 
 /// Sent to the interface with the `library:changed` event.
 #[derive(Clone, Serialize)]
@@ -97,47 +101,66 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
     }
 }
 
-/// Largest library file read; far above any real BibTeX library.
-pub(crate) const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
-
-/// Read a library file, accepting only regular files up to [`MAX_LIBRARY_BYTES`],
-/// so a device or pipe can never exhaust memory or block the app.
-pub(crate) fn read_library_file(path: &std::path::Path) -> Result<String, String> {
-    use std::io::Read;
-    let metadata = std::fs::metadata(path).map_err(|e| format!("cannot read the library file: {e}"))?;
-    if !metadata.is_file() {
-        return Err("the library must be a regular file".to_string());
-    }
-    if metadata.len() > MAX_LIBRARY_BYTES {
-        return Err(format!(
-            "the library file is larger than {} MiB",
-            MAX_LIBRARY_BYTES / 1024 / 1024
-        ));
-    }
-    let file = std::fs::File::open(path).map_err(|e| format!("cannot read the library file: {e}"))?;
-    let mut text = String::new();
-    file.take(MAX_LIBRARY_BYTES + 1)
-        .read_to_string(&mut text)
-        .map_err(|e| format!("cannot read the library file as UTF-8 text: {e}"))?;
-    if text.len() as u64 > MAX_LIBRARY_BYTES {
-        return Err("the library file grew while it was being read".to_string());
-    }
-    Ok(text)
+/// Read, parse and index off the main thread. Initial loads tolerate damaged
+/// entries; reloads retain the last good snapshot for demonstrably partial data.
+pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, String> {
+    let loaded = load_library_file(&path, reload).map_err(|error| error.to_string())?;
+    Ok(candidate(path, loaded))
 }
 
-/// Read, parse and index a BibTeX/BibLaTeX file, read-only. This is the slow
-/// part of opening a library, so it never runs on the main thread.
-pub(crate) fn load_library(path: PathBuf) -> Result<Library, String> {
-    let text = read_library_file(&path)?;
-    let source = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
-    let loaded = bibtex::load_str(&source.to_string_lossy(), &text);
-    Ok(Library {
+fn candidate(path: PathBuf, loaded: ibis_core::model::LoadResult) -> Library {
+    Library {
         path: Some(path),
         index: OwnedIndex::new(loaded.references),
         warnings: loaded.warnings,
         error: None,
         note: None,
-    })
+    }
+}
+
+fn publish(app: &AppHandle, status: LibraryStatus) {
+    for message in status.error.iter().chain(&status.note) {
+        eprintln!("ibis: {message}");
+    }
+    if let Some(item) = app.try_state::<LibraryMenuItem>() {
+        let _ = item.0.set_text(library_line(&status));
+    }
+    let _ = app.emit("library:changed", status);
+}
+
+fn watch_current(app: &AppHandle, request: u64) {
+    let path = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .ok()
+        .and_then(|library| library.path.clone());
+    let Some(path) = path else {
+        return;
+    };
+    let handle = app.clone();
+    let selected = path.clone();
+    let watch = SourceWatch::new(&path, move |loaded| {
+        let loaded = loaded
+            .map(|loaded| candidate(selected.clone(), loaded))
+            .map_err(|e| e.to_string());
+        if let Some(status) = install(&handle.state(), &handle.state(), request, loaded) {
+            publish(&handle, status);
+        }
+    });
+    let state = app.state::<LibraryWatch>();
+    if let Ok(mut current) = state.0.lock() {
+        if app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request {
+            return;
+        }
+        match watch {
+            Ok(watch) => *current = Some(watch),
+            Err(error) => {
+                if let Some(status) = install(&app.state(), &app.state(), request, Err(error.to_string())) {
+                    publish(app, status);
+                }
+            }
+        }
+    }
 }
 
 /// Start opening a library in the background. The request is numbered here,
@@ -148,10 +171,14 @@ pub(crate) fn load_library(path: PathBuf) -> Result<Library, String> {
 /// With `remember`, a library that opens becomes the one opened at start.
 pub(crate) fn start_open(app: &AppHandle, path: PathBuf, remember: bool) {
     let request = app.state::<LoadRequests>().0.fetch_add(1, Ordering::SeqCst) + 1;
+    let reload = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .is_ok_and(|library| library.path.as_ref() == Some(&path));
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let chosen = path.clone();
-        let loaded = tauri::async_runtime::spawn_blocking(move || load_library(path))
+        let loaded = tauri::async_runtime::spawn_blocking(move || load_library(path, reload))
             .await
             .unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
         let current = install(&app.state(), &app.state(), request, loaded);
@@ -168,13 +195,9 @@ pub(crate) fn start_open(app: &AppHandle, path: PathBuf, remember: bool) {
                     show_picker(&app);
                 }
             }
-            for message in status.error.iter().chain(&status.note) {
-                eprintln!("ibis: {message}");
-            }
-            if let Some(item) = app.try_state::<LibraryMenuItem>() {
-                let _ = item.0.set_text(library_line(&status));
-            }
-            let _ = app.emit("library:changed", status);
+            publish(&app, status);
+            // Reattach even after a failed choice so the retained source keeps updating.
+            watch_current(&app, request);
         }
     });
 }
@@ -308,12 +331,12 @@ mod tests {
 
     #[test]
     fn only_regular_files_are_read() {
-        assert!(read_library_file(std::path::Path::new(".")).is_err());
+        assert!(ibis_core::source::read_library_file(std::path::Path::new(".")).is_err());
         #[cfg(unix)]
-        assert!(read_library_file(std::path::Path::new("/dev/zero")).is_err());
+        assert!(ibis_core::source::read_library_file(std::path::Path::new("/dev/zero")).is_err());
         let file = std::env::temp_dir().join(format!("ibis-read-{}.bib", std::process::id()));
         std::fs::write(&file, "@misc{k}").unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(read_library_file(&file).as_deref(), Ok("@misc{k}"));
+        assert_eq!(ibis_core::source::read_library_file(&file).as_deref(), Ok("@misc{k}"));
     }
 
     #[test]
@@ -321,11 +344,35 @@ mod tests {
         let file = std::env::temp_dir().join(format!("ibis-load-{}.bib", std::process::id()));
         std::fs::write(&file, "@article{smith2020, title={Sleep and memory}}\n@article{bad,\n")
             .unwrap_or_else(|e| panic!("{e}"));
-        let library = load_library(file).unwrap_or_else(|e| panic!("{e}"));
+        let library = load_library(file, false).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(library.index.references().len(), 1);
         assert_eq!(library.warnings.len(), 1);
         assert_eq!(library.index.search("sleep", 10).len(), 1);
-        assert!(load_library(std::env::temp_dir().join("ibis-missing-library.bib")).is_err());
+        assert!(load_library(std::env::temp_dir().join("ibis-missing-library.bib"), false).is_err());
+    }
+
+    #[test]
+    fn failed_reloads_preserve_the_index_but_valid_empty_reloads_replace_it() {
+        let file = std::env::temp_dir().join(format!("ibis-reload-{}.bib", std::process::id()));
+        std::fs::write(&file, "@misc{good, title={Retained}}").unwrap_or_else(|e| panic!("{e}"));
+        let initial = load_library(file.clone(), false).unwrap_or_else(|e| panic!("{e}"));
+        let library = Mutex::new(initial);
+        let requests = LoadRequests::default();
+        for contents in ["@misc{partial,", "@string{incomplete = {Value}"] {
+            std::fs::write(&file, contents).unwrap_or_else(|e| panic!("{e}"));
+            let status = install(&library, &requests, 0, load_library(file.clone(), true));
+            assert_eq!(status.as_ref().map(|s| s.references), Some(1));
+            assert!(status.and_then(|s| s.error).is_some());
+        }
+        std::fs::remove_file(&file).unwrap_or_else(|e| panic!("{e}"));
+        let unavailable = install(&library, &requests, 0, load_library(file.clone(), true));
+        assert_eq!(unavailable.as_ref().map(|s| s.references), Some(1));
+        assert!(unavailable.and_then(|s| s.error).is_some());
+        std::fs::write(&file, "").unwrap_or_else(|e| panic!("{e}"));
+        let empty = install(&library, &requests, 0, load_library(file.clone(), true));
+        assert_eq!(empty.as_ref().map(|s| s.references), Some(0));
+        assert!(empty.and_then(|s| s.error).is_none());
+        let _ = std::fs::remove_file(file);
     }
 
     #[test]
