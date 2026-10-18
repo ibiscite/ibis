@@ -34,7 +34,7 @@ Each record has an identity (source + native key), normalized fields that map to
 
 ## Search
 
-Keyword search is instant, case- and accent-insensitive, works in every script and reports which fields matched. Exact citation-key and title matches rank first. Meaning-based multilingual search is added in 0.4 and is combined with, never substituted for, keyword results. See ADR 0010.
+Keyword search is instant, case- and accent-insensitive, works in every script and reports which fields matched. Exact citation-key and title matches rank first. Meaning-based multilingual search comes after 1.0 and will be combined with, never substituted for, keyword results. See ADR 0010.
 
 ## Formatting
 

@@ -11,7 +11,7 @@ Ibis is free, open source and private by design: everything works offline, nothi
 - Works with **Zotero** (open *or* closed), **BibTeX/BibLaTeX**, **RIS** and **CSL-JSON**, with more managers to follow.
 - Every **official citation style** (10,000+, including IEEE and APA), kept current, plus citation keys for **LaTeX**, **Pandoc/Markdown** and **Typst**.
 - Page numbers per reference, several references at once, and a preview before inserting.
-- Search by words or by meaning, across languages.
+- Fast search by words, in any language and script.
 - Inserts into Word, Google Docs, Overleaf, Obsidian, Notion, email, chat and anything else, with clear fallbacks.
 - Gentle library health checks: missing data, odd names, duplicate keys.
 - Windows, macOS and Linux. Keyboard, mouse and screen-reader friendly.
