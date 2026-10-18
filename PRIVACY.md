@@ -6,7 +6,8 @@ Ibis is local-first. This page lists every way data moves. If a change adds a ne
 
 - **Reads:** the files you pass to the `ibis` command, and the library file you choose in the desktop app (through the system file dialog). Read-only.
 - **Writes:** the `ibis` command writes only to your terminal. The desktop app writes the citation you copy to the clipboard, and its own `settings.json` (shortcut, chosen library path, last copy format, with a `.bak` backup) in your user configuration folder. Nothing else.
-- **Network:** none. The desktop app's web interface has no file system, clipboard or shell permissions, and its content security policy allows connections only to the app's own commands.
+- **Network while Ibis is running:** none. The desktop app's web interface has no file system, clipboard or shell permissions, and its content security policy allows connections only to the app's own commands.
+- **Windows installation:** if Microsoft WebView2 Runtime is missing, the installer downloads Microsoft's WebView2 bootstrapper and uses it to install the runtime. This one-time prerequisite setup requires an internet connection. The Ibis app works offline after setup. See [Tauri's WebView2 installation options](https://v2.tauri.app/distribute/windows-installer/#webview2-installation-options).
 - **Telemetry:** none. There is no analytics, crash reporting or usage tracking, and there never will be by default.
 
 ## Planned flows (each opt-in, off by default)

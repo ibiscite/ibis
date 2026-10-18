@@ -177,14 +177,22 @@ jobs:
           - Checksums: compare the output of `shasum -a 256 <file>` (macOS, Linux) or `Get-FileHash <file>` (Windows) with the `SHA256SUMS-*.txt` files below.
           - Provenance: `gh attestation verify <file> --repo ibiscite/ibis` confirms the file was built by this repository's workflow.
           EOF
+          cat > windows-setup.md <<'EOF'
+          **Windows installation:** if Microsoft WebView2 Runtime is missing, the installer downloads Microsoft's WebView2 bootstrapper and uses it to install the runtime. This one-time prerequisite setup requires an internet connection. The Ibis app works offline after setup.
+
+          EOF
           if gh release view "$TAG" --repo "$REPO" --json body --jq .body > existing-notes.md; then
             gh release upload "$TAG" dist/* --repo "$REPO" --clobber
-            if grep -Fq '**Preview build. Not signed.**' existing-notes.md; then
-              gh release edit "$TAG" --repo "$REPO" --prerelease
-            else
+            cp existing-notes.md combined-notes.md
+            if ! grep -Fq '**Preview build. Not signed.**' existing-notes.md; then
               cat notes.md existing-notes.md > combined-notes.md
-              gh release edit "$TAG" --repo "$REPO" --prerelease --notes-file combined-notes.md
             fi
+            if ! grep -Fq '**Windows installation:**' combined-notes.md; then
+              cat windows-setup.md combined-notes.md > updated-notes.md
+              mv updated-notes.md combined-notes.md
+            fi
+            gh release edit "$TAG" --repo "$REPO" --prerelease --notes-file combined-notes.md
           else
-            gh release create "$TAG" dist/* --repo "$REPO" --prerelease --title "Ibis $TAG (preview)" --notes-file notes.md --verify-tag
+            cat windows-setup.md notes.md > combined-notes.md
+            gh release create "$TAG" dist/* --repo "$REPO" --prerelease --title "Ibis $TAG (preview)" --notes-file combined-notes.md --verify-tag
           fi
