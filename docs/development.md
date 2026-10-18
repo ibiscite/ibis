@@ -94,7 +94,42 @@ CI runs every check on Windows too. Install, in this order:
 3. WebView2. It is part of Windows 11; on Windows 10 install the Evergreen runtime. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
 4. rustup, accepting the default MSVC host (`x86_64-pc-windows-msvc`, or `aarch64-pc-windows-msvc` on Arm).
 5. Node.js, pnpm, cargo-deny and, optionally, Pandoc and cargo-insta, as listed above. Prefer `npm install --global pnpm@11.25.0`; `corepack enable pnpm` may be refused for lack of permissions.
-6. actionlint: download `actionlint_1.7.12_windows_amd64.zip` (or `_arm64`) from the [1.7.12 release](https://github.com/rhysd/actionlint/releases/tag/v1.7.12) and put `actionlint.exe` in a folder on `PATH`.
+6. actionlint 1.7.12: download and verify the official release, then install it
+   in a per-user executable folder. Run this in PowerShell; use `arm64` instead
+   of `amd64` on Arm Windows. No administrator terminal is needed.
+
+   ```powershell
+   $ErrorActionPreference = 'Stop'
+   $arch = 'amd64'
+   $asset = "actionlint_1.7.12_windows_$arch.zip"
+   $release = 'https://github.com/rhysd/actionlint/releases/download/v1.7.12'
+   $downloadDir = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+   New-Item -ItemType Directory $downloadDir | Out-Null
+   $zip = Join-Path $downloadDir $asset
+   $manifest = Join-Path $downloadDir 'actionlint_1.7.12_checksums.txt'
+   Invoke-WebRequest "$release/$asset" -OutFile $zip
+   Invoke-WebRequest "$release/actionlint_1.7.12_checksums.txt" -OutFile $manifest
+   $line = Get-Content $manifest | Where-Object { ($_ -split '\s+')[-1] -eq $asset }
+   if (!$line) { throw 'The official checksum manifest does not list this ZIP.' }
+   $expected = ($line -split '\s+')[0]
+   if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected) {
+     throw 'actionlint checksum mismatch; do not extract or run this ZIP.'
+   }
+   $toolsDir = Join-Path $env:LOCALAPPDATA 'Programs\IbisTools'
+   New-Item -ItemType Directory -Force $toolsDir | Out-Null
+   Expand-Archive -LiteralPath $zip -DestinationPath $toolsDir -Force
+   [string]$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+   if (($userPath -split ';') -notcontains $toolsDir) {
+     $newPath = ($userPath.TrimEnd(';') + ';' + $toolsDir).TrimStart(';')
+     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+   }
+   $env:Path = "$toolsDir;$env:Path"
+   actionlint -version
+   ```
+
+   The checksum comes from the [official release manifest](https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt).
+   The example preserves existing user PATH entries and updates this terminal;
+   new terminals pick up the saved user PATH.
 
 Open a new terminal so the `PATH` changes apply, then, in `C:\src\ibis`:
 

@@ -29,12 +29,23 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 ## Running tests
 
 ```sh
-node scripts/check.mjs                         # CI's checks, without builds and Pandoc fidelity
+node scripts/check.mjs                         # formatting, lints, tests and dependency policy
 cargo test -p ibis-core                        # fast core tests
 cargo test -p ibis-desktop                     # desktop app tests (not part of plain cargo test)
 IBIS_METAMORPHIC_CASES=2048 cargo test -p ibis-core --test metamorphic --locked
 IBIS_REQUIRE_PANDOC=1 cargo test -p ibis --test fidelity   # differential tests (needs Pandoc)
 cargo insta review                             # review changed snapshots
+```
+
+The full check runs the default workspace's `cargo test --locked`, including the
+CLI's Pandoc fidelity tests when `pandoc --version` succeeds. Without Pandoc those
+comparisons skip; set `IBIS_REQUIRE_PANDOC=1` to require them. Missing optional
+Pandoc does not cause the check script's incomplete (exit 2) result. To enforce
+fidelity in PowerShell:
+
+```powershell
+$env:IBIS_REQUIRE_PANDOC = '1'
+node scripts/check.mjs
 ```
 
 The metamorphic suite generates small synthetic libraries with multilingual
