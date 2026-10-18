@@ -139,3 +139,29 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod offline_tests {
+    /// WebView2 on Windows fetched updates and other background data over
+    /// HTTPS while Ibis ran, although PRIVACY.md promises no network use
+    /// (#201). These arguments replace wry's defaults, so they must keep them.
+    #[test]
+    fn the_windows_webview_keeps_wry_defaults_and_has_no_route_to_the_network() {
+        let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap_or_default();
+        let args = config["app"]["windows"][0]["additionalBrowserArgs"]
+            .as_str()
+            .unwrap_or_default();
+        for arg in [
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--proxy-server=http://127.0.0.1:9",
+        ] {
+            assert!(args.split(' ').any(|a| a == arg), "missing {arg}");
+        }
+        assert!(
+            !args.contains("proxy-bypass-list"),
+            "the app's own *.localhost pages must keep bypassing the proxy"
+        );
+    }
+}

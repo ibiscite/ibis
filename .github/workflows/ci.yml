@@ -188,6 +188,7 @@ jobs:
         env:
           IBIS_LIBRARY: ${{ github.workspace }}/fixtures/bibtex/real-world.bib
         run: |
+          ./scripts/check-offline.tests.ps1
           New-Item -ItemType Directory -Force screenshots | Out-Null
           $app = Start-Process target/debug/ibis-desktop.exe -NoNewWindow -PassThru -RedirectStandardOutput screenshots/startup-Windows.log -RedirectStandardError screenshots/stderr-Windows.log
           try {
@@ -203,6 +204,8 @@ jobs:
                 $bitmap.Save("$PWD/screenshots/picker-Windows.png")
               } finally { $graphics.Dispose(); $bitmap.Dispose() }
             } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
+            # Background WebView2 traffic starts after a delay, so watch for a minute (#201).
+            ./scripts/check-offline.ps1 -AppId $app.Id -Seconds 60
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
 
       - name: Keep screenshots and startup logs
