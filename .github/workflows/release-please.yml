@@ -1,9 +1,9 @@
 name: Release Please
 
 # Keeps a release pull request up to date from Conventional Commits on main.
-# Merging that pull request creates the version tag, GitHub release and
-# changelog entry, then calls the shared package workflow directly: tags made
-# with GITHUB_TOKEN do not start another push workflow.
+# Merging that pull request creates a draft release, tag and changelog, then
+# dispatches packaging at the tag. GITHUB_TOKEN cannot trigger tag-push workflows,
+# but it can dispatch a workflow explicitly. Packaging verifies before publishing.
 #
 # Inactive until the repository variable RELEASE_PLEASE is set to "enabled"
 # (see RELEASING.md), so the job is skipped rather than failing before
@@ -27,7 +27,6 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      sha: ${{ steps.release.outputs.sha }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -36,13 +35,17 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   packages:
+    name: Dispatch tag-pinned preview build
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
-    uses: ./.github/workflows/preview.yml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
-    with:
-      release-tag: ${{ needs.release-please.outputs.tag_name }}
-      release-sha: ${{ needs.release-please.outputs.sha }}
+      actions: write
+    steps:
+      - name: Build and verify at the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: gh workflow run preview.yml --repo "$REPO" --ref "$TAG" --field publish=true
