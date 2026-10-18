@@ -25,6 +25,15 @@ Versioning, commit conventions and milestone releases are described in `docs/dev
 
 Release Please then keeps a release pull request open. Pull requests opened by GitHub Actions do not trigger other workflows, so the required checks do not report on them; the release pull request only changes the version and changelog, and a repository administrator merges it using the ruleset bypass. Replacing this with a GitHub App token, so checks run on release pull requests too, is planned before 1.0.
 
+### Preview builds
+
+`.github/workflows/preview.yml` builds Windows (MSI and setup executable), macOS (Apple silicon and Intel disk images) and Linux (AppImage, .deb, .rpm) packages in CI, with SHA-256 checksums and build-provenance attestations.
+
+- **Dry run:** Actions → Preview builds → Run workflow. The packages are kept as workflow artifacts for 14 days; nothing is published.
+- **Pre-release:** when the maintainer pushes a tag `v*`, the same packages are published as a GitHub pre-release whose notes say the builds are unsigned and how to verify them.
+
+Before publishing, install a dry-run build on each operating system without a network connection and check: the shortcut (and the message when another app already uses it), hiding and reopening (including the Dock on macOS), choosing a library, copying and pasting a citation into an ordinary editor, Quit, and relaunching with the same library.
+
 ### Planned
 
 - Versions follow semantic versioning; `0.x` releases may change behaviour.
