@@ -15,6 +15,7 @@ use serde_json::{Map, Value, json};
 
 /// Stable identity of a record: which source it came from and its key there.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub struct RecordId {
     /// Source identifier, e.g. a canonical file path or `zotero:group:123`.
     pub source: String,

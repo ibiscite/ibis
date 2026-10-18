@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
 /// Whether the global shortcut is working, shown in the interface.
-#[derive(Default, Clone, Serialize)]
+#[derive(Default, Clone, Serialize, specta::Type)]
 pub(crate) struct ShortcutStatus {
     pub(crate) shortcut: String,
     pub(crate) registered: bool,
@@ -74,6 +74,7 @@ pub(crate) fn toggle_picker(app: &AppHandle) {
 
 /// Hide the picker (Escape in the interface).
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn hide_picker(app: AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
@@ -83,12 +84,14 @@ pub(crate) fn hide_picker(app: AppHandle) {
 /// End the app. Closing the window only hides it, so this is the way out on
 /// Windows and Linux, which have no application menu with Quit.
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn quit(app: AppHandle) {
     app.exit(0);
 }
 
 /// Current state of the global shortcut.
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn shortcut_status(status: State<'_, Mutex<ShortcutStatus>>) -> ShortcutStatus {
     status.lock().map(|s| s.clone()).unwrap_or_default()
 }

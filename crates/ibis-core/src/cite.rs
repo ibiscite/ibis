@@ -70,6 +70,7 @@ pub struct CiteItem {
 
 /// Key-based output syntax.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum KeyFormat {
     /// Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`.

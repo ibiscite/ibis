@@ -1,69 +1,24 @@
-// Typed wrappers around the commands exposed by the Rust side
-// (`src-tauri/src/main.rs`). The UI never calls `invoke` directly.
-import { invoke } from "@tauri-apps/api/core";
+// UI conveniences around the generated Rust command contract.
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { commands, type KeyFormat, type LibraryStatus } from "./bindings";
 
-export interface LibraryStatus {
-  /** File name of the library, if one is open. */
-  name: string | null;
-  references: number;
-  warnings: number;
-  /** Why the last attempt to open a library failed, if it did. */
-  error: string | null;
-  /** Something to tell the user that is not a failure to open. */
-  note: string | null;
-}
+export type { Copied, LibraryStatus, RecordId, SearchResult, ShortcutStatus } from "./bindings";
+export type CopyFormat = KeyFormat;
 
-/** Identity of a record: the source it came from and its key there. */
-export interface RecordId {
-  source: string;
-  native_key: string;
-}
+export const {
+  chooseLibrary,
+  reloadLibrary,
+  libraryStatus,
+  hidePicker,
+  quit,
+  shortcutStatus,
+  copyCitation,
+  copyFormat,
+} = commands;
 
-export interface SearchResult {
-  id: RecordId;
-  key: string;
-  title: string;
-  authors: string;
-  year: number | null;
-  matched: string[];
-}
-
-/** Show the system file dialog; the outcome arrives through `onLibraryChanged`. */
-export function chooseLibrary(): Promise<void> {
-  return invoke("choose_library");
-}
-
-/** Open the current library again; the outcome arrives through `onLibraryChanged`. */
-export function reloadLibrary(): Promise<void> {
-  return invoke("reload_library");
-}
-
-export function libraryStatus(): Promise<LibraryStatus> {
-  return invoke<LibraryStatus>("library_status");
-}
-
-export function search(query: string, limit = 20): Promise<SearchResult[]> {
-  return invoke<SearchResult[]>("search", { query, limit });
-}
-
-export interface ShortcutStatus {
-  shortcut: string;
-  registered: boolean;
-  error: string | null;
-}
-
-export function hidePicker(): Promise<void> {
-  return invoke("hide_picker");
-}
-
-/** End the app. Closing the window only hides the picker. */
-export function quit(): Promise<void> {
-  return invoke("quit");
-}
-
-export function shortcutStatus(): Promise<ShortcutStatus> {
-  return invoke<ShortcutStatus>("shortcut_status");
+// This UI default is not part of the Rust command signature.
+export function search(query: string, limit = 20) {
+  return commands.search(query, limit);
 }
 
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
@@ -76,30 +31,18 @@ export function onLibraryChanged(handler: (status: LibraryStatus) => void): Prom
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }
 
-/** Key-based citation syntaxes, as named by `ibis_core::cite::KeyFormat`. */
-export const COPY_FORMATS = [
-  { value: "pandoc", label: "Pandoc / Markdown  [@key]" },
-  { value: "autocite", label: "BibLaTeX  \\autocite{key}" },
-  { value: "parencite", label: "BibLaTeX  \\parencite{key}" },
-  { value: "textcite", label: "BibLaTeX  \\textcite{key}" },
-  { value: "cite", label: "LaTeX  \\cite{key}" },
-  { value: "typst", label: "Typst  @key" },
-  { value: "keys", label: "Keys only" },
-] as const;
+// Labels are UI copy; Record requires a label for every Rust format variant.
+const COPY_FORMAT_LABELS: Record<KeyFormat, string> = {
+  pandoc: "Pandoc / Markdown  [@key]",
+  autocite: "BibLaTeX  \\autocite{key}",
+  parencite: "BibLaTeX  \\parencite{key}",
+  textcite: "BibLaTeX  \\textcite{key}",
+  cite: "LaTeX  \\cite{key}",
+  typst: "Typst  @key",
+  keys: "Keys only",
+};
 
-export type CopyFormat = (typeof COPY_FORMATS)[number]["value"];
-
-export interface Copied {
-  text: string;
-  warnings: string[];
-}
-
-/** Copy the records, in this order, as one citation. */
-export function copyCitation(ids: RecordId[], format: CopyFormat): Promise<Copied> {
-  return invoke<Copied>("copy_citation", { ids, format });
-}
-
-/** The format used last, or the default. */
-export function copyFormat(): Promise<CopyFormat> {
-  return invoke<CopyFormat>("copy_format");
-}
+export const COPY_FORMATS = Object.entries(COPY_FORMAT_LABELS).map(([value, label]) => ({
+  value: value as KeyFormat,
+  label,
+}));

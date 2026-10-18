@@ -101,6 +101,7 @@ jobs:
         working-directory: .
         run: |
           cargo clippy -p ibis-desktop --all-targets --locked
+          cargo test -p ibis-desktop generated_contract_is_current --locked
           cargo build -p ibis-desktop --locked
 
   fidelity:

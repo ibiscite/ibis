@@ -14,6 +14,7 @@ const steps = [
   ["Test", "cargo", ["test", "--locked"]],
   ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
+  ["Desktop: generated contract", "cargo", ["test", "-p", "ibis-desktop", "generated_contract_is_current", "--locked"]],
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],
   ["Desktop: interface tests", "pnpm", ["test"], desktop],
   ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings"]],

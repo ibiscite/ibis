@@ -59,6 +59,29 @@ Choose a library from the picker or from the menu bar (tray) item. The choice an
 
 Every field is optional. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten. For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
 
+## Desktop command contract
+
+`apps/desktop/src/bindings.ts` is generated from Rust command signatures and
+Serde-aware type definitions. `src-tauri/src/bindings.rs` registers the commands
+once for both the runtime handler and Tauri Specta's exporter. After changing a
+command or a wire type, regenerate with:
+
+```sh
+cargo test -p ibis-desktop bindings::tests::export_contract -- --ignored
+```
+
+The normal check script and desktop CI compare a fresh temporary export with the
+checked-in file and fail if it is stale; checks never rewrite it. `api.ts` keeps
+event adapters, UI labels and the search limit default. Its format-label map is
+exhaustive over the generated Rust enum. The core's optional `type-export`
+feature enables schema derives only, without Tauri or other GUI dependencies.
+
+Tauri Specta is used because it derives wrappers as well as types, removing the
+duplicate command contract without a handwritten schema or generator. Its Tauri
+2 support is currently a prerelease, so Specta and Tauri Specta are pinned to
+matching exact versions as upstream requires. All added dependencies pass the
+existing licence and advisory policy.
+
 ## Commit messages
 
 [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `ci:`, `chore:`. Breaking changes use `!` (`feat!:`) or a `BREAKING CHANGE:` footer. Commits are signed off (`git commit -s`).

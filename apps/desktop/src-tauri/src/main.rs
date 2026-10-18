@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bindings;
 mod copy;
 mod library;
 mod picker;
@@ -45,17 +46,7 @@ fn main() {
         .manage(LibraryWatch::default())
         .manage(DialogOpen::default())
         .manage(Mutex::new(ShortcutStatus::default()))
-        .invoke_handler(tauri::generate_handler![
-            library::choose_library,
-            library::reload_library,
-            library::library_status,
-            library::search,
-            copy::copy_citation,
-            copy::copy_format,
-            picker::hide_picker,
-            picker::quit,
-            picker::shortcut_status
-        ])
+        .invoke_handler(bindings::commands().invoke_handler())
         .on_window_event(|window, event| match event {
             // Closing the picker hides it; the app keeps running for the shortcut.
             WindowEvent::CloseRequested { api, .. } => {

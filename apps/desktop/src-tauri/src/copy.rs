@@ -12,7 +12,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use crate::library::Library;
 use crate::preferences::SettingsFile;
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 pub(crate) struct Copied {
     text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
@@ -50,6 +50,7 @@ pub(crate) fn render_citation(
 /// Copy the selected records as a citation to the clipboard. The format is
 /// remembered for next time.
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn copy_citation(
     ids: Vec<RecordId>,
     format: KeyFormat,
@@ -78,6 +79,7 @@ pub(crate) fn copy_citation(
 
 /// The format the picker starts with: the last one used, or Pandoc.
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
     settings::load(&settings_file.path)
         .settings

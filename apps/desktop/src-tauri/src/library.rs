@@ -38,7 +38,7 @@ pub(crate) struct LoadRequests(pub(crate) AtomicU64);
 pub(crate) struct LibraryWatch(pub(crate) Mutex<Option<SourceWatch>>);
 
 /// Sent to the interface with the `library:changed` event.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type)]
 pub(crate) struct LibraryStatus {
     /// File name only; the full path is never shown.
     pub(crate) name: Option<String>,
@@ -49,7 +49,7 @@ pub(crate) struct LibraryStatus {
     pub(crate) note: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 pub(crate) struct SearchResult {
     /// Identity of the record; selection and copying use this, not the key.
     id: RecordId,
@@ -283,18 +283,21 @@ pub(crate) fn install(
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn choose_library(app: AppHandle) {
     choose_library_file(&app);
 }
 
 /// Open the current library again; the result arrives as `library:changed`.
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn reload_library(app: AppHandle) {
     reload_library_file(&app);
 }
 
 /// The library as it is now, for the interface when it starts.
 #[tauri::command]
+#[specta::specta]
 pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
     current_status(&app)
 }
@@ -302,6 +305,7 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 /// Search the open library. An empty query returns no results. Async so it
 /// runs off the main thread.
 #[tauri::command]
+#[specta::specta]
 pub(crate) async fn search(
     query: String,
     limit: usize,
