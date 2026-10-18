@@ -21,6 +21,9 @@ use crate::tray::{LibraryMenuItem, library_line};
 #[derive(Default)]
 pub(crate) struct Library {
     pub(crate) path: Option<PathBuf>,
+    /// The requested source, including before it has produced an index.
+    pub(crate) requested: Option<PathBuf>,
+    pub(crate) opening: bool,
     pub(crate) index: OwnedIndex,
     pub(crate) warnings: Vec<LoadWarning>,
     /// Exact initial load observation, reused when attaching the watcher.
@@ -43,13 +46,28 @@ pub(crate) struct LibraryWatch(pub(crate) Mutex<Option<SourceWatch>>);
 /// Sent to the interface with the `library:changed` event.
 #[derive(Clone, Serialize, specta::Type)]
 pub(crate) struct LibraryStatus {
-    /// File name only; the full path is never shown.
+    pub(crate) state: LibraryState,
+    /// A successfully opened snapshot, including a valid empty library.
+    pub(crate) has_snapshot: bool,
+    /// Requested file name only, including during opening and after failure.
     pub(crate) name: Option<String>,
+    /// File name of the searchable snapshot; may differ from the attempted file.
+    pub(crate) snapshot_name: Option<String>,
     pub(crate) references: usize,
     pub(crate) warnings: usize,
     pub(crate) error: Option<String>,
     /// Something to tell the user that is not a failure to open.
     pub(crate) note: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum LibraryState {
+    None,
+    Loading,
+    Loaded,
+    Reloading,
+    Error,
 }
 
 #[derive(Serialize, specta::Type)]
@@ -92,7 +110,27 @@ impl SearchResult {
 
 pub(crate) fn status(library: &Library) -> LibraryStatus {
     LibraryStatus {
+        state: if library.opening {
+            if library.path.is_some() && library.path == library.requested {
+                LibraryState::Reloading
+            } else {
+                LibraryState::Loading
+            }
+        } else if library.error.is_some() {
+            LibraryState::Error
+        } else if library.path.is_some() {
+            LibraryState::Loaded
+        } else {
+            LibraryState::None
+        },
+        has_snapshot: library.path.is_some(),
         name: library
+            .requested
+            .as_ref()
+            .or(library.path.as_ref())
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned()),
+        snapshot_name: library
             .path
             .as_ref()
             .and_then(|p| p.file_name())
@@ -121,6 +159,7 @@ fn candidate(path: PathBuf, loaded: ibis_core::model::LoadResult) -> Library {
         snapshot: None,
         error: None,
         note: None,
+        ..Library::default()
     }
 }
 
@@ -128,17 +167,53 @@ fn publish(app: &AppHandle, status: LibraryStatus) {
     for message in status.error.iter().chain(&status.note) {
         application_message(message);
     }
-    if let Some(item) = app.try_state::<LibraryMenuItem>() {
-        report(item.0.set_text(library_line(&status)), NativeIssue::TrayLibrary);
-    }
     report(app.emit("library:changed", status), NativeIssue::LibraryEvent);
 }
 
-fn dialog_path_error(current: LibraryStatus) -> LibraryStatus {
-    LibraryStatus {
-        error: Some("the chosen file is not on this computer".to_string()),
-        ..current
+fn refresh_tray(app: &AppHandle) {
+    let handle = app.clone();
+    // Menu setters wait for the main thread. Schedule there after releasing the
+    // library lock, then read fresh state so delayed menu work cannot go stale.
+    report(
+        app.run_on_main_thread(move || {
+            let current = current_status(&handle);
+            if let Some(item) = handle.try_state::<LibraryMenuItem>() {
+                report(item.0.set_text(library_line(&current)), NativeIssue::TrayLibrary);
+            }
+        }),
+        NativeIssue::TrayLibrary,
+    );
+}
+
+/// Derive and emit under the state lock: an older completion cannot publish
+/// an out-of-date status after a newer request has started.
+fn publish_current(app: &AppHandle) {
+    publish_current_with(&app.state(), |status| publish(app, status), || refresh_tray(app));
+}
+
+fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(LibraryStatus), refresh: impl FnOnce()) {
+    if let Ok(library) = library.lock() {
+        emit(status(&library));
     }
+    refresh();
+}
+
+fn dialog_path_error(library: &mut Library) {
+    library.opening = false;
+    library.error = Some("the chosen file is not on this computer".to_string());
+}
+
+fn take_watch_source(
+    library: &mut Library,
+    requests: &LoadRequests,
+    request: u64,
+) -> Option<(PathBuf, Option<SourceSnapshot>)> {
+    // Check while holding the library lock: an older open must not consume
+    // the source observation belonging to a newly installed library.
+    if requests.0.load(Ordering::SeqCst) != request {
+        return None;
+    }
+    Some((library.path.clone()?, library.snapshot.take()))
 }
 
 fn take_watch_source(
@@ -169,8 +244,8 @@ fn watch_current(app: &AppHandle, request: u64) {
         let loaded = loaded
             .map(|loaded| candidate(selected.clone(), loaded))
             .map_err(|e| e.to_string());
-        if let Some(status) = install(&handle.state(), &handle.state(), request, loaded) {
-            publish(&handle, status);
+        if install(&handle.state(), &handle.state(), request, loaded).is_some() {
+            publish_current(&handle);
         }
     };
     let watch = match snapshot {
@@ -185,8 +260,8 @@ fn watch_current(app: &AppHandle, request: u64) {
         match watch {
             Ok(watch) => *current = Some(watch),
             Err(error) => {
-                if let Some(status) = install(&app.state(), &app.state(), request, Err(error.to_string())) {
-                    publish(app, status);
+                if install(&app.state(), &app.state(), request, Err(error.to_string())).is_some() {
+                    publish_current(app);
                 }
             }
         }
@@ -200,32 +275,33 @@ fn watch_current(app: &AppHandle, request: u64) {
 ///
 /// With `remember`, a library that opens becomes the one opened at start.
 pub(crate) fn start_open(app: &AppHandle, path: PathBuf, remember: bool) {
-    let request = app.state::<LoadRequests>().0.fetch_add(1, Ordering::SeqCst) + 1;
-    let reload = app
-        .state::<Mutex<Library>>()
-        .lock()
-        .is_ok_and(|library| library.path.as_ref() == Some(&path));
+    let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), path.clone()) else {
+        return;
+    };
+    publish_current(app);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let chosen = path.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || load_library(path, reload))
             .await
             .unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
-        let current = install(&app.state(), &app.state(), request, loaded);
-        if let Some(mut status) = current {
-            if remember && status.error.is_none() {
-                let saved = app.state::<SettingsFile>().update(|s| s.library = Some(chosen));
-                if let Err(e) = saved {
-                    let note = format!("the library opened but could not be saved for next time: {e}");
-                    if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
-                        library.note = Some(note.clone());
+        if install(&app.state(), &app.state(), request, loaded).is_some() {
+            let mut show_note = false;
+            if remember && let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
+                // Saving and the note belong to this request, never a newer choice.
+                if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request && library.error.is_none() {
+                    let saved = app.state::<SettingsFile>().update(|s| s.library = Some(chosen));
+                    if let Err(e) = saved {
+                        library.note = Some(format!("the library opened but could not be saved for next time: {e}"));
+                        show_note = true;
                     }
-                    status.note = Some(note);
-                    // The choice may have come from the tray; make sure it is seen.
-                    show_picker(&app);
                 }
             }
-            publish(&app, status);
+            if show_note {
+                // The choice may have come from the tray; make sure it is seen.
+                show_picker(&app);
+            }
+            publish_current(&app);
             // Reattach even after a failed choice so the retained source keeps updating.
             watch_current(&app, request);
         }
@@ -257,7 +333,10 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
             None => {}
             Some(Ok(path)) => start_open(&handle, path, true),
             Some(Err(_)) => {
-                publish(&handle, dialog_path_error(current_status(&handle)));
+                if let Ok(mut library) = handle.state::<Mutex<Library>>().lock() {
+                    dialog_path_error(&mut library);
+                }
+                publish_current(&handle);
             }
         }
     });
@@ -268,7 +347,10 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         .lock()
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
+            state: LibraryState::Error,
+            has_snapshot: false,
             name: None,
+            snapshot_name: None,
             references: 0,
             warnings: 0,
             error: Some("library state is unavailable".to_string()),
@@ -299,9 +381,23 @@ pub(crate) fn install(
     }
     match loaded {
         Ok(new) => *library = new,
-        Err(error) => library.error = Some(error),
+        Err(error) => {
+            library.opening = false;
+            library.error = Some(error);
+        }
     }
     Some(status(&library))
+}
+
+/// Record the request before any background work can start or complete.
+fn begin_open(library: &Mutex<Library>, requests: &LoadRequests, path: PathBuf) -> Option<(u64, bool, LibraryStatus)> {
+    let mut library = library.lock().ok()?;
+    let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
+    let reload = library.path.as_ref() == Some(&path);
+    library.requested = Some(path);
+    library.opening = true;
+    library.error = None;
+    Some((request, reload, status(&library)))
 }
 
 /// Choose a library with the system file dialog. The interface never passes
@@ -358,17 +454,117 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_nonlocal_dialog_choice_keeps_the_open_library_and_reports_the_same_tray_error() {
-        let failed = dialog_path_error(LibraryStatus {
-            name: Some("synthetic.bib".to_string()),
-            references: 12,
-            warnings: 2,
-            error: None,
-            note: Some("the library choice was not saved".to_string()),
+    fn status_emission_is_serialized_but_native_menu_work_holds_no_library_lock() {
+        let library = Mutex::new(Library::default());
+        publish_current_with(
+            &library,
+            |_| assert!(library.try_lock().is_err()),
+            || assert!(library.try_lock().is_ok()),
+        );
+    }
+
+    #[test]
+    fn opening_is_visible_before_loading_and_stale_completions_cannot_replace_it() {
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        assert_eq!(
+            status(&library.lock().unwrap_or_else(|e| panic!("{e}"))).state,
+            LibraryState::None
+        );
+        let (first, reload, opening) = begin_open(&library, &requests, PathBuf::from("synthetic/first.bib"))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert!(!reload);
+        assert_eq!(opening.state, LibraryState::Loading);
+        assert_eq!(opening.name.as_deref(), Some("first.bib"));
+        assert!(!opening.has_snapshot);
+        let (second, _, _) = begin_open(&library, &requests, PathBuf::from("synthetic/second.bib"))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert!(install(&library, &requests, first, Ok(Library::default())).is_none());
+        let failed = install(&library, &requests, second, Err("unavailable".into()))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(failed.state, LibraryState::Error);
+        assert_eq!(failed.name.as_deref(), Some("second.bib"));
+        assert!(!failed.has_snapshot);
+    }
+
+    #[test]
+    fn reloading_keeps_even_an_empty_loaded_snapshot_available() {
+        let library = Mutex::new(Library {
+            path: Some(PathBuf::from("empty.bib")),
+            ..Library::default()
         });
+        let requests = LoadRequests::default();
+        let (request, reload, loading) = begin_open(&library, &requests, PathBuf::from("empty.bib"))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert!(reload);
+        assert_eq!(loading.state, LibraryState::Reloading);
+        assert!(loading.has_snapshot);
+        let failed = install(&library, &requests, request, Err("unavailable".into()))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(failed.state, LibraryState::Error);
+        assert!(failed.has_snapshot);
+        assert_eq!(failed.references, 0);
+        let loaded = install(
+            &library,
+            &requests,
+            request,
+            Ok(Library {
+                path: Some(PathBuf::from("empty.bib")),
+                ..Library::default()
+            }),
+        )
+        .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(loaded.state, LibraryState::Loaded);
+        assert!(loaded.error.is_none());
+    }
+
+    #[test]
+    fn a_failed_switch_distinguishes_the_attempted_file_from_retained_search_results() {
+        let library = Mutex::new(candidate(
+            PathBuf::from("synthetic-parent/active.bib"),
+            ibis_core::bibtex::load_str("synthetic", "@misc{active, title={Retained snapshot}}"),
+        ));
+        let requests = LoadRequests::default();
+        let (request, _, opening) = begin_open(&library, &requests, PathBuf::from("other-parent/attempted.bib"))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(opening.name.as_deref(), Some("attempted.bib"));
+        assert_eq!(opening.snapshot_name.as_deref(), Some("active.bib"));
+        let failed = install(&library, &requests, request, Err("unavailable".to_string()))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(failed.name.as_deref(), Some("attempted.bib"));
+        assert_eq!(failed.snapshot_name.as_deref(), Some("active.bib"));
+        assert_eq!(failed.references, 1);
+        assert_eq!(
+            library
+                .lock()
+                .unwrap_or_else(|e| panic!("{e}"))
+                .index
+                .search("retained", 10)
+                .len(),
+            1
+        );
+        assert!(
+            !failed
+                .snapshot_name
+                .unwrap_or_else(|| panic!("expected a retained snapshot name"))
+                .contains("synthetic-parent")
+        );
+    }
+
+    #[test]
+    fn a_nonlocal_dialog_choice_keeps_the_open_library_and_reports_the_same_tray_error() {
+        let mut library = candidate(
+            PathBuf::from("synthetic.bib"),
+            ibis_core::bibtex::load_str("synthetic", "@misc{k}\n@misc{bad,"),
+        );
+        library.note = Some("the library choice was not saved".to_string());
+        let before = status(&library);
+        dialog_path_error(&mut library);
+        let failed = status(&library);
+        assert_eq!(failed.state, LibraryState::Error);
         assert_eq!(failed.name.as_deref(), Some("synthetic.bib"));
-        assert_eq!(failed.references, 12);
-        assert_eq!(failed.warnings, 2);
+        assert_eq!(failed.references, before.references);
+        assert_eq!(failed.warnings, before.warnings);
         assert_eq!(failed.note.as_deref(), Some("the library choice was not saved"));
         assert_eq!(failed.error.as_deref(), Some("the chosen file is not on this computer"));
         assert!(

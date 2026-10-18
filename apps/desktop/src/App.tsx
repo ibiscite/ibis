@@ -116,7 +116,7 @@ export function App() {
     setAnnouncement("");
     // Typing before choosing a library is normal; preserve the query and
     // chooser. Actual library/status failures still report search errors.
-    if (library !== null && !library?.name && !library?.error) {
+    if (library === undefined || library?.state === "none" || library?.state === "loading") {
       setResults([]);
       setResultsQuery(query);
       setActive(0);
@@ -196,6 +196,11 @@ export function App() {
     if (outcome.warnings.length === 0) void perform("hide", hidePicker);
   };
 
+  const busy = library?.state === "loading" || library?.state === "reloading";
+  const loadingMessage = library?.state === "reloading"
+    ? `Reloading ${library.name ?? "library"}…`
+    : `Opening ${library?.name ?? "library"}…`;
+
   return (
     <main
       onKeyDown={(e) => {
@@ -256,6 +261,7 @@ export function App() {
         />
       </div>
       <div className="notices">
+        {busy && <p role="status">{loadingMessage}</p>}
         {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
           <p role="alert" key={operation}>{FAILURE_MESSAGES[operation]}</p>
         ))}
@@ -328,7 +334,7 @@ export function App() {
             </li>
           ))}
         </ul>
-        {results.length === 0 && !error && (
+        {results.length === 0 && !error && library !== undefined && !busy && (
           <div className="empty-state">
             {library?.name ? (
               <p>{query ? "No matching references" : "Type to find a reference"}</p>
@@ -345,11 +351,11 @@ export function App() {
       </div>
       <footer>
         <section aria-label="Library" className="library-bar">
-          <span className="library-name">
-            {library?.name
-              ? `${library.name}: ${library.references} references` +
+          <span className="library-name" role="status" aria-label="Library status" aria-live="polite" aria-atomic="true">
+            {library?.has_snapshot
+              ? `${library.snapshot_name}: ${library.references} references` +
                 (library.warnings > 0 ? `, ${library.warnings} could not be read fully` : "")
-              : library === null ? "Library status unavailable" : library === undefined ? "Checking library…" : "No library chosen"}
+              : library?.name ? library.name : library === null ? "Library status unavailable" : library === undefined ? "Checking library…" : "No library chosen"}
           </span>{" "}
           <button type="button" className="quiet-button" aria-label="Choose library…" title="Choose a library" onClick={() => void perform("choose", chooseLibrary)}>
             Choose…

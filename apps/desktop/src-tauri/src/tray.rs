@@ -4,14 +4,16 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
-use crate::library::{LibraryStatus, choose_library_file, current_status, reload_library_file};
+use crate::library::{LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file};
 use crate::picker::show_picker;
 
 /// One line describing the library, for the menu bar or tray menu.
 pub(crate) fn library_line(status: &LibraryStatus) -> String {
-    let line = match (&status.error, &status.name) {
-        (Some(error), _) => format!("Library could not be opened: {error}"),
-        (None, Some(name)) => {
+    let line = match (status.state, &status.error, &status.name) {
+        (LibraryState::Loading, _, Some(name)) => format!("Opening {name}…"),
+        (LibraryState::Reloading, _, Some(name)) => format!("Reloading {name}…"),
+        (_, Some(error), _) => format!("Library could not be opened: {error}"),
+        (_, None, Some(name)) => {
             let problems = match status.warnings {
                 0 => String::new(),
                 1 => ", 1 problem".to_string(),
@@ -19,7 +21,7 @@ pub(crate) fn library_line(status: &LibraryStatus) -> String {
             };
             format!("{name}: {} references{problems}", status.references)
         }
-        (None, None) => "No library chosen".to_string(),
+        (_, None, None) => "No library chosen".to_string(),
     };
     let line = match status.note {
         Some(_) => format!("{line} (not saved for next time)"),
@@ -81,13 +83,28 @@ mod tests {
     #[test]
     fn the_library_line_explains_failures_and_stays_short() {
         let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
+            state: LibraryState::Loaded,
+            has_snapshot: name.is_some(),
             name: name.map(String::from),
+            snapshot_name: name.map(String::from),
             references: 12,
             warnings,
             error: error.map(String::from),
             note: None,
         };
         assert_eq!(library_line(&status(None, 0, None)), "No library chosen");
+        for (state, expected) in [
+            (LibraryState::Loading, "Opening refs.bib…"),
+            (LibraryState::Reloading, "Reloading refs.bib…"),
+        ] {
+            assert_eq!(
+                library_line(&LibraryStatus {
+                    state,
+                    ..status(Some("refs.bib"), 0, None)
+                }),
+                expected
+            );
+        }
         assert_eq!(
             library_line(&status(Some("refs.bib"), 0, None)),
             "refs.bib: 12 references"
