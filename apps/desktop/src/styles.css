@@ -1,0 +1,22 @@
+/* Minimal styles until the picker design lands; system colours follow the
+   user's light, dark and high-contrast settings. */
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+
+[role="option"] {
+  cursor: default;
+  padding: 2px 4px;
+}
+
+/* The highlighted result: what Enter copies when nothing is selected. */
+[role="option"][data-active] {
+  outline: 2px solid CanvasText;
+  outline-offset: -2px;
+}
+
+[role="option"][aria-selected="true"] {
+  background: Highlight;
+  color: HighlightText;
+}

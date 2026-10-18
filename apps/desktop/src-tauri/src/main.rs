@@ -11,11 +11,13 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ibis_core::bibtex;
-use ibis_core::model::{LoadWarning, Reference};
+use ibis_core::cite::{self, CiteItem, KeyFormat};
+use ibis_core::model::{LoadWarning, RecordId, Reference};
 use ibis_core::search::OwnedIndex;
 use ibis_core::settings;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 /// The library currently open in the app, indexed once when it is opened.
@@ -44,6 +46,8 @@ struct LibraryStatus {
 
 #[derive(Serialize)]
 struct SearchResult {
+    /// Identity of the record; selection and copying use this, not the key.
+    id: RecordId,
     key: String,
     title: String,
     authors: String,
@@ -54,6 +58,7 @@ struct SearchResult {
 impl SearchResult {
     fn from(reference: &Reference, matched: Vec<String>) -> Self {
         SearchResult {
+            id: reference.id.clone(),
             key: reference
                 .citekey
                 .clone()
@@ -197,6 +202,78 @@ async fn search(query: String, limit: usize, library: State<'_, Mutex<Library>>)
         .collect())
 }
 
+/// Where the settings file is, for saving choices made in the picker.
+struct SettingsFile(PathBuf);
+
+#[derive(Serialize)]
+struct Copied {
+    text: String,
+    /// What the chosen syntax could not express, and other problems the user should see.
+    warnings: Vec<String>,
+}
+
+/// Render the selected records as one citation in `format`.
+fn render_citation(references: &[Reference], ids: &[RecordId], format: KeyFormat) -> Result<cite::Rendered, String> {
+    let items = ids
+        .iter()
+        .map(|id| {
+            let reference = references
+                .iter()
+                .find(|r| &r.id == id)
+                .ok_or_else(|| "a selected reference is no longer in the library".to_string())?;
+            let key = reference.citekey.clone().ok_or_else(|| {
+                format!(
+                    "\"{}\" has no citation key, so it cannot be cited in this format",
+                    reference.title_plain().unwrap_or_else(|| id.native_key.clone())
+                )
+            })?;
+            Ok(CiteItem {
+                key,
+                ..CiteItem::default()
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    cite::render(format, &items).map_err(|e| e.to_string())
+}
+
+/// Copy the selected records as a citation to the clipboard. The format is
+/// remembered for next time.
+#[tauri::command]
+fn copy_citation(
+    ids: Vec<RecordId>,
+    format: KeyFormat,
+    app: AppHandle,
+    library: State<'_, Mutex<Library>>,
+    settings_file: State<'_, SettingsFile>,
+) -> Result<Copied, String> {
+    let rendered = {
+        let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
+        render_citation(library.index.references(), &ids, format)?
+    };
+    app.clipboard()
+        .write_text(rendered.text.clone())
+        .map_err(|e| format!("the clipboard could not be written ({e})"))?;
+    let mut warnings = rendered.warnings;
+    // Read and saved each time, so edits made to the file meanwhile are kept
+    // and a failed save is reported on every copy.
+    if let Err(e) = settings::update(&settings_file.0, |s| s.copy_format = Some(format)) {
+        warnings.push(format!("the format choice could not be saved: {e}"));
+    }
+    Ok(Copied {
+        text: rendered.text,
+        warnings,
+    })
+}
+
+/// The format the picker starts with: the last one used, or Pandoc.
+#[tauri::command]
+fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
+    settings::load(&settings_file.0)
+        .settings
+        .copy_format
+        .unwrap_or(KeyFormat::Pandoc)
+}
+
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize)]
 struct ShortcutStatus {
@@ -287,6 +364,7 @@ fn main() {
     let app = tauri::Builder::default()
         // Must be registered first: a second launch brings the running picker forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_picker(app)))
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -303,6 +381,8 @@ fn main() {
             open_library,
             search,
             hide_picker,
+            copy_citation,
+            copy_format,
             quit,
             shortcut_status
         ])
@@ -323,6 +403,7 @@ fn main() {
             // ~/Library/Application Support/io.github.ibis-cite.ibis/settings.json
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
+            app.manage(SettingsFile(settings_path.clone()));
             if let Some(problem) = &loaded.problem {
                 eprintln!("ibis: {problem}");
             }
@@ -424,5 +505,21 @@ mod tests {
         assert_eq!(current, Some(PathBuf::from("newer.bib")));
         let failed = install(&library, &requests, 2, Err("unreadable".into()));
         assert_eq!(failed.and_then(|s| s.error).as_deref(), Some("unreadable"));
+    }
+
+    #[test]
+    fn citations_are_rendered_by_record_identity_not_by_key() {
+        let loaded = bibtex::load_str(
+            "a.bib",
+            "@article{same, title={From A}}\n@article{other, title={Other}}\n",
+        );
+        let ids: Vec<RecordId> = loaded.references.iter().rev().map(|r| r.id.clone()).collect();
+        let rendered = render_citation(&loaded.references, &ids, KeyFormat::Pandoc).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(rendered.text, "[@other; @same]");
+        let missing = RecordId {
+            source: "b.bib".into(),
+            native_key: "same".into(),
+        };
+        assert!(render_citation(&loaded.references, &[missing], KeyFormat::Pandoc).is_err());
     }
 }

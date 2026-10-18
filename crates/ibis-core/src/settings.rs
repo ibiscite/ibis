@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::cite::KeyFormat;
+
 /// Version of the settings format this build reads and writes.
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -25,6 +27,9 @@ pub struct Settings {
     /// BibTeX/BibLaTeX file to open at start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library: Option<PathBuf>,
+    /// Syntax the picker copies citations in; remembered from the last copy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_format: Option<KeyFormat>,
 }
 
 impl Default for Settings {
@@ -33,6 +38,7 @@ impl Default for Settings {
             schema_version: SCHEMA_VERSION,
             shortcut: None,
             library: None,
+            copy_format: None,
         }
     }
 }
@@ -123,6 +129,23 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
     Ok(())
 }
 
+/// Change settings on disk: read the file as it is now, apply `change` and
+/// save the result. Edits made to the file since it was loaded are kept. A file
+/// that cannot be read or is invalid is left untouched and the problem returned.
+pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Settings, SettingsError> {
+    let current = match fs::read_to_string(path) {
+        Ok(text) => parse(&text)?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Settings::default(),
+        Err(e) => return Err(SettingsError::Unreadable(e)),
+    };
+    let mut changed = current.clone();
+    change(&mut changed);
+    if changed != current {
+        save(path, &changed)?;
+    }
+    Ok(changed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +168,7 @@ mod tests {
         let path = dir("roundtrip").join("settings.json");
         let settings = Settings {
             shortcut: Some("Control+Command+R".into()),
+            copy_format: Some(KeyFormat::Typst),
             ..Settings::default()
         };
         save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
@@ -191,5 +215,23 @@ mod tests {
             Err(SettingsError::NewerVersion(99))
         ));
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), newer);
+    }
+
+    #[test]
+    fn updates_keep_edits_made_since_loading_and_never_replace_invalid_files() {
+        let path = dir("update").join("settings.json");
+        update(&path, |s| s.copy_format = Some(KeyFormat::Typst)).unwrap_or_else(|e| panic!("{e}"));
+        // The user edits the file while the app runs.
+        let edited = r#"{"schema_version": 1, "shortcut": "Alt+Space", "copy_format": "typst"}"#;
+        fs::write(&path, edited).unwrap_or_else(|e| panic!("{e}"));
+        let after = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(after.shortcut.as_deref(), Some("Alt+Space"));
+        assert_eq!(load(&path).settings, after);
+        fs::write(&path, "{ not json").unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(
+            update(&path, |s| s.copy_format = Some(KeyFormat::Pandoc)),
+            Err(SettingsError::Invalid(_))
+        ));
+        assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ not json");
     }
 }

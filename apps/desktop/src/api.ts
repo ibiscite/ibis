@@ -11,7 +11,14 @@ export interface LibraryStatus {
   error: string | null;
 }
 
+/** Identity of a record: the source it came from and its key there. */
+export interface RecordId {
+  source: string;
+  native_key: string;
+}
+
 export interface SearchResult {
+  id: RecordId;
   key: string;
   title: string;
   authors: string;
@@ -55,4 +62,32 @@ export function onPickerShown(handler: () => void): Promise<UnlistenFn> {
 /** Called when a library finishes opening, or fails to open. */
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
+}
+
+/** Key-based citation syntaxes, as named by `ibis_core::cite::KeyFormat`. */
+export const COPY_FORMATS = [
+  { value: "pandoc", label: "Pandoc / Markdown  [@key]" },
+  { value: "autocite", label: "BibLaTeX  \\autocite{key}" },
+  { value: "parencite", label: "BibLaTeX  \\parencite{key}" },
+  { value: "textcite", label: "BibLaTeX  \\textcite{key}" },
+  { value: "cite", label: "LaTeX  \\cite{key}" },
+  { value: "typst", label: "Typst  @key" },
+  { value: "keys", label: "Keys only" },
+] as const;
+
+export type CopyFormat = (typeof COPY_FORMATS)[number]["value"];
+
+export interface Copied {
+  text: string;
+  warnings: string[];
+}
+
+/** Copy the records, in this order, as one citation. */
+export function copyCitation(ids: RecordId[], format: CopyFormat): Promise<Copied> {
+  return invoke<Copied>("copy_citation", { ids, format });
+}
+
+/** The format used last, or the default. */
+export function copyFormat(): Promise<CopyFormat> {
+  return invoke<CopyFormat>("copy_format");
 }
