@@ -35,7 +35,7 @@ Without that authorization (for example, an outside contributor's agent), follow
 
 1. Take the next queue item; read its issue and the tracking issue.
 2. Branch `<type>/<issue>-<short-name>` from `main`, in your own clone or worktree (never share a checkout). Start with a failing test or fixture.
-3. Run fast checks while editing (`cargo test -p ibis-core`, `cargo test -p ibis-desktop`, `pnpm -C apps/desktop test`) and `node scripts/check.mjs` on the exact commit before pushing. Report each check as passed, failed or blocked, never "passed" for a step that did not run.
+3. Run fast checks while editing (`cargo test -p ibis-core`, `cargo test -p ibis-desktop`, `pnpm -C apps/desktop test`) and `node scripts/check.mjs` on the exact commit before asking for review or merging. Push unfinished work early as a draft pull request (no full check needed; drafts count toward the limit below), so nothing lives on one machine only, and mark it ready once the check passes. Report each check as passed, failed or blocked, never "passed" for a step that did not run.
 4. Review once, adversarially: hostile input, other scripts and locales, huge or empty data, concurrency, platforms, silent failure. P1 = crash, hang, data loss, security; P2 = wrong or silently changed output. Fix P1, P2 and regressions with a test; file P3s as issues.
 5. Open the pull request with "How it works" in plain words, for a maintainer who did not write the code. Get the independent review (step 4 is your own review, not that one). Then merge if allowed above, or add `needs:review` and take the next item.
 6. After merging, check `main` is green and add one plain line to the tracking issue: what users can now do, what is next.

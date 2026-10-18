@@ -16,7 +16,7 @@ This project favours small, verified, reversible steps.
 
 CI takes a few minutes per pull request. Most delay comes from waiting, so work is arranged to overlap:
 
-- **Verify the exact commit.** Before pushing, run the full check in a clean checkout of the commit, so uncommitted files cannot make it pass. Reusing one build directory keeps it fast:
+- **Verify the exact commit.** Before asking for review or merging, run the full check in a clean checkout of the commit (unfinished work may be pushed earlier as a draft), so uncommitted files cannot make it pass. Reusing one build directory keeps it fast:
 
   ```sh
   root=$(git rev-parse --show-toplevel); sha=$(git rev-parse HEAD)
