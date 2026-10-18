@@ -1,6 +1,6 @@
 # Agent and contributor guidelines
 
-These instructions apply to automated coding agents and human contributors alike. Product behaviour is described in `README.md`, `ROADMAP.md` and `docs/architecture.md`; the workflow is in `docs/development.md`; decisions with lasting effect are in `docs/adr/`. Where documents disagree, accepted ADRs take precedence.
+These instructions apply to automated coding agents and human contributors alike. Product behaviour is described in `README.md`, `ROADMAP.md` and `docs/architecture.md`; the workflow is in `docs/development.md` and the testing strategy in `docs/testing.md`; decisions with lasting effect are in `docs/adr/`. Where documents disagree, accepted ADRs take precedence.
 
 Maintainers may keep untracked notes in `.local/`. Read `.local/README.md` if it exists. Never commit, quote or summarize its contents in public text (code, docs, commit messages, issues or pull requests).
 
@@ -12,6 +12,10 @@ cargo test -p ibis-core         # fast core tests while editing
 cargo run -p ibis -- --help     # command line tool
 cargo insta review              # review changed snapshots (cargo install cargo-insta)
 ```
+
+## Picking work
+
+Work is tracked in GitHub issues grouped by milestone (see `ROADMAP.md`). Take the lowest-numbered issue labelled `status:ready` in the earliest open milestone, unless a maintainer has asked for something else. Issues labelled `status:needs-design` need a short written plan, reviewed before implementation; `status:blocked` issues wait on another issue or a maintainer decision. Each issue states its acceptance criteria and tests; a pull request closes exactly one issue (`Closes #N`). If requirements are unclear or a decision is hard to reverse, ask in the issue instead of guessing.
 
 ## Architecture rules
 

@@ -2,6 +2,7 @@
 // One command for contributors and CI-equivalent local checks:
 //   node scripts/check.mjs
 // Runs formatting, lints, tests and the dependency policy. Never edits files.
+// Exit codes: 0 all passed, 1 a check failed, 2 incomplete (a tool is missing).
 import { spawnSync } from "node:child_process";
 
 const steps = [
@@ -11,11 +12,15 @@ const steps = [
   ["Dependency policy", "cargo", ["deny", "check"]],
 ];
 
+const skipped = [];
 for (const [name, cmd, args] of steps) {
   console.log(`\n== ${name}: ${cmd} ${args.join(" ")}`);
   const result = spawnSync(cmd, args, { stdio: "inherit", shell: process.platform === "win32" });
-  if (result.error?.code === "ENOENT" && args[0] === "deny") {
-    console.log("cargo-deny is not installed; skipping (CI runs it). Install: cargo install --locked cargo-deny");
+  const missingTool =
+    result.error?.code === "ENOENT" || (args[0] === "deny" && result.status !== 0 && !hasCargoDeny());
+  if (missingTool) {
+    console.log(`${name} could not run: the tool is not installed.`);
+    skipped.push(name);
     continue;
   }
   if (result.status !== 0) {
@@ -23,4 +28,13 @@ for (const [name, cmd, args] of steps) {
     process.exit(result.status ?? 1);
   }
 }
+if (skipped.length > 0) {
+  console.error(`\n! INCOMPLETE: ${skipped.join(", ")} did not run. Install with: cargo install --locked cargo-deny`);
+  process.exit(2);
+}
 console.log("\n✓ All checks passed.");
+
+function hasCargoDeny() {
+  const probe = spawnSync("cargo", ["deny", "--version"], { stdio: "ignore", shell: process.platform === "win32" });
+  return probe.status === 0;
+}

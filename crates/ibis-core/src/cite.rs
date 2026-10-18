@@ -140,7 +140,15 @@ pub fn render(format: KeyFormat, items: &[CiteItem]) -> Result<Rendered, CiteErr
         KeyFormat::Textcite => biblatex("textcite", items, &mut warnings),
         KeyFormat::Cite => plain_cite(items, &mut warnings),
         KeyFormat::Typst => typst(items, &mut warnings),
-        KeyFormat::Keys => items.iter().map(|i| i.key.as_str()).collect::<Vec<_>>().join(", "),
+        KeyFormat::Keys => {
+            if items
+                .iter()
+                .any(|i| i.locator.is_some() || i.prefix.is_some() || i.suffix.is_some() || i.suppress_author)
+            {
+                warnings.push("bare keys cannot carry page numbers or notes; they were left out".to_string());
+            }
+            items.iter().map(|i| i.key.as_str()).collect::<Vec<_>>().join(", ")
+        }
     };
     Ok(Rendered { text, warnings })
 }
@@ -225,10 +233,16 @@ fn pandoc_key(key: &str) -> String {
     if simple { key.to_string() } else { format!("{{{key}}}") }
 }
 
+/// Escape characters that Pandoc Markdown would otherwise interpret inside a
+/// citation (brackets, separators, emphasis, math, raw HTML, sub/superscript,
+/// entities). Pandoc allows a backslash before any ASCII punctuation.
 fn pandoc_escape(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
-        if matches!(c, '[' | ']' | ';' | '@' | '\\' | '*' | '_' | '`') {
+        if matches!(
+            c,
+            '[' | ']' | ';' | '@' | '\\' | '*' | '_' | '`' | '$' | '<' | '>' | '^' | '~' | '&' | '#' | '|' | '{' | '}'
+        ) {
             out.push('\\');
         }
         out.push(c);

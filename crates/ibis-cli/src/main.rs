@@ -101,7 +101,7 @@ fn main() -> ExitCode {
     match run(Cli::parse()) {
         Ok(code) => code,
         Err(err) => {
-            eprintln!("ibis: {err:#}");
+            eprintln!("ibis: {}", terminal_safe(&format!("{err:#}")));
             ExitCode::from(1)
         }
     }
@@ -133,9 +133,9 @@ fn report_problems(loaded: &[Loaded]) {
     for file in loaded.iter().filter(|f| !f.result.warnings.is_empty()) {
         eprintln!(
             "warning: {} has {} problem(s); some entries or fields were not loaded. Run `ibis check {}` for details.",
-            file.display,
+            terminal_safe(&file.display),
             file.result.warnings.len(),
-            file.display
+            terminal_safe(&file.display)
         );
     }
 }
@@ -171,6 +171,22 @@ fn resolve<'a>(key: &str, references: &'a [Reference]) -> Result<&'a Reference> 
     })
 }
 
+/// Make library text safe to print on a terminal: control characters and
+/// invisible bidirectional overrides (which can hide or reorder text) are
+/// shown as visible escapes instead of being interpreted.
+fn terminal_safe(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        let bidi_control = matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}');
+        if c.is_control() || bidi_control {
+            out.push_str(&c.escape_unicode().to_string());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 fn print_json(value: &impl serde::Serialize) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(value)?);
     Ok(())
@@ -200,7 +216,14 @@ fn run(cli: Cli) -> Result<ExitCode> {
                     let authors = r
                         .authors
                         .iter()
-                        .map(|n| n.family.clone().unwrap_or_default())
+                        // Organizations and "et al." are literal names; others show the family name.
+                        .map(|n| {
+                            if n.literal.is_some() {
+                                n.display()
+                            } else {
+                                n.family.clone().unwrap_or_default()
+                            }
+                        })
                         .collect::<Vec<_>>()
                         .join(", ");
                     let year = r.year().map_or_else(|| "n.d.".to_string(), |y| y.to_string());
@@ -212,9 +235,9 @@ fn run(cli: Cli) -> Result<ExitCode> {
                         .join(", ");
                     println!(
                         "{:<24} {} ({year}) {}",
-                        r.citekey.as_deref().unwrap_or("-"),
-                        authors,
-                        r.title_plain().as_deref().unwrap_or("[no title]")
+                        terminal_safe(r.citekey.as_deref().unwrap_or("-")),
+                        terminal_safe(&authors),
+                        terminal_safe(r.title_plain().as_deref().unwrap_or("[no title]"))
                     );
                     println!("{:<24} matched: {why}", "");
                 }
@@ -228,11 +251,13 @@ fn run(cli: Cli) -> Result<ExitCode> {
             bib,
             json,
         } => {
+            let mut load_warnings = Vec::new();
             if !bib.is_empty() {
                 let loaded = load(&bib)?;
                 if !json {
                     report_problems(&loaded);
                 }
+                load_warnings = all_warnings(&loaded);
                 let references = all_references(&loaded);
                 for key in &keys {
                     resolve(key, &references)?;
@@ -259,11 +284,17 @@ fn run(cli: Cli) -> Result<ExitCode> {
             }
             let rendered = cite::render(format.into(), &items)?;
             if json {
-                print_json(&rendered)?;
+                print_json(&serde_json::json!({
+                    "text": rendered.text,
+                    "warnings": rendered.warnings,
+                    "load_warnings": load_warnings,
+                }))?;
             } else {
+                // The citation is the command's product and its keys come from the
+                // command line, so it is printed exactly; only messages are escaped.
                 println!("{}", rendered.text);
                 for warning in &rendered.warnings {
-                    eprintln!("note: {warning}");
+                    eprintln!("note: {}", terminal_safe(warning));
                 }
             }
             Ok(ExitCode::SUCCESS)
@@ -281,13 +312,13 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 for file in &loaded {
                     println!(
                         "{}: {} references loaded, {} problems",
-                        file.display,
+                        terminal_safe(&file.display),
                         file.result.references.len(),
                         file.result.warnings.len()
                     );
                     for w in &file.result.warnings {
                         let line = w.line.map_or_else(String::new, |l| format!("line {l}: "));
-                        println!("  {line}{}", w.message);
+                        println!("  {line}{}", terminal_safe(&w.message));
                     }
                 }
             }

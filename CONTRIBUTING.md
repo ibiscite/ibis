@@ -41,7 +41,7 @@ cd ibis
 node scripts/check.mjs
 ```
 
-`node scripts/check.mjs` runs exactly what CI runs: formatting, lints, tests and the dependency policy (`cargo install --locked cargo-deny` to run that part locally). It never edits files; run `cargo fmt` to format.
+`node scripts/check.mjs` runs exactly what CI runs: formatting, lints, tests and the dependency policy. It needs `cargo-deny` (`cargo install --locked cargo-deny`); without it the script reports the run as incomplete rather than passed. It never edits files; run `cargo fmt` to format.
 
 Snapshot tests live in `crates/*/tests/snapshots/`. When behaviour changes on purpose, run `cargo insta review` and review each change.
 
