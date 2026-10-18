@@ -1,5 +1,7 @@
 # 0004. Desktop shell: Tauri 2, engine and picker as separate processes
 
+> Amended by ADR 0012: releases start as a single process; the split follows only if measurements require it.
+
 Status: accepted (2026-10-17). Background-memory targets to be confirmed by measurement of the two-process build.
 
 ## Context

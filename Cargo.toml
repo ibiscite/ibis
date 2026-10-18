@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["crates/ibis-core", "crates/ibis-cli"]
+members = ["crates/ibis-core", "crates/ibis-cli", "apps/desktop/src-tauri"]
+# The desktop app needs system WebView libraries to build; plain `cargo test`
+# covers the core and command line tool, and CI builds the app separately.
+default-members = ["crates/ibis-core", "crates/ibis-cli"]
 
 [workspace.package]
 version = "0.0.0"

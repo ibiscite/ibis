@@ -12,6 +12,10 @@ ignore = [
     # `paste` is unmaintained (not vulnerable). It comes in through the `biblatex`
     # parser. Revisit when biblatex drops it or a replacement parser is chosen.
     { id = "RUSTSEC-2024-0436", reason = "transitive via biblatex; unmaintained, no known vulnerability" },
+    # `proc-macro-error` is unmaintained (not vulnerable). It is a build-time
+    # macro helper reached through Tauri's GTK bindings on Linux; nothing
+    # from it ships in the app. Revisit when the GTK bindings drop it.
+    { id = "RUSTSEC-2024-0370", reason = "build-time only, transitive via gtk-rs used by Tauri on Linux; no known vulnerability" },
 ]
 
 [licenses]

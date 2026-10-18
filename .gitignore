@@ -8,3 +8,8 @@ node_modules/
 
 # Local maintainer notes (never committed)
 /.local/
+
+# Desktop app
+/apps/desktop/node_modules/
+/apps/desktop/dist/
+/apps/desktop/src-tauri/gen/

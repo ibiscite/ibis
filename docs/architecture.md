@@ -45,4 +45,6 @@ Every insertion ends in one visible state: inserted, or copied with a reason. Se
 
 ## Desktop process model
 
-A small Rust engine process owns the global shortcut, index and insertion. The picker interface runs in a separate process that is started when needed and exits when idle, so the background footprint stays small. See ADR 0004.
+The desktop app (`apps/desktop`) is a Tauri 2 shell: a React and TypeScript interface in the system web view, and a thin Rust layer that calls `ibis-core`. The web interface has no file system, shell or network permissions; it can only call the app's own commands.
+
+Until measurements justify more, the app is a single process that keeps the library index in memory and hides its window between uses (ADR 0012). The original plan of a small background engine plus an on-demand picker process (ADR 0004) remains the option if idle memory or wakeups exceed the budgets.
