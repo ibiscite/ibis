@@ -55,7 +55,9 @@ pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
     while let Some(offset) = src[i..].find('@') {
         let start = i + offset;
         let mut j = start + 1;
-        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+        // Keep stray closing braces in a candidate type so damaged entries
+        // produce a warning instead of disappearing as surrounding prose.
+        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || matches!(bytes[j], b'_' | b'}')) {
             j += 1;
         }
         let kind = src[start + 1..j].to_ascii_lowercase();
@@ -300,6 +302,9 @@ fn next_entry_line(src: &str, from: usize) -> Option<usize> {
 
 /// Parse an entry body: `key, name = value, ...`.
 pub(crate) fn parse_entry(block: &Block) -> Result<RawEntry, String> {
+    if block.kind.contains('}') {
+        return Err("entry type contains an unexpected closing brace".to_string());
+    }
     let mut p = Parser::new(block.body);
     p.skip_ws();
     let key_start = p.pos;
