@@ -343,6 +343,9 @@ fn braced_names(raw: &str) -> Vec<bool> {
                     i = start;
                     continue;
                 }
+                // Do not rescan the same whitespace suffix at every byte.
+                i += rest.len() - trimmed.len();
+                continue;
             }
             _ => {}
         }
@@ -1256,6 +1259,25 @@ pub fn csl_type(kind: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn name_whitespace_keeps_delimiter_boundaries_and_organizations() {
+        for (raw, expected) in [
+            ("A B", vec![false]),
+            (" A\t\nB \t\n", vec![false]),
+            ("A  AND\t{Synthetic and Organization}", vec![false, true]),
+            ("A \u{2003}\tand\n{Synthetic Organization} \t", vec![false, true]),
+            ("A\u{2003}and {Synthetic Organization}", vec![false]),
+            ("A and\u{2003}{Synthetic Organization}", vec![false]),
+            ("A andrew B", vec![false]),
+            ("A and", vec![false]),
+            ("{Synthetic and Organization}\t\n", vec![true]),
+            (" {Synthetic Organization} and {Other Organization} ", vec![true, true]),
+            ("{Synthetic Organization} suffix", vec![false]),
+        ] {
+            assert_eq!(braced_names(raw), expected, "{raw:?}");
+        }
+    }
 
     fn title(chunks: &[Chunk], english: bool) -> String {
         let pieces = pieces_from_chunks(chunks.iter(), &mut BTreeSet::new());

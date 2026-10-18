@@ -4,6 +4,56 @@ use ibis_core::bibtex::load_str;
 use proptest::prelude::*;
 
 #[test]
+fn long_author_whitespace_runs_finish_before_the_deadline() {
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    const CHILD: &str = "IBIS_AUTHOR_WHITESPACE_TEST_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let start = Instant::now();
+        for bytes in [16 * 1024, 32 * 1024, 64 * 1024] {
+            for author in [
+                format!("A{}B", " ".repeat(bytes - 2)),
+                format!("A B{}", " ".repeat(bytes - 3)),
+            ] {
+                let text = format!("@article{{k,title={{Synthetic}},author={{{author}}}}}\n");
+                let loaded = load_str("synthetic.bib", &text);
+                assert_eq!(loaded.references.len(), 1);
+                assert!(loaded.warnings.is_empty());
+                assert_eq!(loaded.references[0].authors.len(), 1);
+                assert_eq!(loaded.references[0].authors[0].family.as_deref(), Some("B"));
+                assert_eq!(loaded.references[0].authors[0].given.as_deref(), Some("A"));
+            }
+        }
+        eprintln!("synthetic author load: {:?}", start.elapsed());
+        return;
+    }
+    // Keep the deadline outside the loader process so a regression cannot hang CI.
+    let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
+        .args([
+            "--exact",
+            "long_author_whitespace_runs_finish_before_the_deadline",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .spawn()
+        .unwrap_or_else(|e| panic!("{e}"));
+    let start = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e}")) {
+            assert!(status.success());
+            break;
+        }
+        if start.elapsed() >= Duration::from_secs(2) {
+            child.kill().unwrap_or_else(|e| panic!("{e}"));
+            child.wait().unwrap_or_else(|e| panic!("{e}"));
+            panic!("synthetic author load exceeded the 2 second deadline");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
 fn nested_commands_warn_without_aborting_small_stack_loads() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/deep-commands.bib");
     std::thread::Builder::new()
