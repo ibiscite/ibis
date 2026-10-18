@@ -18,4 +18,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0012 | Ship 0.1 as a single process; split only if measurements require it | accepted (amends 0004) |
 | 0013 | Crate-specific NCSA exception for isolated fuzzing infrastructure | accepted |
 | 0014 | Share one lockfile across application and fuzz infrastructure | accepted (amends 0013 workspace layout) |
-| 0015 | Autonomous agents merge only small, reviewed, low-risk changes | accepted (amends 0011) |
+| 0015 | Autonomous agents work under standing maintainer authorization | accepted (amends 0011) |
