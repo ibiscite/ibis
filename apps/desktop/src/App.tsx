@@ -35,8 +35,8 @@ function idKey(id: RecordId): string {
 // The picker: search, choose one or more references, copy them as a citation.
 export function App() {
   const [query, setQuery] = useState("");
-  const [queryEdited, setQueryEdited] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [announcement, setAnnouncement] = useState("");
   // The query the shown results belong to; differs while a search is pending.
   const [resultsQuery, setResultsQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
@@ -83,9 +83,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // A fresh installation has nothing to search. Once the user types, or a
-    // library/status request fails, keep reporting search failures normally.
-    if (!queryEdited && library !== null && !library?.name && !library?.error) {
+    setAnnouncement("");
+    // Typing before choosing a library is normal; preserve the query and
+    // chooser. Actual library/status failures still report search errors.
+    if (library !== null && !library?.name && !library?.error) {
       setResults([]);
       setResultsQuery(query);
       setActive(0);
@@ -93,6 +94,7 @@ export function App() {
       return;
     }
     let current = true;
+    let announcementTimer: number | undefined;
     search(query)
       .then((found) => {
         if (current) {
@@ -100,6 +102,9 @@ export function App() {
           setResultsQuery(query);
           setActive(0);
           setError(null);
+          announcementTimer = window.setTimeout(() => {
+            setAnnouncement(`${found.length} ${found.length === 1 ? "result" : "results"}`);
+          }, 300);
         }
       })
       .catch((e: unknown) => {
@@ -112,8 +117,9 @@ export function App() {
       });
     return () => {
       current = false;
+      window.clearTimeout(announcementTimer);
     };
-  }, [query, queryEdited, library, libraryVersion]);
+  }, [query, library, libraryVersion]);
 
   // Keep the highlighted result visible while moving with the arrow keys.
   useEffect(() => {
@@ -199,7 +205,6 @@ export function App() {
           autoFocus
           value={query}
           onChange={(e) => {
-            setQueryEdited(true);
             setQuery(e.target.value);
           }}
           onKeyDown={(e) => {
@@ -256,8 +261,11 @@ export function App() {
       )}
       <div className="results-area">
         <div className="results-heading" aria-hidden="true">
-          <span>References</span><span>{results.length > 0 ? `${results.length} results` : ""}</span>
+          <span>References</span><span>{results.length > 0 ? `${results.length} ${results.length === 1 ? "result" : "results"}` : ""}</span>
         </div>
+        <p className="visually-hidden" role="status" aria-label="Search results" aria-live="polite" aria-atomic="true">
+          {announcement}
+        </p>
         <ul id="results" role="listbox" aria-label="Results" aria-multiselectable="true">
           {results.map((r, i) => (
             <li

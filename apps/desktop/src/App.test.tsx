@@ -5,6 +5,11 @@ import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import capability from "../src-tauri/capabilities/default.json";
 
+// Vitest can load these existing runtime builtins without a Node-types dependency.
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+
 afterEach(async () => {
   vi.useRealTimers();
   cleanup();
@@ -141,22 +146,25 @@ test("the empty-state chooser opens the existing dialog and remains available af
   expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
 });
 
-test("clearing a typed query without a library does not hide its search failure", async () => {
-  const queries: unknown[] = [];
-  backend({
+test("typing and clearing before choosing a library keeps the calm hint and chooser", async () => {
+  const calls = backend({
     library_status: () => ({ name: null, references: 0, warnings: 0, error: null, note: null }),
-    search: ({ query }) => {
-      queries.push(query);
-      throw new Error("no library is open");
-    },
+    search: () => { throw new Error("no library is open"); },
+    choose_library: () => null,
   });
   render(<App />);
+  const chooser = await screen.findByRole("button", { name: "Choose library to get started" });
   const box = screen.getByLabelText("Search references");
-  fireEvent.change(box, { target: { value: "sleep" } });
-  await screen.findByRole("alert");
-  fireEvent.change(box, { target: { value: "" } });
-  await waitFor(() => expect(queries.at(-1)).toBe(""));
-  expect(screen.getByRole("alert").textContent).toContain("no library is open");
+  for (const value of ["sleep", ""]) {
+    await act(async () => { fireEvent.change(box, { target: { value } }); });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("Choose a library to get started")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Choose library to get started" })).toBe(chooser);
+  }
+  expect(calls).not.toContain("search");
+  fireEvent.click(chooser);
+  await waitFor(() => expect(calls).toContain("choose_library"));
+  expect(screen.getByRole("button", { name: "Choose library to get started" })).toBe(chooser);
 });
 
 test("opening the first library searches the untouched empty query", async () => {
@@ -227,7 +235,7 @@ test("a shortcut that could not be registered is explained", async () => {
     shortcut_status: () => ({ shortcut: "Cmd+Shift+Space", registered: false, error: "another app may be using it" }),
   });
   render(<App />);
-  expect((await screen.findByRole("status")).textContent).toContain("another app may be using it");
+  expect((await screen.findByText(/another app may be using it/)).getAttribute("role")).toBe("status");
 });
 
 test("a failed search clears the results of the previous query", async () => {
@@ -264,7 +272,7 @@ test("a rejected shortcut setting is explained even when the default works", asy
     }),
   });
   render(<App />);
-  expect((await screen.findByRole("status")).textContent).toContain("Control+Nonsense");
+  expect((await screen.findByText(/Control\+Nonsense/)).getAttribute("role")).toBe("status");
 });
 
 test("the query is searched again when a library finishes opening", async () => {
@@ -303,7 +311,7 @@ test("Enter copies the highlighted result in the remembered format and hides the
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   expect(copies).toEqual([{ ids: [{ source: "refs.bib", native_key: "b" }], format: "typst" }]);
-  expect(screen.getByRole("status").textContent).toContain("Copied @b");
+  expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("Copied @b"))).toBe(true);
 });
 
 test("the selection is kept by record identity across queries and copied in order", async () => {
@@ -410,4 +418,68 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     note: null,
   });
   expect((await screen.findByText(/The library could not be opened/)).textContent).toContain("cannot read");
+});
+
+test("opening the first library searches the query typed before choosing it", async () => {
+  const queries: unknown[] = [];
+  backend({
+    library_status: () => ({ name: null, references: 0, warnings: 0, error: null, note: null }),
+    search: ({ query }) => { queries.push(query); return [result("first", "Matching reference")]; },
+  });
+  render(<App />);
+  await screen.findByRole("button", { name: "Choose library to get started" });
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
+  await act(async () => { await emit("library:changed", { name: "refs.bib", references: 1, warnings: 0, error: null, note: null }); });
+  await screen.findByText("Matching reference");
+  expect(queries).toEqual(["sleep"]);
+});
+
+test("counts use singular and plural and announce only settled current searches", async () => {
+  let release: (value: unknown) => void = () => undefined;
+  backend({ search: ({ query }) => query === "one" ? [result("a", "Single")]
+    : query === "pending" ? new Promise((resolve) => { release = resolve; })
+    : query === "two" ? [result("a", "First"), result("b", "Second")] : [] });
+  vi.useFakeTimers();
+  render(<App />);
+  await act(async () => { await Promise.resolve(); });
+  const box = screen.getByLabelText("Search references");
+  await act(async () => { fireEvent.change(box, { target: { value: "one" } }); });
+  expect(screen.getByText("1 result")).toBeTruthy();
+  const announcement = screen.getByRole("status", { name: "Search results" });
+  expect(announcement.getAttribute("aria-live")).toBe("polite");
+  expect(announcement.textContent).toBe("");
+  await act(() => vi.advanceTimersByTimeAsync(200));
+  await act(async () => { fireEvent.change(box, { target: { value: "pending" } }); });
+  await act(() => vi.advanceTimersByTimeAsync(500));
+  expect(announcement.textContent).toBe("");
+  await act(async () => { fireEvent.change(box, { target: { value: "two" } }); });
+  await act(async () => { release([result("stale", "Stale")]); });
+  expect(screen.getByText("2 results")).toBeTruthy();
+  await act(() => vi.advanceTimersByTimeAsync(200));
+  expect(announcement.textContent).toBe("");
+  await act(() => vi.advanceTimersByTimeAsync(200));
+  expect(announcement.textContent).toBe("2 results");
+  await act(async () => { fireEvent.change(box, { target: { value: "none" } }); });
+  await act(() => vi.advanceTimersByTimeAsync(400));
+  expect(announcement.textContent).toBe("0 results");
+});
+
+test("the focus ring contrasts with both themes independent of the system accent", () => {
+  const focusToken = styles.match(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\((--[\w-]+)/)?.[1];
+  expect(focusToken).toBeTruthy();
+  const theme = (token: string) => {
+    const pair = styles.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`));
+    expect(pair, `${token} needs defined theme colors`).not.toBeNull();
+    return [pair?.[1], pair?.[2]].map((hex) => [1, 3, 5].map((i) => parseInt(hex?.slice(i, i + 2) ?? "", 16) / 255));
+  };
+  const luminance = (rgb: number[]) => rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4)
+    .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+  const surface = theme("--surface"), text = theme("--text"), focus = theme(focusToken!);
+  for (const mode of [0, 1]) {
+    for (const tint of [0, .04, .08]) {
+      const background = surface[mode]!.map((c, i) => c * (1 - tint) + text[mode]![i]! * tint);
+      const [lighter, darker] = [luminance(focus[mode]!), luminance(background)].sort((a, b) => b - a);
+      expect((lighter! + .05) / (darker! + .05)).toBeGreaterThanOrEqual(3);
+    }
+  }
 });

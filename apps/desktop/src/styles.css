@@ -11,6 +11,7 @@
   --line: GrayText;
   --active-edge: CanvasText;
   --accent: Highlight;
+  --focus: CanvasText;
 }
 
 /* Older system webviews retain usable system colours. */
@@ -21,6 +22,7 @@
     --muted: light-dark(#6b6b75, #a6a6af);
     --line: light-dark(#85858f, #8b8b95);
     --active-edge: light-dark(#83838d, #898993);
+    --focus: light-dark(#145ccc, #9bc4ff);
   }
 }
 @supports (color: AccentColor) { :root { --accent: AccentColor; } }
@@ -35,7 +37,7 @@ button, select {
   padding: .35rem .55rem;
 }
 button:hover { background: color-mix(in srgb, var(--text) 8%, var(--surface)); }
-:focus-visible { outline: 2px solid var(--accent, Highlight); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 main {
   height: 100dvh;
   display: flex;
@@ -88,11 +90,11 @@ footer { border-top: 1px solid var(--line); padding: .55rem 1rem; font-size: .75
 kbd { font: inherit; font-size: .65rem; display: inline-block; padding: .1rem .25rem; border: 1px solid var(--line); border-radius: 3px; margin-inline-start: .2rem; }
 
 @media (prefers-contrast: more) {
-  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
+  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
   [role="option"][data-active] { border-width: 3px; }
 }
 @media (forced-colors: active) {
-  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
+  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
   [role="option"][data-active] { border-color: Highlight; }
   [role="option"][aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -4px; }
   .search-bar:focus-within { outline: 2px solid Highlight; outline-offset: -3px; }
