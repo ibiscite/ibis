@@ -19,6 +19,9 @@ thiserror = "2.0.21"
 specta = { version = "=2.0.0-rc.25", features = ["derive"], optional = true }
 unicode-normalization = "0.1.26"
 
+[target.'cfg(windows)'.dependencies]
+dunce = "1.0.5"
+
 [dev-dependencies]
 tempfile = "3.27.0"
 insta = { version = "1.49.0", features = ["json"] }

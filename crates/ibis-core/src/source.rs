@@ -24,7 +24,7 @@ pub enum SourceError {
     NotRegular,
     #[error("the library file is larger than 64 MiB")]
     TooLarge,
-    #[error("the library file could not be read as UTF-8 text; keeping the last loaded references")]
+    #[error("the library file is not UTF-8 text; save it as UTF-8; keeping the last loaded references")]
     Unreadable,
     #[error("the library file contains an unfinished entry; keeping the last loaded references")]
     Incomplete,
@@ -37,22 +37,80 @@ pub enum SourceError {
 }
 
 pub fn read_library_file(path: &Path) -> Result<String, SourceError> {
-    let metadata = std::fs::metadata(path).map_err(|_| SourceError::Unavailable)?;
+    let pause = || std::thread::sleep(Duration::from_millis(50));
+    let metadata = retry_io(|| std::fs::metadata(path), pause).map_err(|_| SourceError::Unavailable)?;
     if !metadata.is_file() {
         return Err(SourceError::NotRegular);
     }
     if metadata.len() > MAX_LIBRARY_BYTES {
         return Err(SourceError::TooLarge);
     }
-    let file = std::fs::File::open(path).map_err(|_| SourceError::Unreadable)?;
-    let mut text = String::new();
+    let file = retry_io(|| std::fs::File::open(path), pause).map_err(|_| SourceError::Unavailable)?;
+    read_text(file)
+}
+
+fn retry_io<T>(mut operation: impl FnMut() -> std::io::Result<T>, mut pause: impl FnMut()) -> std::io::Result<T> {
+    let mut remaining = 2;
+    loop {
+        match operation() {
+            Err(error)
+                if remaining > 0
+                    && (matches!(error.kind(), std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock)
+                    // Windows sharing/lock violations, not permanent access denial.
+                    || cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33))) =>
+            {
+                remaining -= 1;
+                pause();
+            }
+            result => return result,
+        }
+    }
+}
+
+fn read_text(file: impl Read) -> Result<String, SourceError> {
+    let mut bytes = Vec::new();
     file.take(MAX_LIBRARY_BYTES + 1)
-        .read_to_string(&mut text)
-        .map_err(|_| SourceError::Unreadable)?;
-    if text.len() as u64 > MAX_LIBRARY_BYTES {
+        .read_to_end(&mut bytes)
+        .map_err(|_| SourceError::Unavailable)?;
+    if bytes.len() as u64 > MAX_LIBRARY_BYTES {
         return Err(SourceError::TooLarge);
     }
-    Ok(text)
+    String::from_utf8(bytes).map_err(|_| SourceError::Unreadable)
+}
+
+fn resolved_path(path: &Path) -> std::io::Result<PathBuf> {
+    canonical_path(path).or_else(|_| std::path::absolute(path).map(compatible_path))
+}
+
+fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path).map(compatible_path)
+}
+
+fn compatible_path(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        dunce::simplified(&path).to_path_buf()
+    }
+    #[cfg(not(windows))]
+    {
+        path
+    }
+}
+
+// Canonicalize only the directory: editor replacement must keep selecting the
+// filename. Preserve explicit verbatim semantics until the whole leaf is known;
+// simplifying just its parent can make `library.bib.` select `library.bib`.
+fn watched_path(path: &Path) -> std::io::Result<PathBuf> {
+    let path = std::path::absolute(path)?;
+    let parent = path.parent().ok_or(std::io::ErrorKind::InvalidInput)?;
+    let parent = std::fs::canonicalize(parent).or_else(|_| std::path::absolute(parent))?;
+    #[cfg(windows)]
+    if matches!(path.components().next(), Some(std::path::Component::Prefix(prefix)) if prefix.kind().is_verbatim()) {
+        return Ok(compatible_path(
+            parent.join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?),
+        ));
+    }
+    Ok(compatible_path(parent).join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?))
 }
 
 /// Initial loads remain tolerant of damaged entries. A reload additionally
@@ -69,7 +127,7 @@ fn parse_with_budget(path: &Path, text: &str, reload: bool, budget: bibtex::Budg
     if reload && bibtex::has_incomplete_blocks(text) {
         return Err(SourceError::Incomplete);
     }
-    let source = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
     let (result, limited) = bibtex::load_with_budget(&source.to_string_lossy(), text, budget);
     if reload && limited {
         return Err(SourceError::LoadLimit);
@@ -91,10 +149,8 @@ impl SourceWatch {
         mut changed: impl FnMut(Result<LoadResult, SourceError>) + Send + 'static,
     ) -> Result<Self, SourceError> {
         // Keep the selected filename, rather than canonicalizing the file inode.
-        let path = std::path::absolute(path).map_err(|_| SourceError::WatchUnavailable)?;
-        let parent = path.parent().ok_or(SourceError::WatchUnavailable)?;
-        let parent = std::fs::canonicalize(parent).map_err(|_| SourceError::WatchUnavailable)?;
-        let path = parent.join(path.file_name().ok_or(SourceError::WatchUnavailable)?);
+        let path = watched_path(path).map_err(|_| SourceError::WatchUnavailable)?;
+        let parent = path.parent().ok_or(SourceError::WatchUnavailable)?.to_path_buf();
         let (signal, events) = mpsc::sync_channel(1);
         let failed = Arc::new(AtomicBool::new(false));
         let notify_failed = Arc::clone(&failed);
@@ -185,12 +241,12 @@ fn rearm_target(
     target: &Mutex<Option<PathBuf>>,
     watched_parent: &mut Option<PathBuf>,
 ) -> Result<(), SourceError> {
-    let resolved = std::fs::canonicalize(selected).ok().or_else(|| {
+    let resolved = canonical_path(selected).ok().or_else(|| {
         // A dangling selected link can still name a file in an existing
         // directory. Resolve only that parent so creation of the leaf is seen.
         // One read_link plus OS canonicalization keeps resolution bounded.
         let linked = selected.parent()?.join(std::fs::read_link(selected).ok()?);
-        Some(std::fs::canonicalize(linked.parent()?).ok()?.join(linked.file_name()?))
+        Some(canonical_path(linked.parent()?).ok()?.join(linked.file_name()?))
     });
     let Some(resolved) = resolved else {
         return Ok(());
@@ -245,6 +301,109 @@ impl Drop for SourceWatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temporary_open_errors_retry_but_attempts_remain_bounded() {
+        for failures in [2, 10] {
+            let (mut attempts, mut pauses) = (0, 0);
+            let result = retry_io(
+                || {
+                    attempts += 1;
+                    if attempts <= failures {
+                        Err(std::io::ErrorKind::WouldBlock.into())
+                    } else {
+                        Ok(7)
+                    }
+                },
+                || pauses += 1,
+            );
+            assert_eq!(attempts, 3);
+            assert_eq!(pauses, 2);
+            if failures == 2 {
+                assert_eq!(result.ok(), Some(7));
+            } else {
+                assert!(result.is_err());
+            }
+        }
+        let mut pauses = 0;
+        let result: std::io::Result<()> = retry_io(|| Err(std::io::ErrorKind::PermissionDenied.into()), || pauses += 1);
+        assert!(result.is_err());
+        assert_eq!(pauses, 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_exclusive_windows_lock_recovers_on_the_next_attempt() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@misc{k}").unwrap_or_else(|e| panic!("{e}"));
+        let mut lock = Some(
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(&path)
+                .unwrap_or_else(|e| panic!("{e}")),
+        );
+        let mut pauses = 0;
+        let opened = retry_io(
+            || std::fs::File::open(&path),
+            || {
+                pauses += 1;
+                drop(lock.take());
+            },
+        );
+        assert!(opened.is_ok());
+        assert_eq!(pauses, 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ordinary_and_verbatim_windows_paths_keep_the_same_identity() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = dir.path().join("références synthetic.bib");
+        std::fs::write(&path, "@misc{k}").unwrap_or_else(|e| panic!("{e}"));
+        let verbatim = std::fs::canonicalize(&path).unwrap_or_else(|e| panic!("{e}"));
+        let expected = dunce::canonicalize(&path).unwrap_or_else(|e| panic!("{e}"));
+        for spelling in [&path, &verbatim] {
+            let loaded = load_library_file(spelling, false).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(loaded.references[0].id.source, expected.to_string_lossy());
+        }
+        // Simulate canonicalization becoming unavailable after a successful read.
+        let missing = verbatim.with_file_name("missing.bib");
+        let loaded = parse(&missing, "@misc{k}", false).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            loaded.references[0].id.source,
+            expected.with_file_name("missing.bib").to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn read_failures_are_distinct_from_non_utf8_libraries() {
+        struct Broken;
+        impl Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::PermissionDenied.into())
+            }
+        }
+        assert_eq!(read_text(Broken), Err(SourceError::Unavailable));
+        for bytes in [b"caf\xe9".as_slice(), b"\xff\xfe@\0m\0".as_slice()] {
+            assert_eq!(read_text(bytes), Err(SourceError::Unreadable));
+        }
+        assert_eq!(
+            read_text("Synthetic café".as_bytes()).ok().as_deref(),
+            Some("Synthetic café")
+        );
+    }
+
+    #[test]
+    fn canonicalization_failure_keeps_an_absolute_record_identity() {
+        let path = Path::new("missing-synthetic-library/library.bib");
+        let loaded = parse(path, "@misc{k}", false).unwrap_or_else(|e| panic!("{e}"));
+        let absolute = std::path::absolute(path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(loaded.references[0].id.source, absolute.to_string_lossy());
+        assert_eq!(watched_path(path).unwrap_or_else(|e| panic!("{e}")), absolute);
+    }
 
     #[test]
     fn limited_load_keeps_completed_prefix_and_rejects_reload() {
