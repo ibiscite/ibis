@@ -162,7 +162,7 @@ Choose a library from the picker or from the menu bar (tray) item. The choice an
 
 Every field is optional. On Windows, write the library path with forward slashes or doubled backslashes, as JSON requires. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten.
 
-The picker shortcut defaults to Cmd+Shift+Space on macOS and Ctrl+Shift+Space on Windows and Linux. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used. On Windows, avoid Ctrl+Alt combinations: many keyboard layouts use them as AltGr to type characters.
+The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Space on Windows and Linux. Cmd+Shift+Space is not used on macOS because it opens the Siri typing field, which takes the keystrokes meant for the picker. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used. On Windows, avoid Ctrl+Alt combinations: many keyboard layouts use them as AltGr to type characters.
 
 For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
 

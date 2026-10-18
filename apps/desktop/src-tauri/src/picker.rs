@@ -17,19 +17,19 @@ pub(crate) struct ShortcutStatus {
     pub(crate) error: Option<String>,
 }
 
-/// Default shortcut: Cmd+Shift+Space on macOS, Ctrl+Shift+Space elsewhere.
+/// Default shortcut: Control+Command+R on macOS, where Cmd+Shift+Space opens
+/// the Siri typing field (#133); Ctrl+Shift+Space elsewhere.
 pub(crate) fn default_shortcut() -> Shortcut {
-    let primary = if cfg!(target_os = "macos") {
-        Modifiers::SUPER
+    if cfg!(target_os = "macos") {
+        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SUPER), Code::KeyR)
     } else {
-        Modifiers::CONTROL
-    };
-    Shortcut::new(Some(primary | Modifiers::SHIFT), Code::Space)
+        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
+    }
 }
 
 pub(crate) fn shortcut_label() -> &'static str {
     if cfg!(target_os = "macos") {
-        "Cmd+Shift+Space"
+        "Control+Command+R"
     } else {
         "Ctrl+Shift+Space"
     }
@@ -133,8 +133,8 @@ mod tests {
 
     #[test]
     fn shortcuts_from_settings_are_parsed_and_invalid_ones_fall_back() {
-        let (_, label, error) = configured_shortcut(Some("Control+Command+R"));
-        assert_eq!(label, "Control+Command+R");
+        let (_, label, error) = configured_shortcut(Some("Alt+Shift+K"));
+        assert_eq!(label, "Alt+Shift+K");
         assert!(error.is_none());
         let (_, label, error) = configured_shortcut(Some("Control+Nonsense"));
         assert_eq!(label, shortcut_label());
@@ -142,6 +142,24 @@ mod tests {
         let (_, label, error) = configured_shortcut(None);
         assert_eq!(label, shortcut_label());
         assert!(error.is_none());
+    }
+
+    /// The label users see must name the shortcut that is registered.
+    #[test]
+    fn the_default_shortcut_label_matches_the_registered_shortcut() {
+        assert_eq!(shortcut_label().parse::<Shortcut>().ok(), Some(default_shortcut()));
+    }
+
+    /// Cmd+Shift+Space opens the macOS Siri typing field, which takes the
+    /// keystrokes meant for the picker (#133).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_macos_default_does_not_collide_with_siri() {
+        assert_eq!(shortcut_label(), "Control+Command+R");
+        assert_eq!(
+            default_shortcut(),
+            Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SUPER), Code::KeyR)
+        );
     }
 
     /// The file dialog takes the focus from the picker; hiding the picker then

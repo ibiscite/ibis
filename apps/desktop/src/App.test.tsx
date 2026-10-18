@@ -68,7 +68,7 @@ test("the borderless picker has a permitted drag region around its editable sear
 function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
   const defaults: Record<string, Handler> = {
-    shortcut_status: () => ({ shortcut: "Cmd+Shift+Space", registered: true, error: null }),
+    shortcut_status: () => ({ shortcut: "Control+Command+R", registered: true, error: null }),
     search: () => [],
     hide_picker: () => null,
     copy_format: () => "pandoc",
@@ -235,7 +235,7 @@ test("Escape hides the picker", async () => {
 
 test("a shortcut that could not be registered is explained", async () => {
   backend({
-    shortcut_status: () => ({ shortcut: "Cmd+Shift+Space", registered: false, error: "another app may be using it" }),
+    shortcut_status: () => ({ shortcut: "Control+Command+R", registered: false, error: "another app may be using it" }),
   });
   render(<App />);
   expect((await screen.findByText(/another app may be using it/)).getAttribute("role")).toBe("status");
@@ -270,9 +270,9 @@ test("Quit is available from the picker and from the keyboard", async () => {
 test("a rejected shortcut setting is explained even when the default works", async () => {
   backend({
     shortcut_status: () => ({
-      shortcut: "Cmd+Shift+Space",
+      shortcut: "Control+Command+R",
       registered: true,
-      error: 'the shortcut "Control+Nonsense" in settings is not valid; using Cmd+Shift+Space',
+      error: 'the shortcut "Control+Nonsense" in settings is not valid; using Control+Command+R',
     }),
   });
   render(<App />);
