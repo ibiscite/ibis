@@ -271,10 +271,8 @@ impl<'a> Resolver<'a> {
                 )
             })
             .filter(|(name, value)| {
-                if nesting_exceeds_limit(value) {
-                    problems.push(format!(
-                        "field `{name}` is nested more than {MAX_FIELD_NESTING} levels deep; it is omitted"
-                    ));
+                if let Err(problem) = validate_field_structure(value) {
+                    problems.push(format!("field `{name}` {problem}; it is omitted"));
                     false
                 } else {
                     true
@@ -383,6 +381,27 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
+
+        // Date normalization can consume components before the final field guard.
+        // Check selected, fully expanded values, retaining last-value precedence.
+        own.retain(|(name, value)| {
+            if !DATE_PARTS.contains(&name.as_str()) {
+                return true;
+            }
+            if !self.budget.charge(value.len()) {
+                return false;
+            }
+            let Err(problem) = validate_field_structure(value) else {
+                return true;
+            };
+            let message = format!("field `{name}` {problem}; it is omitted");
+            walk.problems.push(if root {
+                message
+            } else {
+                format!("in inherited `{}`: {message}", entry.key)
+            });
+            false
+        });
 
         // A parent listed more than once counts at its last position, where
         // it has the highest precedence (as in Biber).
@@ -700,21 +719,31 @@ impl<'a> Resolver<'a> {
 
 /// Values already encode literal escaped braces as placeholders. Remaining
 /// braces are groups, including those after an escaped pair of backslashes.
-fn nesting_exceeds_limit(value: &str) -> bool {
+/// Every prefix must balance within the value, and the final depth must be zero,
+/// so neither parser input nor the conversion fallback can escape its field.
+fn validate_field_structure(value: &str) -> Result<(), String> {
     let mut depth = 0usize;
     for byte in value.bytes() {
         match byte {
             b'{' => {
                 depth += 1;
                 if depth > MAX_FIELD_NESTING {
-                    return true;
+                    return Err(format!("is nested more than {MAX_FIELD_NESTING} levels deep"));
                 }
             }
-            b'}' => depth = depth.saturating_sub(1),
+            b'}' => {
+                let Some(remaining) = depth.checked_sub(1) else {
+                    return Err("has unbalanced braces".to_string());
+                };
+                depth = remaining;
+            }
             _ => {}
         }
     }
-    false
+    if depth != 0 {
+        return Err("has unbalanced braces".to_string());
+    }
+    Ok(())
 }
 
 /// State of expanding one field value.
@@ -1242,11 +1271,57 @@ mod tests {
                 format!("{prefix}{{").repeat(257),
                 format!("{prefix}}}").repeat(257)
             );
-            assert_eq!(nesting_exceeds_limit(&encode_literals(&value)), slashes % 2 == 0);
+            assert_eq!(
+                validate_field_structure(&encode_literals(&value)).is_err(),
+                slashes % 2 == 0
+            );
         }
-        assert!(!nesting_exceeds_limit(&encode_literals(
-            &"\u{E000}\u{E001}\u{E002}\u{E003}".repeat(4_000)
-        )));
+        assert!(validate_field_structure(&encode_literals(&"\u{E000}\u{E001}\u{E002}\u{E003}".repeat(4_000))).is_ok());
+    }
+
+    #[test]
+    fn final_structure_checks_prefixes_literal_encoding_and_backslash_parity() {
+        for (value, accepted) in [
+            ("", true),
+            ("{kept}", true),
+            ("}{", false),
+            ("{", false),
+            ("}", false),
+            (r"\{}", false),
+            (r"{\}", false),
+            (r"\{kept\}", true),
+            (r"\\{kept\\}", true),
+            (r"\\\{kept\\\}", true),
+            (r"\\\\{kept\\\\}", true),
+            (r"\unknown{kept}", true),
+            ("\u{E000}\u{E001}\u{E002}\u{E003}", true),
+        ] {
+            let entry = RawEntry {
+                kind: "article".into(),
+                key: "k".into(),
+                line: 1,
+                fields: vec![super::super::lexer::Field {
+                    name: "title".into(),
+                    parts: vec![Part::Text(value.into())],
+                }],
+            };
+            let budget = Budget::new(usize::MAX);
+            let result = Resolver::new(Vec::new(), &[entry], &budget).resolve(0);
+            assert_eq!(result.fields.contains_key("title"), accepted, "{value:?}");
+            assert_eq!(result.problems.is_empty(), accepted, "{value:?}");
+        }
+        let result = resolve(
+            "@proceedings(p,title=\"x}, date = {1999-01-01}, author = {Evil Person}\",year=2024)\n\
+             @inproceedings{k,title={Safe},crossref={p}}",
+            "k",
+        );
+        assert_eq!(result.fields.get("title").map(String::as_str), Some("Safe"));
+        assert!(!result.fields.contains_key("booktitle"));
+        assert!(result.source.contains("year = {2024}"));
+        assert_eq!(
+            result.problems,
+            ["field `booktitle` has unbalanced braces; it is omitted"]
+        );
     }
 
     #[test]

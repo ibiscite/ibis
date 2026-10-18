@@ -1,0 +1,11 @@
+% Synthetic #128 quoted-value reproducer, with a safe sibling field.
+@article(paren-quoted, publisher={Synthetic Press}, title="x}, date = {1999-01-01}, author = {Evil Person}")
+% The brace-delimited form is already rejected by the structural lexer.
+@article{brace-quoted, title="x}, date = {1999-01-01}, author = {Evil Person}"}
+% Braced values can become unbalanced when literal braces are encoded.
+@article(paren-braced, title={\{}}, publisher={Synthetic Press})
+@article{brace-braced, title={{\}}, publisher={Synthetic Press}}
+% Safe quoted/braced values and both entry delimiters retain literal braces.
+@article(safe-quoted, title="Literal \{braces\}", year=2024)
+@article{safe-braced, title={Literal \{braces\}}, year=2024}
+@article{neighbor, title={Retained}, year=2025}

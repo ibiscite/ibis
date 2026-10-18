@@ -30,6 +30,7 @@ Each record has an identity (source + native key), normalized fields that map to
 
 - **BibTeX/BibLaTeX:** each top-level entry is parsed independently, so a broken entry, duplicate key or undefined `@string` macro produces a warning with a line number while every other entry still loads. Parenthesis-delimited entries, LaTeX accent commands and `crossref` inheritance are supported.
   Expanded and inherited field values allow at most 256 nested brace groups before the upstream content parser runs. Deeper fields are omitted with a field warning while the reference and its other fields remain available. Literal escaped braces do not count. This bounds recursive command parsing on 2 MiB desktop loading threads.
+  Unbalanced structural braces omit the field with a warning before parsing or conversion fallback, so value text cannot become other fields. Date components are checked before normalization can consume them; other fields are checked at that same final boundary. Literal escaped braces remain text.
   Each load shares `64 MiB + 128 × input bytes` work credits, using saturating arithmetic.
   Operations cost 32 credits plus conservative byte allowances for processing, copies and diagnostics; cached expansions pay for replay, preserving the separate logical field quotas.
   Exhaustion skips the current and remaining entries with a warning and retains completed references. A limited reload keeps the last good library instead.

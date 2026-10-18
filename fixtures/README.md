@@ -26,3 +26,8 @@ a valid year rather than discarding the whole reference.
 title, plus safe sibling fields and a second reference. Core and CLI tests
 check that loading on a 2 MiB stack omits the title with a warning and retains
 the other data; dedicated tests also cover the 256-level accepted boundary.
+
+`bibtex/unbalanced-values.bib` covers #128 with quoted and braced values in
+both entry delimiters, safe sibling fields and neighboring references.
+Value-structure tests verify explicit warnings, omission of unsafe fields,
+literal escaped braces, and CSL export without invented author/date metadata.
