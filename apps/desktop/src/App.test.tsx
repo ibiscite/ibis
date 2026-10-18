@@ -705,3 +705,13 @@ test("a failed reload reports one file error while kept references remain search
   expect(screen.getByRole("alert").textContent).toContain("refs.bib");
   expect(screen.getByRole("alert").textContent).toContain("keeping the last loaded references");
 });
+
+test.each(["backup", "defaults"])("settings recovery from %s stays visible through a library reload", async (fallback) => {
+  const notice = `settings.json could not be read. Using ${fallback}. Changes are not being saved. Repair /synthetic/settings.json and restart Ibis.`;
+  backend({ library_status: () => ({ state: "loading", has_snapshot: false, name: "refs.bib", snapshot_name: "refs.bib", references: 0, warnings: 0, error: null, note: null, settings_notice: notice }) });
+  render(<App />);
+  expect((await screen.findByText(notice)).getAttribute("role")).toBe("alert");
+  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: notice }); });
+  expect(screen.getByText(notice).getAttribute("role")).toBe("alert");
+  expect(screen.getAllByText(notice)).toHaveLength(1);
+});

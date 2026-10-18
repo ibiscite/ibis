@@ -76,6 +76,8 @@ export type LibraryStatus = {
 	error: string | null,
 	/**  Something to tell the user that is not a failure to open. */
 	note: string | null,
+	/**  Startup settings recovery, separate from transient library status. */
+	settings_notice: string | null,
 };
 
 /**  Stable identity of a record: which source it came from and its key there. */

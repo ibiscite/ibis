@@ -80,7 +80,10 @@ fn main() {
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
             if let Some(problem) = &loaded.problem {
-                eprintln!("ibis: {problem}");
+                eprintln!("ibis: {}", preferences::settings_problem(problem));
+            }
+            if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
+                library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
             }
             let (shortcut, label, setting_error) = configured_shortcut(loaded.settings.shortcut.as_deref());
             let result = app.global_shortcut().register(shortcut);

@@ -91,6 +91,7 @@ mod tests {
             warnings,
             error: error.map(String::from),
             note: None,
+            settings_notice: None,
         };
         assert_eq!(library_line(&status(None, 0, None)), "No library chosen");
         for (state, expected) in [

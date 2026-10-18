@@ -58,6 +58,8 @@ pub enum SettingsError {
 pub struct Loaded {
     pub settings: Settings,
     pub problem: Option<SettingsError>,
+    /// Recovery provenance from the same read, even if the backup equals defaults.
+    pub from_backup: bool,
 }
 
 fn backup_path(path: &Path) -> PathBuf {
@@ -86,6 +88,7 @@ pub fn load(path: &Path) -> Loaded {
             return Loaded {
                 settings: Settings::default(),
                 problem: None,
+                from_backup: false,
             };
         }
         Err(e) => Err(SettingsError::Unreadable(e)),
@@ -94,15 +97,17 @@ pub fn load(path: &Path) -> Loaded {
         Ok(settings) => Loaded {
             settings,
             problem: None,
+            from_backup: false,
         },
         Err(problem) => {
-            let settings = fs::read_to_string(backup_path(path))
+            let backup = fs::read_to_string(backup_path(path))
                 .ok()
-                .and_then(|text| parse(&text).ok())
-                .unwrap_or_default();
+                .and_then(|text| parse(&text).ok());
+            let from_backup = backup.is_some();
             Loaded {
-                settings,
+                settings: backup.unwrap_or_default(),
                 problem: Some(problem),
+                from_backup,
             }
         }
     }
@@ -188,6 +193,29 @@ mod tests {
         let loaded = load(&path);
         assert_eq!(loaded.settings, good);
         assert!(matches!(loaded.problem, Some(SettingsError::Invalid(_))));
+        assert!(loaded.from_backup);
+    }
+
+    #[test]
+    fn settings_recovery_reports_backup_or_defaults_from_the_same_read() {
+        let path = dir("recovery-source").join("settings.json");
+        fs::create_dir_all(
+            path.parent()
+                .unwrap_or_else(|| panic!("expected a synthetic settings directory")),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        for primary in ["{ invalid", r#"{"schema_version":2}"#] {
+            fs::write(&path, primary).unwrap_or_else(|e| panic!("{e}"));
+            let fallback = load(&path);
+            assert!(fallback.problem.is_some());
+            assert!(!fallback.from_backup);
+            fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+            let recovered = load(&path);
+            assert!(recovered.problem.is_some());
+            assert!(recovered.from_backup);
+            assert_eq!(recovered.settings, Settings::default());
+            fs::remove_file(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+        }
     }
 
     #[test]

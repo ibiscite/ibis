@@ -32,6 +32,8 @@ pub(crate) struct Library {
     pub(crate) error: Option<String>,
     /// A problem that is not a failure to open, such as an unsaved choice.
     pub(crate) note: Option<String>,
+    /// Persistent startup recovery notice; includes a path for the interface only.
+    pub(crate) settings_notice: Option<String>,
 }
 
 /// Counts requests to open a library, so a load that finishes after a newer
@@ -58,6 +60,8 @@ pub(crate) struct LibraryStatus {
     pub(crate) error: Option<String>,
     /// Something to tell the user that is not a failure to open.
     pub(crate) note: Option<String>,
+    /// Startup settings recovery, separate from transient library status.
+    pub(crate) settings_notice: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
@@ -139,6 +143,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         warnings: library.warnings.len(),
         error: library.error.clone(),
         note: library.note.clone(),
+        settings_notice: library.settings_notice.clone(),
     }
 }
 
@@ -342,6 +347,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             warnings: 0,
             error: Some("library state is unavailable".to_string()),
             note: None,
+            settings_notice: None,
         })
 }
 
@@ -367,7 +373,10 @@ pub(crate) fn install(
         return None;
     }
     match loaded {
-        Ok(new) => *library = new,
+        Ok(mut new) => {
+            new.settings_notice = library.settings_notice.take();
+            *library = new;
+        }
         Err(error) => {
             library.opening = false;
             library.error = Some(if library.index.references().is_empty() {
@@ -597,6 +606,32 @@ mod tests {
                 .unwrap_or_else(|| panic!("expected a library failure"))
                 .contains("keeping the last loaded references")
         );
+    }
+
+    #[test]
+    fn settings_recovery_notice_survives_library_loading_success_and_failure() {
+        let library = Mutex::new(Library {
+            settings_notice: Some("settings.json is not valid; using defaults".to_string()),
+            ..Library::default()
+        });
+        let requests = LoadRequests::default();
+        let (request, _, opening) = begin_open(&library, &requests, PathBuf::from("synthetic.bib"))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert!(opening.settings_notice.is_some());
+        let loaded = install(
+            &library,
+            &requests,
+            request,
+            Ok(candidate(
+                PathBuf::from("synthetic.bib"),
+                ibis_core::bibtex::load_str("synthetic", "@misc{k}"),
+            )),
+        )
+        .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(loaded.settings_notice, opening.settings_notice);
+        let failed = install(&library, &requests, request, Err("unavailable".to_string()))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(failed.settings_notice, opening.settings_notice);
     }
 
     #[test]
