@@ -9,6 +9,7 @@ const desktop = { cwd: "apps/desktop" };
 const steps = [
   ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
   ["Fuzz reporter tests", "node", ["--test", "scripts/fuzz.test.mjs"]],
+  ["Evidence publication tests", "node", ["--test", "scripts/evidence.test.mjs"]],
   ["Format", "cargo", ["fmt", "--all", "--check"]],
   ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
   ["Test", "cargo", ["test", "--locked"]],

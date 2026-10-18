@@ -61,7 +61,7 @@ jobs:
           cargo +1.90.0 test --locked
 
       - name: Fuzz reporter tests
-        run: node --test scripts/fuzz.test.mjs
+        run: node --test scripts/fuzz.test.mjs scripts/evidence.test.mjs
 
   web:
     name: Web interface
@@ -220,10 +220,35 @@ jobs:
   screenshots:
     name: Collect picker screenshots
     needs: desktop
-    if: always()
+    if: always() && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # GitHub cannot restrict GITHUB_TOKEN to a branch. Keep write permission in
+    # this job only, gate all untrusted forks out, and pin pushes in the script.
+    permissions:
+      contents: write
     steps:
+      - name: Checkout evidence publisher
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download native screenshots for publication
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: picker-${{ github.sha }}-*
+          path: evidence-input
+
+      - name: Publish synthetic screenshots to evidence
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EVIDENCE_SHA: ${{ github.sha }}
+          EVIDENCE_INPUT: evidence-input
+        run: node scripts/publish-evidence.mjs
+
       - name: Combine platform artifacts
         uses: actions/upload-artifact/merge@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
