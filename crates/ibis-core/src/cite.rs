@@ -416,15 +416,27 @@ fn typst(items: &[CiteItem], warnings: &mut Vec<String>) -> String {
 
 /// Keys usable directly as `@key` in Typst markup.
 fn typst_simple_label(key: &str) -> bool {
+    // This ASCII subset is accepted by Typst's XID-based label grammar.
+    // Other keys retain their exact identity through the string constructor.
     key.chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.'))
-        && key.chars().last().is_some_and(|c| c.is_alphanumeric() || c == '_')
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.'))
+        && key
+            .chars()
+            .last()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn typst_markup_escape(text: &str) -> String {
     let mut out = String::new();
-    for c in text.chars() {
-        if matches!(c, '[' | ']' | '#' | '@' | '*' | '_' | '\\' | '$' | '<' | '`') {
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if matches!(c, '[' | ']' | '#' | '@' | '*' | '_' | '\\' | '$' | '<' | '`')
+            || (c == '/' && matches!(chars.peek(), Some('/' | '*')))
+        {
             out.push('\\');
         }
         out.push(c);

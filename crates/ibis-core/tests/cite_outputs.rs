@@ -150,6 +150,29 @@ fn typst_simple_and_complex_labels() {
 }
 
 #[test]
+fn typst_notes_escape_comment_markers() {
+    let notes = CiteItem {
+        prefix: Some("see // note".into()),
+        suffix: Some("and/or // x /* y */".into()),
+        ..pages("a.b", "12")
+    };
+    let complex = CiteItem {
+        prefix: Some("/* see */".into()),
+        suffix: Some("/// end".into()),
+        suppress_author: true,
+        ..pages("odd/key", "12//13")
+    };
+    insta::assert_snapshot!(text(KeyFormat::Typst, &[notes, complex]), @r#"see \// note @a.b[p. 12, and/or \// x \/\* y \*/] \/\* see \*/ #cite(label("odd/key"), supplement: [p. 12\//13, \/\// end], form: "year")"#);
+}
+
+#[test]
+fn typst_quotes_keys_outside_the_safe_literal_subset() {
+    let keys = ["x²", "x½", ".key", ":key", "café", "key\"quote", "back\\slash"];
+    let items: Vec<_> = keys.into_iter().map(item).collect();
+    insta::assert_snapshot!(text(KeyFormat::Typst, &items), @r#"#cite(label("x²")) #cite(label("x½")) #cite(label(".key")) #cite(label(":key")) #cite(label("café")) #cite(label("key\"quote")) #cite(label("back\\slash"))"#);
+}
+
+#[test]
 fn invalid_input_is_rejected_not_guessed() {
     assert_eq!(render(KeyFormat::Pandoc, &[]), Err(CiteError::Empty));
     assert!(matches!(
