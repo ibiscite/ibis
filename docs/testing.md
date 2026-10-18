@@ -10,7 +10,7 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 | Specification by example | Exact expected output for each citation syntax and source quirk | `crates/*/tests/*.rs` |
 | Fixture corpus with snapshots | Any change in how real-world quirks are read | `fixtures/`, `crates/ibis-core/tests/snapshots/` |
 | Property tests | Panics, hangs and broken invariants on generated input | `proptest` in `crates/ibis-core/tests/` |
-| Metamorphic tests | Different but equivalent inputs giving different results | planned (#67) |
+| Metamorphic tests | Different but equivalent inputs giving different results | `crates/ibis-core/tests/metamorphic.rs`; larger run in `.github/workflows/metamorphic.yml` |
 | Subprocess tests | Process aborts that in-process guards cannot catch (stack overflow) | `crates/ibis-cli/tests/cli.rs` |
 | Differential tests | Loss of meaning, measured against an independent implementation | `crates/ibis-cli/tests/fidelity.rs` (Pandoc); planned nightly on larger corpora (#69) |
 | Fuzzing | Crashes and runaway work on arbitrary bytes | planned nightly (#66) |
@@ -30,6 +30,21 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 ```sh
 node scripts/check.mjs                         # everything CI runs on every change
 cargo test -p ibis-core                        # fast core tests
+IBIS_METAMORPHIC_CASES=2048 cargo test -p ibis-core --test metamorphic --locked
 IBIS_REQUIRE_PANDOC=1 cargo test -p ibis --test fidelity   # differential tests (needs Pandoc)
 cargo insta review                             # review changed snapshots
 ```
+
+The metamorphic suite generates small synthetic libraries with multilingual
+text, inherited metadata and field warnings. Each of seven transformations
+runs 64 cases in normal CI and 2,048 nightly: entry order, field order,
+whitespace/CRLF/indentation, equivalent value and entry delimiters, type/field
+name case, macro expansion/concatenation, and comments. It compares complete
+record identities and normalized fields, plus warning kind/key/message;
+verbatim source text, record/warning order and warning line numbers are the
+only differences ignored. The generators exclude duplicate keys, duplicate
+fields and conflicting macro definitions because their first/last-definition
+precedence is meaningful. Quoted values exclude quote/group syntax that would
+make delimiters semantically different. Failed nightly runs preserve the
+shrunk example and regression seeds as an artifact. Turn reader regressions
+into explicit synthetic fixtures or tests before fixing them.
