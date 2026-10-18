@@ -1,4 +1,5 @@
 import type React from "react";
+import { libraryMessages } from "./messages";
 import { useEffect, useRef, useState } from "react";
 import {
   COPY_FORMATS,
@@ -116,7 +117,7 @@ export function App() {
     setAnnouncement("");
     // Typing before choosing a library is normal; preserve the query and
     // chooser. Actual library/status failures still report search errors.
-    if (library === undefined || library?.state === "none" || library?.state === "loading") {
+    if (library === undefined || library?.state === "none" || library?.state === "loading" || (library?.state === "error" && !library.has_snapshot)) {
       setResults([]);
       setResultsQuery(query);
       setActive(0);
@@ -262,6 +263,7 @@ export function App() {
       </div>
       <div className="notices">
         {busy && <p role="status">{loadingMessage}</p>}
+        {library?.error && <p role="alert">{libraryMessages.openError(library.name, library.error)}</p>}
         {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
           <p role="alert" key={operation}>{FAILURE_MESSAGES[operation]}</p>
         ))}
@@ -334,18 +336,18 @@ export function App() {
             </li>
           ))}
         </ul>
-        {results.length === 0 && !error && library !== undefined && !busy && (
+        {results.length === 0 && !error && library !== undefined && !busy && !library?.error && (
           <div className="empty-state">
             {library?.name ? (
               <p>{query ? "No matching references" : "Type to find a reference"}</p>
-            ) : (
+            ) : library?.state === "none" ? (
               <>
                 <p>Choose a library to get started</p>
                 <button type="button" aria-label="Choose library to get started" onClick={() => void perform("choose", chooseLibrary)}>
                   Choose library…
                 </button>
               </>
-            )}
+            ) : null}
           </div>
         )}
       </div>
@@ -365,7 +367,6 @@ export function App() {
               ↻
             </button>
           )}
-          {library?.error && <p role="alert">The library could not be opened: {library.error}</p>}
           {library?.note && <p role="status">{library.note}</p>}
         </section>
         <div className="footer-tools">

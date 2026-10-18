@@ -370,7 +370,14 @@ pub(crate) fn install(
         Ok(new) => *library = new,
         Err(error) => {
             library.opening = false;
-            library.error = Some(error);
+            library.error = Some(if library.index.references().is_empty() {
+                error
+                    .strip_suffix("; keeping the last loaded references")
+                    .unwrap_or(&error)
+                    .to_string()
+            } else {
+                error
+            });
         }
     }
     Some(status(&library))
@@ -535,6 +542,60 @@ mod tests {
                 .snapshot_name
                 .unwrap_or_else(|| panic!("expected a retained snapshot name"))
                 .contains("synthetic-parent")
+        );
+    }
+
+    #[test]
+    fn an_initial_missing_file_keeps_its_name_without_claiming_references_were_retained() {
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let missing = PathBuf::from("synthetic-parent-does-not-exist/missing.bib");
+        let (request, _, _) = begin_open(&library, &requests, missing.clone())
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        let failed = install(&library, &requests, request, load_library(missing, false))
+            .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(failed.name.as_deref(), Some("missing.bib"));
+        assert_eq!(failed.error.as_deref(), Some("the library file is unavailable"));
+        assert!(!failed.has_snapshot);
+        assert!(
+            !failed
+                .error
+                .unwrap_or_else(|| panic!("expected a library failure"))
+                .contains("synthetic-parent")
+        );
+    }
+
+    #[test]
+    fn only_populated_snapshots_claim_that_references_were_retained() {
+        let library = Mutex::new(Library {
+            path: Some(PathBuf::from("empty.bib")),
+            ..Library::default()
+        });
+        let requests = LoadRequests::default();
+        let empty = install(
+            &library,
+            &requests,
+            0,
+            Err(ibis_core::source::SourceError::Unavailable.to_string()),
+        )
+        .unwrap_or_else(|| panic!("expected the current library request"));
+        assert_eq!(empty.error.as_deref(), Some("the library file is unavailable"));
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = dir.path().join("populated.bib");
+        std::fs::write(&path, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));
+        install(&library, &requests, 0, load_library(path, false));
+        let retained = install(
+            &library,
+            &requests,
+            0,
+            Err(ibis_core::source::SourceError::Unavailable.to_string()),
+        )
+        .unwrap_or_else(|| panic!("expected the current library request"));
+        assert!(
+            retained
+                .error
+                .unwrap_or_else(|| panic!("expected a library failure"))
+                .contains("keeping the last loaded references")
         );
     }
 
