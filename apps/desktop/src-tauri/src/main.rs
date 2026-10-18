@@ -11,6 +11,7 @@ mod copy;
 mod diagnostics;
 mod library;
 mod picker;
+mod placement;
 mod preferences;
 mod tray;
 
@@ -25,6 +26,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use crate::diagnostics::{NativeIssue, checked, report};
 use crate::library::{Library, LibraryWatch, LoadRequests, start_open};
 use crate::picker::{DialogOpen, ShortcutStatus, configured_shortcut, hides_on_blur, show_picker, toggle_picker};
+use crate::placement::place_on_active_display;
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
 
@@ -66,21 +68,9 @@ fn main() {
             _ => {}
         })
         .setup(|app| {
-            // Place the launcher near the top of the usable screen, clear of
-            // menu bars and taskbars. Later shows keep the user's placement.
-            if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window)
-                && let (Some(Some(monitor)), Some(size)) = (
-                    checked(window.current_monitor(), NativeIssue::Monitor),
-                    checked(window.outer_size(), NativeIssue::Size),
-                )
-            {
-                let area = monitor.work_area();
-                let x = area.position.x + (area.size.width.saturating_sub(size.width) / 2) as i32;
-                let y = area.position.y + (area.size.height.saturating_sub(size.height) / 5) as i32;
-                report(
-                    window.set_position(tauri::PhysicalPosition::new(x, y)),
-                    NativeIssue::Position,
-                );
+            // The picker opens near the top of the display with the pointer.
+            if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
+                place_on_active_display(app.handle(), &window, true);
             }
             // Settings live in the app's configuration folder, e.g. on macOS
             // ~/Library/Application Support/io.github.ibiscite.ibis/settings.json

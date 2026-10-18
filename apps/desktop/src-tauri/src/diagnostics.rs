@@ -13,6 +13,7 @@ pub(crate) enum NativeIssue {
     Monitor,
     Size,
     Position,
+    Pointer,
     TrayLibrary,
     LibraryEvent,
 }
@@ -31,6 +32,7 @@ impl NativeIssue {
             Self::Monitor => "the picker monitor could not be read",
             Self::Size => "the picker size could not be read",
             Self::Position => "the picker could not be positioned",
+            Self::Pointer => "the pointer position could not be read",
             Self::TrayLibrary => "the tray library status could not be updated",
             Self::LibraryEvent => "the library-changed event could not be sent",
         }
@@ -98,6 +100,7 @@ mod tests {
             NativeIssue::Monitor,
             NativeIssue::Size,
             NativeIssue::Position,
+            NativeIssue::Pointer,
             NativeIssue::TrayLibrary,
             NativeIssue::LibraryEvent,
         ] {
