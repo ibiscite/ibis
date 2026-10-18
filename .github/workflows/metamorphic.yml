@@ -1,8 +1,8 @@
-name: Nightly metamorphic tests
+name: Weekly metamorphic tests
 
 on:
   schedule:
-    - cron: "23 4 * * *"
+    - cron: "23 4 * * 1"
   workflow_dispatch:
 
 permissions:

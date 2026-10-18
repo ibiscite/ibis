@@ -15,7 +15,7 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 | Subprocess tests | Process aborts that in-process guards cannot catch (stack overflow) | `crates/ibis-cli/tests/cli.rs` |
 | Differential tests | Loss of meaning, measured against an independent implementation | `crates/ibis-cli/tests/fidelity.rs` (Pandoc); planned nightly on larger corpora (#69) |
 | Fuzzing | Crashes and runaway work on arbitrary bytes | `fuzz/fuzz_targets/`, nightly `.github/workflows/fuzz.yml` |
-| Open-data corpus | Real names, scripts and records synthetic data misses | planned nightly (#68) |
+| Open-data corpus | Real names, scripts and records synthetic data misses | `corpus/`, weekly/manual `.github/workflows/corpus.yml`; offline checks on every change |
 | Platform harness | Insertion, shortcuts and accessibility on each OS | planned for 0.3 |
 
 ## Rules
@@ -38,6 +38,9 @@ IBIS_REQUIRE_PANDOC=1 cargo test -p ibis --test fidelity   # differential tests 
 cargo insta review                             # review changed snapshots
 ```
 
+CI tests the core and CLI with the declared Rust 1.90 minimum on Linux. The web interface is checked
+and built once on Linux; all three native desktop builds embed that same artifact.
+
 CI also runs the complete core suite in release mode on Linux, covering malformed
 dates, private parser-panic containment and the property tests with release arithmetic.
 
@@ -54,7 +57,7 @@ node scripts/check.mjs
 
 The metamorphic suite generates small synthetic libraries with multilingual
 text, inherited metadata and field warnings. Each of seven transformations
-runs 64 cases in normal CI and 2,048 nightly: entry order, field order,
+runs 64 cases in normal CI and 2,048 weekly (Monday): entry order, field order,
 whitespace/CRLF/indentation, equivalent value and entry delimiters, type/field
 name case, macro expansion/concatenation, and comments. It compares complete
 record identities and normalized fields, plus warning kind/key/message;
@@ -62,7 +65,7 @@ verbatim source text, record/warning order and warning line numbers are the
 only differences ignored. The generators exclude duplicate keys, duplicate
 fields and conflicting macro definitions because their first/last-definition
 precedence is meaningful. Quoted values exclude quote/group syntax that would
-make delimiters semantically different. Failed nightly runs preserve the
+make delimiters semantically different. Failed weekly runs preserve the
 shrunk example and regression seeds as an artifact. Turn reader regressions
 into explicit synthetic fixtures or tests before fixing them.
 

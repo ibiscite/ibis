@@ -29,10 +29,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install nightly and cargo-fuzz (app toolchain stays pinned)
-        run: |
-          rustup toolchain install nightly --profile minimal
-          cargo install --locked cargo-fuzz --version 0.13.1
+      - name: Install nightly (app toolchain stays pinned)
+        run: rustup toolchain install nightly --profile minimal
+
+      - name: Cache cargo-fuzz
+        id: cargo-fuzz
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-fuzz
+          key: cargo-fuzz-0.13.1-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-fuzz on a cache miss
+        if: steps.cargo-fuzz.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-fuzz --version 0.13.1
 
       - name: Restore corpus from the previous nightly run
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

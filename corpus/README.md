@@ -4,7 +4,7 @@ This engineering-only corpus complements the synthetic `fixtures/` suite. Its
 small curated sample covers English, Spanish, Latin, Japanese and Arabic;
 literature, drama, history, biology, physics and information theory; books and a
 journal article. It is a coverage seed, not a representative statistical sample.
-Public metadata is downloaded outside the checkout for nightly/manual testing.
+Public metadata is downloaded outside the checkout for weekly/manual testing.
 No personal libraries, abstracts, full text, image files or Wikipedia prose are
 included in generated test files.
 
@@ -18,7 +18,7 @@ supports immutable `revision` URLs without an account or API key. These requests
 are test tooling; the application does not gain any network capability.
 
 Normal CI checks provenance and runs synthetic, offline conversion tests. The
-nightly/manual workflow verifies every cached digest before reuse, downloads
+weekly/manual workflow verifies every cached digest before reuse, downloads
 missing pinned revisions, generates `corpus.bib` (BibLaTeX) and
 `expected.csl.json`, and compares the CLI export with that independent projection.
 The raw cache lives in the runner's temporary directory and is keyed by the
