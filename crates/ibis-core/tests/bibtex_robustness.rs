@@ -4,6 +4,76 @@ use ibis_core::bibtex::load_str;
 use proptest::prelude::*;
 
 #[test]
+fn oversized_uncertain_years_keep_the_reference_and_warn() {
+    let fixture = include_str!("../../../fixtures/bibtex/oversized-range-year.bib");
+    let loaded = load_str("synthetic.bib", fixture);
+    assert_eq!(
+        loaded.references.len(),
+        1,
+        "the invalid date must not discard the reference"
+    );
+    assert!(loaded.references[0].issued.is_none());
+    assert!(loaded.warnings.iter().any(|warning| warning.message.contains("date")));
+    assert!(ibis_core::library::csl_items(&loaded.references).is_ok());
+}
+
+#[test]
+fn malformed_uncertain_dates_are_guarded_after_expansion_in_all_date_fields() {
+    for (field, csl_field) in [
+        ("date", "issued"),
+        ("urldate", "accessed"),
+        ("origdate", "original-date"),
+        ("eventdate", "event-date"),
+    ] {
+        for (value, retained_year) in [
+            ("20190x", None),
+            (" 20190X", None),
+            ("999999999999999999999999X", None),
+            ("٢٠١٩٠x", None),
+            ("2019-00-XX", Some(2019)),
+            ("2019 - 00 - XX", Some(2019)),
+            ("2019--00-XX", Some(2019)),
+            ("2019 - 00garbageX", Some(2019)),
+        ] {
+            let text = format!(
+                "@string{{bad={{{value}}}}}\n@xdata{{p,{field}=bad}}\n@article{{k,title={{Kept}},xdata={{p}}}}"
+            );
+            let loaded = load_str("synthetic.bib", &text);
+            assert_eq!(loaded.references.len(), 1, "{field} = {value}");
+            assert_eq!(loaded.references[0].title.as_deref(), Some("Kept"));
+            let csl = loaded.references[0].to_csl_json();
+            assert_eq!(
+                csl[csl_field]["date-parts"][0][0].as_i64(),
+                retained_year,
+                "{field} = {value}"
+            );
+            assert!(
+                loaded.warnings.iter().any(|warning| warning.message.contains("date")),
+                "{field} = {value}"
+            );
+        }
+    }
+}
+
+#[test]
+fn valid_uncertain_years_keep_their_precision() {
+    for (value, first, last) in [
+        ("20XX", 2000, Some(2099)),
+        ("2024", 2024, None),
+        ("2024-XX", 2024, Some(2024)),
+    ] {
+        let loaded = load_str("synthetic.bib", &format!("@article{{k,date={{{value}}}}}"));
+        assert_eq!(loaded.references.len(), 1);
+        let issued = loaded.references[0]
+            .issued
+            .unwrap_or_else(|| panic!("valid date: {value}"));
+        assert_eq!(issued.start.year, first);
+        assert_eq!(issued.end.map(|end| end.year), last);
+        assert!(loaded.warnings.is_empty(), "{value}: {:?}", loaded.warnings);
+    }
+}
+
+#[test]
 fn letters_that_change_length_when_lowercased_do_not_shift_positions() {
     // 'ẞ' (3 bytes) lowercases to 'ß' (2 bytes); 'İ' (2 bytes) to "i̇" (3 bytes).
     for prefix in ["ẞẞẞẞẞẞ", "İİİİİİ", "ΣΣΣ", "Kelvin K"] {

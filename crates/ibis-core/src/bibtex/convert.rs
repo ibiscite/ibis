@@ -376,28 +376,41 @@ fn wholly_braced(name: &str) -> bool {
 // ---------- Dates ----------
 
 fn issued(entry: &Entry, problems: &mut Vec<String>) -> Option<Issued> {
-    date_value(entry.date(), entry, "date", problems)
+    date_value(entry, "date", problems, || entry.date())
 }
 
 /// Further CSL date variables: access date, original date, event date.
 fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Issued> {
     let sources = [
-        ("accessed", entry.url_date(), "urldate"),
-        ("original-date", entry.orig_date(), "origdate"),
-        ("event-date", entry.event_date(), "eventdate"),
+        ("accessed", date_value(entry, "urldate", problems, || entry.url_date())),
+        (
+            "original-date",
+            date_value(entry, "origdate", problems, || entry.orig_date()),
+        ),
+        (
+            "event-date",
+            date_value(entry, "eventdate", problems, || entry.event_date()),
+        ),
     ];
     sources
         .into_iter()
-        .filter_map(|(csl, value, field)| date_value(value, entry, field, problems).map(|d| (csl.to_string(), d)))
+        .filter_map(|(csl, value)| value.map(|d| (csl.to_string(), d)))
         .collect()
 }
 
 fn date_value(
-    value: Result<PermissiveType<biblatex::Date>, RetrievalError>,
     entry: &Entry,
     field: &str,
     problems: &mut Vec<String>,
+    read: impl FnOnce() -> Result<PermissiveType<biblatex::Date>, RetrievalError>,
 ) -> Option<Issued> {
+    let guarded = entry
+        .get(field)
+        .filter(|chunks| date_parser_overflows(&chunks.format_verbatim()));
+    let value = match guarded {
+        Some(chunks) => Ok(PermissiveType::Chunks(chunks.to_vec())),
+        None => read(),
+    };
     match value {
         Ok(PermissiveType::Typed(date)) => {
             let to_partial = |d: biblatex::Datetime| PartialDate {
@@ -465,6 +478,29 @@ fn date_value(
             None
         }
     }
+}
+
+/// biblatex 0.12's X-range parser subtracts before validating the year length
+/// and zero-based month. Route those two unsafe cases through our existing
+/// warned fallback; keep the upstream parser for every other date.
+fn date_parser_overflows(raw: &str) -> bool {
+    if !raw.contains(['x', 'X']) {
+        return false;
+    }
+    let text = raw.trim_start();
+    let digits = text.bytes().take_while(u8::is_ascii_digit).count();
+    if digits > 4 {
+        return true;
+    }
+    let rest = text[digits..].trim_start();
+    digits == 4
+        && rest.starts_with('-')
+        && rest
+            .trim_start_matches('-')
+            .trim_start()
+            .bytes()
+            .take_while(u8::is_ascii_digit)
+            .eq(*b"00")
 }
 
 /// Read as much of `YYYY[-MM[-DD]]` as is valid. Returns the date and

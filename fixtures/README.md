@@ -12,3 +12,7 @@ Rules:
 | --- | --- |
 | `bibtex/` | `.bib` files: real-world quirks, damaged files, empty file |
 | `zotero/` | (planned) synthetic Zotero local-API pages and database snapshots for Zotero 7–10, including trashed parents and children |
+
+`bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input
+from #111. The robustness tests also exercise invalid zero months in uncertain
+dates: malformed dates produce field warnings without discarding the reference.
