@@ -10,6 +10,9 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use crate::diagnostics::{NativeIssue, checked, report};
 use crate::placement::place_on_active_display;
 
+#[cfg(target_os = "linux")]
+mod x11_focus;
+
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
 pub(crate) struct ShortcutStatus {
@@ -68,12 +71,29 @@ pub(crate) fn show_picker(app: &AppHandle) {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn resolve_focus(native: Result<Option<bool>, ()>, toolkit: impl FnOnce() -> Option<bool>) -> Option<bool> {
+    match checked(native, NativeIssue::FocusState)? {
+        Some(focused) => Some(focused),
+        None => toolkit(),
+    }
+}
+
+fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool> {
+    #[cfg(target_os = "linux")]
+    return resolve_focus(x11_focus::query(window), || {
+        checked(window.is_focused(), NativeIssue::FocusState)
+    });
+    #[cfg(not(target_os = "linux"))]
+    checked(window.is_focused(), NativeIssue::FocusState)
+}
+
 /// Toggle the picker: hide it if it is visible and focused, show it otherwise.
 pub(crate) fn toggle_picker(app: &AppHandle) {
     match app.get_webview_window("main") {
         Some(w)
             if checked(w.is_visible(), NativeIssue::Visibility).unwrap_or(false)
-                && checked(w.is_focused(), NativeIssue::FocusState).unwrap_or(false) =>
+                && focused_for_shortcut(&w).unwrap_or(false) =>
         {
             dismiss_picker(app);
         }
@@ -154,6 +174,23 @@ pub(crate) fn hides_on_blur(release_build: bool, dialog_open: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_editor_focus_overrides_a_stale_positive_toolkit_focus() {
+        assert_eq!(
+            resolve_focus(Ok(Some(false)), || panic!("stale GTK focus must not be consulted")),
+            Some(false)
+        );
+        assert_eq!(resolve_focus(Ok(Some(true)), || Some(false)), Some(true));
+        assert_eq!(resolve_focus(Ok(None), || Some(true)), Some(true));
+        assert_eq!(
+            resolve_focus(Err(()), || panic!(
+                "query failure must show rather than use stale focus"
+            )),
+            None
+        );
+    }
 
     #[test]
     fn shortcuts_from_settings_are_parsed_and_invalid_ones_fall_back() {
