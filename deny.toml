@@ -8,7 +8,11 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+unsound = "all"
 ignore = [
+    # Preview acceptance for Tauri's Linux GTK3 stack; revisit when Tauri uses
+    # a fixed GLib. This records an exception, not a dependency fix.
+    { id = "RUSTSEC-2024-0429", reason = "0.1 preview acceptance: https://github.com/ibiscite/ibis/issues/109; revisit when Tauri uses fixed GLib" },
     # `paste` is unmaintained (not vulnerable). It comes in through the `biblatex`
     # parser. Revisit when biblatex drops it or a replacement parser is chosen.
     { id = "RUSTSEC-2024-0436", reason = "transitive via biblatex; unmaintained, no known vulnerability" },
