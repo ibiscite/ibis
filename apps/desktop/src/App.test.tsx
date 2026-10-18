@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
@@ -482,4 +482,44 @@ test("the focus ring contrasts with both themes independent of the system accent
       expect((lighter! + .05) / (darker! + .05)).toBeGreaterThanOrEqual(3);
     }
   }
+});
+
+test("combobox focus is separate from citation selection and only additions/removals are announced", async () => {
+  backend({ search: ({ query }) => query === "reorder"
+    ? [result("same", "Second", "b.bib"), result("same", "First", "a.bib")]
+    : [result("same", "First", "a.bib"), result("same", "Second", "b.bib")] });
+  render(<App />);
+  await screen.findByText("First");
+  const box = screen.getByRole("combobox", { name: "Search references" });
+  const list = screen.getByRole("listbox", { name: "Results" });
+  expect(list.hasAttribute("aria-multiselectable")).toBe(false);
+  expect(within(list).getAllByRole("option", { selected: true })).toHaveLength(1);
+  const notice = screen.getByRole("status", { name: "Citation selection" });
+  expect(notice.getAttribute("aria-live")).toBe("polite");
+  expect(notice.textContent).toBe("");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  expect(notice.textContent).toBe("1 reference selected for citation");
+  const first = screen.getByText("First").closest('[role="option"]')!;
+  expect(first.hasAttribute("data-citation-selected")).toBe(true);
+  expect(first.textContent).toContain("Added to citation");
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  const second = screen.getByText("Second").closest('[role="option"]')!;
+  expect(second.getAttribute("aria-selected")).toBe("true");
+  expect(first.getAttribute("aria-selected")).toBe("false");
+  expect(notice.textContent).toBe("1 reference selected for citation");
+  expect(second.hasAttribute("data-citation-selected")).toBe(false);
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true, isComposing: true });
+  expect(notice.textContent).toBe("1 reference selected for citation");
+  fireEvent.change(box, { target: { value: "reorder" } });
+  await waitFor(() => expect(within(list).getAllByRole("option")[0]?.textContent).toContain("Second"));
+  expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(true);
+  expect(within(list).getAllByRole("option", { selected: true })).toHaveLength(1);
+  expect(document.getElementById(box.getAttribute("aria-activedescendant")!)?.textContent).toContain("Second");
+  fireEvent.click(screen.getByText("Second"));
+  expect(notice.textContent).toBe("2 references selected for citation");
+  fireEvent.click(screen.getAllByRole("button", { name: "Remove same from the selection" })[0]!);
+  expect(notice.textContent).toBe("1 reference selected for citation");
+  expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(false);
+  fireEvent.click(screen.getByText("Second"));
+  expect(notice.textContent).toBe("0 references selected for citation");
 });

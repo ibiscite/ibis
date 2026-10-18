@@ -41,6 +41,7 @@ export function App() {
   const [resultsQuery, setResultsQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const [selected, setSelected] = useState<Map<string, SearchResult>>(new Map());
+  const [selectionChanged, setSelectionChanged] = useState(false);
   const [format, setFormat] = useState<CopyFormat>("pandoc");
   const [copied, setCopied] = useState<Copied | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +135,7 @@ export function App() {
   }, [copied]);
 
   const toggle = (result: SearchResult) => {
+    setSelectionChanged(true);
     setSelected((previous) => {
       const next = new Map(previous);
       if (!next.delete(idKey(result.id))) next.set(idKey(result.id), result);
@@ -247,6 +249,9 @@ export function App() {
           </div>
         )}
       </div>
+      <p className="visually-hidden" role="status" aria-label="Citation selection" aria-live="polite" aria-atomic="true">
+        {selectionChanged ? `${selected.size} ${selected.size === 1 ? "reference" : "references"} selected for citation` : ""}
+      </p>
       {selected.size > 0 && (
         <ul aria-label="Selected references">
           {[...selected.entries()].map(([key, r]) => (
@@ -266,13 +271,14 @@ export function App() {
         <p className="visually-hidden" role="status" aria-label="Search results" aria-live="polite" aria-atomic="true">
           {announcement}
         </p>
-        <ul id="results" role="listbox" aria-label="Results" aria-multiselectable="true">
+        <ul id="results" role="listbox" aria-label="Results">
           {results.map((r, i) => (
             <li
               key={idKey(r.id)}
               id={`result-${i}`}
               role="option"
-              aria-selected={selected.has(idKey(r.id))}
+              aria-selected={i === active}
+              data-citation-selected={selected.has(idKey(r.id)) || undefined}
               data-active={i === active || undefined}
               onClick={() => {
                 setActive(i);
@@ -286,6 +292,7 @@ export function App() {
                 </span>
               </span>
               <code className="result-key">{r.key}</code>
+              {selected.has(idKey(r.id)) && <span className="visually-hidden">Added to citation</span>}
             </li>
           ))}
         </ul>
