@@ -47,7 +47,9 @@ pub(crate) struct RawEntry {
 pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
     let bytes = src.as_bytes();
     let mut blocks = Vec::new();
+    let mut headers = Vec::new();
     let mut i = 0;
+    let mut recovering = false;
     // Line numbers are counted incrementally so splitting stays linear.
     let (mut line, mut counted_to) = (1, 0);
     while let Some(offset) = src[i..].find('@') {
@@ -67,8 +69,8 @@ pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
         }
         line += src[counted_to..start].matches('\n').count();
         counted_to = start;
-        match find_close(bytes, k) {
-            Some(end) => {
+        if !recovering {
+            if let Some(end) = find_close(bytes, k) {
                 blocks.push(Block {
                     kind,
                     text: &src[start..=end],
@@ -77,26 +79,176 @@ pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
                     complete: true,
                 });
                 i = end + 1;
+                continue;
             }
-            None => {
-                let resume = next_entry_line(src, k).unwrap_or(src.len());
-                blocks.push(Block {
-                    kind,
-                    text: &src[start..resume],
-                    body: &src[(k + 1).min(resume)..resume],
-                    line,
-                    complete: false,
-                });
-                i = resume;
-            }
+            recovering = true;
         }
+        headers.push(Header {
+            kind,
+            start,
+            open: k,
+            line,
+            close: src.len(),
+            next: usize::MAX,
+        });
+        i = k + 1;
+    }
+    find_closes(bytes, &mut headers);
+    let mut resume = 0;
+    for Header {
+        kind,
+        start,
+        open,
+        line,
+        close,
+        ..
+    } in headers
+    {
+        if start < resume {
+            continue;
+        }
+        let complete = close < src.len();
+        let body_end = if complete {
+            close
+        } else {
+            next_entry_line(src, open).unwrap_or(src.len())
+        };
+        resume = body_end + usize::from(complete);
+        blocks.push(Block {
+            kind,
+            text: &src[start..resume],
+            body: &src[open + 1..body_end],
+            line,
+            complete,
+        });
     }
     blocks
+}
+
+struct Header {
+    kind: String,
+    start: usize,
+    open: usize,
+    line: usize,
+    /// `bytes.len()` means there is no closing delimiter.
+    close: usize,
+    /// Next query sharing this scan state, or `usize::MAX` at the tail.
+    next: usize,
+}
+
+type Waiting = Option<(usize, usize)>;
+
+/// Join query lists in constant time; moving a large list never copies it.
+fn merge_waiting(into: &mut Waiting, from: Waiting, headers: &mut [Header]) {
+    if let Some((head, tail)) = from {
+        if let Some((_, previous_tail)) = into {
+            headers[*previous_tail].next = head;
+            *previous_tail = tail;
+        } else {
+            *into = Some((head, tail));
+        }
+    }
+}
+
+fn close_waiting(group: Waiting, headers: &mut [Header], pos: usize) {
+    if let Some((mut head, _)) = group {
+        while head != usize::MAX {
+            headers[head].close = pos;
+            head = headers[head].next;
+        }
+    }
+}
+
+fn merge_bucket(buckets: &mut Vec<(isize, [Waiting; 4])>, depth: isize, groups: [Waiting; 4], headers: &mut [Header]) {
+    if groups.iter().all(Option::is_none) {
+        return;
+    }
+    if let Some((_, existing)) = buckets.last_mut().filter(|(base, _)| *base == depth) {
+        for (into, from) in existing.iter_mut().zip(groups) {
+            merge_waiting(into, from, headers);
+        }
+    } else {
+        buckets.push((depth, groups));
+    }
+}
+
+/// Compute every candidate's close in one forward pass, including candidates
+/// inside values: they are used only if an earlier block is incomplete.
+fn find_closes(bytes: &[u8], headers: &mut [Header]) {
+    if headers.is_empty() {
+        return;
+    }
+    // A query's local brace depth is global depth minus its bucket's base.
+    // Only the bucket at global depth sees quotes/comments/closing delimiters;
+    // deeper queries ignore them. Buckets need at least one header each, so
+    // auxiliary storage depends on candidates, never on raw brace nesting.
+    // Lists: braced unquoted/quoted, then parenthesized unquoted/quoted.
+    let mut buckets: Vec<(isize, [Waiting; 4])> = Vec::new();
+    let mut comments = [None; 2];
+    let mut depth = 0isize;
+    let mut candidate = 0;
+    let mut escaped = false;
+    for (pos, &b) in bytes.iter().enumerate() {
+        // Queries start after an opener, return from groups after `}`, and
+        // leave comments after a newline: each resets backslash parity.
+        let escaped_before = escaped;
+        escaped = !escaped && b == b'\\';
+        match b {
+            b'{' => depth += 1,
+            b'}' => {
+                let mut shifted = [None; 4];
+                if buckets.last().is_some_and(|(base, _)| *base == depth)
+                    && let Some((_, mut groups)) = buckets.pop()
+                {
+                    close_waiting(groups[0].take(), headers, pos);
+                    close_waiting(groups[1].take(), headers, pos);
+                    // Parenthesis queries ignore unmatched `}`. Keep them at
+                    // local depth zero as the global depth decreases.
+                    shifted = groups;
+                }
+                depth -= 1;
+                merge_bucket(&mut buckets, depth, shifted, headers);
+            }
+            b'\n' => {
+                let groups = [comments[0].take(), None, comments[1].take(), None];
+                merge_bucket(&mut buckets, depth, groups, headers);
+            }
+            _ => {
+                if let Some((_, groups)) = buckets.last_mut().filter(|(base, _)| *base == depth) {
+                    match b {
+                        b')' => close_waiting(groups[2].take(), headers, pos),
+                        b'"' if !escaped_before => {
+                            groups.swap(0, 1);
+                            groups.swap(2, 3);
+                        }
+                        b'%' if !escaped_before => {
+                            merge_waiting(&mut comments[0], groups[0].take(), headers);
+                            merge_waiting(&mut comments[1], groups[2].take(), headers);
+                        }
+                        _ => {}
+                    }
+                }
+                if buckets
+                    .last()
+                    .is_some_and(|(_, groups)| groups.iter().all(Option::is_none))
+                {
+                    buckets.pop();
+                }
+            }
+        }
+        if candidate < headers.len() && headers[candidate].open == pos {
+            let mut groups = [None; 4];
+            groups[2 * usize::from(b == b'(')] = Some((candidate, candidate));
+            merge_bucket(&mut buckets, depth, groups, headers);
+            candidate += 1;
+        }
+    }
 }
 
 /// Index of the delimiter closing the one at `open`. Braces nest; for
 /// `(`-delimited blocks a `)` inside braces or a top-level quoted string does
 /// not close the block.
+/// Complete blocks use this simple scan; recovery batches the same queries.
 fn find_close(bytes: &[u8], open: usize) -> Option<usize> {
     let paren = bytes[open] == b'(';
     let mut depth = 0usize;
@@ -330,6 +482,47 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn raw_nesting_and_unmatched_closes_need_only_one_query_bucket() {
+        for text in [
+            "{".repeat(500_000) + &"}".repeat(500_000),
+            "(".to_string() + &"}".repeat(1_000_000) + ")",
+        ] {
+            let mut headers = [Header {
+                kind: String::new(),
+                start: 0,
+                open: 0,
+                line: 1,
+                close: text.len(),
+                next: usize::MAX,
+            }];
+            find_closes(text.as_bytes(), &mut headers);
+            assert_eq!(Some(headers[0].close), find_close(text.as_bytes(), 0));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn merged_closes_match_independent_forward_scans(
+            body in prop::collection::vec(prop::sample::select(vec![
+                '{', '}', '(', ')', '"', '\\', '%', '\n', ' ', 'a', '@', 'é',
+            ]), 0..200),
+        ) {
+            let text: String = body.into_iter().collect();
+            let mut headers: Vec<_> = text.char_indices().filter(|(_, c)| matches!(c, '{' | '(')).map(|(open, _)| {
+                Header {
+                    kind: String::new(), start: 0, open, line: 1, close: text.len(), next: usize::MAX,
+                }
+            }).collect();
+            find_closes(text.as_bytes(), &mut headers);
+            for header in headers {
+                let actual = (header.close < text.len()).then_some(header.close);
+                prop_assert_eq!(actual, find_close(text.as_bytes(), header.open), "{:?}", text);
+            }
+        }
+    }
 
     #[test]
     fn quoted_parentheses_do_not_close_a_parenthesis_entry() {
