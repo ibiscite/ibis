@@ -46,6 +46,9 @@ jobs:
         with:
           node-version: 22
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Pull requests restore main's caches but never write their own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Set the generated corpus directory outside the checkout
         run: echo "CORPUS_DIRECTORY=$RUNNER_TEMP/ibis-corpus" >> "$GITHUB_ENV"
       - name: Restore pinned CC0 metadata

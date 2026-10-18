@@ -5,9 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to a pull request replaces its older run. Every commit on main
+# gets its own group and runs to completion, so each merged state is tested.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -33,6 +35,10 @@ jobs:
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Pull requests restore main's caches but never write their own,
+          # which would evict main's from the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Format
         run: cargo fmt --all --check
@@ -87,6 +93,10 @@ jobs:
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Pull requests restore main's caches but never write their own,
+          # which would evict main's from the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install web dependencies
         run: pnpm install --frozen-lockfile
@@ -97,11 +107,11 @@ jobs:
           pnpm test
           pnpm build
 
-      - name: Lint and build the app
+      - name: Lint, test and build the app
         working-directory: .
         run: |
           cargo clippy -p ibis-desktop --all-targets --locked
-          cargo test -p ibis-desktop generated_contract_is_current --locked
+          cargo test -p ibis-desktop --locked
           cargo build -p ibis-desktop --locked
 
   fidelity:
@@ -116,6 +126,10 @@ jobs:
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Pull requests restore main's caches but never write their own,
+          # which would evict main's from the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Pandoc
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc

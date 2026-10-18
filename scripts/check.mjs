@@ -14,29 +14,32 @@ const steps = [
   ["Test", "cargo", ["test", "--locked"]],
   ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
-  ["Desktop: generated contract", "cargo", ["test", "-p", "ibis-desktop", "generated_contract_is_current", "--locked"]],
+  // All desktop unit tests, including the generated-contract freshness check.
+  ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"]],
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],
   ["Desktop: interface tests", "pnpm", ["test"], desktop],
   ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings"]],
 ];
 
+// On Windows commands run through a shell so that pnpm.cmd resolves; a missing
+// tool then fails like any other command instead of raising ENOENT. So when a
+// step fails, ask the tool for its version: if that fails too, the tool is
+// missing and the run is incomplete rather than failed.
+const shell = process.platform === "win32";
 const skipped = [];
 for (const [name, cmd, args, options = {}] of steps) {
   console.log(`\n== ${name}: ${cmd} ${args.join(" ")}`);
-  const result = spawnSync(cmd, args, { stdio: "inherit", shell: process.platform === "win32", ...options });
-  const missingTool =
-    result.error?.code === "ENOENT" ||
-    (cmd === "actionlint" && result.status !== 0 && !hasCommand("actionlint", ["-version"])) ||
-    (args[0] === "deny" && result.status !== 0 && !hasCommand("cargo", ["deny", "--version"]));
-  if (missingTool) {
+  const result = spawnSync(cmd, args, { stdio: "inherit", shell, ...options });
+  if (result.status === 0) continue;
+  const probe = cmd === "actionlint" ? ["-version"] : args[0] === "deny" ? ["deny", "--version"] : ["--version"];
+  if (result.error?.code === "ENOENT" || !hasCommand(cmd, probe)) {
     console.log(`${name} could not run: the tool is not installed.`);
     skipped.push(name);
     continue;
   }
-  if (result.status !== 0) {
-    console.error(`\n✗ ${name} failed. Fix the problem above, then run this script again.`);
-    process.exit(result.status ?? 1);
-  }
+  // Always 1, so that a tool's own status (for example 2) never reads as incomplete.
+  console.error(`\n✗ ${name} failed. Fix the problem above, then run this script again.`);
+  process.exit(1);
 }
 if (skipped.length > 0) {
   console.error(`\n! INCOMPLETE: ${skipped.join(", ")} did not run. Install the missing tools (cargo-deny: cargo install --locked cargo-deny; pnpm: https://pnpm.io/installation; actionlint: https://github.com/rhysd/actionlint/blob/main/docs/install.md).`);
@@ -45,6 +48,6 @@ if (skipped.length > 0) {
 console.log("\n✓ All checks passed.");
 
 function hasCommand(cmd, args) {
-  const probe = spawnSync(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+  const probe = spawnSync(cmd, args, { stdio: "ignore", shell });
   return probe.status === 0;
 }

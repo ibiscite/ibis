@@ -29,8 +29,9 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 ## Running tests
 
 ```sh
-node scripts/check.mjs                         # everything CI runs on every change
+node scripts/check.mjs                         # CI's checks, without builds and Pandoc fidelity
 cargo test -p ibis-core                        # fast core tests
+cargo test -p ibis-desktop                     # desktop app tests (not part of plain cargo test)
 IBIS_METAMORPHIC_CASES=2048 cargo test -p ibis-core --test metamorphic --locked
 IBIS_REQUIRE_PANDOC=1 cargo test -p ibis --test fidelity   # differential tests (needs Pandoc)
 cargo insta review                             # review changed snapshots

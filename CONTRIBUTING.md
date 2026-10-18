@@ -43,7 +43,7 @@ node scripts/check.mjs
 
 To run the desktop app, see "Running the desktop app" in [docs/development.md](docs/development.md).
 
-`node scripts/check.mjs` runs exactly what CI runs: formatting, lints, tests and the dependency policy. It needs `cargo-deny` (`cargo install --locked cargo-deny`); without it the script reports the run as incomplete rather than passed. It never edits files; run `cargo fmt` to format.
+`node scripts/check.mjs` runs the checks CI runs on every change: formatting, lints, tests (including the desktop app's) and the dependency policy. CI also builds the desktop app and compares rendering with Pandoc. It needs `cargo-deny` (`cargo install --locked cargo-deny`); without it the script reports the run as incomplete rather than passed. It never edits files; run `cargo fmt` to format.
 
 Snapshot tests live in `crates/*/tests/snapshots/`. When behaviour changes on purpose, run `cargo insta review` and review each change.
 

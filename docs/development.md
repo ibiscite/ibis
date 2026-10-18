@@ -7,8 +7,8 @@ This project favours small, verified, reversible steps.
 1. **Issue.** Every change starts from an issue that states the user-visible outcome and acceptance criteria. Issues belong to a milestone (`0.1 Picker`, `0.2 Zotero and styles`, ...).
 2. **Branch.** One short-lived branch per issue, named `<type>/<issue>-<short-description>`, e.g. `feat/12-zotero-snapshot-reader`.
 3. **Test first.** Add a failing test or fixture that captures the acceptance criteria, then implement.
-4. **Check.** `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks. Missing tools report incomplete (exit 2).
-5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux. The description says what users can now do, how it was verified, and what was not verified.
+4. **Check.** `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform.
+5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux. A newer push to a pull request cancels its older run; every commit on `main` is tested to completion, and only `main` saves Rust build caches. The description says what users can now do, how it was verified, and what was not verified.
 6. **Review.** One independent review of the final diff; P1 findings and regressions are fixed before merging, other findings become issues.
 7. **Merge.** Squash-merge when checks pass. The pull request title becomes the commit on `main`. `main` is protected and always releasable; its history is never rewritten.
 
