@@ -1,14 +1,14 @@
 # Maintaining and releasing Ibis
 
-Single-maintainer workflow for now. Implement and test by default. Commit, push, tag or release only when the maintainer explicitly asks for that exact action.
+Follow [AGENTS.md](AGENTS.md) for contributor and autonomous development permissions. Releases, tags and publishing always require an explicit maintainer request.
 
 ## Everyday workflow
 
 1. Describe the user outcome and constraints. The implementation handles routine design, tests, documentation and review.
-2. Inspect `git status` before editing; preserve existing work. One writer per checkout; use `git worktree` for concurrent work when asked.
+2. Inspect `git status` before editing; preserve existing work. Use separate worktrees for concurrent changes.
 3. Make one focused change. Run `cargo test -p ibis-core` while developing.
 4. Run `node scripts/check.mjs`, review the diff, and report results and remaining limits.
-5. When asked: commit with sign-off (`git commit -s`), push, and wait for CI on that exact commit.
+5. Follow the [autonomous work conditions in AGENTS.md](AGENTS.md#working-autonomously) for commits, pushes, independent review and merging an agent's own pull request.
 
 ## Real-library check
 
@@ -18,12 +18,14 @@ When source reading, search or output changes, also test against a **controlled*
 
 Versioning, commit conventions and milestone releases are described in `docs/development.md`.
 
+Release Please updates the shared workspace version and the `ibis`, `ibis-core` and `ibis-desktop` entries in the root lockfile together. Its TOML updater tags scalar values with position metadata, so lockfile name filters use `@.name.value` while the replacement selects `.version` ([upstream explanation](https://github.com/googleapis/release-please/issues/2455)). The separate `ibis-fuzz` tooling version stays unchanged. When changing this configuration, rehearse the pinned upstream updater on a temporary checkout with a proposed version, then run `cargo metadata --locked --offline --format-version 1` and the same command with `--manifest-path fuzz/Cargo.toml`. Both must pass; inspect the diff to ensure only the workspace and three release package versions changed. Also run locked metadata on the generated release PR before considering a release.
+
 ### Enabling release automation (one time)
 
 1. Organization settings → Actions → General → Workflow permissions: enable "Allow GitHub Actions to create and approve pull requests".
 2. Repository settings → Secrets and variables → Actions → Variables: add `RELEASE_PLEASE` with value `enabled`.
 
-Release Please then keeps a release pull request open. Pull requests opened by GitHub Actions do not trigger other workflows, so the required checks do not report on them; the release pull request only changes the version and changelog, and a repository administrator merges it using the ruleset bypass. Replacing this with a GitHub App token, so checks run on release pull requests too, is planned before 1.0.
+Release Please then keeps a release pull request open. Bot-created proposals can require maintainer approval before CI runs. Review the final proposal, then approve or retrigger its validation as appropriate. All required checks and desktop checks must pass on the exact final head before a release can be considered; missing checks are incomplete validation. Do not bypass required checks to merge a release proposal. Merging the release pull request remains an explicit maintainer decision, separate from approving its CI runs.
 
 ### Preview builds
 
