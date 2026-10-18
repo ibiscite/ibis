@@ -1,5 +1,7 @@
 //! Fixed diagnostics for native operations. Never format the underlying error.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 #[derive(Clone, Copy)]
 pub(crate) enum NativeIssue {
     Window,
@@ -60,6 +62,26 @@ pub(crate) fn report<T, E>(result: Result<T, E>, issue: NativeIssue) {
     let _ = checked(result, issue);
 }
 
+/// Only persistent capability failures use this; retry the native operation on
+/// every call, but report its first failure once for this process.
+pub(crate) fn checked_once<T, E>(result: Result<T, E>, issue: NativeIssue, reported: &AtomicBool) -> Option<T> {
+    checked_once_with(result, issue, reported, application_message)
+}
+
+fn checked_once_with<T, E>(
+    result: Result<T, E>,
+    issue: NativeIssue,
+    reported: &AtomicBool,
+    log: impl FnOnce(&'static str),
+) -> Option<T> {
+    checked_with(result, issue, |message| {
+        // Only the flag is shared; it does not guard any other memory.
+        if !reported.swap(true, Ordering::Relaxed) {
+            log(message);
+        }
+    })
+}
+
 fn checked_with<T, E>(result: Result<T, E>, issue: NativeIssue, log: impl FnOnce(&'static str)) -> Option<T> {
     match result {
         Ok(value) => Some(value),
@@ -112,6 +134,44 @@ mod tests {
             assert!(value.is_none());
             assert_eq!(messages, [issue.message()]);
         }
+    }
+
+    #[test]
+    fn repeated_pointer_failures_report_once_without_caching_the_result() {
+        use std::sync::atomic::AtomicBool;
+
+        let reported = AtomicBool::new(false);
+        let mut messages = Vec::new();
+        for result in [Ok(7), Err(PrivateError), Err(PrivateError), Ok(9), Err(PrivateError)] {
+            let expected = result.as_ref().ok().copied();
+            let actual = checked_once_with(result, NativeIssue::Pointer, &reported, |message| {
+                messages.push(message)
+            });
+            assert_eq!(actual, expected);
+        }
+        assert_eq!(messages, [NativeIssue::Pointer.message()]);
+    }
+
+    #[test]
+    fn concurrent_pointer_failures_emit_a_single_fixed_message() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+        let reported = AtomicBool::new(false);
+        let messages = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..16 {
+                scope.spawn(|| {
+                    assert!(
+                        checked_once_with(Err::<(), _>(PrivateError), NativeIssue::Pointer, &reported, |message| {
+                            assert_eq!(message, NativeIssue::Pointer.message());
+                            messages.fetch_add(1, Ordering::Relaxed);
+                        })
+                        .is_none()
+                    );
+                });
+            }
+        });
+        assert_eq!(messages.load(Ordering::Relaxed), 1);
     }
 
     #[test]

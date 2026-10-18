@@ -4,9 +4,13 @@
 //! space: points on macOS, where each display's pixels use its own scale, and
 //! pixels on Windows and X11, where pixels are shared by all displays.
 
+use std::sync::atomic::AtomicBool;
+
 use tauri::{AppHandle, LogicalPosition, Monitor, PhysicalPosition, Position, WebviewWindow};
 
-use crate::diagnostics::{NativeIssue, checked, report};
+use crate::diagnostics::{NativeIssue, checked, checked_once, report};
+
+static POINTER_FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
 
 /// A rectangle in the shared coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -155,8 +159,8 @@ pub(crate) fn place_on_active_display(app: &AppHandle, window: &WebviewWindow, f
     let primary = checked(app.primary_monitor(), NativeIssue::Monitor).flatten();
     // macOS reports the pointer in points times the primary display's scale.
     let pointer_scale = unit(primary.as_ref().map_or(1.0, Monitor::scale_factor));
-    let pointer =
-        checked(app.cursor_position(), NativeIssue::Pointer).map(|p| (p.x / pointer_scale, p.y / pointer_scale));
+    let pointer = checked_once(app.cursor_position(), NativeIssue::Pointer, &POINTER_FAILURE_REPORTED)
+        .map(|p| (p.x / pointer_scale, p.y / pointer_scale));
     let primary = primary.and_then(|p| displays.iter().position(|d| *d == display(&p)));
     if let Placement::Centre(i) = choose(
         &displays,
