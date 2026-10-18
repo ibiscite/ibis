@@ -5,8 +5,8 @@
 //! parser: an entry's own fields always win; `xdata` parents then fill
 //! missing fields under the same names; a `crossref` parent fills the rest,
 //! following BibLaTeX's default mapping (for example a proceedings `title`
-//! becomes an inproceedings `booktitle`). Results are memoized per entry, so
-//! shared ancestors cost nothing extra, recursion is bounded by
+//! becomes an inproceedings `booktitle`). Results are memoized within a root;
+//! bounded clean first-parent snapshots are shared across roots. Recursion is bounded by
 //! [`MAX_DEPTH`], cycles are reported and broken, and the parser never sees
 //! a link it could follow. Indexed field positions and merged names avoid
 //! quadratic name searches while preserving field order and precedence.
@@ -72,6 +72,8 @@ const MAX_VALUE_BYTES: usize = 64 * 1024;
 /// Most text retained by the per-load abbreviation cache. Include a fixed
 /// charge per entry so empty expansions cannot grow the cache without bound.
 const MAX_MACRO_CACHE_BYTES: usize = 4 * 1024 * 1024;
+/// Retained parent snapshots, including empty memo entries and field capacities.
+const MAX_PARENT_CACHE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Most nested groups in an expanded field; bounds upstream parser recursion
 /// on the desktop's 2 MiB loading and watcher threads.
@@ -180,6 +182,7 @@ const MONTHS: [(&str, &str); 12] = [
 
 /// Ordered field list of one entry after inheritance: (name, value).
 type Fields = Rc<Vec<(String, String)>>;
+type Memo = HashMap<(usize, usize), Fields>;
 
 /// Everything needed to resolve entries from one file.
 pub(crate) struct Resolver<'a> {
@@ -187,6 +190,8 @@ pub(crate) struct Resolver<'a> {
     macros: HashMap<String, Vec<Part>>,
     macro_cache: RefCell<HashMap<(String, bool), Rc<CachedExpansion>>>,
     macro_cache_bytes: Cell<usize>,
+    parent_cache: RefCell<HashMap<(usize, usize), Rc<Memo>>>,
+    parent_cache_bytes: Cell<usize>,
     entries: &'a [RawEntry],
     index: HashMap<String, usize>,
     index_folded: HashMap<String, usize>,
@@ -205,7 +210,7 @@ pub(crate) struct Resolved {
 /// State of resolving one entry.
 struct Walk {
     path: Vec<usize>,
-    memo: HashMap<(usize, usize), Fields>,
+    memo: Memo,
     evaluations: usize,
     problems: Vec<String>,
 }
@@ -230,6 +235,8 @@ impl<'a> Resolver<'a> {
                 .collect(),
             macro_cache: RefCell::new(HashMap::new()),
             macro_cache_bytes: Cell::new(0),
+            parent_cache: RefCell::new(HashMap::new()),
+            parent_cache_bytes: Cell::new(0),
             entries,
             index,
             index_folded,
@@ -302,9 +309,29 @@ impl<'a> Resolver<'a> {
         if let Some(fields) = walk.memo.get(&(idx, remaining)) {
             return Rc::clone(fields);
         }
-        walk.evaluations += 1;
         let entry = &self.entries[idx];
         let root = walk.path.first().copied() == Some(idx);
+        if !root {
+            let cached = self.parent_cache.borrow().get(&(idx, remaining)).cloned();
+            if let Some(cached) = cached {
+                // Charge before touching the local memo, so replay is atomic on exhaustion.
+                if !self.budget.charge(cached.len().saturating_mul(128)) {
+                    return Rc::default();
+                }
+                let missing = cached.keys().filter(|key| !walk.memo.contains_key(key)).count();
+                // Falling back at the boundary preserves even the old quota's memo-edge cuts.
+                if walk.evaluations.saturating_add(missing) < MAX_EVALUATIONS {
+                    for (key, fields) in cached.iter() {
+                        walk.memo.entry(*key).or_insert_with(|| Rc::clone(fields));
+                    }
+                    walk.evaluations += missing;
+                    return Rc::clone(&cached[&(idx, remaining)]);
+                }
+            }
+        }
+        // An empty memo at the first parent makes its completed snapshot self-contained.
+        let cacheable = !root && walk.path.len() == 2 && walk.memo.is_empty();
+        walk.evaluations += 1;
         // Problems in the entry itself, or in an `@xdata` helper it uses
         // (helpers are not loaded on their own), are reported.
         let report = root || entry.kind == "xdata";
@@ -464,8 +491,41 @@ impl<'a> Resolver<'a> {
         let fields: Fields = Rc::new(merged);
         if !self.budget.exhausted() {
             walk.memo.insert((idx, remaining), Rc::clone(&fields));
+            if cacheable && walk.problems.is_empty() {
+                self.cache_parent((idx, remaining), &walk.memo);
+            }
         }
         fields
+    }
+
+    fn cache_parent(&self, key: (usize, usize), memo: &Memo) {
+        if self.parent_cache.borrow().contains_key(&key) {
+            return;
+        }
+        let available = MAX_PARENT_CACHE_BYTES.saturating_sub(self.parent_cache_bytes.get());
+        if memo.len().saturating_mul(256).saturating_add(256) > available
+            || !self.budget.charge(memo.len().saturating_mul(128))
+        {
+            return;
+        }
+        let slots = memo.values().fold(0usize, |n, fields| n.saturating_add(fields.len()));
+        if !self.budget.charge(slots.saturating_mul(128)) {
+            return;
+        }
+        let bytes = memo.values().fold(256usize, |n, fields| {
+            let allocation = fields
+                .capacity()
+                .saturating_mul(std::mem::size_of::<(String, String)>());
+            fields
+                .iter()
+                .fold(n.saturating_add(256).saturating_add(allocation), |n, (name, value)| {
+                    n.saturating_add(name.capacity()).saturating_add(value.capacity())
+                })
+        });
+        if bytes <= available {
+            self.parent_cache.borrow_mut().insert(key, Rc::new(memo.clone()));
+            self.parent_cache_bytes.set(self.parent_cache_bytes.get() + bytes);
+        }
     }
 
     /// Concatenate parts, expanding macros (and macros used inside macros).
@@ -917,6 +977,144 @@ mod tests {
             .position(|e| e.key == key)
             .unwrap_or_else(|| panic!("no {key}"));
         Resolver::new(macros, &entries, &Budget::new(usize::MAX)).resolve(i)
+    }
+
+    #[test]
+    fn shared_parent_dag_fits_one_load_budget() {
+        let mut text = String::from("@xdata{p0,publisher={Press}}\n");
+        for i in 1..10 {
+            let parents = (0..i).map(|j| format!("p{j}")).collect::<Vec<_>>().join(",");
+            text.push_str(&format!("@xdata{{p{i},xdata={{{parents}}}}}\n"));
+        }
+        for i in 0..1_000 {
+            text.push_str(&format!("@book{{k{i},title={{Book}},xdata={{p9}}}}\n"));
+        }
+        let start = std::time::Instant::now();
+        let loaded = super::super::load_str("synthetic.bib", &text);
+        eprintln!(
+            "shared parent DAG: {:?}; references: {}",
+            start.elapsed(),
+            loaded.references.len()
+        );
+        assert_eq!(loaded.references.len(), 1_000);
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        assert!(
+            loaded
+                .references
+                .iter()
+                .all(|r| r.variables.get("publisher").map(String::as_str) == Some("Press"))
+        );
+    }
+
+    #[test]
+    fn parent_cache_replay_preserves_evaluation_cuts_and_memo_overlap() {
+        let text = "@book{root,xdata={p}}\n@xdata{p,xdata={one,two}}\n\
+                    @xdata{one,note={One}}\n@xdata{two,publisher={Two}}";
+        let entries: Vec<_> = split_blocks(text)
+            .iter()
+            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+            .collect();
+        let budget = Budget::new(usize::MAX);
+        let warm = Resolver::new(Vec::new(), &entries, &budget);
+        warm.resolve(0);
+        let cached = Rc::clone(&warm.parent_cache.borrow()[&(1, MAX_DEPTH - 1)]);
+        for overlap in [false, true] {
+            for evaluations in [MAX_EVALUATIONS - 4, MAX_EVALUATIONS - 3, MAX_EVALUATIONS - 2] {
+                let cold = Resolver::new(Vec::new(), &entries, &budget);
+                let run = |resolver: &Resolver| {
+                    let mut memo = Memo::new();
+                    if overlap {
+                        memo.insert((2, MAX_DEPTH - 2), Rc::clone(&cached[&(2, MAX_DEPTH - 2)]));
+                    }
+                    let mut walk = Walk {
+                        path: vec![0, 1],
+                        memo,
+                        evaluations,
+                        problems: Vec::new(),
+                    };
+                    let fields = resolver.effective(1, MAX_DEPTH - 1, &mut walk);
+                    (fields, walk.evaluations, walk.problems)
+                };
+                let expected = run(&cold);
+                if !expected.2.is_empty() {
+                    assert!(cold.parent_cache.borrow().is_empty());
+                }
+                assert_eq!(run(&warm), expected, "overlap={overlap}, evaluations={evaluations}");
+            }
+        }
+        budget.0.set(Some(32));
+        let mut walk = Walk {
+            path: vec![0, 1],
+            memo: Memo::new(),
+            evaluations: 0,
+            problems: Vec::new(),
+        };
+        warm.effective(1, MAX_DEPTH - 1, &mut walk);
+        assert!(budget.exhausted());
+        assert!(walk.memo.is_empty());
+        assert_eq!(warm.parent_cache.borrow().len(), 1);
+    }
+
+    #[test]
+    fn parent_cache_preserves_root_diagnostics_and_excludes_cuts() {
+        let mut depth = String::new();
+        for i in 0..18 {
+            depth.push_str(&format!("@xdata{{p{i},xdata={{p{}}}}}\n", i + 1));
+        }
+        depth.push_str("@xdata{p18,publisher={Press}}\n@book{shallow,xdata={p3}}\n@book{deep,xdata={p0}}");
+        for text in [
+            "@book{child,crossref={parent}}\n@book{parent,title=missing,title={Last}}\n@book{again,crossref={parent}}",
+            "@xdata{p,publisher={P},xdata={q}}\n@xdata{q,note={Q},xdata={p}}\n@book{a,xdata={p}}\n@book{b,xdata={q}}",
+            depth.as_str(),
+        ] {
+            let entries: Vec<_> = split_blocks(text)
+                .iter()
+                .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+                .collect();
+            let budget = Budget::new(usize::MAX);
+            let warm = Resolver::new(Vec::new(), &entries, &budget);
+            for _ in 0..2 {
+                for (i, entry) in entries.iter().enumerate().filter(|(_, e)| e.kind != "xdata") {
+                    let expected = Resolver::new(Vec::new(), &entries, &budget).resolve(i);
+                    let actual = warm.resolve(i);
+                    assert_eq!(
+                        (actual.source, actual.problems),
+                        (expected.source, expected.problems),
+                        "{}",
+                        entry.key
+                    );
+                }
+            }
+        }
+        let entries: Vec<_> = split_blocks("@book{r,xdata={p}}\n@xdata{p,publisher={Press}}")
+            .iter()
+            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+            .collect();
+        let budget = Budget::new(1_024);
+        let interrupted = Resolver::new(Vec::new(), &entries, &budget);
+        interrupted.resolve(0);
+        assert!(budget.exhausted());
+        assert!(interrupted.parent_cache.borrow().is_empty());
+    }
+
+    #[test]
+    fn parent_cache_bounds_empty_metadata_and_field_capacity() {
+        let budget = Budget::new(usize::MAX);
+        let resolver = Resolver::new(Vec::new(), &[], &budget);
+        let mut memo = Memo::new();
+        memo.insert(
+            (0, 0),
+            Rc::new(vec![(String::new(), String::with_capacity(MAX_PARENT_CACHE_BYTES))]),
+        );
+        resolver.cache_parent((0, 0), &memo);
+        assert!(resolver.parent_cache.borrow().is_empty());
+        for i in 0..=MAX_PARENT_CACHE_BYTES / 512 {
+            memo.clear();
+            memo.insert((i, 0), Rc::default());
+            resolver.cache_parent((i, 0), &memo);
+        }
+        assert_eq!(resolver.parent_cache_bytes.get(), MAX_PARENT_CACHE_BYTES);
+        assert_eq!(resolver.parent_cache.borrow().len(), MAX_PARENT_CACHE_BYTES / 512);
     }
 
     #[test]
