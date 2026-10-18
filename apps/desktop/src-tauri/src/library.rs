@@ -12,6 +12,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::diagnostics::{NativeIssue, application_message, report};
 use crate::picker::{DialogOpen, show_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
@@ -120,12 +121,19 @@ fn candidate(path: PathBuf, loaded: ibis_core::model::LoadResult) -> Library {
 
 fn publish(app: &AppHandle, status: LibraryStatus) {
     for message in status.error.iter().chain(&status.note) {
-        eprintln!("ibis: {message}");
+        application_message(message);
     }
     if let Some(item) = app.try_state::<LibraryMenuItem>() {
-        let _ = item.0.set_text(library_line(&status));
+        report(item.0.set_text(library_line(&status)), NativeIssue::TrayLibrary);
     }
-    let _ = app.emit("library:changed", status);
+    report(app.emit("library:changed", status), NativeIssue::LibraryEvent);
+}
+
+fn dialog_path_error(current: LibraryStatus) -> LibraryStatus {
+    LibraryStatus {
+        error: Some("the chosen file is not on this computer".to_string()),
+        ..current
+    }
 }
 
 fn watch_current(app: &AppHandle, request: u64) {
@@ -227,13 +235,7 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
             None => {}
             Some(Ok(path)) => start_open(&handle, path, true),
             Some(Err(_)) => {
-                let _ = handle.emit(
-                    "library:changed",
-                    LibraryStatus {
-                        error: Some("the chosen file is not on this computer".to_string()),
-                        ..current_status(&handle)
-                    },
-                );
+                publish(&handle, dialog_path_error(current_status(&handle)));
             }
         }
     });
@@ -332,6 +334,25 @@ pub(crate) async fn search(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_nonlocal_dialog_choice_keeps_the_open_library_and_reports_the_same_tray_error() {
+        let failed = dialog_path_error(LibraryStatus {
+            name: Some("synthetic.bib".to_string()),
+            references: 12,
+            warnings: 2,
+            error: None,
+            note: Some("the library choice was not saved".to_string()),
+        });
+        assert_eq!(failed.name.as_deref(), Some("synthetic.bib"));
+        assert_eq!(failed.references, 12);
+        assert_eq!(failed.warnings, 2);
+        assert_eq!(failed.note.as_deref(), Some("the library choice was not saved"));
+        assert_eq!(failed.error.as_deref(), Some("the chosen file is not on this computer"));
+        assert!(
+            library_line(&failed).starts_with("Library could not be opened: the chosen file is not on this computer")
+        );
+    }
 
     #[test]
     fn only_regular_files_are_read() {

@@ -7,6 +7,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
+use crate::diagnostics::{NativeIssue, checked, report};
+
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
 pub(crate) struct ShortcutStatus {
@@ -54,19 +56,22 @@ pub(crate) fn configured_shortcut(setting: Option<&str>) -> (Shortcut, String, O
 
 /// Show the picker, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = window.emit("picker:shown", ());
+    if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
+        report(window.unminimize(), NativeIssue::Unminimize);
+        report(window.show(), NativeIssue::Show);
+        report(window.set_focus(), NativeIssue::Focus);
+        report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
     }
 }
 
 /// Toggle the picker: hide it if it is visible and focused, show it otherwise.
 pub(crate) fn toggle_picker(app: &AppHandle) {
     match app.get_webview_window("main") {
-        Some(w) if w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false) => {
-            let _ = w.hide();
+        Some(w)
+            if checked(w.is_visible(), NativeIssue::Visibility).unwrap_or(false)
+                && checked(w.is_focused(), NativeIssue::FocusState).unwrap_or(false) =>
+        {
+            report(w.hide(), NativeIssue::Hide);
         }
         _ => show_picker(app),
     }
@@ -76,8 +81,8 @@ pub(crate) fn toggle_picker(app: &AppHandle) {
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn hide_picker(app: AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
+    if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
+        report(window.hide(), NativeIssue::Hide);
     }
 }
 

@@ -8,6 +8,7 @@
 
 mod bindings;
 mod copy;
+mod diagnostics;
 mod library;
 mod picker;
 mod preferences;
@@ -21,6 +22,7 @@ use ibis_core::settings;
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use crate::diagnostics::{NativeIssue, checked, report};
 use crate::library::{Library, LibraryWatch, LoadRequests, start_open};
 use crate::picker::{DialogOpen, ShortcutStatus, configured_shortcut, hides_on_blur, show_picker, toggle_picker};
 use crate::preferences::SettingsFile;
@@ -51,14 +53,14 @@ fn main() {
             // Closing the picker hides it; the app keeps running for the shortcut.
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                let _ = window.hide();
+                report(window.hide(), NativeIssue::Hide);
             }
             // Like other launchers, the picker hides when it loses focus, but
             // not to its own file dialog.
             WindowEvent::Focused(false) => {
                 let dialog_open = window.state::<DialogOpen>().0.load(Ordering::SeqCst);
                 if hides_on_blur(!cfg!(debug_assertions), dialog_open) {
-                    let _ = window.hide();
+                    report(window.hide(), NativeIssue::Hide);
                 }
             }
             _ => {}
@@ -66,13 +68,19 @@ fn main() {
         .setup(|app| {
             // Place the launcher near the top of the usable screen, clear of
             // menu bars and taskbars. Later shows keep the user's placement.
-            if let Some(window) = app.get_webview_window("main")
-                && let (Ok(Some(monitor)), Ok(size)) = (window.current_monitor(), window.outer_size())
+            if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window)
+                && let (Some(Some(monitor)), Some(size)) = (
+                    checked(window.current_monitor(), NativeIssue::Monitor),
+                    checked(window.outer_size(), NativeIssue::Size),
+                )
             {
                 let area = monitor.work_area();
                 let x = area.position.x + (area.size.width.saturating_sub(size.width) / 2) as i32;
                 let y = area.position.y + (area.size.height.saturating_sub(size.height) / 5) as i32;
-                let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                report(
+                    window.set_position(tauri::PhysicalPosition::new(x, y)),
+                    NativeIssue::Position,
+                );
             }
             // Settings live in the app's configuration folder, e.g. on macOS
             // ~/Library/Application Support/io.github.ibiscite.ibis/settings.json
