@@ -68,89 +68,119 @@ pub struct Index<'a> {
 
 impl<'a> Index<'a> {
     pub fn new(references: &'a [Reference]) -> Self {
-        let docs = references
-            .iter()
-            .map(|r| {
-                let names = r
-                    .authors
-                    .iter()
-                    .chain(&r.editors)
-                    .chain(r.other_names.values().flatten())
-                    .map(|n| n.display())
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                let fields = [
-                    normalize(r.citekey.as_deref().unwrap_or("")),
-                    normalize(&r.title_plain().unwrap_or_default()),
-                    normalize(&names),
-                    r.year().map(|y| y.to_string()).unwrap_or_default(),
-                    normalize(r.doi.as_deref().unwrap_or("")),
-                    normalize(&r.keywords.join(" ")),
-                    normalize(r.container_title.as_deref().unwrap_or("")),
-                    normalize(r.abstract_text.as_deref().unwrap_or("")),
-                ];
-                (r, fields)
-            })
-            .collect();
-        Index { docs }
+        Index {
+            docs: references.iter().map(|r| (r, prepare(r))).collect(),
+        }
     }
 
     /// Return up to `limit` matches, best first. An empty query matches nothing.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'a>> {
-        let normalized = normalize(query);
-        let terms: Vec<&str> = normalized.split_whitespace().collect();
-        if terms.is_empty() {
-            return Vec::new();
-        }
-        let mut hits: Vec<Hit<'a>> = self
-            .docs
-            .iter()
-            .filter_map(|(reference, fields)| {
-                let mut score = 0;
-                let mut matched = Vec::new();
-                for term in &terms {
-                    let best = MatchField::ALL
-                        .iter()
-                        .zip(fields.iter())
-                        .filter(|(field, text)| match field {
-                            MatchField::Year => text.as_str() == *term,
-                            _ => text.contains(term),
-                        })
-                        .map(|(field, text)| (*field, field.weight() * if starts_word(text, term) { 2 } else { 1 }))
-                        .max_by_key(|(_, w)| *w)?;
-                    score += best.1;
-                    if !matched.contains(&best.0) {
-                        matched.push(best.0);
-                    }
-                }
-                let exact_key = reference
-                    .citekey
-                    .as_deref()
-                    .is_some_and(|k| k.to_lowercase() == query.trim().to_lowercase());
-                if exact_key {
-                    score += 2000;
-                } else if fields[0] == normalized.trim() {
-                    score += 1000;
-                } else if fields[1] == normalized.trim() {
-                    score += 500;
-                }
-                matched.sort();
-                Some(Hit {
-                    reference,
-                    score,
-                    matched,
-                })
-            })
-            .collect();
-        hits.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
-                .then_with(|| b.reference.year().cmp(&a.reference.year()))
-                .then_with(|| a.reference.id.cmp(&b.reference.id))
-        });
-        hits.truncate(limit);
-        hits
+        rank(self.docs.iter().map(|(r, f)| (*r, f)), query, limit)
     }
+}
+
+/// Search index that owns its references, for front ends that keep a library
+/// open and search it many times. Normalization happens once, when it is built.
+#[derive(Default)]
+pub struct OwnedIndex {
+    references: Vec<Reference>,
+    fields: Vec<[String; 8]>,
+}
+
+impl OwnedIndex {
+    pub fn new(references: Vec<Reference>) -> Self {
+        let fields = references.iter().map(prepare).collect();
+        OwnedIndex { references, fields }
+    }
+
+    pub fn references(&self) -> &[Reference] {
+        &self.references
+    }
+
+    /// Return up to `limit` matches, best first. An empty query matches nothing.
+    pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'_>> {
+        rank(self.references.iter().zip(&self.fields), query, limit)
+    }
+}
+
+/// Normalized text of each [`MatchField`], in the order of [`MatchField::ALL`].
+fn prepare(r: &Reference) -> [String; 8] {
+    let names = r
+        .authors
+        .iter()
+        .chain(&r.editors)
+        .chain(r.other_names.values().flatten())
+        .map(|n| n.display())
+        .collect::<Vec<_>>()
+        .join(" ");
+    [
+        normalize(r.citekey.as_deref().unwrap_or("")),
+        normalize(&r.title_plain().unwrap_or_default()),
+        normalize(&names),
+        r.year().map(|y| y.to_string()).unwrap_or_default(),
+        normalize(r.doi.as_deref().unwrap_or("")),
+        normalize(&r.keywords.join(" ")),
+        normalize(r.container_title.as_deref().unwrap_or("")),
+        normalize(r.abstract_text.as_deref().unwrap_or("")),
+    ]
+}
+
+fn rank<'r, 'f>(
+    docs: impl Iterator<Item = (&'r Reference, &'f [String; 8])>,
+    query: &str,
+    limit: usize,
+) -> Vec<Hit<'r>> {
+    let normalized = normalize(query);
+    let terms: Vec<&str> = normalized.split_whitespace().collect();
+    if terms.is_empty() {
+        return Vec::new();
+    }
+    let mut hits: Vec<Hit<'r>> = docs
+        .filter_map(|(reference, fields)| {
+            let mut score = 0;
+            let mut matched = Vec::new();
+            for term in &terms {
+                let best = MatchField::ALL
+                    .iter()
+                    .zip(fields.iter())
+                    .filter(|(field, text)| match field {
+                        MatchField::Year => text.as_str() == *term,
+                        _ => text.contains(term),
+                    })
+                    .map(|(field, text)| (*field, field.weight() * if starts_word(text, term) { 2 } else { 1 }))
+                    .max_by_key(|(_, w)| *w)?;
+                score += best.1;
+                if !matched.contains(&best.0) {
+                    matched.push(best.0);
+                }
+            }
+            let exact_key = reference
+                .citekey
+                .as_deref()
+                .is_some_and(|k| k.to_lowercase() == query.trim().to_lowercase());
+            if exact_key {
+                score += 2000;
+            } else if fields[0] == normalized.trim() {
+                score += 1000;
+            } else if fields[1] == normalized.trim() {
+                score += 500;
+            }
+            matched.sort();
+            Some(Hit {
+                reference,
+                score,
+                matched,
+            })
+        })
+        .collect();
+    hits.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then_with(|| b.reference.year().cmp(&a.reference.year()))
+            .then_with(|| a.reference.id.cmp(&b.reference.id))
+    });
+    hits.truncate(limit);
+    hits
 }
 
 /// Lowercase, strip accents, fold letter variants and turn punctuation into spaces.
@@ -293,5 +323,30 @@ mod tests {
         let index = Index::new(&refs);
         assert_eq!(index.search("记忆", 10)[0].reference.id.native_key, "zh");
         assert_eq!(index.search("الذاكرة", 10)[0].reference.id.native_key, "ar");
+    }
+
+    #[test]
+    fn owned_index_ranks_exactly_like_the_borrowed_one() {
+        let refs = vec![
+            reference("smith2020", "Sleep and memory", "Smith", 2020),
+            reference("smith2021", "Sleep and diet", "Smith", 2021),
+            reference("garcia2022", "Sueño y memoria", "García", 2022),
+        ];
+        let borrowed = Index::new(&refs);
+        let owned = OwnedIndex::new(refs.clone());
+        for query in ["sleep", "smith", "memoria", "2021", "", "missing"] {
+            let a: Vec<_> = borrowed
+                .search(query, 10)
+                .iter()
+                .map(|h| (&h.reference.id, h.score))
+                .collect();
+            let b: Vec<_> = owned
+                .search(query, 10)
+                .iter()
+                .map(|h| (&h.reference.id, h.score))
+                .collect();
+            assert_eq!(a, b, "{query}");
+        }
+        assert_eq!(owned.references().len(), 3);
     }
 }

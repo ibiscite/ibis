@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { hidePicker, onPickerShown, quit, search, shortcutStatus, type SearchResult, type ShortcutStatus } from "./api";
+import { hidePicker, onLibraryChanged, onPickerShown, quit, search, shortcutStatus, type SearchResult, type ShortcutStatus } from "./api";
 
 // Scaffold view: a search box wired to the core search through the Rust
 // side. The full picker interface (selection, locators, copy) follows in
@@ -9,6 +9,8 @@ export function App() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
+  // Changes whenever a library opens, so the current query is searched again.
+  const [libraryVersion, setLibraryVersion] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
   // When the picker is shown, put the cursor in the search box with the
@@ -19,11 +21,13 @@ export function App() {
       input.current?.select();
     };
     const unlisten = onPickerShown(focusSearch);
+    const unlistenLibrary = onLibraryChanged(() => setLibraryVersion((v) => v + 1));
     shortcutStatus()
       .then(setShortcut)
       .catch(() => setShortcut(null));
     return () => {
       void unlisten.then((stop) => stop());
+      void unlistenLibrary.then((stop) => stop());
     };
   }, []);
 
@@ -41,7 +45,7 @@ export function App() {
     return () => {
       current = false;
     };
-  }, [query]);
+  }, [query, libraryVersion]);
 
   return (
     <main

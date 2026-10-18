@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 
 afterEach(async () => {
@@ -104,4 +105,21 @@ test("a rejected shortcut setting is explained even when the default works", asy
   });
   render(<App />);
   expect((await screen.findByRole("status")).textContent).toContain("Control+Nonsense");
+});
+
+test("the query is searched again when a library finishes opening", async () => {
+  let open = false;
+  backend({
+    search: ({ query }) => {
+      if (!open) throw new Error("no library is open");
+      return query ? [{ key: "smith2020", title: "Sleep and memory", authors: "Smith", year: 2020, matched: ["title"] }] : [];
+    },
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
+  expect((await screen.findByRole("alert")).textContent).toContain("no library is open");
+  open = true;
+  await emit("library:changed", { path: "refs.bib", references: 1, warnings: 0, error: null });
+  expect(await screen.findByText("Sleep and memory")).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
 });

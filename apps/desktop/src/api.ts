@@ -7,6 +7,8 @@ export interface LibraryStatus {
   path: string | null;
   references: number;
   warnings: number;
+  /** Why the last attempt to open a library failed, if it did. */
+  error: string | null;
 }
 
 export interface SearchResult {
@@ -17,8 +19,9 @@ export interface SearchResult {
   matched: string[];
 }
 
-export function openLibrary(path: string): Promise<LibraryStatus> {
-  return invoke<LibraryStatus>("open_library", { path });
+/** Start opening a library; the outcome arrives through `onLibraryChanged`. */
+export function openLibrary(path: string): Promise<void> {
+  return invoke("open_library", { path });
 }
 
 export function search(query: string, limit = 20): Promise<SearchResult[]> {
@@ -47,4 +50,9 @@ export function shortcutStatus(): Promise<ShortcutStatus> {
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
 export function onPickerShown(handler: () => void): Promise<UnlistenFn> {
   return listen("picker:shown", handler);
+}
+
+/** Called when a library finishes opening, or fails to open. */
+export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
+  return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }

@@ -8,27 +8,38 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ibis_core::bibtex;
-use ibis_core::model::{LoadResult, Reference};
-use ibis_core::search::Index;
+use ibis_core::model::{LoadWarning, Reference};
+use ibis_core::search::OwnedIndex;
 use ibis_core::settings;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-/// The library currently open in the app.
+/// The library currently open in the app, indexed once when it is opened.
 #[derive(Default)]
 struct Library {
     path: Option<PathBuf>,
-    loaded: LoadResult,
+    index: OwnedIndex,
+    warnings: Vec<LoadWarning>,
+    /// Why the last attempt to open a library failed, shown until one opens.
+    error: Option<String>,
 }
 
-#[derive(Serialize)]
+/// Counts requests to open a library, so a load that finishes after a newer
+/// request never replaces the newer library.
+#[derive(Default)]
+struct LoadRequests(AtomicU64);
+
+/// Sent to the interface with the `library:changed` event.
+#[derive(Clone, Serialize)]
 struct LibraryStatus {
     path: Option<String>,
     references: usize,
     warnings: usize,
+    error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -69,8 +80,9 @@ impl SearchResult {
 fn status(library: &Library) -> LibraryStatus {
     LibraryStatus {
         path: library.path.as_ref().map(|p| p.display().to_string()),
-        references: library.loaded.references.len(),
-        warnings: library.loaded.warnings.len(),
+        references: library.index.references().len(),
+        warnings: library.warnings.len(),
+        error: library.error.clone(),
     }
 }
 
@@ -102,30 +114,80 @@ fn read_library_file(path: &std::path::Path) -> Result<String, String> {
     Ok(text)
 }
 
-/// Load a BibTeX/BibLaTeX file read-only and make it the open library.
-#[tauri::command]
-fn open_library(path: String, library: State<'_, Mutex<Library>>) -> Result<LibraryStatus, String> {
-    let path = PathBuf::from(path);
+/// Read, parse and index a BibTeX/BibLaTeX file, read-only. This is the slow
+/// part of opening a library, so it never runs on the main thread.
+fn load_library(path: PathBuf) -> Result<Library, String> {
     let text = read_library_file(&path)?;
     let source = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
     let loaded = bibtex::load_str(&source.to_string_lossy(), &text);
-    let mut library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
-    *library = Library {
+    Ok(Library {
         path: Some(path),
-        loaded,
-    };
-    Ok(status(&library))
+        index: OwnedIndex::new(loaded.references),
+        warnings: loaded.warnings,
+        error: None,
+    })
 }
 
-/// Search the open library. An empty query returns no results.
+/// Start opening a library in the background. The request is numbered here,
+/// synchronously and in the order requests arrive, so a load that finishes
+/// after a newer request is discarded. The outcome reaches the interface as
+/// the `library:changed` event.
+fn start_open(app: &AppHandle, path: PathBuf) {
+    let request = app.state::<LoadRequests>().0.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let loaded = tauri::async_runtime::spawn_blocking(move || load_library(path))
+            .await
+            .unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
+        let current = install(&app.state(), &app.state(), request, loaded);
+        if let Some(status) = current {
+            if let Some(error) = &status.error {
+                eprintln!("ibis: {error}");
+            }
+            let _ = app.emit("library:changed", status);
+        }
+    });
+}
+
+/// Make a loaded library current, or record why it failed to open. Returns
+/// `None` when a newer request has been made since this one.
+fn install(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    request: u64,
+    loaded: Result<Library, String>,
+) -> Option<LibraryStatus> {
+    let mut library = library.lock().ok()?;
+    if requests.0.load(Ordering::SeqCst) != request {
+        return None;
+    }
+    match loaded {
+        Ok(new) => *library = new,
+        Err(error) => library.error = Some(error),
+    }
+    Some(status(&library))
+}
+
+/// Open a library file. Not async, so requests are numbered in the order
+/// they arrive; the result arrives as the `library:changed` event.
 #[tauri::command]
-fn search(query: String, limit: usize, library: State<'_, Mutex<Library>>) -> Result<Vec<SearchResult>, String> {
+fn open_library(path: String, app: AppHandle) {
+    start_open(&app, PathBuf::from(path));
+}
+
+/// Search the open library. An empty query returns no results. Async so it
+/// runs off the main thread.
+#[tauri::command]
+async fn search(query: String, limit: usize, library: State<'_, Mutex<Library>>) -> Result<Vec<SearchResult>, String> {
     let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
     if library.path.is_none() {
-        return Err("no library is open".to_string());
+        return Err(match &library.error {
+            Some(error) => format!("the library could not be opened: {error}"),
+            None => "no library is open".to_string(),
+        });
     }
-    let index = Index::new(&library.loaded.references);
-    Ok(index
+    Ok(library
+        .index
         .search(&query, limit.min(200))
         .into_iter()
         .map(|hit| {
@@ -235,6 +297,7 @@ fn main() {
                 .build(),
         )
         .manage(Mutex::new(Library::default()))
+        .manage(LoadRequests::default())
         .manage(Mutex::new(ShortcutStatus::default()))
         .invoke_handler(tauri::generate_handler![
             open_library,
@@ -284,10 +347,8 @@ fn main() {
                 .ok()
                 .or_else(|| loaded.settings.library.as_ref().map(|p| p.display().to_string()));
             if let Some(path) = library {
-                let state = app.state::<Mutex<Library>>();
-                if let Err(err) = open_library(path, state) {
-                    eprintln!("ibis: {err}");
-                }
+                // Opened in the background so the window appears at once.
+                start_open(app.handle(), PathBuf::from(path));
             }
             Ok(())
         })
@@ -334,5 +395,34 @@ mod tests {
         let (_, label, error) = configured_shortcut(None);
         assert_eq!(label, shortcut_label());
         assert!(error.is_none());
+    }
+
+    #[test]
+    fn a_loaded_library_is_indexed_once_and_searchable() {
+        let file = std::env::temp_dir().join(format!("ibis-load-{}.bib", std::process::id()));
+        std::fs::write(&file, "@article{smith2020, title={Sleep and memory}}\n@article{bad,\n")
+            .unwrap_or_else(|e| panic!("{e}"));
+        let library = load_library(file).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(library.index.references().len(), 1);
+        assert_eq!(library.warnings.len(), 1);
+        assert_eq!(library.index.search("sleep", 10).len(), 1);
+        assert!(load_library(std::env::temp_dir().join("ibis-missing-library.bib")).is_err());
+    }
+
+    #[test]
+    fn a_load_that_finishes_after_a_newer_request_is_discarded() {
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let named = |key: &str| Library {
+            path: Some(PathBuf::from(format!("{key}.bib"))),
+            ..Library::default()
+        };
+        requests.0.store(2, Ordering::SeqCst); // requests 1 and 2 were made, in that order
+        assert!(install(&library, &requests, 2, Ok(named("newer"))).is_some());
+        assert!(install(&library, &requests, 1, Ok(named("older"))).is_none());
+        let current = library.lock().map(|l| l.path.clone()).unwrap_or_default();
+        assert_eq!(current, Some(PathBuf::from("newer.bib")));
+        let failed = install(&library, &requests, 2, Err("unreadable".into()));
+        assert_eq!(failed.and_then(|s| s.error).as_deref(), Some("unreadable"));
     }
 }
