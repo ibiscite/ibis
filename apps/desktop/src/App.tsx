@@ -222,7 +222,7 @@ export function App() {
         </p>
       )}
       <div className="search-bar" data-tauri-drag-region title="Drag the search bar edge to move the picker">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <circle cx="10.5" cy="10.5" r="6.5" />
           <path d="m16 16 5 5" />
         </svg>

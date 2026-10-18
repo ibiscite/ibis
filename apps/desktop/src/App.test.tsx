@@ -11,6 +11,7 @@ import config from "../src-tauri/tauri.conf.json";
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 
 afterEach(async () => {
@@ -473,10 +474,10 @@ test("counts use singular and plural and announce only settled current searches"
 });
 
 test("the focus ring contrasts with both themes independent of the system accent", () => {
-  const focusToken = styles.match(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\((--[\w-]+)/)?.[1];
+  const focusToken = styles.match(/:focus-visible\s*\{[^}]*outline:\s*[^;]*solid var\((--[\w-]+)/)?.[1];
   expect(focusToken).toBeTruthy();
   const theme = (token: string) => {
-    const pair = styles.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`));
+    const pair = tokens.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`));
     expect(pair, `${token} needs defined theme colors`).not.toBeNull();
     return [pair?.[1], pair?.[2]].map((hex) => [1, 3, 5].map((i) => parseInt(hex?.slice(i, i + 2) ?? "", 16) / 255));
   };

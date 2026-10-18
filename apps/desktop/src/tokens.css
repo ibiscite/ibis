@@ -1,0 +1,112 @@
+/* System colours follow light/dark mode, the accent and high contrast. */
+:root {
+  --surface: Canvas;
+  --text: CanvasText;
+  --muted: CanvasText;
+  --line: GrayText;
+  --active-edge: CanvasText;
+  --accent: Highlight;
+  --focus: CanvasText;
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --button-background: color-mix(in srgb, var(--text) 4%, var(--surface));
+  --button-hover-background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  --hover-background: color-mix(in srgb, var(--text) 3%, var(--surface));
+  --active-background: Canvas;
+  --selected-background: Highlight;
+  --selected-text: HighlightText;
+  --clear: transparent;
+  --selected-key-border: currentColor;
+  --border-width: 1px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+  --active-edge-width: 2px;
+  --alert-color: CanvasText;
+  --alert-border-width: 3px;
+  --button-radius: 6px;
+  --result-radius: 9px;
+  --key-radius: 5px;
+  --hint-radius: 3px;
+  --button-padding: .35rem .55rem;
+  --picker-height: 100dvh;
+  --search-gap: .9rem;
+  --search-padding: 1.4rem 1.5rem;
+  --search-icon-width: 1.35rem;
+  --search-icon-stroke: 1.7;
+  --search-size: 1.35rem;
+  --search-tracking: -.025em;
+  --search-input-padding: .25rem 0;
+  --search-focus-offset: 5px;
+  --hidden-size: 1px;
+  --hidden-margin: -1px;
+  --hidden-clip: inset(50%);
+  --results-min-height: 5rem;
+  --results-padding: .5rem;
+  --heading-padding: .55rem 1rem .45rem;
+  --heading-size: .7rem;
+  --heading-weight: 500;
+  --heading-tracking: .02em;
+  --result-gap: 1rem;
+  --result-padding: .6rem 1rem;
+  --result-margin: .1rem 0;
+  --title-size: .925rem;
+  --title-weight: 550;
+  --title-line-height: 1.4;
+  --title-tracking: -.01em;
+  --metadata-size: .8rem;
+  --metadata-line-height: 1.5;
+  --metadata-gap: .2rem;
+  --key-size: .75rem;
+  --key-max-width: 30%;
+  --key-padding: .25rem .4rem;
+  --empty-padding: 2rem 1rem;
+  --notice-padding: 0 1rem;
+  --notice-margin: .65rem 0;
+  --copy-padding: .5rem;
+  --dismiss-margin: .5rem 0 .5rem .5rem;
+  --alert-padding: .65rem;
+  --selection-gap: .4rem;
+  --selection-padding: .6rem 1rem;
+  --selection-label-padding: .5rem;
+  --footer-padding: .55rem 1rem;
+  --footer-size: .75rem;
+  --footer-gap: .4rem;
+  --library-min-width: 8rem;
+  --library-notice-margin: .3rem 0;
+  --footer-tools-margin: .25rem;
+  --icon-size: 1rem;
+  --icon-padding: .15rem .4rem;
+  --hint-size: .65rem;
+  --hint-padding: .1rem .25rem;
+  --hint-margin: .2rem;
+  --contrast-border-width: 3px;
+  --forced-selected-offset: -4px;
+  --forced-search-offset: -3px;
+  --compact-search-padding: .9rem;
+  --compact-result-gap: .4rem;
+  --search-active-border: var(--accent);
+}
+
+/* Older system webviews retain usable system colours. */
+@supports (color: light-dark(white, black)) {
+  :root {
+    --surface: light-dark(#fcfcfd, #242426);
+    --text: light-dark(#27272b, #ededf0);
+    --muted: light-dark(#6b6b75, #a6a6af);
+    --line: light-dark(#85858f, #8b8b95);
+    --active-edge: light-dark(#83838d, #898993);
+    --focus: light-dark(#145ccc, #9bc4ff);
+  }
+}
+@supports (color: AccentColor) { :root { --accent: AccentColor; } }
+
+
+@supports (background: color-mix(in srgb, white 50%, black)) {
+  :root { --active-background: color-mix(in srgb, var(--accent) 9%, var(--surface)); --search-active-border: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+}
+
+@media (prefers-contrast: more) {
+  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+}
+@media (forced-colors: active) {
+  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
+}
