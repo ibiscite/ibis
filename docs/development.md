@@ -7,7 +7,7 @@ This project favours small, verified, reversible steps.
 1. **Issue.** Every change starts from an issue that states the user-visible outcome and acceptance criteria. Issues belong to a milestone (`0.1 Picker`, `0.2 Zotero and styles`, ...).
 2. **Branch.** One short-lived branch per issue, named `<type>/<issue>-<short-description>`, e.g. `feat/12-zotero-snapshot-reader`.
 3. **Test first.** Add a failing test or fixture that captures the acceptance criteria, then implement.
-4. **Check.** `node scripts/check.mjs` must pass locally.
+4. **Check.** `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks. Missing tools report incomplete (exit 2).
 5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux. The description says what users can now do, how it was verified, and what was not verified.
 6. **Review.** One independent review of the final diff; P1 findings and regressions are fixed before merging, other findings become issues.
 7. **Merge.** Squash-merge when checks pass. The pull request title becomes the commit on `main`. `main` is protected and always releasable; its history is never rewritten.
@@ -69,6 +69,12 @@ Every field is optional. Edits made while the app runs are kept, and a file that
 - [release-please](https://github.com/googleapis/release-please) keeps a release pull request open on GitHub. Merging it updates `CHANGELOG.md` and the version in `Cargo.toml`, creates the tag and the GitHub release. Versions are never edited by hand.
 - Release builds are produced only by CI from a tag. Preview builds may be published as GitHub pre-releases.
 - Data formats that users keep (settings, destination profiles, history) carry a schema version and a tested migration.
+
+## Workflow linting
+
+Install [actionlint](https://github.com/rhysd/actionlint/blob/v1.7.12/docs/install.md) and make it available on `PATH`. Standard options include `brew install actionlint` on macOS, `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12` with Go installed, or the official release binaries for Linux, macOS and Windows. CI uses the official 1.7.12 Docker image pinned by digest in the required Dependency policy job; updates should review the release and refresh that pin together.
+
+Run `actionlint -shellcheck= -pyflakes=` to validate every workflow's GitHub-specific contexts, expressions and action usage. The full check uses the same flags; optional shellcheck and pyflakes integrations are disabled so installed auxiliary tools do not change the result. Workflow checks read files without editing them.
 
 ## Dependencies
 

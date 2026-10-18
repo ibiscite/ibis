@@ -134,6 +134,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate workflow expressions
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color -shellcheck= -pyflakes=
+
       - name: Licenses, advisories, sources
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
