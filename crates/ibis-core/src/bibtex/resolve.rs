@@ -10,6 +10,7 @@
 //! [`MAX_DEPTH`], cycles are reported and broken, and the parser never sees
 //! a link it could follow.
 
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -65,6 +66,10 @@ const MAX_EXPANSION_STEPS: usize = 100_000;
 
 /// Largest field value accepted after expanding abbreviations.
 const MAX_VALUE_BYTES: usize = 64 * 1024;
+
+/// Most text retained by the per-load abbreviation cache. Include a fixed
+/// charge per entry so empty expansions cannot grow the cache without bound.
+const MAX_MACRO_CACHE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Most nested groups in an expanded field; bounds upstream parser recursion
 /// on the desktop's 2 MiB loading and watcher threads.
@@ -177,6 +182,8 @@ type Fields = Rc<Vec<(String, String)>>;
 /// Everything needed to resolve entries from one file.
 pub(crate) struct Resolver<'a> {
     macros: HashMap<String, Vec<Part>>,
+    macro_cache: RefCell<HashMap<(String, bool), Rc<CachedExpansion>>>,
+    macro_cache_bytes: Cell<usize>,
     entries: &'a [RawEntry],
     index: HashMap<String, usize>,
     index_folded: HashMap<String, usize>,
@@ -210,6 +217,8 @@ impl<'a> Resolver<'a> {
         // Later definitions of the same macro replace earlier ones, as in BibTeX.
         Resolver {
             macros: macros.into_iter().collect(),
+            macro_cache: RefCell::new(HashMap::new()),
+            macro_cache_bytes: Cell::new(0),
             entries,
             index,
             index_folded,
@@ -425,6 +434,53 @@ impl<'a> Resolver<'a> {
     }
 
     fn expand_macro(&self, field: &str, name: &str, problems: &mut Vec<String>, report: bool, x: &mut Expansion) {
+        // Cache raw, top-level expansions across fields and entries. Month
+        // abbreviations differ in month fields; digit/literal normalization
+        // still happens afterwards in `expand`. Recursive calls stay uncached
+        // because cycle cuts and depth limits depend on their current stack.
+        let key = (name.to_string(), field == "month");
+        let cached = self.macro_cache.borrow().get(&key).cloned();
+        let cached = cached.unwrap_or_else(|| {
+            let mut expansion = Expansion::default();
+            let mut problems = Vec::new();
+            self.expand_macro_uncached(field, name, &mut problems, true, &mut expansion);
+            let bytes = name.len() + expansion.out.len() + problems.iter().map(String::len).sum::<usize>() + 128;
+            let cached = Rc::new(CachedExpansion { expansion, problems });
+            if bytes <= MAX_MACRO_CACHE_BYTES.saturating_sub(self.macro_cache_bytes.get()) {
+                self.macro_cache_bytes.set(self.macro_cache_bytes.get() + bytes);
+                self.macro_cache.borrow_mut().insert(key, Rc::clone(&cached));
+            }
+            cached
+        });
+        let expanded = &cached.expansion;
+        // A cached result must fit the *original* field quotas, including its
+        // logical expansion count. If a preceding part would change where
+        // expansion stops, walk again to retain the exact output and warnings.
+        if (x.steps == 0 && x.out.is_empty())
+            || (!expanded.stopped()
+                && x.steps + expanded.steps <= MAX_EXPANSION_STEPS
+                && x.out.len() + expanded.out.len() <= MAX_VALUE_BYTES)
+        {
+            x.out.push_str(&expanded.out);
+            x.steps += expanded.steps;
+            x.too_large |= expanded.too_large;
+            x.too_complex |= expanded.too_complex;
+            if report {
+                problems.extend(cached.problems.iter().cloned());
+            }
+        } else {
+            self.expand_macro_uncached(field, name, problems, report, x);
+        }
+    }
+
+    fn expand_macro_uncached(
+        &self,
+        field: &str,
+        name: &str,
+        problems: &mut Vec<String>,
+        report: bool,
+        x: &mut Expansion,
+    ) {
         x.steps += 1;
         if x.steps > MAX_EXPANSION_STEPS {
             x.too_complex = true;
@@ -451,7 +507,7 @@ impl<'a> Resolver<'a> {
             for part in parts {
                 match part {
                     Part::Text(t) | Part::Number(t) => x.out.push_str(t),
-                    Part::Macro(inner) => self.expand_macro(field, inner, problems, report, x),
+                    Part::Macro(inner) => self.expand_macro_uncached(field, inner, problems, report, x),
                 }
                 x.check_size();
                 if x.stopped() {
@@ -501,6 +557,11 @@ struct Expansion {
     steps: usize,
     too_large: bool,
     too_complex: bool,
+}
+
+struct CachedExpansion {
+    expansion: Expansion,
+    problems: Vec<String>,
 }
 
 impl Expansion {
