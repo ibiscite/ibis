@@ -31,11 +31,15 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 ```sh
 node scripts/check.mjs                         # formatting, lints, tests and dependency policy
 cargo test -p ibis-core                        # fast core tests
+cargo test -p ibis-core --release --locked     # core regressions with release arithmetic
 cargo test -p ibis-desktop                     # desktop app tests (not part of plain cargo test)
 IBIS_METAMORPHIC_CASES=2048 cargo test -p ibis-core --test metamorphic --locked
 IBIS_REQUIRE_PANDOC=1 cargo test -p ibis --test fidelity   # differential tests (needs Pandoc)
 cargo insta review                             # review changed snapshots
 ```
+
+CI also runs the complete core suite in release mode on Linux, covering malformed
+dates, private parser-panic containment and the property tests with release arithmetic.
 
 The full check runs the default workspace's `cargo test --locked`, including the
 CLI's Pandoc fidelity tests when `pandoc --version` succeeds. Without Pandoc those

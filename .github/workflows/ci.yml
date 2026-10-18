@@ -50,6 +50,10 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+      - name: Test core in release mode (Linux)
+        if: runner.os == 'Linux'
+        run: cargo test -p ibis-core --release --locked
+
       - name: Fuzz reporter tests
         run: node --test scripts/fuzz.test.mjs
 
