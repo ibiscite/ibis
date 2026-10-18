@@ -70,6 +70,21 @@ Citation tools usually fail at the edges: an unusual editor, a keyboard layout, 
 | Characters special to the target syntax (`%`, `&`, `_`, `@`, `[`) | Escaped per syntax. |
 | Locale-specific terms ("p.", "S.", "et al.") | Follow the chosen locale, not the operating system. |
 
+## Linux preview shortcut capability
+
+The preview's shortcut backend requires a reachable X11 server with XKB. Ibis
+checks that connection and protocol before registering the shortcut. If they
+are unavailable, the picker explains that global shortcuts need X11 and can
+still be opened from the application launcher.
+
+A session label such as `XDG_SESSION_TYPE=wayland` does not decide this check:
+a usable X11/XWayland connection remains usable for X11 shortcut registration.
+GTK's window backend and the login session are separate choices. Registering
+an X11 grab through XWayland does not provide a native Wayland global shortcut
+or establish activation from native Wayland applications. This preview has no
+GlobalShortcuts portal integration. The Wayland capability tiers above remain
+design goals; a successful X11 check or Xvfb run does not verify them.
+
 ## Test matrix
 
 Operating system and session (Windows 11; macOS 15 and later; Linux GNOME, KDE and wlroots on Wayland, and X11) × keyboard layout (US, AZERTY, Dvorak, German, Japanese input method) × destination (word processors, Google Docs, Overleaf, Markdown editors, Notion, email clients, chat apps, terminals, code editors, spreadsheets, remote desktop) × output format. Automated cells insert a test string containing accents, CJK text, italics and brackets, then read it back through accessibility APIs, application scripting or the browser DOM. Results will be published as a compatibility table and can be reported by users through the "App compatibility" issue form.

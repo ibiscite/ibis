@@ -23,14 +23,15 @@ use std::sync::atomic::Ordering;
 
 use ibis_core::settings;
 use tauri::{Manager, WindowEvent};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 #[cfg(debug_assertions)]
 use crate::diagnostics::report;
 use crate::diagnostics::{NativeIssue, checked};
 use crate::library::{Library, LibraryWatch, LoadRequests, start_open};
 use crate::picker::{
-    DialogOpen, ShortcutStatus, configured_shortcut, dismiss_picker, hides_on_blur, show_picker, toggle_picker,
+    DialogOpen, ShortcutStatus, configured_shortcut, dismiss_picker, hides_on_blur, register_shortcut, show_picker,
+    toggle_picker,
 };
 use crate::placement::place_on_active_display;
 use crate::preferences::SettingsFile;
@@ -117,10 +118,7 @@ fn main() {
                 library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
             }
             let (shortcut, label, setting_error) = configured_shortcut(loaded.settings.shortcut.as_deref());
-            let result = app.global_shortcut().register(shortcut);
-            let registration_error = result
-                .err()
-                .map(|e| format!("the shortcut could not be registered ({e}); another app may be using it"));
+            let registration_error = register_shortcut(app.handle(), shortcut).err().map(str::to_string);
             let status = ShortcutStatus {
                 shortcut: label,
                 registered: registration_error.is_none(),

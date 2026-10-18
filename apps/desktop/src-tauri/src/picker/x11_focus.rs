@@ -1,9 +1,37 @@
-//! Authoritative X11 keyboard focus, independent of GTK activation events.
+//! X11 keyboard capability and focus, independent of GTK activation events.
 
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use tauri::{Runtime, WebviewWindow};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
+
+/// Verify the protocol requests used to start global-hotkey's Linux worker.
+/// This checks real capabilities, including when an X11 app runs in a Wayland
+/// login. It does not establish native Wayland global shortcut support.
+pub(super) fn shortcut_ready() -> Result<(), ()> {
+    use x11rb::protocol::xkb;
+    let (connection, _) = x11rb::connect(None).map_err(|_| ())?;
+    let version = xkb::ConnectionExt::xkb_use_extension(&connection, 1, 0)
+        .map_err(|_| ())?
+        .reply()
+        .map_err(|_| ())?;
+    if !version.supported {
+        return Err(());
+    }
+    xkb::ConnectionExt::xkb_per_client_flags(
+        &connection,
+        xkb::ID::USE_CORE_KBD.into(),
+        xkb::PerClientFlag::DETECTABLE_AUTO_REPEAT,
+        xkb::PerClientFlag::DETECTABLE_AUTO_REPEAT,
+        Default::default(),
+        Default::default(),
+        Default::default(),
+    )
+    .map_err(|_| ())?
+    .reply()
+    .map_err(|_| ())?;
+    Ok(())
+}
 
 pub(super) fn query<R: Runtime>(window: &WebviewWindow<R>) -> Result<Option<bool>, ()> {
     // Tauri dispatches this getter to the window thread. Only the integer X11
@@ -63,6 +91,22 @@ fn contains_focus(picker: u32, mut focused: u32, mut parent: impl FnMut(u32) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires DISPLAY to be absent; run with env -u DISPLAY"]
+    fn unavailable_x11_shortcut_backend_is_reported() {
+        assert!(
+            std::env::var_os("DISPLAY").is_none(),
+            "this probe requires no X11 display"
+        );
+        assert_eq!(shortcut_ready(), Err(()));
+    }
+
+    #[test]
+    #[ignore = "requires an isolated X11 display; run with xvfb-run"]
+    fn usable_x11_and_xkb_are_accepted_even_with_a_wayland_session_label() {
+        assert_eq!(shortcut_ready(), Ok(()));
+    }
 
     #[test]
     #[ignore = "requires an isolated X11 display; run with xvfb-run"]
