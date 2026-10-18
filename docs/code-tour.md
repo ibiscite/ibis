@@ -6,6 +6,16 @@ Paths below describe the current desktop picker and CLI. The broader design in
 import, citeproc styles and direct insertion into other applications are future
 work; today's picker searches a `.bib` library and copies citation keys.
 
+## Words used here
+
+- **Tauri**: the framework that turns the web interface (`apps/desktop/src`) and the Rust code (`apps/desktop/src-tauri`) into one desktop app.
+- **CSL / CSL-JSON**: the Citation Style Language and its JSON data format, the standard way to describe references for citation tools.
+- **Coalesce**: merge a burst of file-change events into one reload.
+- **Quiet interval**: a short pause (250 ms, `SETTLE` in `source.rs`) with no new file events; the file is read again after it to make sure it stopped changing.
+- **Candidate load**: a freshly read library that has not replaced the current one yet.
+- **Generation**: a request counter that goes up each time a library is opened or reloaded, so a slow, older load can never replace a newer one.
+- **Replay / logical quotas**: cached work is reused (replayed), but still counts against the same per-field limits as if it were done again.
+
 ## One search: shortcut to results
 
 1. [Desktop main.rs](../apps/desktop/src-tauri/src/main.rs) builds the Tauri app,
@@ -137,7 +147,7 @@ Run commands from the repository root. Setup and the complete check are in
 | Recovery and hostile dates | `cargo test -p ibis-core --test bibtex_recovery --test bibtex_robustness` |
 | Work limits and caches | `cargo test -p ibis-core --test bibtex_load_budget --test bibtex_macro_cache` |
 | Directory watching | `cargo test -p ibis-core --test source_watch` |
-| Search, citation syntax, settings | `cargo test -p ibis-core search::tests` (or `cite::tests`, `settings::tests`) |
+| Search, citation syntax, settings | `cargo test -p ibis-core search::tests`, `cargo test -p ibis-core --test cite_outputs`, `cargo test -p ibis-core settings::tests` |
 | Installed-library ownership | `cargo test -p ibis-desktop library::tests` |
 | Rust/TypeScript contract | `cargo test -p ibis-desktop generated_contract_is_current` |
 | UI state and keyboard behavior | `pnpm -C apps/desktop test` |
