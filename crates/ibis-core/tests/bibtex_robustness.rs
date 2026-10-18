@@ -4,6 +4,70 @@ use ibis_core::bibtex::load_str;
 use proptest::prelude::*;
 
 #[test]
+fn nested_commands_warn_without_aborting_small_stack_loads() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/deep-commands.bib");
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || {
+            for reload in [false, true] {
+                let loaded = ibis_core::source::load_library_file(&path, reload).unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(loaded.references.len(), 2);
+                let deep = &loaded.references[0];
+                assert_eq!(deep.id.native_key, "deep");
+                assert!(deep.title.is_none());
+                assert_eq!(deep.year(), Some(2024));
+                assert_eq!(
+                    deep.variables.get("publisher").map(String::as_str),
+                    Some("Synthetic Press")
+                );
+                assert_eq!(loaded.references[1].title.as_deref(), Some("Retained"));
+                assert_eq!(loaded.warnings.len(), 1);
+                let warning = &loaded.warnings[0];
+                assert_eq!(warning.kind, ibis_core::model::WarningKind::Field);
+                assert_eq!(warning.key.as_deref(), Some("deep"));
+                assert_eq!(warning.line, Some(2));
+                assert!(
+                    warning.message.contains("title")
+                        && warning.message.contains("256")
+                        && warning.message.contains("omitted")
+                );
+            }
+        })
+        .unwrap_or_else(|e| panic!("{e}"))
+        .join()
+        .unwrap_or_else(|e| std::panic::resume_unwind(e));
+}
+
+#[test]
+fn nesting_boundary_is_safe_on_a_two_mib_stack() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            for depth in [255, 256, 257] {
+                let value = format!("{}x{}", "\\emph{".repeat(depth), "}".repeat(depth));
+                let loaded = load_str("synthetic.bib", &format!("@article{{k,title={{{value}}},year=2024}}"));
+                assert_eq!(loaded.references.len(), 1);
+                assert_eq!(loaded.references[0].year(), Some(2024));
+                if depth <= 256 {
+                    assert!(
+                        loaded.references[0]
+                            .title
+                            .as_deref()
+                            .is_some_and(|title| title.contains('x'))
+                    );
+                    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+                } else {
+                    assert!(loaded.references[0].title.is_none());
+                    assert_eq!(loaded.warnings.len(), 1);
+                }
+            }
+        })
+        .unwrap_or_else(|e| panic!("{e}"))
+        .join()
+        .unwrap_or_else(|e| std::panic::resume_unwind(e));
+}
+
+#[test]
 fn malformed_separate_date_parts_retain_references_with_warnings() {
     let loaded = load_str(
         "synthetic.bib",

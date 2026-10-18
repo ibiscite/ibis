@@ -66,6 +66,10 @@ const MAX_EXPANSION_STEPS: usize = 100_000;
 /// Largest field value accepted after expanding abbreviations.
 const MAX_VALUE_BYTES: usize = 64 * 1024;
 
+/// Most nested groups in an expanded field; bounds upstream parser recursion
+/// on the desktop's 2 MiB loading and watcher threads.
+const MAX_FIELD_NESTING: usize = 256;
+
 /// Private-use characters standing in for escaped braces (`\{`, `\}`) so they
 /// can never be mistaken for grouping braces; mapped back after conversion.
 pub(crate) const LEFT_BRACE: char = '\u{E000}';
@@ -228,16 +232,29 @@ impl<'a> Resolver<'a> {
             problems: Vec::new(),
         };
         let fields = self.effective(i, MAX_DEPTH, &mut walk);
+        let mut problems = walk.problems;
+        let fields: Vec<_> = fields
+            .iter()
+            .filter(|(name, value)| {
+                if nesting_exceeds_limit(value) {
+                    problems.push(format!(
+                        "field `{name}` is nested more than {MAX_FIELD_NESTING} levels deep; it is omitted"
+                    ));
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
         let entry = &self.entries[i];
         let rendered: Vec<String> = fields.iter().map(|(name, value)| render_field(name, value)).collect();
         let source = format!("@{}{{{},\n{}}}\n", entry.kind, entry.key, rendered.join(",\n"));
-        let mut problems = walk.problems;
         // The same problem can be found many times; report each one once.
         let mut unique = HashSet::new();
         problems.retain(|p| unique.insert(p.clone()));
         Resolved {
             source,
-            fields: fields.iter().cloned().collect(),
+            fields: fields.into_iter().cloned().collect(),
             problems,
         }
     }
@@ -455,6 +472,25 @@ impl<'a> Resolver<'a> {
             ));
         }
     }
+}
+
+/// Values already encode literal escaped braces as placeholders. Remaining
+/// braces are groups, including those after an escaped pair of backslashes.
+fn nesting_exceeds_limit(value: &str) -> bool {
+    let mut depth = 0usize;
+    for byte in value.bytes() {
+        match byte {
+            b'{' => {
+                depth += 1;
+                if depth > MAX_FIELD_NESTING {
+                    return true;
+                }
+            }
+            b'}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    false
 }
 
 /// State of expanding one field value.
@@ -711,6 +747,47 @@ mod tests {
             .position(|e| e.key == key)
             .unwrap_or_else(|| panic!("no {key}"));
         Resolver::new(macros, &entries).resolve(i)
+    }
+
+    #[test]
+    fn excessive_nesting_is_omitted_after_expansion_and_inheritance() {
+        let value = format!("{}x{}", "\\emph{".repeat(257), "}".repeat(257));
+        for field in ["title", "journal", "note", "unknown", "url"] {
+            for written in [format!("{{{value}}}"), format!("\"{value}\""), "bad # {}".to_string()] {
+                let source = format!(
+                    "@string{{bad={{{value}}}}}\n@xdata{{p,{field}={written}}}\n@article{{k,xdata={{p}},year=2024}}"
+                );
+                let result = resolve(&source, "k");
+                assert!(!result.fields.contains_key(field), "{field}");
+                assert!(!result.source.contains("emph"), "{field}");
+                assert!(result.source.contains("year = {2024}"));
+                assert_eq!(result.problems.len(), 1);
+                assert!(result.problems[0].contains(field) && result.problems[0].contains("omitted"));
+            }
+        }
+        let result = resolve(
+            &format!("@proceedings{{p,title={{{value}}}}}\n@inproceedings{{k,title={{Safe}},crossref={{p}}}}"),
+            "k",
+        );
+        assert_eq!(result.fields.get("title").map(String::as_str), Some("Safe"));
+        assert!(!result.fields.contains_key("booktitle"));
+        assert!(result.problems[0].contains("booktitle"));
+    }
+
+    #[test]
+    fn nesting_guard_preserves_literal_braces_and_backslash_parity() {
+        for slashes in 1..=4 {
+            let prefix = "\\".repeat(slashes);
+            let value = format!(
+                "{}x{}",
+                format!("{prefix}{{").repeat(257),
+                format!("{prefix}}}").repeat(257)
+            );
+            assert_eq!(nesting_exceeds_limit(&encode_literals(&value)), slashes % 2 == 0);
+        }
+        assert!(!nesting_exceeds_limit(&encode_literals(
+            &"\u{E000}\u{E001}\u{E002}\u{E003}".repeat(4_000)
+        )));
     }
 
     #[test]

@@ -21,3 +21,8 @@ dates: malformed dates produce field warnings without discarding the reference.
 from #113: zero months, an oversized day embedded in a month field, and a
 non-Latin numeric month. Unsafe parts produce field warnings and retain
 a valid year rather than discarding the whole reference.
+
+`bibtex/deep-commands.bib` has 4,000 nested emphasis commands in one synthetic
+title, plus safe sibling fields and a second reference. Core and CLI tests
+check that loading on a 2 MiB stack omits the title with a warning and retains
+the other data; dedicated tests also cover the 256-level accepted boundary.

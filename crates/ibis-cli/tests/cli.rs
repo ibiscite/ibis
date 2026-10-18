@@ -23,6 +23,23 @@ fn s(path: &Path) -> &str {
 }
 
 #[test]
+fn nested_commands_keep_references_and_report_the_omitted_field() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/deep-commands.bib");
+    let out = ibis(&["check", s(&path), "--json"]);
+    assert_eq!(out.status.code(), Some(2), "{}", String::from_utf8_lossy(&out.stderr));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(report[0]["loaded"], 2);
+    assert_eq!(report[0]["warnings"].as_array().map(Vec::len), Some(1));
+    assert_eq!(report[0]["warnings"][0]["kind"], "field");
+    assert_eq!(report[0]["warnings"][0]["key"], "deep");
+    assert!(
+        report[0]["warnings"][0]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("title") && message.contains("omitted"))
+    );
+}
+
+#[test]
 fn same_file_name_in_two_folders_keeps_records_distinct_and_refuses_to_guess() {
     let a = write("cli-a", "refs.bib", "@article{same, title={From A}, year={2020}}\n");
     let b = write("cli-b", "refs.bib", "@article{same, title={From B}, year={2021}}\n");
