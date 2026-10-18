@@ -84,6 +84,14 @@
   --compact-search-padding: .9rem;
   --compact-result-gap: .4rem;
   --search-active-border: var(--accent);
+  --gallery-padding: 1rem;
+  --gallery-gap: 1.5rem;
+  --gallery-heading-size: 1.5rem;
+  --gallery-state-title-size: 1rem;
+  --gallery-title-gap: .5rem;
+  --gallery-frame-min-width: 36rem;
+  --gallery-frame-height: 30rem;
+  --gallery-large-text-size: 150%;
 }
 
 /* Older system webviews retain usable system colours. */
@@ -110,3 +118,6 @@
 @media (forced-colors: active) {
   :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
 }
+
+/* Explicit contrast preview in the development states gallery. */
+:root[data-gallery-theme="contrast"] { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }

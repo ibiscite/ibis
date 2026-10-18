@@ -96,6 +96,9 @@ jobs:
           pnpm typecheck
           pnpm test
           pnpm build
+          test ! -e dist/gallery.html
+          pnpm exec vite build --mode evidence
+          test -f dist/gallery.html
 
       - name: Share the checked web interface
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -130,7 +133,7 @@ jobs:
         working-directory: .
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -146,6 +149,7 @@ jobs:
           path: apps/desktop/dist
 
       - name: Lint, test and build the app
+        id: native_build
         working-directory: .
         run: |
           cargo clippy -p ibis-desktop --all-targets --locked
@@ -207,6 +211,20 @@ jobs:
             # Background WebView2 traffic starts after a delay, so watch for a minute (#201).
             ./scripts/check-offline.ps1 -AppId $app.Id -Seconds 60
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
+
+      - name: Capture every synthetic picker state
+        if: always() && steps.native_build.outcome == 'success'
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            python -B scripts/test_capture_gallery.py
+            python scripts/capture-gallery.py --app target/debug/ibis-desktop.exe --output screenshots/gallery-Windows
+          elif [ "$RUNNER_OS" = Linux ]; then
+            python3 -B scripts/test_capture_gallery.py
+            xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-Linux
+          else
+            python3 -B scripts/test_capture_gallery.py
+            python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-macOS
+          fi
 
       - name: Keep screenshots and startup logs
         if: always()

@@ -9,6 +9,8 @@
 mod bindings;
 mod copy;
 mod diagnostics;
+#[cfg(debug_assertions)]
+mod gallery;
 mod library;
 mod picker;
 mod placement;
@@ -23,6 +25,8 @@ use ibis_core::settings;
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+#[cfg(debug_assertions)]
+use crate::diagnostics::report;
 use crate::diagnostics::{NativeIssue, checked};
 use crate::library::{Library, LibraryWatch, LoadRequests, start_open};
 use crate::picker::{
@@ -33,6 +37,13 @@ use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
 
 fn main() {
+    let context = tauri::generate_context!();
+    #[cfg(debug_assertions)]
+    let context = {
+        let mut context = context;
+        report(gallery::configure(&mut context), NativeIssue::GalleryNavigation);
+        context
+    };
     let app = tauri::Builder::default()
         // Must be registered first: a second launch brings the running picker forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_picker(app)))
@@ -70,6 +81,26 @@ fn main() {
             _ => {}
         })
         .setup(|app| {
+            // Debug builds may opt into the synthetic evidence gallery. Keep
+            // both environment reads out of release binaries entirely.
+            #[cfg(debug_assertions)]
+            {
+                let enabled = std::env::var("IBIS_GALLERY").ok();
+                if enabled.as_deref() == Some("1")
+                    && let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window)
+                {
+                    let state = std::env::var("IBIS_GALLERY_STATE").ok();
+                    report(
+                        gallery::install_readiness(
+                            app.handle(),
+                            &window,
+                            state.as_deref(),
+                            std::env::var_os("IBIS_GALLERY_READY_FILE").map(PathBuf::from),
+                        ),
+                        NativeIssue::GalleryNavigation,
+                    );
+                }
+            }
             // The picker opens near the top of the display with the pointer.
             if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
                 place_on_active_display(app.handle(), &window, true);
@@ -127,7 +158,7 @@ fn main() {
             }
             Ok(())
         })
-        .build(tauri::generate_context!());
+        .build(context);
     match app {
         Ok(app) => app.run(|app, event| {
             // macOS: clicking the Dock icon brings back the hidden picker.
