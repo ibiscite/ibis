@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-One page per decision with lasting effect: context, decision, consequences. Status is *accepted*, *proposed* or *superseded by NNNN*. To change a decision, add a new ADR that supersedes the old one; do not rewrite history. See also `../architecture.md` and `../../ROADMAP.md`.
+One page per decision with lasting effect: context, decision, consequences. Status is *accepted*, *proposed* or *superseded by NNNN*. To change a decision, add a new ADR that supersedes the old one; do not rewrite history. ADRs whose features are not fully built yet (0006, 0007, 0009, 0010) record the direction for the unbuilt parts; those details are settled when the parts are built, and a new ADR can change them then. See also `../architecture.md` and `../../ROADMAP.md`.
 
 | # | Decision | Status |
 | --- | --- | --- |
@@ -14,7 +14,8 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0008 | Offline by default; every network feature opt-in | accepted |
 | 0009 | Insertion never fails silently; destination behaviour is data | accepted |
 | 0010 | Search: instant keyword first, meaning-based search added later | proposed (awaiting measurements) |
-| 0011 | AI-assisted contributions with guardrails | accepted |
+| 0011 | AI-assisted contributions with guardrails | accepted (amended by 0015) |
 | 0012 | Ship 0.1 as a single process; split only if measurements require it | accepted (amends 0004) |
 | 0013 | Crate-specific NCSA exception for isolated fuzzing infrastructure | accepted |
 | 0014 | Share one lockfile across application and fuzz infrastructure | accepted (amends 0013 workspace layout) |
+| 0015 | Autonomous agents merge only small, reviewed, low-risk changes | accepted (amends 0011) |

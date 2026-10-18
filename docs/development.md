@@ -9,7 +9,7 @@ This project favours small, verified, reversible steps.
 3. **Test first.** Add a failing test or fixture that captures the acceptance criteria, then implement.
 4. **Check.** `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform.
 5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux. A newer push to a pull request cancels its older run; every commit on `main` is tested to completion, and only `main` saves Rust build caches. The description says what users can now do, how it was verified, and what was not verified.
-6. **Review.** One independent review of the final diff; P1 findings and regressions are fixed before merging, other findings become issues.
+6. **Review.** One independent review of the final diff, recorded as a pull request comment naming the reviewed commit. P1 and P2 findings are fixed before merging (filing them as issues does not count); P3 findings may become issues. Which changes an agent may merge itself is set by ADR 0015 and `AGENTS.md`.
 7. **Merge.** Squash-merge when checks pass. The pull request title becomes the commit on `main`. `main` is protected and always releasable; its history is never rewritten.
 
 ## Working quickly and safely
@@ -29,7 +29,7 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
 
   This is POSIX shell; on Windows, run it in Git Bash.
 
-- **Stack instead of waiting.** Start the next issue on a branch based on the previous one. After the previous pull request is squash-merged, move the branch onto `main` and confirm the content did not change:
+- **Stack instead of waiting.** Start the next issue on a branch based on the previous one (one level at most: never build on a chain of unmerged branches). After the previous pull request is squash-merged, move the branch onto `main` and confirm the content did not change:
 
   ```sh
   tree=$(git rev-parse next-branch^{tree})
@@ -38,12 +38,12 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
   test "$(git rev-parse next-branch^{tree})" = "$tree" && echo unchanged
   ```
 
-- **Review in parallel.** Run the one independent review of the final diff while CI runs, and save findings in the pull request (fixed, filed as an issue, or rejected with a reason).
+- **Review in parallel.** Run the one independent review of the final diff while CI runs, and save findings in the pull request (fixed, P3 filed as an issue, or rejected with a reason).
 - **Independent work in parallel.** Issues that touch different files can be worked on at the same time, each in its own worktree and branch. Two writers never share a checkout. Shared files (`Cargo.toml`, `Cargo.lock`, `apps/desktop/src-tauri/src/main.rs`, `ROADMAP.md`) are changed by one branch at a time.
 
 ## Progress reports
 
-Each milestone has a tracking issue (label `tracking`) with a checklist of its issues, decisions taken, and open questions for the maintainer. After each merge, add one line saying what users can now do and what is next. Questions that need the maintainer carry the label `needs:maintainer`.
+Each milestone has a tracking issue (label `tracking`). Its body holds the current plan: what done means, **Now** (work in progress and where it is), the ordered **Queue**, what waits on the maintainer, what is deferred, and decisions taken. History goes in comments. After each merge, add one line saying what users can now do and what is next. Questions that need the maintainer carry the label `needs:maintainer`.
 
 ## Setting up a computer
 
@@ -51,7 +51,7 @@ First install the build tools for your platform (below). Then every platform nee
 
 - Rust through [rustup](https://rustup.rs/). `rust-toolchain.toml` selects Rust 1.99.1 with rustfmt and clippy on first use; do not install it by hand.
 - [Node.js](https://nodejs.org/) 22 or newer; CI uses 22.
-- pnpm 11.25.0, pinned in `apps/desktop/package.json` (`packageManager`). Install it with `corepack enable pnpm` or `npm install --global pnpm@11.25.0`.
+- pnpm 11.25.0, pinned in `apps/desktop/package.json` (`packageManager`). Install it with `npm install --global pnpm@11.25.0` (or `corepack enable pnpm` on Node.js 22–24; newer Node.js no longer bundles Corepack).
 - cargo-deny: `cargo install --locked cargo-deny`.
 - actionlint 1.7.12 on `PATH` (see "Workflow linting").
 - Optional: [Pandoc](https://pandoc.org/installing.html), for the citation fidelity test. Without it the test is skipped; `IBIS_REQUIRE_PANDOC=1` makes it fail instead, as in CI. `cargo install --locked cargo-insta` for `cargo insta review`.
@@ -93,7 +93,7 @@ CI runs every check on Windows too. Install, in this order:
 2. [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload (MSVC and a Windows SDK).
 3. WebView2. It is part of Windows 11; on Windows 10 install the Evergreen runtime. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
 4. rustup, accepting the default MSVC host (`x86_64-pc-windows-msvc`, or `aarch64-pc-windows-msvc` on Arm).
-5. Node.js, pnpm, cargo-deny and, optionally, Pandoc and cargo-insta, as listed above. If `corepack enable pnpm` is refused for lack of permissions, use `npm install --global pnpm@11.25.0`.
+5. Node.js, pnpm, cargo-deny and, optionally, Pandoc and cargo-insta, as listed above. Prefer `npm install --global pnpm@11.25.0`; `corepack enable pnpm` may be refused for lack of permissions.
 6. actionlint: download `actionlint_1.7.12_windows_amd64.zip` (or `_arm64`) from the [1.7.12 release](https://github.com/rhysd/actionlint/releases/tag/v1.7.12) and put `actionlint.exe` in a folder on `PATH`.
 
 Open a new terminal so the `PATH` changes apply, then, in `C:\src\ibis`:
@@ -122,12 +122,12 @@ Choose a library from the picker or from the menu bar (tray) item. The choice an
 - Linux: `$XDG_CONFIG_HOME/io.github.ibiscite.ibis/`, or `~/.config/io.github.ibiscite.ibis/` when `XDG_CONFIG_HOME` is not set
 
 ```json
-{ "schema_version": 1, "shortcut": "CommandOrControl+Alt+R", "library": "/path/to/refs.bib", "copy_format": "pandoc" }
+{ "schema_version": 1, "shortcut": "CommandOrControl+Shift+Y", "library": "/path/to/refs.bib", "copy_format": "pandoc" }
 ```
 
 Every field is optional. On Windows, write the library path with forward slashes or doubled backslashes, as JSON requires. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten.
 
-The picker shortcut defaults to Cmd+Shift+Space on macOS and Ctrl+Shift+Space on Windows and Linux. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used.
+The picker shortcut defaults to Cmd+Shift+Space on macOS and Ctrl+Shift+Space on Windows and Linux. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used. On Windows, avoid Ctrl+Alt combinations: many keyboard layouts use them as AltGr to type characters.
 
 For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
 

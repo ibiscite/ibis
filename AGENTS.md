@@ -15,28 +15,31 @@ cargo insta review              # review changed snapshots (cargo install cargo-
 
 ## Picking work
 
-Work is tracked in GitHub issues grouped by milestone (see `ROADMAP.md`). Take the lowest-numbered issue labelled `status:ready` in the earliest open milestone, unless a maintainer has asked for something else. Issues labelled `status:needs-design` need a short written plan, reviewed before implementation; `status:blocked` issues wait on another issue or a maintainer decision. Each issue states its acceptance criteria and tests; a pull request closes exactly one issue (`Closes #N`). If requirements are unclear or a decision is hard to reverse, ask in the issue instead of guessing.
+Take the first open, untaken item for your role in the **Queue** at the top of the milestone's tracking issue (label `tracking`), and say in its issue that you took it. A red `main` comes first. A pull request closes exactly one issue (`Closes #N`); `status:needs-design` issues need a short plan reviewed before code. If something is unclear or hard to reverse, ask in the issue instead of guessing. Don't add issues to milestones or the queue: file findings with the label `needs:triage`.
 
 ## Working autonomously
 
-The maintainer runs AI coding agents on this repository and authorizes them to work without asking for each step. Within that authorization an agent may create branches, commit, push branches, open pull requests, and squash-merge **its own** pull request when:
+The maintainer runs AI coding agents here (ADR 0015). Implementing agents build; the maintainer, or a reviewing agent acting for the maintainer, orders the queue and reviews. Agents may branch, commit, push and open pull requests.
 
-- every required check and the desktop checks pass on the final commit;
-- one independent review of the final diff (by a session or person that did not write it) has no open P1 finding and no regression introduced by the change;
-- the change stays within the issue it closes.
+**Merge your own pull request only if** it is a small (about 300 lines, excluding lockfiles, generated files and snapshots) fix, test, fixture or doc correction that adds no feature and changes no interface, default or persisted format (correcting wrong output is fine); it touches only `crates/`, `apps/desktop/src/`, `apps/desktop/src-tauri/src/`, `fixtures/` or `docs/` (not `docs/adr/`, `docs/development.md` or `docs/testing.md`); all required checks pass; and an independent review is recorded with every P1 and P2 fixed (filing them as issues doesn't count). Otherwise add `needs:review` and move on. Never use `--admin` or another bypass; never create tags.
 
-Always ask the maintainer first about: releases (tags, the release pull request, publishing builds), licensing, privacy or network use, repository and organization settings, anything that costs money or creates accounts, and product defaults that users notice (what Enter does, the default shortcut, first-run questions, default style). Ask with a short recommendation, in the session when the maintainer is present, otherwise as a comment on the issue with the label `needs:maintainer`, and continue with other work meanwhile. Routine engineering choices are not questions: choose the standard practice and say what you chose in the pull request.
+**Review** is done by another session, preferably another model, and posted as a pull request comment starting `Independent review of <full SHA> by <tool and model>`, with verdict, findings and checks run. It covers only that commit (a rebase with an identical tree keeps it).
+
+**Limits:** at most three open agent pull requests in total and one level of stacking; at the limit, address review feedback or stop and update **Now**. If a check fails twice for the same reason, or you need a decision listed below, comment on the issue, add `needs:maintainer` and take the next item. No new workflows, harnesses, ADRs or dependencies unless the issue asks for them.
+
+Always ask the maintainer first about: releases (tags, the release pull request, publishing builds), licensing, privacy or network use, repository and organization settings, anything that costs money or creates accounts, and product defaults that users notice (what Enter does, the default shortcut, first-run questions, default style). Ask with a short recommendation, in the session when the maintainer is present, otherwise in the issue with `needs:maintainer`. Routine engineering choices are not questions: choose the standard practice and say so in the pull request.
 
 Without that authorization (for example, an outside contributor's agent), follow "Version control" below.
 
 ### The loop
 
-1. Pick work as described above and read its issue and the milestone's tracking issue.
-2. Branch `<type>/<issue>-<short-name>` from `main`; start with a failing test or fixture.
-3. While editing, run the fast checks (`cargo test -p ibis-core`, `cargo test -p ibis-desktop`, `pnpm -C apps/desktop test`). Before pushing, run `node scripts/check.mjs` on the exact commit and push only if it exits 0. Report every check as passed, failed or blocked (could not run), never "passed" for a step that did not run.
-4. Review once, adversarially: hostile input, other scripts and locales, huge or empty data, concurrency, platform differences, silent failure. P1 means crash, hang, data loss or a security issue; P2 means wrong or silently changed output. Fix P1s and regressions with a regression test; file other findings as issues rather than growing the pull request.
-5. Do not wait idle for CI or a review: continue with the next issue on a branch stacked on the previous one, and rebase it onto `main` after the squash-merge (see `docs/development.md`).
-6. After merging, add one line to the milestone's tracking issue: what is now possible, and what is next or blocked.
+1. Take the next queue item; read its issue and the tracking issue.
+2. Branch `<type>/<issue>-<short-name>` from `main`, in your own clone or worktree (never share a checkout). Start with a failing test or fixture.
+3. Run fast checks while editing (`cargo test -p ibis-core`, `cargo test -p ibis-desktop`, `pnpm -C apps/desktop test`) and `node scripts/check.mjs` on the exact commit before pushing. Report each check as passed, failed or blocked, never "passed" for a step that did not run.
+4. Review once, adversarially: hostile input, other scripts and locales, huge or empty data, concurrency, platforms, silent failure. P1 = crash, hang, data loss, security; P2 = wrong or silently changed output. Fix P1, P2 and regressions with a test; file P3s as issues.
+5. Open the pull request with "How it works" in plain words, for a maintainer who did not write the code. Get the independent review (step 4 is your own review, not that one). Then merge if allowed above, or add `needs:review` and take the next item.
+6. After merging, check `main` is green and add one plain line to the tracking issue: what users can now do, what is next.
+7. Before stopping or switching machines, push everything and update **Now** in the tracking issue. Nothing needed to continue lives on one machine only.
 
 ## Architecture rules
 
@@ -68,4 +71,4 @@ Without that authorization (for example, an outside contributor's agent), follow
 
 - Check `git status` before editing and preserve existing work. Never reset, restore, delete or reformat unrelated changes.
 - Do not commit, push, tag, release or publish unless explicitly asked to perform that exact action, or authorized as described in "Working autonomously". Tags, releases and publishing always need an explicit request.
-- Write commit messages in the imperative mood using Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`), describing behaviour and validation. Do not include conversation history, tool or agent names, or private context. Sign off commits (`git commit -s`).
+- Write commit messages in the imperative mood using Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`), describing behaviour and validation. Do not include conversation history or private context. Commits written with an AI tool end with an `Assisted-by: <tool and model>` trailer (or the tool's own co-author line), as ADR 0011 requires disclosure. Sign off commits (`git commit -s`).

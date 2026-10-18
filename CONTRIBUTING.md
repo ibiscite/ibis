@@ -17,7 +17,7 @@ Welcome, under the same bar as any other change:
 - Say in the pull request that AI helped and which tool.
 - Keep it small and focused on one outcome.
 - Include a test or fixture that fails without the change.
-- All automated checks must pass. A maintainer (assisted by AI review) still decides.
+- All automated checks must pass. A maintainer (assisted by AI review) still decides. Agents run by the maintainer follow ADR 0015 and `AGENTS.md`.
 - You are responsible for the change: you must be able to say what it does and why. Do not paste private data into AI tools while working on Ibis.
 
 A good prompt to start from: *"Read AGENTS.md and CONTRIBUTING.md in this repository. I want Ibis to <outcome>. Propose the smallest change with a test, then implement it and run `node scripts/check.mjs`."*
@@ -33,7 +33,7 @@ A good prompt to start from: *"Read AGENTS.md and CONTRIBUTING.md in this reposi
 
 ## Development setup
 
-You need [Rust](https://rustup.rs/) (the version in `rust-toolchain.toml` is selected automatically), [Node.js](https://nodejs.org/) 22 or newer and [pnpm](https://pnpm.io/) 11.25.0, pinned in `apps/desktop/package.json` (`corepack enable pnpm` or `npm install --global pnpm@11.25.0`). Rust also needs the platform's C and C++ build tools, and the desktop app needs WebKitGTK on Linux and WebView2 on Windows 10. Step-by-step setup for macOS, Linux and Windows is in "Setting up a computer" in [docs/development.md](docs/development.md#setting-up-a-computer).
+You need [Rust](https://rustup.rs/) (the version in `rust-toolchain.toml` is selected automatically), [Node.js](https://nodejs.org/) 22 or newer and [pnpm](https://pnpm.io/) 11.25.0, pinned in `apps/desktop/package.json` (`npm install --global pnpm@11.25.0`). Rust also needs the platform's C and C++ build tools, and the desktop app needs WebKitGTK on Linux and WebView2 on Windows 10. Step-by-step setup for macOS, Linux and Windows is in "Setting up a computer" in [docs/development.md](docs/development.md#setting-up-a-computer).
 
 ```sh
 git clone https://github.com/ibiscite/ibis
