@@ -31,8 +31,12 @@ Release Please then keeps a release pull request open. Bot-created proposals can
 
 `.github/workflows/preview.yml` builds Windows (MSI and setup executable), macOS (Apple silicon and Intel disk images) and Linux (AppImage, .deb, .rpm) packages in CI, with SHA-256 checksums and build-provenance attestations.
 
-- **Dry run:** Actions → Preview builds → Run workflow. The packages are kept as workflow artifacts for 14 days; nothing is published.
-- **Pre-release:** when the maintainer pushes a tag `v*`, the same packages are published as a GitHub pre-release whose notes say the builds are unsigned and how to verify them.
+- **Dry run:** Actions → Preview builds → Run workflow. The packages are kept as workflow artifacts for 14 days; nothing is published, including when the selected ref is a tag.
+- **Pre-release:** after an explicitly authorized release PR merge, Release Please creates the tag and calls the shared package workflow directly with the released SHA and tag. Its `GITHUB_TOKEN` cannot trigger a second tag-push workflow. A maintainer's own `v*` tag push also builds and attaches packages. Major-zero releases are marked as previews from creation; the proposed first version remains `0.1.0`.
+
+Attaching packages preserves the generated changelog and adds the unsigned preview warning and checksum/provenance instructions once.
+
+Checkout uses the released SHA, and packaging stops before building if it differs from the workflow commit: the standard provenance attestation records the workflow's OIDC commit. If a delayed Release Please run discovers a release merged before its own triggering commit, recover by manually running Preview builds **at the existing release tag**. This produces correctly attributed artifacts without publishing. Download that run's `ibis-*` artifacts with `gh run download RUN_ID --pattern 'ibis-*' --dir dist`. Verify every package's SHA-256 against its downloaded `SHA256SUMS` file and its provenance with `gh attestation verify FILE --repo ibiscite/ibis --source-digest TAG_COMMIT_SHA`, using the commit at the existing release tag. After those checks and the offline review below, and only with explicit maintainer approval to publish, attach the packages and checksums with `gh release upload TAG dist/*/* --clobber`. Verify the target tag and release before uploading; keep the preview warning and verification instructions in its notes. Do not delete or move the tag to recover a build.
 
 Before publishing, install a dry-run build on each operating system without a network connection and check: the shortcut (and the message when another app already uses it), hiding and reopening (including the Dock on macOS), choosing a library, copying and pasting a citation into an ordinary editor, Quit, and relaunching with the same library.
 

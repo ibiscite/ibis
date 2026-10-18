@@ -5,8 +5,8 @@ name: Preview builds
 #
 # - Run manually (Actions → Preview builds → Run workflow) for a dry run:
 #   the packages are kept as workflow artifacts and nothing is published.
-# - Pushing a tag v* also publishes them as a GitHub pre-release. Tags are
-#   pushed only by a maintainer (see RELEASING.md).
+# - A maintainer's tag push, or the direct call after Release Please creates a
+#   release, also attaches packages to the GitHub pre-release (see RELEASING.md).
 #
 # Preview builds are unsigned: macOS builds are ad-hoc signed only and
 # Windows builds carry no Authenticode signature.
@@ -15,12 +15,22 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release-tag:
+        description: Existing release tag to receive the packages
+        required: true
+        type: string
+      release-sha:
+        description: Exact commit tagged by Release Please
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: preview-${{ github.ref }}
+  group: preview-${{ inputs.release-tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -48,6 +58,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release-sha || github.sha }}
+
+      # The standard attestation records the workflow's OIDC commit. An older
+      # release discovered by a later push must not claim that later source.
+      - name: Verify provenance source commit
+        env:
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$WORKFLOW_SHA" ]; then
+            echo "::error::Release and workflow commits differ; rebuild from the release tag as described in RELEASING.md."
+            exit 1
+          fi
 
       # Ubuntu 22.04 keeps the Linux packages compatible with older glibc.
       # The app indicator library is needed for the tray item in the AppImage.
@@ -128,7 +150,7 @@ jobs:
 
   publish:
     name: Publish pre-release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || inputs.release-tag != '')
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -144,7 +166,7 @@ jobs:
       - name: Create or update the pre-release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.release-tag || github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
           cat > notes.md <<'EOF'
@@ -153,11 +175,16 @@ jobs:
           Verify a download before opening it:
 
           - Checksums: compare the output of `shasum -a 256 <file>` (macOS, Linux) or `Get-FileHash <file>` (Windows) with the `SHA256SUMS-*.txt` files below.
-          - Provenance: `gh attestation verify <file> --repo ibis-cite/ibis` confirms the file was built by this repository's workflow.
+          - Provenance: `gh attestation verify <file> --repo ibiscite/ibis` confirms the file was built by this repository's workflow.
           EOF
-          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "$REPO" --json body --jq .body > existing-notes.md; then
             gh release upload "$TAG" dist/* --repo "$REPO" --clobber
-            gh release edit "$TAG" --repo "$REPO" --prerelease
+            if grep -Fq '**Preview build. Not signed.**' existing-notes.md; then
+              gh release edit "$TAG" --repo "$REPO" --prerelease
+            else
+              cat notes.md existing-notes.md > combined-notes.md
+              gh release edit "$TAG" --repo "$REPO" --prerelease --notes-file combined-notes.md
+            fi
           else
             gh release create "$TAG" dist/* --repo "$REPO" --prerelease --title "Ibis $TAG (preview)" --notes-file notes.md --verify-tag
           fi
