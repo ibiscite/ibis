@@ -23,9 +23,11 @@ use ibis_core::settings;
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-use crate::diagnostics::{NativeIssue, checked, report};
+use crate::diagnostics::{NativeIssue, checked};
 use crate::library::{Library, LibraryWatch, LoadRequests, start_open};
-use crate::picker::{DialogOpen, ShortcutStatus, configured_shortcut, hides_on_blur, show_picker, toggle_picker};
+use crate::picker::{
+    DialogOpen, ShortcutStatus, configured_shortcut, dismiss_picker, hides_on_blur, show_picker, toggle_picker,
+};
 use crate::placement::place_on_active_display;
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
@@ -55,14 +57,14 @@ fn main() {
             // Closing the picker hides it; the app keeps running for the shortcut.
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                report(window.hide(), NativeIssue::Hide);
+                dismiss_picker(window.app_handle());
             }
             // Like other launchers, the picker hides when it loses focus, but
             // not to its own file dialog.
             WindowEvent::Focused(false) => {
                 let dialog_open = window.state::<DialogOpen>().0.load(Ordering::SeqCst);
                 if hides_on_blur(!cfg!(debug_assertions), dialog_open) {
-                    report(window.hide(), NativeIssue::Hide);
+                    dismiss_picker(window.app_handle());
                 }
             }
             _ => {}
