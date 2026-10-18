@@ -14,13 +14,14 @@ mod tray;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::Ordering;
 
 use ibis_core::settings;
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::library::{Library, LoadRequests, start_open};
-use crate::picker::{ShortcutStatus, configured_shortcut, show_picker, toggle_picker};
+use crate::picker::{DialogOpen, ShortcutStatus, configured_shortcut, hides_on_blur, show_picker, toggle_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
 
@@ -41,6 +42,7 @@ fn main() {
         )
         .manage(Mutex::new(Library::default()))
         .manage(LoadRequests::default())
+        .manage(DialogOpen::default())
         .manage(Mutex::new(ShortcutStatus::default()))
         .invoke_handler(tauri::generate_handler![
             library::choose_library,
@@ -59,9 +61,13 @@ fn main() {
                 api.prevent_close();
                 let _ = window.hide();
             }
-            // Like other launchers, the picker hides when it loses focus.
-            WindowEvent::Focused(false) if !cfg!(debug_assertions) => {
-                let _ = window.hide();
+            // Like other launchers, the picker hides when it loses focus, but
+            // not to its own file dialog.
+            WindowEvent::Focused(false) => {
+                let dialog_open = window.state::<DialogOpen>().0.load(Ordering::SeqCst);
+                if hides_on_blur(!cfg!(debug_assertions), dialog_open) {
+                    let _ = window.hide();
+                }
             }
             _ => {}
         })

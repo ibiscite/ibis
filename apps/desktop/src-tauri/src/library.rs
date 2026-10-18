@@ -12,7 +12,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::picker::show_picker;
+use crate::picker::{DialogOpen, show_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
@@ -182,12 +182,25 @@ pub(crate) fn start_open(app: &AppHandle, path: PathBuf, remember: bool) {
 /// Show the system file dialog and open the chosen library. Cancelling
 /// changes nothing.
 pub(crate) fn choose_library_file(app: &AppHandle) {
-    let handle = app.clone();
-    app.dialog()
+    // The dialog belongs to the picker: show the picker (the request may come
+    // from the tray), attach the dialog to it, and keep the picker open while
+    // the dialog has the focus.
+    show_picker(app);
+    if !app.state::<DialogOpen>().begin() {
+        return; // a dialog is already open on the picker
+    }
+    let mut dialog = app
+        .dialog()
         .file()
         .set_title("Choose a BibTeX or BibLaTeX library")
-        .add_filter("BibTeX and BibLaTeX", &["bib"])
-        .pick_file(move |picked| match picked.map(|p| p.into_path()) {
+        .add_filter("BibTeX and BibLaTeX", &["bib"]);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    let handle = app.clone();
+    dialog.pick_file(move |picked| {
+        handle.state::<DialogOpen>().end();
+        match picked.map(|p| p.into_path()) {
             None => {}
             Some(Ok(path)) => start_open(&handle, path, true),
             Some(Err(_)) => {
@@ -199,7 +212,8 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
                     },
                 );
             }
-        });
+        }
+    });
 }
 
 pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {

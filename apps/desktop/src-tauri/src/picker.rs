@@ -1,6 +1,7 @@
 //! Showing, hiding and quitting, and the global shortcut.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -92,6 +93,32 @@ pub(crate) fn shortcut_status(status: State<'_, Mutex<ShortcutStatus>>) -> Short
     status.lock().map(|s| s.clone()).unwrap_or_default()
 }
 
+/// Set while a system dialog that belongs to the picker (such as the file
+/// dialog) is open. Focus moves to the dialog, which must not hide the picker.
+#[derive(Default)]
+pub(crate) struct DialogOpen(pub(crate) AtomicBool);
+
+impl DialogOpen {
+    /// Claim the dialog slot. Returns false when a dialog is already open, so
+    /// only one is shown at a time and closing it cannot unprotect another.
+    pub(crate) fn begin(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
+    pub(crate) fn end(&self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Whether the picker hides when it loses focus. Release builds hide it, like
+/// other launchers, except while one of its own dialogs has the focus;
+/// development builds never do, so the developer tools stay usable.
+pub(crate) fn hides_on_blur(release_build: bool, dialog_open: bool) -> bool {
+    release_build && !dialog_open
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +134,23 @@ mod tests {
         let (_, label, error) = configured_shortcut(None);
         assert_eq!(label, shortcut_label());
         assert!(error.is_none());
+    }
+
+    /// The file dialog takes the focus from the picker; hiding the picker then
+    /// made the dialog disappear before it could be used.
+    #[test]
+    fn the_picker_stays_open_while_its_own_dialog_has_the_focus() {
+        assert!(hides_on_blur(true, false));
+        assert!(!hides_on_blur(true, true));
+        assert!(!hides_on_blur(false, false));
+    }
+
+    #[test]
+    fn only_one_dialog_is_open_at_a_time() {
+        let dialog = DialogOpen::default();
+        assert!(dialog.begin());
+        assert!(!dialog.begin());
+        dialog.end();
+        assert!(dialog.begin());
     }
 }
