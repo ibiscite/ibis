@@ -175,7 +175,14 @@ fn rearm_target(
     target: &Mutex<Option<PathBuf>>,
     watched_parent: &mut Option<PathBuf>,
 ) -> Result<(), SourceError> {
-    let Ok(resolved) = std::fs::canonicalize(selected) else {
+    let resolved = std::fs::canonicalize(selected).ok().or_else(|| {
+        // A dangling selected link can still name a file in an existing
+        // directory. Resolve only that parent so creation of the leaf is seen.
+        // One read_link plus OS canonicalization keeps resolution bounded.
+        let linked = selected.parent()?.join(std::fs::read_link(selected).ok()?);
+        Some(std::fs::canonicalize(linked.parent()?).ok()?.join(linked.file_name()?))
+    });
+    let Some(resolved) = resolved else {
         return Ok(());
     };
     let resolved = (resolved != selected).then_some(resolved);
