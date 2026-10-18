@@ -79,6 +79,12 @@ make delimiters semantically different. Failed weekly runs preserve the
 shrunk example and regression seeds as an artifact. Turn reader regressions
 into explicit synthetic fixtures or tests before fixing them.
 
+The existing Vitest interface suite runs axe-core structural checks for first-run
+and loaded-library states, with a deliberately broken combobox proving violations
+are detected. JSDOM has no rendered layout/canvas, so color contrast is excluded
+from axe; theme contrast has a numeric test. These checks do not establish text
+reflow, native focus behavior or VoiceOver/NVDA acceptance (#8/#79).
+
 ## Picker screenshots
 
 Every CI run builds and launches the real debug app on Windows 2025, macOS 15

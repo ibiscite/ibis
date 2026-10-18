@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
+import axe from "axe-core";
 import capability from "../src-tauri/capabilities/default.json";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
@@ -522,4 +523,29 @@ test("combobox focus is separate from citation selection and only additions/remo
   expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(false);
   fireEvent.click(screen.getByText("Second"));
   expect(notice.textContent).toBe("0 references selected for citation");
+});
+
+test.each([false, true])("axe checks picker structure (library open: %s) and detects a broken combobox", async (open) => {
+  backend({
+    library_status: () => ({ name: open ? "refs.bib" : null, references: open ? 1 : 0, warnings: 0, error: null, note: null }),
+    search: () => [result("synthetic", "Synthetic reference")],
+  });
+  render(<App />);
+  if (open) await screen.findByText("Synthetic reference");
+  else await screen.findByRole("button", { name: "Choose library to get started" });
+  const options: axe.RunOptions = {
+    runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
+    // JSDOM has no layout/canvas: theme contrast has its own numeric test above.
+    rules: { "color-contrast": { enabled: false } },
+  };
+  // Report the actual lack of canvas support; do not emulate rendered pixels.
+  const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  try {
+    expect((await axe.run(document.body, options)).violations.map((v) => v.id)).toEqual([]);
+    screen.getByRole("combobox", { name: "Search references" }).removeAttribute("aria-expanded");
+    const broken = await axe.run(document.body, options);
+    expect(broken.violations.map((v) => v.id)).toContain("aria-required-attr");
+  } finally {
+    canvas.mockRestore();
+  }
 });
