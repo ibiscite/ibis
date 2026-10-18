@@ -216,19 +216,6 @@ fn take_watch_source(
     Some((library.path.clone()?, library.snapshot.take()))
 }
 
-fn take_watch_source(
-    library: &mut Library,
-    requests: &LoadRequests,
-    request: u64,
-) -> Option<(PathBuf, Option<SourceSnapshot>)> {
-    // Check while holding the library lock: an older open must not consume
-    // the source observation belonging to a newly installed library.
-    if requests.0.load(Ordering::SeqCst) != request {
-        return None;
-    }
-    Some((library.path.clone()?, library.snapshot.take()))
-}
-
 fn watch_current(app: &AppHandle, request: u64) {
     let path = app
         .state::<Mutex<Library>>()
