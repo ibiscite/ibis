@@ -8,7 +8,8 @@
 //! becomes an inproceedings `booktitle`). Results are memoized per entry, so
 //! shared ancestors cost nothing extra, recursion is bounded by
 //! [`MAX_DEPTH`], cycles are reported and broken, and the parser never sees
-//! a link it could follow.
+//! a link it could follow. Indexed field positions and merged names avoid
+//! quadratic name searches while preserving field order and precedence.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -281,6 +282,7 @@ impl<'a> Resolver<'a> {
         // (helpers are not loaded on their own), are reported.
         let report = root || entry.kind == "xdata";
         let mut own: Vec<(String, String)> = Vec::new();
+        let mut own_positions: HashMap<&str, usize> = HashMap::new();
         let mut xdata_keys = Vec::new();
         let mut crossref_key = None;
         for field in &entry.fields {
@@ -298,13 +300,15 @@ impl<'a> Resolver<'a> {
                 "crossref" => crossref_key = Some(value.trim().to_string()).filter(|k| !k.is_empty()),
                 _ => {
                     // As in Biber and Pandoc, a repeated field keeps its last value.
-                    if let Some(existing) = own.iter_mut().find(|(n, _)| n == &field.name) {
+                    if let Some(&position) = own_positions.get(field.name.as_str()) {
+                        let existing = &mut own[position];
                         if root {
                             walk.problems
                                 .push(format!("field `{}` appears twice; the last value is used", field.name));
                         }
                         existing.1 = value;
                     } else {
+                        own_positions.insert(field.name.as_str(), own.len());
                         own.push((field.name.clone(), value));
                     }
                 }
@@ -383,9 +387,10 @@ impl<'a> Resolver<'a> {
             sources.push(mapped);
         }
         let mut merged: Vec<(String, String)> = Vec::new();
+        let mut merged_names = HashSet::new();
         for source in &sources {
             for (name, value) in source {
-                if !DATE_PARTS.contains(&name.as_str()) && !merged.iter().any(|(n, _)| n == name) {
+                if !DATE_PARTS.contains(&name.as_str()) && merged_names.insert(name.as_str()) {
                     merged.push((name.clone(), value.clone()));
                 }
             }
@@ -808,6 +813,96 @@ mod tests {
             .position(|e| e.key == key)
             .unwrap_or_else(|| panic!("no {key}"));
         Resolver::new(macros, &entries).resolve(i)
+    }
+
+    #[test]
+    fn wide_parent_shared_children_finish_before_the_deadline() {
+        use std::process::Command;
+        use std::time::{Duration, Instant};
+
+        const CHILD: &str = "IBIS_FIELD_LOOKUP_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let mut text = String::from("@book{parent,title={Parent}");
+            for i in 0..4_000 {
+                text.push_str(&format!(",field{i:05}={{Value{i:05}}}"));
+            }
+            text.push_str("}\n");
+            for i in 0..20 {
+                text.push_str(&format!("@inbook{{child{i},title={{Child}},crossref={{parent}}}}\n"));
+            }
+            let entries: Vec<_> = split_blocks(&text)
+                .iter()
+                .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
+                .collect();
+            let resolver = Resolver::new(Vec::new(), &entries);
+            let start = Instant::now();
+            for i in 0..entries.len() {
+                let resolved = resolver.resolve(i);
+                assert_eq!(resolved.fields.len(), 4_000 + if i == 0 { 1 } else { 2 });
+                assert_eq!(
+                    resolved.fields.get("field00000").map(String::as_str),
+                    Some("Value00000")
+                );
+                assert_eq!(
+                    resolved.fields.get("field03999").map(String::as_str),
+                    Some("Value03999")
+                );
+                assert_eq!(
+                    resolved.fields.get("title").map(String::as_str),
+                    Some(if i == 0 { "Parent" } else { "Child" })
+                );
+                if i != 0 {
+                    assert_eq!(resolved.fields.get("booktitle").map(String::as_str), Some("Parent"));
+                }
+                assert!(resolved.problems.is_empty());
+            }
+            eprintln!("synthetic resolver: {:?}", start.elapsed());
+            return;
+        }
+        // Keep the deadline outside the resolver process so a regression cannot hang CI.
+        let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
+            .args([
+                "--exact",
+                "bibtex::resolve::tests::wide_parent_shared_children_finish_before_the_deadline",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .spawn()
+            .unwrap_or_else(|e| panic!("{e}"));
+        let start = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e}")) {
+                assert!(status.success());
+                break;
+            }
+            if start.elapsed() >= Duration::from_secs(2) {
+                child.kill().unwrap_or_else(|e| panic!("{e}"));
+                child.wait().unwrap_or_else(|e| panic!("{e}"));
+                panic!("synthetic resolver exceeded the 2 second deadline");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn indexed_fields_keep_order_duplicates_and_parent_precedence() {
+        let definitions = "@book{p,title={Parent},publisher={Crossref},note={Parent note}}\n\
+                           @xdata{first,publisher={First},pages={1}}\n\
+                           @xdata{second,publisher={Second},pages={2}}\n";
+        for links in ["crossref={p},xdata={first,second}", "xdata={first,second},crossref={p}"] {
+            let resolved = resolve(
+                &format!("{definitions}@inbook{{k,title={{First}},note={{Own}},title={{Last}},{links}}}"),
+                "k",
+            );
+            assert_eq!(
+                resolved.source,
+                "@inbook{k,\n  title = {Last},\n  note = {Own},\n  publisher = {Second},\n  pages = {2},\n  booktitle = {Parent}}\n"
+            );
+            assert_eq!(
+                resolved.problems,
+                ["field `title` appears twice; the last value is used"]
+            );
+        }
     }
 
     #[test]
