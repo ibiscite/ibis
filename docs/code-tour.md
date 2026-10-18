@@ -162,10 +162,10 @@ cargo run -p ibis -- csl --all --bib fixtures/bibtex/oversized-range-year.bib
 ```
 
 `check` exits 2 when it finds problems; 1 means a command error. Inspect warning
-kind, line and key alongside the retained reference. The CLI currently uses
-`read_to_string` → `bibtex::load_str` in
-[CLI main.rs](../crates/ibis-cli/src/main.rs); #132 tracks using the bounded source
-loader. CLI reproductions exercise import/search/citation output. Watch delivery,
+kind, line and key alongside the retained reference. The CLI uses
+`source::load_library_file(path, false)` in
+[CLI main.rs](../crates/ibis-cli/src/main.rs), sharing the desktop's bounded reader
+and allowlisted file errors. CLI reproductions exercise import/search/citation output. Watch delivery,
 desktop installation and native focus/clipboard behavior need their own checks.
 
 ## Three examples from past fixes

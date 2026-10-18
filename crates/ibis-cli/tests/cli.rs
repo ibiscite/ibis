@@ -23,6 +23,78 @@ fn s(path: &Path) -> &str {
 }
 
 #[test]
+fn every_file_command_refuses_oversized_libraries_with_the_core_diagnostic() {
+    let path = write("cli-oversized", "synthetic.bib", "");
+    std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .and_then(|file| file.set_len(ibis_core::source::MAX_LIBRARY_BYTES + 1))
+        .unwrap_or_else(|e| panic!("{e}"));
+    for args in [
+        vec!["search", "synthetic", "--bib", s(&path), "--json"],
+        vec!["cite", "synthetic", "--bib", s(&path), "--json"],
+        vec!["check", s(&path), "--json"],
+        vec!["csl", "--all", "--bib", s(&path)],
+    ] {
+        let output = ibis(&args);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "ibis: the library file is larger than 64 MiB\n"
+        );
+    }
+}
+
+#[test]
+fn file_errors_use_allowlisted_core_messages() {
+    use ibis_core::source::SourceError;
+    let invalid = write("cli-source-errors", "synthetic.bib", "synthetic private text");
+    std::fs::write(&invalid, b"synthetic private text\xff").unwrap_or_else(|e| panic!("{e}"));
+    for (path, error) in [
+        (invalid.with_file_name("missing.bib"), SourceError::Unavailable),
+        (
+            invalid.parent().unwrap_or_else(|| panic!("test parent")).to_path_buf(),
+            SourceError::NotRegular,
+        ),
+        (invalid, SourceError::Unreadable),
+    ] {
+        let output = ibis(&["check", s(&path)]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert_eq!(String::from_utf8_lossy(&output.stderr), format!("ibis: {error}\n"));
+    }
+}
+
+#[test]
+fn fresh_cli_loads_still_keep_completed_entries_from_damaged_libraries() {
+    let path = write(
+        "cli-initial-load",
+        "synthetic.bib",
+        "@misc{good,title={Retained}}\n@misc{unfinished,",
+    );
+    let output = ibis(&["check", s(&path), "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(value[0]["loaded"], 1);
+    assert_eq!(value[0]["warnings"].as_array().map(Vec::len), Some(1));
+}
+
+#[test]
+fn json_options_explain_their_output_in_help() {
+    for command in ["search", "cite", "check"] {
+        let output = ibis(&[command, "--help"]);
+        assert!(output.status.success());
+        let help = String::from_utf8_lossy(&output.stdout);
+        let option = help
+            .lines()
+            .find(|line| line.trim_start().starts_with("--json"))
+            .unwrap_or_else(|| panic!("missing JSON option for {command}"));
+        assert!(option.contains("JSON") && option.contains("warnings"), "{option}");
+    }
+}
+
+#[test]
 fn nested_commands_keep_references_and_report_the_omitted_field() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/deep-commands.bib");
     let out = ibis(&["check", s(&path), "--json"]);

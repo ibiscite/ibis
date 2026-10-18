@@ -1,19 +1,19 @@
 //! `ibis` command line: search libraries, render citations, check files.
 //!
-//! A thin layer over `ibis-core`. Every command accepts `--json` for scripts,
-//! editors and AI tools. Exit codes: 0 success, 1 error, 2 problems found
+//! A thin layer over `ibis-core`. Search, cite and check accept `--json` for
+//! scripts; csl always emits JSON. Exit codes: 0 success, 1 error, 2 problems found
 //! (by `check`).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use ibis_core::bibtex;
 use ibis_core::cite::{self, CiteItem, KeyFormat, Locator, LocatorLabel};
 use ibis_core::library::{self, SelectError};
 use ibis_core::model::{LoadResult, Reference};
 use ibis_core::search::Index;
+use ibis_core::source::load_library_file;
 
 #[derive(Parser)]
 #[command(name = "ibis", version, about = "Find references and cite them anywhere.")]
@@ -33,6 +33,7 @@ enum Command {
         bib: Vec<PathBuf>,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Print search results and load warnings as JSON.
         #[arg(long)]
         json: bool,
     },
@@ -49,6 +50,7 @@ enum Command {
         /// Check that every key exists in these files first.
         #[arg(long = "bib")]
         bib: Vec<PathBuf>,
+        /// Print the citation and any warnings as JSON.
         #[arg(long)]
         json: bool,
     },
@@ -56,6 +58,7 @@ enum Command {
     Check {
         #[arg(required = true)]
         files: Vec<PathBuf>,
+        /// Print per-file counts and warnings as JSON.
         #[arg(long)]
         json: bool,
     },
@@ -118,11 +121,9 @@ fn load(files: &[PathBuf]) -> Result<Vec<Loaded>> {
     files
         .iter()
         .map(|path| {
-            let text = std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
-            let source = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
             Ok(Loaded {
                 display: path.display().to_string(),
-                result: bibtex::load_str(&source.to_string_lossy(), &text),
+                result: load_library_file(path, false)?,
             })
         })
         .collect()
