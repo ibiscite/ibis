@@ -131,6 +131,10 @@ The picker shortcut defaults to Cmd+Shift+Space on macOS and Ctrl+Shift+Space on
 
 For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
 
+The picker opens without a title bar near the top of the usable screen. Drag the search bar edge or search icon to move it; the input remains editable. This uses Tauri's built-in drag region and grants only the window drag permission. Its system colours follow light/dark mode and high contrast; text and controls wrap at larger text sizes. Enter still copies and hides, Shift+Enter selects, and Escape hides. Copy confirmations expire after 2.4 seconds; copy warnings stay until dismissed. Library controls, output format and Quit remain in the footer.
+
+Visual evidence for #88 uses synthetic references: [browser light](images/picker-browser-light.jpg), [browser dark](images/picker-browser-dark.jpg), and [native macOS dark](images/picker-macos-dark.jpg). These previews predate the review fixes to contrast, focus, window edges and the first-run chooser. The browser checks also covered forced colours and 200% text at a 360-pixel viewport (one vertical scroller keeps controls reachable without horizontal overflow). Theme tokens retain system-colour fallbacks for older system webviews. The native screenshot is a macOS development build; Windows/Linux native screenshots and release-build blur checks remain to be recorded before #88 is complete.
+
 ## Desktop command contract
 
 `apps/desktop/src/bindings.ts` is generated from Rust command signatures and

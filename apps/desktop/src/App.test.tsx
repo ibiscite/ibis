@@ -1,10 +1,12 @@
-import { afterEach, expect, test } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
+import capability from "../src-tauri/capabilities/default.json";
 
 afterEach(async () => {
+  vi.useRealTimers();
   cleanup();
   // Event listeners are removed asynchronously after unmount; let that
   // finish before the mocked Tauri internals are cleared.
@@ -12,11 +14,47 @@ afterEach(async () => {
   clearMocks();
 });
 
+test("copy confirmation expires, but copy warnings remain until dismissed", async () => {
+  let warnings: string[] = [];
+  backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => ({ text: "@a", warnings }),
+  });
+  render(<App />);
+  await screen.findByText("First");
+  const box = screen.getByLabelText("Search references");
+  vi.useFakeTimers();
+  await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
+  expect(screen.getByText("@a")).toBeTruthy();
+  await act(() => vi.advanceTimersByTimeAsync(3000));
+  expect(screen.queryByText("@a")).toBeNull();
+  vi.useRealTimers();
+  warnings = ["A warning to read"];
+  fireEvent.keyDown(box, { key: "Enter" });
+  await screen.findByText("A warning to read");
+  vi.useFakeTimers();
+  await act(() => vi.advanceTimersByTimeAsync(3000));
+  expect(screen.getByText("A warning to read")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss copy warnings" }));
+  expect(screen.queryByLabelText("Copy warnings")).toBeNull();
+});
+
 function result(key: string, title: string, source = "refs.bib") {
   return { id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"] };
 }
 
 type Handler = (args: Record<string, unknown>) => unknown;
+
+test("the borderless picker has a permitted drag region around its editable search input", async () => {
+  backend();
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  expect(box.closest("[data-tauri-drag-region]")).toBeTruthy();
+  expect(box.hasAttribute("data-tauri-drag-region")).toBe(false);
+  expect(capability.permissions).toContain("core:window:allow-start-dragging");
+  fireEvent.change(box, { target: { value: "sleep" } });
+  await waitFor(() => expect((box as HTMLInputElement).value).toBe("sleep"));
+});
 
 /** Mock the Rust commands; returns the list of commands called. */
 function backend(overrides: Record<string, Handler> = {}): string[] {
@@ -59,6 +97,122 @@ test("errors from the backend are shown, not swallowed", async () => {
   });
   render(<App />);
   expect((await screen.findByRole("alert")).textContent).toContain("no library is open");
+});
+
+test("first launch waits for library status and offers a chooser without a search error", async () => {
+  let status: (value: unknown) => void = () => undefined;
+  const calls = backend({
+    library_status: () => new Promise((resolve) => { status = resolve; }),
+    search: () => { throw new Error("no library is open"); },
+    choose_library: () => null,
+  });
+  render(<App />);
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(calls).not.toContain("search");
+  await act(async () => { status({ name: null, references: 0, warnings: 0, error: null, note: null }); });
+  fireEvent.click(await screen.findByRole("button", { name: "Choose library to get started" }));
+  await waitFor(() => expect(calls).toContain("choose_library"));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(calls).not.toContain("search");
+});
+
+test("typed searches without a library and genuine load failures remain visible", async () => {
+  backend({
+    library_status: () => ({ name: null, references: 0, warnings: 0, error: "the synthetic library is unreadable", note: null }),
+    search: () => { throw new Error("no library is open"); },
+  });
+  render(<App />);
+  expect((await screen.findByText(/The library could not be opened/)).textContent).toContain("synthetic library is unreadable");
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
+  expect((await screen.findByText("Error: no library is open")).getAttribute("role")).toBe("alert");
+});
+
+test("the empty-state chooser opens the existing dialog and remains available after cancellation", async () => {
+  const calls = backend({
+    library_status: () => ({ name: null, references: 0, warnings: 0, error: null, note: null }),
+    choose_library: () => null,
+  });
+  render(<App />);
+  const chooser = await screen.findByRole("button", { name: "Choose library to get started" });
+  fireEvent.click(chooser);
+  await waitFor(() => expect(calls).toContain("choose_library"));
+  expect(screen.getByRole("button", { name: "Choose library to get started" })).toBe(chooser);
+  expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
+});
+
+test("clearing a typed query without a library does not hide its search failure", async () => {
+  const queries: unknown[] = [];
+  backend({
+    library_status: () => ({ name: null, references: 0, warnings: 0, error: null, note: null }),
+    search: ({ query }) => {
+      queries.push(query);
+      throw new Error("no library is open");
+    },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "sleep" } });
+  await screen.findByRole("alert");
+  fireEvent.change(box, { target: { value: "" } });
+  await waitFor(() => expect(queries.at(-1)).toBe(""));
+  expect(screen.getByRole("alert").textContent).toContain("no library is open");
+});
+
+test("opening the first library searches the untouched empty query", async () => {
+  const calls = backend({
+    library_status: () => ({ name: null, references: 0, warnings: 0, error: null, note: null }),
+    search: () => [result("first", "First reference")],
+  });
+  render(<App />);
+  await screen.findByRole("button", { name: "Choose library to get started" });
+  expect(calls).not.toContain("search");
+  await emit("library:changed", { name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
+  expect(await screen.findByText("First reference")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Choose library to get started" })).toBeNull();
+});
+
+test("a failed status request does not suppress search errors", async () => {
+  backend({
+    library_status: () => { throw new Error("status unavailable"); },
+    search: () => { throw new Error("search unavailable"); },
+  });
+  render(<App />);
+  expect((await screen.findByRole("alert")).textContent).toContain("search unavailable");
+});
+
+test.each([
+  ["resolves", false], ["rejects", false],
+  ["resolves", true], ["rejects", true],
+] as const)("a startup status request that %s cannot overwrite a newer library event (failed: %s)", async (outcome, failed) => {
+  let resolveStatus: (value: unknown) => void = () => undefined;
+  let rejectStatus: (reason: Error) => void = () => undefined;
+  backend({
+    library_status: () => new Promise((resolve, reject) => {
+      resolveStatus = resolve;
+      rejectStatus = reject;
+    }),
+    search: () => failed ? [] : [result("new", "New library reference")],
+  });
+  render(<App />);
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => {
+    await emit("library:changed", {
+      name: "new.bib", references: failed ? 0 : 1, warnings: 0,
+      error: failed ? "synthetic load failed" : null, note: null,
+    });
+  });
+  if (failed) await screen.findByText(/synthetic load failed/);
+  else await screen.findByText("New library reference");
+  await act(async () => {
+    if (outcome === "resolves") {
+      resolveStatus({ name: null, references: 0, warnings: 0, error: null, note: null });
+    } else rejectStatus(new Error("stale status unavailable"));
+  });
+  expect(screen.getByRole("region", { name: "Library" }).textContent).toContain("new.bib");
+  expect(screen.queryByRole("button", { name: "Choose library to get started" })).toBeNull();
+  if (failed) expect(screen.getByText(/synthetic load failed/)).toBeTruthy();
+  else expect(screen.getByText("New library reference")).toBeTruthy();
 });
 
 test("Escape hides the picker", async () => {

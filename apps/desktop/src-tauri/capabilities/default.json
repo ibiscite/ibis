@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissions for the picker window: core window functions only. No file system, shell or network access is granted to the web interface.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

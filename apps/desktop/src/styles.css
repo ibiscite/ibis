@@ -1,22 +1,110 @@
-/* Minimal styles until the picker design lands; system colours follow the
-   user's light, dark and high-contrast settings. */
+/* System colours follow light/dark mode, the accent and high contrast. */
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--surface);
+  font-synthesis: none;
+  --surface: Canvas;
+  --text: CanvasText;
+  --muted: CanvasText;
+  --line: GrayText;
+  --active-edge: CanvasText;
+  --accent: Highlight;
 }
 
-[role="option"] {
-  cursor: default;
-  padding: 2px 4px;
+/* Older system webviews retain usable system colours. */
+@supports (color: light-dark(white, black)) {
+  :root {
+    --surface: light-dark(#fcfcfd, #242426);
+    --text: light-dark(#27272b, #ededf0);
+    --muted: light-dark(#6b6b75, #a6a6af);
+    --line: light-dark(#85858f, #8b8b95);
+    --active-edge: light-dark(#83838d, #898993);
+  }
+}
+@supports (color: AccentColor) { :root { --accent: AccentColor; } }
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+button, select {
+  background: color-mix(in srgb, var(--text) 4%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .35rem .55rem;
+}
+button:hover { background: color-mix(in srgb, var(--text) 8%, var(--surface)); }
+:focus-visible { outline: 2px solid var(--accent, Highlight); outline-offset: 2px; }
+main {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
 }
 
-/* The highlighted result: what Enter copies when nothing is selected. */
-[role="option"][data-active] {
-  outline: 2px solid CanvasText;
-  outline-offset: -2px;
-}
+.search-bar { display: flex; align-items: center; gap: .9rem; padding: 1.4rem 1.5rem; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
+.search-bar svg { width: 1.35rem; flex-shrink: 0; color: var(--muted); pointer-events: none; }
+.search-bar:focus-within { border-bottom-color: var(--accent); border-bottom-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+#search { width: 100%; min-width: 0; font-size: 1.35rem; letter-spacing: -.025em; background: transparent; border: 0; padding: .25rem 0; outline-offset: 5px; cursor: text; user-select: text; }
+#search::placeholder { color: var(--muted); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-[role="option"][aria-selected="true"] {
-  background: Highlight;
-  color: HighlightText;
+.results-area { flex: 1; min-height: 5rem; overflow: auto; padding: .5rem; scrollbar-width: thin; }
+.results-heading { display: flex; justify-content: space-between; padding: .55rem 1rem .45rem; color: var(--muted); font-size: .7rem; font-weight: 500; letter-spacing: .02em; }
+#results { list-style: none; padding: 0; margin: 0; }
+[role="option"] { display: flex; align-items: center; gap: 1rem; cursor: default; padding: .6rem 1rem; margin: .1rem 0; border-radius: 9px; border: 1px solid transparent; }
+.result-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.result-text strong { display: block; font-size: .925rem; font-weight: 550; line-height: 1.4; letter-spacing: -.01em; }
+.result-meta { display: block; color: var(--muted); font-size: .8rem; line-height: 1.5; margin-top: .2rem; }
+.result-key { font-size: .75rem; max-width: 30%; overflow-wrap: anywhere; color: var(--muted); background: color-mix(in srgb, var(--text) 4%, var(--surface)); border: 1px solid var(--line); border-radius: 5px; padding: .25rem .4rem; }
+[role="option"]:hover:not([data-active]):not([aria-selected="true"]) { background: color-mix(in srgb, var(--text) 3%, var(--surface)); }
+/* Active and selected remain distinguishable even without colour. */
+[role="option"][data-active] { background: Canvas; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); border-color: var(--active-edge); box-shadow: inset 2px 0 var(--accent); }
+[role="option"][aria-selected="true"] { background: Highlight; color: HighlightText; }
+[aria-selected="true"] .result-meta, [aria-selected="true"] .result-key { color: inherit; }
+[aria-selected="true"] .result-key { background: transparent; border-color: currentColor; }
+.empty-state { color: var(--muted); text-align: center; padding: 2rem 1rem; }
+
+.notices:empty { display: none; }
+.notices { padding: 0 1rem; overflow-wrap: anywhere; }
+.notices p { margin: .65rem 0; }
+.copy-notice { border-bottom: 1px solid var(--line); padding-bottom: .5rem; }
+.dismiss { float: right; margin: .5rem 0 .5rem .5rem; }
+[role="alert"] { border-inline-start: 3px solid CanvasText; padding-inline-start: .65rem; }
+[aria-label="Selected references"] { display: flex; flex-wrap: wrap; gap: .4rem; list-style: none; padding: .6rem 1rem; margin: 0; border-bottom: 1px solid var(--line); }
+[aria-label="Selected references"] li { border: 1px solid var(--line); border-radius: 6px; padding-inline-start: .5rem; overflow-wrap: anywhere; max-width: 100%; }
+[aria-label="Selected references"] button { border: 0; background: transparent; font-size: .8rem; }
+
+footer { border-top: 1px solid var(--line); padding: .55rem 1rem; font-size: .75rem; }
+.library-bar, .footer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.library-name { flex: 1; min-width: 8rem; overflow-wrap: anywhere; color: var(--muted); }
+.library-bar p { width: 100%; margin: .3rem 0; }
+.footer-tools { margin-top: .25rem; justify-content: space-between; }
+.quiet-button, .icon-button { background: transparent; border-color: transparent; color: var(--muted); }
+.icon-button { font-size: 1rem; padding: .15rem .4rem; }
+#format { max-width: 100%; font-size: .75rem; }
+.key-hints { color: var(--muted); font-size: .75rem; }
+kbd { font: inherit; font-size: .65rem; display: inline-block; padding: .1rem .25rem; border: 1px solid var(--line); border-radius: 3px; margin-inline-start: .2rem; }
+
+@media (prefers-contrast: more) {
+  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
+  [role="option"][data-active] { border-width: 3px; }
 }
+@media (forced-colors: active) {
+  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
+  [role="option"][data-active] { border-color: Highlight; }
+  [role="option"][aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -4px; }
+  .search-bar:focus-within { outline: 2px solid Highlight; outline-offset: -3px; }
+}
+@media (max-width: 460px) {
+  /* Reflow into one vertical scroller instead of squeezing large text between
+     a tall footer and a tiny nested results viewport. */
+  main { height: auto; min-height: 100dvh; overflow: visible; }
+  .results-area { flex: none; overflow: visible; }
+  .search-bar { padding: .9rem; }
+  [role="option"] { flex-wrap: wrap; gap: .4rem; }
+  .result-text { flex-basis: 100%; }
+  .result-key { max-width: 100%; }
+}
+/* No animation: reduced-motion users get the same immediate feedback. */

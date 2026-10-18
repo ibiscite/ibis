@@ -64,6 +64,16 @@ fn main() {
             _ => {}
         })
         .setup(|app| {
+            // Place the launcher near the top of the usable screen, clear of
+            // menu bars and taskbars. Later shows keep the user's placement.
+            if let Some(window) = app.get_webview_window("main")
+                && let (Ok(Some(monitor)), Ok(size)) = (window.current_monitor(), window.outer_size())
+            {
+                let area = monitor.work_area();
+                let x = area.position.x + (area.size.width.saturating_sub(size.width) / 2) as i32;
+                let y = area.position.y + (area.size.height.saturating_sub(size.height) / 5) as i32;
+                let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+            }
             // Settings live in the app's configuration folder, e.g. on macOS
             // ~/Library/Application Support/io.github.ibiscite.ibis/settings.json
             let settings_path = app.path().app_config_dir()?.join("settings.json");
