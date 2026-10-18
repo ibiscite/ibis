@@ -14,3 +14,10 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: monthly
+    groups:
+      desktop-web-dependencies:
+        patterns: ["*"]

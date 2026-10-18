@@ -76,9 +76,24 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
+      # hdiutil on hosted macOS runners intermittently fails with "Resource
+      # busy" while creating the disk image; a second attempt reuses the
+      # compiled app and normally succeeds. Other failures are not retried.
       - name: Build the packages
         working-directory: apps/desktop
-        run: pnpm tauri build --ci --target ${{ matrix.target }} -- --locked
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          build() { pnpm tauri build --ci --target "$TARGET" -- --locked 2>&1 | tee build.log; return "${PIPESTATUS[0]}"; }
+          if ! build; then
+            if [ "$RUNNER_OS" = macOS ] && grep -q 'hdiutil: create failed - Resource busy' build.log; then
+              echo "::warning::hdiutil reported Resource busy; retrying the build once"
+              sleep 15
+              build
+            else
+              exit 1
+            fi
+          fi
 
       - name: Collect packages and checksums
         id: collect
