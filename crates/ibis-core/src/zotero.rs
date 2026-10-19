@@ -10,6 +10,7 @@
 //! references and are left out without a warning, as Zotero's own citation
 //! dialog does. Anything else that cannot be read becomes a [`LoadWarning`].
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -132,10 +133,8 @@ fn load_item(library: Library, item: &Value) -> Result<Loaded, (Option<String>, 
     if NOT_CITABLE.contains(&item_type) || is_trashed(data) {
         return Ok(None);
     }
-    let csl = item
-        .get("csljson")
-        .and_then(Value::as_object)
-        .ok_or_else(|| fail("the Zotero item has no CSL data; it was skipped"))?;
+    let csl = csl_data(item).ok_or_else(|| fail("the Zotero item has no CSL data; it was skipped"))?;
+    let csl = csl.as_ref();
 
     let mut problems = Vec::new();
     let mut reference = Reference {
@@ -212,6 +211,23 @@ fn is_trashed(data: &Map<String, Value>) -> bool {
         Some(Value::Bool(deleted)) => *deleted,
         Some(Value::Number(n)) => n.as_u64().is_some_and(|n| n != 0),
         _ => false,
+    }
+}
+
+/// The item's CSL-JSON. The web API sends it as an object; Zotero's local API
+/// sends the text of its CSL JSON export, an array holding this one item.
+fn csl_data(item: &Value) -> Option<Cow<'_, Map<String, Value>>> {
+    match item.get("csljson")? {
+        Value::Object(csl) => Some(Cow::Borrowed(csl)),
+        Value::String(text) => match serde_json::from_str(text).ok()? {
+            Value::Object(csl) => Some(Cow::Owned(csl)),
+            Value::Array(mut items) if items.len() == 1 => match items.pop()? {
+                Value::Object(csl) => Some(Cow::Owned(csl)),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -488,6 +504,33 @@ mod tests {
     fn the_personal_library_has_its_own_source() {
         let r = &load_items(Library::User, &[article()]).references[0];
         assert_eq!(r.id.source, "zotero:user");
+    }
+
+    #[test]
+    fn csl_json_sent_as_export_text_is_read() {
+        // Zotero's local API sends `csljson` as the text of its CSL JSON
+        // export: a pretty-printed array holding the one item.
+        let Value::Object(mut local) = article() else {
+            panic!("the article fixture is an object")
+        };
+        let csl = local.remove("csljson").unwrap_or_default();
+        let text = serde_json::to_string_pretty(&json!([csl])).unwrap_or_default();
+        local.insert("csljson".into(), Value::String(text));
+        let mut local = load_items(Library::User, &[Value::Object(local)]);
+        let mut web = load_items(Library::User, &[article()]);
+        assert!(local.warnings.is_empty(), "{:?}", local.warnings);
+        assert_eq!(local.references.len(), 1);
+        // Every field matches; only the verbatim source text differs.
+        for reference in local.references.iter_mut().chain(&mut web.references) {
+            reference.raw = None;
+        }
+        assert_eq!(local.references, web.references);
+
+        for bad in ["not json", "[]", "[1]", "[{}, {}]", "3"] {
+            let loaded = load_items(Library::User, &[item("K", json!({ "itemType": "book" }), json!(bad))]);
+            assert!(loaded.references.is_empty(), "{bad}");
+            assert_eq!(loaded.warnings.len(), 1, "{bad}");
+        }
     }
 
     #[test]

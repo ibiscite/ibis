@@ -252,7 +252,9 @@ mod tests {
     }
 
     fn book(key: &str) -> Value {
-        json!({ "key": key, "data": { "itemType": "book" }, "csljson": { "type": "book", "title": key } })
+        // The local API sends CSL JSON as the text of its export, an array.
+        let csl = json!([{ "type": "book", "title": key }]).to_string();
+        json!({ "key": key, "data": { "itemType": "book" }, "csljson": csl })
     }
 
     fn page(version: u64, total: usize, keys: &[&str]) -> Response {
