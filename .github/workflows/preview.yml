@@ -129,6 +129,23 @@ jobs:
             echo "no packages were produced in $bundle" >&2
             exit 1
           fi
+          # Give each package a plain name that says which computer it is for.
+          # Names carry no version, so a link to the nightly file never changes.
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) platform=macOS-Apple-silicon ;;
+            x86_64-apple-darwin) platform=macOS-Intel ;;
+            x86_64-pc-windows-msvc) platform=Windows ;;
+            x86_64-unknown-linux-gnu) platform=Linux ;;
+            *) echo "no download name for ${{ matrix.target }}" >&2; exit 1 ;;
+          esac
+          for f in dist/*; do
+            case "$f" in
+              *-setup.exe) name="Ibis-$platform-setup.exe" ;;
+              *) name="Ibis-$platform.${f##*.}" ;;
+            esac
+            if [ -e "dist/$name" ]; then echo "two packages would both be called $name" >&2; exit 1; fi
+            mv "$f" "dist/$name"
+          done
           # Write the list outside dist first, so it never lists itself.
           sums="SHA256SUMS-${{ matrix.target }}.txt"
           (cd dist && for f in *; do
@@ -266,6 +283,8 @@ jobs:
           built=$(date -u '+%Y-%m-%d %H:%M UTC')
           cat > notes.md <<EOF
           **Nightly development build of \`${SHA:0:12}\` on main, built $built.** It is replaced after changes to main and may be unfinished or broken. For the steadier version, use the newest numbered preview release.
+
+          **Which file:** \`Ibis-macOS-Apple-silicon.dmg\` (M1 and later) or \`Ibis-macOS-Intel.dmg\` on a Mac, \`Ibis-Windows-setup.exe\` on Windows, \`Ibis-Linux.AppImage\` on Linux (\`.deb\` and \`.rpm\` also available).
 
           **Not signed.** macOS may say the app cannot be checked for malicious software: open System Settings → Privacy & Security and choose Open Anyway. Windows SmartScreen may warn: choose More info, then Run anyway. On Windows, if Microsoft WebView2 Runtime is missing, the installer downloads it once; Ibis works offline after setup.
 

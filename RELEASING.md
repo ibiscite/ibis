@@ -29,7 +29,7 @@ Release Please then keeps a release pull request open. Bot-created proposals can
 
 ### Preview builds
 
-`.github/workflows/preview.yml` builds Windows (MSI and setup executable), macOS (Apple silicon and Intel disk images) and Linux (AppImage, .deb, .rpm) packages in CI, with SHA-256 checksums and build-provenance attestations.
+`.github/workflows/preview.yml` builds Windows (MSI and setup executable), macOS (Apple silicon and Intel disk images) and Linux (AppImage, .deb, .rpm) packages in CI, with SHA-256 checksums and build-provenance attestations. Packages are named `Ibis-<platform>.<extension>` (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`) with no version, so download links to a release or the nightly never change; the version is in the release title and tag.
 
 - **Dry run:** Actions → Preview builds → Run workflow. The packages are kept as workflow artifacts for 14 days; leave the publication checkbox unchecked. Nothing is published, including when the selected ref is a tag.
 - **Pre-release:** after an explicitly authorized release PR merge, Release Please creates a draft release and its tag, then dispatches Preview builds at that tag with publication enabled. Its `GITHUB_TOKEN` cannot trigger a second tag-push workflow, but explicit workflow dispatches can run. A maintainer's own `v*` tag push also builds and verifies packages before publishing a pre-release. Major-zero releases are marked as previews; the proposed first version remains `0.1.0`.
