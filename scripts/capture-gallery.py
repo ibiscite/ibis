@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -38,6 +39,25 @@ try {
 
 class CaptureError(Exception):
     """A capture cannot be used as evidence."""
+
+
+def remove_tree(path):
+    shutil.rmtree(path)
+
+
+def release_profiles(profiles, attempts=10, delay=1):
+    """WebView2 helpers can hold profile files briefly after the app exits (#306)."""
+    for profile in profiles:
+        for attempt in range(attempts):
+            try:
+                remove_tree(profile)
+                break
+            except FileNotFoundError:
+                break
+            except OSError:
+                if attempt + 1 < attempts:
+                    time.sleep(delay)
+        # A profile that stays locked is left for the final cleanup, which fails explicitly.
 
 
 def capture_screenshot(destination, platform_name):
@@ -171,59 +191,69 @@ def capture_gallery(app, output, *, states=STATES, wait_seconds=8, ready_timeout
         source = Path(temporary) / "synthetic.bib"
         source.write_text("@misc{syntheticGallery, title={Synthetic gallery source}}\n", encoding="utf8")
         env = {**os.environ, "IBIS_GALLERY": "1", "IBIS_LIBRARY": str(source)}
-        for state in states:
-            if platform_name == "Windows":
-                # WebView2 documents this override of userDataFolder, including
-                # an inherited/default profile. Never share a profile between
-                # rapidly restarted states: browser files can outlive the host.
-                # https://learn.microsoft.com/microsoft-edge/webview2/reference/win32/webview2-idl#createcorewebview2environmentwithoptions
-                # Keep all owned profiles until the whole capture transaction
-                # finishes; cleanup failure remains fatal, without retries.
-                env["WEBVIEW2_USER_DATA_FOLDER"] = tempfile.mkdtemp(prefix="webview2-", dir=temporary)
-            env["IBIS_GALLERY_STATE"] = state
-            ready_file = Path(temporary) / f"{state}.ready"
-            ready_file.unlink(missing_ok=True)
-            env["IBIS_GALLERY_READY_FILE"] = str(ready_file)
-            staging = output / f"{state}.capture.tmp.png"
-            staging.unlink(missing_ok=True)
-            try:
-                with (output / f"startup-{state}.log").open("wb") as log:
-                    options = {"env": env.copy(), "stdout": log, "stderr": subprocess.STDOUT}
-                    if platform_name == "Windows":
-                        options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-                    else:
-                        options["start_new_session"] = True
-                    process = subprocess.Popen([str(app)], **options)
+        profiles = []
+        try:
+            _capture_states(app, output, states, wait_seconds, ready_timeout, platform_name, temporary, env, profiles)
+        finally:
+            release_profiles(profiles)
+
+
+def _capture_states(app, output, states, wait_seconds, ready_timeout, platform_name, temporary, env, profiles):
+    for state in states:
+        if platform_name == "Windows":
+            # WebView2 documents this override of userDataFolder, including
+            # an inherited/default profile. Never share a profile between
+            # rapidly restarted states: browser files can outlive the host.
+            # https://learn.microsoft.com/microsoft-edge/webview2/reference/win32/webview2-idl#createcorewebview2environmentwithoptions
+            # Keep all owned profiles until the whole capture transaction
+            # finishes; locked profiles get brief retries, then cleanup
+            # failure remains fatal.
+            env["WEBVIEW2_USER_DATA_FOLDER"] = tempfile.mkdtemp(prefix="webview2-", dir=temporary)
+            profiles.append(env["WEBVIEW2_USER_DATA_FOLDER"])
+        env["IBIS_GALLERY_STATE"] = state
+        ready_file = Path(temporary) / f"{state}.ready"
+        ready_file.unlink(missing_ok=True)
+        env["IBIS_GALLERY_READY_FILE"] = str(ready_file)
+        staging = output / f"{state}.capture.tmp.png"
+        staging.unlink(missing_ok=True)
+        try:
+            with (output / f"startup-{state}.log").open("wb") as log:
+                options = {"env": env.copy(), "stdout": log, "stderr": subprocess.STDOUT}
+                if platform_name == "Windows":
+                    options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                else:
+                    options["start_new_session"] = True
+                process = subprocess.Popen([str(app)], **options)
+                try:
                     try:
-                        try:
-                            process.wait(timeout=wait_seconds)
-                        except subprocess.TimeoutExpired:
-                            pass
-                        else:
-                            raise CaptureError(f"app exited during {state} startup; see its startup log")
-                        try:
-                            wait_until_rendered(process, ready_file, state, ready_timeout)
-                        except CaptureError:
-                            log.flush()
-                            report_stages(output / f"startup-{state}.log")
-                            if process.poll() is None:
-                                capture_failure_screen(output, state, platform_name)
-                            raise
-                        capture_screenshot(staging, platform_name)
-                        if process.poll() is not None:
-                            raise CaptureError(f"app exited while capturing {state}; see its startup log")
-                        try:
-                            with staging.open("rb") as image:
-                                if image.read(len(PNG_HEADER)) != PNG_HEADER:
-                                    raise CaptureError(f"capture for {state} is not a PNG")
-                        except OSError as error:
-                            raise CaptureError(f"capture for {state} was not written") from error
-                        staging.replace(output / f"{state}.png")
-                    finally:
-                        stop_app(process, platform_name)
-            finally:
-                staging.unlink(missing_ok=True)
-            print(f"Captured {state}", flush=True)
+                        process.wait(timeout=wait_seconds)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    else:
+                        raise CaptureError(f"app exited during {state} startup; see its startup log")
+                    try:
+                        wait_until_rendered(process, ready_file, state, ready_timeout)
+                    except CaptureError:
+                        log.flush()
+                        report_stages(output / f"startup-{state}.log")
+                        if process.poll() is None:
+                            capture_failure_screen(output, state, platform_name)
+                        raise
+                    capture_screenshot(staging, platform_name)
+                    if process.poll() is not None:
+                        raise CaptureError(f"app exited while capturing {state}; see its startup log")
+                    try:
+                        with staging.open("rb") as image:
+                            if image.read(len(PNG_HEADER)) != PNG_HEADER:
+                                raise CaptureError(f"capture for {state} is not a PNG")
+                    except OSError as error:
+                        raise CaptureError(f"capture for {state} was not written") from error
+                    staging.replace(output / f"{state}.png")
+                finally:
+                    stop_app(process, platform_name)
+        finally:
+            staging.unlink(missing_ok=True)
+        print(f"Captured {state}", flush=True)
 
 
 def main(argv=None):

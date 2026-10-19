@@ -274,6 +274,30 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(len(profiles), 1)
             self.assertFalse(profiles[0].exists())
 
+    def test_a_briefly_locked_windows_profile_is_retried_before_cleanup_fails(self):
+        # WebView2 helpers can hold profile files for a moment after the app
+        # exits (#306); that must not fail a capture whose images are complete.
+        process = Process()
+        def capture(destination, _platform):
+            destination.write_bytes(gallery.PNG_HEADER + b"synthetic pixels")
+        attempts = []
+        remove = gallery.remove_tree
+        def locked_twice(path):
+            attempts.append(path)
+            if len(attempts) <= 2:
+                raise PermissionError("synthetic lock")
+            remove(path)
+        with patch.object(gallery.platform, "system", return_value="Windows"), \
+             patch.object(gallery.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, create=True), \
+             patch.object(gallery.subprocess, "Popen", side_effect=self.acknowledge(process)), \
+             patch.object(gallery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
+             patch.object(gallery, "capture_screenshot", side_effect=capture), \
+             patch.object(gallery, "remove_tree", side_effect=locked_twice), \
+             patch.object(gallery.time, "sleep"):
+            self.assertEqual(gallery.main(["--app", str(self.app), "--output", str(self.output), "--state", "loading", "--wait", "0"]), 0)
+        self.assertEqual(len(attempts), 3)
+        self.assertTrue((self.output / "loading.png").is_file())
+
     def test_profile_cleanup_failure_is_explicit_and_does_not_print_native_paths(self):
         process = Process()
         temporary_directory = gallery.tempfile.TemporaryDirectory
