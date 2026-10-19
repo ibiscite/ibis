@@ -4,6 +4,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
+use crate::feedback::{idea_url, open_in_browser, problem_url};
 use crate::library::{
     LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
 };
@@ -57,6 +58,9 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             &MenuItem::with_id(app, "zotero", "Use Zotero Library", true, None::<&str>)?,
             &MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "problem", "Report a Problem…", true, None::<&str>)?,
+            &MenuItem::with_id(app, "idea", "Suggest an Idea…", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit Ibis", true, None::<&str>)?,
         ],
     )?;
@@ -70,6 +74,8 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             "choose" => choose_library_file(app),
             "zotero" => use_zotero_library(app),
             "reload" => reload_library_file(app),
+            "problem" => open_in_browser(app, problem_url()),
+            "idea" => open_in_browser(app, idea_url()),
             "quit" => app.exit(0),
             _ => {}
         });

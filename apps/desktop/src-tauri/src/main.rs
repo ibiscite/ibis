@@ -9,6 +9,7 @@
 mod bindings;
 mod copy;
 mod diagnostics;
+mod feedback;
 #[cfg(debug_assertions)]
 mod gallery;
 mod library;
