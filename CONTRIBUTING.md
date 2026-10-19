@@ -6,7 +6,7 @@ Keep every change simple, deterministic, safe and understandable to a non-techni
 
 1. **Report a problem.** Use an issue template. Say which app, operating system and output format you used. Share only invented examples, never real library records, document text or screenshots of private work.
 2. **Report an app where inserting or pasting fails.** The "app compatibility" template asks exactly what we need.
-3. **Add data, not code.** Destination app profiles, output templates, translations and health-check rules are data files checked by CI. (These folders arrive with releases 0.3 and 0.4.)
+3. **Add data, not code.** Destination app profiles, output templates, translations and health-check rules are data files checked by CI. (These folders arrive in later releases; see `ROADMAP.md`.)
 4. **Add a fixture.** A tiny synthetic `.bib` (or other) file that reproduces a bug, in `fixtures/`, is often the most useful contribution of all. See `fixtures/README.md`.
 5. **Change code.** Small, focused pull requests with tests.
 

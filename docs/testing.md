@@ -22,7 +22,7 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 ## Rules
 
 - **A bug fix starts with a failing test or fixture.** The smallest input that reproduces the problem is added to `fixtures/` or a test, so it can never return unnoticed.
-- **Compare with an established implementation where one exists.** Pandoc for BibTeX reading and CSL rendering today; citeproc-js and the CSL test suite for formatting (0.2). Intentional differences are documented next to the normalization that hides them.
+- **Compare with an established implementation where one exists.** Pandoc for BibTeX reading and CSL rendering today; citeproc-js and the CSL test suite for formatting (0.3). Intentional differences are documented next to the normalization that hides them.
 - **Never report success for a step that did not run.** `node scripts/check.mjs` exits with status 2 (incomplete) when a required tool is missing.
 - **Bounded work on hostile input.** Any loop or recursion driven by input has a limit, and a test proves the limit holds.
 - **Synthetic or openly licensed data only.** No personal libraries. Open-data files record their source and licence.

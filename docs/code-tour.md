@@ -2,9 +2,9 @@
 
 Follow one action through the code, then use the tests beside that action.
 Paths below describe the current desktop picker and CLI. The broader design in
-[architecture.md](architecture.md) also includes planned integrations. Zotero
-import, citeproc styles and direct insertion into other applications are future
-work; today's picker searches a `.bib` library and copies citation keys.
+[architecture.md](architecture.md) also includes planned integrations. Citation
+styles and direct insertion into other applications are future work; today's
+picker searches a `.bib` library or a running Zotero and copies citation keys.
 
 ## Words used here
 

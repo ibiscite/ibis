@@ -7,7 +7,7 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0001 | Record decisions as ADRs | accepted |
 | 0002 | License: AGPL-3.0-or-later; contributions under the DCO | accepted |
 | 0003 | One engine, thin front ends | accepted |
-| 0004 | Desktop shell: Tauri 2, engine and picker as separate processes | accepted |
+| 0004 | Desktop shell: Tauri 2, engine and picker as separate processes | accepted (amended by 0012) |
 | 0005 | Canonical data model: CSL-JSON plus raw source record | accepted |
 | 0006 | Read-only sources; Zotero access ladder | accepted |
 | 0007 | Citation engine and styles | accepted |
