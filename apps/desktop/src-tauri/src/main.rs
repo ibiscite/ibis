@@ -33,9 +33,7 @@ use ibis_core::settings;
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
-#[cfg(debug_assertions)]
-use crate::diagnostics::report;
-use crate::diagnostics::{NativeIssue, checked};
+use crate::diagnostics::{NativeIssue, application_message, checked, report};
 use crate::library::{Library, LibraryWatch, LoadRequests, Source, start_open};
 use crate::picker::{
     DialogOpen, ShortcutStatus, configured_shortcut, dismiss_picker, hides_on_blur, register_shortcut, show_picker,
@@ -137,7 +135,7 @@ fn main() {
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
             if let Some(problem) = &loaded.problem {
-                eprintln!("ibis: {}", preferences::settings_problem(problem));
+                application_message(preferences::settings_problem(problem));
             }
             if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
                 library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
@@ -150,7 +148,7 @@ fn main() {
                 error: registration_error.or(setting_error),
             };
             if let Some(error) = &status.error {
-                eprintln!("ibis: {error}");
+                report(Err::<(), _>(error), NativeIssue::Shortcut);
             }
             if let Ok(mut current) = app.state::<Mutex<ShortcutStatus>>().lock() {
                 *current = status;
@@ -168,8 +166,8 @@ fn main() {
             }));
             match tray {
                 Ok(Ok(())) => {}
-                Ok(Err(e)) => eprintln!("ibis: the menu bar item could not be created ({e})"),
-                Err(_) => eprintln!("ibis: the menu bar item is not available on this system"),
+                Ok(Err(error)) => report(Err::<(), _>(error), NativeIssue::TrayCreation),
+                Err(_) => application_message("the menu bar item is not available on this system"),
             }
             // The library from settings; IBIS_LIBRARY overrides it for development.
             let library = std::env::var_os("IBIS_LIBRARY")
@@ -201,7 +199,7 @@ fn main() {
             let _ = (app, event);
         }),
         Err(err) => {
-            eprintln!("ibis: the app could not start: {err}");
+            report(Err::<(), _>(err), NativeIssue::Startup);
             std::process::exit(1);
         }
     }

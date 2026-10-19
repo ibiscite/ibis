@@ -4,6 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone, Copy)]
 pub(crate) enum NativeIssue {
+    Startup,
+    TrayCreation,
+    Shortcut,
     Window,
     Unminimize,
     Show,
@@ -26,6 +29,9 @@ pub(crate) enum NativeIssue {
 impl NativeIssue {
     fn message(self) -> &'static str {
         match self {
+            Self::Startup => "the app could not start",
+            Self::TrayCreation => "the menu bar item could not be created",
+            Self::Shortcut => "the shortcut needs attention; check the picker for details",
             Self::Window => "the picker window is unavailable",
             Self::Unminimize => "the picker could not be restored",
             Self::Show => "the picker could not be shown",
@@ -117,6 +123,9 @@ mod tests {
     #[test]
     fn native_failures_report_only_the_allowlisted_operation() {
         for issue in [
+            NativeIssue::Startup,
+            NativeIssue::TrayCreation,
+            NativeIssue::Shortcut,
             NativeIssue::Window,
             NativeIssue::Unminimize,
             NativeIssue::Show,
@@ -203,12 +212,19 @@ mod tests {
                 Ok(())
             }
         }
-        assert!(
-            checked_with(Err::<(), _>(PrivateError), NativeIssue::Show, |message| {
-                write_diagnostic(BrokenSink, message)
-            })
-            .is_none()
-        );
+        for issue in [
+            NativeIssue::Show,
+            NativeIssue::Startup,
+            NativeIssue::TrayCreation,
+            NativeIssue::Shortcut,
+        ] {
+            assert!(
+                checked_with(Err::<(), _>(PrivateError), issue, |message| {
+                    write_diagnostic(BrokenSink, message)
+                })
+                .is_none()
+            );
+        }
         let application = String::from("the chosen file is not on this computer");
         write_diagnostic(BrokenSink, &application);
         let mut output = Vec::new();
