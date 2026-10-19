@@ -1,2 +1,3 @@
 * text=auto eol=lf
 *.bib text eol=lf
+apps/desktop/vendor/csl/** -text

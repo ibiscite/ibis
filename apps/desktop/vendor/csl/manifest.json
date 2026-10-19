@@ -1,0 +1,62 @@
+{
+  "moduleSuffix": "\nexport default CSL;\n",
+  "sources": {
+    "zotero": {
+      "repo": "zotero/zotero",
+      "commit": "db41b99fddcc52d38897c59c161b6adaca036afb"
+    },
+    "styles": {
+      "repo": "citation-style-language/styles",
+      "commit": "0e5503bd9a75668c402567a93e20b7327784e4fa"
+    },
+    "locales": {
+      "repo": "citation-style-language/locales",
+      "commit": "fa0cf08906a6e714040ef7a2f7999b297b10259a"
+    }
+  },
+  "files": [
+    {
+      "source": "zotero",
+      "path": "chrome/content/zotero/xpcom/citeproc.js",
+      "out": "citeproc.mjs",
+      "module": true,
+      "sha256": "4e717cb27c1d66024bbaa578604203c178af04e789c6244a722df44d70631466"
+    },
+    {
+      "source": "styles",
+      "path": "apa.csl",
+      "out": "styles/apa.csl",
+      "sha256": "3917def5fc951b104d64216c3373096042368b9704ba269ca83c14ebaba889fc"
+    },
+    {
+      "source": "styles",
+      "path": "chicago-author-date.csl",
+      "out": "styles/chicago-author-date.csl",
+      "sha256": "002fade78d7e4fe9d42936a16b43a8066b097013f6255df40b1bfba6631eff9b"
+    },
+    {
+      "source": "styles",
+      "path": "harvard-cite-them-right.csl",
+      "out": "styles/harvard-cite-them-right.csl",
+      "sha256": "0ca3d2c7c881cd98cdd81098b5349f5921edf430498aa9a5a41918621cf7cc45"
+    },
+    {
+      "source": "styles",
+      "path": "ieee.csl",
+      "out": "styles/ieee.csl",
+      "sha256": "b4c7619fc16c45a31e4cc3271eab94ffe83192d3b4c7fc729470a3b459448de3"
+    },
+    {
+      "source": "styles",
+      "path": "modern-language-association.csl",
+      "out": "styles/modern-language-association.csl",
+      "sha256": "e1432698ef28938d044b06bd45ddcc57d6b974cec25f71007075646a11f99484"
+    },
+    {
+      "source": "locales",
+      "path": "locales-en-US.xml",
+      "out": "locales/en-US.xml",
+      "sha256": "ac864c7c21166b4390d82c31792cdc509400727fa0060b43d8aa17e07f9cb079"
+    }
+  ]
+}
