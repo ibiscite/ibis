@@ -1,6 +1,6 @@
 import type React from "react";
 import * as nativeApi from "./api";
-import { libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
+import { copyFormatNames, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { useEffect, useRef, useState } from "react";
 import {
   COPY_FORMATS,
@@ -24,6 +24,78 @@ function idKey(id: RecordId): string {
 }
 
 type Operation = keyof typeof FAILURE_MESSAGES;
+
+// Shortcut labels follow the platform: ⌘ on macOS, Ctrl elsewhere.
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modifier = isMac ? "⌘" : "Ctrl+";
+// Ctrl+K is "delete to end of line" in macOS text fields, so there only ⌘K opens More.
+const commandKey = (e: React.KeyboardEvent) => (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
+
+// Fields a row already shows; a match anywhere else is named under the row.
+const VISIBLE_FIELDS = new Set(["title", "author", "citekey", "year"]);
+
+/** The strongest match the row does not show, if every match is hidden. */
+function hiddenMatch(matched: string[]): string | null {
+  if (matched.length === 0 || matched.some((field) => VISIBLE_FIELDS.has(field))) return null;
+  return matched[0] ?? null;
+}
+
+/** Done, Look or Stop for the footer dot; words carry the same meaning. */
+function libraryHealth(library: LibraryStatus | null | undefined): "done" | "look" | "stop" | "idle" {
+  if (library === null || library?.error) return "stop";
+  if (!library?.has_snapshot) return "idle";
+  return library.warnings > 0 || library.references === 0 ? "look" : "done";
+}
+
+/** A small menu: arrow keys move, Escape or a click outside closes it. */
+function MoreMenu({ children, onClose }: { children: React.ReactNode; onClose: (refocus: boolean) => void }) {
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    menu.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    const outside = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!menu.current?.contains(target) && !menu.current?.parentElement?.contains(target)) onClose(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, []);
+  return (
+    <div
+      id="more-menu"
+      role="menu"
+      aria-label={pickerText.more}
+      ref={menu}
+      onKeyDown={(e) => {
+        const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+        const at = items.indexOf(document.activeElement as HTMLElement);
+        const move = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+        if (move !== undefined) {
+          e.preventDefault();
+          items[(at + move + items.length) % items.length]?.focus();
+        } else if (e.key === "Home" || e.key === "End") {
+          e.preventDefault();
+          items[e.key === "Home" ? 0 : items.length - 1]?.focus();
+        } else if (e.key === "Tab") {
+          // Leaving the menu returns to the search box, so keys keep working.
+          e.preventDefault();
+          onClose(false);
+          document.getElementById("search")?.focus();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MenuItem({ label, title, keys, onSelect }: { label: string; title?: string; keys?: string; onSelect: () => void }) {
+  return (
+    <button type="button" role="menuitem" tabIndex={-1} title={title} onClick={onSelect}>
+      <span>{label}</span>
+      {keys && <kbd aria-hidden="true">{keys}</kbd>}
+    </button>
+  );
+}
 
 // A stable provider lets the development gallery use synthetic data without IPC.
 export type PickerApi = Pick<typeof nativeApi,
@@ -54,6 +126,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
   const input = useRef<HTMLInputElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [failures, setFailures] = useState<Partial<Record<Operation, boolean>>>({});
   const report = (operation: Operation, failed = true) => {
     setFailures((previous) => ({ ...previous, [operation]: failed }));
@@ -190,13 +264,33 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     ? libraryMessages.reloading(library.name)
     : libraryMessages.opening(library?.name ?? null);
 
+  // The search box is the place to type; the shortcut works from anywhere in the picker.
+  const isMenuShortcut = (e: React.KeyboardEvent) =>
+    e.key.toLowerCase() === "k" && commandKey(e) && !e.altKey && !e.shiftKey;
+  const closeMenu = (refocus: boolean) => {
+    setMenuOpen(false);
+    if (refocus) moreButton.current?.focus();
+  };
+  const runFromMenu = (operation: Operation, action: () => Promise<unknown>) => {
+    closeMenu(false);
+    input.current?.focus();
+    void perform(operation, action);
+  };
+  const health = libraryHealth(library);
+
   return (
     <main
       onKeyDown={(e) => {
         if (composing(e)) return;
         if (e.key === "Escape") {
           e.preventDefault();
-          void perform("hide", hidePicker);
+          // Escape steps back one layer: the menu first, then the picker.
+          if (menuOpen) closeMenu(true);
+          else void perform("hide", hidePicker);
+        } else if (isMenuShortcut(e)) {
+          e.preventDefault();
+          if (menuOpen) closeMenu(true);
+          else setMenuOpen(true);
         } else if (e.key === "q" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
           e.preventDefault();
           void perform("quit", quit);
@@ -208,7 +302,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
         </p>
       )}
-      <div className="search-bar" data-tauri-drag-region title={pickerText.dragSearchBar}>
+      <header className="search-bar" data-tauri-drag-region title={pickerText.dragSearchBar}>
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <circle cx="10.5" cy="10.5" r="6.5" />
           <path d="m16 16 5 5" />
@@ -246,7 +340,21 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             }
           }}
         />
-      </div>
+        {/* The closed control shows one word; the list and screen readers get the full name. */}
+        <span className="format-picker" title={pickerText.copyAs}>
+          <span aria-hidden="true" className="format-name">{copyFormatNames[format]}</span>
+          <label className="visually-hidden" htmlFor="format">
+            {pickerText.copyAs}
+          </label>
+          <select id="format" value={format} onChange={(e) => setFormat(e.target.value as CopyFormat)}>
+            {COPY_FORMATS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </span>
+      </header>
       <div className="notices">
         {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
         {busy && <p role="status">{loadingMessage}</p>}
@@ -293,42 +401,52 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       )}
       <div className="results-area">
         <div className="results-heading" aria-hidden="true">
-          <span>{pickerText.references}</span><span>{results.length > 0 ? pickerText.resultCount(results.length) : ""}</span>
+          <span>{query ? pickerText.bestMatches : pickerText.references}</span><span>{results.length > 0 ? pickerText.resultCount(results.length) : ""}</span>
         </div>
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {announcement}
         </p>
         <ul id="results" role="listbox" aria-label={pickerText.results}>
-          {results.map((r, i) => (
-            <li
-              key={idKey(r.id)}
-              id={`result-${i}`}
-              role="option"
-              aria-selected={i === active}
-              data-citation-selected={selected.has(idKey(r.id)) || undefined}
-              data-active={i === active || undefined}
-              onClick={() => {
-                setActive(i);
-                toggle(r);
-              }}
-            >
-              <span className="result-text">
-                <strong>{r.title}</strong>
-                <span className="result-meta">
-                  {r.authors} · {r.year ?? pickerText.noDate}
+          {results.map((r, i) => {
+            const why = hiddenMatch(r.matched);
+            return (
+              <li
+                key={idKey(r.id)}
+                id={`result-${i}`}
+                role="option"
+                aria-selected={i === active}
+                data-citation-selected={selected.has(idKey(r.id)) || undefined}
+                data-active={i === active || undefined}
+                onClick={() => {
+                  setActive(i);
+                  toggle(r);
+                }}
+              >
+                <span className="result-line">
+                  <strong className="result-title">{r.title}</strong>
+                  <span className="result-year">{r.year ?? pickerText.noDate}</span>
                 </span>
-              </span>
-              <code className="result-key">{r.key}</code>
-              {selected.has(idKey(r.id)) && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
-            </li>
-          ))}
+                <span className="result-meta">
+                  <span className="result-authors">{r.authors}</span>
+                  <code className="result-key">{r.key}</code>
+                </span>
+                {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
+                {selected.has(idKey(r.id)) && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
+              </li>
+            );
+          })}
         </ul>
         {results.length === 0 && !error && library !== undefined && !busy && !library?.error && (
           <div className="empty-state">
             {library?.name ? (
-              <p>{library.has_snapshot && library.references === 0
-                ? libraryMessages.empty(library.snapshot_name, library.zotero)
-                : query ? pickerText.noMatches : pickerText.typeToFind}</p>
+              library.has_snapshot && library.references === 0
+                ? <>
+                  <p>{libraryMessages.empty(library.snapshot_name, library.zotero)}</p>
+                  <button type="button" onClick={() => void perform("choose", chooseLibrary)}>{pickerText.chooseLibrary}</button>
+                </>
+                : query
+                  ? <><p>{pickerText.noMatches}</p><p className="empty-hint">{pickerText.noMatchesHint}</p></>
+                  : <><p>{pickerText.typeToFind}</p><p className="empty-hint">{pickerText.typeToFindHint}</p></>
             ) : library?.state === "none" ? (
               <>
                 <p>{pickerText.firstRun}</p>
@@ -345,43 +463,43 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>
       <footer>
         <section aria-label={pickerText.libraryRegion} className="library-bar">
+          <span className="status-dot" data-health={health} aria-hidden="true" />
           <span className="library-name" role="status" aria-label={pickerText.libraryStatus} aria-live="polite" aria-atomic="true">
             {libraryMessages.summary(library)}
-          </span>{" "}
-          <button type="button" className="quiet-button" aria-label={pickerText.chooseLibrary} title={pickerText.chooseTitle} onClick={() => void perform("choose", chooseLibrary)}>
-            {pickerText.chooseShort}
-          </button>
-          {!library?.zotero && (
-            <button type="button" className="quiet-button" title={pickerText.useZoteroTitle} onClick={() => void perform("zotero", useZotero)}>
-              {pickerText.useZotero}
-            </button>
-          )}
-          {library?.name && (
-            <button type="button" className="icon-button" aria-label={pickerText.reload} title={pickerText.reloadTitle} onClick={() => void perform("reload", reloadLibrary)}>
-              ↻
-            </button>
-          )}
-          {library?.note && <p role="status">{library.note}</p>}
-        </section>
-        <div className="footer-tools">
-          <label className="visually-hidden" htmlFor="format">
-            {pickerText.copyAs}
-          </label>
-          <select id="format" value={format} onChange={(e) => setFormat(e.target.value as CopyFormat)}>
-            {COPY_FORMATS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
+          </span>
           <small className="key-hints">
             <kbd>↵</kbd>{pickerText.keyHints.copy}<kbd>⇧↵</kbd>{pickerText.keyHints.add}<kbd>Esc</kbd>{pickerText.keyHints.hide}
           </small>
-          {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
-          <button type="button" className="quiet-button" aria-label={pickerText.quitLabel} onClick={() => void perform("quit", quit)}>
-            {pickerText.quit}
-          </button>
-        </div>
+          <span className="more">
+            <button
+              type="button"
+              ref={moreButton}
+              className="quiet-button"
+              aria-haspopup="menu"
+              aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+              aria-expanded={menuOpen}
+              aria-controls={menuOpen ? "more-menu" : undefined}
+              title={pickerText.moreTitle(modifier)}
+              onClick={() => (menuOpen ? closeMenu(true) : setMenuOpen(true))}
+            >
+              {pickerText.more} <kbd aria-hidden="true">{modifier}K</kbd>
+            </button>
+            {menuOpen && (
+              <MoreMenu onClose={closeMenu}>
+                <MenuItem label={pickerText.chooseLibrary} title={pickerText.chooseTitle} onSelect={() => runFromMenu("choose", chooseLibrary)} />
+                {!library?.zotero && (
+                  <MenuItem label={pickerText.useZotero} title={pickerText.useZoteroTitle} onSelect={() => runFromMenu("zotero", useZotero)} />
+                )}
+                {library?.name && (
+                  <MenuItem label={pickerText.reload} title={pickerText.reloadTitle} onSelect={() => runFromMenu("reload", reloadLibrary)} />
+                )}
+                {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
+                <MenuItem label={pickerText.quitLabel} keys={`${modifier}Q`} onSelect={() => runFromMenu("quit", quit)} />
+              </MoreMenu>
+            )}
+          </span>
+          {library?.note && <p role="status">{library.note}</p>}
+        </section>
       </footer>
     </main>
   );

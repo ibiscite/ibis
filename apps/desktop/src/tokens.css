@@ -25,6 +25,9 @@
   --row-height: var(--row-comfortable);
   --larger-text-scale: 1.15;
   --window-radius: 14px;
+  --status-dot-size: .5rem;
+  --menu-min-width: 14rem;
+  --menu-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 20%);
 
   /* Motion: feedback, panels, layout. No bounce. */
   --motion-feedback: 120ms;
@@ -70,7 +73,6 @@
   --selected-background: Highlight;
   --selected-text: HighlightText;
   --clear: transparent;
-  --selected-key-border: currentColor;
   --border-width: 1px;
   --focus-width: 2px;
   --focus-offset: 2px;
@@ -100,7 +102,6 @@
   --heading-size: var(--type-label-size);
   --heading-weight: var(--type-strong-weight);
   --heading-tracking: .02em;
-  --result-gap: 1rem;
   --result-padding: .6rem 1rem;
   --result-margin: .1rem 0;
   --title-size: var(--type-title-size);
@@ -127,7 +128,6 @@
   --footer-gap: .4rem;
   --library-min-width: 8rem;
   --library-notice-margin: .3rem 0;
-  --footer-tools-margin: .25rem;
   --icon-size: 1rem;
   --icon-padding: .15rem .4rem;
   --hint-size: var(--type-label-size);
@@ -137,7 +137,6 @@
   --forced-selected-offset: -4px;
   --forced-search-offset: -3px;
   --compact-search-padding: .9rem;
-  --compact-result-gap: .4rem;
   --search-active-border: var(--accent);
   --gallery-padding: 1rem;
   --gallery-gap: 1.5rem;

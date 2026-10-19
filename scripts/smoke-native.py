@@ -17,7 +17,7 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 
 class Unavailable(RuntimeError):
@@ -76,6 +76,25 @@ def editor_focus_facts(native, stage):
     if not isinstance(state, dict) or any(type(state.get(key)) is not bool for key in keys):
         raise RuntimeError("Native editor focus metadata unavailable")
     return {"stage": stage, **{key: state[key] for key in keys}}
+
+
+# Library actions live in the picker's More menu (Ctrl/Cmd+K), not the footer.
+MENU_ACTIONS = {"Choose library…", "Use Zotero", "Reload", "Quit Ibis"}
+
+
+def menu_action(native, name):
+    """Open More, then press the named menu item, as a user would."""
+    if name not in MENU_ACTIONS:
+        raise ValueError(f"{name!r} is not a More menu action")
+    native.click("More")
+    # The accessibility tree can lag the menu opening; wait for the item.
+    def pressed():
+        try:
+            native.click(name)
+            return True
+        except (AssertionError, RuntimeError, subprocess.CalledProcessError):
+            return False
+    wait_for(pressed, f"{name} appears in the More menu", timeout=5)
 
 
 def named(snapshot, name):
@@ -688,7 +707,7 @@ def main():
 
             def missing():
                 library.unlink()
-                native.click("Reload")
+                menu_action(native, "Reload")
                 def explained():
                     report["missing_library_evidence"] = missing_library_evidence(snapshot(), library.name)
                     return all(report["missing_library_evidence"].values())
@@ -701,10 +720,10 @@ def main():
 
             def recover():
                 library.write_text("", encoding="utf-8")
-                native.click("Reload")
+                menu_action(native, "Reload")
                 wait_for(lambda: "0 references" in strings(snapshot()), "empty library count")
                 library.write_text(fixture(), encoding="utf-8")
-                native.click("Reload")
+                menu_action(native, "Reload")
                 wait_for(lambda: "3 references" in strings(snapshot()), "reload recovers after error")
             check("empty library and recovery after error", recover)
             stop()
@@ -928,6 +947,13 @@ class ContractTests(unittest.TestCase):
             state["editor_window_visible"] = "true"
             with self.assertRaisesRegex(RuntimeError, "metadata unavailable"):
                 editor_focus_facts(native, "copy-restoration-timeout")
+
+    def test_menu_actions_open_more_first(self):
+        native = Mock()
+        menu_action(native, "Reload")
+        self.assertEqual(native.click.call_args_list, [call("More"), call("Reload")])
+        with self.assertRaises(ValueError):
+            menu_action(native, "Search references")
 
     def test_global_macos_hid_event_contracts_without_native_execution(self):
         subprocess.run(["node", str(Path(__file__).with_name("smoke-macos.test.cjs"))], check=True,

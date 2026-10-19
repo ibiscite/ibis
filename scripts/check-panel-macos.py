@@ -129,7 +129,7 @@ def main():
             smoke.wait_for(lambda: fullscreen_ready(editor_state(), False), "editor leaves full screen")
             native.key("ctrl+super+r")
             smoke.wait_for(picker_ready, "panel search focused before opening its chooser")
-            native.click("Choose library…")
+            smoke.menu_action(native, "Choose library…")
             smoke.wait_for(lambda: chooser_ready(chooser_state()), "native chooser receives focus while the picker stays visible")
             passed("library chooser is visible and focused without hiding the panel")
             native.call("cancel-chooser")

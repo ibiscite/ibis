@@ -343,8 +343,11 @@ function run(argv) {
     case 'text': sendUnicodeText(text, postEvent()); result = true; break;
     case 'click': {
         const aliases = text === 'Reload' ? ['Reload', 'Reload library'] :
-            text === 'Choose library…' ? ['Choose library…', 'Choose a library'] : [text];
-        const buttons = elements().filter(item => safe(() => item.role()) === 'AXButton');
+            text === 'Choose library…' ? ['Choose library…', 'Choose a library'] :
+            text === 'More' ? ['More', 'More actions (⌘K)'] : [text];
+        // WebKit exposes menu buttons and their items with their own roles.
+        const pressable = new Set(['AXButton', 'AXPopUpButton', 'AXMenuButton', 'AXMenuItem']);
+        const buttons = elements().filter(item => pressable.has(safe(() => item.role())));
         let successfulReads = 0;
         const types = new Set();
         const matches = buttons.filter(item => {
@@ -367,7 +370,7 @@ function run(argv) {
         if (matches.length === 1) matches[0].actions.byName('AXPress').perform();
         result = {pressed: matches.length === 1, button_count: buttons.length,
             exact_label_matches: matches.length, successful_attribute_reads: successfulReads,
-            attribute_types: [...types].sort(), known_action: ['Reload', 'Choose library…'].includes(text)};
+            attribute_types: [...types].sort(), known_action: ['Reload', 'Choose library…', 'More'].includes(text)};
         break;
     }
     case 'focus-editor': process(editorId).frontmost = true; result = true; break;

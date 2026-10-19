@@ -330,7 +330,7 @@ an NSPanel with non-activating style, all-Spaces/full-screen auxiliary behavior,
 and a floating level. Its safe API confines native calls to Tauri's main-thread
 callbacks; the app retains `forbid(unsafe_code)`. It enables Tauri's macOS private
 API feature, as the adapter requires. `Accessory` policy removes the Dock icon;
-Quit stays available in the footer and menu bar item. These flags on a normal
+Quit stays available in the More menu and menu bar item. These flags on a normal
 window were already tested natively and did not solve the full-screen problem
 (see the evidence in #198).
 

@@ -156,7 +156,13 @@ try {
       $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $Text)
       $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
       if (!$element) { throw 'Named accessibility control missing' }
-      $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+      # Chromium gives menu buttons (aria-haspopup) ExpandCollapse instead of Invoke.
+      $pattern = $null
+      if ($element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $pattern)) {
+        $pattern.Invoke()
+      } elseif ($element.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref] $pattern)) {
+        $pattern.Expand()
+      } else { throw 'Named accessibility control cannot be pressed' }
       $true
     }
     'focus-editor' {

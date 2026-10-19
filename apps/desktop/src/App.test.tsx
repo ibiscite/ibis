@@ -48,6 +48,12 @@ test("copy confirmation expires, but copy warnings remain until dismissed", asyn
   expect(screen.queryByLabelText("Copy warnings")).toBeNull();
 });
 
+/** Opens the More menu and picks an action from it, as a user would. */
+async function chooseFromMore(name: string) {
+  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  fireEvent.click(await screen.findByRole("menuitem", { name }));
+}
+
 function result(key: string, title: string, source = "refs.bib") {
   return { id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"] };
 }
@@ -148,7 +154,8 @@ test("the empty-state chooser opens the existing dialog and remains available af
   fireEvent.click(chooser);
   await waitFor(() => expect(calls).toContain("choose_library"));
   expect(screen.getByRole("button", { name: "Choose library to get started" })).toBe(chooser);
-  expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(screen.getByRole("menuitem", { name: "Choose library…" })).toBeTruthy();
 });
 
 test("typing and clearing before choosing a library keeps the calm hint and chooser", async () => {
@@ -263,7 +270,7 @@ test("a failed search clears the results of the previous query", async () => {
 test("Quit is available from the picker and from the keyboard", async () => {
   const calls = backend({ quit: () => null });
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: "Quit Ibis" }));
+  await chooseFromMore("Quit Ibis");
   await waitFor(() => expect(calls.filter((c) => c === "quit")).toHaveLength(1));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true });
   await waitFor(() => expect(calls.filter((c) => c === "quit")).toHaveLength(2));
@@ -411,11 +418,11 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   render(<App />);
   const bar = screen.getByRole("region", { name: "Library" });
   await waitFor(() => expect(bar.textContent).toContain("No library chosen"));
-  fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
+  await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
   await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, note: null });
   await waitFor(() => expect(bar.textContent).toContain("refs.bib: 3 references, 1 reading notice"));
-  fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+  await chooseFromMore("Reload");
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", {
     state: "error",
@@ -557,9 +564,9 @@ test.each([
 ])("%s failures are reported without rejected IPC payloads", async (command, notice) => {
   backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
-  await screen.findByRole("button", { name: "Reload" });
-  if (command === "choose_library") fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
-  else if (command === "reload_library") fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  if (command === "choose_library") await chooseFromMore("Choose library…");
+  else if (command === "reload_library") await chooseFromMore("Reload");
   else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
     ? { key: "q", ctrlKey: true } : { key: "Escape" });
   expect((await screen.findByText(notice)).getAttribute("role")).toBe("alert");
@@ -645,7 +652,7 @@ test("opening a chosen library shows its name and searches only when ready", asy
   expect(document.body.textContent).not.toContain("No library chosen");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(calls).not.toContain("search");
-  fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
+  await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
   await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 1, warnings: 0, error: null, note: null }); });
   await waitFor(() => expect(calls).toContain("search"));
@@ -690,7 +697,7 @@ test("an unavailable initial library is named once without a duplicate search er
   expect(document.body.textContent).not.toContain("keeping the last");
   expect(document.body.textContent).not.toContain("No matching references");
   expect(calls).not.toContain("search");
-  fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
+  await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
 });
 
@@ -755,4 +762,54 @@ test("the design scale keeps text readable and every colour role legible in both
       expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(4.5);
     });
   }
+});
+
+test("Ctrl+K opens More with every action, Escape closes it before hiding the picker", async () => {
+  const calls = backend({ hide_picker: () => null, reload_library: () => null });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  fireEvent.keyDown(box, { key: "k", ctrlKey: true });
+  const menu = await screen.findByRole("menu");
+  const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
+  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Quit IbisCtrl+Q"]);
+  expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  expect(document.activeElement?.textContent).toContain("Quit Ibis");
+  const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  try {
+    const found = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, rules: { "color-contrast": { enabled: false } } });
+    expect(found.violations.map((v) => v.id)).toEqual([]);
+  } finally {
+    canvas.mockRestore();
+  }
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));
+  expect(calls).not.toContain("hide_picker");
+  fireEvent.keyDown(box, { key: "Escape" });
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole("menu")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  fireEvent.keyDown(within(screen.getByRole("menu")).getAllByRole("menuitem")[0]!, { key: "Tab" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(document.activeElement).toBe(box);
+  expect(screen.getByRole("button", { name: /^More/ }).textContent).toContain("K");
+  expect(screen.getByRole("button", { name: /^More/ }).getAttribute("aria-keyshortcuts")).toBe("Control+K");
+});
+
+test("a row says why it matched only when the match is not visible", async () => {
+  backend({ search: () => [
+    { ...result("a", "Visible match"), matched: ["title", "abstract"] },
+    { ...result("b", "Hidden match"), matched: ["abstract", "keyword"] },
+  ] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "spindle" } });
+  await screen.findByText("Hidden match");
+  const rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
+  expect(rows[0]?.textContent).not.toContain("Matched in");
+  expect(rows[1]?.textContent).toContain("Matched in the abstract");
+  expect(screen.getByText("Best matches")).toBeTruthy();
 });

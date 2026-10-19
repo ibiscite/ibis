@@ -31,18 +31,24 @@ main {
 .results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; padding: var(--results-padding); scrollbar-width: thin; }
 .results-heading { display: flex; justify-content: space-between; padding: var(--heading-padding); color: var(--muted); font-size: var(--heading-size); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
 #results { list-style: none; padding: 0; margin: 0; }
-[role="option"] { display: flex; align-items: center; gap: var(--result-gap); cursor: default; padding: var(--result-padding); margin: var(--result-margin); border-radius: var(--result-radius); border: var(--border-width) solid var(--clear); }
-.result-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.result-text strong { display: block; font-size: var(--title-size); font-weight: var(--title-weight); line-height: var(--title-line-height); letter-spacing: var(--title-tracking); }
-.result-meta { display: block; color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); margin-top: var(--metadata-gap); }
-.result-key { font-size: var(--key-size); max-width: var(--key-max-width); overflow-wrap: anywhere; color: var(--muted); background: var(--button-background); border: var(--border-width) solid var(--line); border-radius: var(--key-radius); padding: var(--key-padding); }
+[role="option"] { display: flex; flex-direction: column; justify-content: center; min-height: var(--row-height); cursor: default; padding: var(--result-padding); margin: var(--result-margin); border-radius: var(--result-radius); border: var(--border-width) solid var(--clear); }
+/* Title and year share the first line; the year sits at the same edge on every row. */
+.result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+.result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--title-size); font-weight: var(--title-weight); line-height: var(--title-line-height); letter-spacing: var(--title-tracking); }
+.result-year, .result-meta, .result-why { color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
+.result-year { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.result-meta { margin-top: var(--metadata-gap); }
+.result-authors { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-key { flex-shrink: 1; min-width: 0; max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--key-size); }
+.result-why { font-style: italic; }
 [role="option"]:hover:not([data-active]):not([data-citation-selected]) { background: var(--hover-background); }
 /* Active and selected remain distinguishable even without colour. */
 [role="option"][data-active] { background: var(--active-background); border-color: var(--active-edge); box-shadow: inset var(--active-edge-width) 0 var(--accent); }
 [role="option"][data-citation-selected] { background: var(--selected-background); color: var(--selected-text); }
-[data-citation-selected] .result-meta, [data-citation-selected] .result-key { color: inherit; }
-[data-citation-selected] .result-key { background: var(--clear); border-color: var(--selected-key-border); }
+[data-citation-selected] .result-meta, [data-citation-selected] .result-year, [data-citation-selected] .result-why { color: inherit; }
 .empty-state { color: var(--muted); text-align: center; padding: var(--empty-padding); }
+.empty-state p:first-child { color: var(--text); font-weight: var(--type-strong-weight); }
+.empty-hint { font-size: var(--metadata-size); }
 
 .notices:empty { display: none; }
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }
@@ -54,15 +60,33 @@ main {
 [aria-label="Selected references"] li { border: var(--border-width) solid var(--line); border-radius: var(--button-radius); padding-inline-start: var(--selection-label-padding); overflow-wrap: anywhere; max-width: 100%; }
 [aria-label="Selected references"] button { border: 0; background: var(--clear); font-size: var(--metadata-size); }
 
-footer { border-top: var(--border-width) solid var(--line); padding: var(--footer-padding); font-size: var(--footer-size); }
-.library-bar, .footer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); }
+footer { border-top: var(--border-width) solid var(--line); padding: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
+.library-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); }
 .library-name { flex: 1; min-width: var(--library-min-width); overflow-wrap: anywhere; color: var(--muted); }
 .library-bar p { width: 100%; margin: var(--library-notice-margin); }
-.footer-tools { margin-top: var(--footer-tools-margin); justify-content: space-between; }
+/* The dot repeats what the words say, so colour is never the only signal. */
+.status-dot { width: var(--status-dot-size); height: var(--status-dot-size); border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+.status-dot[data-health="done"] { background: var(--status-done); }
+.status-dot[data-health="look"] { background: var(--status-look); }
+.status-dot[data-health="stop"] { background: var(--status-stop); }
+
+/* The format control shows one word; the native list keeps every label and key. */
+.format-picker { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--control-min-size); padding: 0 var(--space-2); border-radius: var(--button-radius); color: var(--muted); font-size: var(--metadata-size); cursor: default; }
+.format-picker::after { content: "▾"; }
+.format-picker:hover { background: var(--hover-background); color: var(--text); }
+.format-picker:focus-within { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+.format-picker select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: default; }
+
+/* More stays at the far end even when the footer wraps, so its menu opens inward. */
+.more { position: relative; margin-inline-start: auto; }
+.more > button { min-height: var(--control-min-size); }
+[role="menu"] { position: absolute; bottom: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: 1; min-width: var(--menu-min-width); display: flex; flex-direction: column; padding: var(--space-1); background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); box-shadow: var(--menu-shadow); }
+[role="menuitem"] { display: flex; justify-content: space-between; gap: var(--space-4); min-height: var(--control-min-size); align-items: center; text-align: start; border: 0; background: var(--clear); }
+[role="menuitem"]:hover, [role="menuitem"]:focus-visible { background: var(--hover-background); }
+[role="menuitem"] kbd { color: var(--muted); }
 .quiet-button, .icon-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
 .icon-button { font-size: var(--icon-size); padding: var(--icon-padding); }
-#format { max-width: 100%; font-size: var(--key-size); }
-.key-hints { color: var(--muted); font-size: var(--key-size); }
+.key-hints { color: var(--muted); font-size: var(--hint-size); }
 kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding: var(--hint-padding); border: var(--border-width) solid var(--line); border-radius: var(--hint-radius); margin-inline-start: var(--hint-margin); }
 
 @media (prefers-contrast: more) {
@@ -81,8 +105,8 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
   main { height: auto; min-height: var(--picker-height); overflow: visible; }
   .results-area { flex: none; overflow: visible; }
   .search-bar { padding: var(--compact-search-padding); }
-  [role="option"] { flex-wrap: wrap; gap: var(--compact-result-gap); }
-  .result-text { flex-basis: 100%; }
-  .result-key { max-width: 100%; }
+  .result-meta { flex-wrap: wrap; }
+  .result-authors { white-space: normal; }
+  .key-hints { display: none; }
 }
 /* No animation: reduced-motion users get the same immediate feedback. */
