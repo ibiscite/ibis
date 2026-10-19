@@ -16,6 +16,7 @@ use crate::diagnostics::{NativeIssue, application_message, report};
 use crate::picker::{DialogOpen, show_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
+use ibis_core::settings::LibrarySetting;
 
 /// The library currently open in the app, indexed once when it is opened.
 #[derive(Default)]
@@ -308,7 +309,9 @@ pub(crate) fn start_open(app: &AppHandle, path: PathBuf, remember: bool) {
             if remember && let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
                 // Saving and the note belong to this request, never a newer choice.
                 if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request && library.error.is_none() {
-                    let saved = app.state::<SettingsFile>().update(|s| s.library = Some(chosen));
+                    let saved = app
+                        .state::<SettingsFile>()
+                        .update(|s| s.library = Some(LibrarySetting::Bibtex(chosen)));
                     if let Err(e) = saved {
                         library.note = Some(format!("the library opened but could not be saved for next time: {e}"));
                         show_note = true;

@@ -55,6 +55,7 @@ impl SettingsFile {
 mod tests {
     use super::*;
     use ibis_core::cite::KeyFormat;
+    use ibis_core::settings::LibrarySetting;
 
     #[test]
     fn unreadable_settings_report_no_operating_system_payload() {
@@ -78,7 +79,7 @@ mod tests {
         let private = "synthetic-private-payload";
         for (contents, problem) in [
             (format!(r#"{{"copy_format":"{private}"}}"#), "not valid"),
-            (r#"{"schema_version":2}"#.to_string(), "newer version"),
+            (r#"{"schema_version":3}"#.to_string(), "newer version"),
         ] {
             std::fs::write(&path, &contents).unwrap_or_else(|e| panic!("{e}"));
             let loaded = settings::load(&path);
@@ -125,7 +126,7 @@ mod tests {
                 std::thread::spawn(move || {
                     for _ in 0..20 {
                         let saved = if i % 2 == 0 {
-                            file.update(|s| s.library = Some(PathBuf::from("refs.bib")))
+                            file.update(|s| s.library = Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib"))))
                         } else {
                             file.update(|s| s.copy_format = Some(KeyFormat::Typst))
                         };
@@ -139,7 +140,10 @@ mod tests {
         }
         let loaded = settings::load(&file.path);
         assert!(loaded.problem.is_none());
-        assert_eq!(loaded.settings.library, Some(PathBuf::from("refs.bib")));
+        assert_eq!(
+            loaded.settings.library,
+            Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib")))
+        );
         assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
         let _ = std::fs::remove_dir_all(&dir);
     }

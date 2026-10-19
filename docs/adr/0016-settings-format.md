@@ -1,6 +1,6 @@
 # 0016. Keep versioned, human-editable settings in the platform configuration folder
 
-Status: accepted (2026-10-18)
+Status: accepted (2026-10-18); the `library` field and the migration rule are superseded by [0018](0018-settings-format-2.md)
 
 ## Context
 

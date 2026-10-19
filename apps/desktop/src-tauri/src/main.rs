@@ -171,7 +171,16 @@ fn main() {
             // The library from settings; IBIS_LIBRARY overrides it for development.
             let library = std::env::var("IBIS_LIBRARY")
                 .ok()
-                .or_else(|| loaded.settings.library.as_ref().map(|p| p.display().to_string()));
+                .or_else(|| match &loaded.settings.library {
+                    Some(settings::LibrarySetting::Bibtex(path)) => Some(path.display().to_string()),
+                    Some(settings::LibrarySetting::Zotero(_)) => {
+                        // Written by hand or by a newer build; reading Zotero
+                        // from the app arrives with #13.
+                        eprintln!("ibis: this build cannot open Zotero libraries yet; choose a library file instead");
+                        None
+                    }
+                    None => None,
+                });
             if let Some(path) = library {
                 // Opened in the background so the window appears at once.
                 start_open(app.handle(), PathBuf::from(path), false);

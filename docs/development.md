@@ -157,10 +157,10 @@ Choose a library from the picker or from the menu bar (tray) item. The choice an
 - Linux: `$XDG_CONFIG_HOME/io.github.ibiscite.ibis/`, or `~/.config/io.github.ibiscite.ibis/` when `XDG_CONFIG_HOME` is not set
 
 ```json
-{ "schema_version": 1, "shortcut": "CommandOrControl+Shift+Y", "library": "/path/to/refs.bib", "copy_format": "pandoc" }
+{ "schema_version": 2, "shortcut": "CommandOrControl+Shift+Y", "library": { "bibtex": "/path/to/refs.bib" }, "copy_format": "pandoc" }
 ```
 
-Every field is optional. On Windows, write the library path with forward slashes or doubled backslashes, as JSON requires. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten.
+Every field is optional. A file from an earlier version (format 1, where `library` was a bare path) is read as before and upgraded on the next save, with the old file kept as `settings.json.bak` until the save after that; an older Ibis refuses the upgraded file rather than overwriting it (ADR 0018). On Windows, write the library path with forward slashes or doubled backslashes, as JSON requires. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten.
 
 The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Space on Windows and Linux. Cmd+Shift+Space is not used on macOS because it opens the Siri typing field, which takes the keystrokes meant for the picker. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used. On Windows, avoid Ctrl+Alt combinations: many keyboard layouts use them as AltGr to type characters.
 
