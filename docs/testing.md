@@ -242,54 +242,39 @@ An exceeded budget records `performance.status: failed`, the metric and numeric
 ceilings, retaining and printing all three samples instead of calling the
 attempted gate `measured-without-budget`.
 
-### Remaining hand checks (after all three cloud runs pass)
+### Manual-only checks (final pass before sharing)
 
-Once stable packages are ready, use the matching OS artifact from the exact
-workflow run linked in [#80](https://github.com/ibiscite/ibis/issues/80), with
-`fixtures/bibtex/real-world.bib` from that same source SHA. The final handoff will
-add that run link; no hand testing is requested before then. These lists cover
-automation gaps before any tag or publishing authorization. Linux preview
-acceptance relies on automation; its optional future checklist is not a
-maintainer handoff requirement.
+Everything else is automated in CI on Linux, macOS and Windows: the picker,
+search, copy, settings, damaged libraries, screenshots of every state and a
+real Zotero instance with synthetic items. The items below need a person, real hardware or a real account, so they are
+done once, by the maintainer, on the nightly build linked in
+[#80](https://github.com/ibiscite/ibis/issues/80) when the app is otherwise
+ready. Linux relies on automation only.
 
-- **Windows:** (1) With NVDA or Narrator, hear the search label, changed result
-  count and selected result. (2) At your normal scaling, check text is readable and
-  the picker feels responsive; type using your usual input method, including
-  composition if you use an IME. (3) On the keyboard layouts you use, verify the
-  displayed shortcut. (4) Paste a copied citation into your real writing app.
-  (5) Sleep and wake the computer, then search and copy again. (6) If you use
-  several displays, disconnect and reconnect one and summon the picker on the
-  remaining screen; if displays use different scales, move the picker between
-  them and check readability. (7) If you use an existing cloud folder or network drive,
-  put only the synthetic library there, edit it and check the picker recovers
-  after a sync or brief disconnect. (8) Quit while a large synthetic library is
-  reloading, reopen and search.
-- **macOS:** (1) With VoiceOver, hear the search label, changed result count and
-  selected result. (2) Check permission prompts and recovery on a fresh user
-  account. (3) From a full-screen writing app, summon the picker and paste.
-  (4) At your normal scaling and keyboard layout, check readability and feel;
-  type using your usual input method, including composition if you use an IME.
-  (5) Sleep and wake, then search and copy again. (6) If you use several
-  displays, disconnect and reconnect one and summon the picker on the remaining
-  screen; if displays use different scales, move the picker between them and
-  check readability. (7) If you already use iCloud or a network drive, try only the synthetic
-  library there and check recovery after syncing or a brief disconnect. (8) Quit
-  while a large synthetic library is reloading, reopen and search.
-- **Linux (optional future coverage):** (1) With Orca in your desktop session, hear the search label, changed
-  result count and selected result. (2) In your actual Wayland compositor, check
-  shortcut/copy behavior and any permission explanation. (3) Check readability
-  at your normal scaling and keyboard layout. (4) Paste into your writing app.
-  (5) Suspend and resume, then search and copy again. (6) If you use several
-  displays, disconnect and reconnect one and summon the picker on the remaining
-  screen. (7) If you use an existing synced folder or network drive, try only
-  the synthetic library there and check recovery after syncing or disconnecting.
-  (8) Quit while a large synthetic library is reloading, reopen and search.
+On Windows and on macOS:
 
-Hosted UI automation does not establish real screen-reader speech, full-screen
-Spaces, mixed-DPI/multiple-monitor behavior, non-US layouts/IMEs, sleep/wake,
-display unplugging, cloud/network-drive synchronization, or subjective feel.
-Deterministic parser/watcher tests cover underlying data cases; they do not prove
-these desktop-session scenarios.
+1. **Your Zotero.** With Zotero open, choose *Use Zotero* and search your own
+   library; check a few results look right. Nothing is written to Zotero.
+2. **Screen reader.** With NVDA or Narrator (Windows) or VoiceOver (macOS), hear
+   the search label, the changed result count and the selected result.
+3. **Typing and shortcut.** On your keyboard layout and input method (including
+   IME composition if you use one), type a search and check the displayed
+   shortcut opens the picker.
+4. **Paste for real.** Paste a copied citation into your writing app; on macOS
+   also summon the picker from a full-screen app.
+5. **Sleep and wake.** Sleep and wake the computer, then search and copy again.
+6. **Displays.** If you use several displays or scales, unplug one and summon the
+   picker, and move it between screens; check it stays readable.
+7. **Synced folders.** If you keep files in iCloud, OneDrive or a network drive,
+   put only a synthetic `.bib` there, edit it and check the picker recovers.
+8. **Feel.** At your normal scaling, the picker is readable and feels fast.
+
+macOS only: on a fresh user account, check the permission prompts and that the
+app explains how to recover if one is declined.
+
+Hosted automation cannot establish real screen-reader speech, full-screen
+Spaces, multiple displays, non-US layouts and IMEs, sleep and wake, cloud-folder
+sync, a person's own library, or subjective feel; that is why these stay manual.
 
 ## Picker screenshots
 

@@ -112,7 +112,7 @@ recorded evidence before marking their cells supported.
 hosted run passed. Preserve the commit SHA and runner details with each result;
 the native smoke report must pass before claiming its configured cell verified.
 Build-only evidence establishes compilation and packaging, not window behavior.
-The final hand checklist in [testing.md](testing.md#remaining-hand-checks-after-all-three-cloud-runs-pass)
+The final hand checklist in [testing.md](testing.md#manual-only-checks-final-pass-before-sharing)
 is reserved for the remaining speech, physical-session and feel checks. Pending
 scenarios that can run in automation still need that automation before handoff.
 
