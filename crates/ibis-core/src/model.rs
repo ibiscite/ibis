@@ -290,6 +290,16 @@ impl Reference {
     }
 }
 
+/// The number of days in a month of the proleptic Gregorian calendar.
+pub(crate) fn days_in_month(year: i32, month: u8) -> u8 {
+    match month {
+        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
 /// Remove CSL rich-text tags and decode the entities used to escape text.
 pub fn strip_markup(rich: &str) -> String {
     let mut out = String::with_capacity(rich.len());

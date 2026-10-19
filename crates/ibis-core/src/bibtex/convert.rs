@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use biblatex::{Chunk, ChunksExt, DateValue, EditorType, Entry, PermissiveType, RetrievalError};
 
 use super::resolve::{BACKSLASH, ESCAPE, LEFT_BRACE, RIGHT_BRACE};
-use crate::model::{Issued, Name, OTHERS, PartialDate, RecordId, Reference};
+use crate::model::{Issued, Name, OTHERS, PartialDate, RecordId, Reference, days_in_month};
 
 /// Convert one entry. Problems that do not prevent loading are pushed to `problems`.
 pub(crate) fn convert(
@@ -606,15 +606,6 @@ fn lenient_date(text: &str) -> Option<(PartialDate, bool)> {
     let expected = 1 + usize::from(date.month.is_some()) + usize::from(date.day.is_some());
     let given = text.split('-').filter(|s| !s.is_empty()).count();
     Some((date, rest_is_date && expected == given))
-}
-
-fn days_in_month(year: i32, month: u8) -> u8 {
-    match month {
-        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        _ => 31,
-    }
 }
 
 fn describe(date: PartialDate) -> String {
