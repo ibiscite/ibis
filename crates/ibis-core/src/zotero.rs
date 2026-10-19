@@ -15,6 +15,8 @@ use std::fmt;
 
 use serde_json::{Map, Value};
 
+pub mod api;
+
 use crate::model::{
     Issued, LoadResult, LoadWarning, Name, PartialDate, RecordId, Reference, WarningKind, days_in_month,
 };
