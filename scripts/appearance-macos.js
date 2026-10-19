@@ -1,9 +1,107 @@
 // Ordinary Accessibility UI only. Never write preferences or request TCC grants.
 ObjC.import('AppKit');
 ObjC.import('ApplicationServices');
+ObjC.import('CoreGraphics');
+ObjC.import('CoreFoundation');
+
+// Inspect only the owned picker's window metadata, never its WebView tree.
+function pickerAction(action, request, stage = () => {}) {
+    stage('identity');
+    const token = action === 'picker-owner' ? request : request.owner;
+    if (!token || !Number.isInteger(token.pid) || token.pid <= 0 ||
+        typeof token.executable !== 'string' || !token.executable.startsWith('/')) {
+        throw Error('Owned picker identity unavailable');
+    }
+    // Objective-C nil is a truthy JXA wrapper. Only the pre-token owner
+    // registration poll may wait for absent public registration metadata.
+    const missing = value => !value || (typeof value.isNil === 'function' && value.isNil());
+    const unavailable = () => {
+        if (action === 'picker-owner') return null;
+        throw Error('Owned picker identity changed');
+    };
+    stage('registration');
+    const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(token.pid);
+    if (missing(app)) return unavailable();
+    if (app.isTerminated !== false || Number(app.processIdentifier) !== token.pid) {
+        throw Error('Owned picker identity changed');
+    }
+    // launchDate is explicitly unavailable for direct, non-LaunchServices
+    // launches (NSRunningApplication.h). Python pins the unreaped Popen child
+    // around every call instead.
+    const executable = app.executableURL;
+    if (missing(executable)) return unavailable();
+    if (ObjC.unwrap(executable.path) !== token.executable) throw Error('Owned picker identity changed');
+    if (action === 'picker-owner') return {pid: token.pid, executable: token.executable};
+    stage('process');
+    const processes = Application('System Events').applicationProcesses.whose({unixId: token.pid})();
+    if (processes.length !== 1) throw Error('Owned picker identity unavailable');
+    stage('windows');
+    const windows = processes[0].windows();
+    if (windows.length > 10) throw Error('Picker window enumeration exceeded bound');
+    const matches = windows.filter(window => window.role() === 'AXWindow' && window.name() === 'Ibis');
+    if (matches.length !== 1) throw Error('Picker window identity is ambiguous');
+    stage('geometry');
+    const window = matches[0], position = window.position(), size = window.size();
+    const pair = value => Array.isArray(value) && value.length === 2 && value.every(Number.isFinite);
+    if (!pair(position) || !pair(size) || size.some(value => value <= 0)) throw Error('Picker bounds unavailable');
+    stage('ownership');
+    const refs = $.CGWindowListCopyWindowInfo(
+        $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
+    if (!refs) throw Error('Picker on-screen ownership unavailable');
+    const count = Number($.CFArrayGetCount(refs)), owned = [];
+    if (!Number.isInteger(count) || count < 0 || count > 10000) throw Error('Native window enumeration exceeded bound');
+    for (let index = 0; index < count; index++) {
+        const ref = $.CFArrayGetValueAtIndex(refs, index);
+        if (!ref) throw Error('Native window ownership unavailable');
+        const info = ObjC.deepUnwrap(ObjC.castRefToObject(ref));
+        if (info.kCGWindowOwnerPID !== token.pid) continue;
+        const bounds = info.kCGWindowBounds;
+        if (!bounds || ![bounds.X, bounds.Y, bounds.Width, bounds.Height, info.kCGWindowAlpha].every(Number.isFinite)) {
+            throw Error('Owned native window bounds unavailable');
+        }
+        if (info.kCGWindowAlpha > 0 && Math.abs(bounds.X - position[0]) <= 2 && Math.abs(bounds.Y - position[1]) <= 2 &&
+            Math.abs(bounds.Width - size[0]) <= 2 && Math.abs(bounds.Height - size[1]) <= 2) owned.push(info);
+    }
+    if (owned.length !== 1 || !Number.isInteger(owned[0].kCGWindowNumber) || owned[0].kCGWindowNumber <= 0) {
+        throw Error('Picker on-screen ownership is ambiguous or unavailable');
+    }
+    const screen = $.NSScreen.mainScreen.frame.size;
+    const frame = {window: owned[0].kCGWindowNumber, position, size, screen: [Number(screen.width), Number(screen.height)]};
+    if (action === 'picker-frame') return frame;
+    stage('resize');
+    if (request.window !== frame.window) throw Error('Owned picker window identity changed');
+    const target = request.size;
+    if (!pair(target) || !target.every(Number.isInteger) || target[0] < 360 || target[1] < 320 ||
+        target[0] > 1280 || target[1] > 900 || !pair(frame.screen) || position.some(value => value < 0) ||
+        position[0] + target[0] > frame.screen[0] || position[1] + target[1] > frame.screen[1]) {
+        throw Error('Requested picker size is outside the capture bounds');
+    }
+    // One native mutation. The Python observer verifies fresh readback before
+    // any resized capture and restores the original size even after failure.
+    window.size = target;
+    return true;
+}
 
 function run(argv) {
     const action = argv[0], identity = argv[1], argument = argv[2];
+    if (['picker-owner', 'picker-frame', 'picker-size'].includes(action)) {
+        let stage = 'identity';
+        try {
+            return JSON.stringify(pickerAction(action, JSON.parse(argument), value => { stage = value; }));
+        } catch (error) {
+            // Never serialize native exception text, paths or request payloads.
+            const reasons = {
+                'Owned picker identity unavailable': 'invalid-identity',
+                'Owned picker identity changed': 'identity-changed',
+                'Owned picker window identity changed': 'identity-changed',
+                'Picker window identity is ambiguous': 'ambiguous-window',
+                'Picker on-screen ownership is ambiguous or unavailable': 'ambiguous-window',
+                'Requested picker size is outside the capture bounds': 'invalid-size'
+            };
+            const reason = Object.prototype.hasOwnProperty.call(reasons, error.message) ? reasons[error.message] : 'native-call-failed';
+            return JSON.stringify({nativeAppearanceFailure: {action, stage, reason}});
+        }
+    }
     const bundle = 'com.apple.systempreferences';
     const events = Application('System Events');
     const safe = fn => { try { return fn(); } catch (_) { return undefined; } };

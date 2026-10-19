@@ -18,22 +18,53 @@ async function existing(path, kind) {
   return true;
 }
 
-async function captures(source, relative = "") {
+async function captures(source, relative = "", os) {
   const files = [];
   for (const entry of await readdir(join(source, relative), { withFileTypes: true })) {
     const name = join(relative, entry.name);
     if (entry.isSymbolicLink()) throw new Error("Capture contains a symbolic link");
-    if (entry.isDirectory()) files.push(...await captures(source, name));
+    if (os && [...entry.name.matchAll(/-(Linux|macOS|Windows)(?=\.|-|$)/g)].some(match => match[1] !== os)) {
+      throw new Error("Capture contains mixed platforms");
+    }
+    if (entry.isDirectory()) files.push(...await captures(source, name, os));
     else if (entry.isFile() && /\.(png|jpe?g|webp)$/i.test(entry.name)) files.push(name);
+    else if (!entry.isFile()) throw new Error("Invalid capture entry type");
   }
   return files;
+}
+
+export async function evidenceSources({ input, sha }) {
+  if (!commit.test(sha)) throw new Error("Expected a full commit SHA");
+  if (!await existing(input, "directory")) return [];
+  const entries = await readdir(input, { withFileTypes: true });
+  const markers = [], sources = [];
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) throw new Error("Capture contains a symbolic link");
+    const marker = platforms.find(os => entry.name === `picker-${os}.png`);
+    const artifact = platforms.find(os => entry.name === `picker-${sha}-${os}`);
+    if (marker && entry.isFile()) markers.push(marker);
+    else if (artifact && entry.isDirectory()) sources.push({ source: resolve(input, entry.name), os: artifact });
+    else if (entry.name.startsWith("picker-") || !entry.isFile() && !entry.isDirectory() || /\.(png|jpe?g|webp)$/i.test(entry.name)) {
+      throw new Error("Invalid capture layout");
+    }
+  }
+  if (markers.length > 1 || markers.length && sources.length) throw new Error("Ambiguous capture layout");
+  // download-artifact extracts a singleton directly into its destination even
+  // with merge-multiple:false. Infer its OS only from one fixed root marker.
+  if (markers.length === 1) sources.push({ source: resolve(input), os: markers[0] });
+  else if (sources.length && entries.some(entry => entry.isDirectory() && !sources.some(item => item.source === resolve(input, entry.name)))) {
+    throw new Error("Mixed capture layouts");
+  }
+  // Validate every selected tree before the first OS destination is changed.
+  for (const { source, os } of sources) await captures(source, "", os);
+  return sources;
 }
 
 export async function prepareEvidence({ root, source, sha, os, now = Date.now() }) {
   if (!commit.test(sha)) throw new Error("Expected a full commit SHA");
   if (!platforms.includes(os)) throw new Error("Unknown capture platform");
   if ((await lstat(source)).isSymbolicLink()) throw new Error("Capture root is a symbolic link");
-  const files = await captures(source);
+  const files = await captures(source, "", os);
   if (files.length === 0) return false;
   await existing(root, "directory");
   const indexPath = join(root, "index.json");
@@ -86,8 +117,7 @@ async function publish() {
         git("checkout", "-q", "-B", "evidence", "FETCH_HEAD");
       } else git("checkout", "-q", "--orphan", "evidence");
       let changed = false;
-      for (const os of platforms) {
-        const source = resolve(input, `picker-${sha}-${os}`);
+      for (const { source, os } of await evidenceSources({ input, sha })) {
         try { changed = await prepareEvidence({ root: directory, source, sha, os }) || changed; }
         catch (error) { if (error.code !== "ENOENT") throw error; }
       }

@@ -59,3 +59,71 @@ assert.equal(app.isTerminated, false);
 assert.equal(context.run(['force-close', JSON.stringify(identity), '{"restoration_verified":true}']), 'true');
 assert.equal(app.isTerminated, true);
 console.log('Fresh exact control uniqueness, ownership and cleanup contracts passed; no macOS execution claimed.');
+
+let dimensions = [720, 480], resizeCount = 0;
+const pickerOwner = {pid: 77, executable: '/owned/ibis'};
+const pickerApp = {processIdentifier: 77, isTerminated: false, executableURL: {path: '/owned/ibis'}, launchDate: {timeIntervalSince1970: 200},
+    get terminated() { throw Error('Use the established AppKit isTerminated accessor'); }};
+const pickerWindow = {name: () => 'Ibis', role: () => 'AXWindow', position: () => [20, 30]};
+Object.defineProperty(pickerWindow, 'size', {get: () => () => dimensions, set: value => {resizeCount++; dimensions = value;}});
+let pickerWindows = [pickerWindow];
+context.$.NSRunningApplication.runningApplicationWithProcessIdentifier = pid => pid === 77 ? pickerApp : null;
+context.Application = () => ({applicationProcesses: {whose: () => () => [{windows: () => pickerWindows}]}});
+context.$.NSScreen = {mainScreen: {frame: {size: {width: 1600, height: 1000}}}};
+let cgOwner = 77;
+context.$.CGWindowListCopyWindowInfo = () => [{kCGWindowOwnerPID: cgOwner, kCGWindowNumber: 12, kCGWindowAlpha: 1,
+    kCGWindowBounds: {X: 20, Y: 30, Width: dimensions[0], Height: dimensions[1]}}];
+context.$.CFArrayGetCount = value => value.length;
+context.$.CFArrayGetValueAtIndex = (value, index) => value[index];
+context.ObjC.castRefToObject = value => value;
+context.ObjC.deepUnwrap = value => value;
+const pickerCall = (action, request) => JSON.parse(JSON.stringify(context.pickerAction(action, request)));
+// JXA wraps Objective-C nil in a truthy proxy. Reading properties from it
+// must not abort the bounded registration wait or authorize another action.
+const nilProxy = {isNil: () => true, get isTerminated() { throw Error('nil property access'); }};
+let registeredApp = nilProxy;
+context.$.NSRunningApplication.runningApplicationWithProcessIdentifier = pid => pid === 77 ? registeredApp : null;
+assert.equal(pickerCall('picker-owner', {pid: 77, executable: '/owned/ibis'}), null);
+assert.throws(() => pickerCall('picker-frame', {owner: pickerOwner}), /identity/);
+registeredApp = Object.create(pickerApp);
+Object.defineProperty(registeredApp, 'launchDate', {get: () => { throw Error('Unavailable for direct launch'); }});
+assert.deepEqual(pickerCall('picker-owner', {pid: 77, executable: '/owned/ibis'}), pickerOwner, 'Direct launches need no LaunchServices launchDate');
+assert.deepEqual(pickerCall('picker-frame', {owner: pickerOwner}).window, 12);
+registeredApp = Object.create(pickerApp); registeredApp.executableURL = {isNil: () => true};
+assert.equal(pickerCall('picker-owner', {pid: 77, executable: '/owned/ibis'}), null);
+assert.throws(() => pickerCall('picker-frame', {owner: pickerOwner}), /identity/);
+registeredApp = Object.create(pickerApp); registeredApp.executableURL = {path: '/foreign/ibis'};
+assert.throws(() => pickerCall('picker-owner', {pid: 77, executable: '/owned/ibis'}), /identity/);
+registeredApp = Object.create(pickerApp); registeredApp.processIdentifier = 88;
+assert.throws(() => pickerCall('picker-owner', {pid: 77, executable: '/owned/ibis'}), /identity/);
+registeredApp = Object.create(pickerApp); registeredApp.isTerminated = true;
+assert.throws(() => pickerCall('picker-owner', {pid: 77, executable: '/owned/ibis'}), /identity/);
+registeredApp = pickerApp;
+const privateFailure = Object.create(pickerApp);
+Object.defineProperty(privateFailure, 'executableURL', {get: () => { throw Error('private path or document'); }});
+registeredApp = privateFailure;
+assert.deepEqual(JSON.parse(context.run(['picker-owner', '', JSON.stringify(pickerOwner)])),
+    {nativeAppearanceFailure: {action: 'picker-owner', stage: 'registration', reason: 'native-call-failed'}});
+registeredApp = pickerApp;
+assert.deepEqual(pickerCall('picker-owner', {pid: 77, executable: '/owned/ibis'}), pickerOwner);
+assert.deepEqual(pickerCall('picker-frame', {owner: pickerOwner}),
+    {window: 12, position: [20, 30], size: [720, 480], screen: [1600, 1000]});
+assert.equal(pickerCall('picker-size', {owner: pickerOwner, window: 12, size: [840, 560]}), true);
+assert.deepEqual(Array.from(dimensions), [840, 560]);
+assert.equal(resizeCount, 1);
+for (const owner of [{...pickerOwner, pid: 88}, {...pickerOwner, executable: '/foreign/ibis'}]) {
+    assert.throws(() => pickerCall('picker-size', {owner, window: 12, size: [720, 480]}), /identity/);
+}
+assert.throws(() => pickerCall('picker-size', {owner: pickerOwner, window: 13, size: [720, 480]}), /identity/);
+for (const size of [[true, 480], [200, 100], [2000, 900], [720], [720, NaN]]) {
+    assert.throws(() => pickerCall('picker-size', {owner: pickerOwner, window: 12, size}), /size/);
+}
+pickerWindows = [pickerWindow, pickerWindow];
+assert.throws(() => pickerCall('picker-size', {owner: pickerOwner, window: 12, size: [720, 480]}), /ambiguous/);
+pickerWindows = [pickerWindow]; cgOwner = 88;
+assert.throws(() => pickerCall('picker-size', {owner: pickerOwner, window: 12, size: [720, 480]}), /ownership/);
+assert.equal(resizeCount, 1, 'Foreign, stale, invalid or ambiguous targets must never authorize mutation');
+cgOwner = 77; pickerApp.isTerminated = true;
+assert.throws(() => pickerCall('picker-size', {owner: pickerOwner, window: 12, size: [720, 480]}), /identity/);
+assert.equal(resizeCount, 1, 'A terminated instance must never authorize mutation');
+console.log('Owned native resize contracts passed; no macOS execution claimed.');

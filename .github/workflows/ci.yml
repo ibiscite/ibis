@@ -373,7 +373,8 @@ jobs:
       - name: Combine platform artifacts
         uses: actions/upload-artifact/merge@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: picker-${{ github.sha }}
+          # Preserve earlier outputs on retries and keep them outside the input glob.
+          name: picker-combined-${{ github.sha }}-attempt-${{ github.run_attempt }}
           pattern: picker-${{ github.sha }}-*
           retention-days: 14
           delete-merged: true

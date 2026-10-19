@@ -12,6 +12,8 @@ mod diagnostics;
 #[cfg(debug_assertions)]
 mod gallery;
 mod library;
+#[cfg(target_os = "macos")]
+mod native_corners;
 mod native_feel;
 #[cfg(target_os = "macos")]
 mod panel;

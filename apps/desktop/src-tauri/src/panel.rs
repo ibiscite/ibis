@@ -136,6 +136,9 @@ pub(crate) fn configure(app: &AppHandle) -> Result<(), Box<dyn std::error::Error
     panel.set_works_when_modal(true);
     app.set_activation_policy(tauri::ActivationPolicy::Accessory)
         .map_err(|_| "the launcher activation policy could not be set")?;
+    // Cosmetic clipping must be installed before the first presentation.
+    // Failure retains the working rectangular picker with a fixed diagnostic.
+    crate::native_corners::configure(panel.as_panel());
     // Conversion and activation changes run while the native window is hidden.
     // Its original visibility/focus intent is presented once both this setup
     // and the first actual page navigation have finished.
