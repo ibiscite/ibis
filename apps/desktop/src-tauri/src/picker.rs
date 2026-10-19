@@ -98,6 +98,32 @@ pub(crate) fn show_picker(app: &AppHandle) {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ToggleAction {
+    Hide,
+    Show,
+}
+
+fn toggle_action(visible: Option<bool>, focused: Option<bool>) -> ToggleAction {
+    if visible == Some(true) && focused == Some(true) {
+        ToggleAction::Hide
+    } else {
+        ToggleAction::Show
+    }
+}
+
+// Keep this branch trace out of release binaries. Only fixed structural facts
+// are useful for comparing the shortcut decision with native harness focus.
+#[cfg(debug_assertions)]
+fn toggle_trace(visible: Option<bool>, focused: Option<bool>) -> &'static str {
+    match (visible, focused) {
+        (Some(true), Some(true)) => "ibis-picker: toggle visible focused hide",
+        (Some(true), Some(false)) => "ibis-picker: toggle visible unfocused show",
+        (Some(true), None) => "ibis-picker: toggle visible focus-unavailable show",
+        _ => "ibis-picker: toggle not-known-visible show",
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn resolve_focus(native: Result<Option<bool>, ()>, toolkit: impl FnOnce() -> Option<bool>) -> Option<bool> {
     match checked(native, NativeIssue::FocusState)? {
@@ -117,14 +143,22 @@ fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool> {
 
 /// Toggle the picker: hide it if it is visible and focused, show it otherwise.
 pub(crate) fn toggle_picker(app: &AppHandle) {
-    match app.get_webview_window("main") {
-        Some(w)
-            if checked(w.is_visible(), NativeIssue::Visibility).unwrap_or(false)
-                && focused_for_shortcut(&w).unwrap_or(false) =>
-        {
-            dismiss_picker(app);
+    if let Some(window) = app.get_webview_window("main") {
+        let visible = checked(window.is_visible(), NativeIssue::Visibility);
+        // Preserve the short circuit: a hidden picker does not query focus.
+        let focused = if visible == Some(true) {
+            focused_for_shortcut(&window)
+        } else {
+            None
+        };
+        #[cfg(debug_assertions)]
+        eprintln!("{}", toggle_trace(visible, focused));
+        match toggle_action(visible, focused) {
+            ToggleAction::Hide => dismiss_picker(app),
+            ToggleAction::Show => show_picker(app),
         }
-        _ => show_picker(app),
+    } else {
+        show_picker(app);
     }
 }
 
@@ -242,6 +276,52 @@ mod tests {
                 "query failure must show rather than use stale focus"
             )),
             None
+        );
+    }
+
+    #[test]
+    fn shortcut_hides_only_a_known_visible_focused_picker() {
+        assert_eq!(toggle_action(Some(true), Some(true)), ToggleAction::Hide);
+        for (visible, focused) in [
+            (Some(true), Some(false)),
+            (Some(false), Some(true)), // A stale focused flag cannot hide a hidden picker.
+            (Some(false), Some(false)),
+            (Some(true), None), // An unavailable query must leave a way to summon it.
+            (None, Some(true)),
+            (None, None),
+        ] {
+            assert_eq!(toggle_action(visible, focused), ToggleAction::Show);
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn shortcut_trace_contains_only_fixed_structural_states() {
+        let mut messages = std::collections::BTreeSet::new();
+        for visible in [Some(true), Some(false), None] {
+            for focused in [Some(true), Some(false), None] {
+                let message = toggle_trace(visible, focused);
+                assert!(message.starts_with("ibis-picker: toggle "));
+                assert!(!message.contains('\n'));
+                messages.insert(message);
+            }
+        }
+        assert_eq!(messages.len(), 4);
+        assert_eq!(
+            toggle_trace(Some(true), Some(true)),
+            "ibis-picker: toggle visible focused hide"
+        );
+        assert_eq!(
+            toggle_trace(Some(true), Some(false)),
+            "ibis-picker: toggle visible unfocused show"
+        );
+        assert_eq!(
+            toggle_trace(Some(true), None),
+            "ibis-picker: toggle visible focus-unavailable show"
+        );
+        assert_eq!(
+            toggle_trace(None, Some(true)),
+            "ibis-picker: toggle not-known-visible show"
         );
     }
 

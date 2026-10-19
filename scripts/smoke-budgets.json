@@ -1,0 +1,44 @@
+{
+  "_scope": "Initial hosted debug native qualification, including automation overhead; not release budgets or peak memory limits",
+  "_rounding": "At least 1.5 times observed maxima, rounded up to 2 seconds startup, 1 second first result and 64 MiB current tree memory",
+  "Linux": {
+    "startup_ms": 32000,
+    "first_result_ms": 3000,
+    "memory_bytes": 1342177280,
+    "observed_maxima": {"startup_ms": 21280.26, "first_result_ms": 1945.87, "memory_bytes": 857944064},
+    "runner": "Ubuntu 24.04 x86_64, Xvfb/Openbox; image 20261012.334.1",
+    "unchanged_inputs": {
+      "source_shas": ["8d64d85a4f750437234f4dc9fc2d43fb5dee12c4", "8b4f4daef3197ba207969e61091fbe2a40917e53"],
+      "apps_tree": "7def14c0a7e826e7b7b8844111dbef4b1eaadc5b",
+      "crates_tree": "594b4d927e114c07107c3ce17705b718cbc766e1",
+      "native_harness_blob": "9a45a4da7bc07cfa6d4a4ac9619e85d424c93fb5"
+    },
+    "evidence": [
+      "https://github.com/ibiscite/ibis/actions/runs/39175279796/job/117816640608",
+      "https://github.com/ibiscite/ibis/actions/runs/39176228013/job/117819425536",
+      "https://github.com/ibiscite/ibis/actions/runs/39177722811/job/117823838591",
+      "https://github.com/ibiscite/ibis/actions/runs/39178571868/job/117826353127"
+    ]
+  },
+  "Windows": {
+    "startup_ms": 40000,
+    "first_result_ms": 13000,
+    "memory_bytes": 805306368,
+    "observed_maxima": {"startup_ms": 25438, "first_result_ms": 8657, "memory_bytes": 506425344},
+    "runner": "Windows Server 2025 x86_64; windows-2025-vs2026 image 20261007.264.1",
+    "source_shas": ["98bc93b8a969f7ff39ad12458d88a5a6c9feb252", "8d64d85a4f750437234f4dc9fc2d43fb5dee12c4"],
+    "evidence": [
+      "https://github.com/ibiscite/ibis/actions/runs/39177370111/job/117822811926",
+      "https://github.com/ibiscite/ibis/actions/runs/39177722811/job/117823838584"
+    ]
+  },
+  "Darwin": {
+    "startup_ms": 32000,
+    "first_result_ms": 12000,
+    "memory_bytes": 603979776,
+    "observed_maxima": {"startup_ms": 20323.48, "first_result_ms": 7871.04, "memory_bytes": 368312320},
+    "runner": "macOS 15 arm64; macos-15-arm64 image 20260907.0337",
+    "source_sha": "8d64d85a4f750437234f4dc9fc2d43fb5dee12c4",
+    "evidence": ["https://github.com/ibiscite/ibis/actions/runs/39177722811/job/117823838538"]
+  }
+}

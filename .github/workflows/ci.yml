@@ -133,7 +133,7 @@ jobs:
         working-directory: .
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -165,10 +165,12 @@ jobs:
         run: |
           mkdir -p screenshots
           capture() {
+            python3 scripts/check-offline.py --record-baseline screenshots/offline-$RUNNER_OS.json
             target/debug/ibis-desktop > screenshots/startup-$RUNNER_OS.log 2>&1 &
             app_pid=$!
             trap 'kill "$app_pid" 2>/dev/null || true' EXIT
-            sleep 8
+            # Observe startup as well as the delayed background services.
+            python3 scripts/check-offline.py --pid "$app_pid" --baseline screenshots/offline-$RUNNER_OS.json --seconds 60
             if ! kill -0 "$app_pid" 2>/dev/null; then
               echo "::error::The picker exited during startup; see the startup log."
               exit 1
@@ -180,7 +182,7 @@ jobs:
             fi
           }
           if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- bash -c "$(declare -f capture); capture"
+            xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- bash -e -c "$(declare -f capture); capture"
           else
             capture
           fi
@@ -196,7 +198,8 @@ jobs:
           New-Item -ItemType Directory -Force screenshots | Out-Null
           $app = Start-Process target/debug/ibis-desktop.exe -NoNewWindow -PassThru -RedirectStandardOutput screenshots/startup-Windows.log -RedirectStandardError screenshots/stderr-Windows.log
           try {
-            Start-Sleep -Seconds 8
+            # Observe startup as well as delayed WebView2 background services.
+            ./scripts/check-offline.ps1 -AppId $app.Id -Seconds 60
             if ($app.HasExited) { throw 'The picker exited during startup; see the startup logs.' }
             try {
               Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -208,8 +211,6 @@ jobs:
                 $bitmap.Save("$PWD/screenshots/picker-Windows.png")
               } finally { $graphics.Dispose(); $bitmap.Dispose() }
             } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
-            # Background WebView2 traffic starts after a delay, so watch for a minute (#201).
-            ./scripts/check-offline.ps1 -AppId $app.Id -Seconds 60
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
 
       - name: Capture every synthetic picker state
@@ -225,6 +226,27 @@ jobs:
             python3 -B scripts/test_capture_gallery.py
             python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-macOS
           fi
+
+      - name: Exercise the native picker (Linux)
+        if: always() && steps.native_build.outcome == 'success' && runner.os == 'Linux'
+        run: |
+          /usr/bin/python3 scripts/smoke-native.py --self-test
+          /usr/bin/python3 scripts/check-offline.test.py
+          xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked x11_server_focus_stays_with_editor_during_keyboard_grab -- --ignored --nocapture
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-Linux --budgets scripts/smoke-budgets.json
+
+      - name: Exercise the native picker (macOS)
+        if: always() && steps.native_build.outcome == 'success' && runner.os == 'macOS'
+        run: |
+          python3 scripts/smoke-native.py --self-test
+          python3 scripts/check-offline.test.py
+          python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-macOS --budgets scripts/smoke-budgets.json
+
+      - name: Exercise the native picker (Windows)
+        if: always() && steps.native_build.outcome == 'success' && runner.os == 'Windows'
+        run: |
+          python scripts/smoke-native.py --self-test
+          python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/smoke-Windows --budgets scripts/smoke-budgets.json
 
       - name: Keep screenshots and startup logs
         if: always()
