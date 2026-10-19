@@ -4,7 +4,9 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
-use crate::library::{LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file};
+use crate::library::{
+    LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
+};
 use crate::picker::show_picker;
 
 /// One line describing the library, for the menu bar or tray menu.
@@ -52,6 +54,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             &PredefinedMenuItem::separator(app)?,
             &line,
             &MenuItem::with_id(app, "choose", "Choose Library File…", true, None::<&str>)?,
+            &MenuItem::with_id(app, "zotero", "Use Zotero Library", true, None::<&str>)?,
             &MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit Ibis", true, None::<&str>)?,
@@ -65,6 +68,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_picker(app),
             "choose" => choose_library_file(app),
+            "zotero" => use_zotero_library(app),
             "reload" => reload_library_file(app),
             "quit" => app.exit(0),
             _ => {}
@@ -84,6 +88,7 @@ mod tests {
     fn the_library_line_explains_failures_and_stays_short() {
         let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
             state: LibraryState::Loaded,
+            zotero: false,
             has_snapshot: name.is_some(),
             name: name.map(String::from),
             snapshot_name: name.map(String::from),

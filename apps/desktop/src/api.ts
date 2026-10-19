@@ -8,6 +8,7 @@ export type CopyFormat = KeyFormat;
 
 export const {
   chooseLibrary,
+  useZotero,
   reloadLibrary,
   libraryStatus,
   hidePicker,

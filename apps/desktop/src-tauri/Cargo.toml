@@ -13,6 +13,7 @@ tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
 ibis-core = { path = "../../../crates/ibis-core", features = ["type-export"] }
+ibis-zotero-local = { path = "../../../crates/ibis-zotero-local" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }

@@ -16,7 +16,7 @@ export type GalleryState = {
 };
 
 function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
-  return { state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true,
+  return { state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false,
     references: 24, warnings: 0, error: null, note: null, settings_notice: null, ...overrides };
 }
 
@@ -32,8 +32,8 @@ const examples = [
 const many = Array.from({ length: 20 }, (_, index) => reference(`example${index + 1}`, `Memory study ${index + 1}: a synthetic reference`));
 
 export const galleryStates: readonly GalleryState[] = [
-  { id: "first-run", label: "First run", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, references: 0 }) },
-  { id: "loading", label: "Opening a library", library: library({ state: "loading", has_snapshot: false, snapshot_name: null, references: 0 }) },
+  { id: "first-run", label: "First run", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, zotero: false, references: 0 }) },
+  { id: "loading", label: "Opening a library", library: library({ state: "loading", has_snapshot: false, zotero: false, snapshot_name: null, references: 0 }) },
   { id: "empty", label: "Empty library", library: library({ name: "empty.bib", snapshot_name: "empty.bib", references: 0 }) },
   { id: "no-results", label: "No matching references", library: library(), query: "unmatched phrase" },
   { id: "many-results", label: "Many results", library: library(), query: "memory", results: many },
@@ -43,7 +43,7 @@ export const galleryStates: readonly GalleryState[] = [
     reference("स्मृति2026", "भाषाओं और स्मृति पर एक काल्पनिक अध्ययन", "उदाहरण लेखक"),
   ] },
   { id: "rtl", label: "Right-to-left text", library: library(), direction: "rtl", query: "الذاكرة", results: [reference("memory2026", "دراسة تخيلية عن الذاكرة واللغات", "كاتب مثال")] },
-  { id: "missing-file", label: "Missing library file", library: library({ state: "error", name: "missing.bib", snapshot_name: null, has_snapshot: false, references: 0, error: "The library file is unavailable." }) },
+  { id: "missing-file", label: "Missing library file", library: library({ state: "error", name: "missing.bib", snapshot_name: null, has_snapshot: false, zotero: false, references: 0, error: "The library file is unavailable." }) },
   { id: "invalid-settings", label: "Invalid settings", library: library({ settings_notice: "settings.json could not be read. Ibis is using the backup. Changes are not being saved. Repair the synthetic settings file and restart Ibis." }) },
   { id: "damaged-library", label: "Damaged library", library: library({ references: 3, warnings: 2, note: "Some references could not be read. Export the library again to restore them." }), query: "memory", results: examples },
   { id: "copy-confirmation", label: "Copy confirmation", library: library(), query: "memory", results: examples, copied: { text: "[@example2026]", warnings: [] } },
@@ -62,6 +62,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       copyFormat: async () => "pandoc",
       shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       chooseLibrary: async () => undefined,
+      useZotero: async () => undefined,
       reloadLibrary: async () => undefined,
       hidePicker: async () => undefined,
       quit: async () => undefined,

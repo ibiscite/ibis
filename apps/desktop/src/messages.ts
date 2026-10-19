@@ -9,6 +9,7 @@ export const operationFailures = {
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
   shortcut: "Ibis could not check the shortcut. Open Ibis from the menu bar or tray.",
   choose: "The file chooser did not open. Try again.",
+  zotero: "Ibis could not start reading Zotero. Try again.",
   reload: "Ibis could not reload your library. Choose the file again.",
   hide: "Ibis could not hide this window. Try again.",
   quit: "Ibis could not quit. Try again.",
@@ -41,6 +42,8 @@ export const pickerText = {
   chooseLibrary: "Choose library…",
   chooseTitle: "Choose a library",
   chooseShort: "Choose…",
+  useZotero: "Use Zotero",
+  useZoteroTitle: "Read your Zotero library while Zotero is open",
   libraryRegion: "Library",
   libraryStatus: "Library status",
   reload: "Reload",
@@ -60,11 +63,14 @@ export const pickerText = {
 export const libraryMessages = {
   opening: (name: string | null) => `Opening ${name ?? "library"}…`,
   reloading: (name: string | null) => `Reloading ${name ?? "library"}…`,
-  openError: (name: string | null, reason: string) => {
+  openError: (name: string | null, reason: string, zotero = false) => {
     const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`;
+    if (zotero) return `${name ?? "Zotero"} could not be read. ${sentence} Open Zotero, then reload.`;
     return `The library could not be opened: ${name ?? "the chosen file"}. ${sentence} Choose it again or reconnect the drive.`;
   },
-  empty: (name: string | null) => `No references found in ${name ?? "this library"}. Choose a BibTeX or BibLaTeX export with references, then try again.`,
+  empty: (name: string | null, zotero = false) => zotero
+    ? `No references found in ${name ?? "your Zotero library"}. Add items in Zotero, then reload.`
+    : `No references found in ${name ?? "this library"}. Choose a BibTeX or BibLaTeX export with references, then try again.`,
   summary: (status: LibraryStatus | null | undefined) => {
     if (status === undefined) return "Checking library…";
     if (status === null) return "Library details unavailable";

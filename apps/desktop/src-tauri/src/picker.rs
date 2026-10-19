@@ -100,6 +100,7 @@ pub(crate) fn show_picker(app: &AppHandle) {
         }
         report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
     }
+    crate::library::refresh_zotero(app);
 }
 
 #[derive(Debug, PartialEq, Eq)]

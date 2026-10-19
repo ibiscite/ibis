@@ -1,5 +1,5 @@
 //! The open library: loading off the main thread, the search command and
-//! choosing or reloading the library file.
+//! choosing or reloading a library file or the Zotero library.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -7,7 +7,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ibis_core::model::{LoadWarning, RecordId, Reference};
 use ibis_core::search::OwnedIndex;
+use ibis_core::settings::{LibrarySetting, ZoteroLibrary};
 use ibis_core::source::{SourceError, SourceSnapshot, SourceWatch, load_library_snapshot};
+use ibis_core::zotero::{self, api};
+use ibis_zotero_local::LocalZotero;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -16,19 +19,68 @@ use crate::diagnostics::{NativeIssue, application_message, report};
 use crate::picker::{DialogOpen, show_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
-use ibis_core::settings::LibrarySetting;
+
+/// Where references come from: a BibTeX or BibLaTeX file, or a Zotero
+/// library read through Zotero's local API while Zotero runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Source {
+    File(PathBuf),
+    Zotero(ZoteroLibrary),
+}
+
+impl From<PathBuf> for Source {
+    fn from(path: PathBuf) -> Self {
+        Source::File(path)
+    }
+}
+
+impl From<LibrarySetting> for Source {
+    fn from(setting: LibrarySetting) -> Self {
+        match setting {
+            LibrarySetting::Bibtex(path) => Source::File(path),
+            LibrarySetting::Zotero(library) => Source::Zotero(library),
+        }
+    }
+}
+
+impl Source {
+    fn setting(&self) -> LibrarySetting {
+        match self {
+            Source::File(path) => LibrarySetting::Bibtex(path.clone()),
+            Source::Zotero(library) => LibrarySetting::Zotero(*library),
+        }
+    }
+
+    /// The name shown to the user: a file name only, never a full path.
+    fn name(&self) -> Option<String> {
+        match self {
+            Source::File(path) => path.file_name().map(|n| n.to_string_lossy().into_owned()),
+            Source::Zotero(ZoteroLibrary::User) => Some("Zotero library".to_string()),
+            Source::Zotero(ZoteroLibrary::Group(id)) => Some(format!("Zotero group {id}")),
+        }
+    }
+}
+
+fn zotero_library(library: ZoteroLibrary) -> zotero::Library {
+    match library {
+        ZoteroLibrary::User => zotero::Library::User,
+        ZoteroLibrary::Group(id) => zotero::Library::Group(id),
+    }
+}
 
 /// The library currently open in the app, indexed once when it is opened.
 #[derive(Default)]
 pub(crate) struct Library {
-    pub(crate) path: Option<PathBuf>,
+    pub(crate) source: Option<Source>,
     /// The requested source, including before it has produced an index.
-    pub(crate) requested: Option<PathBuf>,
+    pub(crate) requested: Option<Source>,
     pub(crate) opening: bool,
     pub(crate) index: OwnedIndex,
     pub(crate) warnings: Vec<LoadWarning>,
     /// Exact initial load observation, reused when attaching the watcher.
     snapshot: Option<SourceSnapshot>,
+    /// The Zotero library version loaded, so a refresh rereads only on change.
+    zotero: Option<api::Snapshot>,
     /// Neutral failure reason; status derives retention context from the current index.
     /// Automatic refreshes preserve a different rejected choice until the next request.
     pub(crate) error: Option<String>,
@@ -53,6 +105,8 @@ pub(crate) struct LibraryWatch(pub(crate) Mutex<Option<SourceWatch>>);
 #[derive(Clone, Serialize, specta::Type)]
 pub(crate) struct LibraryStatus {
     pub(crate) state: LibraryState,
+    /// Whether the requested library is Zotero rather than a file.
+    pub(crate) zotero: bool,
     /// A successfully opened snapshot, including a valid empty library.
     pub(crate) has_snapshot: bool,
     /// Requested file name only, including during opening and after failure.
@@ -119,44 +173,38 @@ impl SearchResult {
 pub(crate) fn status(library: &Library) -> LibraryStatus {
     LibraryStatus {
         state: if library.opening {
-            if library.path.is_some() && library.path == library.requested {
+            if library.source.is_some() && library.source == library.requested {
                 LibraryState::Reloading
             } else {
                 LibraryState::Loading
             }
         } else if library.error.is_some() {
             LibraryState::Error
-        } else if library.path.is_some() {
+        } else if library.source.is_some() {
             LibraryState::Loaded
         } else {
             LibraryState::None
         },
-        has_snapshot: library.path.is_some(),
+        zotero: matches!(
+            library.requested.as_ref().or(library.source.as_ref()),
+            Some(Source::Zotero(_))
+        ),
+        has_snapshot: library.source.is_some(),
         name: library
             .requested
             .as_ref()
-            .or(library.path.as_ref())
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned()),
-        snapshot_name: library
-            .path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned()),
+            .or(library.source.as_ref())
+            .and_then(Source::name),
+        snapshot_name: library.source.as_ref().and_then(Source::name),
         references: library.index.references().len(),
         warnings: library.warnings.len(),
-        error: library
-            .error
-            .clone()
-            .map(|error| error_with_snapshot_context(error, !library.index.references().is_empty())),
+        error: library.error.clone().map(|error| {
+            let zotero = matches!(library.source, Some(Source::Zotero(_)));
+            error_with_snapshot_context(error, !library.index.references().is_empty(), zotero)
+        }),
         note: match &library.retained_error {
             Some(error) => {
-                let name = library
-                    .path
-                    .as_ref()
-                    .and_then(|path| path.file_name())
-                    .map(|name| name.to_string_lossy())
-                    .unwrap_or_default();
+                let name = library.source.as_ref().and_then(Source::name).unwrap_or_default();
                 let update = format!("the retained library {name} could not be updated: {error}");
                 Some(match &library.note {
                     Some(note) => format!("{note}\n{update}"),
@@ -178,9 +226,37 @@ pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, Strin
     Ok(library)
 }
 
-fn candidate(path: PathBuf, loaded: ibis_core::model::LoadResult) -> Library {
+/// What a background load produced.
+pub(crate) enum Loaded {
+    New(Box<Library>),
+    /// A Zotero refresh found nothing changed; keep the current references.
+    Unchanged,
+}
+
+/// Read the Zotero library, or only check for changes when `previous` is
+/// the version already loaded.
+fn load_zotero(library: ZoteroLibrary, previous: Option<&api::Snapshot>) -> Result<Loaded, String> {
+    let mut zotero = LocalZotero::default();
+    match api::refresh(&mut zotero, zotero_library(library), previous).map_err(|e| e.to_string())? {
+        api::Refresh::Unchanged => Ok(Loaded::Unchanged),
+        api::Refresh::Loaded { result, snapshot } => {
+            let mut new = candidate(Source::Zotero(library), result);
+            new.zotero = Some(snapshot);
+            Ok(Loaded::New(Box::new(new)))
+        }
+    }
+}
+
+fn load_source(source: Source, reload: bool, previous: Option<api::Snapshot>) -> Result<Loaded, String> {
+    match source {
+        Source::File(path) => load_library(path, reload).map(|library| Loaded::New(Box::new(library))),
+        Source::Zotero(library) => load_zotero(library, previous.as_ref().filter(|_| reload)),
+    }
+}
+
+fn candidate(source: impl Into<Source>, loaded: ibis_core::model::LoadResult) -> Library {
     Library {
-        path: Some(path),
+        source: Some(source.into()),
         index: OwnedIndex::new(loaded.references),
         warnings: loaded.warnings,
         snapshot: None,
@@ -245,7 +321,10 @@ fn take_watch_source(
     if requests.0.load(Ordering::SeqCst) != request {
         return None;
     }
-    Some((library.path.clone()?, library.snapshot.take()))
+    match library.source.clone()? {
+        Source::File(path) => Some((path, library.snapshot.take())),
+        Source::Zotero(_) => None,
+    }
 }
 
 fn watch_current(app: &AppHandle, request: u64) {
@@ -255,6 +334,14 @@ fn watch_current(app: &AppHandle, request: u64) {
         .ok()
         .and_then(|mut library| take_watch_source(&mut library, &app.state(), request));
     let Some((path, snapshot)) = path else {
+        // Zotero has no file to watch; it is checked for changes each time
+        // the picker is shown. Stop watching a previous file.
+        let watch = app.state::<LibraryWatch>();
+        if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request
+            && let Ok(mut current) = watch.0.lock()
+        {
+            *current = None;
+        }
         return;
     };
     let handle = app.clone();
@@ -293,25 +380,28 @@ fn watch_current(app: &AppHandle, request: u64) {
 /// the `library:changed` event.
 ///
 /// With `remember`, a library that opens becomes the one opened at start.
-pub(crate) fn start_open(app: &AppHandle, path: PathBuf, remember: bool) {
-    let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), path.clone()) else {
+pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
+    let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) else {
         return;
     };
     publish_current(app);
+    let previous = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .ok()
+        .and_then(|library| library.zotero.clone());
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let chosen = path.clone();
-        let loaded = tauri::async_runtime::spawn_blocking(move || load_library(path, reload))
+        let chosen = source.setting();
+        let loaded = tauri::async_runtime::spawn_blocking(move || load_source(source, reload, previous))
             .await
             .unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
-        if install(&app.state(), &app.state(), request, loaded).is_some() {
+        if install_loaded(&app.state(), &app.state(), request, loaded).is_some() {
             let mut show_note = false;
             if remember && let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
                 // Saving and the note belong to this request, never a newer choice.
                 if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request && library.error.is_none() {
-                    let saved = app
-                        .state::<SettingsFile>()
-                        .update(|s| s.library = Some(LibrarySetting::Bibtex(chosen)));
+                    let saved = app.state::<SettingsFile>().update(|s| s.library = Some(chosen));
                     if let Err(e) = saved {
                         library.note = Some(format!("the library opened but could not be saved for next time: {e}"));
                         show_note = true;
@@ -354,7 +444,7 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
         handle.state::<DialogOpen>().end();
         match picked.map(|p| p.into_path()) {
             None => {}
-            Some(Ok(path)) => start_open(&handle, path, true),
+            Some(Ok(path)) => start_open(&handle, Source::File(path), true),
             Some(Err(_)) => {
                 if let Ok(mut library) = handle.state::<Mutex<Library>>().lock() {
                     dialog_path_error(&mut library);
@@ -365,12 +455,52 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     });
 }
 
+/// Read the personal Zotero library from now on.
+pub(crate) fn use_zotero_library(app: &AppHandle) {
+    // Start first: the picker then sees a request in progress and does not
+    // start a second check of Zotero.
+    start_open(app, Source::Zotero(ZoteroLibrary::User), true);
+    show_picker(app);
+}
+
+/// Check the open Zotero library for changes, for example when the picker
+/// is shown. A file library has its own watcher, so nothing happens then.
+pub(crate) fn refresh_zotero(app: &AppHandle) {
+    let source = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .ok()
+        .filter(|library| !library.opening)
+        .and_then(|library| zotero_to_check(&library).map(|source| retry(&library, source)));
+    if let Some((source, remember)) = source {
+        start_open(app, source, remember);
+    }
+}
+
+/// The Zotero library to read again: the one asked for, even if it has not
+/// opened yet (Zotero was closed). A failed file choice stays visible until
+/// the next request, so a retained Zotero library is not checked then.
+/// A choice that has not opened yet is saved once it does, like any other
+/// choice; rereading the open library changes no setting.
+fn retry(library: &Library, source: Source) -> (Source, bool) {
+    let remember = library.source.as_ref() != Some(&source);
+    (source, remember)
+}
+
+fn zotero_to_check(library: &Library) -> Option<Source> {
+    match library.requested.as_ref().or(library.source.as_ref())? {
+        source @ Source::Zotero(_) => Some(source.clone()),
+        Source::File(_) => None,
+    }
+}
+
 pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
     app.state::<Mutex<Library>>()
         .lock()
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
             state: LibraryState::Error,
+            zotero: false,
             has_snapshot: false,
             name: None,
             snapshot_name: None,
@@ -382,27 +512,36 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         })
 }
 
-/// Open the current library file again, for example after editing it.
+/// Open the current library again, for example after editing the file.
 pub(crate) fn reload_library_file(app: &AppHandle) {
-    let path = app.state::<Mutex<Library>>().lock().ok().and_then(|l| l.path.clone());
-    match path {
-        Some(path) => start_open(app, path, false),
+    let source = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .ok()
+        .and_then(|l| match zotero_to_check(&l) {
+            Some(source) => Some(retry(&l, source)),
+            None => l.source.clone().map(|source| (source, false)),
+        });
+    match source {
+        Some((source, remember)) => start_open(app, source, remember),
         None => choose_library_file(app),
     }
 }
 
 /// Retention belongs to the installed desktop snapshot, not the source error.
-fn error_with_snapshot_context(error: String, has_references: bool) -> String {
+/// Any failure to refresh Zotero keeps the references already read.
+fn error_with_snapshot_context(error: String, has_references: bool, zotero: bool) -> String {
     if has_references
-        && [
-            SourceError::Unavailable,
-            SourceError::Unreadable,
-            SourceError::Incomplete,
-            SourceError::LoadLimit,
-            SourceError::Changing,
-        ]
-        .iter()
-        .any(|source| source.to_string() == error)
+        && (zotero
+            || [
+                SourceError::Unavailable,
+                SourceError::Unreadable,
+                SourceError::Incomplete,
+                SourceError::LoadLimit,
+                SourceError::Changing,
+            ]
+            .iter()
+            .any(|source| source.to_string() == error))
     {
         format!("{error}; keeping the last loaded references")
     } else {
@@ -445,9 +584,9 @@ fn install_result(
     // Keep that choice visible while continuing to refresh its retained source.
     let failed_choice = automatic
         && library.error.is_some()
-        && library.path.is_some()
+        && library.source.is_some()
         && library.requested.is_some()
-        && library.requested != library.path;
+        && library.requested != library.source;
     match loaded {
         Ok(mut new) => {
             new.settings_notice = library.settings_notice.take();
@@ -471,12 +610,43 @@ fn install_result(
     Some(status(&library))
 }
 
+/// [`install`], where a Zotero refresh that found no change only ends the
+/// request and keeps everything as it is.
+fn install_loaded(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    request: u64,
+    loaded: Result<Loaded, String>,
+) -> Option<LibraryStatus> {
+    match loaded {
+        Ok(Loaded::New(new)) => install(library, requests, request, Ok(*new)),
+        Err(error) => install(library, requests, request, Err(error)),
+        Ok(Loaded::Unchanged) => {
+            let mut library = library.lock().ok()?;
+            if requests.0.load(Ordering::SeqCst) != request {
+                return None;
+            }
+            library.opening = false;
+            library.error = None;
+            // Keep the note: a "not saved for next time" warning must outlive
+            // the check that showing the picker starts right after it.
+            library.requested = library.source.clone();
+            Some(status(&library))
+        }
+    }
+}
+
 /// Record the request before any background work can start or complete.
-fn begin_open(library: &Mutex<Library>, requests: &LoadRequests, path: PathBuf) -> Option<(u64, bool, LibraryStatus)> {
+fn begin_open(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    source: impl Into<Source>,
+) -> Option<(u64, bool, LibraryStatus)> {
+    let source = source.into();
     let mut library = library.lock().ok()?;
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
-    let reload = library.path.as_ref() == Some(&path);
-    library.requested = Some(path);
+    let reload = library.source.as_ref() == Some(&source);
+    library.requested = Some(source);
     library.opening = true;
     library.error = None;
     library.retained_error = None;
@@ -489,6 +659,14 @@ fn begin_open(library: &Mutex<Library>, requests: &LoadRequests, path: PathBuf) 
 #[specta::specta]
 pub(crate) fn choose_library(app: AppHandle) {
     choose_library_file(&app);
+}
+
+/// Read the personal Zotero library while Zotero runs; the result arrives as
+/// `library:changed`.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn use_zotero(app: AppHandle) {
+    use_zotero_library(&app);
 }
 
 /// Open the current library again; the result arrives as `library:changed`.
@@ -515,7 +693,7 @@ pub(crate) async fn search(
     library: State<'_, Mutex<Library>>,
 ) -> Result<Vec<SearchResult>, String> {
     let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
-    if library.path.is_none() {
+    if library.source.is_none() {
         return Err(match &library.error {
             Some(error) => format!("the library could not be opened: {error}"),
             None => "no library is open".to_string(),
@@ -573,7 +751,7 @@ mod tests {
     #[test]
     fn reloading_keeps_even_an_empty_loaded_snapshot_available() {
         let library = Mutex::new(Library {
-            path: Some(PathBuf::from("empty.bib")),
+            source: Some(Source::File(PathBuf::from("empty.bib"))),
             ..Library::default()
         });
         let requests = LoadRequests::default();
@@ -592,7 +770,7 @@ mod tests {
             &requests,
             request,
             Ok(Library {
-                path: Some(PathBuf::from("empty.bib")),
+                source: Some(Source::File(PathBuf::from("empty.bib"))),
                 ..Library::default()
             }),
         )
@@ -871,7 +1049,7 @@ mod tests {
             (SourceError::Changing, "the library file is still changing"),
         ];
         let library = Mutex::new(Library {
-            path: Some(PathBuf::from("empty.bib")),
+            source: Some(Source::File(PathBuf::from("empty.bib"))),
             ..Library::default()
         });
         let requests = LoadRequests::default();
@@ -904,7 +1082,7 @@ mod tests {
             SourceError::WatchUnavailable.to_string(),
             "loading the library stopped unexpectedly".to_string(),
         ] {
-            assert_eq!(error_with_snapshot_context(error.clone(), true), error);
+            assert_eq!(error_with_snapshot_context(error.clone(), true, false), error);
         }
     }
 
@@ -1021,15 +1199,102 @@ mod tests {
         let library = Mutex::new(Library::default());
         let requests = LoadRequests::default();
         let named = |key: &str| Library {
-            path: Some(PathBuf::from(format!("{key}.bib"))),
+            source: Some(Source::File(PathBuf::from(format!("{key}.bib")))),
             ..Library::default()
         };
         requests.0.store(2, Ordering::SeqCst); // requests 1 and 2 were made, in that order
         assert!(install(&library, &requests, 2, Ok(named("newer"))).is_some());
         assert!(install(&library, &requests, 1, Ok(named("older"))).is_none());
-        let current = library.lock().map(|l| l.path.clone()).unwrap_or_default();
-        assert_eq!(current, Some(PathBuf::from("newer.bib")));
+        let current = library.lock().map(|l| l.source.clone()).unwrap_or_default();
+        assert_eq!(current, Some(Source::File(PathBuf::from("newer.bib"))));
         let failed = install(&library, &requests, 2, Err("unreadable".into()));
         assert_eq!(failed.and_then(|s| s.error).as_deref(), Some("unreadable"));
+    }
+
+    #[test]
+    fn a_zotero_library_is_named_without_paths_and_keeps_its_references_when_unchanged_or_unreachable() {
+        let library = Mutex::new(candidate(
+            Source::Zotero(ZoteroLibrary::Group(7)),
+            ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Kept}}"),
+        ));
+        let requests = LoadRequests::default();
+        let (request, reload, refreshing) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::Group(7)))
+            .unwrap_or_else(|| panic!("the refresh should start"));
+        assert!(reload);
+        assert!(refreshing.zotero);
+        assert_eq!(refreshing.state, LibraryState::Reloading);
+        assert_eq!(refreshing.name.as_deref(), Some("Zotero group 7"));
+        let unchanged = install_loaded(&library, &requests, request, Ok(Loaded::Unchanged))
+            .unwrap_or_else(|| panic!("the refresh is current"));
+        assert_eq!(unchanged.state, LibraryState::Loaded);
+        assert_eq!(unchanged.references, 1);
+
+        let saved = "the library opened but could not be saved for next time: synthetic";
+        if let Ok(mut library) = library.lock() {
+            library.note = Some(saved.to_string());
+        }
+        let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::Group(7)))
+            .unwrap_or_else(|| panic!("the refresh should start"));
+        let kept = install_loaded(&library, &requests, request, Ok(Loaded::Unchanged))
+            .unwrap_or_else(|| panic!("the refresh is current"));
+        assert_eq!(
+            kept.note.as_deref(),
+            Some(saved),
+            "an unchanged check keeps the warning"
+        );
+
+        let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::Group(7)))
+            .unwrap_or_else(|| panic!("the refresh should start"));
+        let offline = install_loaded(
+            &library,
+            &requests,
+            request,
+            Err("Zotero is not running, or it is not accepting connections".into()),
+        )
+        .unwrap_or_else(|| panic!("the refresh is current"));
+        assert_eq!(offline.references, 1);
+        assert_eq!(
+            offline.error.as_deref(),
+            Some("Zotero is not running, or it is not accepting connections; keeping the last loaded references")
+        );
+        assert_eq!(
+            Source::Zotero(ZoteroLibrary::User).name().as_deref(),
+            Some("Zotero library")
+        );
+    }
+
+    #[test]
+    fn a_zotero_choice_that_has_not_opened_yet_is_what_reload_and_the_picker_retry() {
+        let zotero = Source::Zotero(ZoteroLibrary::User);
+        let file = Source::File(PathBuf::from("synthetic.bib"));
+        // Zotero was closed when Ibis started: nothing opened yet.
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, zotero.clone()).unwrap_or_else(|| panic!("starts"));
+        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        assert_eq!(
+            library.lock().ok().and_then(|l| zotero_to_check(&l)),
+            Some(zotero.clone())
+        );
+
+        // A failed Zotero choice over a loaded file retries Zotero, not the file.
+        let mut over_file = candidate(file.clone(), ibis_core::bibtex::load_str("synthetic", ""));
+        over_file.requested = Some(zotero.clone());
+        over_file.error = Some("Zotero is not running".into());
+        assert_eq!(zotero_to_check(&over_file), Some(zotero.clone()));
+        assert!(retry(&over_file, zotero.clone()).1, "the choice is saved once it opens");
+
+        // A failed file choice over a loaded Zotero library stays visible.
+        let mut over_zotero = candidate(zotero, ibis_core::bibtex::load_str("synthetic", ""));
+        over_zotero.requested = Some(file.clone());
+        over_zotero.error = Some("the file could not be read".into());
+        assert_eq!(zotero_to_check(&over_zotero), None);
+
+        assert!(
+            !retry(&over_zotero, Source::Zotero(ZoteroLibrary::User)).1,
+            "rereading saves nothing"
+        );
+        let loaded_file = candidate(file, ibis_core::bibtex::load_str("synthetic", ""));
+        assert_eq!(zotero_to_check(&loaded_file), None);
     }
 }

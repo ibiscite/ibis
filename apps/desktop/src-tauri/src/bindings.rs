@@ -5,6 +5,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
         .commands(tauri_specta::collect_commands![
             crate::library::choose_library,
             crate::library::reload_library,
+            crate::library::use_zotero,
             crate::library::library_status,
             crate::library::search,
             crate::copy::copy_citation,

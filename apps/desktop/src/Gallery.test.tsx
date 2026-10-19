@@ -6,12 +6,13 @@ import { renderGalleryState } from "./gallery";
 import { libraryMessages } from "./messages";
 
 const syntheticApi: PickerApi = {
-  libraryStatus: async () => ({ state: "loaded", has_snapshot: true, name: "gallery.bib", snapshot_name: "gallery.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: null }),
+  libraryStatus: async () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "gallery.bib", snapshot_name: "gallery.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: null }),
   search: async () => [{ id: { source: "synthetic-gallery", native_key: "example" }, key: "example", title: "Synthetic gallery reference", authors: "Example Author", year: 2026, matched: ["title"] }],
   copyCitation: async () => ({ text: "[@example]", warnings: [] }),
   copyFormat: async () => "pandoc",
   shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
   chooseLibrary: async () => undefined,
+  useZotero: async () => undefined,
   reloadLibrary: async () => undefined,
   hidePicker: async () => undefined,
   quit: async () => undefined,

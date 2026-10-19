@@ -11,6 +11,11 @@ export const commands = {
 	chooseLibrary: () => __TAURI_INVOKE<void>("choose_library"),
 	/**  Open the current library again; the result arrives as `library:changed`. */
 	reloadLibrary: () => __TAURI_INVOKE<void>("reload_library"),
+	/**
+	 *  Read the personal Zotero library while Zotero runs; the result arrives as
+	 *  `library:changed`.
+	 */
+	useZotero: () => __TAURI_INVOKE<void>("use_zotero"),
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**
@@ -67,6 +72,8 @@ export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error"
 /**  Sent to the interface with the `library:changed` event. */
 export type LibraryStatus = {
 	state: LibraryState,
+	/**  Whether the requested library is Zotero rather than a file. */
+	zotero: boolean,
 	/**  A successfully opened snapshot, including a valid empty library. */
 	has_snapshot: boolean,
 	/**  Requested file name only, including during opening and after failure. */

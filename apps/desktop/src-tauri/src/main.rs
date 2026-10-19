@@ -33,7 +33,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
 #[cfg(debug_assertions)]
 use crate::diagnostics::report;
 use crate::diagnostics::{NativeIssue, checked};
-use crate::library::{Library, LibraryWatch, LoadRequests, start_open};
+use crate::library::{Library, LibraryWatch, LoadRequests, Source, start_open};
 use crate::picker::{
     DialogOpen, ShortcutStatus, configured_shortcut, dismiss_picker, hides_on_blur, register_shortcut, show_picker,
     toggle_picker,
@@ -169,21 +169,12 @@ fn main() {
                 Err(_) => eprintln!("ibis: the menu bar item is not available on this system"),
             }
             // The library from settings; IBIS_LIBRARY overrides it for development.
-            let library = std::env::var("IBIS_LIBRARY")
-                .ok()
-                .or_else(|| match &loaded.settings.library {
-                    Some(settings::LibrarySetting::Bibtex(path)) => Some(path.display().to_string()),
-                    Some(settings::LibrarySetting::Zotero(_)) => {
-                        // Written by hand or by a newer build; reading Zotero
-                        // from the app arrives with #13.
-                        eprintln!("ibis: this build cannot open Zotero libraries yet; choose a library file instead");
-                        None
-                    }
-                    None => None,
-                });
-            if let Some(path) = library {
+            let library = std::env::var_os("IBIS_LIBRARY")
+                .map(|path| Source::File(PathBuf::from(path)))
+                .or_else(|| loaded.settings.library.clone().map(Source::from));
+            if let Some(source) = library {
                 // Opened in the background so the window appears at once.
-                start_open(app.handle(), PathBuf::from(path), false);
+                start_open(app.handle(), source, false);
             }
             Ok(())
         });

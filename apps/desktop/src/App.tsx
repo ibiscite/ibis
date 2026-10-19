@@ -27,14 +27,14 @@ type Operation = keyof typeof FAILURE_MESSAGES;
 
 // A stable provider lets the development gallery use synthetic data without IPC.
 export type PickerApi = Pick<typeof nativeApi,
-  "chooseLibrary" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" |
+  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" |
   "hidePicker" | "onLibraryChanged" | "onPickerShown" | "quit" | "search" | "shortcutStatus">;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
-  const { chooseLibrary, libraryStatus, reloadLibrary, copyCitation, copyFormat,
+  const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation, copyFormat,
     hidePicker, onLibraryChanged, onPickerShown, quit, search, shortcutStatus } = api;
   const [query, setQuery] = useState(preview?.query ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -250,7 +250,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <div className="notices">
         {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
         {busy && <p role="status">{loadingMessage}</p>}
-        {library?.error && <p role="alert">{libraryMessages.openError(library.name, library.error)}</p>}
+        {library?.error && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}
         {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
           <p role="alert" key={operation}>{FAILURE_MESSAGES[operation]}</p>
         ))}
@@ -327,13 +327,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           <div className="empty-state">
             {library?.name ? (
               <p>{library.has_snapshot && library.references === 0
-                ? libraryMessages.empty(library.snapshot_name)
+                ? libraryMessages.empty(library.snapshot_name, library.zotero)
                 : query ? pickerText.noMatches : pickerText.typeToFind}</p>
             ) : library?.state === "none" ? (
               <>
                 <p>{pickerText.firstRun}</p>
                 <button type="button" aria-label={pickerText.firstRunChoose} onClick={() => void perform("choose", chooseLibrary)}>
                   {pickerText.chooseLibrary}
+                </button>{" "}
+                <button type="button" title={pickerText.useZoteroTitle} onClick={() => void perform("zotero", useZotero)}>
+                  {pickerText.useZotero}
                 </button>
               </>
             ) : null}
@@ -348,6 +351,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           <button type="button" className="quiet-button" aria-label={pickerText.chooseLibrary} title={pickerText.chooseTitle} onClick={() => void perform("choose", chooseLibrary)}>
             {pickerText.chooseShort}
           </button>
+          {!library?.zotero && (
+            <button type="button" className="quiet-button" title={pickerText.useZoteroTitle} onClick={() => void perform("zotero", useZotero)}>
+              {pickerText.useZotero}
+            </button>
+          )}
           {library?.name && (
             <button type="button" className="icon-button" aria-label={pickerText.reload} title={pickerText.reloadTitle} onClick={() => void perform("reload", reloadLibrary)}>
               ↻

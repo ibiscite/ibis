@@ -73,7 +73,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     search: () => [],
     hide_picker: () => null,
     copy_format: () => "pandoc",
-    library_status: () => ({ state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
   };
   mockIPC(
     (cmd, args) => {
@@ -119,7 +119,7 @@ test("first launch waits for library status and offers a chooser without a searc
   await act(async () => { await Promise.resolve(); });
   expect(screen.queryByRole("alert")).toBeNull();
   expect(calls).not.toContain("search");
-  await act(async () => { status({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }); });
+  await act(async () => { status({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }); });
   fireEvent.click(await screen.findByRole("button", { name: "Choose library to get started" }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   expect(screen.queryByRole("alert")).toBeNull();
@@ -128,7 +128,7 @@ test("first launch waits for library status and offers a chooser without a searc
 
 test("typing after a library load failure keeps its single explanation visible", async () => {
   backend({
-    library_status: () => ({ state: "error", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: "the synthetic library is unreadable", note: null }),
+    library_status: () => ({ state: "error", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: "the synthetic library is unreadable", note: null }),
     search: () => { throw new Error("no library is open"); },
   });
   render(<App />);
@@ -140,7 +140,7 @@ test("typing after a library load failure keeps its single explanation visible",
 
 test("the empty-state chooser opens the existing dialog and remains available after cancellation", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
     choose_library: () => null,
   });
   render(<App />);
@@ -153,7 +153,7 @@ test("the empty-state chooser opens the existing dialog and remains available af
 
 test("typing and clearing before choosing a library keeps the calm hint and chooser", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
     search: () => { throw new Error("no library is open"); },
     choose_library: () => null,
   });
@@ -174,13 +174,13 @@ test("typing and clearing before choosing a library keeps the calm hint and choo
 
 test("opening the first library searches the untouched empty query", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
     search: () => [result("first", "First reference")],
   });
   render(<App />);
   await screen.findByRole("button", { name: "Choose library to get started" });
   expect(calls).not.toContain("search");
-  await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
+  await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
   expect(await screen.findByText("First reference")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Choose library to get started" })).toBeNull();
 });
@@ -219,7 +219,7 @@ test.each([
   else await screen.findByText("New library reference");
   await act(async () => {
     if (outcome === "resolves") {
-      resolveStatus({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null });
+      resolveStatus({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null });
     } else rejectStatus(new Error("stale status unavailable"));
   });
   expect(screen.getByRole("region", { name: "Library" }).textContent).toContain("new.bib");
@@ -293,7 +293,7 @@ test("the query is searched again when a library finishes opening", async () => 
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
   open = true;
-  await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
+  await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -404,7 +404,7 @@ test("Enter never copies a result left over from the previous query", async () =
 
 test("the library is shown, can be chosen and reloaded, and failures are explained", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
     choose_library: () => null,
     reload_library: () => null,
   });
@@ -413,13 +413,13 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   await waitFor(() => expect(bar.textContent).toContain("No library chosen"));
   fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
   await waitFor(() => expect(calls).toContain("choose_library"));
-  await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, note: null });
+  await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, note: null });
   await waitFor(() => expect(bar.textContent).toContain("refs.bib: 3 references, 1 reading notice"));
   fireEvent.click(screen.getByRole("button", { name: "Reload" }));
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", {
     state: "error",
-    has_snapshot: true,
+    has_snapshot: true, zotero: false,
     name: "refs.bib",
     snapshot_name: "refs.bib",
     references: 3,
@@ -433,13 +433,13 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
 test("opening the first library searches the query typed before choosing it", async () => {
   const queries: unknown[] = [];
   backend({
-    library_status: () => ({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
     search: ({ query }) => { queries.push(query); return [result("first", "Matching reference")]; },
   });
   render(<App />);
   await screen.findByRole("button", { name: "Choose library to get started" });
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
-  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }); });
+  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }); });
   await screen.findByText("Matching reference");
   expect(queries).toEqual(["sleep"]);
 });
@@ -603,7 +603,7 @@ test("web permissions grant only event subscriptions and drag-region bootstrap",
 
 test.each([false, true])("axe checks picker structure (library open: %s) and detects a broken combobox", async (open) => {
   backend({
-    library_status: () => ({ state: open ? "loaded" : "none", has_snapshot: open, name: open ? "refs.bib" : null, snapshot_name: open ? "refs.bib" : null, references: open ? 1 : 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: open ? "loaded" : "none", has_snapshot: open, zotero: false, name: open ? "refs.bib" : null, snapshot_name: open ? "refs.bib" : null, references: open ? 1 : 0, warnings: 0, error: null, note: null }),
     search: () => [result("synthetic", "Synthetic reference")],
   });
   render(<App />);
@@ -636,7 +636,7 @@ test("a pending library check does not offer first-run setup", async () => {
 
 test("opening a chosen library shows its name and searches only when ready", async () => {
   const calls = backend({
-    library_status: () => ({ state: "loading", has_snapshot: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "loading", has_snapshot: false, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 0, warnings: 0, error: null, note: null }),
     choose_library: () => null,
   });
   render(<App />);
@@ -647,13 +647,13 @@ test("opening a chosen library shows its name and searches only when ready", asy
   expect(calls).not.toContain("search");
   fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
   await waitFor(() => expect(calls).toContain("choose_library"));
-  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 1, warnings: 0, error: null, note: null }); });
+  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 1, warnings: 0, error: null, note: null }); });
   await waitFor(() => expect(calls).toContain("search"));
 });
 
 test("a reload keeps the previous library searchable and announces the reload", async () => {
   backend({
-    library_status: () => ({ state: "reloading", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "reloading", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
     search: () => [result("kept", "Kept reference")],
   });
   render(<App />);
@@ -664,7 +664,7 @@ test("a reload keeps the previous library searchable and announces the reload", 
 
 test("a failed switch names the retained library in its accessible status", async () => {
   backend({
-    library_status: () => ({ state: "error", has_snapshot: true, name: "missing B.bib", snapshot_name: "active A.bib", references: 3, warnings: 0, error: "The library file is unavailable; keeping the last loaded references", note: null }),
+    library_status: () => ({ state: "error", has_snapshot: true, zotero: false, name: "missing B.bib", snapshot_name: "active A.bib", references: 3, warnings: 0, error: "The library file is unavailable; keeping the last loaded references", note: null }),
     search: () => [result("kept", "Reference from A")],
   });
   render(<App />);
@@ -676,7 +676,7 @@ test("a failed switch names the retained library in its accessible status", asyn
 
 test("an unavailable initial library is named once without a duplicate search error", async () => {
   const calls = backend({
-    library_status: () => ({ state: "error", has_snapshot: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 0, warnings: 0, error: "The library file is unavailable.", note: null }),
+    library_status: () => ({ state: "error", has_snapshot: false, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 0, warnings: 0, error: "The library file is unavailable.", note: null }),
     search: () => { throw new Error("no library is open"); },
     choose_library: () => null,
   });
@@ -696,7 +696,7 @@ test("an unavailable initial library is named once without a duplicate search er
 
 test("a failed reload reports one file error while kept references remain searchable", async () => {
   backend({
-    library_status: () => ({ state: "error", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: "The library file is unavailable; keeping the last loaded references.", note: null }),
+    library_status: () => ({ state: "error", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: "The library file is unavailable; keeping the last loaded references.", note: null }),
     search: () => [result("kept", "Previously loaded reference")],
   });
   render(<App />);
@@ -708,16 +708,16 @@ test("a failed reload reports one file error while kept references remain search
 
 test.each(["backup", "defaults"])("settings recovery from %s stays visible through a library reload", async (fallback) => {
   const notice = `settings.json could not be read. Using ${fallback}. Changes are not being saved. Repair /synthetic/settings.json and restart Ibis.`;
-  backend({ library_status: () => ({ state: "loading", has_snapshot: false, name: "refs.bib", snapshot_name: "refs.bib", references: 0, warnings: 0, error: null, note: null, settings_notice: notice }) });
+  backend({ library_status: () => ({ state: "loading", has_snapshot: false, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 0, warnings: 0, error: null, note: null, settings_notice: notice }) });
   render(<App />);
   expect((await screen.findByText(notice)).getAttribute("role")).toBe("alert");
-  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: notice }); });
+  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: notice }); });
   expect(screen.getByText(notice).getAttribute("role")).toBe("alert");
   expect(screen.getAllByText(notice)).toHaveLength(1);
 });
 
 test.each(["", "sleep"])("an empty loaded library is explained even for query %s", async (query) => {
-  backend({ library_status: () => ({ state: "loaded", has_snapshot: true, name: "empty 研究.bib", snapshot_name: "empty 研究.bib", references: 0, warnings: 0, error: null, note: null }) });
+  backend({ library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "empty 研究.bib", snapshot_name: "empty 研究.bib", references: 0, warnings: 0, error: null, note: null }) });
   render(<App />);
   await screen.findByText("empty 研究.bib: 0 references");
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
@@ -729,7 +729,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
 
 
 test.each([false, true])("a failed library open is not described as an empty export (retained: %s)", async (retained) => {
-  backend({ library_status: () => ({ state: "error", has_snapshot: retained, name: "missing B.bib", snapshot_name: retained ? "empty A.bib" : null, references: 0, warnings: 0, error: "The library file is unavailable", note: null }) });
+  backend({ library_status: () => ({ state: "error", has_snapshot: retained, zotero: false, name: "missing B.bib", snapshot_name: retained ? "empty A.bib" : null, references: 0, warnings: 0, error: "The library file is unavailable", note: null }) });
   render(<App />);
   await screen.findByRole("alert");
   expect(document.body.textContent).not.toContain("No references found");
