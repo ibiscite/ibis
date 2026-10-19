@@ -12,6 +12,7 @@ mod diagnostics;
 #[cfg(debug_assertions)]
 mod gallery;
 mod library;
+mod native_feel;
 mod picker;
 mod placement;
 mod preferences;
@@ -38,13 +39,10 @@ use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
 
 fn main() {
-    let context = tauri::generate_context!();
+    let mut context = tauri::generate_context!();
+    native_feel::configure(&mut context);
     #[cfg(debug_assertions)]
-    let context = {
-        let mut context = context;
-        report(gallery::configure(&mut context), NativeIssue::GalleryNavigation);
-        context
-    };
+    report(gallery::configure(&mut context), NativeIssue::GalleryNavigation);
     let app = tauri::Builder::default()
         // Must be registered first: a second launch brings the running picker forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_picker(app)))
@@ -82,6 +80,7 @@ fn main() {
             _ => {}
         })
         .setup(|app| {
+            native_feel::install(app.handle());
             // Debug builds may opt into the synthetic evidence gallery. Keep
             // both environment reads out of release binaries entirely.
             #[cfg(debug_assertions)]

@@ -35,3 +35,14 @@ tempfile = "3.27.0"
 
 [lints]
 workspace = true
+
+# Already locked through Tauri; direct APIs preserve actual application errors.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+window-vibrancy = "=0.8.1"
+
+# Safe native accessibility queries; no raw native calls in Ibis.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62.2", features = ["Foundation", "UI_ViewManagement"] }

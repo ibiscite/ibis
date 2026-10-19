@@ -34,6 +34,8 @@ export const commands = {
 	quit: () => __TAURI_INVOKE<void>("quit"),
 	/**  Current state of the global shortcut. */
 	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus>("shortcut_status"),
+	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
+	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
 };
 
 /* Types */

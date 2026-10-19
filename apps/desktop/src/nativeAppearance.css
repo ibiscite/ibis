@@ -1,0 +1,7 @@
+/* The existing opaque surface remains the default. Native success alone opts in. */
+:root[data-native-appearance="mica"], :root[data-native-appearance="vibrancy"] { background: transparent; }
+
+/* Defensive overrides also cover preferences changed before native refresh. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  :root[data-native-appearance] { background: var(--surface); }
+}

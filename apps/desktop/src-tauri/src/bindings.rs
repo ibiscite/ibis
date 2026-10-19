@@ -11,7 +11,8 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::copy_format,
             crate::picker::hide_picker,
             crate::picker::quit,
-            crate::picker::shortcut_status
+            crate::picker::shortcut_status,
+            crate::native_feel::native_appearance
         ])
         // Match Tauri's existing Promise rejection behavior.
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
