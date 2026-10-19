@@ -114,12 +114,14 @@ python scripts/smoke-native.py --app target/debug/ibis-desktop.exe \
 ```
 
 Windows reads UI Automation through PowerShell and sends keyboard events with
-`SendInput`; macOS uses `osascript`/System Events; Linux uses AT-SPI and xdotool
+`SendInput`; macOS reads accessibility through `osascript`/System Events and
+posts global CoreGraphics HID keyboard events; Linux uses AT-SPI and xdotool
 inside Xvfb with Openbox. Windows retains the native picker HWND first identified
 by its editable search control; another same-process tray window cannot satisfy
 the visibility assertion. Linux waits for both the editor's active-window and
 actual X11 input-focus ownership before sending a shortcut. macOS first checks `AXIsProcessTrusted`, System Events
-accessibility and Automation access. A missing TCC grant is **unavailable**,
+accessibility, Automation access and `CGPreflightPostEventAccess`. No event-posting
+permission request is made. A missing TCC grant is **unavailable**,
 never a pass; the test does not modify the TCC database or bypass consent.
 macOS refuses any existing TextEdit process and opens an owned empty text file
 through Launch Services, without sending Apple Events to TextEdit. Cleanup
@@ -313,6 +315,82 @@ automated visual verdict. Linux uses a 1280×800 Xvfb display without a desktop
 window manager; its theme and shadows may differ from a user's desktop. These
 images do not establish result-list behavior, typing, focus, shortcuts, clipboard
 integration or screen-reader accessibility; those still need separate checks.
+
+## macOS launcher regression (#198)
+
+The native reproducer is a document in TextEdit in its own full-screen Space:
+summon Ibis, search the synthetic `who2020` reference, press Enter, and paste.
+Before the panel change macOS switches to the desktop or leaves the picker
+outside the full-screen Space; a window-only hide also leaves Ibis active (#195).
+The picker should stay over the document and paste should reach that document.
+
+The macOS-only `tauri-nspanel` dependency converts the existing Tauri window to
+an NSPanel with non-activating style, all-Spaces/full-screen auxiliary behavior,
+and a floating level. Its safe API confines native calls to Tauri's main-thread
+callbacks; the app retains `forbid(unsafe_code)`. It enables Tauri's macOS private
+API feature, as the adapter requires. `Accessory` policy removes the Dock icon;
+Quit stays available in the footer and menu bar item. These flags on a normal
+window were already tested natively and did not solve the full-screen problem
+(see the evidence in #198).
+
+Run the release build on macOS, quitting other Ibis instances first. Check:
+
+- Full-screen TextEdit and another Space, with the pointer on each display of a
+  mixed-scale pair; the Space must not switch and the picker must be visible.
+- Stage Manager; typing and Japanese Kana conversion; VoiceOver search/result
+  announcements. A compiling panel does not prove IME or accessibility behavior.
+- Enter, Escape, shortcut and close; the previous app must receive the next
+  paste. Repeat after a library dialog, which intentionally activates Ibis.
+- Choose library from the picker and tray, then cancel and select a synthetic
+  `.bib`; the dialog must receive input and the picker must remain available.
+- Windows/Linux dismissal, foreground activation and virtual desktops in #133.
+
+After integrating the native adapters from #217, run the focused scenario in
+that same disposable macOS session:
+
+```sh
+python3 scripts/check-panel-macos.py --self-test
+python3 scripts/check-panel-macos.py --app target/debug/ibis-desktop \
+  --output screenshots/panel-macOS
+```
+
+The scenario requires actual AXFullScreen state plus on-screen editor geometry,
+then checks that summoning keeps the editor in its full-screen Space while the
+picker is visible and focused. It verifies native search, an independently primed
+clipboard, Enter/Escape dismissal, and editor focus return. On the ordinary
+desktop it opens the real titled library chooser, verifies dialog focus while
+the picker stays visible, cancels, and checks keyboard access to the picker and
+return to the editor. Cancellation may restore the Choose-button focus. It does
+not select a file, change an input source, read VoiceOver speech, or establish
+second-display/Stage Manager acceptance. Exit 2 and an `unavailable` report mean
+no native pass; contract self-tests validate the probe only.
+
+Global HID events target the actual key window, including a nonactivating panel
+whose editor application intentionally remains frontmost. System Events keyboard
+dispatch alone could target that editor instead. Unicode storage is retained
+through each event post, and physical chords attempt every key release after a
+failure. Debug builds log only actual AppKit key-window and first-responder
+booleans after showing the panel; accessible focus alone is not that proof.
+The panel helper initially makes its outer NSView the first responder. Ibis then
+uses the stable Tauri Webview API to focus the actual WKWebView without activating
+the application; AppKit key/responder booleans alone do not prove HID delivery.
+The same WebView focus is applied after initial panel configuration only when
+the native window is already visible. This covers fresh startup after damaged
+settings recovery without showing a future hidden startup window.
+Initial setup uses the same panel ordering and responder sequence as summons.
+Debug builds observe initial state, native focus changes and the first completed
+page load without adjusting focus in those event callbacks. These fixed booleans
+include whether the first responder is the outer content view; no object identity
+or page data is logged. Native key-window state alone did not prove that a fresh
+startup received hardware typing, so the damaged-library startup assertion remains
+required alongside all five fullscreen and chooser checks.
+The prior hosted probe showed the panel in the full-screen Space, then failed
+native search. That observation does not establish input, copy or chooser success.
+
+Linux unit/interface checks do not execute AppKit. Hosted macOS compilation and
+these native interactions must be recorded before calling this change verified;
+full-screen, Stage Manager, IME, VoiceOver and second-display behavior remain
+unverified until that evidence is attached to #198.
 
 ## Nightly fuzzing
 

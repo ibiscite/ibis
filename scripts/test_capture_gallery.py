@@ -215,6 +215,87 @@ class CaptureTests(unittest.TestCase):
         self.assertFalse(windows.alive)
         self.assertIn("/T", taskkill.call_args.args[0])
 
+    def test_windows_states_isolate_profiles_and_keep_them_until_all_apps_stop(self):
+        foreign = self.root / "foreign-profile"
+        foreign.mkdir()
+        marker = foreign / "keep"
+        marker.write_text("foreign data", encoding="utf8")
+        profiles, processes = [], []
+
+        def launch(_args, **options):
+            self.assertTrue(all(not process.alive for process in processes))
+            profile = Path(options["env"]["WEBVIEW2_USER_DATA_FOLDER"])
+            self.assertNotEqual(profile, foreign, "A gallery app must not open an inherited profile")
+            self.assertNotIn(profile, profiles, "Two states must not contend for a browser profile")
+            self.assertTrue(profile.is_dir())
+            self.assertEqual(list(profile.iterdir()), [])
+            self.assertTrue(all(previous.is_dir() for previous in profiles), "Keep profiles through the entire teardown transaction")
+            self.assertTrue(profile.is_relative_to(Path(options["env"]["IBIS_LIBRARY"]).parent))
+            profiles.append(profile)
+            (profile / "synthetic-browser-data").write_text("owned", encoding="utf8")
+            process = Process()
+            processes.append(process)
+            return self.acknowledge(process)(_args, **options)
+
+        def capture(destination, _platform):
+            self.assertTrue(all(profile.is_dir() for profile in profiles))
+            destination.write_bytes(gallery.PNG_HEADER + b"synthetic pixels")
+
+        with patch.dict(gallery.os.environ, {"WEBVIEW2_USER_DATA_FOLDER": str(foreign)}), \
+             patch.object(gallery.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, create=True), \
+             patch.object(gallery.subprocess, "Popen", side_effect=launch), \
+             patch.object(gallery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
+             patch.object(gallery, "capture_screenshot", side_effect=capture):
+            gallery.capture_gallery(self.app, self.output, states=("first-run", "damaged-library"), platform_name="Windows", wait_seconds=0)
+            self.assertEqual(gallery.os.environ["WEBVIEW2_USER_DATA_FOLDER"], str(foreign))
+        self.assertEqual(len(profiles), 2)
+        self.assertTrue(all(not process.alive for process in processes))
+        self.assertTrue(all(not profile.exists() for profile in profiles))
+        self.assertEqual(marker.read_text(encoding="utf8"), "foreign data")
+
+    def test_windows_failed_startup_cleans_owned_profile_without_targeting_an_exited_pid(self):
+        for launch_fails in (False, True):
+            profiles = []
+            process = Process(exited=True)
+            def launch(_args, **options):
+                profile = Path(options["env"]["WEBVIEW2_USER_DATA_FOLDER"])
+                self.assertTrue(profile.is_dir())
+                profiles.append(profile)
+                if launch_fails:
+                    raise OSError("synthetic launch failure")
+                return process
+            with self.subTest(launch_fails=launch_fails), \
+                 patch.object(gallery.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, create=True), \
+                 patch.object(gallery.subprocess, "Popen", side_effect=launch), \
+                 patch.object(gallery.subprocess, "run") as taskkill:
+                with self.assertRaises(OSError if launch_fails else gallery.CaptureError):
+                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Windows", wait_seconds=0)
+                taskkill.assert_not_called()
+            self.assertEqual(len(profiles), 1)
+            self.assertFalse(profiles[0].exists())
+
+    def test_profile_cleanup_failure_is_explicit_and_does_not_print_native_paths(self):
+        process = Process()
+        temporary_directory = gallery.tempfile.TemporaryDirectory
+        def owned_directory(**options):
+            return temporary_directory(dir=self.root, **options)
+        def capture(destination, _platform):
+            destination.write_bytes(gallery.PNG_HEADER + b"synthetic pixels")
+        error_output = io.StringIO()
+        with patch.object(gallery.tempfile, "TemporaryDirectory", side_effect=owned_directory), \
+             patch.object(temporary_directory, "_rmtree", side_effect=PermissionError("private profile path")) as cleanup, \
+             patch.object(gallery.platform, "system", return_value="Windows"), \
+             patch.object(gallery.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, create=True), \
+             patch.object(gallery.subprocess, "Popen", side_effect=self.acknowledge(process)), \
+             patch.object(gallery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
+             patch.object(gallery, "capture_screenshot", side_effect=capture), \
+             contextlib.redirect_stderr(error_output):
+            self.assertEqual(gallery.main(["--app", str(self.app), "--output", str(self.output), "--state", "loading", "--wait", "0"]), 1)
+            cleanup.assert_called_once()
+        self.assertFalse(process.alive)
+        self.assertIn("Gallery capture failed", error_output.getvalue())
+        self.assertNotIn("private profile path", error_output.getvalue())
+
     def test_windows_capture_treats_the_destination_as_data(self):
         destination = self.output / "quote ' and $(unexpected).png"
         with patch.object(gallery.subprocess, "run") as run:

@@ -160,10 +160,29 @@ try {
       $true
     }
     'focus-editor' {
-      $editor = Get-OwnedEditor
-      if (!$editor) { throw 'Synthetic editor process exited' }
-      if (![IbisSmoke]::SetForegroundWindow($editor.MainWindowHandle)) { throw 'Editor activation refused' }
-      $true
+      $facts = @{stage='identity';owned=$false;window_valid=$false;request_accepted=$false;current_foreground=$false}
+      try {
+        $editor = Get-OwnedEditor
+        if (!$editor) { throw 'Synthetic editor process exited' }
+        $facts.owned = $true
+        $facts.stage = 'window'
+        $handle = [IntPtr] $editor.MainWindowHandle
+        if ($handle.ToInt64() -le 0 -or ![IbisSmoke]::IsWindow($handle) -or [IbisSmoke]::OwnerPid($handle) -ne $EditorId) {
+          throw 'Synthetic editor window identity was lost'
+        }
+        $facts.window_valid = $true
+        $facts.stage = 'foreground-request'
+        $facts.current_foreground = [IbisSmoke]::ForegroundPid() -eq $EditorId
+        if (!$facts.current_foreground) {
+          $facts.request_accepted = [IbisSmoke]::SetForegroundWindow($handle)
+        }
+        $facts.current_foreground = [IbisSmoke]::ForegroundPid() -eq $EditorId
+        # A declined request is not a focus verdict. Python independently
+        # waits for fresh editor-focused observations before proceeding.
+        @{owned=$facts.owned;window_valid=$facts.window_valid;request_accepted=$facts.request_accepted;current_foreground=$facts.current_foreground}
+      } finally {
+        [Console]::Error.WriteLine('NATIVE EDITOR FOCUS ' + (ConvertTo-Json -InputObject $facts -Compress))
+      }
     }
     'editor-focused' { $null -ne (Get-OwnedEditor) -and [IbisSmoke]::ForegroundPid() -eq $EditorId }
     'clipboard' { Get-Clipboard -Raw }

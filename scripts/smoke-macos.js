@@ -4,12 +4,111 @@ ObjC.import('ApplicationServices');
 ObjC.import('CoreGraphics');
 ObjC.import('CoreFoundation');
 
+// Global HID events follow the real key window, including a nonactivating
+// panel whose application intentionally is not frontmost. The callback keeps
+// event plans testable without claiming a native post happened on other OSes.
+function sendPhysicalChord(chord, post) {
+    const modifiers = {ctrl: [59, 1 << 18], shift: [56, 1 << 17],
+        super: [55, 1 << 20], alt: [58, 1 << 19]};
+    const codes = {a: 0, g: 5, r: 15, v: 9, escape: 53, return: 36, space: 49};
+    const keys = chord.toLowerCase().split('+');
+    const last = keys.pop();
+    if (!Object.hasOwn(codes, last) || keys.some(key => !Object.hasOwn(modifiers, key)) || new Set(keys).size !== keys.length) {
+        throw Error('Unsupported native HID chord');
+    }
+    const held = [];
+    let flags = 0, baseHeld = false, error;
+    try {
+        keys.forEach(key => {
+            const modifier = modifiers[key];
+            flags |= modifier[1];
+            held.push(modifier);
+            post(modifier[0], true, flags);
+        });
+        baseHeld = true;
+        post(codes[last], true, flags);
+        post(codes[last], false, flags);
+        baseHeld = false;
+    } catch (failure) { error = failure; }
+    // Attempt every release even if a later event could not be created.
+    if (baseHeld) {
+        try { post(codes[last], false, flags); } catch (failure) { error ||= failure; }
+    }
+    held.reverse().forEach(([code, mask]) => {
+        flags &= ~mask;
+        try { post(code, false, flags); } catch (failure) { error ||= failure; }
+    });
+    if (error) throw error;
+}
+
+function sendUnicodeText(text, post) {
+    for (const character of text) {
+        let error;
+        try { post(0, true, 0, character); } catch (failure) { error = failure; }
+        try { post(0, false, 0, character); } catch (failure) { error ||= failure; }
+        if (error) throw error;
+    }
+}
+
+function preflightPostAccess() {
+    // Older BridgeSupport metadata omits this public macOS 10.15+ symbol.
+    // Its SDK declaration is bool CGPreflightPostEventAccess(void).
+    // https://developer.apple.com/documentation/coregraphics/cgpreflightposteventaccess()?language=objc
+    if (typeof $.CGPreflightPostEventAccess !== 'function') {
+        try { ObjC.bindFunction('CGPreflightPostEventAccess', ['bool', []]); }
+        catch (_) { throw Error('Native event-posting preflight unavailable'); }
+    }
+    if (typeof $.CGPreflightPostEventAccess !== 'function') throw Error('Native event-posting preflight unavailable');
+    const granted = $.CGPreflightPostEventAccess();
+    if (typeof granted !== 'boolean') throw Error('Native event-posting preflight unavailable');
+    return granted;
+}
+
+function readEditorFullscreen(read) {
+    let state;
+    // AXFullScreen can briefly be unreadable while a Space transition settles.
+    // Unknown is explicit; it must never count as the requested false state.
+    try { state = read(); }
+    catch (_) { return {available: false, fullscreen: null}; }
+    if (typeof state !== 'boolean') throw Error('Editor fullscreen accessibility state unavailable');
+    return {available: true, fullscreen: state};
+}
+
 function run(argv) {
     const action = argv[0], appId = Number(argv[1]), editorId = Number(argv[2]), text = argv[3];
     const events = Application('System Events');
     const process = id => events.applicationProcesses.whose({unixId: id})()[0];
     const safe = (fn, fallback = '') => { try { return fn(); } catch (_) { return fallback; } };
     const numeric = value => typeof value === 'number' && Number.isFinite(value);
+    const postEvent = () => {
+        if (!preflightPostAccess()) throw Error('TCC event posting is not granted; native smoke unavailable');
+        const source = $.CGEventSourceCreate($.kCGEventSourceStateHIDSystemState);
+        if (!source) throw Error('Native HID event source unavailable');
+        let unicodeBridgeReady = false;
+        return (code, down, flags, character) => {
+            const event = $.CGEventCreateKeyboardEvent(source, code, down);
+            if (!event) throw Error('Native HID keyboard event unavailable');
+            $.CGEventSetFlags(event, flags);
+            if (character !== undefined) {
+                if (!unicodeBridgeReady) {
+                    // NSData.bytes is void*, while BridgeSupport insists on a
+                    // UniChar* Ref. Both are pointer arguments in the public
+                    // C ABI; UniCharCount is unsigned long on 64-bit macOS.
+                    // https://developer.apple.com/documentation/coregraphics/cgevent/keyboardsetunicodestring(stringlength:unicodestring:)?language=objc
+                    // https://developer.apple.com/library/archive/documentation/Carbon/Conceptual/Carbon64BitGuide/PortingTo64Bit/PortingTo64Bit.html
+                    try { ObjC.bindFunction('CGEventKeyboardSetUnicodeString', ['void', ['void *', 'unsigned long', 'void *']]); }
+                    catch (_) { throw Error('Native HID Unicode bridge unavailable'); }
+                    unicodeBridgeReady = true;
+                }
+                // NSString/NSData retain the UTF-16 storage until posting.
+                // Each codepoint uses at most two units, retaining surrogates.
+                const data = $(character).dataUsingEncoding($.NSUTF16LittleEndianStringEncoding);
+                if (!data || Number(data.length) !== character.length * 2) throw Error('Native HID Unicode storage unavailable');
+                $.CGEventKeyboardSetUnicodeString(event, character.length, data.bytes);
+                $.CGEventPost($.kCGHIDEventTap, event);
+            } else $.CGEventPost($.kCGHIDEventTap, event);
+        };
+    };
     const editorState = () => {
         const state = {bundle_verified: false, window_count: 0, document_metadata_count: 0,
             exact_document_url_matches: 0, owned_document_path_matches: 0, owned: false};
@@ -42,12 +141,12 @@ function run(argv) {
         state.owned = windows.length === 1 && state.owned_document_path_matches === 1;
         return state;
     };
-    const elements = () => {
-        const app = process(appId);
-        if (!app || app.windows.length === 0) return [];
-        const tree = app.windows[0].entireContents();
-        if (tree.length > 4000) throw Error('Accessibility tree exceeded smoke traversal bound');
-        return tree;
+    const frame = window => {
+        const position = window.position(), size = window.size();
+        if (position.length !== 2 || size.length !== 2 || !position.concat(size).every(numeric)) {
+            throw Error('Accessible window bounds unavailable');
+        }
+        return {position, size};
     };
     const onScreen = (ownerId, accessibleWindows) => {
         const windowRefs = $.CGWindowListCopyWindowInfo(
@@ -68,37 +167,75 @@ function run(argv) {
             }
             windows.push(window);
         }
-        const frames = accessibleWindows.map(window => {
-            const position = window.position(), size = window.size();
-            if (position.length !== 2 || size.length !== 2 ||
-                !position.concat(size).every(numeric)) {
-                throw Error('Accessible window bounds unavailable');
-            }
-            return {position, size};
-        });
-        // Hidden windows may remain in the AX tree. Match an on-screen CG
-        // window to an AX picker frame; owner PID alone can match a tray item.
-        const ownWindows = windows.filter(window => {
+        const frames = accessibleWindows.map(frame);
+        const owned = windows.filter(window => {
             if (!numeric(window.kCGWindowOwnerPID)) throw Error('Window ownership metadata unavailable');
             return Number(window.kCGWindowOwnerPID) === ownerId;
         });
-        ownWindows.forEach(window => {
+        owned.forEach(window => {
             const bounds = window.kCGWindowBounds || {};
             if (!numeric(window.kCGWindowAlpha) ||
                 !['X', 'Y', 'Width', 'Height'].every(key => numeric(bounds[key]))) {
                 throw Error('On-screen window bounds unavailable');
             }
         });
-        return ownWindows.some(window => {
-            const bounds = window.kCGWindowBounds || {};
-            return Number(window.kCGWindowAlpha) > 0 &&
-                Number(bounds.Width) > 0 && Number(bounds.Height) > 0 && frames.some(frame =>
-                    frame.position.length === 2 && frame.size.length === 2 &&
-                    Math.abs(frame.position[0] - Number(bounds.X)) <= 2 &&
-                    Math.abs(frame.position[1] - Number(bounds.Y)) <= 2 &&
-                    Math.abs(frame.size[0] - Number(bounds.Width)) <= 2 &&
-                    Math.abs(frame.size[1] - Number(bounds.Height)) <= 2);
+        return owned.some(window => {
+            const bounds = window.kCGWindowBounds;
+            return Number(window.kCGWindowAlpha) > 0 && Number(bounds.Width) > 0 && Number(bounds.Height) > 0 &&
+                frames.some(candidate =>
+                    Math.abs(candidate.position[0] - bounds.X) <= 2 &&
+                    Math.abs(candidate.position[1] - bounds.Y) <= 2 &&
+                    Math.abs(candidate.size[0] - bounds.Width) <= 2 &&
+                    Math.abs(candidate.size[1] - bounds.Height) <= 2);
         });
+    };
+    const contents = element => {
+        const tree = element.entireContents();
+        if (tree.length > 4000) throw Error('Accessibility tree exceeded smoke traversal bound');
+        return [element].concat(tree);
+    };
+    const labelled = (element, label) => [safe(() => element.title()), safe(() => element.description()),
+        safe(() => element.name()), safe(() => element.value())].includes(label);
+    const focused = element => safe(() => element.attributes.byName('AXFocused').value(), false) === true;
+    const pickerWindows = () => {
+        const app = process(appId);
+        return app ? app.windows().filter(window => labelled(window, 'Ibis')) : [];
+    };
+    const editorWindow = () => {
+        const editor = process(editorId);
+        const windows = editor ? editor.windows() : [];
+        if (windows.length !== 1) throw Error('A single synthetic editor window is required');
+        return windows[0];
+    };
+    const fullscreen = window => {
+        let state;
+        try { state = window.attributes.byName('AXFullScreen').value(); }
+        catch (_) { throw Error('Editor fullscreen accessibility state unavailable'); }
+        if (typeof state !== 'boolean') throw Error('Editor fullscreen accessibility state unavailable');
+        return state;
+    };
+    const chooser = () => {
+        const app = process(appId);
+        if (!app) throw Error('Native picker process unavailable');
+        const candidates = [];
+        app.windows().forEach(window => contents(window).forEach(element => {
+            const role = safe(() => element.role()), subrole = safe(() => element.subrole());
+            const titledWindow = role === 'AXWindow' && labelled(element, 'Choose a BibTeX or BibLaTeX library');
+            if (role !== 'AXSheet' && role !== 'AXDialog' && subrole !== 'AXDialog' && !titledWindow) return;
+            const nodes = contents(element);
+            if (nodes.some(node => labelled(node, 'Choose a BibTeX or BibLaTeX library'))) {
+                candidates.push({element, nodes});
+            }
+        }));
+        if (candidates.length > 10) throw Error('Native chooser scope exceeded smoke traversal bound');
+        return candidates.find(candidate => onScreen(appId, [candidate.element]));
+    };
+    const elements = () => {
+        const app = process(appId);
+        if (!app || app.windows.length === 0) return [];
+        const tree = app.windows[0].entireContents();
+        if (tree.length > 4000) throw Error('Accessibility tree exceeded smoke traversal bound');
+        return tree;
     };
     let result;
     switch (action) {
@@ -106,6 +243,7 @@ function run(argv) {
         // AXIsProcessTrusted does not prompt or claim a grant. A hosted runner
         // without it is unavailable; no tccutil reset or permission bypass.
         if (!$.AXIsProcessTrusted()) throw Error('TCC Accessibility is not granted to osascript; native smoke unavailable');
+        if (!preflightPostAccess()) throw Error('TCC event posting is not granted; native smoke unavailable');
         // Query the real scripting object. The obsolete UI-elements-enabled
         // property is not a valid JXA class on the macOS 15 hosted image.
         events.applicationProcesses.length; // Also checks Automation consent.
@@ -147,6 +285,8 @@ function run(argv) {
                 focused: safe(() => item.attributes.byName('AXFocused').value(), false) === true,
             }));
         });
+        // Hidden windows may remain in the AX tree. Match an on-screen CG
+        // window to an AX picker frame; owner PID alone can match a tray item.
         const visible = onScreen(appId, app ? app.windows() : []);
         // A nonactivating panel intentionally leaves the editor application
         // frontmost while accepting keyboard input in its own search field.
@@ -155,19 +295,52 @@ function run(argv) {
             foreground: visible && nodes.some(node => node.focused && node.name === 'Search references')};
         break;
     }
-    case 'key': {
-        const keys = text.toLowerCase().split('+');
-        const last = keys.pop();
-        const mods = {ctrl: 'control down', shift: 'shift down', super: 'command down', alt: 'option down'};
-        const using = keys.map(key => { if (!mods[key]) throw Error('Unsupported key'); return mods[key]; });
-        const codes = {escape: 53, return: 36, space: 49};
-        if (Object.hasOwn(codes, last)) events.keyCode(codes[last], {using});
-        else if (/^[a-z]$/.test(last)) events.keystroke(last, {using});
-        else throw Error('Unsupported key');
+    case 'editor-window-state': {
+        const window = editorWindow();
+        // Keep window ownership/count and CG visibility errors outside the
+        // transient AX getter boundary; malformed metadata still fails closed.
+        const state = readEditorFullscreen(() => window.attributes.byName('AXFullScreen').value());
+        result = {...state, visible: onScreen(editorId, [window])};
+        break;
+    }
+    case 'set-editor-fullscreen': {
+        if (!['true', 'false'].includes(text)) throw Error('Unsupported fullscreen request');
+        const desired = text === 'true';
+        if (fullscreen(editorWindow()) !== desired) {
+            try { editorWindow().attributes.byName('AXFullScreen').value = desired; }
+            catch (_) { throw Error('Editor fullscreen accessibility control unavailable'); }
+        }
+        const deadline = Date.now() + 20000;
+        while ((fullscreen(editorWindow()) !== desired || !onScreen(editorId, [editorWindow()])) && Date.now() < deadline) {
+            $.NSThread.sleepForTimeInterval(0.1);
+        }
+        if (fullscreen(editorWindow()) !== desired || !onScreen(editorId, [editorWindow()])) {
+            throw Error('Editor fullscreen transition did not complete on screen');
+        }
+        result = {fullscreen: desired, visible: onScreen(editorId, [editorWindow()])};
+        break;
+    }
+    case 'chooser-state': {
+        const dialog = chooser();
+        result = {visible: !!dialog, focused: !!dialog && dialog.nodes.some(focused),
+            picker_visible: onScreen(appId, pickerWindows())};
+        break;
+    }
+    case 'cancel-chooser': {
+        const dialog = chooser();
+        if (!dialog) throw Error('The named native library chooser is not on screen');
+        const cancel = dialog.nodes.find(node => safe(() => node.role()) === 'AXButton' && labelled(node, 'Cancel'));
+        if (!cancel) throw Error('Native library chooser Cancel control unavailable');
+        cancel.actions.byName('AXPress').perform();
         result = true;
         break;
     }
-    case 'text': events.keystroke(text); result = true; break;
+    case 'key': {
+        sendPhysicalChord(text, postEvent());
+        result = true;
+        break;
+    }
+    case 'text': sendUnicodeText(text, postEvent()); result = true; break;
     case 'click': {
         const aliases = text === 'Reload' ? ['Reload', 'Reload library'] :
             text === 'Choose library…' ? ['Choose library…', 'Choose a library'] : [text];

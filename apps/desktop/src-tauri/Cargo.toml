@@ -18,7 +18,7 @@ serde_json = "1.0.154"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
-tauri = { version = "2.12", features = ["tray-icon"] }
+tauri = { version = "2.12", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-clipboard-manager = "2.5"
 tauri-plugin-dialog = "2.8"
 tauri-plugin-global-shortcut = "2.3"
@@ -30,6 +30,13 @@ tauri-plugin-single-instance = "2.3"
 raw-window-handle = "0.6.2"
 x11rb = { version = "0.13.2", default-features = false, features = ["xkb"] }
 
+# #198: normal windows cannot enter another app's full-screen Space. This
+# macOS-only adapter provides NSPanel conversion without unsafe app code.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = "=2.1.1"
+# Safe native accessibility queries; no raw native calls in Ibis.
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
+
 [dev-dependencies]
 tempfile = "3.27.0"
 
@@ -39,10 +46,6 @@ workspace = true
 # Already locked through Tauri; direct APIs preserve actual application errors.
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 window-vibrancy = "=0.8.1"
-
-# Safe native accessibility queries; no raw native calls in Ibis.
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Foundation", "UI_ViewManagement"] }

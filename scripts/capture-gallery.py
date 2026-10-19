@@ -65,13 +65,15 @@ def capture_screenshot(destination, platform_name):
 def stop_app(process, platform_name):
     """Reap the app and stop its process group/tree, including on failed startup."""
     if platform_name == "Windows":
-        try:
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError):
-            pass  # The process handle below still provides a reliable final kill.
+        # An exited child's PID can be reused; never target that number again.
+        if process.poll() is None:
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass  # The process handle below still provides a reliable final kill.
         if process.poll() is None:
             process.kill()
     else:
@@ -170,6 +172,14 @@ def capture_gallery(app, output, *, states=STATES, wait_seconds=8, ready_timeout
         source.write_text("@misc{syntheticGallery, title={Synthetic gallery source}}\n", encoding="utf8")
         env = {**os.environ, "IBIS_GALLERY": "1", "IBIS_LIBRARY": str(source)}
         for state in states:
+            if platform_name == "Windows":
+                # WebView2 documents this override of userDataFolder, including
+                # an inherited/default profile. Never share a profile between
+                # rapidly restarted states: browser files can outlive the host.
+                # https://learn.microsoft.com/microsoft-edge/webview2/reference/win32/webview2-idl#createcorewebview2environmentwithoptions
+                # Keep all owned profiles until the whole capture transaction
+                # finishes; cleanup failure remains fatal, without retries.
+                env["WEBVIEW2_USER_DATA_FOLDER"] = tempfile.mkdtemp(prefix="webview2-", dir=temporary)
             env["IBIS_GALLERY_STATE"] = state
             ready_file = Path(temporary) / f"{state}.ready"
             ready_file.unlink(missing_ok=True)

@@ -310,6 +310,8 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     if !app.state::<DialogOpen>().begin() {
         return; // a dialog is already open on the picker
     }
+    #[cfg(target_os = "macos")]
+    crate::panel::activate_for_dialog(app);
     let mut dialog = app
         .dialog()
         .file()

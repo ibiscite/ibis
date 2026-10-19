@@ -88,12 +88,15 @@ fn register_with<E>(
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
-        #[cfg(target_os = "macos")]
-        report(app.show(), NativeIssue::Show);
         report(window.unminimize(), NativeIssue::Unminimize);
         place_on_active_display(app, &window, false);
-        report(window.show(), NativeIssue::Show);
-        report(window.set_focus(), NativeIssue::Focus);
+        #[cfg(target_os = "macos")]
+        crate::panel::show(app);
+        #[cfg(not(target_os = "macos"))]
+        {
+            report(window.show(), NativeIssue::Show);
+            report(window.set_focus(), NativeIssue::Focus);
+        }
         report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
     }
 }
@@ -172,6 +175,8 @@ pub(crate) fn hide_picker(app: AppHandle) {
 /// A window hide alone leaves Ibis active on macOS, swallowing the next paste.
 /// Every dismissal path must also release application focus.
 pub(crate) fn dismiss_picker(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    crate::panel::cancel_initial_presentation(app);
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
         dismiss_with(
             || window.hide(),

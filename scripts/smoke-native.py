@@ -86,6 +86,46 @@ def search_focused(snapshot):
     return any(n.get("focused") for n in named(snapshot, "Search references"))
 
 
+def prepare_initial_picker_show(native, snapshot):
+    # A nonactivating panel can remain key while the editor is already the
+    # frontmost application. Prove it is hidden before testing shortcut SHOW.
+    if snapshot()["visible"]:
+        def ready():
+            current = snapshot()
+            return current["visible"] and search_focused(current)
+        wait_for(ready, "initial picker search ready")
+        native.key("Escape")
+        wait_for(lambda: not snapshot()["visible"], "initial Escape hides picker")
+
+
+EDITABLE_ROLES = {"edit", "text", "entry", "combobox", "axcombobox", "axtextfield", "axsearchfield", "controltype.edit", "controltype.combobox"}
+
+
+def query_failure_facts(snapshot, query, expected):
+    values = [n.get("value") for n in named(snapshot, "Search references")
+              if n.get("role", "").lower().replace(" ", "") in EDITABLE_ROLES]
+    text = strings(snapshot)
+    return {"exact_search_value": query in values,
+            "search_empty": bool(values) and all(value == "" for value in values),
+            "expected_result": expected in text, "one_result": "1 result" in text.splitlines()}
+
+
+def wait_for_query(snapshot, query, expected, report):
+    last = {"nodes": []}
+    def matched():
+        nonlocal last
+        last = snapshot()
+        return expected in strings(last)
+    try:
+        wait_for(matched, "native typed query")
+    except AssertionError:
+        # Keep the final observed snapshot; do not make another native read or
+        # expose accessible query/result text just to diagnose a failure.
+        report["query_failure"] = query_failure_facts(last, query, expected)
+        print("NATIVE QUERY FAILURE " + json.dumps(report["query_failure"]), file=sys.stderr)
+        raise
+
+
 def fixed_toggle_diagnostics(paths):
     allowed = {
         "ibis-picker: toggle visible focused hide",
@@ -149,8 +189,7 @@ def require_tree(snapshot):
     for name in ("Search references", "Search results", "Results"):
         assert named(snapshot, name), f"Accessibility tree omits named {name!r}"
     search = named(snapshot, "Search references")
-    editable = {"edit", "text", "entry", "combobox", "axcombobox", "axtextfield", "axsearchfield", "controltype.edit", "controltype.combobox"}
-    assert any(n["role"].lower().replace(" ", "") in editable for n in search), "Named search is not an editable control"
+    assert any(n["role"].lower().replace(" ", "") in EDITABLE_ROLES for n in search), "Named search is not an editable control"
     results = named(snapshot, "Results")
     assert any("list" in n["role"].lower() and "item" not in n["role"].lower() for n in results), "Named Results is not a list"
 
@@ -316,7 +355,8 @@ class Scripted:
         except subprocess.CalledProcessError as error:
             details = error.stderr or ""
             if system == "Darwin" and any(marker in details for marker in (
-                "TCC Accessibility is not granted", "not allowed assistive access", "(-1743)",
+                "TCC Accessibility is not granted", "TCC event posting is not granted",
+                "not allowed assistive access", "(-1743)",
             )):
                 raise Unavailable("macOS Accessibility/Automation permission is unavailable; see helper diagnostics") from error
             raise RuntimeError("Native automation preflight failed; see helper diagnostics") from error
@@ -389,7 +429,17 @@ class Scripted:
             raise
 
     def focus_editor(self):
-        self.call("focus-editor")
+        state = self.call("focus-editor")
+        if self.system == "Windows":
+            keys = {"owned", "window_valid", "request_accepted", "current_foreground"}
+            if not isinstance(state, dict) or set(state) != keys or any(type(value) is not bool for value in state.values()):
+                raise RuntimeError("Native editor focus request metadata unavailable")
+            if not state["owned"] or not state["window_valid"]:
+                raise AssertionError("Native editor window identity was lost")
+            print("NATIVE EDITOR FOCUS REQUEST " + json.dumps(state), flush=True)
+            # SetForegroundWindow reports a request outcome. Only this fresh
+            # native observation can satisfy focus, including before samples.
+            wait_for(self.editor_focused, "owned editor receives actual foreground focus")
 
     def editor_focused(self):
         return self.call("editor-focused")
@@ -524,7 +574,7 @@ def main():
                         wait_for(picker_ready, "Windows picker activated before typing")
                 native.key("ctrl+a" if system != "Darwin" else "super+a")
                 native.text(text)
-                wait_for(lambda: expected in strings(snapshot()), f"native typed query {text}")
+                wait_for_query(snapshot, text, expected, report)
 
             shortcut = args.shortcut or ("ctrl+super+r" if system == "Darwin" else "ctrl+shift+space")
             launch("small")
@@ -532,9 +582,8 @@ def main():
             check("accessibility named search/count/list", lambda: require_tree(snapshot()))
 
             def show():
-                # Editor creation can steal initial activation while the app
-                # launches. Summon through the global shortcut before sending
-                # any picker-local keys.
+                if system == "Darwin":
+                    prepare_initial_picker_show(native, snapshot)
                 native.focus_editor()
                 wait_for(native.editor_focused, "previous editor focused")
                 def focus_state(stage):
@@ -760,6 +809,101 @@ def main():
 
 
 class ContractTests(unittest.TestCase):
+    class InitialPickerModel:
+        def __init__(self, visible=True, search_ready=True, accepts_escape=True):
+            self.visible, self.key_window = visible, visible
+            self.search_ready, self.accepts_escape = search_ready, accepts_escape
+            self.events = []
+
+        def snapshot(self):
+            return {"visible": self.visible, "nodes": [{
+                "name": "Search references", "focused": self.search_ready,
+            }]}
+
+        def focus_editor(self):
+            # The editor can already be frontmost while the panel owns keys.
+            self.events.append(("editor", self.visible))
+
+        def key(self, key):
+            self.events.append((key, self.visible))
+            if key == "Escape" and self.accepts_escape:
+                self.visible = self.key_window = False
+            elif key == "ctrl+super+r":
+                self.visible = not (self.visible and self.key_window)
+                self.key_window = self.visible
+
+    def test_initial_key_panel_requires_hidden_precondition_before_shortcut_show(self):
+        old = self.InitialPickerModel()
+        old.focus_editor()
+        old.key("ctrl+super+r")
+        self.assertFalse(old.visible, "Old frontmost-only sequence must reproduce toggle-hide")
+
+        native = self.InitialPickerModel()
+        with patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)):
+            prepare_initial_picker_show(native, native.snapshot)
+        native.focus_editor()
+        native.key("ctrl+super+r")
+        self.assertEqual(native.events, [("Escape", True), ("editor", False), ("ctrl+super+r", False)])
+        self.assertTrue(native.visible)
+
+    def test_hidden_initial_picker_does_not_send_escape_into_the_editor(self):
+        native = self.InitialPickerModel(visible=False)
+        prepare_initial_picker_show(native, native.snapshot)
+        self.assertEqual(native.events, [])
+
+    def test_visible_initial_picker_requires_named_search_before_escape(self):
+        native = self.InitialPickerModel(search_ready=False)
+        with patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)):
+            with self.assertRaisesRegex(AssertionError, "initial picker search ready"):
+                prepare_initial_picker_show(native, native.snapshot)
+        self.assertEqual(native.events, [])
+
+    def test_initial_escape_must_actually_hide_before_editor_focus(self):
+        native = self.InitialPickerModel(accepts_escape=False)
+        with patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)):
+            with self.assertRaisesRegex(AssertionError, "initial Escape hides picker"):
+                prepare_initial_picker_show(native, native.snapshot)
+        self.assertEqual(native.events, [("Escape", True)])
+
+    def test_query_failure_facts_distinguish_empty_partial_and_exact_editable_values(self):
+        for value, exact, empty in (("", False, True), ("priv", False, False), ("private query", True, False)):
+            current = {"nodes": [
+                {"name": "Search references", "role": "static text", "value": ""},
+                {"name": "Search references", "role": "AXComboBox", "value": value},
+                {"name": "private result", "value": "11 results"},
+            ]}
+            self.assertEqual(query_failure_facts(current, "private query", "private result"), {
+                "exact_search_value": exact, "search_empty": empty,
+                "expected_result": True, "one_result": False,
+            })
+
+    def test_failed_query_records_only_last_snapshot_booleans_and_static_description(self):
+        states = iter([{"nodes": []}, {"nodes": [
+            {"name": "Search references", "role": "AXTextField", "value": "private partial"},
+            {"name": "1 result", "value": "private document"},
+        ]}])
+        report = {}
+        def fail(predicate, description):
+            self.assertFalse(predicate())
+            self.assertFalse(predicate())
+            raise AssertionError(f"Timed out: {description}")
+        with patch(__name__ + ".wait_for", side_effect=fail), patch("sys.stderr") as stderr, patch("builtins.print") as output:
+            with self.assertRaisesRegex(AssertionError, "^Timed out: native typed query$"):
+                wait_for_query(lambda: next(states), "private query", "private result", report)
+        self.assertEqual(report, {"query_failure": {
+            "exact_search_value": False, "search_empty": False,
+            "expected_result": False, "one_result": True,
+        }})
+        self.assertNotIn("private", json.dumps(report) + str(output.call_args))
+        self.assertIs(output.call_args.kwargs["file"], stderr)
+
+    def test_successful_query_does_not_emit_failure_facts(self):
+        report = {}
+        with patch(__name__ + ".wait_for", side_effect=lambda predicate, _description: self.assertTrue(predicate())), patch("builtins.print") as output:
+            wait_for_query(lambda: {"nodes": [{"name": "expected private title"}]}, "private query", "expected private title", report)
+        self.assertEqual(report, {})
+        output.assert_not_called()
+
     def test_helper_timeout_emits_only_allowlisted_stages_from_bytes_stderr(self):
         native = Scripted.__new__(Scripted)
         native.system, native.command = "Windows", ["synthetic-helper", "private argument"]
@@ -784,6 +928,10 @@ class ContractTests(unittest.TestCase):
             state["editor_window_visible"] = "true"
             with self.assertRaisesRegex(RuntimeError, "metadata unavailable"):
                 editor_focus_facts(native, "copy-restoration-timeout")
+
+    def test_global_macos_hid_event_contracts_without_native_execution(self):
+        subprocess.run(["node", str(Path(__file__).with_name("smoke-macos.test.cjs"))], check=True,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
 
     def test_macos_click_reacquires_a_missing_control_and_stops_after_one_press(self):
         native = Scripted.__new__(Scripted)
@@ -959,12 +1107,137 @@ class ContractTests(unittest.TestCase):
         native = Scripted.__new__(Scripted)
         native.system, native.command = "Windows", ["pwsh"]
         native.editor_pid, native.editor_started = 12345, 987654321
-        result = subprocess.CompletedProcess(["pwsh"], 0, stdout="true", stderr="")
-        with patch("subprocess.run", return_value=result) as helper, patch("builtins.print"):
+        metadata = {"owned": True, "window_valid": True, "request_accepted": False, "current_foreground": True}
+        results = [subprocess.CompletedProcess(["pwsh"], 0, stdout=json.dumps(metadata), stderr="")]
+        results += [subprocess.CompletedProcess(["pwsh"], 0, stdout="true", stderr="")] * 3
+        with patch("subprocess.run", side_effect=results) as helper, patch("builtins.print"):
             native.focus_editor()
             native.editor_focused()
             native.close()
-            self.assertEqual([call.args[0][-1] for call in helper.call_args_list], ["987654321"] * 3)
+            self.assertEqual([call.args[0][-1] for call in helper.call_args_list], ["987654321"] * 4)
+
+    def test_windows_focus_request_requires_fresh_focus_even_when_request_or_snapshot_says_yes(self):
+        for accepted, foreground in ((False, False), (False, True), (True, True)):
+            native = Scripted.__new__(Scripted)
+            native.system = "Windows"
+            metadata = {"owned": True, "window_valid": True, "request_accepted": accepted, "current_foreground": foreground}
+            actions = []
+            def helper(action):
+                actions.append(action)
+                return metadata if action == "focus-editor" else False
+            def no_focus(predicate, description):
+                self.assertFalse(predicate())
+                raise AssertionError("Actual editor focus did not arrive")
+            with patch.object(native, "call", side_effect=helper), patch(__name__ + ".wait_for", side_effect=no_focus):
+                with self.assertRaisesRegex(AssertionError, "Actual editor focus did not arrive"):
+                    native.focus_editor()
+                    actions.extend(["timer", "launch"])
+            self.assertEqual(actions, ["focus-editor", "editor-focused"])
+
+    def test_windows_refused_foreground_request_can_only_finish_with_fresh_actual_focus(self):
+        native = Scripted.__new__(Scripted)
+        native.system = "Windows"
+        actions = []
+        metadata = {"owned": True, "window_valid": True, "request_accepted": False, "current_foreground": False}
+        observations = iter([False, True])
+        def helper(action):
+            actions.append(action)
+            return metadata if action == "focus-editor" else next(observations)
+        def focused(predicate, description):
+            self.assertFalse(predicate())
+            self.assertTrue(predicate())
+        with patch.object(native, "call", side_effect=helper), patch(__name__ + ".wait_for", side_effect=focused):
+            native.focus_editor()
+            actions.extend(["timer", "launch"])
+        self.assertEqual(actions, ["focus-editor", "editor-focused", "editor-focused", "timer", "launch"])
+
+    def test_windows_focus_metadata_rejects_bad_identity_window_or_schema_before_waiting(self):
+        valid = {"owned": True, "window_valid": True, "request_accepted": False, "current_foreground": True}
+        invalid = [True, None, {**valid, "owned": False}, {**valid, "window_valid": False},
+                   {**valid, "request_accepted": 1}, {**valid, "current_foreground": 1},
+                   {**valid, "payload": "private"}, {key: value for key, value in valid.items() if key != "owned"}]
+        native = Scripted.__new__(Scripted)
+        native.system = "Windows"
+        for metadata in invalid:
+            with patch.object(native, "call", return_value=metadata), patch(__name__ + ".wait_for") as wait, patch("builtins.print") as diagnostic:
+                with self.assertRaises((AssertionError, RuntimeError)):
+                    native.focus_editor()
+                wait.assert_not_called()
+                diagnostic.assert_not_called()
+
+    def test_macos_editor_focus_behavior_is_unchanged(self):
+        native = Scripted.__new__(Scripted)
+        native.system = "Darwin"
+        with patch.object(native, "call", return_value=True) as call, patch(__name__ + ".wait_for") as wait:
+            native.focus_editor()
+            call.assert_called_once_with("focus-editor")
+            wait.assert_not_called()
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows focus helper contract")
+    def test_windows_helper_validates_owned_window_before_at_most_one_foreground_request(self):
+        script = r'''
+param([string] $Source)
+$ErrorActionPreference = 'Stop'
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
+if ($errors.Count) { throw 'Helper syntax is invalid' }
+$getter=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-OwnedEditor'},$true)
+Invoke-Expression $getter.Extent.Text
+$switch=$ast.Find({param($node) $node -is [System.Management.Automation.Language.SwitchStatementAst] -and $node.Condition.Extent.Text -eq '$Action'},$true)
+$clause=@($switch.Clauses | Where-Object {$_.Item1.Value -eq 'focus-editor'})[0].Item2.Extent.Text
+$operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
+Add-Type @'
+using System;
+public static class IbisSmoke {
+ public static bool Live=true, Accepted=false;
+ public static uint Owner=12345, Foreground=0;
+ public static int Requests=0;
+ public static bool IsWindow(IntPtr window) { return Live; }
+ public static uint OwnerPid(IntPtr window) { return Owner; }
+ public static uint ForegroundPid() { return Foreground; }
+ public static bool SetForegroundWindow(IntPtr window) { Requests++; return Accepted; }
+}
+'@
+$EditorId=12345; $Text='987654321'
+$script:current=[pscustomobject]@{ProcessName='Notepad';StartTime=[DateTime]::new(987654321,[DateTimeKind]::Utc);MainWindowHandle=[IntPtr]::new(20)}
+function Get-Process { param($Id,$ErrorAction) $script:current }
+foreach ($accepted in @($false,$true)) {
+ [IbisSmoke]::Requests=0; [IbisSmoke]::Accepted=$accepted
+ $result=& $operation
+ if ($result.Count -ne 4 -or !$result.owned -or !$result.window_valid -or
+     $result.request_accepted -ne $accepted -or $result.current_foreground -or [IbisSmoke]::Requests -ne 1) { throw 'Request metadata regression' }
+}
+[IbisSmoke]::Foreground=12345; [IbisSmoke]::Requests=0
+$result=& $operation
+if (!$result.current_foreground -or [IbisSmoke]::Requests -ne 0) { throw 'Already focused editor was requested again' }
+foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
+ [IbisSmoke]::Requests=0; [IbisSmoke]::Live=$true; [IbisSmoke]::Owner=12345
+ $script:current=[pscustomobject]@{ProcessName='Notepad';StartTime=[DateTime]::new(987654321,[DateTimeKind]::Utc);MainWindowHandle=[IntPtr]::new(20)}
+ switch ($failure) {
+  'missing' {$script:current=$null}
+  'identity' {$script:current.StartTime=[DateTime]::new(987654322,[DateTimeKind]::Utc)}
+  'zero' {$script:current.MainWindowHandle=[IntPtr]::Zero}
+  'invalid' {[IbisSmoke]::Live=$false}
+  'other-owner' {[IbisSmoke]::Owner=54321}
+ }
+ $rejected=$false
+ try { & $operation | Out-Null } catch {$rejected=$true}
+ if (!$rejected -or [IbisSmoke]::Requests -ne 0) { throw 'Unowned or invalid editor reached a foreground request' }
+}
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "focus-contract.ps1"
+            test.write_text(script, encoding="utf-8")
+            result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
+                                     "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
+                                    capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        facts = [json.loads(line.removeprefix("NATIVE EDITOR FOCUS ")) for line in result.stderr.splitlines()]
+        self.assertTrue(facts)
+        for value in facts:
+            self.assertEqual(set(value), {"stage", "owned", "window_valid", "request_accepted", "current_foreground"})
+            self.assertIn(value.pop("stage"), ("identity", "window", "foreground-request"))
+            self.assertTrue(all(type(item) is bool for item in value.values()))
 
     def test_windows_editor_preflight_rejects_a_pid_without_creation_identity(self):
         with patch.object(Scripted, "call", side_effect=[True, 12345]):
@@ -986,7 +1259,8 @@ class ContractTests(unittest.TestCase):
                 Scripted("Darwin")
 
     def test_explicit_macos_permission_denials_remain_unavailable(self):
-        for details in ("not allowed assistive access. (-1719)", "not authorized to send Apple events. (-1743)"):
+        for details in ("not allowed assistive access. (-1719)", "not authorized to send Apple events. (-1743)",
+                        "TCC event posting is not granted; native smoke unavailable"):
             with self.subTest(details=details):
                 error = subprocess.CalledProcessError(1, ["osascript"], stderr=details)
                 with patch.object(Scripted, "call", side_effect=error):

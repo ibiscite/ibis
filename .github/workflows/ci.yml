@@ -293,11 +293,29 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-Linux --budgets scripts/smoke-budgets.json
 
       - name: Exercise the native picker (macOS)
+        id: native_macos
         if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS'
         run: |
           python3 scripts/smoke-native.py --self-test
           python3 scripts/check-offline.test.py
           python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-macOS --budgets scripts/smoke-budgets.json
+
+      - name: Keep failed macOS native diagnostics immediately
+        if: always() && env.NATIVE == 'true' && runner.os == 'macOS' && steps.native_macos.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-failure-${{ github.sha }}-macOS
+          path: |
+            screenshots/smoke-macOS/*.json
+            screenshots/smoke-macOS/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Exercise the full-screen macOS panel
+        if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS'
+        run: |
+          python3 scripts/check-panel-macos.py --self-test
+          python3 scripts/check-panel-macos.py --app target/debug/ibis-desktop --output screenshots/panel-macOS
 
       - name: Exercise the native picker (Windows)
         if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows'
