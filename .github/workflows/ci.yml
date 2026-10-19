@@ -408,6 +408,30 @@ jobs:
           IBIS_REQUIRE_PANDOC: "1"
         run: cargo test -p ibis --test fidelity --locked
 
+  zotero:
+    name: Real Zotero
+    # Reads what an actual Zotero sends, so a change in Zotero's answers or
+    # a wrong assumption about them fails here rather than on a tester's
+    # computer. Downloads the current Zotero release from zotero.org.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install Zotero's system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
+
+      - name: Run the real-Zotero test
+        run: scripts/real-zotero.sh
+
   dependencies:
     name: Dependency policy
     runs-on: ubuntu-24.04

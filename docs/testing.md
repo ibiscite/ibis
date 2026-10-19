@@ -16,6 +16,7 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 | Differential tests | Loss of meaning, measured against an independent implementation | `crates/ibis-cli/tests/fidelity.rs` (Pandoc); planned nightly on larger corpora (#69) |
 | Fuzzing | Crashes and runaway work on arbitrary bytes | `fuzz/fuzz_targets/`, nightly `.github/workflows/fuzz.yml` |
 | Open-data corpus | Real names, scripts and records synthetic data misses | `corpus/`, weekly/manual `.github/workflows/corpus.yml`; offline checks on every change |
+| Real Zotero | Wrong assumptions about what Zotero's local API actually sends (answer shapes, versions, change checks) | `crates/ibis-zotero-local/tests/real_zotero.rs`, run by `scripts/real-zotero.sh` against a freshly downloaded Zotero in CI (Linux) |
 | Native picker smoke | Real shortcuts, accessibility, clipboard, focus, reloads and 100k measurements | `scripts/smoke-native.py`, platform adapters; requires an interactive runner |
 
 ## Rules
