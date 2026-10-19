@@ -75,6 +75,8 @@ pub(crate) struct Library {
     /// The requested source, including before it has produced an index.
     pub(crate) requested: Option<Source>,
     pub(crate) opening: bool,
+    /// A Zotero change check is running; unlike `opening`, it is not shown.
+    checking: bool,
     pub(crate) index: OwnedIndex,
     pub(crate) warnings: Vec<LoadWarning>,
     /// Exact initial load observation, reused when attaching the watcher.
@@ -466,15 +468,48 @@ pub(crate) fn use_zotero_library(app: &AppHandle) {
 /// Check the open Zotero library for changes, for example when the picker
 /// is shown. A file library has its own watcher, so nothing happens then.
 pub(crate) fn refresh_zotero(app: &AppHandle) {
+    if let Some((request, source, previous)) = begin_check(&app.state(), &app.state()) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let loaded = tauri::async_runtime::spawn_blocking(move || load_source(source, true, previous))
+                .await
+                .unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
+            if install_loaded(&app.state(), &app.state(), request, loaded).is_some() {
+                publish_current(&app);
+                watch_current(&app, request);
+            }
+        });
+        return;
+    }
     let source = app
         .state::<Mutex<Library>>()
         .lock()
         .ok()
-        .filter(|library| !library.opening)
+        .filter(|library| !library.opening && !library.checking)
         .and_then(|library| zotero_to_check(&library).map(|source| retry(&library, source)));
     if let Some((source, remember)) = source {
         start_open(app, source, remember);
     }
+}
+
+/// Start checking the open Zotero library for changes without showing it:
+/// the picker keeps its state until Zotero has changed or cannot be reached.
+/// The check is numbered like any request, so a newer choice discards it.
+fn begin_check(library: &Mutex<Library>, requests: &LoadRequests) -> Option<(u64, Source, Option<api::Snapshot>)> {
+    let mut library = library.lock().ok()?;
+    let source = library.source.clone()?;
+    // An installed library has no separate request; a different request is a
+    // choice in progress or a failed one that must stay visible.
+    let other_request = library.requested.as_ref().is_some_and(|requested| requested != &source);
+    if library.opening || library.checking || other_request {
+        return None;
+    }
+    let Source::Zotero(_) = source else {
+        return None;
+    };
+    let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
+    library.checking = true;
+    Some((request, source, library.zotero.clone()))
 }
 
 /// The Zotero library to read again: the one asked for, even if it has not
@@ -599,6 +634,7 @@ fn install_result(
         }
         Err(error) => {
             library.opening = false;
+            library.checking = false;
             if failed_choice {
                 library.retained_error = Some(error);
             } else {
@@ -627,6 +663,7 @@ fn install_loaded(
                 return None;
             }
             library.opening = false;
+            library.checking = false;
             library.error = None;
             // Keep the note: a "not saved for next time" warning must outlive
             // the check that showing the picker starts right after it.
@@ -648,6 +685,7 @@ fn begin_open(
     let reload = library.source.as_ref() == Some(&source);
     library.requested = Some(source);
     library.opening = true;
+    library.checking = false;
     library.error = None;
     library.retained_error = None;
     Some((request, reload, status(&library)))
@@ -1261,6 +1299,53 @@ mod tests {
             Source::Zotero(ZoteroLibrary::User).name().as_deref(),
             Some("Zotero library")
         );
+    }
+
+    #[test]
+    fn a_zotero_change_check_is_not_shown_and_a_newer_choice_discards_it() {
+        let zotero = Source::Zotero(ZoteroLibrary::User);
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        // Open Zotero the ordinary way, as at start or after "Use Zotero".
+        let (opened, _, _) = begin_open(&library, &requests, zotero.clone()).unwrap_or_else(|| panic!("opens"));
+        let loaded = candidate(
+            zotero.clone(),
+            ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Kept}}"),
+        );
+        install_loaded(&library, &requests, opened, Ok(Loaded::New(Box::new(loaded))));
+        if let Ok(mut library) = library.lock() {
+            library.error = Some("Zotero is not running".into());
+        }
+        let shown = library.lock().ok().map(|l| status(&l)).map(|s| (s.state, s.error));
+        let (request, source, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the check starts"));
+        assert_eq!(source, zotero);
+        assert_eq!(
+            library.lock().ok().map(|l| status(&l)).map(|s| (s.state, s.error)),
+            shown
+        );
+        assert!(begin_check(&library, &requests).is_none(), "one check at a time");
+
+        let unchanged = install_loaded(&library, &requests, request, Ok(Loaded::Unchanged))
+            .unwrap_or_else(|| panic!("the check is current"));
+        assert_eq!(unchanged.state, LibraryState::Loaded);
+        assert!(unchanged.error.is_none(), "Zotero answered, so the old error goes");
+
+        let (stale, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the next check starts"));
+        let (choice, _, _) = begin_open(&library, &requests, PathBuf::from("synthetic.bib"))
+            .unwrap_or_else(|| panic!("the choice starts"));
+        assert!(install_loaded(&library, &requests, stale, Err("Zotero is not running".into())).is_none());
+        let failed = install_loaded(&library, &requests, choice, Err("the file could not be read".into()))
+            .unwrap_or_else(|| panic!("the choice is current"));
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("the file could not be read; keeping the last loaded references")
+        );
+
+        let file = Mutex::new(candidate(
+            PathBuf::from("synthetic.bib"),
+            ibis_core::bibtex::load_str("synthetic", ""),
+        ));
+        assert!(begin_check(&file, &requests).is_none(), "a file has its own watcher");
     }
 
     #[test]
