@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ibis_core::model::{LoadWarning, RecordId, Reference};
 use ibis_core::search::OwnedIndex;
-use ibis_core::source::{SourceSnapshot, SourceWatch, load_library_snapshot};
+use ibis_core::source::{SourceError, SourceSnapshot, SourceWatch, load_library_snapshot};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -360,6 +360,25 @@ pub(crate) fn reload_library_file(app: &AppHandle) {
     }
 }
 
+/// Retention belongs to the installed desktop snapshot, not the source error.
+fn error_with_snapshot_context(error: String, has_references: bool) -> String {
+    if has_references
+        && [
+            SourceError::Unavailable,
+            SourceError::Unreadable,
+            SourceError::Incomplete,
+            SourceError::LoadLimit,
+            SourceError::Changing,
+        ]
+        .iter()
+        .any(|source| source.to_string() == error)
+    {
+        format!("{error}; keeping the last loaded references")
+    } else {
+        error
+    }
+}
+
 /// Make a loaded library current, or record why it failed to open. Returns
 /// `None` when a newer request has been made since this one.
 pub(crate) fn install(
@@ -379,14 +398,10 @@ pub(crate) fn install(
         }
         Err(error) => {
             library.opening = false;
-            library.error = Some(if library.index.references().is_empty() {
-                error
-                    .strip_suffix("; keeping the last loaded references")
-                    .unwrap_or(&error)
-                    .to_string()
-            } else {
-                error
-            });
+            library.error = Some(error_with_snapshot_context(
+                error,
+                !library.index.references().is_empty(),
+            ));
         }
     }
     Some(status(&library))
@@ -576,36 +591,52 @@ mod tests {
 
     #[test]
     fn only_populated_snapshots_claim_that_references_were_retained() {
+        let failures = [
+            (SourceError::Unavailable, "the library file is unavailable"),
+            (
+                SourceError::Unreadable,
+                "the library file is not UTF-8 text; save it as UTF-8",
+            ),
+            (SourceError::Incomplete, "the library file contains an unfinished entry"),
+            (SourceError::LoadLimit, "the library exceeded the load work limit"),
+            (SourceError::Changing, "the library file is still changing"),
+        ];
         let library = Mutex::new(Library {
             path: Some(PathBuf::from("empty.bib")),
             ..Library::default()
         });
         let requests = LoadRequests::default();
-        let empty = install(
-            &library,
-            &requests,
-            0,
-            Err(ibis_core::source::SourceError::Unavailable.to_string()),
-        )
-        .unwrap_or_else(|| panic!("expected the current library request"));
-        assert_eq!(empty.error.as_deref(), Some("the library file is unavailable"));
+        for (error, message) in &failures {
+            let empty = install(&library, &requests, 0, Err(error.to_string()))
+                .unwrap_or_else(|| panic!("expected the current library request"));
+            assert_eq!(empty.error.as_deref(), Some(*message));
+            assert_eq!(empty.references, 0);
+        }
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = dir.path().join("populated.bib");
         std::fs::write(&path, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));
         install(&library, &requests, 0, load_library(path, false));
-        let retained = install(
-            &library,
-            &requests,
-            0,
-            Err(ibis_core::source::SourceError::Unavailable.to_string()),
-        )
-        .unwrap_or_else(|| panic!("expected the current library request"));
-        assert!(
-            retained
-                .error
-                .unwrap_or_else(|| panic!("expected a library failure"))
-                .contains("keeping the last loaded references")
-        );
+        for (error, message) in &failures {
+            let retained = install(&library, &requests, 0, Err(error.to_string()))
+                .unwrap_or_else(|| panic!("expected the current library request"));
+            assert_eq!(
+                retained.error,
+                Some(format!("{message}; keeping the last loaded references"))
+            );
+            assert_eq!(retained.references, 1);
+        }
+    }
+
+    #[test]
+    fn unrelated_errors_keep_their_original_context() {
+        for error in [
+            SourceError::NotRegular.to_string(),
+            SourceError::TooLarge.to_string(),
+            SourceError::WatchUnavailable.to_string(),
+            "loading the library stopped unexpectedly".to_string(),
+        ] {
+            assert_eq!(error_with_snapshot_context(error.clone(), true), error);
+        }
     }
 
     #[test]

@@ -17,21 +17,22 @@ const SETTLE: Duration = Duration::from_millis(250);
 const MAX_UNAVAILABLE_RETRY: Duration = Duration::from_secs(5);
 
 /// Allowlisted diagnostics: never expose paths, contents or operating system errors.
+/// Front ends add any context about their installed references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum SourceError {
-    #[error("the library file is unavailable; keeping the last loaded references")]
+    #[error("the library file is unavailable")]
     Unavailable,
     #[error("the library must be a regular file")]
     NotRegular,
     #[error("the library file is larger than 64 MiB")]
     TooLarge,
-    #[error("the library file is not UTF-8 text; save it as UTF-8; keeping the last loaded references")]
+    #[error("the library file is not UTF-8 text; save it as UTF-8")]
     Unreadable,
-    #[error("the library file contains an unfinished entry; keeping the last loaded references")]
+    #[error("the library file contains an unfinished entry")]
     Incomplete,
-    #[error("the library exceeded the load work limit; keeping the last loaded references")]
+    #[error("the library exceeded the load work limit")]
     LoadLimit,
-    #[error("the library file is still changing; keeping the last loaded references")]
+    #[error("the library file is still changing")]
     Changing,
     #[error("automatic library updates are unavailable; use Reload to try again")]
     WatchUnavailable,

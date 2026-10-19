@@ -67,6 +67,28 @@ fn file_errors_use_allowlisted_core_messages() {
 }
 
 #[test]
+fn fresh_cli_errors_never_claim_that_references_were_retained() {
+    let invalid = write("cli-neutral-errors", "synthetic.bib", "");
+    std::fs::write(&invalid, b"synthetic private text\xff").unwrap_or_else(|e| panic!("{e}"));
+    for (path, message) in [
+        (invalid.with_file_name("missing.bib"), "the library file is unavailable"),
+        (invalid, "the library file is not UTF-8 text; save it as UTF-8"),
+    ] {
+        for args in [
+            vec!["search", "synthetic", "--bib", s(&path), "--json"],
+            vec!["cite", "synthetic", "--bib", s(&path), "--json"],
+            vec!["check", s(&path), "--json"],
+            vec!["csl", "--all", "--bib", s(&path)],
+        ] {
+            let output = ibis(&args);
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            assert_eq!(String::from_utf8_lossy(&output.stderr), format!("ibis: {message}\n"));
+        }
+    }
+}
+
+#[test]
 fn fresh_cli_loads_still_keep_completed_entries_from_damaged_libraries() {
     let path = write(
         "cli-initial-load",
