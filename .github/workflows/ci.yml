@@ -3,14 +3,18 @@ name: CI
 on:
   push:
     branches: [main]
+    # A merge that changes only documentation was already checked on its pull
+    # request and cannot change what the build or tests produce.
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
   workflow_dispatch:
 
-# A newer push to a pull request replaces its older run. Every commit on main
-# gets its own group and runs to completion, so each merged state is tested.
+# A newer push replaces the older run of the same branch or pull request. On
+# main, the newest commit contains every earlier merge, so its run tests them
+# all and the macOS and Windows runners are not kept busy by superseded states.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
