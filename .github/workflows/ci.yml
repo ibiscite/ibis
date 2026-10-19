@@ -275,7 +275,7 @@ jobs:
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
 
       - name: Capture every synthetic picker state
-        if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success'
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' }}
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
             python -B scripts/test_capture_gallery.py
@@ -289,7 +289,7 @@ jobs:
           fi
 
       - name: Exercise the native picker (Linux)
-        if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux'
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
           /usr/bin/python3 scripts/smoke-native.py --self-test
           /usr/bin/python3 scripts/check-offline.test.py
@@ -298,7 +298,7 @@ jobs:
 
       - name: Exercise the native picker (macOS)
         id: native_macos
-        if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS'
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 scripts/smoke-native.py --self-test
           python3 scripts/check-offline.test.py
@@ -316,23 +316,25 @@ jobs:
           retention-days: 14
 
       - name: Exercise the full-screen macOS panel
-        if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS'
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 scripts/check-panel-macos.py --self-test
           python3 scripts/check-panel-macos.py --app target/debug/ibis-desktop --output screenshots/panel-macOS
 
       - name: Exercise the native picker (Windows)
-        if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows'
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
         run: |
           python scripts/smoke-native.py --self-test
           python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/smoke-Windows --budgets scripts/smoke-budgets.json
 
       - name: Observe native materials and accessibility changes (macOS)
-        if: always() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS'
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 -B scripts/test_native_appearance_macos.py
           python3 scripts/check-native-appearance-macos.py --app target/debug/ibis-desktop --output screenshots/appearance-macOS
 
+      # Uploads still run after a job timeout (which counts as cancelled) so
+      # a hang leaves its logs; publishing happens only in the screenshots job.
       - name: Keep screenshots and startup logs
         if: always() && env.NATIVE == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -345,7 +347,7 @@ jobs:
   screenshots:
     name: Collect picker screenshots
     needs: [changes, desktop]
-    if: always() && needs.changes.outputs.native == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: ${{ !cancelled() && needs.changes.outputs.native == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     # GitHub cannot restrict GITHUB_TOKEN to a branch. Keep write permission in
