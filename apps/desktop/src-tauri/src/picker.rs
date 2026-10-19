@@ -22,12 +22,13 @@ pub(crate) struct ShortcutStatus {
 }
 
 /// Default shortcut: Control+Command+R on macOS, where Cmd+Shift+Space opens
-/// the Siri typing field (#133); Ctrl+Shift+Space elsewhere.
+/// the Siri typing field; Ctrl+Shift+Y elsewhere, because Ctrl+Shift+Space
+/// types a non-breaking space in Word and LibreOffice Writer (#133).
 pub(crate) fn default_shortcut() -> Shortcut {
     if cfg!(target_os = "macos") {
         Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SUPER), Code::KeyR)
     } else {
-        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
+        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyY)
     }
 }
 
@@ -35,7 +36,7 @@ pub(crate) fn shortcut_label() -> &'static str {
     if cfg!(target_os = "macos") {
         "Control+Command+R"
     } else {
-        "Ctrl+Shift+Space"
+        "Ctrl+Shift+Y"
     }
 }
 
@@ -358,6 +359,18 @@ mod tests {
         assert_eq!(
             default_shortcut(),
             Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SUPER), Code::KeyR)
+        );
+    }
+
+    /// Ctrl+Shift+Space types a non-breaking space in Word and LibreOffice
+    /// Writer, and Ctrl+Alt is AltGr on many layouts (#133).
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn the_default_shortcut_takes_no_keys_editors_type_with() {
+        assert_eq!(shortcut_label(), "Ctrl+Shift+Y");
+        assert_eq!(
+            default_shortcut(),
+            Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyY)
         );
     }
 

@@ -482,7 +482,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Space or Control+Command+R on macOS")
+    parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Control+Command+R on macOS")
     parser.add_argument("--budgets", type=Path, help="Measured per-platform baseline JSON, with startup_ms, first_result_ms, memory_bytes ceilings")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -576,7 +576,7 @@ def main():
                 native.text(text)
                 wait_for_query(snapshot, text, expected, report)
 
-            shortcut = args.shortcut or ("ctrl+super+r" if system == "Darwin" else "ctrl+shift+space")
+            shortcut = args.shortcut or ("ctrl+super+r" if system == "Darwin" else "ctrl+shift+y")
             launch("small")
             check("startup", lambda: wait_for(lambda: "3 references" in strings(snapshot()), "synthetic library startup"))
             check("accessibility named search/count/list", lambda: require_tree(snapshot()))

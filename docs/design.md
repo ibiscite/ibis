@@ -150,8 +150,7 @@ asks once before discarding them. Escape never unpins.
 focus until clicked or summoned. It is the only time Ibis stays on top.
 
 **Never** take keys people type with (Ctrl+Shift+Space is the non-breaking space
-in Word and LibreOffice, yet it is still the Windows and Linux default, which
-#133 changes; Ctrl+Alt types letters on many European layouts; Ctrl+Space
+in Word and LibreOffice, so Windows and Linux use Ctrl+Shift+Y; Ctrl+Alt types letters on many European layouts; Ctrl+Space
 switches input languages), open by itself, appear in the taskbar,
 Dock or Alt+Tab (only the settings window does), or animate longer than 280 ms.
 The shortcut is ignored while a full-screen app or presentation runs, unless it

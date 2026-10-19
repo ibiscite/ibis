@@ -60,7 +60,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       search: async () => state.results ?? [],
       copyCitation: async () => ({ text: "[@example2026]", warnings: [] }),
       copyFormat: async () => "pandoc",
-      shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Space", registered: true, error: null }),
+      shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       chooseLibrary: async () => undefined,
       reloadLibrary: async () => undefined,
       hidePicker: async () => undefined,
