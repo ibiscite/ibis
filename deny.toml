@@ -40,6 +40,9 @@ allow = [
     "BSD-3-Clause",
     "BSL-1.0",
     "CC0-1.0",
+    # Mozilla's root certificate data (webpki-root-certs), used to check
+    # GitHub's certificate for update checks (ADR 0019).
+    "CDLA-Permissive-2.0",
     "ISC",
     "MIT",
     "MPL-2.0",

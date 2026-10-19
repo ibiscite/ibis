@@ -24,6 +24,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod tray;
+mod updater;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -58,6 +59,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_picker(app)))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -72,6 +74,7 @@ fn main() {
         .manage(LibraryWatch::default())
         .manage(DialogOpen::default())
         .manage(Mutex::new(ShortcutStatus::default()))
+        .manage(updater::Updates::default())
         .invoke_handler(bindings::commands().invoke_handler())
         .on_window_event(|window, event| {
             #[cfg(all(target_os = "macos", debug_assertions))]
@@ -169,6 +172,8 @@ fn main() {
                 Ok(Err(error)) => report(Err::<(), _>(error), NativeIssue::TrayCreation),
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
+            // After the tray, so the menu item shows the saved choice.
+            updater::start(app.handle(), loaded.settings.update_checks);
             // The library from settings; IBIS_LIBRARY overrides it for development.
             let library = std::env::var_os("IBIS_LIBRARY")
                 .map(|path| Source::File(PathBuf::from(path)))

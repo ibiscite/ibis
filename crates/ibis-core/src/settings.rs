@@ -53,6 +53,10 @@ pub struct Settings {
     /// Syntax the picker copies citations in; remembered from the last copy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copy_format: Option<KeyFormat>,
+    /// Whether Ibis checks GitHub for updates (ADR 0019). `None` means the
+    /// person has not been asked yet; nothing is checked until they say yes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_checks: Option<bool>,
 }
 
 impl Default for Settings {
@@ -62,6 +66,7 @@ impl Default for Settings {
             shortcut: None,
             library: None,
             copy_format: None,
+            update_checks: None,
         }
     }
 }
@@ -216,10 +221,26 @@ mod tests {
         let settings = Settings {
             shortcut: Some("Control+Command+R".into()),
             copy_format: Some(KeyFormat::Typst),
+            update_checks: Some(false),
             ..Settings::default()
         };
         save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, settings);
+    }
+
+    #[test]
+    fn update_checks_stay_unasked_until_the_person_answers() {
+        assert_eq!(Settings::default().update_checks, None);
+        assert_eq!(parse("{}").map(|s| s.update_checks).ok(), Some(None));
+        let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
+        assert!(!saved.contains("update_checks"));
+        assert_eq!(
+            parse(r#"{"schema_version": 2, "update_checks": true}"#)
+                .map(|s| s.update_checks)
+                .ok(),
+            Some(Some(true))
+        );
+        assert!(parse(r#"{"schema_version": 2, "update_checks": "yes"}"#).is_err());
     }
 
     #[test]

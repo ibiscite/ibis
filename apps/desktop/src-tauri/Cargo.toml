@@ -24,6 +24,9 @@ tauri-plugin-clipboard-manager = "2.5"
 tauri-plugin-dialog = "2.8"
 tauri-plugin-global-shortcut = "2.3"
 tauri-plugin-single-instance = "2.3"
+# Signed opt-in updates (ADR 0019). Without the default `zip` feature: updates
+# are the plain installer, AppImage or macOS app archive, never a zip file.
+tauri-plugin-updater = { version = "2.14", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 # Already locked through Tauri/global-hotkey. Query X11's actual input owner
 # because a passive shortcut grab can leave GTK's active flag stale.
@@ -40,6 +43,8 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+# A mock app for the offline update check test.
+tauri = { version = "2.12", features = ["test"] }
 
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 //! The menu bar (macOS) or tray (Windows, Linux) item.
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
@@ -9,6 +9,7 @@ use crate::library::{
     LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
 };
 use crate::picker::show_picker;
+use crate::updater::{self, AutomaticMenuItem};
 
 /// One line describing the library, for the menu bar or tray menu.
 pub(crate) fn library_line(status: &LibraryStatus) -> String {
@@ -48,22 +49,43 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         None => "Open Picker".to_string(),
     };
     let line = MenuItem::with_id(app, "library", library_line(&current_status(app)), false, None::<&str>)?;
-    let menu = Menu::with_items(
-        app,
-        &[
-            &MenuItem::with_id(app, "open", open_label, true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &line,
-            &MenuItem::with_id(app, "choose", "Choose Library File…", true, None::<&str>)?,
-            &MenuItem::with_id(app, "zotero", "Use Zotero Library", true, None::<&str>)?,
-            &MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "problem", "Report a Problem…", true, None::<&str>)?,
-            &MenuItem::with_id(app, "idea", "Suggest an Idea…", true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "quit", "Quit Ibis", true, None::<&str>)?,
-        ],
-    )?;
+    let open = MenuItem::with_id(app, "open", open_label, true, None::<&str>)?;
+    let choose = MenuItem::with_id(app, "choose", "Choose Library File…", true, None::<&str>)?;
+    let zotero = MenuItem::with_id(app, "zotero", "Use Zotero Library", true, None::<&str>)?;
+    let reload = MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?;
+    let problem = MenuItem::with_id(app, "problem", "Report a Problem…", true, None::<&str>)?;
+    let idea = MenuItem::with_id(app, "idea", "Suggest an Idea…", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Ibis", true, None::<&str>)?;
+    let (first, second, third) = (
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+    );
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&open, &first, &line, &choose, &zotero, &reload, &second];
+    // Builds without an update key have no update items.
+    let update_items = if updater::available(app) {
+        Some((
+            MenuItem::with_id(app, "update_now", "Check for Updates…", true, None::<&str>)?,
+            CheckMenuItem::with_id(
+                app,
+                "update_auto",
+                "Check for Updates Automatically",
+                true,
+                false,
+                None::<&str>,
+            )?,
+        ))
+    } else {
+        None
+    };
+    if let Some((now, automatic)) = &update_items {
+        items.extend([now as &dyn IsMenuItem<tauri::Wry>, automatic]);
+    }
+    items.extend([&problem as &dyn IsMenuItem<tauri::Wry>, &idea, &third, &quit]);
+    let menu = Menu::with_items(app, &items)?;
+    if let Some((_, automatic)) = update_items {
+        app.manage(AutomaticMenuItem(automatic));
+    }
     app.manage(LibraryMenuItem(line));
     let mut tray = TrayIconBuilder::with_id("ibis")
         .tooltip("Ibis")
@@ -76,6 +98,8 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             "reload" => reload_library_file(app),
             "problem" => open_in_browser(app, problem_url()),
             "idea" => open_in_browser(app, idea_url()),
+            "update_now" => updater::check_now(app),
+            "update_auto" => updater::toggle_automatic(app),
             "quit" => app.exit(0),
             _ => {}
         });
