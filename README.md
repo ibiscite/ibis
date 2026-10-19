@@ -16,6 +16,17 @@ Ibis is free, open source and private by design: everything works offline, nothi
 - Gentle library health checks: missing data, odd names, duplicate keys.
 - Windows, macOS and Linux. Keyboard, mouse and screen-reader friendly.
 
+## Use with Zotero today
+
+Until Ibis reads Zotero directly (0.2), let Zotero keep a `.bib` file up to date for you:
+
+1. Install the [Better BibTeX](https://retorque.re/zotero-better-bibtex/installation/) plugin for Zotero.
+2. In Zotero, right-click **My Library** (or a collection) and choose **Export Library…** (or **Export Collection…**).
+3. Choose the **Better BibLaTeX** format, tick **Keep updated**, and save the file somewhere that stays put.
+4. In Ibis, choose that file as your library.
+
+Better BibTeX rewrites the file whenever your library changes, and Ibis reloads it automatically, so new references appear in the picker without another export. Ibis only reads the file; it never changes Zotero or the export.
+
 ## Try the command line tool (developers)
 
 ```sh
