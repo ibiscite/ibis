@@ -202,6 +202,7 @@ existing licence and advisory policy.
 - [Semantic Versioning](https://semver.org/). While the version is `0.x`, features and fixes raise the patch version (`0.1.3`), and completing a roadmap milestone raises the minor version (`0.2.0`), so version numbers match `ROADMAP.md`. A milestone release is requested by adding `Release-As: 0.N.0` to the body of a commit on `main`.
 - [release-please](https://github.com/googleapis/release-please) keeps a release pull request open on GitHub. Merging it updates `CHANGELOG.md` and the version in `Cargo.toml`, creates the tag and the GitHub release. Versions are never edited by hand.
 - Release builds are produced only by CI from a tag. Preview builds may be published as GitHub pre-releases.
+- Every push to `main` also replaces the rolling `nightly` pre-release, so the newest merged state can always be downloaded and tried.
 - Data formats that users keep (settings, destination profiles, history) carry a schema version and a tested migration.
 
 ## Workflow linting
