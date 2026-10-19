@@ -4,6 +4,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    # Let new releases age a week before proposing them; security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       rust-dependencies:
         patterns: ["*"]
@@ -11,6 +14,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    # Let new releases age a week before proposing them; security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ["*"]
@@ -18,6 +24,9 @@ updates:
     directory: /apps/desktop
     schedule:
       interval: monthly
+    # Let new releases age a week before proposing them; security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       desktop-web-dependencies:
         patterns: ["*"]
