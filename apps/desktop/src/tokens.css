@@ -1,3 +1,58 @@
+/* The design language of the picker (docs/design.md, #223): one type
+   scale, a 4 px grid, three row densities, calm motion and colour roles.
+   Sizes are in rem so the system and "Larger text" settings scale them. */
+:root {
+  /* Type: size / line height. Nothing is smaller than 12 px. */
+  --type-search-size: 1.375rem; --type-search-line: 1.75rem;     /* 22/28 */
+  --type-title-size: .9375rem; --type-title-line: 1.25rem;        /* 15/20 */
+  --type-body-size: .875rem; --type-body-line: 1.25rem;           /* 14/20 */
+  --type-meta-size: .8125rem; --type-meta-line: 1.125rem;         /* 13/18 */
+  --type-label-size: .75rem; --type-label-line: 1rem;             /* 12/16 */
+  --type-citation-size: .8125rem;                                 /* 13 */
+  --type-strong-weight: 600;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+  /* Space and size on a 4 px grid. */
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-6: 1.5rem;
+  --search-bar-height: 3.5rem;
+  --footer-height: 2.5rem;
+  --control-min-size: 2rem;
+  --icon-glyph-size: 1.25rem;
+  --icon-stroke: 1.5;
+  --row-compact: 2.5rem;       /* one line */
+  --row-comfortable: 3.625rem; /* two lines, the default */
+  --row-spacious: 4.75rem;     /* three lines */
+  --row-height: var(--row-comfortable);
+  --larger-text-scale: 1.15;
+  --window-radius: 14px;
+
+  /* Motion: feedback, panels, layout. No bounce. */
+  --motion-feedback: 120ms;
+  --motion-panel: 200ms;
+  --motion-layout: 280ms;
+  --motion-ease: cubic-bezier(.2, .8, .2, 1);
+
+  /* Colour roles. The accent is the system's; scarlet marks only the citation. */
+  --citation: CanvasText;
+  --status-done: CanvasText;
+  --status-look: CanvasText;
+  --status-stop: CanvasText;
+}
+
+/* Every colour role passes 4.5:1 on the surface in both themes. */
+@supports (color: light-dark(white, black)) {
+  :root {
+    --citation: light-dark(#c23a1c, #ff7a5c);
+    --status-done: light-dark(#1a7f37, #5bc26f);
+    --status-look: light-dark(#8a5a00, #e3b341);
+    --status-stop: light-dark(#c4314b, #ff8a8a);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-panel: 1ms; --motion-layout: 1ms; }
+}
+
 /* System colours follow light/dark mode, the accent and high contrast. */
 :root {
   --surface: Canvas;
@@ -31,8 +86,8 @@
   --search-gap: .9rem;
   --search-padding: 1.4rem 1.5rem;
   --search-icon-width: 1.35rem;
-  --search-icon-stroke: 1.7;
-  --search-size: 1.35rem;
+  --search-icon-stroke: var(--icon-stroke);
+  --search-size: var(--type-search-size);
   --search-tracking: -.025em;
   --search-input-padding: .25rem 0;
   --search-focus-offset: 5px;
@@ -42,20 +97,20 @@
   --results-min-height: 5rem;
   --results-padding: .5rem;
   --heading-padding: .55rem 1rem .45rem;
-  --heading-size: .7rem;
-  --heading-weight: 500;
+  --heading-size: var(--type-label-size);
+  --heading-weight: var(--type-strong-weight);
   --heading-tracking: .02em;
   --result-gap: 1rem;
   --result-padding: .6rem 1rem;
   --result-margin: .1rem 0;
-  --title-size: .925rem;
-  --title-weight: 550;
-  --title-line-height: 1.4;
+  --title-size: var(--type-title-size);
+  --title-weight: var(--type-strong-weight);
+  --title-line-height: var(--type-title-line);
   --title-tracking: -.01em;
-  --metadata-size: .8rem;
-  --metadata-line-height: 1.5;
+  --metadata-size: var(--type-meta-size);
+  --metadata-line-height: var(--type-meta-line);
   --metadata-gap: .2rem;
-  --key-size: .75rem;
+  --key-size: var(--type-citation-size);
   --key-max-width: 30%;
   --key-padding: .25rem .4rem;
   --empty-padding: 2rem 1rem;
@@ -68,14 +123,14 @@
   --selection-padding: .6rem 1rem;
   --selection-label-padding: .5rem;
   --footer-padding: .55rem 1rem;
-  --footer-size: .75rem;
+  --footer-size: var(--type-label-size);
   --footer-gap: .4rem;
   --library-min-width: 8rem;
   --library-notice-margin: .3rem 0;
   --footer-tools-margin: .25rem;
   --icon-size: 1rem;
   --icon-padding: .15rem .4rem;
-  --hint-size: .65rem;
+  --hint-size: var(--type-label-size);
   --hint-padding: .1rem .25rem;
   --hint-margin: .2rem;
   --contrast-border-width: 3px;
@@ -113,11 +168,11 @@
 }
 
 @media (prefers-contrast: more) {
-  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+  :root { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 @media (forced-colors: active) {
-  :root { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
+  :root { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 
 /* Explicit contrast preview in the development states gallery. */
-:root[data-gallery-theme="contrast"] { --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+:root[data-gallery-theme="contrast"] { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
