@@ -1,0 +1,15 @@
+[package]
+name = "ibis-zotero-local"
+description = "Talks to Zotero's local API on this computer only"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+ibis-core = { path = "../ibis-core" }
+
+[lints]
+workspace = true

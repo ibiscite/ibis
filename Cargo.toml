@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/ibis-core", "crates/ibis-cli", "apps/desktop/src-tauri", "fuzz"]
+members = ["crates/ibis-core", "crates/ibis-cli", "crates/ibis-zotero-local", "apps/desktop/src-tauri", "fuzz"]
 # The desktop app needs system WebView libraries to build; plain `cargo test`
 # covers the core and command line tool. CI builds the app separately;
 # cargo-fuzz selects the fuzz package explicitly with nightly instrumentation.
-default-members = ["crates/ibis-core", "crates/ibis-cli"]
+default-members = ["crates/ibis-core", "crates/ibis-cli", "crates/ibis-zotero-local"]
 
 [workspace.package]
 version = "0.0.0"
