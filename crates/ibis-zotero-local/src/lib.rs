@@ -311,13 +311,11 @@ mod tests {
     }
 
     #[test]
-    fn a_closed_port_means_zotero_is_not_running() {
-        let port = {
-            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap_or_else(|e| panic!("{e}"));
-            listener.local_addr().unwrap_or_else(|e| panic!("{e}")).port()
-        };
+    fn an_unavailable_port_means_zotero_is_not_running() {
+        // Binding zero allocates a nonzero port; connecting to zero fails.
+        // A released ephemeral port could instead be claimed by another test.
         assert_eq!(
-            LocalZotero::on_port(port).get("users/0/items").err(),
+            LocalZotero::on_port(0).get("users/0/items").err(),
             Some(TransportError::Unreachable)
         );
     }
