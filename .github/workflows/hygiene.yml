@@ -1,0 +1,35 @@
+name: Repository hygiene
+
+# Weekly tidy-up (#443): deletes head branches whose pull requests are all
+# finished, and keeps one "Repository hygiene report" issue listing stale pull
+# requests and issues or labels outside the naming standard in
+# docs/development.md. See scripts/hygiene.mjs.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hygiene
+  cancel-in-progress: false
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tidy branches and report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/hygiene.mjs --apply
