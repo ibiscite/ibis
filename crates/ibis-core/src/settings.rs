@@ -306,22 +306,25 @@ pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Setting
 mod tests {
     use super::*;
 
-    fn dir(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("ibis-settings-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        d
+    fn dir(name: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("ibis-settings-{name}-"))
+            .tempdir()
+            .unwrap_or_else(|e| panic!("{e}"))
     }
 
     #[test]
     fn missing_file_gives_defaults_without_a_problem() {
-        let loaded = load(&dir("missing").join("settings.json"));
+        let directory = dir("missing");
+        let loaded = load(&directory.path().join("missing/settings.json"));
         assert_eq!(loaded.settings, Settings::default());
         assert!(loaded.problem.is_none());
     }
 
     #[test]
     fn save_and_load_round_trip() {
-        let path = dir("roundtrip").join("settings.json");
+        let directory = dir("roundtrip");
+        let path = directory.path().join("nested/settings.json");
         let settings = Settings {
             shortcut: Some("Control+Command+R".into()),
             copy_format: Some(KeyFormat::Typst),
@@ -345,7 +348,8 @@ mod tests {
         assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
         assert_eq!(settings.density, Some(Density::Compact));
         assert_eq!(settings.larger_text, Some(true));
-        let path = dir("preferences").join("settings.json");
+        let directory = dir("preferences");
+        let path = directory.path().join("settings.json");
         save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, settings);
     }
@@ -378,7 +382,8 @@ mod tests {
 
     #[test]
     fn corrupt_file_falls_back_to_the_backup_and_reports_it() {
-        let path = dir("corrupt").join("settings.json");
+        let directory = dir("corrupt");
+        let path = directory.path().join("settings.json");
         let good = Settings {
             shortcut: Some("Alt+Space".into()),
             ..Settings::default()
@@ -394,7 +399,8 @@ mod tests {
 
     #[test]
     fn settings_recovery_reports_backup_or_defaults_from_the_same_read() {
-        let path = dir("recovery-source").join("settings.json");
+        let directory = dir("recovery-source");
+        let path = directory.path().join("settings.json");
         fs::create_dir_all(
             path.parent()
                 .unwrap_or_else(|| panic!("expected a synthetic settings directory")),
@@ -416,7 +422,8 @@ mod tests {
 
     #[test]
     fn a_newer_settings_file_is_never_overwritten() {
-        let path = dir("newer").join("settings.json");
+        let directory = dir("newer");
+        let path = directory.path().join("settings.json");
         fs::create_dir_all(path.parent().unwrap_or(Path::new("."))).unwrap_or_else(|e| panic!("{e}"));
         fs::write(&path, r#"{"schema_version": 99, "shortcut": "Alt+X"}"#).unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(load(&path).problem, Some(SettingsError::NewerVersion(99))));
@@ -429,7 +436,8 @@ mod tests {
 
     #[test]
     fn newer_files_are_refused_even_when_their_fields_changed_type() {
-        let path = dir("newer-types").join("settings.json");
+        let directory = dir("newer-types");
+        let path = directory.path().join("settings.json");
         fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("no parent"))).unwrap_or_else(|e| panic!("{e}"));
         let newer = r#"{"schema_version": 99, "shortcut": {"key": "Space"}}"#;
         fs::write(&path, newer).unwrap_or_else(|e| panic!("{e}"));
@@ -443,7 +451,8 @@ mod tests {
 
     #[test]
     fn updates_keep_edits_made_since_loading_and_never_replace_invalid_files() {
-        let path = dir("update").join("settings.json");
+        let directory = dir("update");
+        let path = directory.path().join("settings.json");
         update(&path, |s| s.copy_format = Some(KeyFormat::Typst)).unwrap_or_else(|e| panic!("{e}"));
         // The user edits the file while the app runs.
         let edited = r#"{"schema_version": 1, "shortcut": "Alt+Space", "copy_format": "typst"}"#;
@@ -495,7 +504,8 @@ mod tests {
 
     #[test]
     fn a_migrated_file_is_written_in_the_new_format_and_the_old_one_is_kept_as_backup() {
-        let path = dir("migrate").join("settings.json");
+        let directory = dir("migrate");
+        let path = directory.path().join("settings.json");
         fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("no parent"))).unwrap_or_else(|e| panic!("{e}"));
         let v1 = r#"{"schema_version": 1, "library": "/synthetic/refs.bib"}"#;
         fs::write(&path, v1).unwrap_or_else(|e| panic!("{e}"));
@@ -601,7 +611,8 @@ mod tests {
 
     #[test]
     fn an_invalid_zotero_member_recovers_without_rewriting_the_file() {
-        let path = dir("zotero-member").join("settings.json");
+        let directory = dir("zotero-member");
+        let path = directory.path().join("settings.json");
         let good = Settings {
             library: Some(LibrarySetting::Zotero(ZoteroLibrary::User.into())),
             ..Settings::default()
