@@ -75,7 +75,7 @@ impl<'a> Index<'a> {
 
     /// Return up to `limit` matches, best first. An empty query matches nothing.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'a>> {
-        rank(self.docs.iter().map(|(r, f)| (*r, f)), query, limit)
+        rank(self.docs.iter().map(|(r, f)| (*r, f)), query, limit, &|| false).unwrap_or_default()
     }
 }
 
@@ -99,7 +99,14 @@ impl OwnedIndex {
 
     /// Return up to `limit` matches, best first. An empty query matches nothing.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'_>> {
-        rank(self.references.iter().zip(&self.fields), query, limit)
+        self.search_until(query, limit, &|| false).unwrap_or_default()
+    }
+
+    /// Like [`OwnedIndex::search`], but gives up and returns `None` as soon as
+    /// `stop` returns true, so a search for an outdated query does not keep
+    /// the caller waiting. `stop` is checked every few thousand records.
+    pub fn search_until(&self, query: &str, limit: usize, stop: &dyn Fn() -> bool) -> Option<Vec<Hit<'_>>> {
+        rank(self.references.iter().zip(&self.fields), query, limit, stop)
     }
 }
 
@@ -129,58 +136,90 @@ fn rank<'r, 'f>(
     docs: impl Iterator<Item = (&'r Reference, &'f [String; 8])>,
     query: &str,
     limit: usize,
-) -> Vec<Hit<'r>> {
+    stop: &dyn Fn() -> bool,
+) -> Option<Vec<Hit<'r>>> {
+    const STOP_CHECK_INTERVAL: usize = 4096;
     let normalized = normalize(query);
     let terms: Vec<&str> = normalized.split_whitespace().collect();
-    if terms.is_empty() {
-        return Vec::new();
+    if terms.is_empty() || limit == 0 {
+        return Some(Vec::new());
     }
-    let mut hits: Vec<Hit<'r>> = docs
-        .filter_map(|(reference, fields)| {
-            let mut score = 0;
-            let mut matched = Vec::new();
-            for term in &terms {
-                let best = MatchField::ALL
-                    .iter()
-                    .zip(fields.iter())
-                    .filter(|(field, text)| match field {
-                        MatchField::Year => text.as_str() == *term,
-                        _ => text.contains(term),
-                    })
-                    .map(|(field, text)| (*field, field.weight() * if starts_word(text, term) { 2 } else { 1 }))
-                    .max_by_key(|(_, w)| *w)?;
-                score += best.1;
-                if !matched.contains(&best.0) {
-                    matched.push(best.0);
-                }
-            }
-            let exact_key = reference
-                .citekey
-                .as_deref()
-                .is_some_and(|k| k.to_lowercase() == query.trim().to_lowercase());
-            if exact_key {
-                score += 2000;
-            } else if fields[0] == normalized.trim() {
-                score += 1000;
-            } else if fields[1] == normalized.trim() {
-                score += 500;
-            }
-            matched.sort();
-            Some(Hit {
+    let normalized = normalized.trim();
+    // Lowercase character by character, with final sigma folded, so keys are
+    // compared without allocating per record.
+    let lower = |c: char| char::to_lowercase(c).map(|c| if c == 'ς' { 'σ' } else { c });
+    let exact_query: String = query.trim().chars().flat_map(lower).collect();
+    // Score every record without allocating; matched fields are a bit set and
+    // become a list only for the records that are returned.
+    let mut candidates: Vec<(u32, u8, &'r Reference)> = Vec::new();
+    for (n, (reference, fields)) in docs.enumerate() {
+        if n % STOP_CHECK_INTERVAL == 0 && stop() {
+            return None;
+        }
+        let mut score = 0;
+        let mut matched = 0u8;
+        let mut all_terms = true;
+        for term in &terms {
+            let best = MatchField::ALL
+                .iter()
+                .zip(fields.iter())
+                .enumerate()
+                .filter_map(|(bit, (field, text))| {
+                    let at_word_start = match field {
+                        MatchField::Year => (text.as_str() == *term).then_some(true)?,
+                        _ => find_term(text, term)?,
+                    };
+                    Some((bit, field.weight() * if at_word_start { 2 } else { 1 }))
+                })
+                .max_by_key(|(_, w)| *w);
+            let Some((bit, weight)) = best else {
+                all_terms = false;
+                break;
+            };
+            score += weight;
+            matched |= 1 << bit;
+        }
+        if !all_terms {
+            continue;
+        }
+        let exact_key = reference
+            .citekey
+            .as_deref()
+            .is_some_and(|k| k.chars().flat_map(lower).eq(exact_query.chars()));
+        if exact_key {
+            score += 2000;
+        } else if fields[0] == normalized {
+            score += 1000;
+        } else if fields[1] == normalized {
+            score += 500;
+        }
+        candidates.push((score, matched, reference));
+    }
+    let order = |a: &(u32, u8, &Reference), b: &(u32, u8, &Reference)| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.2.year().cmp(&a.2.year()))
+            .then_with(|| a.2.id.cmp(&b.2.id))
+    };
+    if candidates.len() > limit {
+        candidates.select_nth_unstable_by(limit - 1, order);
+        candidates.truncate(limit);
+    }
+    candidates.sort_unstable_by(order);
+    Some(
+        candidates
+            .into_iter()
+            .map(|(score, bits, reference)| Hit {
                 reference,
                 score,
-                matched,
+                matched: MatchField::ALL
+                    .iter()
+                    .enumerate()
+                    .filter(|(bit, _)| bits & (1 << bit) != 0)
+                    .map(|(_, field)| *field)
+                    .collect(),
             })
-        })
-        .collect();
-    hits.sort_by(|a, b| {
-        b.score
-            .cmp(&a.score)
-            .then_with(|| b.reference.year().cmp(&a.reference.year()))
-            .then_with(|| a.reference.id.cmp(&b.reference.id))
-    });
-    hits.truncate(limit);
-    hits
+            .collect(),
+    )
 }
 
 /// Lowercase, strip accents, fold letter variants and turn punctuation into spaces.
@@ -264,8 +303,20 @@ fn is_optional_mark(c: char) -> bool {
         | '\u{E0100}'..='\u{E01EF}')
 }
 
-fn starts_word(text: &str, term: &str) -> bool {
-    text.starts_with(term) || text.contains(&format!(" {term}"))
+/// Whether `term` occurs in `text`, and if so whether any occurrence starts a word.
+fn find_term(text: &str, term: &str) -> Option<bool> {
+    // `contains` has a vectorized fast path; most fields do not match at all.
+    if !text.contains(term) {
+        return None;
+    }
+    let mut found = false;
+    for (at, _) in text.match_indices(term) {
+        if at == 0 || text.as_bytes()[at - 1] == b' ' {
+            return Some(true);
+        }
+        found = true;
+    }
+    found.then_some(false)
 }
 
 #[cfg(test)]
@@ -325,6 +376,8 @@ mod tests {
         );
         assert_eq!(index.references().len(), 100_000);
         for (query, limit, count) in [
+            ("r", 20, 20),
+            ("研", 20, 20),
             ("research", 20, 20),
             ("research", 200, 200),
             ("研究", 20, 20),
@@ -510,6 +563,48 @@ mod tests {
         let index = Index::new(&refs);
         assert_eq!(index.search("한국", 10).len(), 1);
         assert!(index.search("하국", 10).is_empty());
+    }
+
+    #[test]
+    fn a_stopped_search_returns_nothing_and_limits_keep_the_best() {
+        let refs: Vec<_> = (0..10_000)
+            .map(|n| reference(&format!("k{n}"), "Sleep study", "Smith", 2000 + (n % 20)))
+            .collect();
+        let index = OwnedIndex::new(refs);
+        assert!(index.search_until("sleep", 10, &|| true).is_none());
+        assert!(index.search("sleep", 0).is_empty());
+        let top = index.search("sleep", 5);
+        let all = index.search("sleep", 10_000);
+        assert_eq!(all.len(), 10_000);
+        let ids = |hits: &[Hit]| hits.iter().map(|h| h.reference.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&top), ids(&all[..5]));
+        assert_eq!(top[0].matched, [MatchField::Title]);
+    }
+
+    #[test]
+    fn exact_keys_with_greek_sigma_match_in_any_case() {
+        let refs = [
+            reference("ΜΑΣ", "Other", "X", 2020),
+            reference("μας13", "Other", "Y", 2021),
+        ];
+        let index = Index::new(&refs);
+        for (query, key) in [("μας", "ΜΑΣ"), ("Μας", "ΜΑΣ"), ("ΜΑΣ13", "μας13")] {
+            let hits = index.search(query, 10);
+            assert_eq!(hits[0].reference.id.native_key, key, "{query}");
+            assert!(hits[0].score >= 2000, "{query}");
+        }
+    }
+
+    #[test]
+    fn word_start_matches_score_higher_than_inner_matches() {
+        let refs = [
+            reference("a", "Insomnia", "X", 2020),
+            reference("b", "The somnia", "Y", 2020),
+        ];
+        let index = Index::new(&refs);
+        let hits = index.search("somnia", 10);
+        assert_eq!(hits[0].reference.id.native_key, "b");
+        assert_eq!(hits[0].score, 2 * hits[1].score);
     }
 
     #[test]

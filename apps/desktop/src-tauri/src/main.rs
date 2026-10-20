@@ -35,7 +35,7 @@ use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
-use crate::library::{Library, LibraryWatch, LoadRequests, Source, start_open};
+use crate::library::{Library, LibraryWatch, LoadRequests, SearchRequests, Source, start_open};
 use crate::picker::{
     DialogOpen, Pinned, ShortcutStatus, configured_shortcut, dismiss_picker, hides_on_blur, register_shortcut,
     show_picker, toggle_picker,
@@ -73,6 +73,7 @@ fn main() {
         )
         .manage(Mutex::new(Library::default()))
         .manage(LoadRequests::default())
+        .manage(SearchRequests::default())
         .manage(LibraryWatch::default())
         .manage(DialogOpen::default())
         .manage(Pinned::default())

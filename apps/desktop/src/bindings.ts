@@ -28,9 +28,12 @@ export const commands = {
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**
 	 *  Search the open library. An empty query returns no results. Async so it
-	 *  runs off the main thread.
+	 *  runs off the main thread. `page` identifies the interface page and
+	 *  `request` increases with every search it sends; a search older than that
+	 *  page's newest one returns no results, which the interface ignores because
+	 *  it belongs to an outdated query.
 	 */
-	search: (query: string, limit: number) => __TAURI_INVOKE<SearchResult[]>("search", { query, limit }),
+	search: (query: string, limit: number, page: number, request: number) => __TAURI_INVOKE<SearchResult[]>("search", { query, limit, page, request }),
 	/**
 	 *  Copy the selected records as a citation to the clipboard. The format is
 	 *  remembered for next time.

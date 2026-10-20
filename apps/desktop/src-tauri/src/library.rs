@@ -1,9 +1,10 @@
 //! The open library: loading off the main thread, the search command and
 //! choosing or reloading a library file or the Zotero library.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use ibis_core::model::{LoadWarning, RecordId, Reference};
 use ibis_core::search::OwnedIndex;
@@ -80,7 +81,8 @@ pub(crate) struct Library {
     pub(crate) opening: bool,
     /// A Zotero change check is running; unlike `opening`, it is not shown.
     checking: bool,
-    pub(crate) index: OwnedIndex,
+    /// Shared so a search can run without holding the library lock.
+    pub(crate) index: Arc<OwnedIndex>,
     pub(crate) warnings: Vec<LoadWarning>,
     /// Exact initial load observation, reused when attaching the watcher.
     snapshot: Option<SourceSnapshot>,
@@ -101,6 +103,21 @@ pub(crate) struct Library {
 /// request never replaces the newer library.
 #[derive(Default)]
 pub(crate) struct LoadRequests(pub(crate) AtomicU64);
+
+/// The newest search each interface page has sent, so a search for a query
+/// the person has already typed past stops early instead of delaying the
+/// newer one. The interface numbers its searches, because commands can start
+/// in a different order than they were sent, and names its page, because a
+/// reloaded page counts from the start again.
+#[derive(Default)]
+pub(crate) struct SearchRequests(Mutex<HashMap<u32, Arc<AtomicU32>>>);
+
+impl SearchRequests {
+    fn newest(&self, page: u32) -> Arc<AtomicU32> {
+        let mut pages = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        Arc::clone(pages.entry(page).or_default())
+    }
+}
 
 /// The platform watcher and its worker stop when replaced or the app exits.
 #[derive(Default)]
@@ -269,7 +286,7 @@ fn load_source(source: Source, reload: bool, previous: Option<libraries::Snapsho
 fn candidate(source: impl Into<Source>, loaded: ibis_core::model::LoadResult) -> Library {
     Library {
         source: Some(source.into()),
-        index: OwnedIndex::new(loaded.references),
+        index: Arc::new(OwnedIndex::new(loaded.references)),
         warnings: loaded.warnings,
         snapshot: None,
         error: None,
@@ -787,34 +804,72 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 }
 
 /// Search the open library. An empty query returns no results. Async so it
-/// runs off the main thread.
+/// runs off the main thread. `page` identifies the interface page and
+/// `request` increases with every search it sends; a search older than that
+/// page's newest one returns no results, which the interface ignores because
+/// it belongs to an outdated query.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn search(
     query: String,
     limit: usize,
+    page: u32,
+    request: u32,
     library: State<'_, Mutex<Library>>,
+    requests: State<'_, SearchRequests>,
 ) -> Result<Vec<SearchResult>, String> {
-    let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
-    if library.source.is_none() {
-        return Err(match &library.error {
-            Some(error) => format!("the library could not be opened: {error}"),
-            None => "no library is open".to_string(),
-        });
-    }
-    Ok(library
-        .index
-        .search(&query, limit.min(200))
+    // The library lock is held only to take the index.
+    let index = {
+        let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
+        if library.source.is_none() {
+            return Err(match &library.error {
+                Some(error) => format!("the library could not be opened: {error}"),
+                None => "no library is open".to_string(),
+            });
+        }
+        Arc::clone(&library.index)
+    };
+    Ok(search_newest(&index, &query, limit, request, &requests.newest(page)))
+}
+
+/// Run a search unless a newer request has started, stopping if one does.
+fn search_newest(index: &OwnedIndex, query: &str, limit: usize, request: u32, newest: &AtomicU32) -> Vec<SearchResult> {
+    newest.fetch_max(request, Ordering::SeqCst);
+    let outdated = || newest.load(Ordering::SeqCst) > request;
+    index
+        .search_until(query, limit.min(200), &outdated)
+        .unwrap_or_default()
         .into_iter()
         .map(|hit| {
             let matched = hit.matched.iter().map(|m| format!("{m:?}").to_lowercase()).collect();
             SearchResult::from(hit.reference, matched)
         })
-        .collect())
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_older_search_stops_even_if_it_starts_after_a_newer_one() {
+        let refs = ibis_core::bibtex::load_str("t", "@article{a,title={Sleep},year={2020}}").references;
+        let index = OwnedIndex::new(refs);
+        let newest = AtomicU32::new(0);
+        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest).len(), 1);
+        assert!(search_newest(&index, "sleep", 20, 1, &newest).is_empty());
+        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest).len(), 1);
+        assert_eq!(search_newest(&index, "sleep", 20, 3, &newest).len(), 1);
+    }
+
+    #[test]
+    fn a_reloaded_page_counts_its_searches_afresh() {
+        let refs = ibis_core::bibtex::load_str("t", "@article{a,title={Sleep},year={2020}}").references;
+        let index = OwnedIndex::new(refs);
+        let requests = SearchRequests::default();
+        assert_eq!(search_newest(&index, "sleep", 20, 500, &requests.newest(1)).len(), 1);
+        assert_eq!(search_newest(&index, "sleep", 20, 1, &requests.newest(2)).len(), 1);
+        assert!(search_newest(&index, "sleep", 20, 499, &requests.newest(1)).is_empty());
+    }
+
     use super::*;
 
     #[test]
