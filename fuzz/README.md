@@ -65,3 +65,21 @@ Use a copy of the seed directory for sustained runs so generated corpus entries
 are not accidentally committed. The nightly owner adds new targets separately.
 The crate-specific NCSA policy exception is recorded in ADR 0013; ADR 0014
 amends only its workspace layout.
+
+`bibtex_inheritance` loads arbitrary BibLaTeX and inherited hostile field values,
+then generates chains of 1–32 helpers using crossref or xdata, cycles, case
+variants and conflicting parents. It checks source/key identity, hidden xdata
+helpers, own-field and last-parent precedence, exact-case lookup, crossref title
+mapping, the 16-level cutoff and cycle/depth diagnostics. Repeated loads must
+produce identical references and warnings. LibFuzzer's timeout bounds termination;
+the target does not use wall-clock assertions.
+
+```sh
+cargo test -p ibis-fuzz --test bibtex_inheritance --locked
+corpus_dir=$(mktemp -d)
+cp fuzz/seeds/bibtex_inheritance/* "$corpus_dir/"
+cargo +nightly fuzz run bibtex_inheritance "$corpus_dir" -- -max_total_time=180 -timeout=5 -rss_limit_mb=1024 -max_len=16384
+```
+
+The test replays the synthetic seeds and all generated depth/flag combinations.
+CI owners should wire this target into nightly separately; it is local only today.

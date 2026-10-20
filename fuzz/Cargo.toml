@@ -49,3 +49,10 @@ bench = false
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "bibtex_inheritance"
+path = "fuzz_targets/bibtex_inheritance.rs"
+test = false
+doc = false
+bench = false
