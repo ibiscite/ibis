@@ -8,6 +8,10 @@ import "./styles.css";
 import "./gallery.css";
 
 function rendered(root: HTMLElement, state: GalleryState): boolean {
+  // Real webviews measure layout here; jsdom's zero dimensions do not prove it.
+  // Keep screenshots with sideways overflow from being accepted as a good state.
+  const fits = [document.documentElement, root, root.querySelector("main")]
+    .every((element) => !element || element.scrollWidth <= element.clientWidth);
   const library = state.library;
   const input = root.querySelector<HTMLInputElement>("#search");
   const rows = [...root.querySelectorAll('#results [role="option"]')];
@@ -20,7 +24,7 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
   const announcement = searched ? `${results.length} ${results.length === 1 ? "result" : "results"}` : "";
   const busy = library.state === "loading" ? `Opening ${library.name ?? "library"}…`
     : library.state === "reloading" ? `Reloading ${library.name ?? "library"}…` : null;
-  return input?.value === (state.query ?? "")
+  return fits && input?.value === (state.query ?? "")
     && root.querySelector('[aria-label="Library status"]')?.textContent === label
     && root.querySelector('[aria-label="Search results"]')?.textContent === announcement
     && rows.length === results.length

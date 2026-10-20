@@ -81,6 +81,32 @@ test("the many-results fixture exercises a scrollable real result list", async (
   expect(within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option")).toHaveLength(20);
 });
 
+test("a gallery state with horizontal overflow is not accepted as rendered", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
+  vi.stubGlobal("cancelAnimationFrame", (frame: number) => window.clearTimeout(frame));
+  const state = galleryStates.find((candidate) => candidate.id === "large-text")!;
+  const acknowledge = vi.fn(async () => undefined);
+  const container = document.createElement("div");
+  document.body.append(container);
+  Object.defineProperties(container, {
+    clientWidth: { value: 360 },
+    scrollWidth: { value: 366, configurable: true },
+  });
+  let stop: () => void = () => undefined;
+  try {
+    await act(async () => { stop = renderGalleryState(container, state, acknowledge); });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(acknowledge).not.toHaveBeenCalled();
+    Object.defineProperty(container, "scrollWidth", { value: 360 });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith("large-text");
+  } finally {
+    await act(async () => stop());
+    container.remove();
+  }
+});
+
 test("render acknowledgment waits for the synthetic search and its actual result rows", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));

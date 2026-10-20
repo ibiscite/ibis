@@ -21,10 +21,11 @@ main {
   overflow: auto;
 }
 
-.search-bar { display: flex; align-items: center; gap: var(--search-gap); padding: var(--search-padding); border-bottom: var(--border-width) solid var(--line); cursor: move; user-select: none; }
+.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); padding: var(--search-padding); border-bottom: var(--border-width) solid var(--line); cursor: move; user-select: none; }
 .search-bar svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
 .search-bar:focus-within { border-bottom-color: var(--search-active-border); }
-#search { width: 100%; min-width: 0; font-size: var(--search-size); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: var(--search-input-padding); outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
+/* Reserve readable query space before wrapping controls, at every text size. */
+#search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--search-icon-width) - var(--search-gap))); font-size: var(--search-size); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: var(--search-input-padding); outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
 #search::placeholder { color: var(--muted); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
@@ -80,7 +81,10 @@ footer { border-top: var(--border-width) solid var(--line); padding: var(--foote
 .status-dot[data-health="stop"] { background: var(--status-stop); }
 
 /* The format control shows one word; the native list keeps every label and key. */
-.format-picker { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--control-min-size); padding: 0 var(--space-2); border-radius: var(--button-radius); color: var(--muted); font-size: var(--metadata-size); cursor: default; }
+/* Contain the invisible native select: older WebKit otherwise propagates its
+   long option labels into the page's scrollable area. The focus ring belongs
+   to this wrapper and the full option labels stay in the native popup. */
+.format-picker { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--control-min-size); padding: 0 var(--space-2); border-radius: var(--button-radius); color: var(--muted); font-size: var(--metadata-size); cursor: default; overflow: hidden; }
 .format-picker::after { content: "▾"; }
 .format-picker:hover { background: var(--hover-background); color: var(--text); }
 .format-picker:focus-within { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
@@ -95,7 +99,7 @@ main:hover .pin-button, .pin-button:focus-visible { opacity: 1; }
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
 .more > button { min-height: var(--control-min-size); }
-[role="menu"] { position: absolute; bottom: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: 1; min-width: var(--menu-min-width); display: flex; flex-direction: column; padding: var(--space-1); background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); box-shadow: var(--menu-shadow); }
+[role="menu"] { position: absolute; bottom: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: 1; min-width: min(var(--menu-min-width), calc(100vw - 2 * var(--space-4))); max-width: calc(100vw - 2 * var(--space-4)); overflow-wrap: anywhere; display: flex; flex-direction: column; padding: var(--space-1); background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); box-shadow: var(--menu-shadow); }
 [role="menuitem"] { display: flex; justify-content: space-between; gap: var(--space-4); min-height: var(--control-min-size); align-items: center; text-align: start; border: 0; background: var(--clear); }
 [role="menuitem"]:hover, [role="menuitem"]:focus-visible { background: var(--hover-background); }
 [role="menuitem"] kbd { color: var(--muted); }
@@ -120,6 +124,8 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
   main { height: auto; min-height: var(--picker-height); overflow: visible; }
   .results-area { flex: none; overflow: visible; }
   .search-bar { padding: var(--compact-search-padding); }
+  /* Keep an editable search row when enlarged text leaves no room for controls. */
+  #search { flex-basis: calc(100% - var(--search-icon-width) - var(--search-gap)); }
   .result-meta { flex-wrap: wrap; }
   .result-authors { white-space: normal; }
   .key-hints { display: none; }
