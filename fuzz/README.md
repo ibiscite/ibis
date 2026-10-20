@@ -47,5 +47,21 @@ The harness follows [cargo-fuzz's shared-workspace workflow](https://github.com/
 and [libFuzzer's corpus and resource controls](https://www.llvm.org/docs/LibFuzzer.html).
 The small deletion reducer checks the original signature on every trial, including
 resource failures without sanitizer dedup tokens, with one overall time budget.
+
+`zotero_payload` feeds arbitrary JSON pages directly to the public
+`zotero::load_items` mapper for user and group libraries. It checks deterministic
+mapping, first-duplicate identity, isolation from malformed neighbors, and CSL
+serialization, including rejection of colliding citation IDs. It uses no Zotero
+process or network. Run its synthetic seeds with
+`cargo test -p ibis-core --test fuzz_zotero_payload`, then mutate them with:
+
+```sh
+corpus_dir=$(mktemp -d)
+cp fuzz/seeds/zotero_payload/* "$corpus_dir/"
+cargo +nightly fuzz run zotero_payload "$corpus_dir" -- -max_total_time=180 -timeout=5 -rss_limit_mb=1024 -max_len=16384
+```
+
+Use a copy of the seed directory for sustained runs so generated corpus entries
+are not accidentally committed. The nightly owner adds new targets separately.
 The crate-specific NCSA policy exception is recorded in ADR 0013; ADR 0014
 amends only its workspace layout.

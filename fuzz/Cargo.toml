@@ -40,5 +40,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "zotero_payload"
+path = "fuzz_targets/zotero_payload.rs"
+test = false
+doc = false
+bench = false
+
 [lints]
 workspace = true
