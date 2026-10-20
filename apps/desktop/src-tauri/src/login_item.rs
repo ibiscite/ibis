@@ -97,23 +97,23 @@ pub(crate) fn read(entry: Option<&dyn Entry>) -> Reading {
 
 /// Ask for `on`, then report what the system actually did. `approval` is
 /// true where the system can accept a registration but wait for the person
-/// to allow it (macOS).
+/// to allow it (macOS). Read that status even when registration fails.
 pub(crate) fn change(entry: Option<&dyn Entry>, on: bool, approval: bool) -> Reading {
     let Some(entry) = entry else {
         return read(None);
     };
-    let asked = if on { entry.enable() } else { entry.disable() };
-    match (asked, entry.is_enabled()) {
-        (_, Ok(enabled)) if enabled == on => Reading { enabled, problem: None },
-        (Ok(()), Ok(enabled)) if on && approval => Reading {
+    let _ = if on { entry.enable() } else { entry.disable() };
+    match entry.is_enabled() {
+        Ok(enabled) if enabled == on => Reading { enabled, problem: None },
+        Ok(enabled) if on && approval && entry.awaiting_approval() => Reading {
             enabled,
             problem: Some(LoginItemProblem::NeedsApproval),
         },
-        (_, Ok(enabled)) => Reading {
+        Ok(enabled) => Reading {
             enabled,
             problem: Some(LoginItemProblem::Refused),
         },
-        (_, Err(Failed)) => Reading {
+        Err(Failed) => Reading {
             enabled: false,
             problem: Some(LoginItemProblem::Unreadable),
         },
@@ -443,6 +443,7 @@ mod tests {
         on: std::sync::Mutex<bool>,
         refuse: bool,
         approve: bool,
+        registration_error: bool,
         unreadable: bool,
         /// Registrations made but not allowed yet.
         pending: std::sync::atomic::AtomicBool,
@@ -455,6 +456,7 @@ mod tests {
                 on: std::sync::Mutex::new(on),
                 refuse: false,
                 approve: true,
+                registration_error: false,
                 unreadable: false,
                 pending: false.into(),
                 refreshed: 0.into(),
@@ -479,7 +481,8 @@ mod tests {
             self.on.lock().map(|on| *on).map_err(|_| Failed)
         }
         fn enable(&self) -> Result<(), Failed> {
-            self.set(true)
+            self.set(true)?;
+            if self.registration_error { Err(Failed) } else { Ok(()) }
         }
         fn disable(&self) -> Result<(), Failed> {
             self.set(false)
@@ -546,6 +549,46 @@ mod tests {
         );
         assert_eq!(
             change(Some(&waiting), true, false),
+            item(false, Some(LoginItemProblem::Refused))
+        );
+    }
+
+    #[test]
+    fn a_failed_registration_still_reads_its_new_approval_status() {
+        let waiting = FakeEntry {
+            approve: false,
+            registration_error: true,
+            ..FakeEntry::new(false)
+        };
+        assert_eq!(read(Some(&waiting)), item(false, None));
+        assert_eq!(
+            change(Some(&waiting), true, true),
+            item(false, Some(LoginItemProblem::NeedsApproval))
+        );
+        assert_eq!(read(Some(&waiting)), item(false, Some(LoginItemProblem::NeedsApproval)));
+        assert_eq!(
+            change(Some(&waiting), true, false),
+            item(false, Some(LoginItemProblem::Refused))
+        );
+        assert_eq!(change(Some(&waiting), false, true), item(false, None));
+    }
+
+    #[test]
+    fn an_inactive_registration_without_pending_approval_is_refused() {
+        struct InactiveEntry;
+        impl Entry for InactiveEntry {
+            fn is_enabled(&self) -> Result<bool, Failed> {
+                Ok(false)
+            }
+            fn enable(&self) -> Result<(), Failed> {
+                Ok(())
+            }
+            fn disable(&self) -> Result<(), Failed> {
+                Ok(())
+            }
+        }
+        assert_eq!(
+            change(Some(&InactiveEntry), true, true),
             item(false, Some(LoginItemProblem::Refused))
         );
     }
