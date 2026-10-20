@@ -83,7 +83,6 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false }),
     set_picker_preferences: () => null,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
-    set_copy_format: () => null,
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
   };
   mockIPC(
@@ -973,6 +972,148 @@ test("a saved citation style, density and text size come back at start", async (
   expect(document.documentElement.dataset.textSize).toBe("larger");
 });
 
+test.each(["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys"])("choosing %s survives a restart without copying", async (choice) => {
+  let remembered = "typst";
+  const calls = backend({
+    copy_format: () => remembered,
+    set_picker_preferences: ({ copyFormat }) => { if (copyFormat) remembered = copyFormat as string; return null; },
+  });
+  const first = render(<App />);
+  const select = screen.getByLabelText("Copy as") as HTMLSelectElement;
+  await waitFor(() => expect(select.value).toBe("typst"));
+  fireEvent.change(select, { target: { value: choice } });
+  await waitFor(() => expect(remembered).toBe(choice));
+  expect(calls).not.toContain("copy_citation");
+  first.unmount();
+  render(<App />);
+  await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe(choice));
+});
+
+test("rapid A-B-A choices keep the last failed choice for retry without replaying a saved key", async () => {
+  let finish = () => undefined as void;
+  const firstSave = new Promise<void>((resolve) => { finish = resolve; });
+  const keys: unknown[] = [];
+  let remembered = "typst";
+  backend({
+    copy_format: () => remembered,
+    set_picker_preferences: async ({ copyFormat }) => {
+      keys.push(copyFormat);
+      const attempt = keys.length;
+      if (attempt === 1) await firstSave;
+      if (attempt === 3) throw new Error("SYNTHETIC_PRIVATE_SAVE_ERROR");
+      if (copyFormat) remembered = copyFormat as string;
+      return null;
+    },
+  });
+  render(<App />);
+  const select = screen.getByLabelText("Copy as") as HTMLSelectElement;
+  await waitFor(() => expect(select.value).toBe("typst"));
+  fireEvent.change(select, { target: { value: "cite" } });
+  await waitFor(() => expect(keys).toEqual(["cite"]));
+  fireEvent.change(select, { target: { value: "pandoc" } });
+  fireEvent.change(select, { target: { value: "cite" } });
+  expect(keys).toEqual(["cite"]);
+  await act(async () => { finish(); await firstSave; });
+  await screen.findByText(/could not read or save your picker choices/);
+  expect(remembered).toBe("pandoc");
+  expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
+  await chooseFromMore("Rows: Comfortable");
+  await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
+  expect(remembered).toBe("cite");
+  expect(keys).toEqual(["cite", "pandoc", "cite", "cite"]);
+  remembered = "keys"; // A hand edit after a successful save must survive.
+  await chooseFromMore("Larger text", "menuitemcheckbox");
+  await waitFor(() => expect(keys).toHaveLength(5));
+  expect(keys[4]).toBeNull();
+  expect(remembered).toBe("keys");
+});
+
+test.each(["menu", "shortcut"])("%s Quit drains ordered format choices before exiting", async (route) => {
+  let finishFirst = () => undefined as void;
+  let finishLast = () => undefined as void;
+  const first = new Promise<void>((resolve) => { finishFirst = resolve; });
+  const last = new Promise<void>((resolve) => { finishLast = resolve; });
+  const keys: unknown[] = [];
+  const calls = backend({
+    copy_format: () => "typst",
+    set_picker_preferences: async ({ copyFormat }) => { keys.push(copyFormat); await (keys.length === 1 ? first : last); return null; },
+  });
+  render(<App />);
+  const select = screen.getByLabelText("Copy as") as HTMLSelectElement;
+  await waitFor(() => expect(select.value).toBe("typst"));
+  fireEvent.change(select, { target: { value: "cite" } });
+  await waitFor(() => expect(keys).toEqual(["cite"]));
+  fireEvent.change(select, { target: { value: "pandoc" } });
+  if (route === "menu") await chooseFromMore("Quit Ibis");
+  else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true });
+  expect(calls).not.toContain("quit");
+  await act(async () => { finishFirst(); await first; });
+  await waitFor(() => expect(keys).toEqual(["cite", "pandoc"]));
+  expect(calls).not.toContain("quit");
+  await act(async () => { finishLast(); await last; });
+  await waitFor(() => expect(calls).toContain("quit"));
+});
+
+test.each(["menu", "shortcut"])("%s Quit waits for the initial read, then saves a key and clears the old style together", async (route) => {
+  let finishReading = () => undefined as void;
+  const reading = new Promise<void>((resolve) => { finishReading = resolve; });
+  let rememberedKey = "typst";
+  let rememberedStyle: unknown = "apa";
+  let atQuit: unknown = null;
+  const calls = backend({
+    copy_format: async () => { await reading; return "typst"; },
+    picker_preferences: async () => { await reading; return { citation_style: "apa", density: "comfortable", larger_text: false }; },
+    set_picker_preferences: ({ preferences, copyFormat }) => {
+      rememberedStyle = (preferences as { citation_style: unknown }).citation_style;
+      if (copyFormat) rememberedKey = copyFormat as string;
+      return null;
+    },
+    quit: () => { atQuit = { copy_format: rememberedKey, citation_style: rememberedStyle }; return null; },
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "cite" } });
+  try {
+    if (route === "menu") await chooseFromMore("Quit Ibis");
+    else await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true }); });
+    expect(calls).not.toContain("quit");
+    expect(atQuit).toBeNull();
+    await act(async () => { finishReading(); await reading; });
+    await waitFor(() => expect(atQuit).toEqual({ copy_format: "cite", citation_style: null }));
+    expect(calls.filter((call) => call === "set_picker_preferences")).toHaveLength(1);
+  } finally {
+    await act(async () => { finishReading(); await reading; });
+  }
+});
+
+test("a refused preference save reports failure and still allows Quit", async () => {
+  const calls = backend({
+    copy_format: () => "typst",
+    set_picker_preferences: () => { throw new Error("SYNTHETIC_PRIVATE_SAVE_ERROR"); },
+  });
+  render(<App />);
+  await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("typst"));
+  fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "cite" } });
+  await screen.findByText(/could not read or save your picker choices/);
+  await chooseFromMore("Quit Ibis");
+  await waitFor(() => expect(calls).toContain("quit"));
+  expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
+});
+
+test("a stuck settings request cannot keep Quit waiting indefinitely", async () => {
+  const calls = backend({
+    copy_format: () => "typst",
+    set_picker_preferences: () => new Promise(() => undefined),
+  });
+  render(<App />);
+  await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("typst"));
+  vi.useFakeTimers();
+  fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "cite" } });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true });
+  expect(calls).not.toContain("quit");
+  await act(() => vi.advanceTimersByTimeAsync(2_000));
+  expect(calls).toContain("quit");
+});
+
 test("format, density and text size choices are saved without losing each other", async () => {
   const saved: unknown[] = [];
   backend({
@@ -1000,10 +1141,11 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
   let finish = () => undefined as void;
   const loaded = new Promise<void>((resolve) => { finish = resolve; });
   const saved: unknown[] = [];
+  const keys: unknown[] = [];
   backend({
     copy_format: async () => { await loaded; return "typst"; },
     picker_preferences: async () => { await loaded; return { citation_style: "apa", density: "compact", larger_text: false }; },
-    set_picker_preferences: ({ preferences }) => { saved.push(preferences); return null; },
+    set_picker_preferences: ({ preferences, copyFormat }) => { saved.push(preferences); keys.push(copyFormat); return null; },
   });
   render(<App />);
   const select = screen.getByLabelText("Copy as") as HTMLSelectElement;
@@ -1011,6 +1153,7 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
   await act(async () => { finish(); await loaded; });
   await waitFor(() => expect(saved).toEqual([{ citation_style: null, density: "compact", larger_text: false }]));
   expect(select.value).toBe("cite");
+  expect(keys).toEqual(["cite"]);
 });
 
 test("unreadable saved choices are reported and never overwritten with defaults", async () => {
@@ -1232,14 +1375,21 @@ test("shortcuts read as people type them on each system", async () => {
   expect(shortcutLabel("Alt+Space", false)).toBe("Alt+Space");
 });
 
-test("a key format chosen before copying is saved at once; a style is saved with the picker choices", async () => {
+test("first-run writing choices save the key and style together before copying", async () => {
   const saved: unknown[] = [];
-  backend({ library_status: () => NO_LIBRARY, set_copy_format: ({ format }) => { saved.push(format); return null; } });
+  const calls = backend({
+    library_status: () => NO_LIBRARY,
+    set_picker_preferences: ({ preferences, copyFormat }) => {
+      saved.push({ style: (preferences as { citation_style: unknown }).citation_style, key: copyFormat });
+      return null;
+    },
+  });
   render(<App />);
   const places = await screen.findByRole("region", { name: "Where do you write?" });
   fireEvent.click(within(places).getByRole("button", { name: "Typst" }));
-  await waitFor(() => expect(saved).toEqual(["typst"]));
+  await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }]));
   fireEvent.click(within(places).getByRole("button", { name: "Word or Google Docs" }));
   await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("style:apa"));
-  expect(saved).toEqual(["typst"]);
+  await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }, { style: "apa", key: null }]));
+  expect(calls).not.toContain("copy_citation");
 });

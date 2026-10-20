@@ -667,7 +667,7 @@ def main():
             env = real_app_environment(os.environ, library, folder / "config")
             # Linux honors XDG_CONFIG_HOME. macOS/Windows use their native user
             # config locations; preflight refuses all existing preferences.
-            # Copying saves the format even with IBIS_LIBRARY, so clean only
+            # Preference choices can save even with IBIS_LIBRARY, so clean only
             # preference files this disposable run can create.
             settings = settings_path(system, folder, native, args.identifier)
             if system == "Windows":
@@ -804,14 +804,15 @@ def main():
                 prior = {path: path.read_bytes() if path.exists() else None for path in paths}
                 external = json.loads(prior[settings]) if prior[settings] is not None else {"schema_version": 1}
                 external["shortcut"] = "Control+Alt+F12"
-                external.pop("copy_format", None)  # Ensure the native copy must save its format.
+                external.pop("copy_format", None)  # Copying must not recreate a removed preference.
                 settings.parent.mkdir(parents=True, exist_ok=True)
                 settings.write_text(json.dumps(external), encoding="utf-8")
+                external_bytes = settings.read_bytes()
                 try:
                     copy()
                     saved = json.loads(settings.read_text(encoding="utf-8"))
                     assert saved.get("shortcut") == external["shortcut"], "Native copy lost a live external settings edit"
-                    assert saved.get("copy_format") == "pandoc", "Native copy did not save its format"
+                    assert settings.read_bytes() == external_bytes, "Native copy changed live settings"
                 finally:
                     for path, content in prior.items():
                         if content is None:

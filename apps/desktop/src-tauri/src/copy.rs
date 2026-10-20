@@ -47,8 +47,8 @@ pub(crate) fn render_citation(
     cite::render(format, &items).map_err(|e| e.to_string())
 }
 
-/// Copy the selected records as a citation to the clipboard. The format is
-/// remembered for next time.
+/// Copy the selected records as a citation to the clipboard. Format choices
+/// are saved separately when selected, even if no citation is copied.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_citation(
@@ -56,7 +56,6 @@ pub(crate) fn copy_citation(
     format: KeyFormat,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
-    settings_file: State<'_, SettingsFile>,
 ) -> Result<Copied, String> {
     let rendered = {
         let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
@@ -65,15 +64,11 @@ pub(crate) fn copy_citation(
     app.clipboard()
         .write_text(rendered.text.clone())
         .map_err(|e| format!("the clipboard could not be written ({e})"))?;
-    let mut warnings = rendered.warnings;
-    // Read and saved each time, so edits made to the file meanwhile are kept
-    // and a failed save is reported on every copy.
-    if let Err(e) = settings_file.update(|s| s.copy_format = Some(format)) {
-        warnings.push(format!("the format choice could not be saved: {e}"));
-    }
+    // Choices are saved when selected. A copy that was already in flight must
+    // not replace a newer format choice when the clipboard finishes writing.
     Ok(Copied {
         text: rendered.text,
-        warnings,
+        warnings: rendered.warnings,
     })
 }
 
@@ -117,7 +112,7 @@ pub(crate) fn copy_formatted(text: String, html: String, app: AppHandle) -> Resu
         .map_err(|e| format!("the clipboard could not be written ({e})"))
 }
 
-/// The format the picker starts with: the last one used, or Pandoc.
+/// The format the picker starts with: the last one chosen, or Pandoc.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
@@ -125,17 +120,6 @@ pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
         .settings
         .copy_format
         .unwrap_or(KeyFormat::Pandoc)
-}
-
-/// Remember a key format chosen before anything is copied, so it is used
-/// next time even if nothing is copied now.
-#[tauri::command]
-#[specta::specta]
-pub(crate) fn set_copy_format(format: KeyFormat, settings_file: State<'_, SettingsFile>) -> Result<(), String> {
-    settings_file
-        .update(|s| s.copy_format = Some(format))
-        .map(|_| ())
-        .map_err(|e| format!("the format choice could not be saved: {e}"))
 }
 
 #[cfg(test)]

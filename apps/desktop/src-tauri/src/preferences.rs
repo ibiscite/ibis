@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use ibis_core::cite::KeyFormat;
 use ibis_core::settings::{self, CitationStyle, Density};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -54,7 +55,7 @@ impl SettingsFile {
 }
 
 /// How the picker looks and what it formats with, remembered across restarts
-/// (ADR 0020). The key format is remembered separately, on each copy.
+/// (ADR 0020). A new key format is saved with the same preference change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub(crate) struct PickerPreferences {
     /// A style chosen in the format menu, or `null` to copy citation keys.
@@ -85,14 +86,22 @@ pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Pick
 #[specta::specta]
 pub(crate) fn set_picker_preferences(
     preferences: PickerPreferences,
+    copy_format: Option<KeyFormat>,
     settings_file: State<'_, SettingsFile>,
 ) -> Result<(), String> {
-    settings_file.save_preferences(preferences).map(|_| ())
+    settings_file.save_preferences(preferences, copy_format).map(|_| ())
 }
 
 impl SettingsFile {
-    fn save_preferences(&self, preferences: PickerPreferences) -> Result<settings::Settings, String> {
+    fn save_preferences(
+        &self,
+        preferences: PickerPreferences,
+        copy_format: Option<KeyFormat>,
+    ) -> Result<settings::Settings, String> {
         self.update(|s| {
+            if let Some(format) = copy_format {
+                s.copy_format = Some(format);
+            }
             s.citation_style = preferences.citation_style;
             // Defaults stay unwritten, so the file only names real choices.
             s.density = Some(preferences.density).filter(|d| *d != Density::Comfortable);
@@ -104,7 +113,6 @@ impl SettingsFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::cite::KeyFormat;
     use ibis_core::settings::LibrarySetting;
 
     #[test]
@@ -209,7 +217,7 @@ mod tests {
             density: Density::Spacious,
             larger_text: true,
         };
-        let saved = file.save_preferences(chosen).unwrap_or_else(|e| panic!("{e}"));
+        let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.copy_format, Some(KeyFormat::Typst));
         assert_eq!(PickerPreferences::from_settings(&saved), chosen);
         let defaults = PickerPreferences {
@@ -217,11 +225,83 @@ mod tests {
             density: Density::Comfortable,
             larger_text: false,
         };
-        let saved = file.save_preferences(defaults).unwrap_or_else(|e| panic!("{e}"));
+        let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(PickerPreferences::from_settings(&saved), defaults);
         let text = std::fs::read_to_string(&file.path).unwrap_or_default();
         for field in ["citation_style", "density", "larger_text"] {
             assert!(!text.contains(field), "{field} is not written for the default");
         }
+    }
+
+    #[test]
+    fn key_choices_are_saved_with_style_removal_before_any_copy() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        let styled = PickerPreferences {
+            citation_style: Some(CitationStyle::Apa),
+            density: Density::Compact,
+            larger_text: true,
+        };
+        for format in [
+            KeyFormat::Pandoc,
+            KeyFormat::Autocite,
+            KeyFormat::Parencite,
+            KeyFormat::Textcite,
+            KeyFormat::Cite,
+            KeyFormat::Typst,
+            KeyFormat::Keys,
+        ] {
+            file.save_preferences(styled, None).unwrap_or_else(|e| panic!("{e}"));
+            let chosen = PickerPreferences {
+                citation_style: None,
+                ..styled
+            };
+            file.save_preferences(chosen, Some(format))
+                .unwrap_or_else(|e| panic!("{e}"));
+            let loaded = settings::load(&file.path);
+            assert_eq!(loaded.settings.copy_format, Some(format));
+            assert_eq!(PickerPreferences::from_settings(&loaded.settings), chosen);
+        }
+        // A style/density save keeps a key changed in the file meanwhile.
+        file.update(|s| s.copy_format = Some(KeyFormat::Keys))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let saved = file.save_preferences(styled, None).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.copy_format, Some(KeyFormat::Keys));
+        assert_eq!(saved.citation_style, Some(CitationStyle::Apa));
+    }
+
+    #[test]
+    fn choosing_a_key_never_overwrites_invalid_newer_or_unreadable_settings() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        let chosen = PickerPreferences {
+            citation_style: None,
+            density: Density::Comfortable,
+            larger_text: false,
+        };
+        for text in [
+            r#"{"copy_format":"synthetic-private-value"}"#,
+            r#"{"schema_version":3}"#,
+        ] {
+            std::fs::write(&file.path, text).unwrap_or_else(|e| panic!("{e}"));
+            let failed = file.save_preferences(chosen, Some(KeyFormat::Cite));
+            assert!(failed.is_err());
+            assert!(
+                !failed
+                    .err()
+                    .unwrap_or_else(|| panic!("expected a failed settings save"))
+                    .contains("synthetic-private-value")
+            );
+            assert_eq!(std::fs::read_to_string(&file.path).unwrap_or_default(), text);
+        }
+        std::fs::remove_file(&file.path).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::create_dir(&file.path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            file.save_preferences(chosen, Some(KeyFormat::Cite))
+                .err()
+                .unwrap_or_else(|| panic!("expected an unreadable settings save to fail")),
+            "settings.json could not be read"
+        );
+        assert!(file.path.is_dir());
     }
 }

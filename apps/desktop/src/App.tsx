@@ -37,6 +37,7 @@ const DENSITIES: Density[] = ["compact", "comfortable", "spacious"];
 
 // A search comes back if the picker returns within a minute, as in Raycast.
 const KEEP_SEARCH_MS = 60_000;
+const SAVE_BEFORE_QUIT_MS = 2_000;
 
 // Shortcut labels follow the platform: ⌘ on macOS, Ctrl elsewhere.
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -122,7 +123,7 @@ function MenuItem({ label, title, keys, checked, disabled, onSelect }: {
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "setCopyFormat" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary">>;
 
 /** A citation-key syntax, or a citation style written as `style:<id>`. */
 export type Choice = CopyFormat | `style:${StyleId}`;
@@ -148,7 +149,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation, copyFormat,
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, quit, search, shortcutStatus, cslItems, copyFormatted,
     pickerPreferences, setPickerPreferences, useZoteroLibraries, zoteroGroups } = api;
-  const { findSources, openFoundLibrary, setCopyFormat } = api;
+  const { findSources, openFoundLibrary } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -204,19 +205,43 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [largerText, setLargerText] = useState(false);
   const savedPreferences = useRef<PickerPreferences | null>(null);
   const pending = useRef<Partial<PickerPreferences>>({});
-  const savePreferences = (change: Partial<PickerPreferences>) => {
+  const pendingKeyFormat = useRef<{ format: CopyFormat; saved: boolean } | null>(null);
+  const preferenceSave = useRef<Promise<unknown>>(Promise.resolve());
+  const preferenceLoad = useRef<Promise<void>>(Promise.resolve());
+  const savePreferences = (change: Partial<PickerPreferences>, keyFormat: CopyFormat | null = null) => {
+    if (keyFormat !== null) pendingKeyFormat.current = { format: keyFormat, saved: false };
     pending.current = { ...pending.current, ...change };
     if (!savedPreferences.current) return;
     const next = { ...savedPreferences.current, ...pending.current } as PickerPreferences;
+    const chosenKey = pendingKeyFormat.current;
     pending.current = {};
     savedPreferences.current = next;
-    void perform("preferences", () => setPickerPreferences(next));
+    // Preserve choice order and retry an unsaved key. Queued density/style
+    // changes do not rewrite a key whose earlier save already succeeded.
+    const save = preferenceSave.current.catch(() => undefined)
+      .then(() => setPickerPreferences(next, chosenKey && !chosenKey.saved ? chosenKey.format : null))
+      .then(() => {
+        if (chosenKey) chosenKey.saved = true;
+        if (pendingKeyFormat.current === chosenKey) pendingKeyFormat.current = null;
+      });
+    preferenceSave.current = save;
+    void perform("preferences", () => save);
+  };
+  const quitAfterSaving = async () => {
+    // Drain choices already made, including ones awaiting the initial read.
+    // A failed or stuck settings command must never trap someone in the app.
+    let timer: number | undefined;
+    await Promise.race([
+      preferenceLoad.current.then(() => preferenceSave.current).catch(() => undefined),
+      new Promise<void>((resolve) => { timer = window.setTimeout(resolve, SAVE_BEFORE_QUIT_MS); }),
+    ]);
+    window.clearTimeout(timer);
+    await quit();
   };
   const chooseFormat = (choice: Choice) => {
     setFormat(choice);
-    savePreferences({ citation_style: styleOf(choice) });
-    // A key format is otherwise saved only when something is copied.
-    if (!styleOf(choice) && setCopyFormat) void perform("preferences", () => setCopyFormat(choice as CopyFormat));
+    const chosenStyle = styleOf(choice);
+    savePreferences({ citation_style: chosenStyle }, chosenStyle ? null : choice as CopyFormat);
   };
   const changeDensity = () => {
     const next = DENSITIES[(DENSITIES.indexOf(density) + 1) % DENSITIES.length] ?? "comfortable";
@@ -278,7 +303,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .catch(() => { setShortcut(null); report("shortcut"); });
     // The saved style wins over the saved key format; a choice made while
     // these load wins over both.
-    void Promise.allSettled([copyFormat(), pickerPreferences()]).then(([key, saved]) => {
+    preferenceLoad.current = Promise.allSettled([copyFormat(), pickerPreferences()]).then(([key, saved]) => {
       if (!mounted) return;
       if (key.status === "rejected") report("format");
       if (saved.status === "rejected") {
@@ -501,7 +526,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           else setMenuOpen(true);
         } else if (e.key === "q" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
           e.preventDefault();
-          void perform("quit", quit);
+          void perform("quit", quitAfterSaving);
         }
       }}
     >
@@ -754,7 +779,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                 <MenuItem label={pickerText.density(densityNames[density])} title={pickerText.densityTitle} onSelect={changeDensity} />
                 <MenuItem label={pickerText.largerText} checked={largerText} onSelect={toggleLargerText} />
                 {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
-                <MenuItem label={pickerText.quitLabel} keys={`${modifier}Q`} onSelect={() => runFromMenu("quit", quit)} />
+                <MenuItem label={pickerText.quitLabel} keys={`${modifier}Q`} onSelect={() => runFromMenu("quit", quitAfterSaving)} />
               </MoreMenu>
             )}
           </span>

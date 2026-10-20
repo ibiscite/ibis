@@ -126,7 +126,7 @@ pub struct Settings {
     /// Library to open at start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library: Option<LibrarySetting>,
-    /// Syntax the picker copies citations in; remembered from the last copy.
+    /// Syntax the picker copies citations in; remembered when chosen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copy_format: Option<KeyFormat>,
     /// Whether Ibis checks GitHub for updates (ADR 0019). `None` means the

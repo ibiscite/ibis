@@ -46,17 +46,12 @@ export const commands = {
 	 */
 	search: (query: string, limit: number, page: number, request: number) => __TAURI_INVOKE<SearchResult[]>("search", { query, limit, page, request }),
 	/**
-	 *  Copy the selected records as a citation to the clipboard. The format is
-	 *  remembered for next time.
+	 *  Copy the selected records as a citation to the clipboard. Format choices
+	 *  are saved separately when selected, even if no citation is copied.
 	 */
 	copyCitation: (ids: RecordId[], format: KeyFormat) => __TAURI_INVOKE<Copied>("copy_citation", { ids, format }),
-	/**  The format the picker starts with: the last one used, or Pandoc. */
+	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
-	/**
-	 *  Remember a key format chosen before anything is copied, so it is used
-	 *  next time even if nothing is copied now.
-	 */
-	setCopyFormat: (format: KeyFormat) => __TAURI_INVOKE<null>("set_copy_format", { format }),
 	/**
 	 *  The selected records as CSL-JSON, in the order given, for the citation
 	 *  engine. Sent as JSON text so the fields stay exactly as the core writes them.
@@ -70,7 +65,21 @@ export const commands = {
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**  Remember the picker preferences; other settings in the file are kept. */
-	setPickerPreferences: (preferences: PickerPreferences) => __TAURI_INVOKE<null>("set_picker_preferences", { preferences }),
+	setPickerPreferences: (preferences: PickerPreferences, copyFormat:
+/**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
+"pandoc" |
+/**  BibLaTeX `\autocite` / `\autocites`. */
+"autocite" |
+/**  BibLaTeX `\parencite` / `\parencites`. */
+"parencite" |
+/**  BibLaTeX `\textcite` / `\textcites`. */
+"textcite" |
+/**  Plain LaTeX / natbib-compatible `\cite`. */
+"cite" |
+/**  Typst `@key[p. 12]`. */
+"typst" |
+/**  Bare keys separated by commas. */
+"keys" | null) => __TAURI_INVOKE<null>("set_picker_preferences", { preferences, copyFormat }),
 	/**  Hide the picker (Escape in the interface). */
 	hidePicker: () => __TAURI_INVOKE<void>("hide_picker"),
 	/**
@@ -153,7 +162,7 @@ export type LibraryStatus = {
 
 /**
  *  How the picker looks and what it formats with, remembered across restarts
- *  (ADR 0020). The key format is remembered separately, on each copy.
+ *  (ADR 0020). A new key format is saved with the same preference change.
  */
 export type PickerPreferences = {
 	/**  A style chosen in the format menu, or `null` to copy citation keys. */

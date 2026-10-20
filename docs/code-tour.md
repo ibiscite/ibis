@@ -77,8 +77,10 @@ existing licence and advisory policy.
 4. [core cite.rs](../crates/ibis-core/src/cite.rs)'s `render` validates keys and
    applies the chosen Pandoc, LaTeX, BibLaTeX or Typst syntax. Follow that format's
    escaping helper when output is wrong.
-5. The desktop command writes the rendered text with the clipboard plugin, then
-   remembers the format in settings. It returns text and warnings to React.
+5. The desktop command writes the rendered text with the clipboard plugin and
+   returns text and warnings to React. Format choices are saved when selected,
+   through the same locked settings update as the other picker preferences,
+   even if no citation is copied.
    React hides the picker after a successful copy with no warnings; otherwise
    it keeps the result or error visible. Every dismissal (copy, Escape, shortcut,
    blur or close) uses `picker::dismiss_picker`: it hides the window and, on
@@ -155,9 +157,9 @@ refuses to overwrite a newer schema.
 [preferences.rs](../apps/desktop/src-tauri/src/preferences.rs)'s
 `SettingsFile::update` serializes the complete read-change-save operation, so
 intervening edits are preserved. A successful remembered library choice saves its
-path; a successful clipboard write saves the format. Shortcut configuration is
-read at startup. Follow these callers before changing the settings format; its
-versioning is separate from picker UI behavior.
+path; choosing a copy format saves it together with the citation style. Shortcut
+configuration is read at startup. Follow these callers before changing the
+settings format; its versioning is separate from picker UI behavior.
 
 ## Debugging: choose the smallest relevant test
 
