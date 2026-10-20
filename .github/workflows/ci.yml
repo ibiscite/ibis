@@ -104,8 +104,8 @@ jobs:
           rustup toolchain install 1.90.0 --profile minimal
           cargo +1.90.0 test --locked
 
-      - name: Fuzz reporter tests
-        run: node --test scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs
+      - name: Script tests
+        run: node --test scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs scripts/update-feed.test.mjs
 
   web:
     name: Web interface
