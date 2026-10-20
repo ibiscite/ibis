@@ -486,9 +486,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     });
   };
 
-  // The selection, or the highlighted result when nothing is selected.
-  // Never a highlighted result that belongs to an earlier query.
+  // Results belong to the query that produced them. While a newer search is
+  // pending, the rows still on screen are not acted on or offered by any key,
+  // click or footer hint; only these current results are.
   const current = resultsQuery === query ? results : [];
+  // The selection, or the highlighted result when nothing is selected.
   const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1);
   const chosenKey = chosen.map((r) => idKey(r.id)).join("\u0001");
   const previewKey = `${style}\u0002${libraryVersion}\u0002${chosenKey}`;
@@ -638,7 +640,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A formatted citation still being made, or one that failed, is not copied.
   const enterAction = !searchFocused || chosen.length === 0 || (style && (shown === null || shown === "failed")) ? null
     : chosen.length > 1 ? keyText.copySeveralAs(chosen.length, choiceName(format)) : keyText.copyAs(choiceName(format));
-  const highlighted = results[active];
+  const highlighted = current[active];
   const shiftEnterAction = searchFocused && highlighted
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
@@ -706,7 +708,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               setActive((i) => Math.min(Math.max(i + step, 0), Math.max(results.length - 1, 0)));
             } else if (e.key === "Enter" && e.shiftKey) {
               e.preventDefault();
-              const result = results[active];
+              const result = current[active];
               if (result) toggle(result);
             } else if (e.key === "Enter") {
               e.preventDefault();
@@ -833,6 +835,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                 data-citation-selected={selected.has(idKey(r.id)) || undefined}
                 data-active={i === active || undefined}
                 onClick={() => {
+                  if (current !== results) return;
                   setActive(i);
                   toggle(r);
                 }}

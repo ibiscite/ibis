@@ -413,6 +413,53 @@ test("Enter never copies a result left over from the previous query", async () =
   await screen.findByText("New result");
 });
 
+test("while a newer search is pending, no key, click or hint acts on the previous query's results", async () => {
+  const pending: Record<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }> = {};
+  const copied: unknown[] = [];
+  backend({
+    search: ({ query }) => query === "kept" ? [result("kept", "Kept result")]
+      : query === "old" ? [result("old", "Old result")]
+      : query ? new Promise((resolve, reject) => { pending[query as string] = { resolve, reject }; }) : [],
+    copy_citation: (args) => { copied.push(args); return { text: "x", warnings: [] }; },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  const chosenKeys = () => screen.queryByRole("list", { name: "Selected references" })?.textContent ?? "";
+  // A deliberate choice from an earlier search stays chosen across searches.
+  fireEvent.change(box, { target: { value: "kept" } });
+  await screen.findByText("Kept result");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.change(box, { target: { value: "old" } });
+  await screen.findByText("Old result");
+
+  // Delayed success: the old rows still show, but nothing acts on or offers them.
+  fireEvent.change(box, { target: { value: "pending" } });
+  await waitFor(() => expect(pending.pending).toBeDefined());
+  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  expect(footerKeys()).toBe("Esc Clear search");
+  fireEvent.keyUp(box, { key: "Alt" });
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.click(screen.getByText("Old result"));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveLength(1));
+  expect(chosenKeys()).not.toContain("old");
+  expect(copied).toEqual([{ ids: [{ source: "refs.bib", native_key: "kept" }], format: "pandoc" }]);
+  await act(async () => { pending.pending!.resolve([result("new", "New result")]); });
+  await screen.findByText("New result");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  expect(chosenKeys()).toContain("new");
+
+  // Stale failure: a failed newer search leaves nothing to add.
+  fireEvent.change(box, { target: { value: "old" } });
+  await screen.findByText("Old result");
+  fireEvent.change(box, { target: { value: "failing" } });
+  await waitFor(() => expect(pending.failing).toBeDefined());
+  await act(async () => { pending.failing!.reject(new Error("search failed")); });
+  await screen.findByText("Ibis could not search your library. Use Reload, then try again.");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  expect(chosenKeys()).not.toContain("old");
+});
+
 test("the library is shown, can be chosen and reloaded, and failures are explained", async () => {
   const calls = backend({
     library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
