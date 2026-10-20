@@ -1,7 +1,7 @@
 //! Feedback links in the menu. They open the GitHub forms in the person's own
 //! browser; Ibis itself sends nothing.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -60,13 +60,42 @@ fn browser_command(url: &str) -> Command {
     };
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let mut command = Command::new("xdg-open");
-    command.arg(url);
+    command.arg(url).stdout(Stdio::null()).stderr(Stdio::null());
     command
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_launcher_suppresses_diagnostics_and_preserves_exit_status() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let program = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        let launcher = directory.path().join(program);
+        std::fs::write(
+            &launcher,
+            "#!/bin/sh\nprintf 'synthetic browser output'\nprintf 'synthetic browser detail' >&2\nexit \"$1\"\n",
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o700))
+            .unwrap_or_else(|error| panic!("{error}"));
+
+        for code in [0, 7] {
+            // Resolve only the owned synthetic launcher in this child; the
+            // process-global environment and real browser are never changed.
+            let output = browser_command(&code.to_string())
+                .env("PATH", directory.path())
+                .output()
+                .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(output.status.code(), Some(code));
+            assert!(output.stdout.is_empty(), "browser stdout reached Ibis");
+            assert!(output.stderr.is_empty(), "browser stderr reached Ibis");
+        }
+    }
 
     #[test]
     fn feedback_links_name_the_forms_and_carry_only_safe_characters() {
