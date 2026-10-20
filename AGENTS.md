@@ -21,6 +21,8 @@ Take the first open, untaken item for your role in the **Queue** at the top of t
 
 The maintainer delegates engineering, security, testing, CI and documentation decisions to agents acting for Ibis (ADR 0015). This is standing authorization to branch, commit, push, open pull requests and merge their own pull requests. Agents may also accept ADRs that record behaviour already agreed in the current milestone's tracking issue; no new approval is needed for those decisions.
 
+Squash-merge pull requests; their Conventional Commit title becomes the commit on `main`.
+
 **Merge only when** all required checks pass on the final commit and an independent review of that exact commit is recorded on the pull request with every P1 and P2 fixed (filing them as issues does not count). Pull requests that change only documentation, or only tests and synthetic fixtures, need no independent review: merge them when the required checks pass and your own adversarial check (step 4 of the loop) is recorded on the pull request (ADR 0017). Keep changes focused and reviewable. Never use `--admin` or another bypass. Releases, tags and publishing still require explicit maintainer authorization.
 
 **Review** is done by another session, preferably another model, and posted as a pull request comment starting `Independent review of <full SHA> by <tool and model>`, with verdict, findings and checks run. It covers only that commit (a rebase with an identical tree keeps it). After a small fix for its findings, the reviewer re-checks only the changed lines and records that, naming the new commit; a large fix or a design change needs a full new review.
@@ -45,13 +47,8 @@ Without that authorization (for example, an outside contributor's agent), follow
 
 ## Architecture rules
 
-- `crates/ibis-core` contains all behaviour that can be tested without a window. It must not depend on Tauri, any GUI toolkit or the network.
-- Front ends (CLI, desktop app, future integrations) stay thin. Logic needed by two front ends belongs in the core.
-- Sources are read-only. Never write to Zotero, `.bib` files or any user library.
-- Record identity is source plus native key, never a citation key alone.
-- Nothing fails silently. Skipped data becomes a `LoadWarning`; a failed insertion becomes "copied" with a reason; invalid input is rejected with a clear error rather than guessed.
-- No network access without an accepted ADR. Network features are opt-in and listed in `PRIVACY.md`.
-- Templates, profiles and styles are data and never execute code.
+Follow the [architecture principles](docs/architecture.md#principles) and the
+contracts documented with each component.
 
 ## Making changes
 
@@ -64,13 +61,11 @@ Without that authorization (for example, an outside contributor's agent), follow
 
 ## Privacy and security
 
-- Never commit or print real reference data, document text, clipboard contents, credentials, personal paths or usernames. Fixtures are synthetic.
-- Diagnostics use an allowlist and never include raw errors or payloads that might contain library content.
-- Escape every output for its target syntax (LaTeX, Pandoc, Typst, HTML, RTF).
-- Local endpoints bind to 127.0.0.1, require a token and reject browser `Origin` headers.
+- Follow the [privacy, escaping and endpoint principles](docs/architecture.md#principles).
 
 ## Version control
 
+- Mark breaking changes with `!` (for example `feat!:`) or a `BREAKING CHANGE:` footer.
 - Check `git status` before editing and preserve existing work. Never reset, restore, delete or reformat unrelated changes.
 - Do not commit, push, tag, release or publish unless explicitly asked to perform that exact action, or authorized as described in "Working autonomously". Tags, releases and publishing always need an explicit request.
-- Write commit messages in the imperative mood using Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`), describing behaviour and validation. Do not include conversation history or private context. Commits written with an AI tool end with an `Assisted-by: <tool and model>` trailer (or the tool's own co-author line), as ADR 0011 requires disclosure. Sign off commits (`git commit -s`).
+- Write commit messages in the imperative mood using Conventional Commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`), describing behaviour and validation. Do not include conversation history or private context. Commits written with an AI tool end with an `Assisted-by: <tool and model>` trailer (or the tool's own co-author line), as ADR 0011 requires disclosure. Sign off commits (`git commit -s`).

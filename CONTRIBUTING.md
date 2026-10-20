@@ -22,28 +22,20 @@ Welcome, under the same bar as any other change:
 
 A good prompt to start from: *"Read AGENTS.md and CONTRIBUTING.md in this repository. I want Ibis to <outcome>. Propose the smallest change with a test, then implement it and run `node scripts/check.mjs`."*
 
-## Invariants every change keeps
-
-- Sources are read-only. Ibis never writes to Zotero, `.bib` files or any library.
-- Offline by default; no telemetry. Any network feature is opt-in, explained, and recorded in `PRIVACY.md` and an ADR.
-- Nothing fails silently: skipped data is reported, failed insertion falls back to copying with a reason.
-- Never invent metadata. Warn about missing data instead.
-- Outputs are escaped for their syntax. Templates and profiles never execute code.
-- No private data in tests, logs, diagnostics, issues or commits.
-
 ## Development setup
 
-You need [Rust](https://rustup.rs/) (the version in `rust-toolchain.toml` is selected automatically), [Node.js](https://nodejs.org/) 22 or newer and [pnpm](https://pnpm.io/) 11.25.0, pinned in `apps/desktop/package.json` (`npm install --global pnpm@11.25.0`). Rust also needs the platform's C and C++ build tools, and the desktop app needs WebKitGTK on Linux and WebView2 on Windows 10. Step-by-step setup for macOS, Linux and Windows is in "Setting up a computer" in [docs/development.md](docs/development.md#setting-up-a-computer).
+Follow the [architecture principles](docs/architecture.md#principles) for every
+change. Tool versions, platform prerequisites and setup instructions live in
+[docs/development.md](docs/development.md#setting-up-a-computer). From the repository
+root, run the complete check:
 
 ```sh
-git clone https://github.com/ibiscite/ibis
-cd ibis
 node scripts/check.mjs
 ```
 
-To run the desktop app, see "Running the desktop app" in [docs/development.md](docs/development.md).
-
-`node scripts/check.mjs` runs the checks CI runs on every change: formatting, lints, tests (including the desktop app's) and the dependency policy. CI also builds the desktop app and compares rendering with Pandoc. It needs `cargo-deny` (`cargo install --locked cargo-deny`); without it the script reports the run as incomplete rather than passed. It never edits files; run `cargo fmt` to format.
+The check never edits files. A missing required tool reports an incomplete run;
+see [testing.md](docs/testing.md) for focused tests and verification limits.
+To start the app, see [Running the desktop app](docs/development.md#running-the-desktop-app).
 
 Snapshot tests live in `crates/*/tests/snapshots/`. When behaviour changes on purpose, run `cargo insta review` and review each change.
 

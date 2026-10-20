@@ -42,12 +42,28 @@ The search effect's `current` flag ignores replies for superseded queries.
 copying. Initial library status and `library:changed` events have a separate
 ordering problem: follow their state updates when debugging startup (#91).
 
-The command bridge has one registry:
-[Rust bindings.rs](../apps/desktop/src-tauri/src/bindings.rs). It registers commands
-implemented in `library.rs`, `copy.rs` and `picker.rs`, and exports the TypeScript
-contract. `api.ts` adds UI defaults, labels and event listeners. When changing a
-command, start with its Rust signature and registry; regenerate the contract
-with the explicit `bindings::tests::export_contract` test described in that file.
+## Desktop command contract
+
+`apps/desktop/src/bindings.ts` is generated from Rust command signatures and
+Serde-aware type definitions. `src-tauri/src/bindings.rs` registers the commands
+once for both the runtime handler and Tauri Specta's exporter. After changing a
+command or a wire type, regenerate with:
+
+```sh
+cargo test -p ibis-desktop bindings::tests::export_contract -- --ignored
+```
+
+The normal check script and desktop CI compare a fresh temporary export with the
+checked-in file and fail if it is stale; checks never rewrite it. `api.ts` keeps
+event adapters, UI labels and the search limit default. Its format-label map is
+exhaustive over the generated Rust enum. The core's optional `type-export`
+feature enables schema derives only, without Tauri or other GUI dependencies.
+
+Tauri Specta is used because it derives wrappers as well as types, removing the
+duplicate command contract without a handwritten schema or generator. Its Tauri
+2 support is currently a prerelease, so Specta and Tauri Specta are pinned to
+matching exact versions as upstream requires. All added dependencies pass the
+existing licence and advisory policy.
 
 ## One copy: selection to clipboard
 

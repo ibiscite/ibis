@@ -106,45 +106,22 @@ Hosted Windows 2025, macOS 15 and Ubuntu 24.04 results do not certify Windows
 mixed-DPI displays, sleep/wake, or non-English keyboards. Those require separate
 recorded evidence before marking their cells supported.
 
-### Coverage ledger for the maturity pass
+The detailed coverage ledger and its remaining verification cells are tracked in
+[#330](https://github.com/ibiscite/ibis/issues/330#issuecomment-6282580538).
+The final manual-only checklist lives in [#79](https://github.com/ibiscite/ibis/issues/79#issuecomment-6282579792).
 
-"Configured" below means a harness or build job exists. It does not mean its
-hosted run passed. Preserve the commit SHA and runner details with each result;
-the native smoke report must pass before claiming its configured cell verified.
-Build-only evidence establishes compilation and packaging, not window behavior.
-The final hand checklist in [testing.md](testing.md#manual-only-checks-final-pass-before-sharing)
-is reserved for the remaining speech, physical-session and feel checks. Pending
-scenarios that can run in automation still need that automation before handoff.
+## Picker shortcuts
 
-| Requested scenario | Automated scope and inspectable evidence | Remaining verification |
-| --- | --- | --- |
-| Windows 10, Windows 11, Windows Arm | Desktop CI configures native smoke on Windows Server 2025 x64; preview workflow targets x86_64 Windows. | No Windows 10/11 or Arm native run is established by that server image. Add matching runner/VM/architecture evidence before claiming support. |
-| macOS 13+, Intel and Apple silicon | Desktop CI configures native smoke on macOS 15's runner architecture. Preview builds target aarch64 and x86_64. | An Intel cross-build is not an Intel UI test. macOS 13/14 and both actual CPU architectures need native execution evidence, including TCC outcomes. |
-| Ubuntu LTS, Fedora, X11, Wayland | Desktop CI configures Ubuntu 24.04 Xvfb/Openbox X11 smoke; preview packages build on Ubuntu 22.04. Linux preview acceptance uses automation only. | Fedora, GNOME/KDE/wlroots, and Wayland portal/copy behavior have no native evidence from Xvfb. The optional future Linux checklist is not a maintainer handoff requirement. |
-| High DPI and mixed-DPI displays | UI tests check structural accessibility and numeric theme contrast; Xvfb uses one 1280×800 screen. | Physical scaling, screen switching and text readability remain in the final feel/display checks. No mixed-DPI claim follows from screenshots. |
-| Non-English layouts and IMEs | Core search/property fixtures cover multilingual data; interface keyboard handlers test synthetic `isComposing` guards. This is not an actual OS input-method session. | Native shortcut mapping, composed input and layout-specific labels need session evidence. Check the user's normal layout and composition at handoff; #196 remains a known layout-label limitation. |
-| Paths with spaces and non-Latin characters | Native smoke creates `synthetic 引用.bib` inside a directory containing spaces; core tests cover ordinary/verbatim Windows identities. | A completed native run verifies that path cell only; it does not verify cloud-file providers or network shares. |
-| OneDrive, iCloud and network drives | Core [source-watch integration tests](../crates/ibis-core/tests/source_watch.rs) exercise interrupted writes, replacements, deletion, symlinks and recovery with local synthetic files. | Provider placeholders, offline sync, share disconnects and real lock durations need controlled provider/share scenarios. No real accounts or personal libraries are used by current tests. |
-| Two copies of the app | Native smoke launches a second process, requires successful exit and activation of the original picker's focused search, and checks the primary process stays alive. | Configured assertions need a passing native manifest. Simultaneous launch races and duplicate helper ownership still need dedicated evidence. |
-| Sleep and wake | Watcher integration tests exercise settled event bursts, not suspension. | Add suspend/resume evidence where runner capabilities allow it; otherwise include one physical sleep/wake check at final handoff. |
-| Display unplugged while running | Pure pointer/display placement tests can exercise geometry decisions; a one-display Xvfb run cannot unplug a display. | Add a virtual-display scenario or one final physical display-disconnect check. Check active picker location and recovery after reconnection. |
-| Library deleted or renamed while open | Core watcher tests cover deletion, atomic replacement at the same path and recovery; native smoke checks a deleted file's visible error, retained references, empty reload and recovery. | Moving the selected file to a different filename while open is a separate native scenario; atomic replacement does not prove it. Cloud-drive and network-share rename semantics remain separate cells. |
-| A 64 MiB library | The [exact-boundary core test](../crates/ibis-core/tests/source_size_boundary.rs) uses a filename with spaces and CJK, accepts exactly 64 MiB on initial load and reload, preserves both synthetic records without warnings, then rejects one extra byte. [CLI tests](../crates/ibis-cli/tests/cli.rs) also reject an oversized sparse file. Native smoke measures 100,000 generated references. | The generated 100k corpus is not guaranteed to be 64 MiB. The core boundary test does not establish native window responsiveness or memory use; an exact-boundary native load remains a separate gap. |
-| Settings edited while running | Core [settings tests](../crates/ibis-core/src/settings.rs) prove updates retain external edits and refuse invalid/newer files. Native smoke changes a valid shortcut field on disk while open, copies a citation, checks the native format save preserved that field, and restores its owned settings/backup bytes. It also checks invalid/newer startup messages and preservation. | A passing native manifest is required for the command-path claim. The test does not claim live shortcut re-registration or automatic settings reload while running. |
-| Quit during reload | Desktop unit tests reject stale loads after a newer request; core watchers stop through their lifetime handle. | Add a native subprocess scenario proving prompt shutdown during a large reload and valid preferences on the next launch. Stale-request tests do not establish process shutdown. |
+The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Y on Windows and Linux. Cmd+Shift+Space is not used on macOS because it opens the Siri typing field, which takes the keystrokes meant for the picker; Ctrl+Shift+Space is not used elsewhere because it types a non-breaking space in Word and LibreOffice Writer. Ctrl+Shift+Y takes only rarely used commands (the Google Docs dictionary, the Firefox Downloads window, the VS Code Debug Console). On Windows and X11 it follows the key labelled Y, so on German layouts it is not Redo. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used. On Windows, avoid Ctrl+Alt combinations: many keyboard layouts use them as AltGr to type characters.
 
-On macOS, the Control+Command+R default introduced in #188 refers to the physical
-US-keyboard R position. The displayed label is not yet derived from the active
-keyboard layout (#196). Keep that limitation visible until a native layout test
-and a matching label implementation establish otherwise.
+On macOS the default refers to the physical US-keyboard R position; its label
+is not derived from the active layout (#196). Keep that limitation visible until
+native layout tests and a matching label implementation establish otherwise.
 
-The full target matrix is operating system/session × keyboard layout (US,
-AZERTY, Dvorak, German, Japanese input method) × destination (word processors,
-Google Docs, Overleaf, Markdown editors, Notion, email clients, chat apps,
-terminals, code editors, spreadsheets, remote desktop) × output format.
-Future insertion cells should paste a synthetic string containing accents,
-CJK text, italics and brackets, then read it back through accessibility APIs,
-application scripting or the browser DOM. That expanded destination matrix is
-not implemented by the current copy-only smoke suite. Record each completed
-cell here; users can report compatibility through the "App compatibility"
-issue form.
+The full target matrix is operating system/session × keyboard layout ×
+destination × output format. Future insertion cells should paste a synthetic
+string with accents, CJK, italics and brackets, then read it back through
+accessibility APIs, application scripting or the browser DOM. This expanded
+matrix is not implemented by the current copy-only smoke suite. Record completed
+cells and exact source/runner details in the compatibility issues; users can use
+the "App compatibility" issue form.

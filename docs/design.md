@@ -68,7 +68,7 @@ platform, so a source or a reference type always looks the same.
 | Copied | Pill near the top of the screen | Notification bottom-right | Toast at the bottom |
 
 High contrast and reduced transparency replace every material with the opaque
-system surface, as [native appearance](native-appearance.md) already does.
+system surface, as [native appearance groundwork](https://github.com/ibiscite/ibis/pull/232#issuecomment-6282577029) already does.
 
 ## What shows, and when
 
@@ -182,22 +182,24 @@ Each step is one pull request against #223 (or an issue split from it), reviewed
 with the states gallery on every platform. Steps 1–3 need no new data or
 settings. Anything remembered across restarts (window position per display,
 display choice, density, text size, how long a search is kept, which tips were
-seen) needs new `settings.json` fields; ADR 0016 fixes the current fields, so
-step 4 starts with a superseding ADR.
+seen) needs a documented settings contract. [ADR 0018](adr/0018-settings-format-2.md)
+defines format 2; [ADR 0019](adr/0019-update-checks.md) and
+[ADR 0020](adr/0020-picker-preferences.md) add optional update and picker fields.
+Display choice and remembered position still need their own ADR.
 
-1. Design values in `tokens.css`: type scale, densities, radii, motion and
-   colour roles, without changing layout.
+1. **Done (#307).** Design values in `tokens.css`: type scale, densities, radii,
+   motion and colour roles, without changing layout.
 2. Picker layout: header (search, format, pin), rows, footer with library status
    and More, empty and no-result text.
 3. Window behaviour that needs no settings: outside-click hiding, keeping the
    search in memory for a minute, the Escape ladder, and staying on top only
    when pinned.
-4. A superseding settings ADR, then display choice, remembered position,
-   density and Larger text as settings.
+4. Density and Larger text are settings under ADR 0020 (#407, #408).
+   Display choice and remembered position remain pending a separate ADR.
 5. Footer tips, and `#tag`, `y:` and `a:` filters (tags need source support).
 6. Recently cited and Recently added (needs a local history that stays on the
    device and, as PRIVACY.md promises, can be turned off and cleared).
-7. Citation tray with page numbers (0.2, with #24).
+7. Citation tray with page numbers (0.3, with #24).
 8. Attachments: the PDF or Web label and the preview pane (needs attachment
    data from Zotero).
 9. Later: one-line and at-cursor forms, the settings window, and alternative

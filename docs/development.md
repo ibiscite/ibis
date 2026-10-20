@@ -8,26 +8,23 @@ This project favours small, verified, reversible steps.
 2. **Branch.** One short-lived branch per issue, named `<type>/<issue>-<short-description>`, e.g. `feat/12-zotero-snapshot-reader`.
 3. **Test first.** Add a failing test or fixture that captures the acceptance criteria, then implement.
 4. **Check.** `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform. It does not run the web builds that CI's Web interface job checks (`pnpm build`, and `pnpm exec vite build --mode evidence` for the screenshot gallery); run those in `apps/desktop` when you change the build setup.
-5. **Pull request.** Title in Conventional Commits form (`feat: read Zotero libraries while Zotero is closed`), linked to its issue (`Closes #12`). CI runs on Windows, macOS and Linux; when only documentation changed, the Desktop jobs report success without building the native app. A newer push to a pull request or to `main` cancels the older run, so on `main` the newest commit (which contains every earlier merge) is the one tested; merges that change only documentation start no run on `main`. Only `main` saves Rust build caches. The description says what users can now do, how it was verified, and what was not verified.
-6. **Review.** One independent review of the final diff, recorded as a pull request comment naming the reviewed commit. Pull requests that change only documentation, or only tests and fixtures, skip it (ADR 0017), and a small fix after review needs only its changed lines re-checked. P1 and P2 findings are fixed before merging (filing them as issues does not count); P3 findings may become issues. Which changes an agent may merge itself is set by ADR 0015 and `AGENTS.md`.
-7. **Merge.** Squash-merge when checks pass. The pull request title becomes the commit on `main`. `main` is protected and always releasable; its history is never rewritten.
+5. **Pull request and review.** Follow [AGENTS.md](../AGENTS.md#working-autonomously) for review, merge permissions and required checks. Use a Conventional Commit title and link the issue (`Closes #12`). Describe the resulting behaviour, verification and limits for someone who did not write the change.
+6. **Merge.** Follow the [same merge conditions](../AGENTS.md#working-autonomously); `main` history is never rewritten.
 
 ## Working quickly and safely
 
 CI takes a few minutes per pull request. Most delay comes from waiting, so work is arranged to overlap:
 
-- **Verify the exact commit.** Before asking for review or merging, run the full check in a clean checkout of the commit (unfinished work may be pushed earlier as a draft), so uncommitted files cannot make it pass. Reusing one build directory keeps it fast:
+- **Verify the exact commit.** Run the full check in a clean checkout of the commit. Use a fresh target directory as well: sharing a target across checkouts can reuse stale project test binaries (#387).
 
   ```sh
-  root=$(git rev-parse --show-toplevel); sha=$(git rev-parse HEAD)
-  dir="$(mktemp -d)/ibis-verify"   # a new, empty path: never someone else's work
-  git worktree add --detach "$dir" "$sha" &&
-    (cd "$dir" && CARGO_TARGET_DIR="$root/target/verify" node scripts/check.mjs) &&
-    git push
-  git worktree remove --force "$dir" 2>/dev/null; git worktree prune
+  sha=$(git rev-parse HEAD)
+  verification_dir=$(mktemp -d)
+  git worktree add --detach "$verification_dir/source" "$sha" &&
+    (cd "$verification_dir/source" && CARGO_TARGET_DIR="$verification_dir/target" node scripts/check.mjs)
   ```
 
-  This is POSIX shell; on Windows, run it in Git Bash.
+  Keep failed output for diagnosis. Remove the verification worktree after inspecting the result. This is POSIX shell; on Windows, run it in Git Bash.
 
 - **Stack instead of waiting.** Start the next issue on a branch based on the previous one (one level at most: never build on a chain of unmerged branches). After the previous pull request is squash-merged, move the branch onto `main` and confirm the content did not change:
 
@@ -58,7 +55,7 @@ No other labels. Each family has one colour.
 
 **Milestones.** Every open issue has one milestone: `0.N Name` for a planned release (matching `ROADMAP.md`), `1.0`, or `Later` for anything not scheduled. Each open milestone's description is one line saying what users can do when it ships, and names its tracking issue. A milestone closes when its release ships.
 
-**Versions and releases.** Versions follow semantic versioning; before 1.0, `0.N.0` ships milestone `0.N` and `0.N.1`, `0.N.2`, ... fix it. Release Please keeps a pull request titled `chore: release X.Y.Z`; merging it (only on the maintainer's word) tags `vX.Y.Z` and publishes the release **Ibis X.Y.Z** with a download table and the changes grouped by type (`scripts/release-notes.mjs`). Every non-documentation change on `main` also publishes **Ibis Nightly X.Y.Z-nightly.YYYYMMDDHHMMSS** on the rolling `nightly` tag, and the rolling `stable` tag mirrors the newest release so download links never change. No other tags.
+**Versions and releases.** Version numbers, release and nightly titles, tags and download links follow [RELEASING.md](../RELEASING.md#releases).
 
 **Tracking issues.** Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body holds the current plan: what done means, **Now** (work in progress and where it is), the ordered **Queue**, what waits on the maintainer, what is deferred, and decisions taken. History goes in comments. After each merge, add one line saying what users can now do and what is next.
 
@@ -111,42 +108,7 @@ CI runs every check on Windows too. Install, in this order:
 3. WebView2. It is part of Windows 11; on Windows 10 install the Evergreen runtime. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
 4. rustup, accepting the default MSVC host (`x86_64-pc-windows-msvc`, or `aarch64-pc-windows-msvc` on Arm).
 5. Node.js, pnpm, cargo-deny and, optionally, Pandoc and cargo-insta, as listed above. Prefer `npm install --global pnpm@11.25.0`; `corepack enable pnpm` may be refused for lack of permissions.
-6. actionlint 1.7.12: download and verify the official release, then install it
-   in a per-user executable folder. Run this in PowerShell; use `arm64` instead
-   of `amd64` on Arm Windows. No administrator terminal is needed.
-
-   ```powershell
-   $ErrorActionPreference = 'Stop'
-   $arch = 'amd64'
-   $asset = "actionlint_1.7.12_windows_$arch.zip"
-   $release = 'https://github.com/rhysd/actionlint/releases/download/v1.7.12'
-   $downloadDir = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
-   New-Item -ItemType Directory $downloadDir | Out-Null
-   $zip = Join-Path $downloadDir $asset
-   $manifest = Join-Path $downloadDir 'actionlint_1.7.12_checksums.txt'
-   Invoke-WebRequest "$release/$asset" -OutFile $zip
-   Invoke-WebRequest "$release/actionlint_1.7.12_checksums.txt" -OutFile $manifest
-   $line = Get-Content $manifest | Where-Object { ($_ -split '\s+')[-1] -eq $asset }
-   if (!$line) { throw 'The official checksum manifest does not list this ZIP.' }
-   $expected = ($line -split '\s+')[0]
-   if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected) {
-     throw 'actionlint checksum mismatch; do not extract or run this ZIP.'
-   }
-   $toolsDir = Join-Path $env:LOCALAPPDATA 'Programs\IbisTools'
-   New-Item -ItemType Directory -Force $toolsDir | Out-Null
-   Expand-Archive -LiteralPath $zip -DestinationPath $toolsDir -Force
-   [string]$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-   if (($userPath -split ';') -notcontains $toolsDir) {
-     $newPath = ($userPath.TrimEnd(';') + ';' + $toolsDir).TrimStart(';')
-     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-   }
-   $env:Path = "$toolsDir;$env:Path"
-   actionlint -version
-   ```
-
-   The checksum comes from the [official release manifest](https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt).
-   The example preserves existing user PATH entries and updates this terminal;
-   new terminals pick up the saved user PATH.
+6. [actionlint 1.7.12](https://github.com/rhysd/actionlint/blob/v1.7.12/docs/install.md): install the official binary for your architecture in a per-user executable folder and add it to `PATH`. Verify its SHA-256 against the official release checksum manifest before extracting or running it; no administrator terminal is needed.
 
 Open a new terminal so the `PATH` changes apply, then, in `C:\src\ibis`:
 
@@ -179,48 +141,17 @@ Choose a library from the picker or from the menu bar (tray) item. The choice an
 
 Every field is optional. `citation_style`, `density` and `larger_text` remember the picker's style, row density and text size (ADR 0020); each is written only once chosen. A file from an earlier version (format 1, where `library` was a bare path) is read as before and upgraded on the next save, with the old file kept as `settings.json.bak` until the save after that; an older Ibis refuses the upgraded file rather than overwriting it (ADR 0018). On Windows, write the library path with forward slashes or doubled backslashes, as JSON requires. Edits made while the app runs are kept, and a file that cannot be read is reported and never overwritten.
 
-The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Y on Windows and Linux. Cmd+Shift+Space is not used on macOS because it opens the Siri typing field, which takes the keystrokes meant for the picker; Ctrl+Shift+Space is not used elsewhere because it types a non-breaking space in Word and LibreOffice Writer. Ctrl+Shift+Y takes only rarely used commands (the Google Docs dictionary, the Firefox Downloads window, the VS Code Debug Console). On Windows and X11 it follows the key labelled Y, so on German layouts it is not Redo. A shortcut is modifiers and one key joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere. An invalid shortcut is reported and the default is used. On Windows, avoid Ctrl+Alt combinations: many keyboard layouts use them as AltGr to type characters.
+The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Y on Windows and Linux. For layout limitations, conflicts and custom shortcuts, see [compatibility.md](compatibility.md#picker-shortcuts).
 
 For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
 
 The picker opens without a title bar near the top of the usable area of the display with the pointer (the nearest display when the pointer is between displays, and where the pointer position is unavailable, such as on Wayland, the display it was on or the primary one). If you move it, it keeps that place on that display while it remains fully visible. Drag the search bar edge or search icon to move it; the input remains editable. This uses Tauri's built-in drag region and grants only the window drag permission. Its system colours follow light/dark mode and high contrast; text and controls wrap at larger text sizes. Enter still copies and hides, Shift+Enter selects, and Escape steps back one layer: it closes the More menu, then clears the search and selection, then hides. A search comes back if the picker returns within a minute; it is kept in memory only. The pin beside the format keeps the picker open and on top beside your document (on Wayland it only stays open); unpinned, the picker hides when you click elsewhere or after copying. Copy confirmations expire after 2.4 seconds; copy warnings stay until dismissed. The output format sits beside the search box; the footer shows library status, key hints and More (Ctrl/⌘ K), which holds Choose library, Use Zotero, Reload, Rows (compact, comfortable or spacious), Larger text and Quit. The chosen citation style, rows and text size are remembered across restarts (ADR 0020).
 
-Visual evidence for #88 uses synthetic references: [browser light](images/picker-browser-light.jpg), [browser dark](images/picker-browser-dark.jpg), and [native macOS dark](images/picker-macos-dark.jpg). These previews predate the review fixes to contrast, focus, window edges and the first-run chooser. The browser checks also covered forced colours and 200% text at a 360-pixel viewport (one vertical scroller keeps controls reachable without horizontal overflow). Theme tokens retain system-colour fallbacks for older system webviews. The native screenshot is a macOS development build; Windows/Linux native screenshots and release-build blur checks remain to be recorded before #88 is complete.
+## Commits and releases
 
-## Desktop command contract
-
-`apps/desktop/src/bindings.ts` is generated from Rust command signatures and
-Serde-aware type definitions. `src-tauri/src/bindings.rs` registers the commands
-once for both the runtime handler and Tauri Specta's exporter. After changing a
-command or a wire type, regenerate with:
-
-```sh
-cargo test -p ibis-desktop bindings::tests::export_contract -- --ignored
-```
-
-The normal check script and desktop CI compare a fresh temporary export with the
-checked-in file and fail if it is stale; checks never rewrite it. `api.ts` keeps
-event adapters, UI labels and the search limit default. Its format-label map is
-exhaustive over the generated Rust enum. The core's optional `type-export`
-feature enables schema derives only, without Tauri or other GUI dependencies.
-
-Tauri Specta is used because it derives wrappers as well as types, removing the
-duplicate command contract without a handwritten schema or generator. Its Tauri
-2 support is currently a prerelease, so Specta and Tauri Specta are pinned to
-matching exact versions as upstream requires. All added dependencies pass the
-existing licence and advisory policy.
-
-## Commit messages
-
-[Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `ci:`, `chore:`. Breaking changes use `!` (`feat!:`) or a `BREAKING CHANGE:` footer. Commits are signed off (`git commit -s`).
-
-## Versions and releases
-
-- [Semantic Versioning](https://semver.org/). While the version is `0.x`, features and fixes raise the patch version (`0.1.3`), and completing a roadmap milestone raises the minor version (`0.2.0`), so version numbers match `ROADMAP.md`. A milestone release is requested by adding `Release-As: 0.N.0` to the body of a commit on `main`.
-- [release-please](https://github.com/googleapis/release-please) keeps a release pull request open on GitHub. Merging it updates `CHANGELOG.md` and the version in `Cargo.toml`, creates the tag and the GitHub release. Versions are never edited by hand.
-- Release builds are produced only by CI from a tag. Preview builds may be published as GitHub pre-releases.
-- Every push to `main` also replaces the rolling `nightly` pre-release, so the newest merged state can always be downloaded and tried.
-- Data formats that users keep (settings, destination profiles, history) carry a schema version and a tested migration.
+Commit conventions and disclosure are in [AGENTS.md](../AGENTS.md#version-control).
+Versioning, release automation, nightly builds and recovery are in
+[RELEASING.md](../RELEASING.md).
 
 ## Workflow linting
 
