@@ -1,7 +1,41 @@
-/* The existing opaque surface remains the default. Native success alone opts in. */
-:root[data-native-appearance="mica"], :root[data-native-appearance="vibrancy"] { background: transparent; }
+/* The existing opaque surface remains the default. Native success alone opts in.
+   On macOS a light veil (--vibrancy-tint, tokens.css; the surface at 55% in
+   webviews without light-dark()) keeps text legible over the material. Webviews
+   with neither light-dark() nor color-mix() show the material bare, as before.
+   Windows Mica already supplies its own tint. */
+:root[data-native-appearance="mica"] { background: transparent; }
+:root[data-native-appearance="vibrancy"] { background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 55%, transparent)); }
 
 /* Defensive overrides also cover preferences changed before native refresh. */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
   :root[data-native-appearance] { background: var(--surface); }
+}
+
+/* macOS skin (docs/design.md, the prototype's macOS look): frameless buttons
+   and key caps on soft fills, rounder menus. Increase contrast, forced colours
+   and the contrast preview keep their framed, opaque controls. */
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+  /* Pressed and other state frames (for example the first-run writing choice) keep their own border. */
+  :root[data-platform="macos"]:not([data-gallery-theme="contrast"]) :is(button, select):not([aria-pressed="true"]) { border-color: var(--clear); }
+  :root[data-platform="macos"]:not([data-gallery-theme="contrast"]) kbd {
+    min-width: 1.25rem; border-color: var(--clear); background: var(--button-background);
+    font-weight: var(--type-strong-weight); text-align: center;
+  }
+  :root[data-platform="macos"]:not([data-gallery-theme="contrast"]) :is([role="menu"], .keys-dialog) { border-radius: var(--menu-radius); }
+
+  /* With the native material: a hairline edge as on a native panel (no rim or
+     glow), and menus of the same glass that blur the list beneath them. */
+  :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) body::after {
+    content: ""; position: fixed; inset: 0; z-index: 3; pointer-events: none;
+    border-radius: var(--window-radius);
+    box-shadow: inset 0 0 0 var(--border-width) var(--glass-edge);
+  }
+  :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) :is([role="menu"], .keys-dialog) {
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  }
+  /* Without a backdrop blur, list text would show through: keep menus opaque. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) :is([role="menu"], .keys-dialog) { background: var(--surface); }
+  }
 }

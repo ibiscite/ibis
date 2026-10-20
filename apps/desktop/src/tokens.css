@@ -196,7 +196,40 @@
      1.3:1, and focus stays in the search box, so the fill is the only cue. */
   --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor;
 }
-
+/* macOS glass (docs/design.md, the prototype's macOS skin). The native
+   material sits behind the page, so fills and hairlines are translucent and
+   it shows through. Secondary text is darker than elsewhere so it keeps 4.5:1
+   on a bright or colourful backdrop. The web cannot use AppKit's vibrant text
+   blending, so --vibrancy-tint lays a light veil over the native material that
+   keeps text legible over any wallpaper. Increase contrast, forced colours and
+   older webviews keep the system colours above. The Copied notice window keeps
+   its own look (notice.css). */
+@supports (color: light-dark(white, black)) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) {
+    :root[data-platform="macos"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+      --text: light-dark(#16181d, #f5f5f7);
+      --muted: light-dark(#4c5260, #c0c3cc);
+      --line: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
+      --hover-background: light-dark(rgb(0 0 0 / 4.5%), rgb(255 255 255 / 6%));
+      --button-background: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
+      --button-hover-background: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
+      --search-active-border: var(--line);
+      --button-radius: 8px; --result-radius: 10px; --hint-radius: 5px; --key-radius: 5px; --menu-radius: 12px;
+      --menu-shadow: 0 1rem 2.5rem rgb(0 0 0 / 22%);
+      --vibrancy-tint: light-dark(rgb(250 250 252 / 55%), rgb(30 30 34 / 55%));
+      /* A hairline, as on a native panel: no white rim or glow (prototype round six). */
+      --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
+    }
+    /* Over the veiled material, colour roles one step deeper (lighter in dark
+       mode) keep 4.5:1; the opaque surface keeps Ibis scarlet as it is. */
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+      --citation: light-dark(#982d16, #ff9d87);
+      --status-done: light-dark(#135f29, #6fca81);
+      --status-look: light-dark(#734b00, #e3b341);
+      --status-stop: light-dark(#9b273b, #ff9c9c);
+    }
+  }
+}
 
 @supports (background: color-mix(in srgb, white 50%, black)) {
   :root { --search-active-border: color-mix(in srgb, var(--accent) 50%, var(--line)); }
