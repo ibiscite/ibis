@@ -158,6 +158,29 @@ describe("formatted citations", () => {
     expect(escape("<a>", "html")).toBe("&lt;a&gt;");
     expect(escape("<a>", "text")).toBe("<a>");
   });
+
+  // The engine writes to objects keyed by item id and copies item fields with
+  // Object.assign (code scanning flags both). Given an id such as
+  // "__proto__" it silently formats nothing. Ids are replaced with engine keys
+  // first, so reference data cannot choose those keys.
+  it("keeps prototype-named ids and fields from reaching shared objects", () => {
+    const hostile = (id: string): CslItem => ({
+      ...(JSON.parse('{"__proto__": {"polluted": "yes"}}') as object),
+      ...garcia,
+      id,
+    });
+    const items = ["__proto__", "constructor", "toString"].map(hostile);
+    const cites = items.map((item) => ({ id: item.id }));
+    for (let round = 0; round < 2; round++) {
+      const citation = formatter.citation("ieee", items, cites, "text");
+      expect(citation).toEqual({ output: "[1], [2], [3]", problems: [] });
+      const bibliography = formatter.bibliography("apa", items, "text");
+      expect(bibliography.problems).toEqual([]);
+      expect(bibliography.output.split("\n").filter((line) => line.includes("Synthetic sleep study"))).toHaveLength(3);
+    }
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.prototype).not.toHaveProperty("polluted");
+  });
 });
 
 // Every vendored file as text, by its path inside vendor/csl.
