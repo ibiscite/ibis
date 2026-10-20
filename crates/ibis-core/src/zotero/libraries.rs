@@ -45,7 +45,13 @@ pub fn groups(transport: &mut impl Transport) -> Result<Vec<Group>, ZoteroError>
         }
         let got = entries.len();
         for entry in &entries {
-            groups.push(group(entry).ok_or(ZoteroError::Incomplete)?);
+            let group = group(entry).ok_or(ZoteroError::Incomplete)?;
+            // A group seen twice means the list moved between pages, so one
+            // may also be missing: never return a list that may be partial.
+            if groups.iter().any(|seen: &Group| seen.id == group.id) {
+                return Err(ZoteroError::Incomplete);
+            }
+            groups.push(group);
         }
         if groups.len() >= total {
             return Ok(groups);
@@ -65,6 +71,7 @@ fn group(entry: &Value) -> Option<Group> {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .chars()
+        .filter(|&c| !invisible(c))
         .map(|c| if c.is_control() { ' ' } else { c })
         .take(MAX_NAME)
         .collect();
@@ -75,6 +82,14 @@ fn group(entry: &Value) -> Option<Group> {
         name.to_string()
     };
     Some(Group { id, name })
+}
+
+/// Direction overrides and isolates and invisible spaces, which could make
+/// a group name look like another or reorder the text around it. Zero-width
+/// joiners and direction marks stay: they are part of correct spelling in
+/// Persian, Arabic, Hebrew and many Indic scripts.
+fn invisible(c: char) -> bool {
+    matches!(c, '\u{200B}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
 }
 
 /// What one check of several libraries saw: each library's version, or
@@ -318,6 +333,7 @@ mod tests {
         zotero.groups[1] = json!({ "id": 2, "data": { "name": "  Line\nbreak\u{7}  " } });
         zotero.groups[2] = json!({ "id": 3, "data": {} });
         zotero.groups[3] = json!({ "id": 4, "data": { "name": "x".repeat(500) } });
+        zotero.groups[4] = json!({ "id": 5, "data": { "name": "\u{202E}baL\u{200B} \u{2066}A\u{2069} \u{645}\u{6CC}\u{200C}\u{62E}" } });
         let listed = groups(&mut zotero).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(listed.len(), GROUP_PAGE + 2);
         assert_eq!(
@@ -330,6 +346,7 @@ mod tests {
         assert_eq!(listed[1].name, "Line break");
         assert_eq!(listed[2].name, "Group 3");
         assert_eq!(listed[3].name.chars().count(), MAX_NAME);
+        assert_eq!(listed[4].name, "baL A \u{645}\u{6CC}\u{200C}\u{62E}");
         assert_eq!(zotero.asked.len(), 2);
     }
 
@@ -353,6 +370,12 @@ mod tests {
             }
         }
         assert_eq!(groups(&mut Short(short("3"))), Err(ZoteroError::Incomplete));
+
+        let mut repeated = Zotero {
+            groups: vec![json!({ "id": 1, "data": {} }), json!({ "id": 1, "data": {} })],
+            ..Zotero::default()
+        };
+        assert_eq!(groups(&mut repeated), Err(ZoteroError::Incomplete));
         assert_eq!(groups(&mut Short(short("0"))), Ok(Vec::new()));
     }
 
@@ -460,6 +483,30 @@ mod tests {
         assert_eq!(
             refresh(&mut empty, &[Library::Group(42)], None),
             Err(ZoteroError::GroupNotFound)
+        );
+    }
+
+    #[test]
+    fn zotero_stopping_while_unchanged_libraries_are_reread_is_an_error() {
+        // The personal library is unchanged, the group changed, and Zotero
+        // goes away before the personal library is read again.
+        struct StopsOnFullRead(Zotero);
+        impl Transport for StopsOnFullRead {
+            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+                if path.starts_with("users/0/items") && !path.contains("since=") {
+                    return Err(TransportError::Unreachable);
+                }
+                self.0.get(path)
+            }
+        }
+        let mut zotero = Zotero::default()
+            .with("users/0", 5, &["MINE"])
+            .with("groups/42", 9, &["THEIRS"]);
+        let (_, snapshots) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
+        zotero.libraries.insert("groups/42".into(), (10, vec!["NEW".into()]));
+        assert_eq!(
+            refresh(&mut StopsOnFullRead(zotero), &BOTH, Some(&snapshots)),
+            Err(ZoteroError::Transport(TransportError::Unreachable))
         );
     }
 }
