@@ -842,7 +842,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Rows: Comfortable", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Rows: Comfortable", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Larger text" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
@@ -1492,4 +1492,175 @@ test("first-run writing choices save the key and style together before copying",
   await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("style:apa"));
   await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }, { style: "apa", key: null }]));
   expect(calls).not.toContain("copy_citation");
+});
+
+const footerKeys = () => screen.getByRole("group", { name: "Keys" }).textContent;
+
+test("the footer says what Enter will copy, and holding Alt shows the other keys", async () => {
+  backend({ search: ({ query }) => (query ? [result("a", "First"), result("b", "Second")] : []) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  // Nothing to copy yet, so Enter is not advertised.
+  await waitFor(() => expect(footerKeys()).toBe("Ctrl+/ All keys"));
+  fireEvent.change(box, { target: { value: "x" } });
+  await screen.findByText("First");
+  expect(footerKeys()).toBe("Enter Copy as PandocCtrl+/ All keys");
+  fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "typst" } });
+  expect(footerKeys()).toContain("Enter Copy as Typst");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  expect(footerKeys()).toContain("Enter Copy 2 as Typst");
+  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  expect(footerKeys()).toBe("Shift+Enter Remove from citationEsc Clear search");
+  fireEvent.keyUp(box, { key: "Alt" });
+  expect(footerKeys()).toContain("Copy 2 as Typst");
+  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  fireEvent.blur(window);
+  expect(footerKeys()).not.toContain("Esc");
+});
+
+test("library status is a dot when all is well and words when something needs the user", async () => {
+  let warnings = 0;
+  backend({ library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings, error: null, note: null }) });
+  render(<App />);
+  const status = await screen.findByRole("status", { name: "Library status" });
+  await waitFor(() => expect(status.textContent).toBe("refs.bib: 3 references"));
+  expect(status.className).toContain("visually-hidden");
+  expect(document.querySelector(".status-dot")?.getAttribute("title")).toBe("refs.bib: 3 references");
+  cleanup();
+  warnings = 1;
+  render(<App />);
+  const trouble = await screen.findByRole("status", { name: "Library status" });
+  await waitFor(() => expect(trouble.textContent).toContain("1 reading notice"));
+  expect(trouble.className).not.toContain("visually-hidden");
+});
+
+test("? lists every key in a modal dialog, but a ? typed in the search is text", async () => {
+  const calls = backend({ search: () => [result("a", "First")] });
+  render(<App />);
+  const box = screen.getByLabelText("Search references") as HTMLInputElement;
+  fireEvent.keyDown(box, { key: "?" });
+  fireEvent.change(box, { target: { value: "?" } });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(box.value).toBe("?");
+  fireEvent.keyDown(box, { key: "/", ctrlKey: true });
+  const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+  expect(dialog.getAttribute("aria-modal")).toBe("true");
+  const close = within(dialog).getByRole("button", { name: "Close" });
+  expect(document.activeElement).toBe(close);
+  const rows = within(dialog).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell").map((cell) => cell.textContent));
+  expect(rows).toContainEqual(["Enter", "Copy the highlighted reference, or the ones added to the citation, in the Copy as format", "Search box"]);
+  expect(rows).toContainEqual(["Shift+Enter", "Add the highlighted reference to the citation, or remove it", "Search box"]);
+  expect(rows).toContainEqual(["Ctrl+K", "Open or close More", "Anywhere in Ibis"]);
+  expect(rows).toContainEqual(["Ctrl+/ or ?", "Show this list (? works outside the search box)", "Anywhere in Ibis"]);
+  expect(rows).toContainEqual(["Home or End", "Go to the first or last item", "More menu"]);
+  // The global shortcut, labelled for this platform, is listed once it works.
+  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Ctrl+Super+ROpen IbisAny app"));
+  // Focus stays in the dialog, and the picker's keys wait until it closes.
+  fireEvent.keyDown(close, { key: "Tab" });
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true });
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  fireEvent.keyDown(document.activeElement!, { key: "k", ctrlKey: true });
+  expect(screen.queryByRole("menu")).toBeNull();
+  const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  try {
+    const found = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, rules: { "color-contrast": { enabled: false } } });
+    expect(found.violations.map((v) => v.id)).toEqual([]);
+  } finally {
+    canvas.mockRestore();
+  }
+  // Clicking plain text focuses the dialog itself, so Escape still reaches it.
+  expect(dialog.getAttribute("tabindex")).toBe("-1");
+  expect(within(dialog).getByRole("table").getAttribute("aria-labelledby")).toBeNull();
+  dialog.focus();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.activeElement).toBe(box);
+  expect(box.value).toBe("?");
+  expect(calls).not.toContain("hide_picker");
+  // Outside a text field, a bare ? opens it, and focus returns there.
+  const more = screen.getByRole("button", { name: /^More/ });
+  more.focus();
+  fireEvent.keyDown(more, { key: "?" });
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Close" }));
+  expect(document.activeElement).toBe(more);
+  // More lists it with its key; closing returns to the search box.
+  await chooseFromMore("Keyboard shortcuts");
+  expect(await screen.findByRole("dialog")).toBeTruthy();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(document.activeElement).toBe(box);
+});
+
+test("when nothing matches, the picker offers to clear the search", async () => {
+  backend({ search: () => [] });
+  render(<App />);
+  const box = screen.getByLabelText("Search references") as HTMLInputElement;
+  fireEvent.change(box, { target: { value: "nothing here" } });
+  expect(await screen.findByText("No matching references")).toBeTruthy();
+  expect(screen.getByText("Check the spelling, or try fewer words, an author's surname or a year.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Search all Zotero libraries" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(box.value).toBe("");
+  expect(document.activeElement).toBe(box);
+  expect(await screen.findByText("Type to find a reference")).toBeTruthy();
+});
+
+test("when nothing matches in some Zotero libraries, the picker offers to search them all", async () => {
+  const chosen: unknown[][] = [];
+  backend({
+    library_status: () => zoteroStatus(["user"]),
+    zotero_groups: () => [{ id: 42, name: "Synthetic lab" }],
+    use_zotero_libraries: ({ libraries }) => { chosen.push(libraries as unknown[]); return null; },
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "elsewhere" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Search all Zotero libraries" }));
+  await waitFor(() => expect(chosen).toEqual([["user", { group: 42 }]]));
+  expect(screen.queryByRole("button", { name: "Search all Zotero libraries" })).toBeNull();
+});
+
+test("the footer offers Enter only when Enter in the search box would copy", async () => {
+  const { InlineWorker } = await import("./format/inline-worker");
+  vi.stubGlobal("Worker", InlineWorker);
+  let release: () => void = () => undefined;
+  let fail = false;
+  backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    csl_items: async (args) => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      if (fail) throw new Error("synthetic: formatting failed");
+      return JSON.stringify((args.ids as { native_key: string }[]).map((id) =>
+        ({ id: id.native_key, type: "book", title: id.native_key, author: [{ family: "Alpha" }], issued: { "date-parts": [[2021]] } })));
+    },
+    copy_formatted: () => null,
+  });
+  try {
+    render(<App />);
+    await screen.findByText("First");
+    const box = screen.getByLabelText("Search references");
+    expect(footerKeys()).toContain("Enter Copy as Pandoc");
+    // Another control has focus, so Enter would press it instead.
+    const more = screen.getByRole("button", { name: /^More/ });
+    act(() => more.focus());
+    expect(footerKeys()).not.toContain("Enter");
+    act(() => box.focus());
+    expect(footerKeys()).toContain("Enter Copy as Pandoc");
+    // A formatted citation still being made is not offered.
+    fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "style:apa" } });
+    await screen.findByText("Formatting…");
+    expect(footerKeys()).not.toContain("Enter");
+    await act(async () => release());
+    await waitFor(() => expect(footerKeys()).toContain("Enter Copy as APA"));
+    // Nor is one that failed.
+    fail = true;
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    await waitFor(() => expect(screen.getByText("Formatting…")).toBeTruthy());
+    await act(async () => release());
+    expect(await screen.findByText(/could not be formatted/)).toBeTruthy();
+    expect(footerKeys()).not.toContain("Enter");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

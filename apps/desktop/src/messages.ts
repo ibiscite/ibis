@@ -75,7 +75,9 @@ export const pickerText = {
   addedToCitation: "Added to citation",
   bestMatches: "Best matches",
   noMatches: "No matching references",
-  noMatchesHint: "Try fewer words, an author's surname or a year.",
+  noMatchesHint: "Check the spelling, or try fewer words, an author's surname or a year.",
+  clearSearch: "Clear search",
+  searchAllLibraries: "Search all Zotero libraries",
   typeToFind: "Type to find a reference",
   typeToFindHint: "Search by title, author, year, citation key or DOI.",
   matchedIn: (field: string) => `Matched in ${matchFieldNames[field] ?? field}`,
@@ -83,7 +85,7 @@ export const pickerText = {
   pin: "Pin Ibis",
   pinTitle: "Pin: keep Ibis open beside your document",
   unpinTitle: "Unpin: hide Ibis after copying or clicking elsewhere",
-  moreTitle: (modifier: string) => `More actions (${modifier}K)`,
+  moreTitle: (keys: string) => `More actions (${keys})`,
   firstRun: "Choose a library to get started",
   firstRunChoose: "Choose library to get started",
   chooseLibrary: "Choose library…",
@@ -105,13 +107,51 @@ export const pickerText = {
   myLibrary: "My Library",
   groupLibrary: (id: number) => `Group ${id}`,
   keepOneLibrary: "Keep at least one Zotero library on.",
-  keyHints: { copy: " Copy · ", add: " Add · ", hide: " Hide" },
   resultCount: (count: number) => `${count} ${count === 1 ? "result" : "results"}`,
   selectionCount: (count: number) => `${count} ${count === 1 ? "reference" : "references"} selected for citation`,
   removeReference: (key: string) => `Remove ${key} from the selection`,
   shortcutError: (registered: boolean, shortcut: string, reason: string) => registered
     ? `Your shortcut setting was not used: ${reason}.`
     : `The shortcut ${shortcut} is not available: ${reason}.`,
+} as const;
+
+/** The keys overlay and the footer's key hints; see keys.ts for the bindings. */
+export const keyText = {
+  title: "Keyboard shortcuts",
+  close: "Close",
+  keyColumn: "Keys",
+  actionColumn: "Action",
+  regionColumn: "Where",
+  or: "or",
+  regions: {
+    search: "Search box",
+    picker: "Anywhere in Ibis",
+    menu: "More menu",
+    system: "Any app",
+  },
+  actions: {
+    copy: "Copy the highlighted reference, or the ones added to the citation, in the Copy as format",
+    add: "Add the highlighted reference to the citation, or remove it",
+    move: "Move through the results",
+    escape: "Step back: close a menu, clear the search, then hide Ibis",
+    more: "Open or close More",
+    keys: "Show this list (? works outside the search box)",
+    quit: "Quit Ibis",
+    menuMove: "Move through the menu",
+    menuEnds: "Go to the first or last item",
+    menuChoose: "Choose the item",
+    menuLeave: "Leave the menu and return to the search",
+    open: "Open Ibis",
+  },
+  allKeys: "All keys",
+  footer: "Keys",
+  copyAs: (format: string) => `Copy as ${format}`,
+  copySeveralAs: (count: number, format: string) => `Copy ${count} as ${format}`,
+  addToCitation: "Add to citation",
+  removeFromCitation: "Remove from citation",
+  closeMenu: "Close menu",
+  clearSearch: "Clear search",
+  hide: "Hide Ibis",
 } as const;
 
 export const libraryMessages = {

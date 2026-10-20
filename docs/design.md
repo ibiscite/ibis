@@ -111,6 +111,8 @@ Pandoc, `\autocite`, `\parencite`, `\textcite`, `\cite`, Typst and bare keys.
 The five bundled citation styles are separate choices ([ADR 0020](adr/0020-picker-preferences.md)).
 Number-key bindings are not implemented or assigned here; the shared key table
 for #223 must name each binding before any are advertised.
+That table is `apps/desktop/src/keys.ts`; the `?` overlay (Ctrl/⌘ / inside the
+search box), the footer hints and the More menu all read their labels from it.
 
 No pop-up tour and no "advanced mode". Tooltips appear after 600 ms and name the
 action and its key. Empty and no-result states say what to try next. Footer tips
