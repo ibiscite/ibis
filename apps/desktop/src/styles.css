@@ -13,7 +13,11 @@ button, select {
   padding: var(--button-padding);
 }
 button:hover { background: var(--button-hover-background); }
-:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+/* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
+   focus (:focus-visible), 2 px with a 1 px gap, in the platform's colour:
+   accent on macOS, ink on Windows, half-accent on Linux. Contrast and forced
+   colours make it a solid CanvasText ring. */
+:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
 main {
   height: var(--picker-height);
   display: flex;
@@ -27,12 +31,12 @@ main {
 /* Reserve readable query space before wrapping controls, at every text size. */
 #search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--search-icon-width) - var(--search-gap))); font-size: var(--search-size); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: var(--search-input-padding); outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
 #search::placeholder { color: var(--muted); }
-/* macOS: the frameless search shows no ring; the caret and the active row are
-   the cue, as in Spotlight (docs/design.md). Contrast and forced colours restore
+/* The search box never shows a ring: it always has focus, and the caret is the
+   cue (Windows adds its accent underline). Contrast and forced colours restore
    it below. The clear glyph is quiet like the other icons: secondary colour,
    16 px glyph in a 32 px target. */
 #search { border-radius: var(--button-radius); }
-:root:not([data-platform="windows"]):not([data-platform="linux"]) #search:focus-visible { outline: none; }
+#search:focus-visible { outline: none; box-shadow: none; }
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: var(--control-min-size); height: var(--control-min-size); margin: 0; background: var(--muted); -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; cursor: default; }
 #search::-webkit-search-cancel-button:hover { background: var(--text); }
 /* Windows and Linux search in a framed 16 px text box with the icon inside it.
@@ -40,12 +44,12 @@ main {
 /* Only the search glyph (the header's direct child), never the pin icon inside its button. */
 :root[data-platform="windows"] .search-bar > svg, :root[data-platform="linux"] .search-bar > svg { position: relative; z-index: 1; margin-inline: var(--space-3) calc(-1 * (var(--search-icon-width) + var(--space-3) + var(--search-gap))); }
 :root[data-platform="windows"] #search, :root[data-platform="linux"] #search { padding: var(--field-padding); padding-inline-start: calc(var(--search-icon-width) + 2 * var(--space-3)); border-radius: var(--field-radius); background: var(--field-background); }
-/* Windows: an underline that turns accent on focus. The --focus ring stays as
-   well, because a bright system accent alone can fall far below 3:1. */
+/* Windows: like a Fluent TextBox, focus turns the field solid with a 2 px accent
+   underline and no ring (TextBox does not use the system focus visual). */
 :root[data-platform="windows"] #search { border: var(--border-width) solid var(--field-edge); border-bottom-color: var(--line); }
-:root[data-platform="windows"] #search:focus { outline-offset: var(--focus-offset); border-bottom-color: var(--accent); box-shadow: inset 0 calc(-1 * var(--border-width)) var(--accent); }
-/* Linux: a framed entry with the focus ring drawn on its edge. */
-:root[data-platform="linux"] #search { border: var(--border-width) solid var(--clear); outline-offset: 0; }
+:root[data-platform="windows"] #search:focus { outline: none; background: var(--surface); border-bottom-color: var(--accent); box-shadow: inset 0 calc(-1 * var(--border-width)) var(--accent); }
+/* Linux: a framed entry. */
+:root[data-platform="linux"] #search { border: var(--border-width) solid var(--clear); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
 .results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; padding: var(--results-padding); scrollbar-width: thin; }
@@ -80,17 +84,24 @@ main {
 .result-why { font-style: italic; }
 .result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [role="option"]:hover:not([data-active]):not([data-citation-selected]) { background: var(--hover-background); }
-/* Active and selected remain distinguishable even without colour. */
 /* The selected (active) row follows the platform: filled accent on macOS,
-   soft grey with an accent pill on Windows, accent tint on Linux. A row added
-   to the citation keeps a scarlet frame and key, so the two never look alike. */
-[role="option"][data-active] { background: var(--row-active-background); color: var(--row-active-text); border-color: var(--row-active-edge); }
+   soft grey with an accent pill on Windows, the GTK selection colour on Linux. Fill only:
+   no border or ring, as in each platform's own lists. */
+[role="option"][data-active] { background: var(--row-active-background); color: var(--row-active-text); }
 [data-active] .result-meta, [data-active] .result-year, [data-active] .result-why { color: var(--row-active-muted); }
 :root[data-platform="windows"] [role="option"][data-active]::before { content: ""; position: absolute; inset-inline-start: 0; top: 50%; width: var(--pill-width); height: var(--pill-height); margin-top: calc(var(--pill-height) / -2); border-radius: var(--pill-width); background: var(--accent); }
-/* An inset ring marks an added row whatever its fill, active or not, in every theme. */
+/* A row added to the citation (until #519 gives it the leading tile): a faint
+   scarlet wash and a scarlet key, no ring. On the active row the platform fill
+   wins and the key stays scarlet on the Windows neutral fill. Without color-mix,
+   and with increased contrast or forced colours, the 2 px inset ring stays. */
 [role="option"][data-citation-selected] { border-color: var(--citation); box-shadow: inset 0 0 0 var(--focus-width) var(--citation); }
 [data-citation-selected]:not([data-active]) .result-key { color: var(--citation); }
 [role="option"][data-active][data-citation-selected] { box-shadow: inset 0 0 0 var(--focus-width) var(--row-active-text); }
+@supports (background: color-mix(in srgb, white 50%, black)) {
+  [role="option"][data-citation-selected] { border-color: var(--clear); box-shadow: none; background: color-mix(in srgb, var(--citation) 8%, transparent); }
+  [role="option"][data-active][data-citation-selected] { background: var(--row-active-background); box-shadow: none; }
+  :root[data-platform="windows"] [data-active][data-citation-selected] .result-key { color: var(--citation); }
+}
 .empty-state { color: var(--muted); text-align: center; padding: var(--empty-padding); }
 .empty-state p:first-child { color: var(--text); font-weight: var(--type-strong-weight); }
 .empty-hint { font-size: var(--metadata-size); }
@@ -131,7 +142,12 @@ footer { border-top: var(--border-width) solid var(--line); padding: var(--foote
 .format-picker { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--control-min-size); padding: 0 var(--space-2); border-radius: var(--button-radius); color: var(--muted); font-size: var(--metadata-size); cursor: default; overflow: hidden; }
 .format-picker::after { content: "▾"; }
 .format-picker:hover { background: var(--hover-background); color: var(--text); }
-.format-picker:focus-within { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+/* Keyboard focus only: a click that opens the menu draws no ring. Chromium
+   counts a clicked <select> as focus-visible, so the last input decides. */
+:root:not([data-input="pointer"]) .format-picker:has(select:focus-visible) { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
+@supports not selector(:has(*)) {
+  :root:not([data-input="pointer"]) .format-picker:focus-within { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
+}
 .format-picker select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: default; }
 
 /* The pin appears with the pointer or while on, without moving anything. */
@@ -154,8 +170,10 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
 @media (prefers-contrast: more) {
 
   [role="option"][data-active] { border-color: var(--active-edge); border-width: var(--contrast-border-width); }
+  [role="option"][data-citation-selected] { border-color: var(--citation); box-shadow: inset 0 0 0 var(--focus-width) var(--citation); }
+  [role="option"][data-active][data-citation-selected] { border-color: var(--active-edge); box-shadow: inset 0 0 0 var(--focus-width) var(--row-active-text); }
   :root[data-platform] #search { border-color: var(--line); }
-  :root:not([data-platform="windows"]):not([data-platform="linux"]) #search:focus-visible { outline: var(--focus-width) solid var(--focus); }
+  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
 }
 @media (forced-colors: active) {
 
@@ -168,7 +186,7 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
   [role="option"][data-active][data-citation-selected] { outline-color: HighlightText; }
   .search-bar:focus-within { outline: var(--focus-width) solid var(--selected-background); outline-offset: var(--forced-search-offset); }
   #search::-webkit-search-cancel-button { forced-color-adjust: none; background: FieldText; }
-  :root:not([data-platform="windows"]):not([data-platform="linux"]) #search:focus-visible { outline: var(--focus-width) solid CanvasText; }
+  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-width) solid CanvasText; outline-offset: var(--focus-offset); }
   :root[data-platform="windows"] [role="option"][data-active]::before { background: HighlightText; }
 }
 @media (max-width: 460px) {

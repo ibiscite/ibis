@@ -4,8 +4,10 @@ import { App } from "./App";
 import "./styles.css";
 import { commands } from "./bindings";
 import { installNativeAppearance, setPlatform } from "./nativeAppearance";
+import { trackInputModality } from "./inputModality";
 
 setPlatform();
+trackInputModality();
 void installNativeAppearance(commands.nativeAppearance);
 
 const root = document.getElementById("root");

@@ -6,6 +6,7 @@ import { emitTo } from "@tauri-apps/api/event";
 import { App, type PickerApi } from "./App";
 import { libraryMessages, pickerText } from "./messages";
 import { setPlatform } from "./nativeAppearance";
+import { trackInputModality } from "./inputModality";
 import "./styles.css";
 import "./gallery.css";
 import "./notice.css";
@@ -222,6 +223,7 @@ function Gallery({ switches }: { switches: GallerySwitches }) {
 }
 
 setPlatform();
+trackInputModality();
 const root = document.getElementById("root");
 if (root && (import.meta.env.DEV || import.meta.env.MODE === "evidence")) {
   const switches = gallerySwitches(window.location.search);

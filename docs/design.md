@@ -14,7 +14,7 @@ comes from [ROADMAP.md](../ROADMAP.md); the rollout below separates remaining
 work from behavior already implemented. Native acceptance is recorded separately
 in [testing.md](testing.md), not established by this specification.
 
-## Seven rules
+## Eight rules
 
 1. **One anatomy everywhere.** Search, list, detail, citation tray and footer, in
    that order, in every form from a one-line bar to the large settings window.
@@ -29,6 +29,9 @@ in [testing.md](testing.md), not established by this specification.
    inserted, or why not. Colour is never the only signal.
 7. **Calm motion.** Movement only explains where something came from, and it
    switches off when the system asks for reduced motion.
+8. **No glow, no edge rings.** Selection is a fill, never an outline. No
+   coloured borders, outer glows or bright rims. A focus ring appears only when
+   the keyboard moved focus.
 
 ## Design language
 
@@ -67,10 +70,19 @@ platform, so a source or a reference type always looks the same.
 |---|---|---|---|
 | Material | Translucent glass | Mica, content on a lighter layer | Flat |
 | Window radius | 12 pt, the native panel corner (#236) | 8 px (4 px controls) | 14 px |
-| Selected row | Filled accent, white text | Soft grey with an accent pill on the left | Accent tint |
+| Selected row | Filled accent, white text | Soft grey with an accent pill on the left | GTK's selection colour (filled accent) with its paired text |
+| Keyboard focus ring | 2 px accent, 1 px gap | 2 px in the text colour around a 1 px surface-coloured stroke (Fluent's focus visual) | 2 px, the accent mixed half toward the text colour, 1 px gap |
 | Search box | Frameless, large | Text box with an underline that turns accent on focus | Framed entry |
 | Shortcut labels | ⌘ ⌥ ⇧ | Ctrl Alt Shift | Ctrl Super Shift |
 | Copied | Pill near the top of the screen | Notice bottom-right | Toast at the bottom |
+
+The Linux selected row uses the full selection colour rather than a tint: focus
+stays in the search box while ↑ ↓ move the selection, so the fill is the only
+cue, and libadwaita's list tint (25 % accent, `$view_selected_color`) or a
+plain neutral fill reaches only about 1.1–1.3:1 against the rows beside it.
+The full accent reaches about 3.7:1 (light) and 4:1 (dark) with Adwaita blue.
+Adwaita's half-accent focus ring is mixed toward the text colour instead of
+made transparent for the same reason.
 
 High contrast and reduced transparency replace every material with the opaque
 system surface, as [native appearance groundwork](https://github.com/ibiscite/ibis/pull/232#issuecomment-6282577029) already does.
@@ -201,10 +213,13 @@ is pressed again.
 **Accessibility.** Reduced motion uses fades only. Screen readers hear the
 result count and, per row, title, first author, year, journal or container
 (Comfortable and Spacious) and why it matched;
-"Copied" is announced politely. Every action has a key; focus rings are always
-visible (2 px, accent), except on the frameless macOS search field, where the
-caret and the active row are the cue, as in Spotlight. With increased contrast
-or forced colours, that field shows the ring too. Right-to-left titles align right within their row.
+"Copied" is announced politely. Every action has a key. Focus rings appear only for keyboard
+focus (`:focus-visible`), never after a click, in the platform's style (see the
+table above), and reach 3:1 against the surface with the platform's default
+accent. The search box never shows one: it always has focus, the caret is
+the cue, and on Windows its accent underline. Rows moved with ↑ ↓ show their
+fill, not a ring. With increased contrast or forced colours, every control and
+the search box show a solid 2 px ring and the active row a 3 px edge. Right-to-left titles align right within their row.
 
 ## Rollout
 
