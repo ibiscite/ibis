@@ -8,7 +8,7 @@ import { platformOf } from "./nativeAppearance";
 
 const syntheticApi: PickerApi = {
   libraryStatus: async () => ({ state: "loaded", has_snapshot: true, zotero: false, zotero_libraries: [], name: "gallery.bib", snapshot_name: "gallery.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: null }),
-  search: async () => [{ id: { source: "synthetic-gallery", native_key: "example" }, key: "example", title: "Synthetic gallery reference", authors: "Example Author", year: 2026, matched: ["title"] }],
+  search: async () => [{ id: { source: "synthetic-gallery", native_key: "example" }, key: "example", title: "Synthetic gallery reference", authors: "Example Author", year: 2026, matched: ["title"], first_author: "Example Author", author_count: 1, container: null, item_type: "book" }],
   copyCitation: async () => ({ text: "[@example]", warnings: [] }),
   copyFormat: async () => "pandoc",
   pickerPreferences: async () => ({ citation_style: null, density: "comfortable", larger_text: false }),

@@ -241,6 +241,19 @@ impl Reference {
         self.title.as_deref().map(strip_markup)
     }
 
+    /// Where the record appeared, without markup, so similar records can be
+    /// told apart: the journal, book or proceedings title, or else the
+    /// publisher (for BibTeX also the school or institution).
+    pub fn container_plain(&self) -> Option<String> {
+        let container = self.container_title.as_deref().map(strip_markup);
+        let publisher = self.variables.get("publisher").cloned();
+        [container, publisher]
+            .into_iter()
+            .flatten()
+            .map(|text| text.trim().to_string())
+            .find(|text| !text.is_empty())
+    }
+
     /// Convert to a CSL-JSON item for citation processors.
     pub fn to_csl_json(&self) -> Value {
         let mut item = Map::new();

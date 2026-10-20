@@ -165,29 +165,53 @@ pub(crate) struct SearchResult {
     authors: String,
     year: Option<i32>,
     matched: Vec<String>,
+    /// Family name of the first author (or the whole name of an
+    /// organization); empty when the record names no authors.
+    first_author: String,
+    /// How many creators the record names (an organization counts as one),
+    /// so a row can name two authors and shorten three or more.
+    author_count: u32,
+    /// Journal, book or proceedings title, else the publisher; capped at
+    /// 120 characters.
+    container: Option<String>,
+    /// CSL item type, such as `article-journal`.
+    item_type: String,
+}
+
+/// Longest container sent to the interface, in characters, ellipsis included.
+const CONTAINER_LIMIT: usize = 120;
+
+/// Shorten `text` to at most `limit` characters, ending with an ellipsis.
+fn capped(text: String, limit: usize) -> String {
+    if text.chars().count() <= limit {
+        return text;
+    }
+    let kept: String = text.chars().take(limit.saturating_sub(1)).collect();
+    format!("{}…", kept.trim_end())
+}
+
+fn surname(name: &ibis_core::model::Name) -> String {
+    if name.literal.is_some() {
+        name.display()
+    } else {
+        name.family.clone().unwrap_or_default()
+    }
 }
 
 impl SearchResult {
     fn from(reference: &Reference, matched: Vec<String>) -> Self {
         SearchResult {
+            first_author: reference.authors.first().map(surname).unwrap_or_default(),
+            author_count: u32::try_from(reference.authors.len()).unwrap_or(u32::MAX),
+            container: reference.container_plain().map(|text| capped(text, CONTAINER_LIMIT)),
+            item_type: reference.item_type.clone(),
             id: reference.id.clone(),
             key: reference
                 .citekey
                 .clone()
                 .unwrap_or_else(|| reference.id.native_key.clone()),
             title: reference.title_plain().unwrap_or_default(),
-            authors: reference
-                .authors
-                .iter()
-                .map(|n| {
-                    if n.literal.is_some() {
-                        n.display()
-                    } else {
-                        n.family.clone().unwrap_or_default()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", "),
+            authors: reference.authors.iter().map(surname).collect::<Vec<_>>().join(", "),
             year: reference.year(),
             matched,
         }
@@ -858,6 +882,61 @@ fn search_newest(index: &OwnedIndex, query: &str, limit: usize, request: u32, ne
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn results_carry_what_tells_similar_references_apart() {
+        let long = "Long ".repeat(60);
+        let bib = format!(
+            "@article{{a, title={{Sleep}}, author={{Garc{{\\'i}}a, Mar{{\\'i}}a and Okafor, Tobi}}, journal={{Journal of Synthetic Studies}}, year={{2021}}}}\n\
+             @book{{b, title={{Sleep}}, author={{{{Example Group}}}}, publisher={{{long}}}, year={{2021}}}}\n\
+             @misc{{c, title={{Sleep}}, year={{2021}}}}"
+        );
+        let loaded = ibis_core::bibtex::load_str("t", &bib);
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        let results: Vec<SearchResult> = loaded
+            .references
+            .iter()
+            .map(|r| SearchResult::from(r, Vec::new()))
+            .collect();
+        assert_eq!(results[0].first_author, "García");
+        assert_eq!(results[0].author_count, 2);
+        assert_eq!(results[0].container.as_deref(), Some("Journal of Synthetic Studies"));
+        assert_eq!(results[0].item_type, "article-journal");
+        assert_eq!(results[1].first_author, "Example Group");
+        assert_eq!(results[1].author_count, 1);
+        assert_eq!(results[1].item_type, "book");
+        let capped = results[1].container.as_deref().unwrap_or_default();
+        assert_eq!(capped.chars().count(), CONTAINER_LIMIT);
+        assert!(capped.ends_with('…') && !capped.ends_with(" …"));
+        assert_eq!(
+            (
+                results[2].first_author.as_str(),
+                results[2].author_count,
+                results[2].container.as_deref()
+            ),
+            ("", 0, None)
+        );
+    }
+
+    #[test]
+    fn the_author_count_comes_from_the_creator_list() {
+        // A literal organization name with a comma is one creator, so the
+        // count is not read from the comma-joined display string.
+        let bib = "@article{a, title={Sleep}, author={Smith, Ann and {Institute, Research}}, year={2021}}\n\
+                   @article{b, title={Sleep}, author={Smith, Ann and Okafor, Tobi and Lima, Ana}, year={2021}}";
+        let loaded = ibis_core::bibtex::load_str("t", bib);
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        let results: Vec<SearchResult> = loaded
+            .references
+            .iter()
+            .map(|r| SearchResult::from(r, Vec::new()))
+            .collect();
+        assert_eq!(
+            (results[0].author_count, results[0].authors.as_str()),
+            (2, "Smith, Institute, Research")
+        );
+        assert_eq!(results[1].author_count, 3);
+    }
+
     #[test]
     fn an_older_search_stops_even_if_it_starts_after_a_newer_one() {
         let refs = ibis_core::bibtex::load_str("t", "@article{a,title={Sleep},year={2020}}").references;

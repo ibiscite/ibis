@@ -55,7 +55,10 @@ async function chooseFromMore(name: string, role: "menuitem" | "menuitemcheckbox
 }
 
 function result(key: string, title: string, source = "refs.bib") {
-  return { id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"] };
+  return {
+    id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"],
+    first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal",
+  };
 }
 
 type Handler = (args: Record<string, unknown>) => unknown;
@@ -935,6 +938,116 @@ test("a row says why it matched only when the match is not visible", async () =>
   expect(screen.getByText("Best matches")).toBeTruthy();
 });
 
+test("rows with the same first author and year are told apart by their container and type", async () => {
+  const garcia = { authors: "García, Okafor", first_author: "García", author_count: 2, year: 2021 };
+  let density = "comfortable";
+  backend({
+    picker_preferences: () => ({ citation_style: null, density, larger_text: false }),
+    search: () => [
+      { ...result("a", "Sleep spindles"), ...garcia, container: "Journal of Sleep \u202eResearch", matched: ["title"] },
+      { ...result("b", "Sleep spindles: a replication"), ...garcia, container: "Sleep", item_type: "book", matched: ["container", "abstract"] },
+      { ...result("c", "Untyped"), item_type: "constructor", matched: ["title"] },
+    ],
+  });
+  const { unmount } = render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "spindles" } });
+  await screen.findByText("Untyped");
+  let rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
+  // Comfortable: authors and container, no type word and no first-author repeat.
+  expect(rows[0]?.querySelector(".result-container")?.textContent).toBe("Journal of Sleep \u202eResearch");
+  expect(rows[0]?.textContent).toContain("García, Okafor");
+  expect(rows[0]?.querySelector(".result-type, .result-first-author")).toBeNull();
+  // One separator part between authors and container, spaced like the words
+  // around it: a no-break space before the dot and a preserved space after it
+  // (white-space: pre), and no gap, margin or padding of its own.
+  const byline = rows[0]?.querySelector(".result-byline");
+  expect(byline?.querySelector(".result-authors + .result-separator[aria-hidden] + .result-container")).toBeTruthy();
+  expect(byline?.textContent).toBe("García, Okafor\u00a0· Journal of Sleep \u202eResearch");
+  expect(byline?.querySelector(".result-separator")?.textContent).toBe("\u00a0· ");
+  // In the narrow layout the line may break after the separator, not inside a word.
+  expect(styles).toMatch(/\.result-separator \{ white-space: pre-wrap; \}/);
+  // Each clipping part takes its own direction, so a right-to-left row cuts
+  // Latin text at its end rather than its start.
+  for (const part of [".result-authors", ".result-container", ".result-key"]) expect(rows[0]?.querySelector(part)?.getAttribute("dir")).toBe("auto");
+  expect(styles).toMatch(/\.result-separator \{ flex: none; white-space: pre; \}/);
+  const bylineRules = [...styles.matchAll(/([^{}]*\.result-(?:byline|authors|separator|container)\b[^{}]*)\{([^}]*)\}/g)];
+  expect(bylineRules.length).toBeGreaterThan(0);
+  for (const [, , body] of bylineRules) expect(body).not.toMatch(/margin|padding|gap|(^|[^-])width:/);
+  // The row may shorten the container, so a match there is always named.
+  expect(rows[1]?.textContent).toContain("Matched in");
+  expect(rows[2]?.querySelector(".result-container")).toBeNull();
+  unmount();
+
+  density = "spacious";
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "spindles" } });
+  await screen.findByText("Untyped");
+  rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
+  expect(rows[0]?.querySelector(".result-type")?.textContent).toBe("Article");
+  expect(rows[1]?.querySelector(".result-type")?.textContent).toBe("Book");
+  expect(rows[2]?.querySelector(".result-type")).toBeNull();
+  cleanup();
+
+  density = "compact";
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "spindles" } });
+  await screen.findByText("Untyped");
+  rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
+  // Compact: the first author follows the title on the one line, before the year.
+  const line = rows[0]?.querySelector(".result-line");
+  expect(line?.querySelector(".result-first-author")?.getAttribute("dir")).toBe("auto");
+  // "et al." is isolated, so it keeps its order beside a right-to-left name.
+  expect(line?.querySelector(".result-first-author bdi")?.textContent).toBe("et al.");
+  // No reliance on text-align: match-parent, which Chromium ignores here: the
+  // container is only as wide as its text, so it sits beside its separator.
+  expect(styles).not.toMatch(/match-parent/);
+  // It keeps its own width beside a long title, as in the prototype, capped and ellipsized.
+  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--key-max-width\);[^}]*text-overflow: ellipsis/);
+  // A very narrow Compact row gives the title its own line instead.
+  expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ flex-wrap: wrap; row-gap: 0; \}\s*:root\[data-density="compact"\] \.result-title \{ flex-basis: 100%; \}/);
+  expect(line?.textContent).toBe("Sleep spindlesGarcía et al.2021");
+  expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
+  expect(rows[0]?.querySelector(".result-container, .result-type")).toBeNull();
+  // The container is out of sight in Compact, so a match there is named.
+  expect(rows[1]?.textContent).toContain("Matched in");
+});
+
+test("rows shorten the authors and keep the journal, key and library label visible", async () => {
+  backend({ search: () => [
+    { ...result("a", "Six authors"), authors: "García, Okafor, Lima, Chen, Novak, Haddad", first_author: "García", author_count: 6, container: "Journal of Sleep Research" },
+    // Two creators are both named; the core counts an organisation with a comma as one.
+    { ...result("b", "Organisation"), authors: "Smith, Institute, Research", first_author: "Smith", author_count: 2, container: "Sleep" },
+    { ...result("c", "One author"), container: "Sleep" },
+  ] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
+  await screen.findByText("One author");
+  const rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
+  const authors = (row?: HTMLElement) => row?.querySelector(".result-authors");
+  // Three or more: "García et al." on screen; screen readers still hear every name.
+  expect(authors(rows[0])?.querySelector("[aria-hidden]")?.textContent).toBe("García et al.");
+  expect(authors(rows[0])?.querySelector("[aria-hidden] bdi")?.textContent).toBe("et al.");
+  expect(authors(rows[0])?.querySelector(".visually-hidden")?.textContent).toBe("García, Okafor, Lima, Chen, Novak, Haddad");
+  expect(authors(rows[1])?.textContent).toBe("Smith, Institute, Research");
+  expect(authors(rows[2])?.textContent).toBe("Smith");
+  // The key and library label give way first, down to a few letters; the type
+  // word and the authors (up to 60% of the byline) keep their width, and the
+  // container shortens first. Below 25em the meta line may wrap instead (no
+  // row gap). Chromium probe numbers for the crowded cases are in PR #502.
+  expect(styles).not.toMatch(/line-clamp/);
+  expect(styles).toMatch(/\.result-meta \{[^}]*flex-wrap: wrap; row-gap: 0;/);
+  // Rows at least 25em wide (461px or more at normal text) never wrap.
+  expect(styles).toMatch(/\[role="option"\] \{ container-type: inline-size; \}/);
+  expect(styles).toMatch(/@container \(min-width: 25em\) \{ \.result-meta \{ flex-wrap: nowrap; \} \}/);
+  expect(styles).toMatch(/\.result-byline \{[^}]*flex: 1 1 auto; min-width: min\(12em, 60%\)/);
+  expect(styles).toMatch(/\.result-authors \{ flex: none; max-width: 60%;[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-container \{ flex: 0 1 auto; min-width: 0;[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-key \{ flex: 0 1000 auto; min-width: min\(6ch, 100%\);[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-library \{ flex: 0 1000 auto; min-width: min\(5em, 100%\);[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-type \{ flex: none; max-width: 100%;[^}]*text-overflow: ellipsis/);
+  for (const name of ["key", "library"]) expect(styles).not.toMatch(new RegExp(`\\.result-${name} \\{[^}]*min-width: 0`));
+});
+
 test("Escape clears the search before it hides the picker, keeping chosen references", async () => {
   const calls = backend({ search: () => [result("a", "First")] });
   render(<App />);
@@ -1354,6 +1467,27 @@ test("with several Zotero libraries each result names its library, and a left gr
   expect(within(screen.getByText("Mine").closest("li")!).getByText("My Library")).toBeTruthy();
   await chooseFromMore("Group 9", "menuitemcheckbox");
   await waitFor(() => expect(chosen).toEqual([["user", { group: 42 }]]));
+});
+
+test("removing one of two chosen references with the same key names its library", async () => {
+  backend({
+    library_status: () => zoteroStatus(["user", { group: 42 }]),
+    zotero_groups: () => [{ id: 42, name: "Synthetic lab" }],
+    search: ({ query }) => (query ? [result("garcia2021", "Mine", "zotero:user"), result("garcia2021", "Shared", "zotero:group:42"), result("other", "Other", "zotero:user")] : []),
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "x" } });
+  await within((await screen.findByText("Shared")).closest("li")!).findByText("Synthetic lab");
+  // Shift+click adds a row to the citation (a plain click copies it).
+  fireEvent.click(screen.getByText("Other"), { shiftKey: true });
+  fireEvent.click(screen.getByText("Mine"), { shiftKey: true });
+  // Only one garcia2021 chosen so far: its key is enough.
+  expect(screen.getByRole("button", { name: "Remove garcia2021 from the selection" })).toBeTruthy();
+  fireEvent.click(screen.getByText("Shared"), { shiftKey: true });
+  const chosen = within(screen.getByRole("list", { name: "Selected references" }));
+  expect(chosen.getByRole("button", { name: "Remove garcia2021 (My Library) from the selection" })).toBeTruthy();
+  expect(chosen.getByRole("button", { name: "Remove garcia2021 (Synthetic lab) from the selection" })).toBeTruthy();
+  expect(chosen.getByRole("button", { name: "Remove other from the selection" })).toBeTruthy();
 });
 
 test("a failed group list is reported and My Library stays available", async () => {

@@ -110,6 +110,8 @@ export const pickerText = {
   resultCount: (count: number) => `${count} ${count === 1 ? "result" : "results"}`,
   selectionCount: (count: number) => `${count} ${count === 1 ? "reference" : "references"} selected for citation`,
   removeReference: (key: string) => `Remove ${key} from the selection`,
+  /** When two chosen references from different libraries share a key. */
+  removeReferenceIn: (key: string, library: string) => `Remove ${key} (${library}) from the selection`,
   shortcutError: (registered: boolean, shortcut: string, reason: string) => registered
     ? `Your shortcut setting was not used: ${reason}.`
     : `The shortcut ${shortcut} is not available: ${reason}.`,
@@ -201,6 +203,39 @@ export const copyFormatLabels: Record<KeyFormat, string> = {
   cite: "LaTeX  \\cite{key}",
   typst: "Typst  @key",
   keys: "Keys only",
+};
+
+/** Words that tell similar result rows apart (#492). */
+export const rowText = {
+  /** Follows the first author's name in Compact rows when there are more. */
+  etAl: "et al.",
+  /** Short word for a CSL item type, shown in Spacious rows; other types show none. */
+  itemType: (type: string): string | null => (Object.hasOwn(itemTypeWords, type) ? itemTypeWords[type] ?? null : null),
+};
+
+const itemTypeWords: Record<string, string> = {
+  "article": "Article",
+  "article-journal": "Article",
+  "article-magazine": "Article",
+  "article-newspaper": "Article",
+  "book": "Book",
+  "chapter": "Chapter",
+  "dataset": "Dataset",
+  "entry-dictionary": "Entry",
+  "entry-encyclopedia": "Entry",
+  "manuscript": "Manuscript",
+  "paper-conference": "Paper",
+  "patent": "Patent",
+  "post": "Post",
+  "post-weblog": "Post",
+  "report": "Report",
+  "review": "Review",
+  "review-book": "Review",
+  "software": "Software",
+  "speech": "Talk",
+  "standard": "Standard",
+  "thesis": "Thesis",
+  "webpage": "Web page",
 };
 
 // The notice shown after a clean copy hides the picker (#496).

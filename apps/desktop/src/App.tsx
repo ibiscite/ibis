@@ -1,6 +1,6 @@
 import type React from "react";
 import * as nativeApi from "./api";
-import { copiedNoticeText, copyFormatNames, densityNames, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
+import { copiedNoticeText, copyFormatNames, densityNames, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText, rowText } from "./messages";
 import { ariaKeys, KEY_TABLE, keyLabel, keysFor, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LibrarySetup, shortcutLabel } from "./LibrarySetup";
@@ -70,6 +70,16 @@ function hiddenMatch(matched: string[]): string | null {
   if (matched.length === 0 || matched.some((field) => VISIBLE_FIELDS.has(field))) return null;
   return matched[0] ?? null;
 }
+
+/** Rows name one or two authors in full and shorten three or more to
+ * "García et al.". The count comes from the record's creators, so a name with
+ * a comma is one; with one or two creators the joined surnames are the short form. */
+function abbreviatedAuthors(r: SearchResult): boolean {
+  return Boolean(r.first_author) && r.author_count > 2;
+}
+
+/** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
+const etAl = <bdi>{rowText.etAl}</bdi>;
 
 /** Done, Look or Stop for the footer dot; words carry the same meaning. */
 function libraryHealth(library: LibraryStatus | null | undefined): "done" | "look" | "stop" | "idle" {
@@ -663,6 +673,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const libraryOf = (source: string) =>
     source === "zotero:user" ? pickerText.myLibrary
       : source.startsWith("zotero:group:") ? groupName(Number(source.slice("zotero:group:".length))) : null;
+  /** Names the library too when another chosen reference has the same key. */
+  const removeLabel = (r: SearchResult) => {
+    const library = libraryOf(r.id.source);
+    const shared = [...selected.values()].some((other) => other.key === r.key && other.id.source !== r.id.source);
+    return shared && library ? pickerText.removeReferenceIn(r.key, library) : pickerText.removeReference(r.key);
+  };
   const closeMenu = (refocus: boolean) => {
     setMenuOpen(false);
     if (refocus) moreButton.current?.focus();
@@ -849,7 +865,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           {[...selected.entries()].map(([key, r]) => (
             <li key={key}>
               <code>{r.key}</code>{" "}
-              <button type="button" onClick={() => toggle(r)} aria-label={pickerText.removeReference(r.key)}>
+              <button type="button" onClick={() => toggle(r)} aria-label={removeLabel(r)}>
                 {pickerText.remove}
               </button>
             </li>
@@ -882,7 +898,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         </p>
         <ul id="results" role="listbox" aria-label={pickerText.results} onMouseMove={pointer.onMouseMove}>
           {results.map((r, i) => {
+            const compact = density === "compact";
+            // A match in the container is always named: the row may shorten the container.
             const why = hiddenMatch(r.matched);
+            const itemType = density === "spacious" ? rowText.itemType(r.item_type) : null;
             return (
               <li
                 key={idKey(r.id)}
@@ -913,11 +932,21 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               >
                 <span className="result-line">
                   <strong className="result-title">{r.title}</strong>
+                  {compact && r.first_author && <span className="result-first-author" dir="auto">{r.first_author}{r.author_count > 1 && <> {etAl}</>}</span>}
                   <span className="result-year">{r.year ?? pickerText.noDate}</span>
                 </span>
                 <span className="result-meta">
-                  <span className="result-authors">{r.authors}</span>
-                  <code className="result-key">{r.key}</code>
+                  {/* Each clipping part takes its own text direction, so Latin text in a
+                      right-to-left row is cut at its end. The separator is its own part. */}
+                  <span className="result-byline">
+                    <span className="result-authors" dir="auto">
+                      {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
+                    </span>
+                    {!compact && r.container && r.authors && <span className="result-separator" aria-hidden="true">{"\u00a0· "}</span>}
+                    {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
+                  </span>
+                  {itemType && <span className="result-type">{itemType}</span>}
+                  <code className="result-key" dir="auto">{r.key}</code>
                   {severalLibraries && libraryOf(r.id.source) && <span className="result-library">{libraryOf(r.id.source)}</span>}
                 </span>
                 {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
