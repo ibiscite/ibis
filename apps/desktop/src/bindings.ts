@@ -30,6 +30,16 @@ export const commands = {
 	copyCitation: (ids: RecordId[], format: KeyFormat) => __TAURI_INVOKE<Copied>("copy_citation", { ids, format }),
 	/**  The format the picker starts with: the last one used, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
+	/**
+	 *  The selected records as CSL-JSON, in the order given, for the citation
+	 *  engine. Sent as JSON text so the fields stay exactly as the core writes them.
+	 */
+	cslItems: (ids: RecordId[]) => __TAURI_INVOKE<string>("csl_items", { ids }),
+	/**
+	 *  Copy a formatted citation or bibliography as HTML with a plain-text
+	 *  alternative, so word processors keep italics and plain editors get text.
+	 */
+	copyFormatted: (text: string, html: string) => __TAURI_INVOKE<null>("copy_formatted", { text, html }),
 	/**  Hide the picker (Escape in the interface). */
 	hidePicker: () => __TAURI_INVOKE<void>("hide_picker"),
 	/**

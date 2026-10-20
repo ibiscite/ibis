@@ -181,6 +181,14 @@ try {
         $facts.current_foreground = [IbisSmoke]::ForegroundPid() -eq $EditorId
         if (!$facts.current_foreground) {
           $facts.request_accepted = [IbisSmoke]::SetForegroundWindow($handle)
+          if (!$facts.request_accepted) {
+            # Windows refuses foreground changes from a background process
+            # (often right after the foreground app exits); a synthetic Alt
+            # press counts as user input and lifts that lock for one retry.
+            [IbisSmoke]::Key(0x12, 0, 0)
+            [IbisSmoke]::Key(0x12, 0, 2)
+            $facts.request_accepted = [IbisSmoke]::SetForegroundWindow($handle)
+          }
         }
         $facts.current_foreground = [IbisSmoke]::ForegroundPid() -eq $EditorId
         # A declined request is not a focus verdict. Python independently

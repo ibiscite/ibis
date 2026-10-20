@@ -9,15 +9,17 @@ import harvard from "../../vendor/csl/styles/harvard-cite-them-right.csl?raw";
 import ieee from "../../vendor/csl/styles/ieee.csl?raw";
 import mla from "../../vendor/csl/styles/modern-language-association.csl?raw";
 
-export const STYLES = {
-  apa: { title: "APA (7th edition)", xml: apa },
-  "chicago-author-date": { title: "Chicago (author-date)", xml: chicago },
-  "harvard-cite-them-right": { title: "Harvard (Cite Them Right)", xml: harvard },
-  ieee: { title: "IEEE", xml: ieee },
-  "modern-language-association": { title: "MLA (9th edition)", xml: mla },
-} as const;
+import { STYLE_TITLES, type StyleId } from "./styles";
 
-export type StyleId = keyof typeof STYLES;
+export type { StyleId };
+
+export const STYLES: Record<StyleId, { title: string; xml: string }> = {
+  apa: { title: STYLE_TITLES.apa, xml: apa },
+  "chicago-author-date": { title: STYLE_TITLES["chicago-author-date"], xml: chicago },
+  "harvard-cite-them-right": { title: STYLE_TITLES["harvard-cite-them-right"], xml: harvard },
+  ieee: { title: STYLE_TITLES.ieee, xml: ieee },
+  "modern-language-association": { title: STYLE_TITLES["modern-language-association"], xml: mla },
+};
 export type OutputFormat = "html" | "text" | "rtf";
 
 /** A CSL-JSON item, as `ibis-core` exports it. */

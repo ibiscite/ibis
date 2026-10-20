@@ -54,6 +54,8 @@ main {
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }
 .notices p { margin: var(--notice-margin); }
 .copy-notice { border-bottom: var(--border-width) solid var(--line); padding-bottom: var(--copy-padding); }
+.format-preview { border-bottom: var(--border-width) solid var(--line); padding: var(--copy-padding); overflow-wrap: anywhere; }
+.format-preview .provisional { color: var(--muted); font-size: var(--metadata-size); margin: var(--metadata-gap) 0 0; }
 .dismiss { float: right; margin: var(--dismiss-margin); }
 [role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
 [aria-label="Selected references"] { display: flex; flex-wrap: wrap; gap: var(--selection-gap); list-style: none; padding: var(--selection-padding); margin: 0; border-bottom: var(--border-width) solid var(--line); }

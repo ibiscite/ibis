@@ -1281,7 +1281,7 @@ class ContractTests(unittest.TestCase):
             wait.assert_not_called()
 
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows focus helper contract")
-    def test_windows_helper_validates_owned_window_before_at_most_one_foreground_request(self):
+    def test_windows_helper_validates_owned_window_before_a_foreground_request_and_one_unlocked_retry(self):
         script = r'''
 param([string] $Source)
 $ErrorActionPreference = 'Stop'
@@ -1298,7 +1298,8 @@ using System;
 public static class IbisSmoke {
  public static bool Live=true, Accepted=false;
  public static uint Owner=12345, Foreground=0;
- public static int Requests=0;
+ public static int Requests=0, Keys=0;
+ public static void Key(ushort vk, ushort scan, uint flags) { if (vk != 0x12) throw new Exception("unexpected key"); Keys++; }
  public static bool IsWindow(IntPtr window) { return Live; }
  public static uint OwnerPid(IntPtr window) { return Owner; }
  public static uint ForegroundPid() { return Foreground; }
@@ -1309,14 +1310,17 @@ $EditorId=12345; $Text='987654321'
 $script:current=[pscustomobject]@{ProcessName='Notepad';StartTime=[DateTime]::new(987654321,[DateTimeKind]::Utc);MainWindowHandle=[IntPtr]::new(20)}
 function Get-Process { param($Id,$ErrorAction) $script:current }
 foreach ($accepted in @($false,$true)) {
- [IbisSmoke]::Requests=0; [IbisSmoke]::Accepted=$accepted
+ [IbisSmoke]::Requests=0; [IbisSmoke]::Keys=0; [IbisSmoke]::Accepted=$accepted
  $result=& $operation
+ # A refused request gets one retry after an Alt press and an Alt release.
+ $requests=if ($accepted) {1} else {2}; $keys=if ($accepted) {0} else {2}
  if ($result.Count -ne 4 -or !$result.owned -or !$result.window_valid -or
-     $result.request_accepted -ne $accepted -or $result.current_foreground -or [IbisSmoke]::Requests -ne 1) { throw 'Request metadata regression' }
+     $result.request_accepted -ne $accepted -or $result.current_foreground -or
+     [IbisSmoke]::Requests -ne $requests -or [IbisSmoke]::Keys -ne $keys) { throw 'Request metadata regression' }
 }
-[IbisSmoke]::Foreground=12345; [IbisSmoke]::Requests=0
+[IbisSmoke]::Foreground=12345; [IbisSmoke]::Requests=0; [IbisSmoke]::Keys=0
 $result=& $operation
-if (!$result.current_foreground -or [IbisSmoke]::Requests -ne 0) { throw 'Already focused editor was requested again' }
+if (!$result.current_foreground -or [IbisSmoke]::Requests -ne 0 -or [IbisSmoke]::Keys -ne 0) { throw 'Already focused editor was requested again' }
 foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
  [IbisSmoke]::Requests=0; [IbisSmoke]::Live=$true; [IbisSmoke]::Owner=12345
  $script:current=[pscustomobject]@{ProcessName='Notepad';StartTime=[DateTime]::new(987654321,[DateTimeKind]::Utc);MainWindowHandle=[IntPtr]::new(20)}
@@ -1329,7 +1333,7 @@ foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
  }
  $rejected=$false
  try { & $operation | Out-Null } catch {$rejected=$true}
- if (!$rejected -or [IbisSmoke]::Requests -ne 0) { throw 'Unowned or invalid editor reached a foreground request' }
+ if (!$rejected -or [IbisSmoke]::Requests -ne 0 -or [IbisSmoke]::Keys -ne 0) { throw 'Unowned or invalid editor reached a foreground request' }
 }
 '''
         with tempfile.TemporaryDirectory() as temporary:

@@ -744,6 +744,72 @@ test.each([false, true])("a failed library open is not described as an empty exp
   expect(document.body.textContent).not.toContain("Choose a BibTeX or BibLaTeX export");
 });
 
+test("a citation style shows a safe preview and copies rich text with its warnings", async () => {
+  const { InlineWorker } = await import("./format/inline-worker");
+  vi.stubGlobal("Worker", InlineWorker);
+  const copies: Record<string, unknown>[] = [];
+  backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    csl_items: (args) => JSON.stringify((args.ids as { native_key: string }[]).map((id) => id.native_key === "a"
+      ? { id: "a", type: "book", title: "First <img src=x onerror=alert(1)>", author: [{ family: "Garcia", given: "Ana" }], issued: { "date-parts": [[2021]] } }
+      : { id: "b", type: "book", title: "Second", author: [{ family: 5 }] })),
+    copy_formatted: (args) => { copies.push(args); return null; },
+  });
+  try {
+    render(<App />);
+    await screen.findByText("First");
+    fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "style:ieee" } });
+    const preview = await screen.findByRole("region", { name: "Preview" });
+    await within(preview).findByText("[1]");
+    expect(within(preview).getByText(/Provisional/)).toBeTruthy();
+    const box = screen.getByLabelText("Search references");
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    fireEvent.keyDown(box, { key: "ArrowUp" });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "style:apa" } });
+    await within(preview).findByText("(Garcia, 2021); Second");
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(copies).toHaveLength(1));
+    expect(copies[0]).toEqual({ text: "(Garcia, 2021); Second", html: "(Garcia, 2021); Second" });
+    await screen.findByText("Copied");
+    expect(screen.getAllByText(/“Second”: this style could not format the reference/).length).toBeGreaterThan(0);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("Enter never copies a formatted preview of an earlier choice", async () => {
+  const { InlineWorker } = await import("./format/inline-worker");
+  vi.stubGlobal("Worker", InlineWorker);
+  const copies: Record<string, unknown>[] = [];
+  const book = (key: string, family: string) => ({ id: key, type: "book", title: key, author: [{ family }], issued: { "date-parts": [[2021]] } });
+  backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    csl_items: (args) => JSON.stringify((args.ids as { native_key: string }[]).map((id) =>
+      id.native_key === "a" ? book("a", "Alpha") : book("b", "Beta"))),
+    copy_formatted: (args) => { copies.push(args); return null; },
+  });
+  try {
+    render(<App />);
+    await screen.findByText("First");
+    fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "style:apa" } });
+    const preview = await screen.findByRole("region", { name: "Preview" });
+    await within(preview).findByText("(Alpha, 2021)");
+    const box = screen.getByLabelText("Search references");
+    // Enter after the choice changed but before its preview is ready.
+    act(() => { fireEvent.keyDown(box, { key: "ArrowDown" }); });
+    act(() => { fireEvent.keyDown(box, { key: "Enter" }); });
+    expect(await screen.findByText(/still being formatted/)).toBeTruthy();
+    await within(preview).findByText("(Beta, 2021)");
+    expect(copies).toEqual([]);
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(copies.map((copy) => copy.text)).toEqual(["(Beta, 2021)"]));
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test("the design scale keeps text readable and every colour role legible in both themes", () => {
   for (const [, token, size] of tokens.matchAll(/(--type-[\w-]+-size):\s*([\d.]+)rem/g)) {
     expect(Number(size), `${token} is at least 12 px`).toBeGreaterThanOrEqual(.75);

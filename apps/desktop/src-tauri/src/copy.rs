@@ -77,6 +77,46 @@ pub(crate) fn copy_citation(
     })
 }
 
+/// The selected records as CSL-JSON, in the order given, for the citation
+/// engine. Sent as JSON text so the fields stay exactly as the core writes them.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn csl_items(ids: Vec<RecordId>, library: State<'_, Mutex<Library>>) -> Result<String, String> {
+    let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
+    csl_json(library.index.references(), &ids)
+}
+
+pub(crate) fn csl_json(references: &[Reference], ids: &[RecordId]) -> Result<String, String> {
+    let items = ids
+        .iter()
+        .map(|id| {
+            references
+                .iter()
+                .find(|r| &r.id == id)
+                .map(Reference::to_csl_json)
+                .ok_or_else(|| "a selected reference is no longer in the library".to_string())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    serde_json::to_string(&items).map_err(|_| "the references could not be prepared for formatting".to_string())
+}
+
+/// Largest formatted text accepted for the clipboard, far above any real
+/// bibliography, so a runaway request cannot exhaust memory.
+const MAX_FORMATTED: usize = 16 * 1024 * 1024;
+
+/// Copy a formatted citation or bibliography as HTML with a plain-text
+/// alternative, so word processors keep italics and plain editors get text.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn copy_formatted(text: String, html: String, app: AppHandle) -> Result<(), String> {
+    if text.len() + html.len() > MAX_FORMATTED {
+        return Err("the formatted text is too large to copy".into());
+    }
+    app.clipboard()
+        .write_html(html, Some(text))
+        .map_err(|e| format!("the clipboard could not be written ({e})"))
+}
+
 /// The format the picker starts with: the last one used, or Pandoc.
 #[tauri::command]
 #[specta::specta]
@@ -106,5 +146,20 @@ mod tests {
             native_key: "same".into(),
         };
         assert!(render_citation(&loaded.references, &[missing], KeyFormat::Pandoc).is_err());
+    }
+
+    #[test]
+    fn csl_items_follow_the_chosen_records_in_order() {
+        let loaded = bibtex::load_str("a.bib", "@article{same, title={First}}\n@book{other, title={Other}}\n");
+        let ids: Vec<RecordId> = loaded.references.iter().rev().map(|r| r.id.clone()).collect();
+        let json = csl_json(&loaded.references, &ids).unwrap_or_else(|e| panic!("{e}"));
+        let items: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_else(|e| panic!("{e}"));
+        let titles: Vec<_> = items.iter().map(|item| item["title"].as_str()).collect();
+        assert_eq!(titles, [Some("Other"), Some("First")]);
+        let missing = RecordId {
+            source: "b.bib".into(),
+            native_key: "same".into(),
+        };
+        assert!(csl_json(&loaded.references, &[missing]).is_err());
     }
 }
