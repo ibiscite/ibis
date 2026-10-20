@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::{Update, Updater, UpdaterExt};
 
+use crate::diagnostics::application_message;
 use crate::preferences::SettingsFile;
 
 /// Automatic checks wait a little after start, then repeat this often.
@@ -144,9 +145,12 @@ async fn check(app: &AppHandle, asked: bool) {
         return;
     }
     let found = match updater(app) {
-        Ok(updater) => updater.check().await.map_err(|_| ()),
-        Err(_) => Err(()),
+        Ok(updater) => updater.check().await.map_err(|e| failure_kind(&e)),
+        Err(e) => Err(failure_kind(&e)),
     };
+    if !asked {
+        application_message(&automatic_outcome(&found));
+    }
     match found {
         Ok(Some(update)) => {
             let declined = updates.declined.lock().ok().and_then(|d| d.clone());
@@ -161,13 +165,36 @@ async fn check(app: &AppHandle, asked: bool) {
             &format!("You have the newest version, {}.", app.package_info().version),
         ),
         // Automatic checks stay quiet and try again later.
-        Err(()) if asked => tell(
+        Err(_) if asked => tell(
             app,
             "Ibis could not check for updates. Check your internet connection and try again later.",
         ),
         _ => {}
     }
     updates.busy.store(false, Ordering::SeqCst);
+}
+
+/// Why a check failed, from a fixed list: the error text itself can carry
+/// addresses or paths, so it is never shown or logged.
+fn failure_kind(error: &tauri_plugin_updater::Error) -> &'static str {
+    use tauri_plugin_updater::Error as E;
+    match error {
+        E::Reqwest(_) | E::Network(_) | E::Http(_) => "network",
+        E::ReleaseNotFound => "no update file",
+        E::TargetNotFound(_) | E::TargetsNotFound(_) => "no package for this system",
+        E::Serialization(_) | E::Semver(_) | E::InvalidUpdaterFormat => "unreadable update file",
+        _ => "other",
+    }
+}
+
+/// One line on standard error per automatic check, so a check that finds
+/// nothing or fails quietly can still be told apart in a log.
+fn automatic_outcome(found: &Result<Option<Update>, &'static str>) -> String {
+    match found {
+        Ok(Some(update)) => format!("automatic update check: {} is available", update.version),
+        Ok(None) => "automatic update check: up to date".into(),
+        Err(kind) => format!("automatic update check failed: {kind}"),
+    }
 }
 
 fn offer(app: &AppHandle, update: Update) {
@@ -235,6 +262,23 @@ fn tell(app: &AppHandle, text: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn automatic_checks_log_a_fixed_outcome_never_the_error_text() {
+        use tauri_plugin_updater::Error as E;
+        let private = "https://example.invalid/private/path";
+        for (error, kind) in [
+            (E::Network(private.into()), "network"),
+            (E::ReleaseNotFound, "no update file"),
+            (E::TargetNotFound(private.into()), "no package for this system"),
+            (E::TempDirNotFound, "other"),
+        ] {
+            let line = automatic_outcome(&Err(failure_kind(&error)));
+            assert_eq!(line, format!("automatic update check failed: {kind}"));
+            assert!(!line.contains("example"));
+        }
+        assert_eq!(automatic_outcome(&Ok(None)), "automatic update check: up to date");
+    }
 
     #[test]
     fn updates_are_off_without_an_update_key() {
