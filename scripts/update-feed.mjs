@@ -5,6 +5,12 @@
 //     version, then `-nightly.` and the commit time (UTC, YYYYMMDDHHMMSS), so
 //     every build of the same commit agrees and later commits sort higher.
 //
+//   node scripts/update-feed.mjs release
+//     Prints the workspace version, which a v tag must name.
+//
+//   node scripts/update-feed.mjs newer <version> <than>
+//     Exits 0 if <version> is a higher semantic version than <than>, else 1.
+//
 //   node scripts/update-feed.mjs config <version>
 //     Prints the Tauri configuration that turns a build into Ibis Nightly.
 //
@@ -48,6 +54,28 @@ export function nightlyConfig(version) {
   };
 }
 
+/** Semantic version precedence (semver.org §11), as the updater compares. */
+export function compareVersions(a, b) {
+  const parse = (v) => {
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(v);
+    if (!m) throw new Error(`not a semantic version: ${v}`);
+    return { core: m.slice(1, 4).map(Number), pre: m[4] ? m[4].split(".") : [] };
+  };
+  const [x, y] = [parse(a), parse(b)];
+  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return Math.sign(x.core[i] - y.core[i]);
+  if (!x.pre.length || !y.pre.length) return Math.sign(y.pre.length - x.pre.length);
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const [p, q] = [x.pre[i], y.pre[i]];
+    if (p === undefined || q === undefined) return p === undefined ? -1 : 1;
+    if (p === q) continue;
+    const [pn, qn] = [/^\d+$/.test(p), /^\d+$/.test(q)];
+    if (pn && qn) return Math.sign(Number(p) - Number(q));
+    if (pn !== qn) return pn ? -1 : 1;
+    return p < q ? -1 : 1;
+  }
+  return 0;
+}
+
 /** The 8-byte key ID inside a Tauri (base64-wrapped minisign) key or signature. */
 export function keyId(wrapped) {
   const text = Buffer.from(wrapped.trim(), "base64").toString("utf8");
@@ -85,6 +113,10 @@ function main([command, ...args]) {
       encoding: "utf8",
     }).trim();
     console.log(nightlyVersion(workspaceVersion(), time));
+  } else if (command === "newer" && args.length === 2) {
+    process.exitCode = compareVersions(args[0], args[1]) > 0 ? 0 : 1;
+  } else if (command === "release") {
+    console.log(workspaceVersion());
   } else if (command === "config" && args.length === 1) {
     console.log(JSON.stringify(nightlyConfig(args[0])));
   } else if (command === "manifest" && args.length === 4) {
@@ -103,7 +135,7 @@ function main([command, ...args]) {
     });
     writeFileSync(join(dir, "latest.json"), `${JSON.stringify(feed, null, 2)}\n`);
   } else {
-    throw new Error("usage: update-feed.mjs version | config <version> | manifest <dir> <download-base> <version> <notes>");
+    throw new Error("usage: update-feed.mjs version | release | newer <version> <than> | config <version> | manifest <dir> <download-base> <version> <notes>");
   }
 }
 

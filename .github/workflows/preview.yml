@@ -374,10 +374,35 @@ jobs:
     needs: [build, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # Holds the update signing key; only main and v tags may use it.
+    environment: updates
     permissions:
       contents: write
       attestations: read
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      # Only for the locked Tauri command line tool that signs updates.
+      - name: Install the signing tool
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Download the packages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -396,6 +421,32 @@ jobs:
           for file in dist/*; do
             gh attestation verify "$file" --repo "$REPO" --source-ref "$SOURCE_REF" --source-digest "$SOURCE_SHA" --signer-workflow "$REPO/.github/workflows/preview.yml"
           done
+
+      # As in the nightly job: sign only verified packages, and stop if a
+      # signature names any key other than the one built into the app.
+      - name: Sign the update packages
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The feed's version must be the one the app reports, or it would
+          # offer the same release again and again.
+          if [ "${TAG#v}" != "$(node scripts/update-feed.mjs release)" ]; then
+            echo "::error::$TAG does not match the workspace version $(node scripts/update-feed.mjs release)."
+            exit 1
+          fi
+          for file in Ibis-macOS-Apple-silicon.app.tar.gz Ibis-macOS-Intel.app.tar.gz Ibis-Windows-setup.exe Ibis-Linux.AppImage; do
+            apps/desktop/node_modules/.bin/tauri signer sign "dist/$file" > /dev/null
+          done
+          mkdir feed
+          mv dist/*.sig feed/
+          node scripts/update-feed.mjs manifest feed "https://github.com/$REPO/releases/download/$TAG" \
+            "${TAG#v}" "Ibis $TAG. Release notes: https://github.com/$REPO/releases/tag/$TAG"
+          rm feed/*.sig
+          cat feed/latest.json
 
       - name: Publish the verified pre-release
         env:
@@ -436,6 +487,82 @@ jobs:
             gh release create "$TAG" dist/* --repo "$REPO" --prerelease --draft --title "Ibis $TAG (preview)" --notes-file combined-notes.md --verify-tag
             gh release edit "$TAG" --repo "$REPO" --draft=false
           fi
+
+      # Signed by this job, published by the stable-feed job, which can be
+      # re-run on its own if it fails after this release is public.
+      - name: Keep the stable update feed
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stable-feed
+          path: feed/latest.json
+          if-no-files-found: error
+
+  stable-feed:
+    name: Move the stable update feed
+    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          pattern: ibis-*
+          merge-multiple: true
+
+      - name: Download the signed feed
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stable-feed
+          path: feed
+
+      # The rolling "stable" pre-release mirrors the newest release and the
+      # stable app reads its latest.json (ADR 0019); the feed itself points at
+      # the numbered release, which the publish job has made public. A tag
+      # older than the current feed (a backport) leaves it in place.
+      - name: Move the stable update feed to this release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TAG: ${{ github.ref_name }}
+          FEED: stable
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum --check SHA256SUMS-*.txt)
+          version=$(jq -r .version feed/latest.json)
+          if current=$(gh release download "$FEED" --repo "$REPO" --pattern latest.json --output - 2>/dev/null | jq -r .version) && [ -n "$current" ]; then
+            if [ "$current" != "$version" ] && ! node scripts/update-feed.mjs newer "$version" "$current"; then
+              echo "::notice::The stable feed stays at $current, which is newer than $version."
+              exit 0
+            fi
+          fi
+          cat > feed-notes.md <<EOF
+          **The newest Ibis release, [Ibis $TAG](https://github.com/$REPO/releases/tag/$TAG), at links that stay the same,** for example \`https://github.com/$REPO/releases/download/stable/Ibis-Windows-setup.exe\`. See that release for its notes and how to verify a download. \`latest.json\` is the update feed the stable app reads.
+          EOF
+          if ! gh release view "$FEED" --repo "$REPO" > /dev/null 2>&1; then
+            gh release create "$FEED" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis update feed" --notes-file feed-notes.md
+          fi
+          # Packages first, the feed last; then remove files from older releases.
+          gh release upload "$FEED" dist/* --repo "$REPO" --clobber
+          gh release upload "$FEED" feed/latest.json --repo "$REPO" --clobber
+          names=$(gh release view "$FEED" --repo "$REPO" --json assets --jq '.assets[].name')
+          while IFS= read -r name; do
+            if [ -n "$name" ] && [ ! -e "dist/$name" ] && [ ! -e "feed/$name" ]; then gh release delete-asset "$FEED" "$name" --repo "$REPO" --yes; fi
+          done <<< "$names"
+          if ! gh api --method PATCH "repos/$REPO/git/refs/tags/$FEED" -f sha="$SHA" -F force=true > /dev/null; then
+            gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$FEED" -f sha="$SHA" > /dev/null
+          fi
+          gh release edit "$FEED" --repo "$REPO" --prerelease --draft=false --title "Ibis update feed" --notes-file feed-notes.md
 
   nightly:
     name: Publish nightly pre-release
@@ -505,11 +632,32 @@ jobs:
             apps/desktop/node_modules/.bin/tauri signer sign "dist/$file" > /dev/null
           done
           mkdir feed
-          cp dist/*.sig feed/
+          mv dist/*.sig feed/
           node scripts/update-feed.mjs manifest feed "https://github.com/$REPO/releases/download/nightly" \
             "$(node scripts/update-feed.mjs version)" "Nightly build of ${SHA:0:12} on main."
           rm feed/*.sig
           cat feed/latest.json
+
+      # The update test (update-e2e job) starts the nightly being replaced and
+      # lets it update itself to this one. Only the file is kept; nothing from
+      # it runs in this job.
+      - name: Keep the previous nightly for the update test
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir previous
+          echo "Files of the nightly this run replaces, if it had an update feed." > previous/README.txt
+          gh release download nightly --repo "$REPO" --pattern Ibis-Linux.AppImage --pattern latest.json --dir previous ||
+            echo "No previous nightly with an update feed; the update test will be skipped."
+
+      - name: Upload the previous nightly
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: previous-nightly
+          path: previous/*
+          if-no-files-found: error
+          retention-days: 3
 
       # The nightly tag moves to each new main commit. It never matches v*, so
       # it starts no release build, and Release Please ignores it.
@@ -531,7 +679,7 @@ jobs:
           cat > notes.md <<EOF
           **Nightly development build of \`${SHA:0:12}\` on main, built $built.** It is replaced after changes to main and may be unfinished or broken. For the steadier version, use the newest numbered preview release.
 
-          **Which file:** \`Ibis-macOS-Apple-silicon.dmg\` (M1 and later) or \`Ibis-macOS-Intel.dmg\` on a Mac, \`Ibis-Windows-setup.exe\` on Windows, \`Ibis-Linux.AppImage\` on Linux (\`.deb\` also available). It installs as **Ibis Nightly**, next to the stable Ibis and with its own settings, and can update itself if you allow update checks. The \`.app.tar.gz\`, \`.sig\` and \`latest.json\` files are for those updates.
+          **Which file:** \`Ibis-macOS-Apple-silicon.dmg\` (M1 and later) or \`Ibis-macOS-Intel.dmg\` on a Mac, \`Ibis-Windows-setup.exe\` on Windows, \`Ibis-Linux.AppImage\` on Linux (\`.deb\` also available). It installs as **Ibis Nightly**, next to the stable Ibis and with its own settings, and can update itself if you allow update checks. The \`.app.tar.gz\` and \`latest.json\` files are for those updates.
 
           **Not signed.** macOS may say the app cannot be checked for malicious software: open System Settings → Privacy & Security and choose Open Anyway. Windows SmartScreen may warn: choose More info, then Run anyway. On Windows, if Microsoft WebView2 Runtime is missing, the installer downloads it once; Ibis works offline after setup.
 
@@ -556,3 +704,69 @@ jobs:
             gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" > /dev/null
           fi
           gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis nightly" --notes-file notes.md
+
+  update-e2e:
+    name: Update the previous nightly to this one (Linux)
+    needs: nightly
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the previous nightly
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: previous-nightly
+          path: previous
+
+      - name: Download this build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ibis-x86_64-unknown-linux-gnu
+          path: dist
+
+      # Runs only when the previous nightly can update (it has a feed) and the
+      # published feed now names this build, which the nightly job skips when
+      # main has already moved on.
+      - name: Decide whether to run
+        id: decide
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version=$(node scripts/update-feed.mjs version)
+          published=$(curl -fsSL "https://github.com/$REPO/releases/download/nightly/latest.json" | jq -r .version)
+          if [ ! -f previous/latest.json ] || [ ! -f previous/Ibis-Linux.AppImage ]; then
+            echo "::notice::Update test skipped: the previous nightly had no update feed."
+          elif [ "$published" != "$version" ]; then
+            echo "::notice::Update test skipped: the published nightly is $published, not this build ($version)."
+          elif [ "$(jq -r .version previous/latest.json)" = "$version" ]; then
+            echo "::notice::Update test skipped: the previous nightly is this same build."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Updating $(jq -r .version previous/latest.json) to $version"
+          fi
+
+      - name: Update the previous nightly
+        if: steps.decide.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core
+          /usr/bin/python3 scripts/update-e2e.py --self-test
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/update-e2e.py \
+            --previous previous/Ibis-Linux.AppImage --expected dist/Ibis-Linux.AppImage --output update-e2e
+
+      - name: Upload the update test logs
+        if: always() && steps.decide.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: update-e2e
+          path: update-e2e/*
+          if-no-files-found: warn
+          retention-days: 14

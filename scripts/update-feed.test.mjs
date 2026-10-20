@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { PACKAGES, keyId, manifest, nightlyConfig, nightlyVersion } from "./update-feed.mjs";
+import { PACKAGES, compareVersions, keyId, manifest, nightlyConfig, nightlyVersion } from "./update-feed.mjs";
 
 const fixture = (name) => readFileSync(new URL(`../fixtures/updates/${name}`, import.meta.url), "utf8");
 const testKey = fixture("test-key.pub");
@@ -47,4 +47,15 @@ test("Ibis Nightly is a separate app that reads only the nightly feed", () => {
   assert.deepEqual(config.plugins.updater.endpoints, ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"]);
   assert.ok(!config.bundle.targets.includes("msi") && !config.bundle.targets.includes("rpm"));
   assert.ok(!("pubkey" in config.plugins.updater), "both apps trust the same built-in key");
+});
+
+test("versions compare as the updater does, so the stable feed never moves back", () => {
+  const ordered = ["0.1.0-nightly.20261019223000", "0.1.0-rc.1", "0.1.0-rc.2", "0.1.0-rc.10", "0.1.0", "0.1.1", "0.2.0", "0.10.0", "1.0.0"];
+  for (let i = 0; i + 1 < ordered.length; i++) {
+    assert.equal(compareVersions(ordered[i + 1], ordered[i]), 1, `${ordered[i + 1]} > ${ordered[i]}`);
+    assert.equal(compareVersions(ordered[i], ordered[i + 1]), -1);
+  }
+  assert.equal(compareVersions("0.1.0-alpha", "0.1.0-alpha.1"), -1);
+  assert.equal(compareVersions("0.1.0", "0.1.0"), 0);
+  assert.throws(() => compareVersions("v0.1.0", "0.1.0"));
 });
