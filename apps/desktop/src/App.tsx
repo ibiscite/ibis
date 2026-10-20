@@ -9,6 +9,7 @@ import { formatCitation, FORMATTED_STYLES, provisional, type FormattedCitation }
 import { STYLE_NAMES, type StyleId } from "./format/styles";
 import { render } from "./format/markup";
 import { afterCopy, rowClickAction } from "./copyFeedback";
+import { AddGlyph, TypeIcon } from "./icons";
 import {
   COPY_FORMATS,
   type Copied,
@@ -80,6 +81,12 @@ function abbreviatedAuthors(r: SearchResult): boolean {
 
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
 const etAl = <bdi>{rowText.etAl}</bdi>;
+
+/** "García 2021" for the tile's tooltip: first author and year, else the key. */
+function tileName(r: SearchResult): string {
+  const first = r.first_author?.trim();
+  return first ? (r.year === null ? first : `${first} ${r.year}`) : r.key;
+}
 
 /** Done, Look or Stop for the footer dot; words carry the same meaning. */
 function libraryHealth(library: LibraryStatus | null | undefined): "done" | "look" | "stop" | "idle" {
@@ -903,13 +910,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             // A match in the container is always named: the row may shorten the container.
             const why = hiddenMatch(r.matched);
             const itemType = density === "spacious" ? rowText.itemType(r.item_type) : null;
+            const added = selected.has(idKey(r.id));
             return (
               <li
                 key={idKey(r.id)}
                 id={`result-${i}`}
                 role="option"
                 aria-selected={i === active}
-                data-citation-selected={selected.has(idKey(r.id)) || undefined}
+                data-citation-selected={added || undefined}
                 data-active={i === active || undefined}
                 onPointerDown={(e) => { pressedAt.current = { x: e.clientX, y: e.clientY }; }}
                 onClick={(e) => {
@@ -931,27 +939,53 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                   input.current?.focus();
                 }}
               >
-                <span className="result-line">
-                  <strong className="result-title">{r.title}</strong>
-                  {compact && r.first_author && <span className="result-first-author" dir="auto">{r.first_author}{r.author_count > 1 && <> {etAl}</>}</span>}
-                  <span className="result-year">{r.year ?? pickerText.noDate}</span>
-                </span>
-                <span className="result-meta">
-                  {/* Each clipping part takes its own text direction, so Latin text in a
-                      right-to-left row is cut at its end. The separator is its own part. */}
-                  <span className="result-byline">
-                    <span className="result-authors" dir="auto">
-                      {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
-                    </span>
-                    {!compact && r.container && r.authors && <span className="result-separator" aria-hidden="true">{"\u00a0· "}</span>}
-                    {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
+                {/* The leading tile: the type icon, which gives way to the add
+                    (or remove) control on hover and on the active row. An option's
+                    children are presentational (ARIA) and must not be focusable, so
+                    the control is for the pointer only: no Tab stop, no role, its
+                    name in the tooltip. Keyboards use Shift+Enter. */}
+                <span className="result-tile">
+                  <TypeIcon itemType={r.item_type} />
+                  <span className="tile-button" aria-hidden="true"
+                    title={added ? pickerText.removeNamed(tileName(r)) : pickerText.addNamed(tileName(r))}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      // The row's own click (copy) does not run for the tile.
+                      e.stopPropagation();
+                      pressedAt.current = null;
+                      if (current !== results) return;
+                      setActive(i);
+                      toggle(r);
+                      input.current?.focus();
+                    }}>
+                    <AddGlyph added={added} />
                   </span>
-                  {itemType && <span className="result-type">{itemType}</span>}
-                  <code className="result-key" dir="auto">{r.key}</code>
-                  {severalLibraries && libraryOf(r.id.source) && <span className="result-library">{libraryOf(r.id.source)}</span>}
                 </span>
-                {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
-                {selected.has(idKey(r.id)) && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
+                <span className="result-body">
+                  <span className="result-line">
+                    <strong className="result-title">{r.title}</strong>
+                    {compact && r.first_author && <span className="result-first-author" dir="auto">{r.first_author}{r.author_count > 1 && <> {etAl}</>}</span>}
+                    <span className="result-year">{r.year ?? pickerText.noDate}</span>
+                  </span>
+                  <span className="result-meta">
+                    {/* Each clipping part takes its own text direction, so Latin text in a
+                        right-to-left row is cut at its end. The separator is its own part. */}
+                    <span className="result-byline">
+                      <span className="result-authors" dir="auto">
+                        {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
+                      </span>
+                      {!compact && r.container && r.authors && <span className="result-separator" aria-hidden="true">{"\u00a0· "}</span>}
+                      {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
+                    </span>
+                    {itemType && <span className="result-type">{itemType}</span>}
+                    <code className="result-key" dir="auto">{r.key}</code>
+                    {severalLibraries && libraryOf(r.id.source) && <span className="result-library">{libraryOf(r.id.source)}</span>}
+                  </span>
+                  {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
+                  {/* The type in words where the row does not show it; the tile's icon is decorative. */}
+                  {!itemType && rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
+                  {added && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
+                </span>
               </li>
             );
           })}

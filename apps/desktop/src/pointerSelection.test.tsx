@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 function result(key: string, title: string) {
-  return { id: { source: "refs.bib", native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"] };
+  return { id: { source: "refs.bib", native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"], first_author: "Smith", author_count: 1 };
 }
 
 function backend(search: (query: string) => ReturnType<typeof result>[]) {
@@ -121,11 +121,29 @@ test("selecting by pointer does not scroll the list, but arrow keys do", async (
   expect(scrolled).toHaveBeenCalledTimes(1);
 });
 
-test("hovering a row only tints it and never changes its layout", () => {
+test("hovering a row only tints it, swaps the tile's icon for its add control, and never changes its layout", () => {
   const hoverRules = [...styles.matchAll(/([^{}]*\[role="option"\][^{}]*:hover[^{}]*)\{([^}]*)\}/g)];
   expect(hoverRules.length).toBeGreaterThan(0);
   for (const [, , body] of hoverRules) {
     const properties = (body ?? "").split(";").map((d) => d.split(":")[0]?.trim()).filter(Boolean);
-    for (const property of properties) expect(["background", "background-color", "color"]).toContain(property);
+    for (const property of properties) expect(["background", "background-color", "color", "opacity"]).toContain(property);
   }
+});
+
+test("clicking a row's tile adds or removes it without copying, and keeps the search focused", async () => {
+  backend(() => three);
+  render(<App />);
+  await screen.findByText("Gamma");
+  const tile = (title: string) => row(title).querySelector<HTMLElement>(".tile-button")!;
+  expect(tile("Beta").title).toBe("Add Smith 2020 to citation");
+  fireEvent.click(tile("Beta"));
+  await waitFor(() => expect(row("Beta").hasAttribute("data-citation-selected")).toBe(true));
+  expect(activeTitle()).toBe("Beta");
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
+  expect(screen.queryByText(/Copied/)).toBeNull();
+  expect(tile("Beta").title).toBe("Remove Smith 2020 from citation");
+  fireEvent.click(tile("Beta"));
+  await waitFor(() => expect(row("Beta").hasAttribute("data-citation-selected")).toBe(false));
+  // A result from an older payload without a type still draws an icon (other).
+  expect(row("Alpha").querySelector(".type-icon")).not.toBeNull();
 });

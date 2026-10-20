@@ -37,6 +37,10 @@
 
   /* Colour roles. The accent is the system's; scarlet marks only the citation. */
   --citation: CanvasText;
+  /* The fill of a row's added tile behind its white check: the citation
+     scarlet in light mode, the deeper brand scarlet in dark mode, so the
+     check keeps 4.5:1 and the tile still stands 3:1 off the dark surface. */
+  --citation-tile: var(--citation);
   --status-done: CanvasText;
   --status-look: CanvasText;
   --status-stop: CanvasText;
@@ -46,6 +50,7 @@
 @supports (color: light-dark(white, black)) {
   :root {
     --citation: light-dark(#c23a1c, #ff7a5c);
+    --citation-tile: light-dark(#c23a1c, #d2401f);
     --status-done: light-dark(#1a7f37, #5bc26f);
     --status-look: light-dark(#8a5a00, #e3b341);
     --status-stop: light-dark(#c4314b, #ff8a8a);
@@ -148,6 +153,13 @@
   --field-radius: var(--button-radius);
   --clear-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
   --field-edge: color-mix(in srgb, var(--line) 35%, var(--surface));
+  /* The leading tile of a result row: 32 px, a quiet fill, 20 px icon. */
+  --tile-size: 2rem;
+  --tile-radius: 7px;
+  --tile-button-inset: 0;
+  --tile-background: color-mix(in srgb, var(--text) 5%, transparent);
+  --tile-active-background: color-mix(in srgb, var(--row-active-text) 22%, transparent);
+  --on-citation: #fff;
   --pill-width: 3px;
   --pill-height: 1rem;
   /* The selected (active) row; macOS fills it with the accent. */
@@ -184,6 +196,7 @@
 :root[data-platform="windows"] {
   --window-radius: 8px; --button-radius: 4px; --result-radius: 4px; --key-radius: 4px;
   --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
+  --tile-radius: 4px; --tile-active-background: light-dark(#fff, rgb(255 255 255 / 10%));
   /* Fluent's focus visual: an outer stroke in the text colour (black in light
      mode, white in dark) around an inner stroke in the surface colour. */
   --focus-ring-color: var(--text); --focus-ring-shadow: 0 0 0 1px var(--surface);
@@ -240,13 +253,13 @@
 
 @media (prefers-contrast: more) {
   :root, :root[data-platform] { --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
-  :root { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 @media (forced-colors: active) {
   :root, :root[data-platform] { --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
-  :root { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
+  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 
 /* Explicit contrast preview in the development states gallery. */
 :root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; }
-:root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+:root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }

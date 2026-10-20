@@ -92,20 +92,24 @@ function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
     references: 24, warnings: 0, error: null, note: null, settings_notice: null, ...overrides };
 }
 
-function reference(key: string, title: string, authors = "Example Author", container: string | null = null): SearchResult {
+function reference(key: string, title: string, authors = "Example Author", container: string | null = null, itemType = "article-journal"): SearchResult {
   const names = authors.split(", ");
   return { id: { source: "synthetic-gallery", native_key: key }, key, title, authors, year: 2026, matched: ["title"],
-    first_author: names[0] ?? "", author_count: names.length, container, item_type: "article-journal" };
+    first_author: names[0] ?? "", author_count: names.length, container, item_type: itemType };
 }
+
+// Every type icon appears in the longer lists.
+const itemTypes = ["article-journal", "book", "chapter", "thesis", "webpage", "report", "dataset"];
 
 const examples = [
   reference("example2026", "Sleep and memory: an example reference", "Example, Sample", "Journal of Synthetic Studies"),
-  reference("研究2026", "多言語の文献と記憶の研究", "架空 著者"),
-  reference("mémoire2026", "La mémoire et les langues du monde", "Auteur Exemple", "Revue des études synthétiques"),
+  reference("研究2026", "多言語の文献と記憶の研究", "架空 著者", null, "book"),
+  reference("mémoire2026", "La mémoire et les langues du monde", "Auteur Exemple", "Revue des études synthétiques", "thesis"),
 ];
 // The first two share their first author and year; the container tells them apart.
 const many = Array.from({ length: 20 }, (_, index) => reference(`example${index + 1}`, `Memory study ${index + 1}: a synthetic reference`,
-  "Example, Sample", index % 2 === 0 ? "Journal of Synthetic Studies" : "Proceedings of the Example Conference on Memory and Language"));
+  "Example, Sample", index % 2 === 0 ? "Journal of Synthetic Studies" : "Proceedings of the Example Conference on Memory and Language",
+  itemTypes[index % itemTypes.length]));
 
 export const galleryStates: readonly GalleryState[] = [
   { id: "first-run", label: "First run", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, zotero: false, references: 0 }) },
@@ -115,10 +119,10 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "many-results", label: "Many results", library: library(), query: "memory", results: many },
   { id: "long-titles", label: "Long and non-Latin titles", library: library(), query: "research", results: [
     reference("long2026", "An intentionally long synthetic title about research across languages, with enough words to wrap across several lines at larger text sizes and in narrow picker windows"),
-    examples[1]!, reference("학습2026", "언어와 기억에 관한 가상의 연구", "가상 저자"),
-    reference("स्मृति2026", "भाषाओं और स्मृति पर एक काल्पनिक अध्ययन", "उदाहरण लेखक"),
+    examples[1]!, reference("학습2026", "언어와 기억에 관한 가상의 연구", "가상 저자", null, "chapter"),
+    reference("स्मृति2026", "भाषाओं और स्मृति पर एक काल्पनिक अध्ययन", "उदाहरण लेखक", null, "report"),
   ] },
-  { id: "rtl", label: "Right-to-left text", library: library(), direction: "rtl", query: "الذاكرة", results: [reference("memory2026", "دراسة تخيلية عن الذاكرة واللغات", "كاتب مثال", "Journal of Synthetic Studies")] },
+  { id: "rtl", label: "Right-to-left text", library: library(), direction: "rtl", query: "الذاكرة", results: [reference("memory2026", "دراسة تخيلية عن الذاكرة واللغات", "كاتب مثال", "Journal of Synthetic Studies", "webpage")] },
   { id: "missing-file", label: "Missing library file", library: library({ state: "error", name: "missing.bib", snapshot_name: null, has_snapshot: false, zotero: false, references: 0, error: "The library file is unavailable." }) },
   { id: "invalid-settings", label: "Invalid settings", library: library({ settings_notice: "settings.json could not be read. Ibis is using the backup. Changes are not being saved. Repair the synthetic settings file and restart Ibis." }) },
   { id: "damaged-library", label: "Damaged library", library: library({ references: 3, warnings: 2, note: "Some references could not be read. Export the library again to restore them." }), query: "memory", results: examples },
@@ -132,8 +136,8 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
   { id: "tray", label: "Several references chosen", library: library(), query: "memory", results: examples, tray: 2 },
   { id: "keys", label: "All keys", library: library(), query: "memory", results: examples, keys: true },
-  { id: "compact", label: "Compact rows", library: library(), query: "memory", results: many, density: "compact" },
-  { id: "spacious", label: "Spacious rows", library: library(), query: "memory", results: many, density: "spacious" },
+  { id: "compact", label: "Compact rows", library: library(), query: "memory", results: many, density: "compact", tray: 2 },
+  { id: "spacious", label: "Spacious rows", library: library(), query: "memory", results: many, density: "spacious", tray: 2 },
   { id: "larger-text", label: "Larger text setting", library: library(), query: "memory", results: examples, largerTextSetting: true },
 ];
 

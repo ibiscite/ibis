@@ -73,6 +73,9 @@ export const pickerText = {
   results: "Results",
   noDate: "No date",
   addedToCitation: "Added to citation",
+  /** The tile button's tooltip: "Add García 2021 to citation". */
+  addNamed: (name: string) => `Add ${name} to citation`,
+  removeNamed: (name: string) => `Remove ${name} from citation`,
   bestMatches: "Best matches",
   noMatches: "No matching references",
   noMatchesHint: "Check the spelling, or try fewer words, an author's surname or a year.",

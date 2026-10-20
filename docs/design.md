@@ -48,7 +48,10 @@ in [testing.md](testing.md), not established by this specification.
 
 **Colour roles.** Selection and the main button use the system accent. Ibis
 scarlet (`#c23a1c` light, `#ff7a5c` dark) marks only the citation itself: the
-text that will be copied, the citation tray and the logo. Status uses Done
+text that will be copied, the citation tray, the tile of a row added to the
+citation and the logo. The added tile is filled with the deeper brand scarlet
+(`#d2401f`) in dark mode, so its white check keeps 4.5:1 and the tile still
+stands 3:1 off the surface. Status uses Done
 (copied, inserted), Look (skipped, needs a look) and Stop (unreachable, failed),
 always with words or an icon as well as colour.
 
@@ -62,7 +65,10 @@ Larger text setting scales the whole window by 1.15, not just the letters.
 instead of sliding. Hover never moves anything.
 
 **Icons.** Ibis's own set: 20 px, 1.5 px stroke, rounded ends, the same on every
-platform, so a source or a reference type always looks the same.
+platform, so a source or a reference type always looks the same. Seven type
+icons say what a reference is: article, book, chapter, thesis, web page, report
+and other (chosen from its CSL type). They never reuse an attachment drawing
+(the document or the globe), so a row never shows the same picture twice.
 
 **Per platform.** Only these change:
 
@@ -108,12 +114,13 @@ is a 1 px hairline (black 10% in light, white 10% in dark), never a white rim. T
 | Filter chips | Once added | `#tag`, `y:2019-2022` or `a:name` followed by a space becomes a removable chip. Backspace in an empty box removes the last one. |
 | Recently cited, Recently added, With PDF | While browsing | Shown when the search is empty or one is selected; hidden while typing so rows get the room. Tab cycles them. |
 | Tag and author suggestions | While typing `#` or `a:` | Take the place of the tabs. Enter or Tab picks the first. |
+| Row: type tile | Always | A 32 px tile at the row's start with the type icon on a quiet fill (24 px and no fill in Compact, so rows stay 40 px). Decorative: screen readers hear the type word instead. |
 | Row: title and year | Always | Year at the right edge, in the same place on every row. |
 | Row: authors and journal | Comfortable and Spacious | Tells apart references with the same first author and year. The journal is the container title (journal, book or proceedings), else the publisher. Spacious adds the item type as one word ("Article", "Book"). One line: authors are shortened as in a citation ("García", "García, Okafor", or "García et al." for three or more; screen readers hear every name), then the journal, each with an ellipsis (the key and library label shorten first, never below a few letters, and the type word stays whole; only when enlarged text leaves no room do they move under them); a match in the journal is always named, since it may be shortened. Compact shows the first author ("García et al.") after the title. |
 | Row: why it matched | Only when hidden | "In the abstract: …sleep…" or "Tagged: …" when the match is not in the title or authors. |
 | PDF or Web label | When a file is attached | Says what is attached ("PDF · 12 pp") and opens the preview. No empty column otherwise. |
 | "In 2 libraries" | Only for duplicates | Explains why one reference may differ between sources; it is listed once. |
-| Add button | Hovered or selected row | Takes the place of the type icon, so the row never reflows. |
+| Add button | Hovered or selected row | Takes the place of the type icon, so the row never reflows: a plus, or a check on a row already added. A row in the citation always shows a scarlet tile with a white check, the only scarlet on the row. A 32 px pointer target with its name in the tooltip ("Add García 2021 to citation"); it adds no Tab stop, because a listbox option holds no controls, and keyboards use Shift+Enter. |
 | Citation tray | Once a source is added | Page number per source and the exact text to be copied, in scarlet. |
 | Footer tip | One at a time | Tied to what the user is doing, retired once they have done it. Otherwise the footer shows library status. |
 | Library status | Words only on trouble | A dot normally, details on hover; a sentence only when something needs the user. |
@@ -222,14 +229,16 @@ is pressed again.
 
 **Accessibility.** Reduced motion uses fades only. Screen readers hear the
 result count and, per row, title, first author, year, journal or container
-(Comfortable and Spacious) and why it matched;
+(Comfortable and Spacious), its type in words and why it matched;
 "Copied" is announced politely. Every action has a key. Focus rings appear only for keyboard
 focus (`:focus-visible`), never after a click, in the platform's style (see the
 table above), and reach 3:1 against the surface with the platform's default
 accent. The search box never shows one: it always has focus, the caret is
 the cue, and on Windows its accent underline. Rows moved with ↑ ↓ show their
 fill, not a ring. With increased contrast or forced colours, every control and
-the search box show a solid 2 px ring and the active row a 3 px edge. Right-to-left titles align right within their row.
+the search box show a solid 2 px ring and the active row a 3 px edge; a row
+in the citation keeps its check tile in system colours, so the check, not
+colour, says it was added. Right-to-left titles align right within their row.
 
 ## Rollout
 
