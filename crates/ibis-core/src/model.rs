@@ -113,7 +113,8 @@ impl Name {
 
 fn is_cjk_char(c: char) -> bool {
     matches!(c,
-        '\u{3040}'..='\u{30ff}'   // Hiragana, Katakana
+        '\u{1100}'..='\u{11ff}'   // Hangul Jamo (including canonically decomposed syllables)
+        | '\u{3040}'..='\u{30ff}' // Hiragana, Katakana
         | '\u{3400}'..='\u{4dbf}' // CJK Extension A
         | '\u{4e00}'..='\u{9fff}' // CJK Unified Ideographs
         | '\u{ac00}'..='\u{d7af}' // Hangul syllables
