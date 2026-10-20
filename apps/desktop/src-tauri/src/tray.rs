@@ -6,7 +6,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::feedback::{idea_url, open_in_browser, problem_url};
 use crate::library::{
-    LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
+    KEPT, LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
 };
 use crate::login_item::{self, LoginItems, LoginMenuItem};
 use crate::picker::show_picker;
@@ -17,6 +17,12 @@ pub(crate) fn library_line(status: &LibraryStatus) -> String {
     let line = match (status.state, &status.error, &status.name) {
         (LibraryState::Loading, _, Some(name)) => format!("Opening {name}…"),
         (LibraryState::Reloading, _, Some(name)) => format!("Reloading {name}…"),
+        // The last loaded references are still searched: say "not updated", not "could not be opened".
+        (_, Some(error), _) if status.stale => {
+            let reason = error.trim_end_matches(KEPT);
+            let name = status.snapshot_name.as_deref().unwrap_or("Library");
+            format!("{name}: {} references, not updated: {reason}", status.references)
+        }
         (_, Some(error), _) => format!("Library could not be opened: {error}"),
         (_, None, Some(name)) => {
             let problems = match status.warnings {
@@ -176,6 +182,10 @@ mod tests {
             error: error.map(String::from),
             note: None,
             settings_notice: None,
+            snapshot_zotero: false,
+            stale: false,
+            updated_at: None,
+            checked_at: None,
         };
         assert_eq!(library_line(&status(None, 0, None)), "No library chosen");
         for (state, expected) in [
@@ -205,6 +215,21 @@ mod tests {
         assert_eq!(
             library_line(&unsaved),
             "refs.bib: 12 references (not saved for next time)"
+        );
+        let kept = LibraryStatus {
+            state: LibraryState::Error,
+            name: Some("Zotero library".into()),
+            snapshot_name: Some("Zotero library".into()),
+            stale: true,
+            ..status(
+                Some("refs.bib"),
+                0,
+                Some("Zotero is not running; keeping the last loaded references"),
+            )
+        };
+        assert_eq!(
+            library_line(&kept),
+            "Zotero library: 12 references, not updated: Zotero is not running"
         );
         let long = "x".repeat(200);
         let line = library_line(&status(Some("refs.bib"), 0, Some(&long)));

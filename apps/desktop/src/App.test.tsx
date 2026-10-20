@@ -480,7 +480,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
   await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, note: null });
-  await waitFor(() => expect(bar.textContent).toContain("refs.bib: 3 references, 1 reading notice"));
+  await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 reading notice"));
   await chooseFromMore("Reload");
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", {
@@ -743,7 +743,7 @@ test("a failed switch names the retained library in its accessible status", asyn
   render(<App />);
   await screen.findByText("Reference from A");
   const status = screen.getByRole("status", { name: "Library status" });
-  expect(status.textContent).toBe("active A.bib: 3 references");
+  expect(status.textContent).toBe("active A.bib · 3 references");
   expect(status.textContent).not.toContain("missing B.bib");
 });
 
@@ -792,7 +792,7 @@ test.each(["backup", "defaults"])("settings recovery from %s stays visible throu
 test.each(["", "sleep"])("an empty loaded library is explained even for query %s", async (query) => {
   backend({ library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "empty 研究.bib", snapshot_name: "empty 研究.bib", references: 0, warnings: 0, error: null, note: null }) });
   render(<App />);
-  await screen.findByText("empty 研究.bib: 0 references");
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("empty 研究.bib · no references"));
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
   await screen.findByText("No references found in empty 研究.bib. Choose a BibTeX or BibLaTeX export with references, then try again.");
   expect(screen.queryByText("Type to find a reference")).toBeNull();
@@ -1928,20 +1928,37 @@ test("the footer says what Enter will copy, and holding Alt shows the other keys
   expect(footerKeys()).not.toContain("Esc");
 });
 
-test("library status is a dot when all is well and words when something needs the user", async () => {
-  let warnings = 0;
-  backend({ library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings, error: null, note: null }) });
+test("the footer names the source and count, the age only when it matters, and the detail in More", async () => {
+  const plain = (text: string | null | undefined) => text?.replace(/[\u2068\u2069]/g, "");
+  let status: Record<string, unknown> = { state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true, stale: false,
+    zotero_libraries: ["user", { group: 7 }], name: "2 Zotero libraries", snapshot_name: "2 Zotero libraries", references: 1204, warnings: 0,
+    error: null, note: null, updated_at: null, checked_at: Date.now() - 3 * 3_600_000 };
+  backend({ library_status: () => status, zotero_groups: () => [{ id: 7, name: "Lab group" }] });
   render(<App />);
-  const status = await screen.findByRole("status", { name: "Library status" });
-  await waitFor(() => expect(status.textContent).toBe("refs.bib: 3 references"));
-  expect(status.className).toContain("visually-hidden");
-  expect(document.querySelector(".status-dot")?.getAttribute("title")).toBe("refs.bib: 3 references");
-  cleanup();
-  warnings = 1;
-  render(<App />);
-  const trouble = await screen.findByRole("status", { name: "Library status" });
-  await waitFor(() => expect(trouble.textContent).toContain("1 reading notice"));
-  expect(trouble.className).not.toContain("visually-hidden");
+  const live = await screen.findByRole("status", { name: "Library status" });
+  await waitFor(() => expect(live.textContent).toBe("Zotero · 1,204 references"));
+  const item = live.closest(".library-status")!;
+  expect(item.textContent).toBe("Zotero · 1,204 references");
+  expect(item.getAttribute("data-health")).toBe("done");
+  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,204 references\nMy Library, (Group 7|Lab group) · checked 3 hours ago, .+$/);
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const group = await screen.findByRole("group", { name: /Lab group/ });
+  expect(plain(group.getAttribute("aria-label"))).toMatch(/^Zotero · 1,204 references\. My Library, Lab group · checked 3 hours ago, /);
+  expect(plain(group.querySelector(".menu-detail-title")?.textContent)).toBe("Zotero · 1,204 references");
+
+  // A change just arrived: the age shows, outside the live region.
+  status = { ...status, references: 1205, updated_at: Date.now(), checked_at: Date.now() };
+  await emit("library:changed", status);
+  await waitFor(() => expect(live.textContent).toBe("Zotero · 1,205 references"));
+  expect(item.textContent).toBe("Zotero · 1,205 references · updated just now");
+
+  // Zotero closed: the copy still searched says when it was last checked.
+  status = { ...status, state: "error", stale: true, checked_at: Date.now() - 2 * 3_600_000,
+    error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" };
+  await emit("library:changed", status);
+  await waitFor(() => expect(item.textContent).toBe("Zotero · not updated · checked 2 hours ago"));
+  expect(item.getAttribute("data-health")).toBe("stop");
+  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · checked 2 hours ago, .+ · Zotero could not be reached$/);
 });
 
 test("? lists every key in a modal dialog, but a ? typed in the search is text", async () => {

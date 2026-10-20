@@ -4,6 +4,7 @@ import { copiedNoticeText, copyFormatNames, densityNames, keyText, libraryMessag
 import { ariaKeys, KEY_TABLE, keyLabel, keysFor, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LibrarySetup, shortcutLabel } from "./LibrarySetup";
+import { LibraryDetail, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
 import { formatCitation, FORMATTED_STYLES, provisional, type FormattedCitation } from "./format/formatted";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
@@ -89,13 +90,6 @@ const etAl = <bdi>{rowText.etAl}</bdi>;
 function tileName(r: SearchResult): string {
   const first = r.first_author?.trim();
   return first ? (r.year === null ? first : `${first} ${r.year}`) : r.key;
-}
-
-/** Done, Look or Stop for the footer dot; words carry the same meaning. */
-function libraryHealth(library: LibraryStatus | null | undefined): "done" | "look" | "stop" | "idle" {
-  if (library === null || library?.error) return "stop";
-  if (!library?.has_snapshot) return "idle";
-  return library.warnings > 0 || library.references === 0 ? "look" : "done";
 }
 
 // A stable provider lets the development gallery use synthetic data without IPC.
@@ -596,6 +590,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     }));
   };
   const groupName = (id: number) => groups?.find((group) => group.id === id)?.name ?? pickerText.groupLibrary(id);
+  // Read when More opens, the only time it is shown there.
+  const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
   // Every group Zotero lists, plus chosen groups it no longer lists, so they can be turned off.
   const offeredGroups = [...(groups?.map((group) => group.id) ?? []),
     ...chosenLibraries.flatMap((chosen) => (typeof chosen === "object" ? [chosen.group] : []))]
@@ -618,7 +614,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus();
     void perform(operation, action);
   };
-  const health = libraryHealth(library);
   const narrowed = Boolean(library?.zotero && useZoteroLibraries && groups) && allLibraries().some((choice) => !isChosen(choice));
   const openKeys = () => {
     closeMenu(false);
@@ -945,12 +940,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>
       <footer>
         <section aria-label={pickerText.libraryRegion} className="library-bar">
-          <span className="status-dot" data-health={health} aria-hidden="true" title={libraryMessages.summary(library)} />
-          {/* Words only when something needs the user; otherwise the dot, with details on hover. */}
-          <span className={health === "done" ? "library-name visually-hidden" : "library-name"} role="status"
-            aria-label={pickerText.libraryStatus} aria-live="polite" aria-atomic="true">
-            {libraryMessages.summary(library)}
-          </span>
+          <LibraryStatusLine library={library} groupName={groupName} />
           <small className="enter-hints" aria-label={keyText.footer} role="group">
             {altHeld ? <>
               {shiftEnterAction && <span><kbd>{label(keysFor("add"))}</kbd> {shiftEnterAction}</span>}
@@ -976,6 +966,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             </button>
             {menuOpen && (
               <MoreMenu onClose={closeMenu}>
+                {/* Where the references come from and how fresh they are, read
+                    as the group's name when the menu is reached by keyboard. */}
+                <div role="group" className="menu-library" aria-label={libraryDetail?.filter(Boolean).join(". ")}>
+                {libraryDetail && <LibraryDetail lines={libraryDetail} />}
                 <MenuItem label={pickerText.chooseLibrary} title={pickerText.chooseTitle} onSelect={() => runFromMenu("choose", chooseLibrary)} />
                 {!library?.zotero && (
                   <MenuItem label={pickerText.useZotero} title={pickerText.useZoteroTitle} onSelect={() => runFromMenu("zotero", useZotero)} />
@@ -997,6 +991,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                 {library?.name && (
                   <MenuItem label={pickerText.reload} title={pickerText.reloadTitle} onSelect={() => runFromMenu("reload", reloadLibrary)} />
                 )}
+                </div>
                 <MenuItem label={pickerText.density(densityNames[density])} title={pickerText.densityTitle} onSelect={changeDensity} />
                 <MenuItem label={pickerText.largerText} checked={largerText} onSelect={toggleLargerText} />
                 {loginItemOffered && startAtLogin && (

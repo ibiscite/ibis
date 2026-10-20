@@ -18,6 +18,7 @@ STATES = (
     "first-run", "loading", "empty", "no-results", "many-results", "long-titles",
     "rtl", "missing-file", "invalid-settings", "damaged-library",
     "copy-confirmation", "large-text", "dark", "high-contrast", "copied-notice",
+    "zotero-updated", "zotero-kept",
 )
 DIAGNOSTIC_STAGES = (
     "installed", "install-failed", "navigated", "navigation-pending", "navigation-unavailable",

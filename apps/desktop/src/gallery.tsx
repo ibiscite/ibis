@@ -22,7 +22,7 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
   const rows = [...root.querySelectorAll('#results [role="option"]')];
   const results = state.results ?? [];
   const label = libraryMessages.summary(library);
-  const alerts = [library.settings_notice, library.error ? libraryMessages.openError(library.name, library.error) : null]
+  const alerts = [library.settings_notice, library.error ? libraryMessages.openError(library.name, library.error, library.zotero) : null]
     .filter((text): text is string => text !== null);
   const actualAlerts = [...root.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
   const searched = library.state !== "none" && library.state !== "loading" && !(library.state === "error" && !library.has_snapshot);

@@ -133,8 +133,20 @@ main {
 
 footer { border-top: var(--border-width) solid var(--line); padding: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
 .library-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); }
-.library-name { flex: 1; min-width: var(--library-min-width); overflow-wrap: anywhere; color: var(--muted); }
-.library-bar p { width: 100%; margin: var(--library-notice-margin); }
+/* One line that never pushes the keys aside: the age after the source and count
+   is cut first, and the tooltip and More keep the whole detail. */
+.library-status { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--footer-gap); color: var(--muted); }
+.library-words, .library-name { display: flex; min-width: 0; overflow: hidden; white-space: pre; }
+/* A long name is shortened before the state words; the age goes first of all. */
+.library-source { min-width: 3ch; flex-shrink: 100000; overflow: hidden; text-overflow: ellipsis; }
+/* Shrinks only once the name is as short as it gets, then ends with an ellipsis. */
+.library-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Takes only the room the name and state leave, so it is cut before them. */
+.library-age { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.library-status[data-health="stop"] .library-name, .library-status[data-health="look"] .library-name { color: var(--text); }
+/* Only the visible notice line; never the hidden spoken detail, which must keep
+   its 1 px .visually-hidden box or the page grows wider than the window. */
+.library-bar > p[role="status"] { width: 100%; margin: var(--library-notice-margin); }
 /* The dot repeats what the words say, so colour is never the only signal. */
 .status-dot { width: var(--status-dot-size); height: var(--status-dot-size); border-radius: 50%; flex-shrink: 0; background: var(--muted); }
 .status-dot[data-health="done"] { background: var(--status-done); }
@@ -225,6 +237,10 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
 [role="menuitemcheckbox"]:hover, [role="menuitemcheckbox"]:focus-visible { background: var(--hover-background); }
 [role="menuitemcheckbox"][aria-checked="true"]::after { content: "✓"; }
 [role="menu"] [role="group"] { border-block: var(--border-width) solid var(--line); }
+/* The library line opens More: it never widens the menu and is read as the group's name. */
+[role="menu"] > .menu-library { border-block-start: 0; }
+.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) var(--space-2) var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--hint-size); overflow-wrap: break-word; }
+.menu-detail-title { color: var(--text); font-weight: var(--type-strong-weight); }
 [role="menuitemcheckbox"][aria-disabled="true"] { color: var(--muted); }
 
 /* Rows that tell similar references apart (#492). Comfortable and Spacious

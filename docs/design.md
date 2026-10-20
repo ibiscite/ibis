@@ -219,7 +219,38 @@ list, preview and tray) from a control layer (search, format, pin).
 | Add button | Hovered or selected row | Takes the place of the type icon, so the row never reflows: a plus, or a check on a row already added. A row in the citation always shows a scarlet tile with a white check, the only scarlet on the row. A 32 px pointer target with its name in the tooltip ("Add García 2021 to citation"); it adds no Tab stop, because a listbox option holds no controls, and keyboards use Shift+Enter. |
 | Citation tray | Once a source is added | Page number per source and the exact text to be copied, in scarlet. |
 | Footer tip | One at a time | Tied to what the user is doing, retired once they have done it. Otherwise the footer shows library status. |
-| Library status | Words only on trouble | A dot normally, details on hover; a sentence only when something needs the user. |
+| Library status | Always, quietly | A dot, the source and the count; the age only when it is news or a warning (see below). A sentence above the list only when something needs the user. |
+
+**Library status.** One footer line, as Mail's "Updated just now" and VS Code's
+status bar do it: short words, colour only alongside them, detail on demand.
+
+| Case | Footer | Dot |
+|---|---|---|
+| Starting, first run | "Checking library…", "No library chosen" | Grey |
+| Opening | "Zotero · opening…" | Grey |
+| Loaded | "Zotero · 1,204 references" or "thesis.bib · 1,204 references" | Done |
+| Changed while open (ten minutes) | "… · updated 2 minutes ago", only when a reread brought different references | Done |
+| Reloading | "… · reloading…", count kept | Unchanged |
+| Reading notices, empty | "… · 2 reading notices", "Zotero · no references" | Look |
+| Update failed, old copy kept | "Zotero · not updated · checked 2 hours ago" | Stop |
+| Switch to another library failed | The library still searched, as when loaded | Stop |
+| Never opened | "thesis.bib · not opened" | Stop |
+
+Several Zotero libraries still read "Zotero"; rows name their library. The
+tooltip, and the top of More (also the name of its library group, so keyboard and
+screen-reader users reach it), give two lines: a short one ("Zotero · 1,204
+references") and a quieter one with the libraries, when they were last checked
+(relative and clock time) and any problem ("My Library, Lab group · checked 2
+hours ago, 3:19 PM · Zotero could not be reached"). "Updated" always means the
+references changed; "checked" means Ibis last read them or found them unchanged.
+The footer always names the library that is searched, even after a switch to
+another one failed. A long name is shortened before the state words, and names
+are isolated so right-to-left names keep their place. Times
+use `Intl.RelativeTimeFormat` in the app's language ("just now" under 45 seconds,
+a date after a week) and tick every 30 seconds without redrawing the picker. The
+live region holds only the words before the age, so a ticking clock is never
+announced. The tray line has no time, because a native menu is not redrawn while
+open; after a failed update it says "not updated" and why.
 
 ## Learning without a tutorial
 

@@ -174,6 +174,26 @@ export type LibraryStatus = {
 	note: string | null,
 	/**  Startup settings recovery, separate from transient library status. */
 	settings_notice: string | null,
+	/**
+	 *  Whether the searchable references are Zotero's, which can differ from
+	 *  `zotero` (the requested source) after a failed switch.
+	 */
+	snapshot_zotero: boolean,
+	/**
+	 *  An update of the searched library failed and its earlier references
+	 *  are still searched; not set when a switch to another library failed.
+	 */
+	stale: boolean,
+	/**
+	 *  When a reread of the same library last changed its references during
+	 *  this run, in milliseconds since 1970 (UTC); `null` if it has not.
+	 */
+	updated_at: number | null,
+	/**
+	 *  When the library was last read or found unchanged, in the same unit;
+	 *  when `stale`, the time of the copy still being searched.
+	 */
+	checked_at: number | null,
 };
 
 /**  Whether Ibis starts when the person logs in, as the system reports it. */

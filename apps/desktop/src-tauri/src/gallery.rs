@@ -9,7 +9,7 @@ use std::time::Duration;
 use tauri::ipc::CapabilityBuilder;
 use tauri::{AppHandle, Listener, Manager, Url, WebviewWindow};
 
-const STATES: [&str; 15] = [
+const STATES: [&str; 17] = [
     "first-run",
     "loading",
     "empty",
@@ -25,6 +25,8 @@ const STATES: [&str; 15] = [
     "dark",
     "high-contrast",
     "copied-notice",
+    "zotero-updated",
+    "zotero-kept",
 ];
 
 #[derive(serde::Deserialize)]
@@ -425,5 +427,17 @@ mod tests {
         for enabled in [None, Some(""), Some("0"), Some("true"), Some(" 1"), Some("1 ")] {
             assert!(gallery_url(parse("http://localhost:5173/"), enabled, Some("loaded")).is_none());
         }
+    }
+
+    #[test]
+    fn the_native_gallery_accepts_every_state_the_capture_script_asks_for() {
+        // A state missing here is refused silently and the capture times out (#531).
+        let script = include_str!("../../../../scripts/capture-gallery.py");
+        let start = script
+            .find("STATES = (")
+            .unwrap_or_else(|| panic!("the capture script lists its states"));
+        let list = &script[start..start + script[start..].find(')').unwrap_or_else(|| panic!("closed list"))];
+        let captured: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
+        assert_eq!(captured, STATES);
     }
 }
