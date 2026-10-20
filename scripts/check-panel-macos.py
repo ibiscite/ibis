@@ -98,6 +98,7 @@ def main():
 
             smoke.wait_for(lambda: "3 references" in smoke.strings(snapshot()), "synthetic panel library startup")
             smoke.prepare_initial_picker_show(native, snapshot)
+            native.settle_editor_windows()
             native.focus_editor()
             smoke.wait_for(native.editor_focused, "synthetic editor focused")
             native.call("set-editor-fullscreen", "true")
@@ -108,8 +109,7 @@ def main():
             passed("picker appears over the editor in its full-screen Space")
 
             smoke.prime_clipboard(native)
-            native.key("super+a")
-            native.text("smoke000001")
+            smoke.type_query(native, snapshot, "smoke000001", "super+a")
             smoke.wait_for(lambda: "Ibis smoke reference 000001" in smoke.strings(snapshot()), "native search over full-screen editor")
             native.key("Return")
             smoke.wait_for(lambda: native.clipboard() == "[@smoke000001]", "citation copied from full-screen picker")

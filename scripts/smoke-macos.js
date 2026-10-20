@@ -109,15 +109,7 @@ function run(argv) {
             } else $.CGEventPost($.kCGHIDEventTap, event);
         };
     };
-    const editorState = () => {
-        const state = {bundle_verified: false, window_count: 0, document_metadata_count: 0,
-            exact_document_url_matches: 0, owned_document_path_matches: 0, owned: false};
-        const editor = $.NSRunningApplication.runningApplicationWithProcessIdentifier(editorId);
-        if (!editor || ObjC.unwrap(editor.bundleIdentifier) !== 'com.apple.TextEdit') return state;
-        state.bundle_verified = true;
-        const windows = process(editorId).windows();
-        if (windows.length > 20) throw Error('Synthetic editor window enumeration exceeded bound');
-        state.window_count = windows.length;
+    const documentIdentity = () => {
         const expected = ObjC.unwrap($.NSURL.fileURLWithPath(text).absoluteString);
         const localPath = value => {
             if (typeof value !== 'string' || !value.startsWith('file:')) return null;
@@ -129,6 +121,18 @@ function run(argv) {
         };
         const expectedPath = localPath(expected);
         if (!expectedPath) throw Error('Synthetic editor document identity unavailable');
+        return {expected, expectedPath, localPath};
+    };
+    const editorState = () => {
+        const state = {bundle_verified: false, window_count: 0, document_metadata_count: 0,
+            exact_document_url_matches: 0, owned_document_path_matches: 0, owned: false};
+        const editor = $.NSRunningApplication.runningApplicationWithProcessIdentifier(editorId);
+        if (!editor || ObjC.unwrap(editor.bundleIdentifier) !== 'com.apple.TextEdit') return state;
+        state.bundle_verified = true;
+        const windows = process(editorId).windows();
+        if (windows.length > 20) throw Error('Synthetic editor window enumeration exceeded bound');
+        state.window_count = windows.length;
+        const {expected, expectedPath, localPath} = documentIdentity();
         windows.forEach(window => {
             const document = safe(() => window.attributes.byName('AXDocument').value());
             if (typeof document !== 'string' || document.length === 0) return;
@@ -204,7 +208,7 @@ function run(argv) {
     const editorWindow = () => {
         const editor = process(editorId);
         const windows = editor ? editor.windows() : [];
-        if (windows.length !== 1) throw Error('A single synthetic editor window is required');
+        if (windows.length !== 1) throw Error(`A single synthetic editor window is required (found ${windows.length})`);
         return windows[0];
     };
     const fullscreen = window => {
@@ -264,6 +268,25 @@ function run(argv) {
     }
     case 'editor-owned': result = editorState().owned; break;
     case 'editor-state': result = editorState(); break;
+    case 'close-extra-editor-windows': {
+        // Only the verified fresh instance is touched, and only windows that
+        // are not the owned document, such as ones restored from saved state.
+        if (!editorState().bundle_verified) throw Error('Synthetic editor identity unavailable');
+        const {expectedPath, localPath} = documentIdentity();
+        const windows = process(editorId).windows();
+        if (windows.length > 20) throw Error('Synthetic editor window enumeration exceeded bound');
+        let closed = 0;
+        windows.forEach(window => {
+            const document = safe(() => window.attributes.byName('AXDocument').value());
+            if (localPath(document) === expectedPath) return;
+            const close = safe(() => window.buttons.whose({subrole: 'AXCloseButton'})()[0], null);
+            if (!close) throw Error('Leftover synthetic editor window cannot be closed');
+            close.actions.byName('AXPress').perform();
+            closed++;
+        });
+        result = closed;
+        break;
+    }
     case 'editor-running': {
         const editors = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.TextEdit');
         result = false;
