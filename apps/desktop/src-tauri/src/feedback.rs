@@ -10,12 +10,16 @@ use tauri_plugin_dialog::DialogExt;
 const ISSUES: &str = "https://github.com/ibiscite/ibis/issues/new";
 
 /// The problem form, with the version and operating system filled in. Both
-/// values are fixed at build time and contain only letters, digits, `.`, `-`
-/// and `_`, so they need no escaping.
-pub(crate) fn problem_url() -> String {
+/// are fixed at build time; a version is semver, so only letters, digits,
+/// `.`, `-` and `+` need checking, and `+` is escaped.
+pub(crate) fn problem_url(version: &str) -> String {
+    let version: String = version
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || ".-+".contains(*c))
+        .collect();
     format!(
         "{ISSUES}?template=bug_report.yml&version={}&os={}%20{}",
-        env!("CARGO_PKG_VERSION"),
+        version.replace('+', "%2B"),
         std::env::consts::OS,
         std::env::consts::ARCH
     )
@@ -66,7 +70,8 @@ mod tests {
 
     #[test]
     fn feedback_links_name_the_forms_and_carry_only_safe_characters() {
-        let problem = problem_url();
+        let problem = problem_url("0.1.1-nightly.202610192230+build&x=1");
+        assert!(problem.contains("&version=0.1.1-nightly.202610192230%2Bbuildx1&"));
         assert!(problem.starts_with("https://github.com/ibiscite/ibis/issues/new?template=bug_report.yml&version="));
         assert!(problem.contains(&format!("&os={}%20", std::env::consts::OS)));
         let query = problem.split_once('?').map_or("", |(_, query)| query);

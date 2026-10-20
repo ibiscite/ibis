@@ -156,16 +156,24 @@ def fixed_toggle_diagnostics(paths):
             if line in allowed]
 
 
-def settings_path(system, temporary, native=None):
+def settings_path(system, temporary, native=None, identifier="io.github.ibiscite.ibis"):
     if system == "Windows":
         # dirs7 uses SHGetKnownFolderPath, not the APPDATA environment variable.
         roaming = Path(native.call("config-dir"))
         if not roaming.is_absolute():
             raise Unavailable("Windows native configuration directory unavailable")
-        return roaming / "io.github.ibiscite.ibis/settings.json"
+        return roaming / identifier / "settings.json"
     if system == "Darwin":
-        return Path.home() / "Library/Application Support/io.github.ibiscite.ibis/settings.json"
-    return temporary / "config/io.github.ibiscite.ibis/settings.json"
+        return Path.home() / "Library/Application Support" / identifier / "settings.json"
+    return temporary / "config" / identifier / "settings.json"
+
+
+def answer_update_question(settings):
+    """Release builds ask about update checks at first launch; answer "Not Now"
+    in advance so the question never takes focus from the picker."""
+    if not settings.exists():
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({"schema_version": 2, "update_checks": False}), encoding="utf-8")
 
 
 def claim_settings(candidate):
@@ -501,6 +509,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--identifier", default="io.github.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
     parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Control+Command+R on macOS")
     parser.add_argument("--budgets", type=Path, help="Measured per-platform baseline JSON, with startup_ms, first_result_ms, memory_bytes ceilings")
     args = parser.parse_args()
@@ -520,7 +529,7 @@ def main():
         if system not in ("Linux", "Darwin", "Windows"):
             raise Unavailable("Unsupported native smoke platform")
         if system == "Darwin":
-            owned_settings = claim_settings(settings_path(system, Path(".")))
+            owned_settings = claim_settings(settings_path(system, Path("."), identifier=args.identifier))
         native = Linux() if system == "Linux" else Scripted(system)
         with tempfile.TemporaryDirectory(prefix="ibis native smoke ") as temporary:
             folder = Path(temporary)
@@ -531,7 +540,7 @@ def main():
             # config locations; preflight refuses all existing preferences.
             # Copying saves the format even with IBIS_LIBRARY, so clean only
             # preference files this disposable run can create.
-            settings = settings_path(system, folder, native)
+            settings = settings_path(system, folder, native, args.identifier)
             if system == "Windows":
                 owned_settings = claim_settings(settings)
 
@@ -540,6 +549,7 @@ def main():
                 log_path = args.output / f"startup-{label}.log"
                 log = log_path.open("w", encoding="utf-8")
                 diagnostic_logs.append(log_path)
+                answer_update_question(settings)
                 app = subprocess.Popen([str(args.app.resolve())], env=env, stdout=log, stderr=log)
                 native.app = app
 
@@ -1332,6 +1342,16 @@ foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
                 claim_settings(actual)
             self.assertEqual(backup.read_text(encoding="utf-8"), "existing synthetic preferences")
             self.assertFalse(actual.exists())
+
+    def test_nightly_settings_and_the_update_question_answered_in_advance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = settings_path("Linux", Path(temporary), identifier="io.github.ibiscite.ibis.nightly")
+            self.assertEqual(settings, Path(temporary) / "config/io.github.ibiscite.ibis.nightly/settings.json")
+            answer_update_question(settings)
+            self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), {"schema_version": 2, "update_checks": False})
+            settings.write_text("{invalid synthetic settings", encoding="utf-8")
+            answer_update_question(settings)
+            self.assertEqual(settings.read_text(encoding="utf-8"), "{invalid synthetic settings")
 
     def test_settings_cleanup_removes_only_files_claimed_in_a_fresh_account(self):
         with tempfile.TemporaryDirectory() as temporary:

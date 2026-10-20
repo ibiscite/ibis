@@ -51,7 +51,9 @@ fn has_update_key(config: Option<&serde_json::Value>) -> bool {
 }
 
 /// Called once at start with the saved choice.
-pub(crate) fn start(app: &AppHandle, saved: Option<bool>) {
+/// `can_save` is false when the settings file could not be read: the answer
+/// would be lost, so Ibis does not ask until the file is fixed.
+pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
     if !available(app) {
         return;
     }
@@ -62,7 +64,8 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>) {
     }
     match saved {
         Some(on) => set_automatic(app, on),
-        None => ask(app),
+        None if can_save => ask(app),
+        None => {}
     }
     let app = app.clone();
     std::thread::spawn(move || {

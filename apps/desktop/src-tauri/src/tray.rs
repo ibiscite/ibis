@@ -55,7 +55,9 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     let reload = MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?;
     let problem = MenuItem::with_id(app, "problem", "Report a Problem…", true, None::<&str>)?;
     let idea = MenuItem::with_id(app, "idea", "Suggest an Idea…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Ibis", true, None::<&str>)?;
+    // "Ibis" or "Ibis Nightly", so the two apps can be told apart.
+    let name = app.package_info().name.clone();
+    let quit = MenuItem::with_id(app, "quit", format!("Quit {name}"), true, None::<&str>)?;
     let (first, second, third) = (
         PredefinedMenuItem::separator(app)?,
         PredefinedMenuItem::separator(app)?,
@@ -88,7 +90,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     }
     app.manage(LibraryMenuItem(line));
     let mut tray = TrayIconBuilder::with_id("ibis")
-        .tooltip("Ibis")
+        .tooltip(&name)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -96,7 +98,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             "choose" => choose_library_file(app),
             "zotero" => use_zotero_library(app),
             "reload" => reload_library_file(app),
-            "problem" => open_in_browser(app, problem_url()),
+            "problem" => open_in_browser(app, problem_url(&app.package_info().version.to_string())),
             "idea" => open_in_browser(app, idea_url()),
             "update_now" => updater::check_now(app),
             "update_auto" => updater::toggle_automatic(app),

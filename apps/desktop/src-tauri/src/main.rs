@@ -173,7 +173,7 @@ fn main() {
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
             // After the tray, so the menu item shows the saved choice.
-            updater::start(app.handle(), loaded.settings.update_checks);
+            updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.
             let library = std::env::var_os("IBIS_LIBRARY")
                 .map(|path| Source::File(PathBuf::from(path)))
