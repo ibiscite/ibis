@@ -74,6 +74,18 @@ function readEditorFullscreen(read) {
     return {available: true, fullscreen: state};
 }
 
+function readEditorWindowState(read) {
+    // Right after a Space transition, System Events can briefly drop the
+    // window it just listed from its index. Only that stale reference is an
+    // unknown state to wait out; permission and window-count errors still fail.
+    try { return read(); }
+    catch (error) {
+        const details = String(error);
+        if (!/Invalid index\. \(-1719\)/.test(details) || /assistive access/i.test(details)) throw error;
+        return {available: false, fullscreen: null, visible: false};
+    }
+}
+
 function run(argv) {
     const action = argv[0], appId = Number(argv[1]), editorId = Number(argv[2]), text = argv[3];
     const events = Application('System Events');
@@ -319,11 +331,13 @@ function run(argv) {
         break;
     }
     case 'editor-window-state': {
-        const window = editorWindow();
-        // Keep window ownership/count and CG visibility errors outside the
-        // transient AX getter boundary; malformed metadata still fails closed.
-        const state = readEditorFullscreen(() => window.attributes.byName('AXFullScreen').value());
-        result = {...state, visible: onScreen(editorId, [window])};
+        result = readEditorWindowState(() => {
+            const window = editorWindow();
+            // Keep window ownership/count and CG visibility errors outside the
+            // transient AX getter boundary; malformed metadata still fails closed.
+            const state = readEditorFullscreen(() => window.attributes.byName('AXFullScreen').value());
+            return {...state, visible: onScreen(editorId, [window])};
+        });
         break;
     }
     case 'set-editor-fullscreen': {

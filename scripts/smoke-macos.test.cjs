@@ -22,6 +22,15 @@ for (const malformed of [null, undefined, 0, 'false']) {
     assert.throws(() => context.readEditorFullscreen(() => malformed), /Editor fullscreen accessibility state unavailable/);
 }
 
+const staleWindow = () => { throw Error('Error: Error: Invalid index. (-1719)'); };
+assert.equal(JSON.stringify(context.readEditorWindowState(staleWindow)), '{"available":false,"fullscreen":null,"visible":false}');
+assert.equal(JSON.stringify(context.readEditorWindowState(() => ({available: true, fullscreen: false, visible: true}))),
+    '{"available":true,"fullscreen":false,"visible":true}');
+for (const fatal of ['osascript is not allowed assistive access. (-1719)', 'A single synthetic editor window is required (found 0)',
+    'On-screen window bounds unavailable']) {
+    assert.throws(() => context.readEditorWindowState(() => { throw Error(fatal); }), error => error.message === fatal);
+}
+
 const events = [];
 context.sendPhysicalChord('ctrl+super+r', (...event) => events.push(event));
 assert.deepEqual(events, [
