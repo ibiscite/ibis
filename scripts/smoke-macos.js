@@ -329,7 +329,8 @@ function run(argv) {
         });
         // Hidden windows may remain in the AX tree. Match an on-screen CG
         // window to an AX picker frame; owner PID alone can match a tray item.
-        const visible = onScreen(appId, app ? app.windows() : []);
+        // The Copied notice (#496) is a second window that is never the picker.
+        const visible = onScreen(appId, app ? app.windows().filter(window => !labelled(window, 'Ibis notice')) : []);
         // A nonactivating panel intentionally leaves the editor application
         // frontmost while accepting keyboard input in its own search field.
         // The AX keyboard focus is the relevant foreground proof here.

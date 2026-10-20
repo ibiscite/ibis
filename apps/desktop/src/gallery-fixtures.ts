@@ -13,6 +13,8 @@ export type GalleryState = {
   theme?: "light" | "dark" | "contrast";
   direction?: "ltr" | "rtl";
   largeText?: boolean;
+  /** The Copied notice shown after the picker hides, drawn over the picker. */
+  notice?: string;
 };
 
 function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
@@ -50,6 +52,7 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "large-text", label: "Large text", library: library(), query: "memory", results: examples, largeText: true },
   { id: "dark", label: "Dark mode", library: library(), query: "memory", results: examples, theme: "dark" },
   { id: "high-contrast", label: "High contrast", library: library(), query: "memory", results: examples, theme: "contrast" },
+  { id: "copied-notice", label: "Copied notice after hiding", library: library(), query: "memory", results: examples, notice: "[@example2026]" },
 ];
 
 export function galleryProvider(state: GalleryState): { api: PickerApi; preview: PickerPreview } {

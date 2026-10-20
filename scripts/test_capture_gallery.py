@@ -328,7 +328,7 @@ class CaptureTests(unittest.TestCase):
         self.assertNotIn(str(destination), " ".join(arguments))
         self.assertEqual(run.call_args.kwargs["env"]["IBIS_GALLERY_SCREENSHOT"], str(destination))
         self.assertTrue(run.call_args.kwargs["check"])
-        self.assertEqual(len(gallery.STATES), 14)
+        self.assertEqual(len(gallery.STATES), 15)
 
     def test_mac_capture_uses_nonhidden_staging_and_then_publishes_the_state_name(self):
         process = Process()

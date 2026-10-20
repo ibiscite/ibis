@@ -16,6 +16,7 @@ mod library;
 #[cfg(target_os = "macos")]
 mod native_corners;
 mod native_feel;
+mod notice;
 #[cfg(target_os = "macos")]
 mod panel;
 #[cfg(any(target_os = "macos", test))]
@@ -79,11 +80,16 @@ fn main() {
         .manage(setup::Offered::default())
         .manage(DialogOpen::default())
         .manage(Pinned::default())
+        .manage(notice::Notice::default())
         .manage(picker::FullScreenGuard::default())
         .manage(Mutex::new(ShortcutStatus::default()))
         .manage(updater::Updates::default())
         .invoke_handler(bindings::commands().invoke_handler())
         .on_window_event(|window, event| {
+            // Only the picker hides on blur or close; the Copied notice never has focus.
+            if window.label() != "main" {
+                return;
+            }
             #[cfg(all(target_os = "macos", debug_assertions))]
             if window.label() == "main"
                 && let WindowEvent::Focused(focused) = event

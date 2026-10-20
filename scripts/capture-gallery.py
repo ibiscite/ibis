@@ -17,7 +17,7 @@ import time
 STATES = (
     "first-run", "loading", "empty", "no-results", "many-results", "long-titles",
     "rtl", "missing-file", "invalid-settings", "damaged-library",
-    "copy-confirmation", "large-text", "dark", "high-contrast",
+    "copy-confirmation", "large-text", "dark", "high-contrast", "copied-notice",
 )
 DIAGNOSTIC_STAGES = (
     "installed", "install-failed", "navigated", "navigation-pending", "navigation-unavailable",
@@ -262,7 +262,7 @@ def main(argv=None):
     parser.add_argument("--output", required=True, type=Path, help="directory for PNGs and synthetic startup logs")
     parser.add_argument("--wait", type=float, default=8, help="startup wait in seconds per state (default: 8)")
     parser.add_argument("--ready-timeout", type=float, default=15, help="maximum additional wait for rendered-state acknowledgment (default: 15)")
-    parser.add_argument("--state", choices=STATES, action="append", help="capture only this state (repeatable; default: all 14)")
+    parser.add_argument("--state", choices=STATES, action="append", help="capture only this state (repeatable; default: all 15)")
     args = parser.parse_args(argv)
     if not args.app.is_file() or (os.name != "nt" and not os.access(args.app, os.X_OK)):
         parser.error("--app must name an executable regular file")

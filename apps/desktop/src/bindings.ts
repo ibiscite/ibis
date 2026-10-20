@@ -94,6 +94,18 @@ export const commands = {
 	quit: () => __TAURI_INVOKE<void>("quit"),
 	/**  Current state of the global shortcut. */
 	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus>("shortcut_status"),
+	/**
+	 *  Say "Copied" after the picker has hidden. The interface calls this only
+	 *  after a copy without warnings that hid the picker (see `copyFeedback.ts`);
+	 *  copies with warnings keep their notice inside the picker. Failures are
+	 *  reported as fixed diagnostics: the citation is on the clipboard either way.
+	 */
+	showCopiedNotice: (text: string) => __TAURI_INVOKE<void>("show_copied_notice", { text }),
+	/**
+	 *  The text of the notice being shown, for a notice page that has just
+	 *  loaded and missed the event that announced it.
+	 */
+	copiedNotice: () => __TAURI_INVOKE<string | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
 };

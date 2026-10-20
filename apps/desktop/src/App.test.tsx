@@ -78,6 +78,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     shortcut_status: () => ({ shortcut: "Control+Command+R", registered: true, error: null }),
     search: () => [],
     hide_picker: () => null,
+    show_copied_notice: () => null,
     set_pinned: () => null,
     copy_format: () => "pandoc",
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false }),
@@ -347,7 +348,7 @@ test("the selection is kept by record identity across queries and copied in orde
   await screen.findByText("One");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   fireEvent.change(box, { target: { value: "two" } });
-  fireEvent.click(await screen.findByText("Two"));
+  fireEvent.click(await screen.findByText("Two"), { shiftKey: true });
   expect(screen.getAllByRole("button", { name: /Remove same/ })).toHaveLength(2);
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
@@ -439,6 +440,8 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   expect(footerKeys()).toBe("Esc Clear search");
   fireEvent.keyUp(box, { key: "Alt" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  // Neither Shift+click (add) nor a plain click (copy) acts on a stale row.
+  fireEvent.click(screen.getByText("Old result"), { shiftKey: true });
   fireEvent.click(screen.getByText("Old result"));
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveLength(1));
@@ -583,12 +586,12 @@ test("combobox focus is separate from citation selection and only additions/remo
   expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(true);
   expect(within(list).getAllByRole("option", { selected: true })).toHaveLength(1);
   expect(document.getElementById(box.getAttribute("aria-activedescendant")!)?.textContent).toContain("Second");
-  fireEvent.click(screen.getByText("Second"));
+  fireEvent.click(screen.getByText("Second"), { shiftKey: true });
   expect(notice.textContent).toBe("2 references selected for citation");
   fireEvent.click(screen.getAllByRole("button", { name: "Remove same from the selection" })[0]!);
   expect(notice.textContent).toBe("1 reference selected for citation");
   expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(false);
-  fireEvent.click(screen.getByText("Second"));
+  fireEvent.click(screen.getByText("Second"), { shiftKey: true });
   expect(notice.textContent).toBe("0 references selected for citation");
 });
 
@@ -1545,6 +1548,215 @@ test("first-run writing choices save the key and style together before copying",
   await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("style:apa"));
   await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }, { style: "apa", key: null }]));
   expect(calls).not.toContain("copy_citation");
+});
+
+test("a clean copy hides the picker, then says Copied with the copied text", async () => {
+  const notices: unknown[] = [];
+  const calls = backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => ({ text: "[@a]", warnings: [] }),
+    show_copied_notice: (args) => { notices.push(args); return null; },
+  });
+  render(<App />);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(notices).toEqual([{ text: "[@a]" }]));
+  expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
+});
+
+test("copies with warnings, pinned copies and failed hides show no Copied notice window", async () => {
+  let warnings = ["bare keys cannot carry page numbers"];
+  let hideFails = false;
+  const calls = backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => ({ text: "a", warnings }),
+    hide_picker: () => { if (hideFails) throw new Error("SYNTHETIC"); return null; },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await screen.findByLabelText("Copy warnings");
+  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  warnings = [];
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls.filter((c) => c === "copy_citation")).toHaveLength(2));
+  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  hideFails = true;
+  fireEvent.keyDown(box, { key: "Enter" });
+  await screen.findByText("Ibis could not hide this window. Try again.");
+  expect(calls).not.toContain("show_copied_notice");
+});
+
+test("a failed Copied notice never undoes the copy or the hide", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    backend({
+      search: () => [result("a", "First")],
+      copy_citation: () => ({ text: "@a", warnings: [] }),
+      show_copied_notice: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
+    });
+    render(<App />);
+    await screen.findByText("First");
+    fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+    await waitFor(() => expect(log).toHaveBeenCalledWith("The Copied notice could not be shown."));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("@a")).toBeTruthy();
+    expect(log.mock.calls.flat().join(" ")).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+  } finally { log.mockRestore(); }
+});
+
+test("clicking a row copies it like Enter, and Shift+click adds it like Shift+Enter", async () => {
+  const copies: unknown[] = [];
+  const calls = backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    copy_citation: (args) => { copies.push(args); return { text: "@b", warnings: [] }; },
+  });
+  render(<App />);
+  const second = (await screen.findByText("Second")).closest('[role="option"]')!;
+  fireEvent.click(second, { shiftKey: true });
+  expect(second.hasAttribute("data-citation-selected")).toBe(true);
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
+  fireEvent.click(second, { shiftKey: true });
+  expect(second.hasAttribute("data-citation-selected")).toBe(false);
+  expect(copies).toEqual([]);
+  fireEvent.click(second);
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+  expect(copies).toEqual([{ ids: [{ source: "refs.bib", native_key: "b" }], format: "pandoc" }]);
+  expect(second.getAttribute("aria-selected")).toBe("true");
+});
+
+test("with sources in the citation, a click copies the citation like Enter", async () => {
+  const copies: unknown[] = [];
+  backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    copy_citation: (args) => { copies.push(args); return { text: "@a", warnings: [] }; },
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First"), { shiftKey: true });
+  fireEvent.click(screen.getByText("Second"));
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(copies[0]).toEqual({ ids: [{ source: "refs.bib", native_key: "a" }], format: "pandoc" });
+});
+
+test("a drag, a double click's second click or a modified click on a row copies nothing", async () => {
+  const calls = backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => ({ text: "@a", warnings: [] }),
+  });
+  render(<App />);
+  const row = (await screen.findByText("First")).closest('[role="option"]')!;
+  fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
+  fireEvent.click(row, { clientX: 60, clientY: 12 });
+  fireEvent.click(row, { detail: 2 });
+  fireEvent.click(row, { ctrlKey: true });
+  fireEvent.click(row, { altKey: true });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(calls).not.toContain("copy_citation");
+  expect(row.hasAttribute("data-citation-selected")).toBe(false);
+  fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
+  fireEvent.click(row, { clientX: 12, clientY: 11 });
+  await waitFor(() => expect(calls).toContain("copy_citation"));
+});
+
+test("a click on a row waits for its formatted preview before copying it", async () => {
+  const { InlineWorker } = await import("./format/inline-worker");
+  vi.stubGlobal("Worker", InlineWorker);
+  const copies: unknown[] = [];
+  backend({
+    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false }),
+    search: () => [result("a", "First"), result("b", "Second")],
+    csl_items: ({ ids }) => JSON.stringify((ids as { native_key: string }[]).map((id) => ({
+      id: id.native_key, type: "article-journal", title: id.native_key === "a" ? "First" : "Second",
+      author: [{ family: "Smith", given: "A" }], issued: { "date-parts": [[2020]] },
+    }))),
+    copy_formatted: (args) => { copies.push(args); return null; },
+  });
+  render(<App />);
+  await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("style:apa"));
+  fireEvent.click(await screen.findByText("Second"));
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(String((copies[0] as { text: string }).text)).toContain("Smith");
+  expect(screen.queryByText("The preview is still being made. Try again in a moment.")).toBeNull();
+});
+
+test.each([[30_000, "first"], [61_000, ""]])(
+  "a search cleared by Escape comes back selected when reopened soon after (%i ms)", async (away, kept) => {
+    const calls = backend({ search: () => [result("a", "First")] });
+    const now = vi.spyOn(performance, "now").mockReturnValue(1_000_000);
+    try {
+      render(<App />);
+      const box = screen.getByLabelText("Search references") as HTMLInputElement;
+      fireEvent.change(box, { target: { value: "first" } });
+      await screen.findByText("First");
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(box.value).toBe("");
+      fireEvent.keyDown(box, { key: "Escape" });
+      await waitFor(() => expect(calls).toContain("hide_picker"));
+      await act(async () => { await emit("picker:hidden"); });
+      now.mockReturnValue(1_000_000 + away);
+      await act(async () => { await emit("picker:shown"); });
+      await waitFor(() => expect(box.value).toBe(kept));
+      expect(document.activeElement).toBe(box);
+      expect([box.selectionStart, box.selectionEnd]).toEqual([0, kept.length]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+test("a search cleared by Escape stays cleared once something else is typed or copied", async () => {
+  backend({ search: () => [result("a", "First")], copy_citation: () => ({ text: "@a", warnings: [] }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references") as HTMLInputElement;
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Escape" });
+  fireEvent.change(box, { target: { value: "f" } });
+  fireEvent.change(box, { target: { value: "" } });
+  await act(async () => { await emit("picker:hidden"); });
+  await act(async () => { await emit("picker:shown"); });
+  expect(box.value).toBe("");
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Escape" });
+  // Browsing the empty search after Escape, then copying from it.
+  await waitFor(() => expect(screen.getByText("References")).toBeTruthy());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await screen.findByText("@a");
+  await act(async () => { await emit("picker:hidden"); });
+  await act(async () => { await emit("picker:shown"); });
+  expect(box.value).toBe("");
+});
+
+test.each(["Escape", "hidden"])("a click waiting for its preview never copies after the picker is left (%s)", async (leave) => {
+  const { InlineWorker } = await import("./format/inline-worker");
+  vi.stubGlobal("Worker", InlineWorker);
+  let release: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => { release = resolve; });
+  const calls = backend({
+    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false }),
+    search: () => [result("a", "First"), result("b", "Second")],
+    csl_items: ({ ids }) => ready.then(() => JSON.stringify((ids as { native_key: string }[]).map((id) => ({
+        id: id.native_key, type: "article-journal", title: id.native_key,
+        author: [{ family: "Smith", given: "A" }], issued: { "date-parts": [[2020]] },
+      })))),
+    copy_formatted: () => null,
+  });
+  render(<App />);
+  await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("style:apa"));
+  fireEvent.click(await screen.findByText("Second"));
+  if (leave === "Escape") {
+    fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Escape" });
+    await waitFor(() => expect(calls).toContain("hide_picker"));
+  }
+  await act(async () => { await emit("picker:hidden"); });
+  const hides = calls.filter((c) => c === "hide_picker").length;
+  await act(async () => { release(); await new Promise((resolve) => setTimeout(resolve, 50)); });
+  await waitFor(() => expect(document.querySelector(".format-preview")?.textContent).toContain("Smith"));
+  expect(calls).not.toContain("copy_formatted");
+  expect(calls.filter((c) => c === "hide_picker")).toHaveLength(hides);
+  expect(calls).not.toContain("show_copied_notice");
 });
 
 const footerKeys = () => screen.getByRole("group", { name: "Keys" }).textContent;

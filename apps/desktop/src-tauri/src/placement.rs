@@ -127,7 +127,7 @@ fn area(x: i32, y: i32, width: u32, height: u32, scale: f64) -> Area {
     }
 }
 
-fn display(monitor: &Monitor) -> Display {
+pub(crate) fn display(monitor: &Monitor) -> Display {
     let (position, size, work) = (monitor.position(), monitor.size(), monitor.work_area());
     let scale = monitor.scale_factor();
     Display {

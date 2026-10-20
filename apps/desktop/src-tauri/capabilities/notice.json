@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "notice",
+  "description": "Core permissions for the Copied notice: event listening only. App commands are not restricted per window (no app manifest yet), so this does not limit which Ibis commands the page could call.",
+  "windows": [
+    "notice"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

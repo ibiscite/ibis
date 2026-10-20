@@ -10,12 +10,12 @@ export default defineConfig(({ mode }) => ({
     target: "es2022",
     outDir: "dist",
     rollupOptions: {
-      input: mode === "evidence"
-        ? {
-          main: "index.html",
-          gallery: "gallery.html",
-        }
-        : "index.html",
+      // The Copied notice is its own small window (#496).
+      input: {
+        main: "index.html",
+        notice: "notice.html",
+        ...(mode === "evidence" ? { gallery: "gallery.html" } : {}),
+      } as Record<string, string>,
     },
   },
   test: { environment: "jsdom", globals: true },

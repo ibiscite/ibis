@@ -9,7 +9,7 @@ use std::time::Duration;
 use tauri::ipc::CapabilityBuilder;
 use tauri::{AppHandle, Listener, Manager, Url, WebviewWindow};
 
-const STATES: [&str; 14] = [
+const STATES: [&str; 15] = [
     "first-run",
     "loading",
     "empty",
@@ -24,6 +24,7 @@ const STATES: [&str; 14] = [
     "large-text",
     "dark",
     "high-contrast",
+    "copied-notice",
 ];
 
 #[derive(serde::Deserialize)]

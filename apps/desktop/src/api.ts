@@ -28,6 +28,7 @@ export const {
   setPickerPreferences,
   findSources,
   openFoundLibrary,
+  showCopiedNotice,
 } = commands;
 
 // The limit default, page and request number are not part of the UI's API:

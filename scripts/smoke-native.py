@@ -27,6 +27,11 @@ class Unavailable(RuntimeError):
     pass
 
 
+# The short Copied notice is a second visible window of the app (#496); it is
+# never the picker, so picker visibility checks skip it.
+NOTICE_TITLE = "Ibis notice"
+
+
 def run(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.PIPE, timeout=20).strip()
 
@@ -390,9 +395,17 @@ class Linux:
 
     def window(self, pid):
         try:
-            return run("xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()[0]
-        except (subprocess.CalledProcessError, IndexError):
+            windows = run("xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()
+        except subprocess.CalledProcessError:
             return None
+        for window in windows:
+            try:
+                if run("xdotool", "getwindowname", window) == NOTICE_TITLE:
+                    continue
+            except subprocess.CalledProcessError:
+                continue  # A window closed while being listed is not the picker.
+            return window
+        return None
 
     def snapshot(self):
         nodes = []
@@ -442,6 +455,12 @@ class Linux:
                     pass
             stack.extend(c for c in item if c)
         raise AssertionError(f"No invokable accessibility control {name!r}")
+
+    def notice_visible(self):
+        try:
+            return bool(run("xdotool", "search", "--onlyvisible", "--pid", str(self.app.pid), "--name", f"^{NOTICE_TITLE}$"))
+        except subprocess.CalledProcessError:
+            return False
 
     def focus_editor(self):
         window = self.window(self.editor.pid)
@@ -877,6 +896,11 @@ def main():
                 except AssertionError:
                     capture_editor_focus("copy-restoration-timeout")
                     raise
+                # The Copied notice (#496) is up while the editor keeps focus.
+                # Only the Linux adapter can see it; others skip this check.
+                if hasattr(native, "notice_visible"):
+                    wait_for(lambda: native.notice_visible() and native.editor_focused(),
+                             "Copied notice shows while the editor keeps focus", timeout=5)
 
             def live_settings_copy():
                 paths = [settings.with_suffix(suffix) for suffix in (".json", ".json.bak", ".json.tmp")]
@@ -1264,6 +1288,19 @@ class ContractTests(unittest.TestCase):
             elif key == "ctrl+super+r":
                 self.visible = not (self.visible and self.key_window)
                 self.key_window = self.visible
+
+    def test_linux_picker_visibility_skips_the_copied_notice_window(self):
+        linux = Linux.__new__(Linux)
+        names = {"1": NOTICE_TITLE, "2": "Ibis"}
+        def fake(*args):
+            if args[1] == "search":
+                return "1\n2"
+            return names[args[2]]
+        with patch(f"{__name__}.run", side_effect=fake):
+            self.assertEqual(linux.window(42), "2")
+        names["2"] = NOTICE_TITLE
+        with patch(f"{__name__}.run", side_effect=fake):
+            self.assertIsNone(linux.window(42))
 
     def test_initial_key_panel_requires_hidden_precondition_before_shortcut_show(self):
         old = self.InitialPickerModel()

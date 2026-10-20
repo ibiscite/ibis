@@ -28,6 +28,7 @@ pub(crate) enum NativeIssue {
     Pointer,
     TrayLibrary,
     LibraryEvent,
+    Notice,
     #[cfg(debug_assertions)]
     GalleryNavigation,
 }
@@ -59,6 +60,7 @@ impl NativeIssue {
             Self::Pointer => "the pointer position could not be read",
             Self::TrayLibrary => "the tray library status could not be updated",
             Self::LibraryEvent => "the library-changed event could not be sent",
+            Self::Notice => "the Copied notice could not be shown",
             #[cfg(debug_assertions)]
             Self::GalleryNavigation => "the debug gallery could not be opened",
         }
