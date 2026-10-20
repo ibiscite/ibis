@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { test } from "node:test";
@@ -69,6 +69,37 @@ test("guard accepts the exact clean commit and ignored generated files", (t) => 
   const result = f.run(["--expect-commit", f.sha.toUpperCase()]);
   proceeded(result);
   assert.match(result.stdout, new RegExp(`Verified source commit ${f.sha}`));
+});
+
+test("guard never starts the repository's filesystem monitor", { skip: process.platform === "win32" }, (t) => {
+  const f = fixture(t);
+  const marker = join(f.root, "monitor-started");
+  const helper = join(f.root, "monitor");
+  const quoted = `'${marker.replaceAll("'", "'\\''")}'`;
+  writeFileSync(helper, `#!/bin/sh\nprintf started > ${quoted}\nprintf 'token\\0'\n`, { mode: 0o755 });
+  f.git(f.cwd, "config", "core.fsmonitor", helper);
+  proceeded(f.run(["--expect-commit", f.sha]));
+  assert.equal(existsSync(marker), false, "verification must not launch configured helpers");
+  writeFileSync(join(f.cwd, "tracked.txt"), "changed synthetic source\n");
+  refused(f.run(["--expect-commit", f.sha]), /source checkout has uncommitted changes/);
+  assert.equal(existsSync(marker), false);
+});
+
+test("guard terminates a stuck Git process and refuses without its output", { skip: process.platform === "win32" }, (t) => {
+  const f = fixture(t);
+  const pidFile = join(f.root, "owned-git-pid");
+  const helper = join(f.root, "stuck-git.mjs");
+  // An owned process with no descendants, even if SIGTERM is ignored.
+  // It also exits by itself so a regression cannot leave it behind.
+  writeFileSync(helper, `import {writeFileSync} from "node:fs";\nwriteFileSync(${JSON.stringify(pidFile)}, String(process.pid));\nprocess.on("SIGTERM", () => {});\nconsole.error("private-資料: synthetic Git diagnostic");\nsetTimeout(() => process.exit(7), 10000);\n`);
+  const quote = (s) => `'${s.replaceAll("'", "'\\''")}'`;
+  writeFileSync(join(f.bin, "git"), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(helper)}\n`, { mode: 0o755 });
+  const started = performance.now();
+  refused(f.run(["--expect-commit", f.sha]), /Git could not verify the source checkout/);
+  assert.ok(performance.now() - started < 9000, "Git must time out before the helper exits");
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  assert.ok(Number.isSafeInteger(pid) && pid > 0);
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "owned Git helper must be gone");
 });
 
 test("another repository's working directory cannot verify the requested commit", (t) => {

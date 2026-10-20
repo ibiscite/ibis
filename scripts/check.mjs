@@ -72,7 +72,11 @@ function verifyCommit(expected) {
   }
   const git = (args) => {
     // Capture diagnostics: Git errors and porcelain filenames can be private.
-    const result = spawnSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: false });
+    // Never start a configured monitor: killing Git does not stop its helpers.
+    const result = spawnSync("git", ["-c", "core.fsmonitor=false", ...args], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: false,
+      timeout: 5_000, killSignal: "SIGKILL",
+    });
     if (result.status !== 0) refuse("Git could not verify the source checkout.");
     return result.stdout.trim();
   };

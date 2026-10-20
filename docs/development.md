@@ -21,8 +21,10 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
   sha=$(git rev-parse HEAD)
   verification_dir=$(mktemp -d)
   git worktree add --detach "$verification_dir/source" "$sha" &&
-    (cd "$verification_dir/source" && CARGO_TARGET_DIR="$verification_dir/target" node scripts/check.mjs)
+    (cd "$verification_dir/source" && CARGO_TARGET_DIR="$verification_dir/target" node scripts/check.mjs --expect-commit "$sha")
   ```
+
+  The guarded preflight gives each Git command five seconds, then kills it and reports a fixed refusal without raw diagnostics. It disables configured filesystem monitors for these calls, because terminating Git does not terminate a monitor's descendants. The repository's configuration is unchanged. Filesystem waits that the operating system cannot interrupt can still delay termination.
 
   Keep failed output for diagnosis. Remove the verification worktree after inspecting the result. This is POSIX shell; on Windows, run it in Git Bash.
 
