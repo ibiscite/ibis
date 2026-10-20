@@ -435,13 +435,25 @@ fn typst_simple_label(key: &str) -> bool {
 fn typst_markup_escape(text: &str) -> String {
     let mut out = String::new();
     let mut chars = text.chars().peekable();
+    let mut line_start = true;
+    let mut numbered_prefix = false;
     while let Some(c) = chars.next() {
         if matches!(c, '[' | ']' | '#' | '@' | '*' | '_' | '\\' | '$' | '<' | '`')
             || (c == '/' && matches!(chars.peek(), Some('/' | '*')))
+            || (line_start && matches!(c, '=' | '+' | '-' | '/'))
+            || (numbered_prefix && c == '.')
         {
             out.push('\\');
         }
         out.push(c);
+        // Both a prefix and a supplement can begin a markup block. Unicode
+        // line/paragraph separators also start a new line in Typst.
+        numbered_prefix = c.is_ascii_digit() && (line_start || numbered_prefix);
+        if matches!(c, '\u{2028}' | '\u{2029}') {
+            line_start = true;
+        } else if !c.is_whitespace() {
+            line_start = false;
+        }
     }
     out
 }
