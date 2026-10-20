@@ -39,9 +39,9 @@ export const {
 const searchPage = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
 let searchRequest = 0;
 
-export function search(query: string, limit = 20) {
+export function search(query: string, limit = 20, scope: string[] | null = null) {
   searchRequest += 1;
-  return commands.search(query, limit, searchPage, searchRequest);
+  return commands.search(query, limit, searchPage, searchRequest, scope);
 }
 
 /** Called whenever the picker is shown by the global shortcut or a second launch. */

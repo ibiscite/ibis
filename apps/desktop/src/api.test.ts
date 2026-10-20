@@ -1,0 +1,24 @@
+import { invoke } from "@tauri-apps/api/core";
+import { expect, it, vi } from "vitest";
+import { search } from "./api";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
+
+it("sends scope changes as fresh requests on the same interface page", async () => {
+  await search("研究", 7);
+  await search("研究", 7, []);
+  await search("研究", 7, ["zotero:group:7"]);
+  const calls = vi.mocked(invoke).mock.calls;
+  expect(calls).toHaveLength(3);
+  const args = calls.map(([command, args]) => {
+    expect(command).toBe("search");
+    return args as { query: string; limit: number; scope: string[] | null; page: number; request: number };
+  });
+  expect(args.map(({ query, limit, scope }) => ({ query, limit, scope }))).toEqual([
+    { query: "研究", limit: 7, scope: null },
+    { query: "研究", limit: 7, scope: [] },
+    { query: "研究", limit: 7, scope: ["zotero:group:7"] },
+  ]);
+  expect(new Set(args.map(({ page }) => page)).size).toBe(1);
+  expect(args.map(({ request }) => request)).toEqual([1, 2, 3]);
+});

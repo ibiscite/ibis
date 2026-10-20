@@ -1,7 +1,7 @@
 //! The open library: loading off the main thread, the search command and
 //! choosing or reloading a library file or the Zotero library.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -146,6 +146,8 @@ pub(crate) struct LibraryStatus {
     /// File name of the searchable snapshot; may differ from the attempted file.
     pub(crate) snapshot_name: Option<String>,
     pub(crate) references: usize,
+    /// Counts in the searchable snapshot by exact source ID; includes empty loaded Zotero libraries.
+    pub(crate) source_counts: BTreeMap<String, usize>,
     pub(crate) warnings: usize,
     pub(crate) error: Option<String>,
     /// Something to tell the user that is not a failure to open.
@@ -239,6 +241,12 @@ impl SearchResult {
 }
 
 pub(crate) fn status(library: &Library) -> LibraryStatus {
+    let mut source_counts = library.index.source_counts().clone();
+    if let Some(Source::Zotero(chosen)) = &library.source {
+        for library in chosen.libraries() {
+            source_counts.entry(zotero_library(*library).to_string()).or_default();
+        }
+    }
     LibraryStatus {
         state: if library.opening {
             if library.source.is_some() && library.source == library.requested {
@@ -269,6 +277,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             .and_then(Source::name),
         snapshot_name: library.source.as_ref().and_then(Source::name),
         references: library.index.references().len(),
+        source_counts,
         warnings: library.warnings.len(),
         error: library.error.clone().map(|error| {
             let zotero = matches!(library.source, Some(Source::Zotero(_)));
@@ -666,6 +675,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             name: None,
             snapshot_name: None,
             references: 0,
+            source_counts: BTreeMap::new(),
             warnings: 0,
             error: Some("library state is unavailable".to_string()),
             note: None,
@@ -923,7 +933,8 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 /// runs off the main thread. `page` identifies the interface page and
 /// `request` increases with every search it sends; a search older than that
 /// page's newest one returns no results, which the interface ignores because
-/// it belongs to an outdated query.
+/// it belongs to an outdated query. `scope` contains exact loaded source IDs:
+/// omitted/null searches all, an empty list searches none. It never reloads sources.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn search(
@@ -931,6 +942,7 @@ pub(crate) async fn search(
     limit: usize,
     page: u32,
     request: u32,
+    scope: Option<Vec<String>>,
     library: State<'_, Mutex<Library>>,
     requests: State<'_, SearchRequests>,
 ) -> Result<Vec<SearchResult>, String> {
@@ -945,22 +957,37 @@ pub(crate) async fn search(
         }
         Arc::clone(&library.index)
     };
-    Ok(search_newest(&index, &query, limit, request, &requests.newest(page)))
+    Ok(search_newest(
+        &index,
+        &query,
+        limit,
+        request,
+        &requests.newest(page),
+        scope.as_deref(),
+    ))
 }
 
 /// Run a search unless a newer request has started, stopping if one does.
-fn search_newest(index: &OwnedIndex, query: &str, limit: usize, request: u32, newest: &AtomicU32) -> Vec<SearchResult> {
+fn search_newest(
+    index: &OwnedIndex,
+    query: &str,
+    limit: usize,
+    request: u32,
+    newest: &AtomicU32,
+    scope: Option<&[String]>,
+) -> Vec<SearchResult> {
     newest.fetch_max(request, Ordering::SeqCst);
     let outdated = || newest.load(Ordering::SeqCst) > request;
-    index
-        .search_until(query, limit.min(200), &outdated)
+    let results = index
+        .search_scoped_until(query, limit.min(200), scope, &outdated)
         .unwrap_or_default()
         .into_iter()
         .map(|hit| {
             let matched = hit.matched.iter().map(|m| format!("{m:?}").to_lowercase()).collect();
             SearchResult::from(hit.reference, matched)
         })
-        .collect()
+        .collect();
+    if outdated() { Vec::new() } else { results }
 }
 
 #[cfg(test)]
@@ -1021,14 +1048,70 @@ mod tests {
     }
 
     #[test]
+    fn scopes_limit_the_snapshot_without_reopening_and_keep_page_requests_separate() {
+        let chosen = ZoteroLibraries::new(vec![
+            ZoteroLibrary::User,
+            ZoteroLibrary::Group(7),
+            ZoteroLibrary::Group(8),
+        ])
+        .unwrap_or_else(|| panic!("valid libraries"));
+        let mut loaded = ibis_core::bibtex::load_str("zotero:user", "@misc{same,title={研究},doi={10.1000/scope}}");
+        loaded.references.extend(
+            ibis_core::bibtex::load_str("zotero:group:7", "@misc{same,title={研究},doi={10.1000/scope}}").references,
+        );
+        let mut library = candidate(Source::Zotero(chosen), loaded);
+        let index = Arc::clone(&library.index);
+        let requests = SearchRequests::default();
+        let scope = vec!["zotero:group:7".into()];
+        let results = search_newest(&index, "研究", 1, 2, &requests.newest(1), Some(&scope));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.source, "zotero:group:7");
+        assert!(search_newest(&index, "10.1000/scope", 20, 1, &requests.newest(1), None).is_empty());
+        assert_eq!(
+            search_newest(&index, "10.1000/scope", 20, 1, &requests.newest(2), None).len(),
+            2
+        );
+        assert!(search_newest(&index, "研究", 20, 3, &requests.newest(1), Some(&[])).is_empty());
+        assert!(Arc::ptr_eq(&index, &library.index));
+        let counts = status(&library).source_counts;
+        assert_eq!(counts.get("zotero:user"), Some(&1));
+        assert_eq!(counts.get("zotero:group:7"), Some(&1));
+        assert_eq!(counts.get("zotero:group:8"), Some(&0));
+        assert_eq!(counts.values().sum::<usize>(), status(&library).references);
+        // Counts describe the retained searchable snapshot, not a failed new selection.
+        library.requested = Some(Source::Zotero(ZoteroLibrary::Group(99).into()));
+        library.error = Some("unavailable".into());
+        assert_eq!(status(&library).source_counts, counts);
+        assert!(status(&Library::default()).source_counts.is_empty());
+        let file = candidate(
+            PathBuf::from("refs.bib"),
+            ibis_core::bibtex::load_str("synthetic-file", "@misc{a}"),
+        );
+        assert_eq!(status(&file).source_counts.get("synthetic-file"), Some(&1));
+    }
+
+    #[test]
+    fn scoped_results_keep_the_desktop_result_cap() {
+        let bib = (0..220)
+            .map(|n| format!("@misc{{key{n},title={{研究}}}}\n"))
+            .collect::<String>();
+        let index = OwnedIndex::new(ibis_core::bibtex::load_str("file", &bib).references);
+        let scope = vec!["file".into(), "file".into()];
+        let results = search_newest(&index, "研究", usize::MAX, 1, &AtomicU32::new(0), Some(&scope));
+        assert_eq!(results.len(), 200);
+        assert!(results.iter().all(|r| r.id.source == "file"));
+        assert_eq!(index.source_counts().get("file"), Some(&220));
+    }
+
+    #[test]
     fn an_older_search_stops_even_if_it_starts_after_a_newer_one() {
         let refs = ibis_core::bibtex::load_str("t", "@article{a,title={Sleep},year={2020}}").references;
         let index = OwnedIndex::new(refs);
         let newest = AtomicU32::new(0);
-        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest).len(), 1);
-        assert!(search_newest(&index, "sleep", 20, 1, &newest).is_empty());
-        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest).len(), 1);
-        assert_eq!(search_newest(&index, "sleep", 20, 3, &newest).len(), 1);
+        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest, None).len(), 1);
+        assert!(search_newest(&index, "sleep", 20, 1, &newest, None).is_empty());
+        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest, None).len(), 1);
+        assert_eq!(search_newest(&index, "sleep", 20, 3, &newest, None).len(), 1);
     }
 
     #[test]
@@ -1036,9 +1119,15 @@ mod tests {
         let refs = ibis_core::bibtex::load_str("t", "@article{a,title={Sleep},year={2020}}").references;
         let index = OwnedIndex::new(refs);
         let requests = SearchRequests::default();
-        assert_eq!(search_newest(&index, "sleep", 20, 500, &requests.newest(1)).len(), 1);
-        assert_eq!(search_newest(&index, "sleep", 20, 1, &requests.newest(2)).len(), 1);
-        assert!(search_newest(&index, "sleep", 20, 499, &requests.newest(1)).is_empty());
+        assert_eq!(
+            search_newest(&index, "sleep", 20, 500, &requests.newest(1), None).len(),
+            1
+        );
+        assert_eq!(
+            search_newest(&index, "sleep", 20, 1, &requests.newest(2), None).len(),
+            1
+        );
+        assert!(search_newest(&index, "sleep", 20, 499, &requests.newest(1), None).is_empty());
     }
 
     use super::*;

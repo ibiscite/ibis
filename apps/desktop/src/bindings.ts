@@ -42,9 +42,10 @@ export const commands = {
 	 *  runs off the main thread. `page` identifies the interface page and
 	 *  `request` increases with every search it sends; a search older than that
 	 *  page's newest one returns no results, which the interface ignores because
-	 *  it belongs to an outdated query.
+	 *  it belongs to an outdated query. `scope` contains exact loaded source IDs:
+	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
-	search: (query: string, limit: number, page: number, request: number) => __TAURI_INVOKE<SearchResult[]>("search", { query, limit, page, request }),
+	search: (query: string, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchResult[]>("search", { query, limit, page, request, scope }),
 	/**
 	 *  Copy the selected records as a citation to the clipboard. Format choices
 	 *  are saved separately when selected, even if no citation is copied.
@@ -168,6 +169,8 @@ export type LibraryStatus = {
 	/**  File name of the searchable snapshot; may differ from the attempted file. */
 	snapshot_name: string | null,
 	references: number,
+	/**  Counts in the searchable snapshot by exact source ID; includes empty loaded Zotero libraries. */
+	source_counts: { [key in string]: number },
 	warnings: number,
 	error: string | null,
 	/**  Something to tell the user that is not a failure to open. */

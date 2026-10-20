@@ -178,6 +178,7 @@ mod tests {
             name: name.map(String::from),
             snapshot_name: name.map(String::from),
             references: 12,
+            source_counts: Default::default(),
             warnings,
             error: error.map(String::from),
             note: None,

@@ -89,7 +89,7 @@ if (typeof window !== "undefined") {
 
 function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
   return { state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false, zotero_libraries: [],
-    references: 24, warnings: 0, error: null, note: null, settings_notice: null,
+    references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-gallery": overrides.references ?? 24 } : {}, warnings: 0, error: null, note: null, settings_notice: null,
     snapshot_zotero: false, stale: false, updated_at: null, checked_at: hoursAgo(3), ...overrides };
 }
 

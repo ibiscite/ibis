@@ -6,6 +6,8 @@
 //! first. This in-memory index is the 0.x baseline; a persistent SQLite FTS5
 //! index replaces it when libraries become large.
 
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::is_combining_mark;
@@ -83,10 +85,27 @@ impl<'a> Index<'a> {
 
     /// Return up to `limit` matches, best first. An empty query matches nothing.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'a>> {
-        if let Some(hits) = by_identifier(self.docs.iter().map(|(r, _, ids)| (*r, ids.as_slice())), query, limit) {
+        self.search_scoped(query, limit, None)
+    }
+
+    /// Search only these exact source IDs before ranking or limiting results.
+    /// `None` searches all sources; an empty slice searches none.
+    pub fn search_scoped(&self, query: &str, limit: usize, scope: Option<&[String]>) -> Vec<Hit<'a>> {
+        if let Some(hits) = by_identifier(
+            self.docs.iter().map(|(r, _, ids)| (*r, ids.as_slice())),
+            query,
+            limit,
+            scope,
+            &|| false,
+        )
+        .flatten()
+        {
             return hits;
         }
-        rank(self.docs.iter().map(|(r, f, _)| (*r, f)), query, limit, &|| false).unwrap_or_default()
+        rank(self.docs.iter().map(|(r, f, _)| (*r, f)), query, limit, scope, &|| {
+            false
+        })
+        .unwrap_or_default()
     }
 }
 
@@ -97,17 +116,29 @@ pub struct OwnedIndex {
     references: Vec<Reference>,
     fields: Vec<[String; 8]>,
     identifiers: Vec<Vec<Identifier>>,
+    source_counts: BTreeMap<String, usize>,
 }
 
 impl OwnedIndex {
     pub fn new(references: Vec<Reference>) -> Self {
         let fields = references.iter().map(prepare).collect();
+        let mut source_counts = BTreeMap::new();
+        for reference in &references {
+            *source_counts.entry(reference.id.source.clone()).or_default() += 1;
+        }
         let identifiers = references.iter().map(identifier::of_reference).collect();
         OwnedIndex {
             references,
             fields,
             identifiers,
+            source_counts,
         }
+    }
+
+    /// Counts by unchanged record source ID, computed once with the snapshot.
+    /// Sources with no records have no entry.
+    pub fn source_counts(&self) -> &BTreeMap<String, usize> {
+        &self.source_counts
     }
 
     pub fn references(&self) -> &[Reference] {
@@ -123,11 +154,28 @@ impl OwnedIndex {
     /// `stop` returns true, so a search for an outdated query does not keep
     /// the caller waiting. `stop` is checked every few thousand records.
     pub fn search_until(&self, query: &str, limit: usize, stop: &dyn Fn() -> bool) -> Option<Vec<Hit<'_>>> {
+        self.search_scoped_until(query, limit, None, stop)
+    }
+
+    /// Like [`Index::search_scoped`], using this owned snapshot.
+    pub fn search_scoped(&self, query: &str, limit: usize, scope: Option<&[String]>) -> Vec<Hit<'_>> {
+        self.search_scoped_until(query, limit, scope, &|| false)
+            .unwrap_or_default()
+    }
+
+    /// Scoped search with the same cancellation contract as [`Self::search_until`].
+    pub fn search_scoped_until(
+        &self,
+        query: &str,
+        limit: usize,
+        scope: Option<&[String]>,
+        stop: &dyn Fn() -> bool,
+    ) -> Option<Vec<Hit<'_>>> {
         let ids = self.references.iter().zip(self.identifiers.iter().map(Vec::as_slice));
-        if let Some(hits) = by_identifier(ids, query, limit) {
+        if let Some(hits) = by_identifier(ids, query, limit, scope, stop)? {
             return Some(hits);
         }
-        rank(self.references.iter().zip(&self.fields), query, limit, stop)
+        rank(self.references.iter().zip(&self.fields), query, limit, scope, stop)
     }
 }
 
@@ -154,28 +202,40 @@ fn prepare(r: &Reference) -> [String; 8] {
 }
 
 /// When the whole query is a DOI, ISBN, PubMed ID or arXiv ID that some
-/// records carry, those records, newest first. `None` means the query is not
-/// an identifier, or no record has it, so ordinary search runs instead.
+/// records in scope carry, those records, newest first. `Some(None)` falls
+/// back to ordinary search; `None` means cancellation.
 fn by_identifier<'r, 'i>(
     docs: impl Iterator<Item = (&'r Reference, &'i [Identifier])>,
     query: &str,
     limit: usize,
-) -> Option<Vec<Hit<'r>>> {
-    let wanted = identifier::parse_query(query)?;
+    scope: Option<&[String]>,
+    stop: &dyn Fn() -> bool,
+) -> Option<Option<Vec<Hit<'r>>>> {
+    if stop() {
+        return None;
+    }
+    let Some(wanted) = identifier::parse_query(query) else {
+        return Some(None);
+    };
     let field = match wanted {
         Identifier::Doi(_) => MatchField::Doi,
         _ => MatchField::Identifier,
     };
-    let mut hits: Vec<Hit<'r>> = docs
-        .filter(|(_, ids)| ids.contains(&wanted))
-        .map(|(reference, _)| Hit {
-            reference,
-            score: 3000,
-            matched: vec![field],
-        })
-        .collect();
+    let mut hits = Vec::new();
+    for (n, (reference, ids)) in docs.enumerate() {
+        if n % STOP_CHECK_INTERVAL == 0 && stop() {
+            return None;
+        }
+        if in_scope(reference, scope) && ids.contains(&wanted) {
+            hits.push(Hit {
+                reference,
+                score: 3000,
+                matched: vec![field],
+            });
+        }
+    }
     if hits.is_empty() {
-        return None;
+        return Some(None);
     }
     hits.sort_by(|a, b| {
         b.reference
@@ -184,16 +244,22 @@ fn by_identifier<'r, 'i>(
             .then_with(|| a.reference.id.cmp(&b.reference.id))
     });
     hits.truncate(limit);
-    Some(hits)
+    Some(Some(hits))
+}
+
+const STOP_CHECK_INTERVAL: usize = 4096;
+
+fn in_scope(reference: &Reference, scope: Option<&[String]>) -> bool {
+    scope.is_none_or(|sources| sources.contains(&reference.id.source))
 }
 
 fn rank<'r, 'f>(
     docs: impl Iterator<Item = (&'r Reference, &'f [String; 8])>,
     query: &str,
     limit: usize,
+    scope: Option<&[String]>,
     stop: &dyn Fn() -> bool,
 ) -> Option<Vec<Hit<'r>>> {
-    const STOP_CHECK_INTERVAL: usize = 4096;
     let normalized = normalize(query);
     let terms: Vec<&str> = normalized.split_whitespace().collect();
     if terms.is_empty() || limit == 0 {
@@ -210,6 +276,9 @@ fn rank<'r, 'f>(
     for (n, (reference, fields)) in docs.enumerate() {
         if n % STOP_CHECK_INTERVAL == 0 && stop() {
             return None;
+        }
+        if !in_scope(reference, scope) {
+            continue;
         }
         let mut score = 0;
         let mut matched = 0u8;
@@ -405,6 +474,112 @@ mod tests {
             eprints: vec![],
             variables: Default::default(),
             raw: None,
+        }
+    }
+
+    #[test]
+    fn source_scopes_filter_before_limits_for_words_unicode_and_identifiers() {
+        let mut refs = crate::bibtex::load_str(
+            "zotero:user",
+            "@article{same,title={García 研究},doi={10.1000/scope},isbn={0-306-40615-2},pmid={12345},eprint={2101.00001},archiveprefix={arXiv},year={2026}}",
+        )
+        .references;
+        for n in 0..3 {
+            let mut r = refs[0].clone();
+            r.id.source = "zotero:group:7".into();
+            r.id.native_key = format!("group{n}");
+            r.issued = Some(Issued::year(2020 + n));
+            refs.push(r);
+        }
+        let borrowed = Index::new(&refs);
+        let owned = OwnedIndex::new(refs.clone());
+        assert_eq!(owned.source_counts().get("zotero:user"), Some(&1));
+        assert_eq!(owned.source_counts().get("zotero:group:7"), Some(&3));
+        assert_eq!(owned.source_counts().values().sum::<usize>(), owned.references().len());
+        let group = vec!["zotero:group:7".into()];
+        let all = vec!["zotero:user".into(), "zotero:group:7".into()];
+        for query in [
+            "garcia",
+            "研究",
+            "10.1000/scope",
+            "978-0-306-40615-7",
+            "PMID:12345",
+            "arXiv:2101.00001",
+        ] {
+            for scope in [
+                None,
+                Some(all.as_slice()),
+                Some(group.as_slice()),
+                Some(&[]),
+                Some(&["missing".into()][..]),
+            ] {
+                let expected: Vec<_> = owned
+                    .search(query, 10)
+                    .into_iter()
+                    .filter(|h| scope.is_none_or(|s| s.contains(&h.reference.id.source)))
+                    .take(2)
+                    .map(|h| h.reference.id.clone())
+                    .collect();
+                for hits in [
+                    borrowed.search_scoped(query, 2, scope),
+                    owned.search_scoped(query, 2, scope),
+                ] {
+                    assert_eq!(
+                        hits.iter().map(|h| h.reference.id.clone()).collect::<Vec<_>>(),
+                        expected
+                    );
+                }
+            }
+            assert!(owned.search_scoped(query, 0, Some(&group)).is_empty());
+            assert!(owned.search_scoped_until(query, 2, Some(&group), &|| true).is_none());
+        }
+        assert!(owned.search_scoped("", 2, Some(&group)).is_empty());
+        // An identifier outside this scope must not suppress an ordinary match inside it.
+        let mut fallback = reference("fallback", "10.1000/scope", "Example", 2020);
+        fallback.id.source = "file".into();
+        refs.push(fallback);
+        let owned = OwnedIndex::new(refs);
+        let hits = owned.search_scoped("10.1000/scope", 1, Some(&["file".into()]));
+        assert_eq!(hits[0].reference.id.native_key, "fallback");
+        assert_eq!(hits[0].matched, [MatchField::Title]);
+    }
+
+    #[test]
+    fn scoped_search_cancels_when_a_concurrent_request_supersedes_it() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        };
+        let mut r = reference("a", "Synthetic research", "Example", 2020);
+        r.doi = Some("10.1000/scope".into());
+        let index = OwnedIndex::new(vec![r; 10_000]);
+        for query in ["research", "10.1000/scope"] {
+            let cancelled = AtomicBool::new(false);
+            let (paused, ready) = mpsc::channel();
+            let (resume, wait) = mpsc::channel();
+            std::thread::scope(|threads| {
+                let index = &index;
+                let cancelled = &cancelled;
+                let running = threads.spawn(move || {
+                    let checks = std::cell::Cell::new(0);
+                    let stop = || {
+                        checks.set(checks.get() + 1);
+                        if checks.get() == 3 {
+                            paused.send(()).unwrap_or_else(|e| panic!("{e}"));
+                            wait.recv_timeout(std::time::Duration::from_secs(5))
+                                .unwrap_or_else(|e| panic!("{e}"));
+                        }
+                        cancelled.load(Ordering::SeqCst)
+                    };
+                    index.search_scoped_until(query, 20, Some(&["excluded".into()]), &stop)
+                });
+                ready
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .unwrap_or_else(|e| panic!("{e}"));
+                cancelled.store(true, Ordering::SeqCst);
+                resume.send(()).unwrap_or_else(|e| panic!("{e}"));
+                assert!(running.join().unwrap_or_else(|_| panic!("search panicked")).is_none());
+            });
         }
     }
 
