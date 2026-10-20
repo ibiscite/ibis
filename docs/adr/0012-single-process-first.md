@@ -1,6 +1,6 @@
 # 0012. Ship 0.1 as a single process; split out an engine only if measurements require it
 
-Status: accepted (2026-10-18). Amends ADR 0004 for releases before the split is justified.
+Status: accepted (2026-10-18); amends 0004 for releases before the split is justified
 
 ## Context
 ADR 0004 planned a small always-running engine process plus a separate picker process, to keep the background footprint low. Building the process split, its inter-process protocol and lifecycle before anyone can use the picker delays the first usable release and adds risk, while the expected memory saving has not been measured on the real app.

@@ -14,10 +14,10 @@ import { fileURLToPath } from "node:url";
 const LABEL_FAMILIES = /^(type|area|platform|source|status|needs):/;
 const LABEL_EXTRAS = new Set([
   "tracking", "good first issue", "help wanted", "upstream",
-  "autorelease: pending", "autorelease: tagged", "dependencies", "rust", "github_actions",
+  "autorelease: pending", "autorelease: tagged", "dependencies",
 ]);
 const KEEP_BRANCH = /^(main|nightly|stable|evidence|release-please--.*|dependabot\/.*)$/;
-const TITLE_PREFIX = /^\s*(\[|(feat|fix|ci|test|docs|refactor|perf|chore|build|style|revert)(\([^)]*\))?!?:)/;
+const TITLE_PREFIX = /^\s*(\[|(feat|fix|perf|docs|test|ci|build|refactor|chore|revert)(\([^)]*\))?!?:)/;
 const DAY = 86_400_000;
 const STALE_DAYS = 14;
 const REPORT_TITLE = "Repository hygiene report";
@@ -36,6 +36,9 @@ export function findings({ now, branches, pulls, issues, labels }) {
   for (const p of pulls) {
     if (p.state === "open" && !KEEP_BRANCH.test(p.head) && now - Date.parse(p.updatedAt) > STALE_DAYS * DAY) {
       out.problems.push(`#${p.number}: pull request with no activity for ${STALE_DAYS} days`);
+    }
+    if (p.state === "open" && !KEEP_BRANCH.test(p.head) && !p.labels.some((l) => l.startsWith("type:"))) {
+      out.problems.push(`#${p.number}: pull request with no type: label`);
     }
   }
   for (const i of issues) {
@@ -78,6 +81,7 @@ function main() {
       state: p.state,
       closedAt: p.closed_at,
       updatedAt: p.updated_at,
+      labels: p.labels.map((l) => l.name),
     }));
   const issues = list(repo, "issues?state=open")
     .filter((i) => !i.pull_request)

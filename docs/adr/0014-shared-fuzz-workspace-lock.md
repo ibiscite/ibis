@@ -1,6 +1,6 @@
 # 0014. Share one lockfile with fuzz infrastructure
 
-Status: accepted (2026-10-18; amends the workspace layout in ADR 0013)
+Status: accepted (2026-10-18); amends the workspace layout in 0013
 
 ## Context
 

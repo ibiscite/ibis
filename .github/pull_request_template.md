@@ -1,8 +1,10 @@
-<!-- Short action title, e.g. "Keep good entries when a .bib file has a duplicate key". -->
+<!-- Title: a Conventional Commit, e.g. "fix: keep good entries when a .bib file has a duplicate key". -->
 
 ## Change
 
-What user problem does this solve, and what happens now? Link an issue if there is one.
+Closes #N
+
+What user problem does this solve, and what happens now?
 
 ## How it works
 

@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-One page per decision with lasting effect: context, decision, consequences. Status is *accepted*, *proposed* or *superseded by NNNN*. To change a decision, add a new ADR that supersedes the old one; do not rewrite history. ADRs whose features are not fully built yet (0006, 0007, 0009, 0010) record the direction for the unbuilt parts; those details are settled when the parts are built, and a new ADR can change them then. See also `../architecture.md` and `../../ROADMAP.md`.
+One page per decision with lasting effect: context, decision, consequences. Status is *accepted*, *proposed* or *superseded by NNNN*. Each ADR starts with the heading `# NNNN. Title`, which this index copies, then a line `Status: <status> (YYYY-MM-DD)`, followed by `; <relation>` when it amends, supersedes or is amended by another ADR (`; amends 0011`); other notes go in the next paragraph. To change a decision, add a new ADR that supersedes the old one; do not rewrite history. ADRs whose features are not fully built yet (0006, 0007, 0009, 0010) record the direction for the unbuilt parts; those details are settled when the parts are built, and a new ADR can change them then. See also `../architecture.md` and `../../ROADMAP.md`.
 
 | # | Decision | Status |
 | --- | --- | --- |
@@ -15,11 +15,11 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0009 | Insertion never fails silently; destination behaviour is data | accepted |
 | 0010 | Search: instant keyword first, meaning-based search added later | proposed (awaiting measurements) |
 | 0011 | AI-assisted contributions with guardrails | accepted (amended by 0015) |
-| 0012 | Ship 0.1 as a single process; split only if measurements require it | accepted (amends 0004) |
-| 0013 | Crate-specific NCSA exception for isolated fuzzing infrastructure | accepted |
-| 0014 | Share one lockfile across application and fuzz infrastructure | accepted (amends 0013 workspace layout) |
+| 0012 | Ship 0.1 as a single process; split out an engine only if measurements require it | accepted (amends 0004) |
+| 0013 | Permit NCSA for the isolated fuzzing dependency | accepted |
+| 0014 | Share one lockfile with fuzz infrastructure | accepted (amends 0013 workspace layout) |
 | 0015 | Autonomous agents work under standing maintainer authorization | accepted (amends 0011; amended by 0017) |
-| 0016 | Versioned settings in the platform configuration folder | accepted (library field and migration superseded by 0018) |
+| 0016 | Keep versioned, human-editable settings in the platform configuration folder | accepted (library field and migration superseded by 0018) |
 | 0017 | Lighter review for documentation and test changes | accepted (amends 0015) |
 | 0018 | Settings format 2: the library names its kind | accepted (supersedes part of 0016) |
 | 0019 | Signed in-app updates from GitHub Releases, with separate Stable and Nightly apps | accepted (applies 0008) |

@@ -1,4 +1,4 @@
-name: Nightly fuzzing
+name: Fuzzing
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: nightly-fuzzing
+  group: fuzz
   cancel-in-progress: false
 
 permissions:
@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   fuzz:
+    name: Fuzz (${{ matrix.target }})
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:

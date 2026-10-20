@@ -1,6 +1,8 @@
 # 0006. Read-only sources; Zotero access ladder
 
-Status: accepted (2026-10-17). Verified against Zotero 10.0.6: the live database is locked while Zotero runs; a copy including the WAL files opens consistently; the local API answers in milliseconds and rejects requests carrying a browser Origin header.
+Status: accepted (2026-10-17)
+
+Verified against Zotero 10.0.6: the live database is locked while Zotero runs; a copy including the WAL files opens consistently; the local API answers in milliseconds and rejects requests carrying a browser Origin header.
 
 ## Decision
 - 1.0 never writes to any library. Later fixes go only through official APIs after the user reviews each change.

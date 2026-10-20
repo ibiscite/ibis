@@ -1,4 +1,4 @@
-name: Idea or feature request
+name: Feature request
 description: Suggest an improvement.
 labels: [type:feature, needs:triage]
 body:

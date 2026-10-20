@@ -1,8 +1,10 @@
 # 0004. Desktop shell: Tauri 2, engine and picker as separate processes
 
+Status: accepted (2026-10-17); amended by 0012
+
 > Amended by ADR 0012: releases start as a single process; the split follows only if measurements require it.
 
-Status: accepted (2026-10-17). Background-memory targets to be confirmed by measurement of the two-process build.
+Background-memory targets to be confirmed by measurement of the two-process build.
 
 ## Context
 Probes compared Electron (~290 MiB bundle, ~448 MiB visible), Tauri (~11 MiB bundle, ~170 MiB visible, ~124 MiB after closing the window because WebKit stays loaded) and Qt (embedded citation engine too slow). Alternatives without good screen-reader support on Linux (Iced, Compose, MAUI) are excluded. Raycast 2.0 (2026) uses the same shape: native host, shared web UI, Rust core.

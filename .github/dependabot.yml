@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    labels: ["dependencies", "type:chore"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
     # Let new releases age a week before proposing them; security updates are not delayed.
     cooldown:
       default-days: 7
@@ -14,6 +18,10 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    labels: ["dependencies", "type:chore"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
     # Let new releases age a week before proposing them; security updates are not delayed.
     cooldown:
       default-days: 7
@@ -24,6 +32,10 @@ updates:
     directory: /apps/desktop
     schedule:
       interval: monthly
+    labels: ["dependencies", "type:chore"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
     # Let new releases age a week before proposing them; security updates are not delayed.
     cooldown:
       default-days: 7
