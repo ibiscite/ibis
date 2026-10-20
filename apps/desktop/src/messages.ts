@@ -205,6 +205,7 @@ const matchFieldNames: Record<string, string> = {
   keyword: "the keywords",
   container: "the journal or book",
   abstract: "the abstract",
+  identifier: "an ISBN, PubMed ID or arXiv ID",
 };
 
 // One word for the closed format control; the list shows the full label.

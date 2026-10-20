@@ -7,6 +7,7 @@
 pub mod bibtex;
 pub mod cite;
 pub mod find;
+pub mod identifier;
 pub mod library;
 pub mod model;
 pub mod search;

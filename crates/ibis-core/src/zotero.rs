@@ -163,6 +163,7 @@ fn load_item(library: Library, item: &Value) -> Result<Loaded, (Option<String>, 
         abstract_text: text(csl, "abstract"),
         keywords: tags(data),
         language: text(csl, "language"),
+        eprints: Vec::new(),
         variables: BTreeMap::new(),
         raw: serde_json::to_string(item).ok(),
     };

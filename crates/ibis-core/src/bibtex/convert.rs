@@ -216,11 +216,34 @@ pub(crate) fn convert(
     set("publisher-place", &["location", "address"]);
     set("edition", &["edition"]);
     set("ISBN", &["isbn"]);
+    set("PMID", &["pmid"]);
+    set("PMCID", &["pmcid"]);
     set("ISSN", &["issn"]);
     set("collection-title", &["series"]);
     set("genre", &["type"]);
     set("note", &["note"]);
     set("event-title", &["eventtitle"]);
+    // BibLaTeX keeps arXiv and PubMed IDs in `eprint`. A PubMed ID is the CSL
+    // `PMID`; an arXiv ID has no CSL variable and is kept for search only.
+    let mut eprints = Vec::new();
+    let eprint_type = text("eprinttype")
+        .or_else(|| text("archiveprefix"))
+        .map(|t| t.to_lowercase());
+    if let (Some(eprint_type), Some(eprint)) = (eprint_type, text("eprint")) {
+        match eprint_type.as_str() {
+            "arxiv" => {
+                let id = match eprint.get(..6) {
+                    Some(prefix) if prefix.eq_ignore_ascii_case("arxiv:") => eprint[6..].trim(),
+                    _ => eprint.as_str(),
+                };
+                eprints.push(format!("arXiv:{id}"));
+            }
+            "pubmed" => {
+                variables.entry("PMID".to_string()).or_insert(eprint);
+            }
+            _ => {}
+        }
+    }
     if let Some(short_title) = short_title {
         variables.insert("title-short".to_string(), short_title);
     }
@@ -282,6 +305,7 @@ pub(crate) fn convert(
         abstract_text,
         keywords,
         language,
+        eprints,
         variables,
         raw: Some(raw.to_string()),
     }

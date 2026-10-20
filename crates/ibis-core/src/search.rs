@@ -10,6 +10,7 @@ use serde::Serialize;
 use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::is_combining_mark;
 
+use crate::identifier::{self, Identifier};
 use crate::model::Reference;
 
 /// Which part of a record matched a query term.
@@ -24,6 +25,8 @@ pub enum MatchField {
     Keyword,
     Container,
     Abstract,
+    /// An ISBN, PubMed ID or arXiv ID given as the whole query.
+    Identifier,
 }
 
 impl MatchField {
@@ -48,6 +51,8 @@ impl MatchField {
             MatchField::Keyword => 5,
             MatchField::Container => 3,
             MatchField::Abstract => 1,
+            // Identifier hits are scored apart, in `by_identifier`.
+            MatchField::Identifier => 0,
         }
     }
 }
@@ -63,19 +68,25 @@ pub struct Hit<'a> {
 
 /// Search index over a set of references.
 pub struct Index<'a> {
-    docs: Vec<(&'a Reference, [String; 8])>,
+    docs: Vec<(&'a Reference, [String; 8], Vec<Identifier>)>,
 }
 
 impl<'a> Index<'a> {
     pub fn new(references: &'a [Reference]) -> Self {
         Index {
-            docs: references.iter().map(|r| (r, prepare(r))).collect(),
+            docs: references
+                .iter()
+                .map(|r| (r, prepare(r), identifier::of_reference(r)))
+                .collect(),
         }
     }
 
     /// Return up to `limit` matches, best first. An empty query matches nothing.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'a>> {
-        rank(self.docs.iter().map(|(r, f)| (*r, f)), query, limit, &|| false).unwrap_or_default()
+        if let Some(hits) = by_identifier(self.docs.iter().map(|(r, _, ids)| (*r, ids.as_slice())), query, limit) {
+            return hits;
+        }
+        rank(self.docs.iter().map(|(r, f, _)| (*r, f)), query, limit, &|| false).unwrap_or_default()
     }
 }
 
@@ -85,12 +96,18 @@ impl<'a> Index<'a> {
 pub struct OwnedIndex {
     references: Vec<Reference>,
     fields: Vec<[String; 8]>,
+    identifiers: Vec<Vec<Identifier>>,
 }
 
 impl OwnedIndex {
     pub fn new(references: Vec<Reference>) -> Self {
         let fields = references.iter().map(prepare).collect();
-        OwnedIndex { references, fields }
+        let identifiers = references.iter().map(identifier::of_reference).collect();
+        OwnedIndex {
+            references,
+            fields,
+            identifiers,
+        }
     }
 
     pub fn references(&self) -> &[Reference] {
@@ -106,6 +123,10 @@ impl OwnedIndex {
     /// `stop` returns true, so a search for an outdated query does not keep
     /// the caller waiting. `stop` is checked every few thousand records.
     pub fn search_until(&self, query: &str, limit: usize, stop: &dyn Fn() -> bool) -> Option<Vec<Hit<'_>>> {
+        let ids = self.references.iter().zip(self.identifiers.iter().map(Vec::as_slice));
+        if let Some(hits) = by_identifier(ids, query, limit) {
+            return Some(hits);
+        }
         rank(self.references.iter().zip(&self.fields), query, limit, stop)
     }
 }
@@ -130,6 +151,40 @@ fn prepare(r: &Reference) -> [String; 8] {
         normalize(r.container_title.as_deref().unwrap_or("")),
         normalize(r.abstract_text.as_deref().unwrap_or("")),
     ]
+}
+
+/// When the whole query is a DOI, ISBN, PubMed ID or arXiv ID that some
+/// records carry, those records, newest first. `None` means the query is not
+/// an identifier, or no record has it, so ordinary search runs instead.
+fn by_identifier<'r, 'i>(
+    docs: impl Iterator<Item = (&'r Reference, &'i [Identifier])>,
+    query: &str,
+    limit: usize,
+) -> Option<Vec<Hit<'r>>> {
+    let wanted = identifier::parse_query(query)?;
+    let field = match wanted {
+        Identifier::Doi(_) => MatchField::Doi,
+        _ => MatchField::Identifier,
+    };
+    let mut hits: Vec<Hit<'r>> = docs
+        .filter(|(_, ids)| ids.contains(&wanted))
+        .map(|(reference, _)| Hit {
+            reference,
+            score: 3000,
+            matched: vec![field],
+        })
+        .collect();
+    if hits.is_empty() {
+        return None;
+    }
+    hits.sort_by(|a, b| {
+        b.reference
+            .year()
+            .cmp(&a.reference.year())
+            .then_with(|| a.reference.id.cmp(&b.reference.id))
+    });
+    hits.truncate(limit);
+    Some(hits)
 }
 
 fn rank<'r, 'f>(
@@ -347,6 +402,7 @@ mod tests {
             abstract_text: None,
             keywords: vec![],
             language: None,
+            eprints: vec![],
             variables: Default::default(),
             raw: None,
         }
@@ -605,6 +661,40 @@ mod tests {
         let hits = index.search("somnia", 10);
         assert_eq!(hits[0].reference.id.native_key, "b");
         assert_eq!(hits[0].score, 2 * hits[1].score);
+    }
+
+    #[test]
+    fn a_pasted_identifier_finds_the_record_that_carries_it() {
+        let refs = crate::bibtex::load_str(
+            "t",
+            "@article{doi1, title={Sleep}, doi={10.1000/ABC.1}, year={2020}}
+             @book{isbn1, title={Memory}, isbn={0-306-40615-2}, year={2019}}
+             @article{arx, title={Dreams}, url={https://arxiv.org/abs/2101.00001v2}, year={2021}}
+             @article{pm, title={Naps}, url={https://pubmed.ncbi.nlm.nih.gov/12345/}, year={2022}}
+             @article{old, title={Strings}, eprint={hep-th/9711200}, archiveprefix={arXiv}, year={1997}}
+             @article{other, title={Mentions 10.1000/abc.1 in passing}, year={2023}}",
+        )
+        .references;
+        let borrowed = Index::new(&refs);
+        let owned = OwnedIndex::new(refs.clone());
+        for (query, key, field) in [
+            ("https://doi.org/10.1000/abc.1", "doi1", MatchField::Doi),
+            ("978-0-306-40615-7", "isbn1", MatchField::Identifier),
+            ("arXiv:2101.00001", "arx", MatchField::Identifier),
+            ("PMID:12345", "pm", MatchField::Identifier),
+            ("hep-th/9711200", "old", MatchField::Identifier),
+            ("arXiv:hep-th/9711200", "old", MatchField::Identifier),
+            ("https://arxiv.org/abs/hep-th/9711200", "old", MatchField::Identifier),
+        ] {
+            for hits in [borrowed.search(query, 10), owned.search(query, 10)] {
+                assert_eq!(hits.len(), 1, "{query}");
+                assert_eq!(hits[0].reference.id.native_key, key, "{query}");
+                assert_eq!(hits[0].matched, [field], "{query}");
+            }
+        }
+        // An identifier nobody carries falls back to ordinary search.
+        assert_eq!(owned.search("10.1000/zzz", 10).len(), 0);
+        assert_eq!(owned.search("passing", 10)[0].reference.id.native_key, "other");
     }
 
     #[test]

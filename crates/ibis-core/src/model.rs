@@ -222,6 +222,11 @@ pub struct Reference {
     /// BCP 47 language tag, e.g. `en-US`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Preprint IDs such as `arXiv:2101.00001`, from BibLaTeX `eprint`. They
+    /// are kept for search only: CSL has no variable for them, and styles
+    /// print `number` on journal articles.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eprints: Vec<String>,
     /// Further CSL string variables (`volume`, `issue`, `page`, `publisher`,
     /// `edition`, `ISBN`, ...), keyed by their CSL variable name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
