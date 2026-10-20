@@ -3,6 +3,7 @@ import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { commands, type KeyFormat, type LibraryStatus } from "./bindings";
 
+export type { Sources } from "./bindings";
 export type {
   Copied, Density, LibraryStatus, PickerPreferences, RecordId, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
 } from "./bindings";
@@ -25,6 +26,8 @@ export const {
   copyFormatted,
   pickerPreferences,
   setPickerPreferences,
+  findSources,
+  openFoundLibrary,
 } = commands;
 
 // The limit default, page and request number are not part of the UI's API:

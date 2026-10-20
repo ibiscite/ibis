@@ -50,6 +50,11 @@ main {
 .empty-state { color: var(--muted); text-align: center; padding: var(--empty-padding); }
 .empty-state p:first-child { color: var(--text); font-weight: var(--type-strong-weight); }
 .empty-hint { font-size: var(--metadata-size); }
+.library-setup .setup-choices { display: flex; gap: var(--metadata-gap); justify-content: center; flex-wrap: wrap; }
+.library-setup button[aria-disabled="true"] { color: var(--muted); cursor: default; }
+.found-files button { max-width: 100%; overflow-wrap: anywhere; }
+.found-files ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--metadata-gap); justify-items: center; }
+.found-folder { color: var(--muted); font-size: var(--metadata-size); }
 
 .notices:empty { display: none; }
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }
