@@ -4,7 +4,7 @@ This project favours small, verified, reversible steps.
 
 ## Flow of work
 
-1. **Issue.** Every change starts from an issue that states the user-visible outcome and acceptance criteria. Issues belong to a milestone (`0.1 Picker`, `0.2 Shared preview`, ...).
+1. **Issue.** Every change starts from an issue that states the user-visible outcome and acceptance criteria. Its labels, title and milestone follow [Issues, labels and milestones](#issues-labels-and-milestones).
 2. **Branch.** One short-lived branch per issue, named `<type>/<issue>-<short-description>`, e.g. `feat/12-zotero-snapshot-reader`.
 3. **Test first.** Add a failing test or fixture that captures the acceptance criteria, then implement.
 4. **Check.** `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform.
@@ -41,9 +41,24 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
 - **Review in parallel.** Run the one independent review of the final diff while CI runs, and save findings in the pull request (fixed, P3 filed as an issue, or rejected with a reason).
 - **Independent work in parallel.** Issues that touch different files can be worked on at the same time, each in its own worktree and branch. Two writers never share a checkout. Shared files (`Cargo.toml`, `Cargo.lock`, `apps/desktop/src-tauri/src/main.rs`, `ROADMAP.md`) are changed by one branch at a time.
 
-## Progress reports
+## Issues, labels and milestones
 
-Each milestone has a tracking issue (label `tracking`). Its body holds the current plan: what done means, **Now** (work in progress and where it is), the ordered **Queue**, what waits on the maintainer, what is deferred, and decisions taken. History goes in comments. After each merge, add one line saying what users can now do and what is next. Questions that need the maintainer carry the label `needs:maintainer`.
+One standard for every issue and pull request, open or closed:
+
+- **Type**, exactly one: `type:bug`, `type:feature`, `type:docs`, `type:test`, `type:ci`, `type:build` (packaging and release tooling), `type:perf`, `type:chore` (refactoring, maintenance, planning). A pull request takes the type of its title prefix (`fix:` is `type:bug`, `refactor:` is `type:chore`).
+- **Area**, one or more where it helps: `area:core`, `area:desktop`, `area:cli`, `area:formatting`, `area:search`, `area:testing`, `area:a11y`, `area:i18n`, `area:privacy`, `area:security`, `area:ux`, `area:compatibility`, `area:integration`, `area:extensions`, `area:health`.
+- **Platform** and **source**, only when it applies to some of them: `platform:linux`, `platform:macos`, `platform:windows`, `platform:web`; `source:zotero`, `source:bibtex`.
+- **Status**: `status:ready` (can be picked up), `status:blocked`, `status:needs-design` (a short plan is reviewed before code).
+- **Needs**: `needs:triage` (new finding, not yet placed), `needs:review`, `needs:maintainer` (a reserved decision only).
+- **Specials**: `tracking`, `good first issue`, `help wanted`, `upstream`. Release Please and Dependabot add their own labels (`autorelease: pending`, `dependencies`, `rust`, `github_actions`); leave them alone.
+
+No other labels. Each family has one colour.
+
+**Titles.** An issue title is a plain sentence about the outcome or the problem, with no commit prefix or bracket tag: "Paste into the previous application", "Zotero mapper silently drops malformed CSL text". A pull request title is a Conventional Commit (`fix: keep Typst citation notes as literal text`), because it becomes the commit on `main`.
+
+**Milestones.** Every open issue has one milestone: `0.N Name` for a planned release (matching `ROADMAP.md`), `1.0`, or `Later` for anything not scheduled. Each open milestone's description is one line saying what users can do when it ships, and names its tracking issue. A milestone closes when its release ships.
+
+**Tracking issues.** Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body holds the current plan: what done means, **Now** (work in progress and where it is), the ordered **Queue**, what waits on the maintainer, what is deferred, and decisions taken. History goes in comments. After each merge, add one line saying what users can now do and what is next.
 
 ## Setting up a computer
 
