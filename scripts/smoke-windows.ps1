@@ -47,13 +47,20 @@ public static class IbisSmoke {
 '@
 [Console]::Error.WriteLine('NATIVE HELPER STAGE windows-input-compile-ready')
 function Get-AppWindow([int] $Id) {
+  $script:SnapshotPhase = 'discovery'
   $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $Id)
   $candidates = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $condition)
-  if ($candidates.Count -gt 20) { throw 'Native picker window enumeration exceeded bound' }
+  if ($candidates.Count -gt 20) {
+    $script:SnapshotPhase = 'window-bound'
+    throw 'Native picker window enumeration exceeded bound'
+  }
   $search = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Search references')
   foreach ($candidate in $candidates) {
     $controls = $candidate.FindAll([System.Windows.Automation.TreeScope]::Descendants, $search)
-    if ($controls.Count -gt 4000) { throw 'Named search enumeration exceeded bound' }
+    if ($controls.Count -gt 4000) {
+      $script:SnapshotPhase = 'search-bound'
+      throw 'Named search enumeration exceeded bound'
+    }
     # The label and editable control can expose the same accessible name.
     # A preceding static label must not exclude its actual picker window.
     foreach ($control in $controls) {
@@ -65,18 +72,25 @@ function Get-AppWindow([int] $Id) {
 }
 function Get-Tree {
   if ($Text -and $Text -ne '0') {
+    $script:SnapshotPhase = 'handle-parse'
     $handle = [IntPtr]::new([long]::Parse($Text, [System.Globalization.CultureInfo]::InvariantCulture))
-    if (![IbisSmoke]::IsWindow($handle) -or [IbisSmoke]::OwnerPid($handle) -ne $AppId) { throw 'Verified picker window identity was lost' }
+    $script:SnapshotPhase = 'provider'
+    if (![IbisSmoke]::IsWindow($handle) -or [IbisSmoke]::OwnerPid($handle) -ne $AppId) {
+      $script:SnapshotPhase = 'ownership'
+      throw 'Verified picker window identity was lost'
+    }
     if (![IbisSmoke]::IsWindowVisible($handle)) { return @{nodes=@();visible=$false;foreground=$false;picker_handle=$handle.ToInt64()} }
     $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
   } else {
     $window = Get-AppWindow $AppId
   }
   if (!$window) { return @{nodes=@();visible=$false;foreground=$false} }
+  $script:SnapshotPhase = 'provider'
   $handle = [IntPtr] $window.Current.NativeWindowHandle
   if ($handle -eq [IntPtr]::Zero) {
     # Right after launch the window can be listed before it has a handle.
     if (!$Text -or $Text -eq '0') { return @{tree_changed=$true} }
+    $script:SnapshotPhase = 'ownership'
     throw 'Native picker window handle unavailable'
   }
   # Retained UIA state and unrelated same-PID tray windows cannot establish
@@ -84,7 +98,10 @@ function Get-Tree {
   $visible = [IbisSmoke]::IsWindowVisible($handle)
   if (!$visible) { return @{nodes=@();visible=$false;foreground=$false;picker_handle=$handle.ToInt64()} }
   $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-  if ($elements.Count -gt 4000) { throw 'Accessibility tree exceeded smoke traversal bound' }
+  if ($elements.Count -gt 4000) {
+    $script:SnapshotPhase = 'tree-bound'
+    throw 'Accessibility tree exceeded smoke traversal bound'
+  }
   $nodes = @()
   foreach ($element in $elements) {
     $current = $element.Current
@@ -95,7 +112,10 @@ function Get-Tree {
       # Root documents can include results, recovery paragraphs and the footer.
       # A silent 500-character prefix can omit the very message being asserted.
       $value = $pattern.DocumentRange.GetText(16385)
-      if ($value.Length -gt 16384) { throw 'Native accessibility document exceeded smoke text bound' }
+      if ($value.Length -gt 16384) {
+        $script:SnapshotPhase = 'text-bound'
+        throw 'Native accessibility document exceeded smoke text bound'
+      }
     }
     $nodes += @{role=$current.ControlType.ProgrammaticName;name=$current.Name;value=$value;focused=$current.HasKeyboardFocus}
   }
@@ -271,6 +291,12 @@ try {
 } catch {
   # Never serialize exception text: UIA exceptions can contain accessible text.
   [Console]::Error.WriteLine("Windows native smoke action unavailable: $Action")
-  [Console]::Error.WriteLine('NATIVE HELPER ERROR ' + (Get-ErrorKind $_))
+  $kind = Get-ErrorKind $_
+  [Console]::Error.WriteLine('NATIVE HELPER ERROR ' + $kind)
+  if ($Action -eq 'snapshot') {
+    $phases = 'discovery', 'provider', 'handle-parse', 'ownership', 'window-bound', 'search-bound', 'tree-bound', 'text-bound'
+    $phase = if ($phases -ccontains $script:SnapshotPhase) { $script:SnapshotPhase } else { 'unknown' }
+    [Console]::Error.WriteLine('NATIVE SNAPSHOT FAILURE ' + (ConvertTo-Json -InputObject @{phase=$phase;kind=$kind} -Compress))
+  }
   exit 1
 }

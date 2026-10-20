@@ -2407,6 +2407,104 @@ foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
             self.assertIn(value.pop("stage"), ("identity", "window", "foreground-request"))
             self.assertTrue(all(type(item) is bool for item in value.values()))
 
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the snapshot failure contract")
+    def test_windows_snapshot_fatal_phases_and_error_kinds_do_not_expose_payloads(self):
+        script = r'''
+param([string] $Source, [string] $Scenario)
+$ErrorActionPreference='Stop'
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
+if ($errors.Count) { throw 'Helper syntax is invalid' }
+foreach ($name in @('Get-AppWindow','Get-Tree','Get-ErrorKind')) {
+ $function=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
+ Invoke-Expression $function.Extent.Text.Replace('System.Windows.Automation.', 'IbisSnapshotContract.')
+}
+$outer=@($ast.EndBlock.Statements | Where-Object {$_ -is [System.Management.Automation.Language.TryStatementAst]})[0]
+$body=$outer.CatchClauses[0].Body.Extent.Text
+$fatal=[scriptblock]::Create($body.Substring(1,$body.Length-2))
+Add-Type @'
+using System;
+namespace IbisSnapshotContract {
+ public class ElementNotAvailableException : Exception {}
+ public enum TreeScope { Children, Descendants }
+ public class PropertyCondition { public PropertyCondition(object property, object value) {} }
+ public static class AutomationElement {
+  public static object ProcessIdProperty=new object(), NameProperty=new object();
+  public static SnapshotRoot RootElement=new SnapshotRoot();
+  public static object FromHandle(IntPtr handle) { throw new InvalidOperationException(SnapshotFault.Marker); }
+ }
+}
+public static class SnapshotFault {
+ public static string Scenario, Marker="injected-private-clipboard-引用";
+}
+public class SnapshotRoot {
+ public object[] FindAll(IbisSnapshotContract.TreeScope scope, IbisSnapshotContract.PropertyCondition condition) {
+  if (SnapshotFault.Scenario=="window-bound") return new object[21];
+  throw new InvalidOperationException(SnapshotFault.Marker);
+ }
+}
+public static class IbisSmoke {
+ public static bool IsWindow(IntPtr handle) { return SnapshotFault.Scenario!="ownership"; }
+ public static uint OwnerPid(IntPtr handle) { return 42; }
+ public static bool IsWindowVisible(IntPtr handle) { return true; }
+}
+'@
+[SnapshotFault]::Scenario=$Scenario
+$Action='snapshot'; $AppId=42; $Text='7'
+try {
+ switch ($Scenario) {
+  'discovery' {$Text='0'}
+  'window-bound' {$Text='0'}
+  'handle-parse' {$Text=[SnapshotFault]::Marker}
+  'unknown-phase' {$script:SnapshotPhase=[SnapshotFault]::Marker; throw [SnapshotFault]::Marker}
+  'case-variant' {$script:SnapshotPhase='DiScOvErY'; throw [SnapshotFault]::Marker}
+ }
+ Get-Tree | Out-Null
+ throw 'Expected snapshot rejection'
+} catch { & $fatal }
+'''
+        cases = (
+            ("ownership", "ownership", "RuntimeException"),
+            ("handle-parse", "handle-parse", "other"),
+            ("discovery", "discovery", "InvalidOperationException"),
+            ("provider", "provider", "InvalidOperationException"),
+            ("window-bound", "window-bound", "RuntimeException"),
+            ("unknown-phase", "unknown", "RuntimeException"),
+            ("case-variant", "unknown", "RuntimeException"),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "snapshot-failure-contract.ps1"
+            test.write_text(script, encoding="utf-8")
+            for scenario, phase, kind in cases:
+                with self.subTest(scenario=scenario):
+                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
+                                             "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
+                                             "-Scenario", scenario], capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
+                             for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
+                    self.assertEqual(facts, [{"phase": phase, "kind": kind}])
+                    self.assertIn(f"NATIVE HELPER ERROR {kind}", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertNotIn("injected-private-clipboard", result.stderr)
+
+    @unittest.skipUnless(platform.system() == "Windows" and shutil.which("pwsh"),
+                         "Windows UI Automation is required to execute the real snapshot failure paths")
+    def test_real_windows_snapshot_rejections_preserve_failure_and_redact_handle_input(self):
+        for text, phase, kind in (("-1", "ownership", "RuntimeException"),
+                                  ("injected-private-clipboard-引用", "handle-parse", "other")):
+            with self.subTest(phase=phase):
+                result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File",
+                                         str(Path(__file__).with_name("smoke-windows.ps1")),
+                                         "-Action", "snapshot", "-AppId", "0", "-EditorId", "0", "-Text", text],
+                                        capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
+                         for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
+                self.assertEqual(facts, [{"phase": phase, "kind": kind}])
+                self.assertEqual(result.stdout, "")
+                self.assertNotIn("injected-private-clipboard", result.stderr)
+
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows click helper contract")
     def test_windows_click_activates_one_exact_owned_button_with_its_native_pattern(self):
         script = r'''
