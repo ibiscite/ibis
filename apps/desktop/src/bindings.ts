@@ -80,6 +80,10 @@ export const commands = {
 "typst" |
 /**  Bare keys separated by commas. */
 "keys" | null) => __TAURI_INVOKE<null>("set_picker_preferences", { preferences, copyFormat }),
+	/**  Whether Ibis starts when the person logs in, read from the system now. */
+	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
+	/**  Start Ibis when the person logs in, or stop doing so. */
+	setLoginItem: (enabled: boolean) => __TAURI_INVOKE<LoginItem>("set_login_item", { enabled }),
 	/**  Hide the picker (Escape in the interface). */
 	hidePicker: () => __TAURI_INVOKE<void>("hide_picker"),
 	/**
@@ -171,6 +175,25 @@ export type LibraryStatus = {
 	/**  Startup settings recovery, separate from transient library status. */
 	settings_notice: string | null,
 };
+
+/**  Whether Ibis starts when the person logs in, as the system reports it. */
+export type LoginItem = {
+	/**  The app's name, such as "Ibis" or "Ibis Nightly", for the interface. */
+	name: string,
+	enabled: boolean,
+	problem: LoginItemProblem | null,
+};
+
+/**  Why the choice is not what the person asked for. */
+export type LoginItemProblem =
+/**  This system offers no way to do it (macOS before 13). */
+"unsupported" |
+/**  macOS registered Ibis but waits for the person to allow it. */
+"needs_approval" |
+/**  The system refused the change. */
+"refused" |
+/**  The current state could not be read. */
+"unreadable";
 
 /**
  *  How the picker looks and what it formats with, remembered across restarts

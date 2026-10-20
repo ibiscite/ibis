@@ -40,6 +40,12 @@ x11rb = { version = "0.13.2", default-features = false, features = ["xkb"] }
 tauri-nspanel = "=2.1.1"
 # Safe native accessibility queries; no raw native calls in Ibis.
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
+# Already locked through Tauri. Reads whether macOS opened Ibis as a login
+# item (#525), so the picker stays hidden then.
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "objc2-core-services"] }
+# Already locked through auto-launch: reads a login item waiting for the
+# person's approval, which auto-launch reports only as "off" (#530 review).
+smappservice-rs = "0.1.3"
 
 [dev-dependencies]
 tempfile = "3.27.0"
@@ -52,6 +58,10 @@ workspace = true
 # Already locked through Tauri; direct APIs preserve actual application errors.
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 window-vibrancy = "=0.8.1"
+# Starting Ibis at login (#525): SMAppService on macOS, the current user's Run
+# key on Windows. The library the official tauri-plugin-autostart wraps; the
+# plugin itself offers no SMAppService. Linux needs no library.
+auto-launch = "0.6.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Foundation", "UI_ViewManagement"] }

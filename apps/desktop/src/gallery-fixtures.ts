@@ -157,6 +157,8 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       reloadLibrary: async () => undefined,
       hidePicker: async () => undefined,
       setPinned: async () => undefined,
+      loginItem: async () => ({ name: "Ibis", enabled: false, problem: null }),
+      setLoginItem: async (enabled) => ({ name: "Ibis", enabled, problem: null }),
       quit: async () => undefined,
       onLibraryChanged: async () => () => undefined,
       onPickerShown: async () => () => undefined,

@@ -1,13 +1,14 @@
 //! The menu bar (macOS) or tray (Windows, Linux) item.
 
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
 use crate::feedback::{idea_url, open_in_browser, problem_url};
 use crate::library::{
     LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
 };
+use crate::login_item::{self, LoginItems, LoginMenuItem};
 use crate::picker::show_picker;
 use crate::updater::{self, AutomaticMenuItem};
 
@@ -91,12 +92,30 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     if let Some((now, automatic)) = &update_items {
         items.extend([now as &dyn IsMenuItem<tauri::Wry>, automatic]);
     }
+    // Only where the system offers login items; ticked as the system says.
+    let at_login = match app.try_state::<LoginItems>() {
+        Some(items) if items.available() => Some(CheckMenuItem::with_id(
+            app,
+            "login",
+            login_item::menu_label(&name),
+            true,
+            items.read().enabled,
+            None::<&str>,
+        )?),
+        _ => None,
+    };
+    if let Some(at_login) = &at_login {
+        items.push(at_login);
+    }
     items.extend([&problem as &dyn IsMenuItem<tauri::Wry>, &idea, &third, &quit]);
     let menu = Menu::with_items(app, &items)?;
     if let Some((_, automatic)) = update_items {
         app.manage(AutomaticMenuItem(automatic));
     }
     app.manage(LibraryMenuItem(line));
+    if let Some(at_login) = at_login {
+        app.manage(LoginMenuItem(at_login));
+    }
     let mut tray = TrayIconBuilder::with_id("ibis")
         .tooltip(&name)
         .menu(&menu)
@@ -110,8 +129,18 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             "idea" => open_in_browser(app, idea_url()),
             "update_now" => updater::check_now(app),
             "update_auto" => updater::toggle_automatic(app),
+            "login" => login_item::toggle_from_menu(app),
             "quit" => app.exit(0),
             _ => {}
+        })
+        // Someone may have changed it in the system's settings since.
+        .on_tray_icon_event(|tray, event| {
+            if matches!(event, TrayIconEvent::Click { .. } | TrayIconEvent::Enter { .. }) {
+                // Registry, file and ServiceManagement reads block: keep them
+                // off the main thread that draws the menu.
+                let app = tray.app_handle().clone();
+                tauri::async_runtime::spawn_blocking(move || login_item::current(&app));
+            }
         });
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());

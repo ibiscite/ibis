@@ -13,6 +13,7 @@ mod feedback;
 #[cfg(debug_assertions)]
 mod gallery;
 mod library;
+mod login_item;
 #[cfg(target_os = "macos")]
 mod native_corners;
 mod native_feel;
@@ -49,6 +50,10 @@ use crate::tray::create_tray;
 fn main() {
     let mut context = tauri::generate_context!();
     native_feel::configure(&mut context);
+    // Started by the login entry: wait in the background for the shortcut.
+    if login_item::launched_at_login(std::env::args_os()) {
+        login_item::start_hidden(&mut context);
+    }
     #[cfg(target_os = "macos")]
     let initial_panel = panel::prepare_startup(&mut context);
     #[cfg(debug_assertions)]
@@ -60,7 +65,12 @@ fn main() {
     let builder = builder.manage(picker::FocusChanges::default());
     let builder = builder
         // Must be registered first: a second launch brings the running picker forward.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_picker(app)))
+        // A login entry starting a second copy leaves the running picker alone.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !args.iter().skip(1).any(|arg| arg == login_item::AT_LOGIN_ARG) {
+                show_picker(app);
+            }
+        }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -130,6 +140,12 @@ fn main() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             panel::configure(app.handle())?;
+            // macOS says in its open event, readable only now, whether it
+            // opened Ibis as a login item.
+            #[cfg(target_os = "macos")]
+            if login_item::launched_as_macos_login_item() {
+                panel::cancel_initial_presentation(app.handle());
+            }
             native_feel::install(app.handle());
             // Debug builds may opt into the synthetic evidence gallery. Keep
             // both environment reads out of release binaries entirely.
@@ -182,6 +198,9 @@ fn main() {
             if let Ok(mut current) = app.state::<Mutex<ShortcutStatus>>().lock() {
                 *current = status;
             }
+            let login_items = login_item::for_app(app.handle());
+            login_items.refresh();
+            app.manage(login_items);
             let shown_shortcut = app
                 .state::<Mutex<ShortcutStatus>>()
                 .lock()

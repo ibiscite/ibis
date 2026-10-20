@@ -115,6 +115,8 @@ main {
 .found-files button { max-width: 100%; overflow-wrap: anywhere; }
 .found-files ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--metadata-gap); justify-items: center; }
 .found-folder { color: var(--muted); font-size: var(--metadata-size); }
+.setup-login { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-min-size); cursor: default; }
+.setup-login input { margin: 0; accent-color: var(--accent); }
 
 .notices:empty { display: none; }
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }

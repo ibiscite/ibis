@@ -4,7 +4,7 @@
 
 Ibis is free, open source and private by design: everything works offline, nothing is tracked, and your libraries are never changed.
 
-> **Status: early preview (0.1).** A global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens the picker. Search a `.bib` library or, while Zotero is open, your Zotero library and any group libraries you choose (More menu), and copy a citation key (Pandoc, BibLaTeX, LaTeX, Typst) or a formatted citation in APA, Chicago, Harvard, IEEE or MLA. Builds are unsigned. More styles, reading Zotero while it is closed and direct insertion follow. See the [roadmap](ROADMAP.md).
+> **Status: early preview (0.1).** A global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens the picker. Search a `.bib` library or, while Zotero is open, your Zotero library and any group libraries you choose (More menu), and copy a citation key (Pandoc, BibLaTeX, LaTeX, Typst) or a formatted citation in APA, Chicago, Harvard, IEEE or MLA. Ibis can start when you log in, so the shortcut is always ready: tick **Start Ibis when you log in** during first-run setup, in the More menu or in the menu bar or tray menu (off until you choose it). Builds are unsigned. More styles, reading Zotero while it is closed and direct insertion follow. See the [roadmap](ROADMAP.md).
 
 ## Planned for 1.0
 

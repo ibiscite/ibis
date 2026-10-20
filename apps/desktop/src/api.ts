@@ -5,7 +5,7 @@ import { commands, type KeyFormat, type LibraryStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
-  Copied, Density, LibraryStatus, PickerPreferences, RecordId, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
+  Copied, Density, LibraryStatus, LoginItem, LoginItemProblem, PickerPreferences, RecordId, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 
@@ -26,6 +26,8 @@ export const {
   copyFormatted,
   pickerPreferences,
   setPickerPreferences,
+  loginItem,
+  setLoginItem,
   findSources,
   openFoundLibrary,
   showCopiedNotice,

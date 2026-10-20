@@ -240,6 +240,38 @@ the search box show a solid 2 px ring and the active row a 3 px edge; a row
 in the citation keeps its check tile in system colours, so the check, not
 colour, says it was added. Right-to-left titles align right within their row.
 
+## Settings
+
+Until the settings window exists (rollout step 9), settings live in the More
+menu and the menu bar or tray menu, and each takes effect at once.
+
+**Start Ibis when you log in.** The shortcut only works while Ibis runs, so
+Ibis offers to start at login: once during first-run setup, beside the
+shortcut it teaches, and always in More and the menu bar or tray menu. It is
+off until the person ticks it: Apple's App Review Guideline 2.4.5(iii) asks
+Mac apps for consent first, and Raycast, Alfred, PowerToys and 1Password offer
+it as a setting. A login start
+leaves the picker hidden until the shortcut is pressed. The tick is read from
+the system, never from `settings.json`, each time the picker or More opens and,
+on macOS and Windows, each time the menu bar or tray icon is clicked. So
+turning Ibis off in System Settings > General > Login Items (macOS) or Task
+Manager's Startup apps (Windows) shows at once. Most Linux tray hosts do not
+report clicks, so there the tray tick catches up with the desktop's startup
+settings the next time the picker or More opens. If the system refuses, the tick shows the real state and a
+sentence says where to change it; while macOS waits for the person to approve
+the login item there, the picker says so each time it opens. Ibis Nightly and development builds register under their own
+names and never replace stable Ibis's entry.
+
+- macOS 13 and later: `SMAppService.mainApp` (Open at Login). Older macOS
+  shows no choice.
+- Windows: Ibis writes only the current user's `Run` key. Reading and
+  removing also look at the all-users key, where an administrator may have
+  added Ibis.
+- Linux: an XDG autostart file in `$XDG_CONFIG_HOME/autostart`, skipped by the
+  session if the program has been removed (`TryExec`). When an AppImage has
+  moved, Ibis repoints the entry it wrote and keeps the person's own keys; a
+  linked or hand-written entry is left alone.
+
 ## Rollout
 
 Each step is one pull request against #223 (or an issue split from it), reviewed

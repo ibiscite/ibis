@@ -1,4 +1,4 @@
-import type { KeyFormat, LibraryStatus } from "./bindings";
+import type { KeyFormat, LibraryStatus, LoginItemProblem } from "./bindings";
 
 /** Production picker text. Accessible names are stable automation contracts.
  * Native error reasons, notes, settings notices, shortcut errors and copy warnings
@@ -20,6 +20,27 @@ export const operationFailures = {
   libraryEvents: "Your library may not update automatically. Use Reload, or restart Ibis.",
   findSources: "Ibis could not look for libraries on this computer. Choose a file instead.",
   openFound: "That file could not be opened from the list. Pick it again from the new list.",
+  loginItem: "Ibis could not check whether it starts when you log in. Try again.",
+  loginItemChange: "Ibis could not change whether it starts when you log in. Try again.",
+} as const;
+
+/** Where people turn login items on and off on each system. */
+export function loginItemsPlace(platform: string): string {
+  if (/Mac|iPhone|iPad/.test(platform)) return "System Settings > General > Login Items";
+  if (/Win/.test(platform)) return "Settings > Apps > Startup";
+  return "your desktop's startup applications settings";
+}
+
+/** Starting Ibis at login. The menu bar or tray has the same sentences in login_item.rs. */
+export const loginItemText = {
+  label: (name: string) => `Start ${name} when you log in`,
+  title: "Keep the shortcut ready after you restart or log in",
+  problem: (problem: LoginItemProblem, place: string, name: string) => ({
+    unsupported: `This system cannot start ${name} when you log in. You can add it in ${place}.`,
+    needs_approval: `macOS is waiting for your approval. Turn on ${name} in ${place}.`,
+    refused: `The system did not let ${name} change this. You can change it in ${place}.`,
+    unreadable: `${name} could not check whether it starts when you log in. Look in ${place}.`,
+  })[problem],
 } as const;
 
 export const setupText = {

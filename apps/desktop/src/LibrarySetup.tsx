@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import type { Choice } from "./App";
 import type { Sources } from "./bindings";
-import { pickerText, setupText } from "./messages";
+import { loginItemText, pickerText, setupText } from "./messages";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
 
 type SetupApi = {
@@ -45,13 +45,15 @@ export function shortcutLabel(shortcut: string, mac: boolean): string {
 // First-run setup while no library is chosen: Zotero if it is open, `.bib`
 // files found nearby, or any file through the system chooser. Only names are
 // shown; nothing is read until one is picked.
-export function LibrarySetup({ api, perform, writing, shortcut }: {
+export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: {
   api: SetupApi;
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
   /** The copy format now, whether formatted styles are offered, and how to change it. */
   writing?: { format: Choice; formatted: boolean; choose: (choice: Choice) => void };
   /** The shortcut that opens Ibis, when it is registered. */
   shortcut?: string | null;
+  /** Starting at login, offered once here and kept in More; off until chosen. */
+  startAtLogin?: { name: string; enabled: boolean; toggle: () => void };
 }) {
   const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
   // Undefined while looking; null when looking failed or is not offered.
@@ -137,6 +139,13 @@ export function LibrarySetup({ api, perform, writing, shortcut }: {
         </section>
       )}
       {shortcut && <p className="empty-hint">{setupText.shortcut(shortcut)}</p>}
+      {startAtLogin && (
+        // The shortcut works only while Ibis runs, so this sits beside it.
+        <label className="setup-login empty-hint" title={loginItemText.title}>
+          <input type="checkbox" checked={startAtLogin.enabled} onChange={startAtLogin.toggle} />
+          {loginItemText.label(startAtLogin.name)}
+        </label>
+      )}
     </div>
   );
 }
