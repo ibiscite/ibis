@@ -6,6 +6,8 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::library::choose_library,
             crate::library::reload_library,
             crate::library::use_zotero,
+            crate::setup::find_sources,
+            crate::setup::open_found_library,
             crate::library::use_zotero_libraries,
             crate::library::zotero_groups,
             crate::library::library_status,

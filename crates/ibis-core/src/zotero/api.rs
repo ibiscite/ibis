@@ -117,6 +117,28 @@ fn top_items_path(library: Library) -> String {
     format!("{}/top", items_path(library))
 }
 
+/// Whether Zotero is there to read from, found without reading any library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Presence {
+    /// Zotero is open and lets other applications read it.
+    Available,
+    /// Zotero is open, but "Allow other applications on this computer to
+    /// communicate with Zotero" is off.
+    AccessOff,
+    /// Nothing answered as Zotero.
+    Absent,
+}
+
+/// Ask Zotero's local API root, which answers with fixed text and reads no
+/// library.
+pub fn presence(transport: &mut impl Transport) -> Presence {
+    match transport.get("") {
+        Ok(response) if response.status == 200 => Presence::Available,
+        Ok(response) if response.status == 403 => Presence::AccessOff,
+        _ => Presence::Absent,
+    }
+}
+
 /// Read the library if it changed since `previous`, otherwise report that
 /// nothing changed. A change is detected cheaply with `since=`, which lists
 /// only the versions of changed items; any change reads the whole library at
@@ -424,6 +446,23 @@ mod tests {
             let keys: Vec<&str> = self.keys[range].iter().map(String::as_str).collect();
             Ok(page(self.version, self.keys.len(), &keys))
         }
+    }
+
+    #[test]
+    fn presence_is_read_from_the_api_root_without_reading_a_library() {
+        let answer = |status| Response {
+            status,
+            ..Response::default()
+        };
+        let mut open = Fake::default().answer(answer(200));
+        assert_eq!(presence(&mut open), Presence::Available);
+        assert_eq!(open.asked, [""]);
+        assert_eq!(presence(&mut Fake::default().answer(answer(403))), Presence::AccessOff);
+        assert_eq!(presence(&mut Fake::default().answer(answer(404))), Presence::Absent);
+        assert_eq!(
+            presence(&mut Fake::default().fail(TransportError::Unreachable)),
+            Presence::Absent
+        );
     }
 
     #[test]

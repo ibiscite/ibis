@@ -23,6 +23,7 @@ mod panel_startup;
 mod picker;
 mod placement;
 mod preferences;
+mod setup;
 mod tray;
 mod updater;
 
@@ -75,6 +76,7 @@ fn main() {
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
         .manage(LibraryWatch::default())
+        .manage(setup::Offered::default())
         .manage(DialogOpen::default())
         .manage(Pinned::default())
         .manage(Mutex::new(ShortcutStatus::default()))
