@@ -679,8 +679,9 @@ jobs:
             fi
           fi
           built=$(date -u '+%Y-%m-%d %H:%M UTC')
+          version=$(node scripts/update-feed.mjs version)
           cat > notes.md <<EOF
-          **Nightly development build of \`${SHA:0:12}\` on main, built $built.** It is replaced after changes to main and may be unfinished or broken. For the steadier version, use the newest numbered preview release.
+          **Ibis Nightly $version**, built from \`${SHA:0:12}\` on main at $built. This development build is replaced after changes to main and may be unfinished or broken. For the steadier version, use the newest numbered preview release.
 
           **Which file:** \`Ibis-macOS-Apple-silicon.dmg\` (M1 and later) or \`Ibis-macOS-Intel.dmg\` on a Mac, \`Ibis-Windows-setup.exe\` on Windows, \`Ibis-Linux.AppImage\` on Linux (\`.deb\` also available). It installs as **Ibis Nightly**, next to the stable Ibis and with its own settings, and can update itself if you allow update checks. The \`.app.tar.gz\` and \`latest.json\` files are for those updates.
 
@@ -690,7 +691,7 @@ jobs:
           EOF
           # The first run starts from a draft, so an empty release is never public.
           if ! gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
-            gh release create "$TAG" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis nightly" --notes-file notes.md
+            gh release create "$TAG" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis Nightly $version" --notes-file notes.md
           fi
           # Packages and signatures first; the update file last, so an app never
           # reads a feed that names packages not yet uploaded.
@@ -706,7 +707,7 @@ jobs:
           if ! gh api --method PATCH "repos/$REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null; then
             gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" > /dev/null
           fi
-          gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis nightly" --notes-file notes.md
+          gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis Nightly $version" --notes-file notes.md
 
   update-e2e:
     name: Update the previous nightly to this one (Linux)

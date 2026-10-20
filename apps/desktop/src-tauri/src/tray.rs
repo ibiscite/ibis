@@ -39,6 +39,11 @@ pub(crate) fn library_line(status: &LibraryStatus) -> String {
     }
 }
 
+/// The disabled line naming the running build, such as "Ibis Nightly 0.1.1-nightly.20261020031200".
+fn version_line(name: &str, version: &str) -> String {
+    format!("{name} {version}")
+}
+
 /// The disabled menu item that shows the library line.
 pub(crate) struct LibraryMenuItem(pub(crate) MenuItem<tauri::Wry>);
 
@@ -58,12 +63,15 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     // "Ibis" or "Ibis Nightly", so the two apps can be told apart.
     let name = app.package_info().name.clone();
     let quit = MenuItem::with_id(app, "quit", format!("Quit {name}"), true, None::<&str>)?;
+    let version = version_line(&name, &app.package_info().version.to_string());
+    let version = MenuItem::with_id(app, "version", version, false, None::<&str>)?;
     let (first, second, third) = (
         PredefinedMenuItem::separator(app)?,
         PredefinedMenuItem::separator(app)?,
         PredefinedMenuItem::separator(app)?,
     );
-    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&open, &first, &line, &choose, &zotero, &reload, &second];
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> =
+        vec![&open, &first, &version, &line, &choose, &zotero, &reload, &second];
     // Builds without an update key have no update items.
     let update_items = if updater::available(app) {
         Some((
@@ -115,6 +123,15 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_version_line_names_the_build() {
+        assert_eq!(version_line("Ibis", "0.1.0"), "Ibis 0.1.0");
+        assert_eq!(
+            version_line("Ibis Nightly", "0.1.1-nightly.20261020031200"),
+            "Ibis Nightly 0.1.1-nightly.20261020031200"
+        );
+    }
 
     #[test]
     fn the_library_line_explains_failures_and_stays_short() {
