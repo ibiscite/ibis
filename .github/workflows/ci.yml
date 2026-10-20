@@ -105,7 +105,7 @@ jobs:
           cargo +1.90.0 test --locked
 
       - name: Script tests
-        run: node --test scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs scripts/update-feed.test.mjs scripts/release-notes.test.mjs
+        run: node --test scripts/check.test.mjs scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs scripts/update-feed.test.mjs scripts/release-notes.test.mjs
 
   web:
     name: Web interface
@@ -224,7 +224,7 @@ jobs:
           cargo fmt --all --check
           cargo clippy --all-targets --locked
           cargo test --locked
-          node --test scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs scripts/release-notes.test.mjs
+          node --test scripts/check.test.mjs scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs scripts/release-notes.test.mjs
 
       - name: Lint, test and build the app
         if: env.NATIVE == 'true'
