@@ -2,8 +2,10 @@
 
 This cargo-fuzz workspace member instruments the private lexer (`split_parse`),
 the complete resolver/converter (`load_str`) and loaded-reference CSL-JSON
-serialization (`csl_export`). All accept arbitrary bytes through UTF-8 replacement,
-as file loading does. It shares the root Cargo.lock and is excluded from default
+serialization (`csl_export`). `cite_render` renders arbitrary keys and notes in
+every `cite::render` syntax and checks that each output escapes user text and keeps
+keys exact; its synthetic seeds are in `seeds/cite_render/`. All accept arbitrary
+bytes through UTF-8 replacement, as file loading does. It shares the root Cargo.lock and is excluded from default
 application/test members. Instrumentation is enabled only by cargo-fuzz with
 nightly; the app's pinned stable toolchain is unchanged.
 
@@ -18,7 +20,7 @@ cargo deny --locked check
 The scheduled workflow runs each target for 300 seconds with a five-second input
 timeout, a 1 GiB RSS limit and a 16 KiB mutation limit. It restores each target's
 corpus from the previous run and adds the synthetic `fixtures/bibtex/*.bib` seeds
-every time. Cache eviction starts from these fixtures again. Cache keys are unique
+every time, plus any `fuzz/seeds/TARGET/` files. Cache eviction starts from these fixtures again. Cache keys are unique
 per run so newly discovered coverage survives subsequent runs, including failures.
 
 `node scripts/fuzz.mjs TARGET` runs this sequence locally too (five minutes).

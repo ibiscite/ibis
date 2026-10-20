@@ -1,10 +1,10 @@
 // Only synthetic fixtures and their mutations enter this CI-only workflow.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const targets = ["split_parse", "load_str", "csl_export"];
+const targets = ["split_parse", "load_str", "csl_export", "cite_render"];
 const limits = ["-timeout=5", "-rss_limit_mb=1024", "-max_len=16384"];
 
 export function failure(target, log) {
@@ -58,6 +58,8 @@ async function run(target) {
   for (const file of readdirSync("fixtures/bibtex").filter((file) => file.endsWith(".bib"))) {
     copyFileSync(`fixtures/bibtex/${file}`, `${corpus}/seed-${file}`);
   }
+  const seeds = `fuzz/seeds/${target}`;
+  for (const file of existsSync(seeds) ? readdirSync(seeds) : []) copyFileSync(`${seeds}/${file}`, `${corpus}/seed-${file}`);
   const command = (args, timeout) => spawnSync("cargo", ["+nightly", "fuzz", ...args], {
     encoding: "utf8", timeout, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024,
   });

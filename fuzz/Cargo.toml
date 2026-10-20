@@ -33,6 +33,12 @@ path = "fuzz_targets/csl_export.rs"
 test = false
 doc = false
 bench = false
+[[bin]]
+name = "cite_render"
+path = "fuzz_targets/cite_render.rs"
+test = false
+doc = false
+bench = false
 
 [lints]
 workspace = true

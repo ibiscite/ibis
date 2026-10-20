@@ -387,7 +387,8 @@ nightly with `rustup toolchain install nightly --profile minimal`, then run:
 cargo +nightly fuzz run load_str -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024 -max_len=16384
 ```
 
-Targets are `split_parse`, `load_str` and `csl_export`. The nightly workflow gives
+Targets are `split_parse`, `load_str`, `csl_export` and `cite_render` (escaping
+of every key syntax in `cite::render`). The nightly workflow gives
 each 300 seconds with a persistent corpus seeded from synthetic fixtures, and
 minimizes and reports crashes, timeouts and OOMs as deduplicated `area:testing`
 issues. Fixed inputs become fixtures with regression coverage. Fuzz targets share
