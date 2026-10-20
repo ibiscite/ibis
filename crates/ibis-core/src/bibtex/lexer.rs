@@ -41,6 +41,8 @@ pub(crate) struct RawEntry {
     pub key: String,
     pub fields: Vec<Field>,
     pub line: usize,
+    /// Number of string definitions preceding this entry, assigned by the loader.
+    pub macro_epoch: usize,
 }
 
 /// Find all top-level blocks. Text between blocks is a comment, as in BibTeX.
@@ -345,6 +347,7 @@ pub(crate) fn parse_entry(block: &Block) -> Result<RawEntry, String> {
         key,
         fields,
         line: block.line,
+        macro_epoch: 0,
     })
 }
 

@@ -187,8 +187,9 @@ type Memo = HashMap<(usize, usize), Fields>;
 /// Everything needed to resolve entries from one file.
 pub(crate) struct Resolver<'a> {
     pub(super) budget: &'a Budget,
-    macros: HashMap<String, Vec<Part>>,
-    macro_cache: RefCell<HashMap<(String, bool), Rc<CachedExpansion>>>,
+    macros: HashMap<String, Vec<usize>>,
+    definitions: Vec<Vec<Part>>,
+    macro_cache: RefCell<HashMap<(usize, bool), Rc<CachedExpansion>>>,
     macro_cache_bytes: Cell<usize>,
     parent_cache: RefCell<HashMap<(usize, usize), Rc<Memo>>>,
     parent_cache_bytes: Cell<usize>,
@@ -226,13 +227,21 @@ impl<'a> Resolver<'a> {
             index.entry(entry.key.clone()).or_insert(i);
             index_folded.entry(entry.key.to_lowercase()).or_insert(i);
         }
-        // Later definitions of the same macro replace earlier ones, as in BibTeX.
+        // Versions are retained once, not as a cloned environment per entry.
+        // The epoch bounds each use to definitions already seen at that point.
+        let mut versions: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut definitions = Vec::new();
+        for (name, parts) in macros {
+            if !budget.charge(name.len().saturating_add(128)) {
+                break;
+            }
+            versions.entry(name).or_default().push(definitions.len());
+            definitions.push(parts);
+        }
         Resolver {
             budget,
-            macros: macros
-                .into_iter()
-                .take_while(|(name, _)| budget.charge(name.len()))
-                .collect(),
+            macros: versions,
+            definitions,
             macro_cache: RefCell::new(HashMap::new()),
             macro_cache_bytes: Cell::new(0),
             parent_cache: RefCell::new(HashMap::new()),
@@ -248,6 +257,12 @@ impl<'a> Resolver<'a> {
             .get(key)
             .or_else(|| self.index_folded.get(&key.to_lowercase()))
             .copied()
+    }
+
+    fn macro_id(&self, name: &str, epoch: usize) -> Option<usize> {
+        let versions = self.macros.get(name)?;
+        let end = versions.partition_point(|&id| id < epoch);
+        end.checked_sub(1).map(|i| versions[i])
     }
 
     /// Resolve entry `i` into one flat entry with inherited fields applied.
@@ -345,7 +360,13 @@ impl<'a> Resolver<'a> {
                 return Rc::default();
             }
             let mut field_problems = Vec::new();
-            let value = self.expand(&field.name, &field.parts, &mut field_problems, report);
+            let value = self.expand(
+                &field.name,
+                &field.parts,
+                entry.macro_epoch,
+                &mut field_problems,
+                report,
+            );
             if !self.budget.charge(
                 value
                     .len()
@@ -550,7 +571,7 @@ impl<'a> Resolver<'a> {
     /// Concatenate parts, expanding macros (and macros used inside macros).
     /// Values larger than [`MAX_VALUE_BYTES`], or needing more than
     /// [`MAX_EXPANSION_STEPS`] expansions, are left empty and reported.
-    fn expand(&self, field: &str, parts: &[Part], problems: &mut Vec<String>, report: bool) -> String {
+    fn expand(&self, field: &str, parts: &[Part], epoch: usize, problems: &mut Vec<String>, report: bool) -> String {
         let mut x = Expansion::default();
         for part in parts {
             match part {
@@ -560,7 +581,7 @@ impl<'a> Resolver<'a> {
                     }
                     x.out.push_str(t);
                 }
-                Part::Macro(name) => self.expand_macro(field, name, problems, report, &mut x),
+                Part::Macro(name) => self.expand_macro(field, name, epoch, problems, report, &mut x),
             }
             x.check_size();
             if x.stopped() || self.budget.exhausted() {
@@ -597,7 +618,15 @@ impl<'a> Resolver<'a> {
         encode_literals(&dotless_to_plain(&out))
     }
 
-    fn expand_macro(&self, field: &str, name: &str, problems: &mut Vec<String>, report: bool, x: &mut Expansion) {
+    fn expand_macro(
+        &self,
+        field: &str,
+        name: &str,
+        epoch: usize,
+        problems: &mut Vec<String>,
+        report: bool,
+        x: &mut Expansion,
+    ) {
         if !self.budget.charge(name.len().saturating_mul(4)) {
             return;
         }
@@ -605,12 +634,16 @@ impl<'a> Resolver<'a> {
         // abbreviations differ in month fields; digit/literal normalization
         // still happens afterwards in `expand`. Recursive calls stay uncached
         // because cycle cuts and depth limits depend on their current stack.
-        let key = (name.to_string(), field == "month");
+        let Some(id) = self.macro_id(name, epoch) else {
+            self.expand_macro_uncached(field, name, epoch, problems, report, x);
+            return;
+        };
+        let key = (id, field == "month");
         let cached = self.macro_cache.borrow().get(&key).cloned();
         let cached = cached.unwrap_or_else(|| {
             let mut expansion = Expansion::default();
             let mut problems = Vec::new();
-            self.expand_macro_uncached(field, name, &mut problems, true, &mut expansion);
+            self.expand_macro_uncached(field, name, epoch, &mut problems, true, &mut expansion);
             let bytes = name.len() + expansion.out.len() + problems.iter().map(String::len).sum::<usize>() + 128;
             let cached = Rc::new(CachedExpansion {
                 expansion,
@@ -643,7 +676,7 @@ impl<'a> Resolver<'a> {
                 problems.extend(cached.problems.iter().cloned());
             }
         } else {
-            self.expand_macro_uncached(field, name, problems, report, x);
+            self.expand_macro_uncached(field, name, epoch, problems, report, x);
         }
     }
 
@@ -651,6 +684,7 @@ impl<'a> Resolver<'a> {
         &self,
         field: &str,
         name: &str,
+        epoch: usize,
         problems: &mut Vec<String>,
         report: bool,
         x: &mut Expansion,
@@ -670,7 +704,8 @@ impl<'a> Resolver<'a> {
         if x.stopped() {
             return;
         }
-        if x.stack.iter().any(|s| s == name) {
+        let id = self.macro_id(name, epoch);
+        if id.is_some_and(|id| x.stack.contains(&id)) {
             if report {
                 problems.push(format!("abbreviation `{name}` refers to itself; it is left empty"));
             }
@@ -684,9 +719,9 @@ impl<'a> Resolver<'a> {
             }
             return;
         }
-        if let Some(parts) = self.macros.get(name) {
-            x.stack.push(name.to_string());
-            for part in parts {
+        if let Some(id) = id {
+            x.stack.push(id);
+            for part in &self.definitions[id] {
                 match part {
                     Part::Text(t) | Part::Number(t) => {
                         if !self.budget.charge(t.len()) {
@@ -694,7 +729,9 @@ impl<'a> Resolver<'a> {
                         }
                         x.out.push_str(t);
                     }
-                    Part::Macro(inner) => self.expand_macro_uncached(field, inner, problems, report, x),
+                    // A definition captures its own environment, including
+                    // itself for the existing warned self-reference check.
+                    Part::Macro(inner) => self.expand_macro_uncached(field, inner, id + 1, problems, report, x),
                 }
                 x.check_size();
                 if x.stopped() || self.budget.exhausted() {
@@ -750,7 +787,7 @@ fn validate_field_structure(value: &str) -> Result<(), String> {
 #[derive(Default)]
 struct Expansion {
     out: String,
-    stack: Vec<String>,
+    stack: Vec<usize>,
     steps: usize,
     too_large: bool,
     too_complex: bool,
@@ -991,16 +1028,16 @@ mod tests {
 
     fn resolve(src: &str, key: &str) -> Resolved {
         let blocks = split_blocks(src);
-        let macros = blocks
-            .iter()
-            .filter(|b| b.kind == "string")
-            .filter_map(parse_string)
-            .collect();
-        let entries: Vec<RawEntry> = blocks
-            .iter()
-            .filter(|b| b.kind != "string")
-            .filter_map(|b| parse_entry(b).ok())
-            .collect();
+        let mut macros = Vec::new();
+        let mut entries = Vec::new();
+        for block in &blocks {
+            if block.kind == "string" {
+                macros.extend(parse_string(block));
+            } else if let Ok(mut entry) = parse_entry(block) {
+                entry.macro_epoch = macros.len();
+                entries.push(entry);
+            }
+        }
         let i = entries
             .iter()
             .position(|e| e.key == key)
@@ -1300,6 +1337,7 @@ mod tests {
                 kind: "article".into(),
                 key: "k".into(),
                 line: 1,
+                macro_epoch: 0,
                 fields: vec![super::super::lexer::Field {
                     name: "title".into(),
                     parts: vec![Part::Text(value.into())],

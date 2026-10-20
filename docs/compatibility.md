@@ -49,7 +49,7 @@ Citation tools usually fail at the edges: an unusual editor, a keyboard layout, 
 | Corporate authors, particles ("van der"), suffixes ("Jr."), mononyms | Preserved through parsing; formatting delegated to the CSL processor. |
 | CJK family-name-first names; Arabic and other right-to-left text | Never reorder names; bidi isolation in plain-text output. |
 | LaTeX-encoded text (`{\"u}`, `{\'\i}`), protected case (`{NASA}`), nested braces | Decoded to Unicode for display and search; raw record preserved. |
-| `@string` macros (including macros built from other macros), `crossref`/`xdata` inheritance across several levels, parenthesis-delimited entries | Supported. Inheritance is resolved as a graph: cycles and missing targets are reported and ignored. |
+| `@string` macros (including macros built from other macros), `crossref`/`xdata` inheritance across several levels, parenthesis-delimited entries | Supported. Macro definitions capture earlier definitions; later redefinitions affect only subsequent uses. Definitions must precede use: a forward reference produces a warning and contributes an empty value. Inherited fields retain their parent's definitions. Inheritance is resolved as a graph: cycles and missing targets are reported and ignored. |
 | Title case in BibTeX versus sentence case in CSL | English titles are converted to sentence case; braced text, acronyms and initials keep their case and are marked `nocase`; `\emph{}` becomes italics. |
 | "and others" in author lists; organizations in braces | Exported as CSL `others` (rendered "et al.") and as literal names. |
 | Babel language names (`american`, `ngerman`) | Converted to BCP 47 tags (`en-US`, `de-DE`); unknown names are reported. |

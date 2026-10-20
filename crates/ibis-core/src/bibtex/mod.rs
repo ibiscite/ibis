@@ -121,7 +121,8 @@ pub(crate) fn load_with_budget(source: &str, text: &str, budget: Budget) -> (Loa
                     .warnings
                     .push(warn(WarningKind::DuplicateKey, Some(entry.key), message));
             }
-            Ok(entry) => {
+            Ok(mut entry) => {
+                entry.macro_epoch = macros.len();
                 entries.push(entry);
                 raw_texts.push(block.text);
             }
