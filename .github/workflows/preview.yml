@@ -669,11 +669,17 @@ jobs:
           TAG: nightly
         run: |
           set -euo pipefail
-          # An older run must not replace a newer nightly.
-          latest=$(git ls-remote "https://github.com/$REPO" refs/heads/main | cut -f1)
-          if [ "$latest" != "$SHA" ]; then
-            echo "main has moved on to $latest; leaving the nightly to that run."
-            exit 0
+          # An older run must not replace a newer nightly, but a newer merge
+          # to main must not stop this one either: with frequent merges that
+          # would starve the nightly. Publish unless the nightly already has
+          # this commit or a later one.
+          current=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null || true)
+          if [ -n "$current" ]; then
+            relation=$(gh api "repos/$REPO/compare/$current...$SHA" --jq .status)
+            if [ "$relation" != ahead ]; then
+              echo "The nightly already has ${current:0:12} ($relation of this build); keeping it."
+              exit 0
+            fi
           fi
           built=$(date -u '+%Y-%m-%d %H:%M UTC')
           cat > notes.md <<EOF
