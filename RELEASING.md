@@ -14,6 +14,11 @@ come from Conventional Commits; commit conventions are in
 [AGENTS.md](AGENTS.md#version-control). To request a milestone version, use
 `Release-As: 0.N.0` in a commit body on `main`.
 
+The [code signing policy](docs/code-signing.md) records the current unsigned
+status and the planned SignPath Foundation process. Link it from release notes;
+once accepted and integrated, include the SignPath credit described there.
+Updater signatures and operating-system code signing are separate.
+
 Release Please keeps a pull request titled `chore: release X.Y.Z`; merging it
 only on the maintainer's word updates `CHANGELOG.md` and the workspace version,
 tags `vX.Y.Z` and publishes **Ibis X.Y.Z** with a download table and changes
