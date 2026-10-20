@@ -54,6 +54,8 @@ fn main() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.manage(initial_panel);
+    #[cfg(target_os = "windows")]
+    let builder = builder.manage(picker::FocusChanges::default());
     let builder = builder
         // Must be registered first: a second launch brings the running picker forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_picker(app)))
@@ -90,6 +92,10 @@ fn main() {
                     api.prevent_close();
                     dismiss_picker(window.app_handle());
                 }
+                #[cfg(target_os = "windows")]
+                WindowEvent::Focused(true) => {
+                    window.state::<picker::FocusChanges>().record();
+                }
                 // Like other launchers, the picker hides when it loses focus, but
                 // not to its own file dialog.
                 WindowEvent::Focused(false) => {
@@ -99,7 +105,12 @@ fn main() {
                     let startup_allows_blur = panel::allows_automatic_blur(window.app_handle());
                     #[cfg(not(target_os = "macos"))]
                     let startup_allows_blur = true;
+                    #[cfg(target_os = "windows")]
+                    let blur = window.state::<picker::FocusChanges>().record();
                     if startup_allows_blur && hides_on_blur(!cfg!(debug_assertions), dialog_open, pinned) {
+                        #[cfg(target_os = "windows")]
+                        picker::dismiss_unless_refocused(window.app_handle(), blur);
+                        #[cfg(not(target_os = "windows"))]
                         dismiss_picker(window.app_handle());
                     }
                 }

@@ -261,6 +261,51 @@ pub(crate) fn hides_on_blur(release_build: bool, dialog_open: bool, pinned: bool
     release_build && !dialog_open && !pinned
 }
 
+/// When Narrator or another UI Automation client presses a control, WebView2
+/// can hand focus to its own browser process and back within tens of
+/// milliseconds (#341). The picker hides only if focus has not come back
+/// after this pause.
+#[cfg(target_os = "windows")]
+const REFOCUS_GRACE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Counts the picker's focus changes, so a delayed blur can tell whether
+/// focus came back in the meantime.
+#[cfg(any(target_os = "windows", test))]
+#[derive(Default)]
+pub(crate) struct FocusChanges(std::sync::atomic::AtomicU64);
+
+#[cfg(any(target_os = "windows", test))]
+impl FocusChanges {
+    /// Record a focus change and return its number.
+    pub(crate) fn record(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
+    }
+
+    /// Whether `change` is still the most recent focus change.
+    fn is_latest(&self, change: u64) -> bool {
+        self.0.load(Ordering::SeqCst) == change
+    }
+}
+
+/// Hide the picker after the grace period unless focus came back or one of
+/// its own dialogs opened or the user pinned it. Without a timer thread,
+/// hide at once as before.
+#[cfg(target_os = "windows")]
+pub(crate) fn dismiss_unless_refocused(app: &AppHandle, blur: u64) {
+    let delayed = app.clone();
+    let spawned = std::thread::Builder::new().name("ibis-blur".into()).spawn(move || {
+        std::thread::sleep(REFOCUS_GRACE);
+        let dialog_open = delayed.state::<DialogOpen>().0.load(Ordering::SeqCst);
+        let pinned = delayed.state::<Pinned>().0.load(Ordering::SeqCst);
+        if hides_on_blur(true, dialog_open, pinned) && delayed.state::<FocusChanges>().is_latest(blur) {
+            dismiss_picker(&delayed);
+        }
+    });
+    if spawned.is_err() {
+        dismiss_picker(app);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,6 +454,22 @@ mod tests {
     #[test]
     fn a_pinned_picker_stays_open_when_focus_moves_to_the_document() {
         assert!(!hides_on_blur(true, false, true));
+    }
+
+    /// #341: pressing More through UI Automation on Windows blurs the picker
+    /// and refocuses it within tens of milliseconds; that must not hide it.
+    #[test]
+    fn a_blur_followed_by_refocus_does_not_hide_the_picker() {
+        let changes = FocusChanges::default();
+        let blur = changes.record();
+        assert!(changes.is_latest(blur), "a real blur still hides");
+        changes.record();
+        assert!(
+            !changes.is_latest(blur),
+            "focus came back before the grace period ended"
+        );
+        let second_blur = changes.record();
+        assert!(changes.is_latest(second_blur), "a later real blur still hides");
     }
 
     #[test]

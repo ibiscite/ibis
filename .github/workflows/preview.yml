@@ -322,10 +322,7 @@ jobs:
           app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
           test -n "$app" || { echo "::error::The setup executable installed no app in $dir"; exit 1; }
           echo "installed at $app"
-          # The release build fails the smoke test's missing-library step on
-          # Windows (#341); report it without blocking until that is fixed.
-          show python scripts/smoke-native.py --app "$app" --output screenshots/install-Windows --identifier "$IDENTIFIER" ||
-            echo "::warning::The native smoke test failed on the installed Windows app; see #341."
+          show python scripts/smoke-native.py --app "$app" --output screenshots/install-Windows --identifier "$IDENTIFIER"
           show python "$RUNNER_TEMP/stays-up.py" "$app"
           "$dir/uninstall.exe" //S
           # The uninstaller copies itself and returns early; wait for removal.
