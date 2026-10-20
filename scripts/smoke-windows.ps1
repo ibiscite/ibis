@@ -184,16 +184,33 @@ try {
       $window = Get-AppWindow $AppId
       if (!$window) { throw 'Native picker window unavailable' }
       $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $Text)
-      $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
-      if (!$element) { throw 'Named accessibility control missing' }
+      $namedElements = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+      if ($namedElements.Count -gt 4000) { throw 'Named control enumeration exceeded bound' }
+      $controls = @($namedElements | Where-Object {
+        $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -or
+        $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::MenuItem
+      })
+      if ($controls.Count -ne 1) { throw 'Named accessibility control missing or ambiguous' }
+      $element = $controls[0]
       # Chromium gives menu buttons (aria-haspopup) ExpandCollapse instead of Invoke.
-      $pattern = $null
-      if ($element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $pattern)) {
-        $pattern.Invoke()
-      } elseif ($element.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref] $pattern)) {
-        $pattern.Expand()
-      } else { throw 'Named accessibility control cannot be pressed' }
-      $true
+      # aria-pressed buttons instead expose Toggle, without Invoke support.
+      $invoke=$null; $expand=$null; $toggle=$null
+      $facts = @{
+        pressed=$false
+        button_role=($element.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button)
+        menu_item_role=($element.Current.ControlType -eq [System.Windows.Automation.ControlType]::MenuItem)
+        invoke_pattern=$element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $invoke)
+        expand_collapse_pattern=$element.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref] $expand)
+        toggle_pattern=$element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref] $toggle)
+      }
+      # Fixed booleans survive an uncertain activation; no accessible text.
+      [Console]::Error.WriteLine('NATIVE CONTROL STATE ' + (ConvertTo-Json -InputObject $facts -Compress))
+      if ($facts.invoke_pattern) { $invoke.Invoke() }
+      elseif ($facts.expand_collapse_pattern) { $expand.Expand() }
+      elseif ($facts.button_role -and $facts.toggle_pattern) { $toggle.Toggle() }
+      else { throw 'Named accessibility control cannot be pressed' }
+      $facts.pressed=$true
+      $facts
     }
     'focus-editor' {
       $facts = @{stage='identity';owned=$false;window_valid=$false;request_accepted=$false;current_foreground=$false}

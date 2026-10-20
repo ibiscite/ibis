@@ -114,6 +114,15 @@ def search_focused(snapshot):
     return any(n.get("focused") for n in named(snapshot, "Search references"))
 
 
+def control_activation_facts(state):
+    keys = {"pressed", "button_role", "menu_item_role", "toggle_role",
+            "invoke_pattern", "expand_collapse_pattern", "toggle_pattern"}
+    if (not isinstance(state, dict) or type(state.get("pressed")) is not bool or
+            any(type(state[key]) is not bool for key in keys & state.keys())):
+        raise RuntimeError("Native button action metadata unavailable")
+    return {key: state[key] for key in sorted(keys & state.keys())}
+
+
 def has_search_text(snapshot):
     return any(n.get("value") for n in named(snapshot, "Search references"))
 
@@ -192,11 +201,14 @@ def type_query(native, snapshot, text, select_all):
     raise AssertionError(f"Search field did not hold the typed query after {TYPE_ATTEMPTS} attempts")
 
 
-def wait_for_query(snapshot, query, expected, report):
+def wait_for_query(snapshot, query, expected, report, *, settled=False):
     last = {"nodes": []}
     def matched():
         nonlocal last
         last = snapshot()
+        if settled:
+            facts = query_failure_facts(last, query, expected)
+            return facts["exact_search_value"] and facts["expected_result"] and facts["one_result"]
         return expected in strings(last)
     try:
         wait_for(matched, "native typed query")
@@ -240,7 +252,8 @@ def answer_update_question(settings):
 
 
 def claim_settings(candidate):
-    if any(candidate.with_suffix(suffix).exists() for suffix in (".json", ".json.bak", ".json.tmp")):
+    if any(candidate.with_suffix(suffix).exists() or candidate.with_suffix(suffix).is_symlink()
+           for suffix in (".json", ".json.bak", ".json.tmp")):
         raise Unavailable("Use a disposable desktop account without existing Ibis settings")
     return candidate
 
@@ -497,8 +510,11 @@ class Linux:
         self.last_window_state = f"{window}: {run('xprop', '-id', window, '_NET_WM_STATE')}" if window else "no visible window"
         return bool(window) and window_state_skips_taskbar(self.last_window_state.partition(": ")[2])
 
-    def clipboard(self):
-        return run("xclip", "-selection", "clipboard", "-out")
+    def clipboard(self, *, timeout=20):
+        # Clipboard equality includes whitespace; command-output normalization
+        # is appropriate for window IDs, not copied citation text.
+        return subprocess.check_output(["xclip", "-selection", "clipboard", "-out"],
+                                       text=True, stderr=subprocess.PIPE, timeout=timeout)
 
     def set_clipboard(self, text):
         subprocess.run(["xclip", "-selection", "clipboard", "-in"], input=text, text=True, check=True,
@@ -584,29 +600,30 @@ class Scripted:
                     # process whose owned-document identity is unverified.
                     print("Native owned editor cleanup failed", file=sys.stderr)
 
-    def call(self, action, text=""):
+    def call(self, action, text="", *, timeout=30):
         if self.system == "Windows" and action in ("focus-editor", "editor-focused", "close-editor"):
             text = str(self.editor_started)
         if getattr(self, "last_action", None) != action:
             print(f"NATIVE ACTION {action}", flush=True)
         self.last_action = action
         try:
-            result = subprocess.run(self.command + [action, str(getattr(getattr(self, "app", None), "pid", 0)), str(getattr(self, "editor_pid", 0)), text], encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+            result = subprocess.run(self.command + [action, str(getattr(getattr(self, "app", None), "pid", 0)), str(getattr(self, "editor_pid", 0)), text], encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         except subprocess.TimeoutExpired as error:
             # Never print TimeoutExpired itself: its command contains paths and
             # synthetic clipboard/query arguments. The fixed action is enough.
             for stage in helper_timeout_stages(error.stderr):
                 print(stage, file=sys.stderr)
-            raise AssertionError(f"Native helper timed out during {action} after 30s") from None
+            raise AssertionError(f"Native helper timed out during {action} after {timeout:g}s") from None
         if result.returncode:
             # Helpers emit fixed diagnostics only, never tree or clipboard text.
             print(result.stderr, file=sys.stderr)
             raise subprocess.CalledProcessError(result.returncode, self.command, stderr=result.stderr)
         return json.loads(result.stdout)
 
-    def snapshot(self):
+    def snapshot(self, *, timeout=None):
         if self.system != "Windows":
-            return self.call("snapshot")
+            return self.call("snapshot", **({} if timeout is None else {"timeout": timeout}))
+        deadline = None if timeout is None else time.monotonic() + timeout
         if getattr(self, "picker_app_pid", None) != self.app.pid:
             self.picker_handle = 0
             self.picker_app_pid = self.app.pid
@@ -617,13 +634,18 @@ class Scripted:
             # window can still be half created (#361). The helper reports only
             # that fact; any other helper failure still fails at once.
             nonlocal current
-            current = self.call("snapshot", str(self.picker_handle))
+            options = {}
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                assert remaining > 0, "Native snapshot exceeded the Quit budget"
+                options["timeout"] = remaining
+            current = self.call("snapshot", str(self.picker_handle), **options)
             if current == {"tree_changed": True}:
                 return False
             if not isinstance(current, dict) or "tree_changed" in current:
                 raise RuntimeError("Native accessibility snapshot metadata unavailable")
             return True
-        wait_for(settled, "native accessibility tree settles", timeout=TREE_SETTLE_SECONDS)
+        wait_for(settled, "native accessibility tree settles", timeout=TREE_SETTLE_SECONDS if timeout is None else min(TREE_SETTLE_SECONDS, timeout))
         handle = current.get("picker_handle")
         if handle is not None:
             if type(handle) is not int or handle == 0 or (self.picker_handle and handle != self.picker_handle):
@@ -650,20 +672,21 @@ class Scripted:
 
     def click(self, name):
         if self.system != "Darwin":
-            self.call("click", name)
+            facts = control_activation_facts(self.call("click", name))
+            print("NATIVE CONTROL STATE " + json.dumps(facts), flush=True)
+            assert facts["pressed"], "Native button was not activated"
             return
         state = {}
         def pressed():
             nonlocal state
             state = self.call("click", name)
-            if not isinstance(state, dict) or type(state.get("pressed")) is not bool:
-                raise RuntimeError("Native button action metadata unavailable")
-            return state["pressed"]
+            return control_activation_facts(state)["pressed"]
         try:
             wait_for(pressed, "exact named native button becomes available")
         except AssertionError:
             print("NATIVE CONTROL STATE " + json.dumps(state), flush=True)
             raise
+        print("NATIVE CONTROL STATE " + json.dumps(control_activation_facts(state)), flush=True)
 
     def focus_editor(self):
         state = self.call("focus-editor")
@@ -687,8 +710,8 @@ class Scripted:
             raise RuntimeError("Native picker key-window state unavailable")
         return state
 
-    def clipboard(self):
-        return self.call("clipboard")
+    def clipboard(self, *, timeout=None):
+        return self.call("clipboard", **({} if timeout is None else {"timeout": timeout}))
 
     def set_clipboard(self, text):
         self.call("write-clipboard", text)
@@ -721,6 +744,184 @@ def wait_for(predicate, description, timeout=20):
     raise AssertionError(f"Timed out: {description}")
 
 
+def saved_typst(settings):
+    if settings.is_symlink():
+        raise AssertionError("Native preference file is a symlink")
+    if not settings.exists():
+        return False
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            assert key not in value, "Native preference JSON contains duplicate fields"
+            value[key] = item
+        return value
+    def invalid_constant(_value):
+        raise ValueError("Non-JSON numeric constant")
+    with settings.open("rb") as source:
+        content = source.read(65537)
+    assert len(content) <= 65536, "Native preference file exceeded its bound"
+    try:
+        value = json.loads(content.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid_constant)
+    except (UnicodeError, ValueError):
+        raise AssertionError("Native preference JSON is malformed") from None
+    assert (isinstance(value, dict) and type(value.get("schema_version")) is int
+            and value["schema_version"] == 2), "Native preferences must use settings format 2"
+    if value.get("copy_format") != "typst":
+        return False
+    assert value.get("citation_style") is None, "Native key format retained a citation style"
+    return True
+
+
+def quit_normally(native, app):
+    deadline = time.monotonic() + 10
+    def remaining():
+        budget = deadline - time.monotonic()
+        assert budget > 0, "Normal Quit exceeded its shared 10-second budget"
+        return budget
+    def activate(name):
+        if isinstance(native, Scripted):
+            result = native.call("click", name, timeout=remaining())
+            facts = control_activation_facts(result)
+            print("NATIVE CONTROL STATE " + json.dumps(facts), flush=True)
+            assert facts["pressed"], "Native Quit control was not activated"
+        else:
+            native.click(name)
+        remaining()
+    def ready():
+        current = native.snapshot(timeout=remaining()) if isinstance(native, Scripted) else native.snapshot()
+        remaining()
+        return current["visible"] and bool(named(current, "Quit Ibis"))
+    activate("More")
+    # The macOS click guard already acquires one exact named native control
+    # and fails on absence or ambiguity before AXPress. A second full-tree
+    # read can exhaust the Quit budget before that single guarded activation.
+    if not (isinstance(native, Scripted) and native.system == "Darwin"):
+        wait_for(ready, "Quit appears in More", timeout=remaining())
+    activate("Quit Ibis")  # One activation; never retry an uncertain native action.
+    assert app.wait(timeout=remaining()) == 0, "Normal Quit did not exit zero"
+    # Use the same final sample for acceptance and elapsed-time evidence.
+    return round(10 - remaining(), 3)
+
+
+def first_run_preferences_main(args):
+    args.output.mkdir(parents=True, exist_ok=True)
+    system = platform.system()
+    report = {"platform": system, "scenario": "first-run-preferences", "status": "failed", "checks": []}
+    native = app = log = owned_settings = temporary = None
+    exit_code = 1
+    try:
+        if not args.app.is_file() or system not in ("Linux", "Darwin", "Windows"):
+            raise Unavailable("Build the embedded app on a supported native platform")
+        if system == "Darwin":
+            owned_settings = claim_settings(settings_path(system, Path("."), identifier=args.identifier))
+        native = Linux() if system == "Linux" else Scripted(system)
+        temporary = tempfile.TemporaryDirectory(prefix="ibis native preferences ")
+        folder = Path(temporary.name)
+        library = folder / "synthetic 引用.bib"
+        library.write_text(fixture(), encoding="utf-8")
+        settings = settings_path(system, folder, native, args.identifier)
+        owned_settings = claim_settings(settings)
+        env = real_app_environment(os.environ, library, folder / "config")
+        shortcut = args.shortcut or ("ctrl+super+r" if system == "Darwin" else "ctrl+shift+y")
+
+        def launch(label, with_library=False):
+            nonlocal app, log
+            if log:
+                log.close()
+            log = (args.output / f"startup-{label}.log").open("w", encoding="utf-8")
+            child = dict(env)
+            if not with_library:
+                child.pop("IBIS_LIBRARY", None)
+            answer_update_question(settings)
+            app = subprocess.Popen([str(args.app.resolve())], env=child, stdout=log, stderr=log)
+            native.app = app
+
+        def snapshot():
+            assert app.poll() is None, "Native app exited unexpectedly"
+            current = native.snapshot()
+            report["last_native_state"] = {
+                "visible": bool(current["visible"]), "foreground": bool(current["foreground"]),
+                "named_search": bool(named(current, "Search references")),
+                "search_focused": search_focused(current),
+                "result_focused": any(bool(node.get("focused")) and
+                    node.get("role", "").lower().replace(" ", "") in
+                    {"option", "listitem", "axrow", "controltype.listitem"} for node in current["nodes"]),
+            }
+            return current
+
+        def visible_text(text):
+            current = snapshot()
+            return current["visible"] and text in strings(current)
+
+        def picker_ready(*, typing=False):
+            current = snapshot()
+            return (current["visible"] and current["foreground"] and bool(named(current, "Search references"))
+                    and (not typing or search_focused(current)))
+
+        def passed(name):
+            report["checks"].append({"name": name, "status": "passed"})
+            print(f"PASS {name}", flush=True)
+
+        launch("first-run")
+        wait_for(lambda: visible_text("Choose library to get started"), "native first-run setup")
+        native.click("Typst")
+        wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
+        passed("first-run Typst choice is saved before any copy")
+        report["first_quit_seconds"] = quit_normally(native, app)
+        passed("settled first-run More/Quit exits zero within ten seconds")
+        assert saved_typst(settings), "Normal Quit lost the saved Typst choice"
+        launch("relaunch", with_library=True)
+        wait_for(lambda: visible_text("3 references"), "synthetic references after relaunch")
+        wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
+        type_query(native, snapshot, "smoke000001", "super+a" if system == "Darwin" else "ctrl+a")
+        wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
+        prime_clipboard(native)
+        native.key("Return")
+        copy_deadline = time.monotonic() + 20
+        def copied():
+            remaining = copy_deadline - time.monotonic()
+            assert remaining > 0, "Native copy exceeded its clipboard-read budget"
+            value = native.clipboard(timeout=remaining)
+            assert time.monotonic() < copy_deadline, "Native copy exceeded its clipboard-read budget"
+            return value == "@smoke000001"
+        wait_for(copied, "saved Typst output on the OS clipboard")
+        passed("relaunch uses saved Typst without choosing a format again")
+        wait_for(lambda: not snapshot()["visible"], "Typst copy hides picker")
+        native.key(shortcut)
+        # AT-SPI can focus the active result while the combobox retains input.
+        # More/Quit needs the same foreground/named-search state as reopen().
+        wait_for(picker_ready, "picker available for normal Quit")
+        report["second_quit_seconds"] = quit_normally(native, app)
+        passed("restarted More/Quit exits zero within ten seconds")
+        report["status"], exit_code = "passed", 0
+    except Unavailable as error:
+        report.update(status="unavailable", reason=str(error))
+        exit_code = 2
+    except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
+        report["reason"] = str(error) if isinstance(error, AssertionError) else type(error).__name__
+    finally:
+        def stop():
+            if app and app.poll() is None:
+                app.terminate()
+                try:
+                    app.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    app.kill()
+                    app.wait(timeout=5)
+        for cleanup in (stop, log.close if log else None, native.close if native else None,
+                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        temporary.cleanup if temporary else None):
+            try:
+                if cleanup:
+                    cleanup()
+            except (OSError, subprocess.SubprocessError, RuntimeError, AssertionError):
+                report.update(status="failed", reason="Owned native preference cleanup failed")
+                exit_code = 1
+        print("NATIVE FIRST-RUN PREFERENCES " + json.dumps(report), flush=True)
+        (args.output / "smoke.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    return exit_code
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, required=True)
@@ -728,7 +929,10 @@ def main():
     parser.add_argument("--identifier", default="io.github.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
     parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Control+Command+R on macOS")
     parser.add_argument("--budgets", type=Path, help="Measured per-platform baseline JSON, with startup_ms, first_result_ms, memory_bytes ceilings")
+    parser.add_argument("--first-run-preferences", action="store_true", help="Exercise first-run format persistence and settled More/Quit only")
     args = parser.parse_args()
+    if args.first_run_preferences:
+        return first_run_preferences_main(args)
     args.output.mkdir(parents=True, exist_ok=True)
     system = platform.system()
     report = {"platform": system, "checks": [], "performance": {"status": "not-run"}, "status": "failed"}
@@ -1070,6 +1274,270 @@ def main():
 
 
 class ContractTests(unittest.TestCase):
+    def preference_probe(self, failure=None, *, scripted_system=None):
+        clock, launches, actions = [0.0], [], []
+        # Exercise the Scripted Quit protocol while keeping settings in the
+        # existing owned Linux fixture; this is a control-flow contract only.
+        native = Mock(spec=Scripted) if scripted_system else Mock()
+        if scripted_system:
+            native.system = scripted_system
+        native.query = ""
+        native.query_ready_at = 0
+        native.value = ""
+        native.visible = True
+        native.reopened = False
+        native.more_open = False
+
+        def launch(_command, *, env, **_options):
+            app = Mock()
+            app.returncode = None
+            app.poll.side_effect = lambda: app.returncode
+            def wait(timeout):
+                if failure == "stuck-quit" and app.returncode is None:
+                    raise subprocess.TimeoutExpired("owned app", timeout)
+                if failure == "late-wait":
+                    clock[0] += 11
+                return app.returncode
+            app.wait.side_effect = wait
+            app.terminate.side_effect = lambda: setattr(app, "returncode", -15)
+            launches.append(dict(env))
+            native.app = app
+            native.visible = True
+            return app
+
+        def click(name):
+            actions.append((name, len(launches)))
+            if name == "Typst":
+                settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "io.github.ibiscite.ibis/settings.json"
+                value = '{"schema_version":2,"copy_format":"typst"}'
+                if failure == "wrong-format":
+                    value = '{"schema_version":2,"copy_format":"pandoc"}'
+                elif failure == "duplicate":
+                    value = '{"schema_version":2,"copy_format":"pandoc","copy_format":"typst"}'
+                elif failure == "malformed":
+                    value = '{invalid'
+                elif failure == "wrong-schema":
+                    value = '{"schema_version":true,"copy_format":"typst"}'
+                elif failure == "retained-style":
+                    value = '{"schema_version":2,"copy_format":"typst","citation_style":"apa"}'
+                elif failure == "non-json":
+                    value = '{"schema_version":2,"copy_format":"typst","invalid":NaN}'
+                elif failure == "oversized":
+                    value = json.dumps({"schema_version": 2, "copy_format": "typst", "padding": "x" * 65536})
+                settings.write_text(value, encoding="utf-8")
+            elif name == "Quit Ibis":
+                native.more_open = False
+                if failure == "late-driver":
+                    clock[0] += 11
+                if failure != "stuck-quit":
+                    native.app.returncode = 7 if failure == "nonzero-quit" else 0
+                if failure == "uncertain-quit":
+                    raise RuntimeError("Synthetic uncertain activation")
+            elif name == "More":
+                native.more_open = True
+
+        def key(chord):
+            actions.append((chord, len(launches)))
+            if chord == "Return":
+                self.assertEqual(len(launches), 2, "Copy happened before relaunch")
+                if clock[0] < native.query_ready_at:
+                    return  # The app rejects Enter while results belong to the old query.
+                native.value = "[@smoke000001]" if failure == "wrong-copy" else "@smoke000001"
+                if failure == "whitespace-copy":
+                    native.value += "\n"
+                native.visible = False
+            elif chord == "ctrl+shift+y":
+                native.visible = failure != "hidden-reopen"
+                native.reopened = True
+
+        def snapshot(**_options):
+            if failure == "slow-menu-snapshot" and native.more_open:
+                clock[0] += 8
+            names = ["More", "Quit Ibis"]
+            if len(launches) == 1:
+                names += ["Choose library to get started", "Typst"]
+            else:
+                names += ["3 references", "1 result" if clock[0] >= native.query_ready_at else "3 results",
+                          "Ibis smoke reference 000001"]
+            result_focus = failure == "active-result-reopen" and native.reopened
+            return {"visible": native.visible, "foreground": native.visible, "nodes": [
+                {"name": name, "role": "button"} for name in names] + [
+                {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus},
+                {"name": "private result payload", "role": "list item", "focused": result_focus}]}
+
+        def text(value):
+            native.query = value
+            if failure == "delayed-query":
+                native.query_ready_at = clock[0] + 0.2
+
+        native.click.side_effect = click
+        native.key.side_effect = key
+        native.text.side_effect = text
+        native.snapshot.side_effect = snapshot
+        native.set_clipboard.side_effect = lambda value: setattr(native, "value", value)
+        if scripted_system:
+            def helper(action, name, *, timeout):
+                self.assertEqual(action, "click")
+                self.assertGreater(timeout, 0)
+                clock[0] += 2
+                if name == "Quit Ibis" and failure == "absent-quit":
+                    actions.append((name, len(launches)))
+                    return {"pressed": False}
+                click(name)
+                return {"pressed": True}
+            native.call.side_effect = helper
+        original_clipboard = Linux.clipboard
+        native.clipboard.side_effect = lambda **kwargs: original_clipboard(native, **kwargs)
+        def clipboard_read(*_args, **_kwargs):
+            if failure == "late-copy" and native.value == "@smoke000001":
+                clock[0] += 25
+            return native.value
+        if failure == "cleanup":
+            native.close.side_effect = RuntimeError("Synthetic cleanup failure")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / "synthetic-app"
+            app.touch()
+            args = argparse.Namespace(app=app, output=root / "report", identifier="io.github.ibiscite.ibis", shortcut=None)
+            candidate = root / "preexisting/settings.json"
+            candidate.parent.mkdir()
+            if failure == "preexisting":
+                candidate.write_text("preserve this file", encoding="utf-8")
+            elif failure == "symlink":
+                try:
+                    candidate.symlink_to(root / "missing-target")
+                except OSError:
+                    self.skipTest("Creating symlinks requires an unavailable native capability")
+            original_settings_path = settings_path
+            locate = lambda *args, **kwargs: candidate if failure in ("preexisting", "symlink") else original_settings_path(*args, **kwargs)
+            with patch("platform.system", return_value="Linux"), patch.object(sys.modules[__name__], "Linux", return_value=native), \
+                    patch.object(sys.modules[__name__], "settings_path", side_effect=locate), \
+                    patch("subprocess.Popen", side_effect=launch), patch("time.monotonic", side_effect=lambda: clock[0]), \
+                    patch("subprocess.check_output", side_effect=clipboard_read), \
+                    patch("time.sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
+                    patch.dict(os.environ, {"IBIS_LIBRARY": "/unowned.bib", "IBIS_GALLERY": "1", "IBIS_GALLERY_STATE": "loaded"}), \
+                    patch("builtins.print"):
+                result = first_run_preferences_main(args)
+            report = json.loads((args.output / "smoke.json").read_text(encoding="utf-8"))
+            if failure == "preexisting":
+                self.assertEqual(candidate.read_text(encoding="utf-8"), "preserve this file")
+            elif failure == "symlink":
+                self.assertTrue(candidate.is_symlink())
+            if launches:
+                self.assertFalse(Path(launches[0]["XDG_CONFIG_HOME"]).exists())
+        native.close.assert_called_once()
+        return result, report, launches, actions
+
+    def test_first_run_preferences_relaunch_uses_saved_typst_before_copy(self):
+        result, report, launches, actions = self.preference_probe()
+        self.assertEqual((result, report["status"]), (0, "passed"))
+        self.assertEqual(len(launches), 2)
+        self.assertNotIn("IBIS_LIBRARY", launches[0])
+        self.assertIn("IBIS_LIBRARY", launches[1])
+        self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
+        self.assertTrue(all("IBIS_GALLERY" not in env and "IBIS_GALLERY_STATE" not in env for env in launches))
+        self.assertEqual([action for action in actions if action[0] == "Typst"], [("Typst", 1)])
+        self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
+
+    def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
+        for failure in ("wrong-format", "duplicate", "malformed", "wrong-schema", "retained-style", "non-json", "oversized",
+                        "late-driver", "late-wait", "nonzero-quit", "stuck-quit", "uncertain-quit", "wrong-copy", "cleanup"):
+            with self.subTest(failure=failure):
+                result, report, _launches, _actions = self.preference_probe(failure)
+                self.assertEqual((result, report["status"]), (1, "failed"))
+
+    def test_first_run_preferences_reject_late_or_nonexact_os_clipboard_reads(self):
+        for failure in ("late-copy", "whitespace-copy"):
+            with self.subTest(failure=failure):
+                result, report, _launches, actions = self.preference_probe(failure)
+                self.assertEqual((result, report["status"]), (1, "failed"))
+                self.assertEqual([action for action in actions if action[0] == "Return"], [("Return", 2)])
+
+    def test_first_run_preferences_wait_for_results_before_one_return(self):
+        result, report, _launches, actions = self.preference_probe("delayed-query")
+        self.assertEqual((result, report["status"]), (0, "passed"))
+        self.assertEqual([action for action in actions if action[0] == "Return"], [("Return", 2)])
+
+    def test_first_run_preferences_reopen_accepts_focused_active_result(self):
+        result, report, _launches, actions = self.preference_probe("active-result-reopen")
+        self.assertEqual((result, report["status"]), (0, "passed"))
+        self.assertEqual(report["last_native_state"], {
+            "visible": True, "foreground": True, "named_search": True,
+            "search_focused": False, "result_focused": True,
+        })
+        self.assertEqual([action for action in actions if action[0] == "Return"], [("Return", 2)])
+        self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
+
+    def test_first_run_preferences_darwin_quit_uses_one_guarded_activation_without_slow_full_tree_read(self):
+        result, report, _launches, actions = self.preference_probe("slow-menu-snapshot", scripted_system="Darwin")
+        self.assertEqual((result, report["status"]), (0, "passed"))
+        self.assertEqual((report["first_quit_seconds"], report["second_quit_seconds"]), (4, 4))
+        self.assertEqual([action for action in actions if action[0] == "Return"], [("Return", 2)])
+        self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
+
+    def test_first_run_preferences_darwin_quit_still_rejects_absent_uncertain_or_late_actions(self):
+        for failure in ("absent-quit", "uncertain-quit", "late-driver", "late-wait", "nonzero-quit", "stuck-quit"):
+            with self.subTest(failure=failure):
+                result, report, _launches, actions = self.preference_probe(failure, scripted_system="Darwin")
+                self.assertEqual((result, report["status"]), (1, "failed"))
+                self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1)])
+
+    def test_first_run_preferences_windows_keeps_its_menu_readiness_observation_in_the_shared_budget(self):
+        result, report, _launches, actions = self.preference_probe("slow-menu-snapshot", scripted_system="Windows")
+        self.assertEqual((result, report["status"]), (1, "failed"))
+        self.assertIn("shared 10-second budget", report["reason"])
+        self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [])
+
+    def test_first_run_preferences_failure_retains_only_observed_boolean_state(self):
+        result, report, _launches, actions = self.preference_probe("hidden-reopen")
+        self.assertEqual((result, report["status"]), (1, "failed"))
+        self.assertEqual(report["last_native_state"], {
+            "visible": False, "foreground": False, "named_search": True,
+            "search_focused": True, "result_focused": False,
+        })
+        self.assertTrue(all(type(value) is bool for value in report["last_native_state"].values()))
+        self.assertNotIn("private", json.dumps(report))
+        self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1)])
+
+    def test_scripted_calls_accept_a_remaining_budget_without_resetting_it(self):
+        native = Scripted.__new__(Scripted)
+        native.system = "Darwin"
+        native.command = ["synthetic-helper"]
+        completed = subprocess.CompletedProcess([], 0, stdout="true", stderr="")
+        with patch("subprocess.run", return_value=completed) as helper, patch("builtins.print"):
+            self.assertIs(native.call("click", "More", timeout=3.5), True)
+        self.assertEqual(helper.call_args.kwargs["timeout"], 3.5)
+
+    def test_first_run_preferences_refuse_existing_settings_and_dangling_links(self):
+        for failure in ("preexisting", "symlink"):
+            with self.subTest(failure=failure):
+                result, report, launches, _actions = self.preference_probe(failure)
+                self.assertEqual((result, report["status"]), (2, "unavailable"))
+                self.assertEqual(launches, [])
+
+    def test_normal_quit_shares_its_budget_with_each_scripted_call_and_wait(self):
+        native = Scripted.__new__(Scripted)
+        native.system = "Darwin"
+        clock = [0.0]
+        def helper(action, text="", *, timeout):
+            clock[0] += 2
+            return {"pressed": True} if action == "click" else {"visible": True, "nodes": [{"name": "Quit Ibis"}]}
+        native.call = Mock(side_effect=helper)
+        app = Mock()
+        def exited(timeout):
+            clock[0] += 1
+            return 0
+        app.wait.side_effect = exited
+        with patch("time.monotonic", side_effect=lambda: clock[0]):
+            self.assertEqual(quit_normally(native, app), 5)
+        self.assertEqual([entry.kwargs["timeout"] for entry in native.call.call_args_list], [10, 8])
+        app.wait.assert_called_once_with(timeout=6)
+        self.assertEqual([entry.args for entry in native.call.call_args_list], [("click", "More"), ("click", "Quit Ibis")])
+        clock[0] = 0
+        app.wait.side_effect = lambda timeout: (clock.__setitem__(0, 11), 0)[1]
+        with patch("time.monotonic", side_effect=lambda: clock[0]):
+            with self.assertRaisesRegex(AssertionError, "shared 10-second budget"):
+                quit_normally(native, app)
     def test_taskbar_hints_are_read_from_the_window_manager_state(self):
         self.assertTrue(window_state_skips_taskbar(
             "_NET_WM_STATE(ATOM) = _NET_WM_STATE_FOCUSED, _NET_WM_STATE_SKIP_TASKBAR, _NET_WM_STATE_SKIP_PAGER"))
@@ -1441,6 +1909,28 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(report, {})
         output.assert_not_called()
 
+    def test_settled_query_requires_all_facts_in_one_observation(self):
+        def state(value, title, count):
+            return {"nodes": [
+                {"name": "Search references", "role": "entry", "value": value},
+                {"name": title}, {"name": count},
+            ]}
+        states = [state("private query", "private title", "3 results"),
+                  state("old query", "private title", "1 result"),
+                  state("private query", "old title", "1 result"),
+                  state("private query", "private title", "1 result")]
+        source = Mock(side_effect=states)
+        def observe(predicate, _description):
+            self.assertFalse(predicate())
+            self.assertFalse(predicate())
+            self.assertFalse(predicate())
+            self.assertTrue(predicate())
+        report = {}
+        with patch(__name__ + ".wait_for", side_effect=observe):
+            wait_for_query(source, "private query", "private title", report, settled=True)
+        self.assertEqual(source.call_count, 4)
+        self.assertEqual(report, {})
+
     def test_helper_timeout_emits_only_allowlisted_stages_from_bytes_stderr(self):
         native = Scripted.__new__(Scripted)
         native.system, native.command = "Windows", ["synthetic-helper", "private argument"]
@@ -1483,6 +1973,23 @@ class ContractTests(unittest.TestCase):
         with patch.object(native, "call", side_effect=[{"pressed": False}, {"pressed": True}]) as helper, patch("time.sleep"):
             native.click("Reload")
         self.assertEqual(helper.call_args_list, [(('click', 'Reload'),), (('click', 'Reload'),)])
+
+    def test_windows_click_requires_one_confirmed_activation_and_logs_only_fixed_booleans(self):
+        native = Scripted.__new__(Scripted)
+        native.system = "Windows"
+        state = {"pressed": True, "button_role": True, "toggle_pattern": True, "private": "document payload"}
+        with patch.object(native, "call", return_value=state) as helper, patch("builtins.print") as output:
+            native.click("Typst")
+        helper.assert_called_once_with("click", "Typst")
+        self.assertNotIn("private", str(output.call_args))
+        self.assertNotIn("payload", str(output.call_args))
+        self.assertEqual(json.loads(output.call_args.args[0].removeprefix("NATIVE CONTROL STATE ")),
+                         {"pressed": True, "button_role": True, "toggle_pattern": True})
+        for invalid in (True, None, {"pressed": "true"}, {"pressed": True, "toggle_pattern": "true"}, {"pressed": False}):
+            with self.subTest(invalid=invalid), patch.object(native, "call", return_value=invalid) as helper, \
+                    patch("builtins.print"), self.assertRaises((AssertionError, RuntimeError)):
+                native.click("Typst")
+            helper.assert_called_once_with("click", "Typst")
 
     def windows_native(self):
         native = Scripted.__new__(Scripted)
@@ -1814,6 +2321,85 @@ foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
             self.assertEqual(set(value), {"stage", "owned", "window_valid", "request_accepted", "current_foreground"})
             self.assertIn(value.pop("stage"), ("identity", "window", "foreground-request"))
             self.assertTrue(all(type(item) is bool for item in value.values()))
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows click helper contract")
+    def test_windows_click_activates_one_exact_owned_button_with_its_native_pattern(self):
+        script = r'''
+param([string] $Source)
+$ErrorActionPreference='Stop'
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
+if ($errors.Count) { throw 'Helper syntax is invalid' }
+$switch=$ast.Find({param($node) $node -is [System.Management.Automation.Language.SwitchStatementAst] -and $node.Condition.Extent.Text -eq '$Action'},$true)
+$clause=@($switch.Clauses | Where-Object {$_.Item1.Value -eq 'click'})[0].Item2.Extent.Text
+# Real Windows UIA types may already be loaded. Every extracted type and all
+# fake provider types must share this isolated namespace, including enums.
+$clause=$clause.Replace('[System.Windows.Automation.', '[IbisClickContract.')
+$operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
+Add-Type @'
+using System;
+namespace IbisClickContract {
+ public enum TreeScope { Descendants }
+ public class AutomationElement { public static string NameProperty="name"; }
+ public class PropertyCondition { public string Value; public PropertyCondition(string property,string value) { Value=value; } }
+ public class ControlType { public static string Button="button", MenuItem="menu", Text="text"; }
+ public class InvokePattern { public static int Pattern=1; }
+ public class ExpandCollapsePattern { public static int Pattern=2; }
+ public class TogglePattern { public static int Pattern=3; }
+public class ClickPattern {
+ public int Activations; public bool Fail;
+ public void Invoke() { Activate(); } public void Expand() { Activate(); } public void Toggle() { Activate(); }
+ private void Activate() { Activations++; if(Fail) throw new Exception("uncertain activation"); }
+}
+public class ClickElement {
+ public string Name="Typst"; public ClickElement Current { get { return this; } }
+ public string ControlType="button"; public int Supported=3; public ClickPattern Action=new ClickPattern();
+ public bool TryGetCurrentPattern(int pattern,ref object value) { value=pattern==Supported ? Action : null; return value!=null; }
+}
+public class ClickWindow {
+ public ClickElement[] Elements=new ClickElement[0];
+ public ClickElement[] FindAll(TreeScope scope,PropertyCondition condition) {
+  return Array.FindAll(Elements,element=>element.Name==condition.Value);
+ }
+}
+}
+'@
+$AppId=42; $Text='Typst'; $script:window=[IbisClickContract.ClickWindow]::new()
+function Get-AppWindow { param($Id) if($Id -ne 42) {throw 'Unexpected owner'}; $script:window }
+foreach ($pattern in @(1,2,3)) {
+ $element=[IbisClickContract.ClickElement]::new(); $element.Supported=$pattern; $script:window.Elements=@($element)
+ $result=& $operation
+ if(!$result.pressed -or !$result.button_role -or $element.Action.Activations -ne 1 -or
+    $result.invoke_pattern -ne ($pattern -eq 1) -or $result.expand_collapse_pattern -ne ($pattern -eq 2) -or
+    $result.toggle_pattern -ne ($pattern -eq 3)) {throw 'Native pattern did not activate once'}
+}
+foreach ($failure in @('missing','wrong-label','text-toggle','menu-toggle','duplicate','unsupported','uncertain','bound')) {
+ $element=[IbisClickContract.ClickElement]::new(); $script:window.Elements=@($element)
+ switch($failure) {
+  'missing' {$script:window.Elements=@()}
+  'wrong-label' {$element.Name='private Typst suffix'}
+  'text-toggle' {$element.ControlType='text'}
+  'menu-toggle' {$element.ControlType='menu'}
+  'duplicate' {$script:window.Elements=@($element,[IbisClickContract.ClickElement]::new())}
+  'unsupported' {$element.Supported=0}
+  'uncertain' {$element.Action.Fail=$true}
+  'bound' {$script:window.Elements=@($element)*4001}
+ }
+ $rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
+ $expected=if($failure -eq 'uncertain') {1} else {0}
+ if(!$rejected -or $element.Action.Activations -ne $expected) {throw 'Unsafe or repeated activation'}
+}
+$script:window=$null
+$rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
+if(!$rejected) {throw 'Missing owned window accepted'}
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "click-contract.ps1"
+            test.write_text(script, encoding="utf-8")
+            result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
+                                     "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
+                                    capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_windows_editor_preflight_rejects_a_pid_without_creation_identity(self):
         with patch.object(Scripted, "call", side_effect=[True, 12345]):

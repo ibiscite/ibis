@@ -398,7 +398,8 @@ function run(argv) {
             text === 'More' ? ['More', 'More actions (⌘K)'] : [text];
         // WebKit exposes menu buttons and their items with their own roles.
         const pressable = new Set(['AXButton', 'AXPopUpButton', 'AXMenuButton', 'AXMenuItem']);
-        const buttons = elements().filter(item => pressable.has(safe(() => item.role())));
+        const toggle = item => safe(() => item.role()) === 'AXCheckBox' && safe(() => item.subrole()) === 'AXToggle';
+        const buttons = elements().filter(item => pressable.has(safe(() => item.role())) || toggle(item));
         let successfulReads = 0;
         const types = new Set();
         const matches = buttons.filter(item => {
@@ -421,7 +422,9 @@ function run(argv) {
         if (matches.length === 1) matches[0].actions.byName('AXPress').perform();
         result = {pressed: matches.length === 1, button_count: buttons.length,
             exact_label_matches: matches.length, successful_attribute_reads: successfulReads,
-            attribute_types: [...types].sort(), known_action: ['Reload', 'Choose library…', 'More'].includes(text)};
+            attribute_types: [...types].sort(), known_action: ['Reload', 'Choose library…', 'More'].includes(text),
+            button_role: matches.length === 1 && safe(() => matches[0].role()) === 'AXButton',
+            toggle_role: matches.length === 1 && toggle(matches[0])};
         break;
     }
     case 'focus-editor': process(editorId).frontmost = true; result = true; break;

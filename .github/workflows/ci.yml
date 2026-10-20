@@ -314,6 +314,7 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked x11_server_focus_stays_with_editor_during_keyboard_grab -- --ignored --nocapture
           xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked a_full_screen_active_window_is_detected_from_window_manager_hints -- --ignored --nocapture
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-Linux --budgets scripts/smoke-budgets.json
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/preferences-Linux --first-run-preferences
 
       # macOS and Windows UI automation on hosted runners is the flakiest part
       # of CI (#361, #410). On pull requests it reports a warning instead of
@@ -326,6 +327,7 @@ jobs:
           python3 scripts/smoke-native.py --self-test
           python3 scripts/check-offline.test.py
           python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-macOS --budgets scripts/smoke-budgets.json
+          python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/preferences-macOS --first-run-preferences
 
       - name: Keep failed macOS native diagnostics immediately
         if: always() && env.NATIVE == 'true' && runner.os == 'macOS' && steps.native_macos.outcome == 'failure'
@@ -335,6 +337,8 @@ jobs:
           path: |
             screenshots/smoke-macOS/*.json
             screenshots/smoke-macOS/*.log
+            screenshots/preferences-macOS/*.json
+            screenshots/preferences-macOS/*.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -353,6 +357,7 @@ jobs:
         run: |
           python scripts/smoke-native.py --self-test
           python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/smoke-Windows --budgets scripts/smoke-budgets.json
+          python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/preferences-Windows --first-run-preferences
 
       - name: Observe native materials and accessibility changes (macOS)
         if: ${{ !cancelled() && env.NATIVE == 'true' && env.EVIDENCE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}

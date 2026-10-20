@@ -168,6 +168,51 @@ context.ObjC.bindFunction = (name, signature) => {
 };
 assert.equal(context.run(['probe', '42', '0', '']), 'true');
 assert.equal(bound, true);
+
+function nativeClick(controls, text = 'Typst') {
+    const window = {entireContents: () => controls};
+    const windows = _selector => [window];
+    windows[0] = window;
+    const native = {ObjC: {import() {}}, Application: () => ({applicationProcesses: {
+        whose: ({unixId}) => { assert.equal(unixId, 42); return () => [{windows}]; },
+    }})};
+    vm.createContext(native);
+    vm.runInContext(fs.readFileSync(`${__dirname}/smoke-macos.js`, 'utf8'), native);
+    return () => JSON.parse(native.run(['click', '42', '0', text]));
+}
+
+function nativeControl({role = 'AXCheckBox', subrole = 'AXToggle', label = 'Typst', error} = {}) {
+    let presses = 0;
+    return {role: () => role, subrole: () => subrole, description: () => label,
+        name: () => label, title: () => label, value: () => false,
+        attributes: {byName: () => ({value: () => label})},
+        actions: {byName: name => {
+            assert.equal(name, 'AXPress');
+            return {perform() { presses++; if (error) throw error; }};
+        }}, get presses() { return presses; }};
+}
+
+const typstToggle = nativeControl();
+const toggleResult = nativeClick([typstToggle])();
+assert.equal(toggleResult.pressed, true);
+assert.equal(toggleResult.toggle_role, true);
+assert.equal(typstToggle.presses, 1);
+for (const control of [nativeControl({subrole: ''}), nativeControl({label: 'private Typst suffix'})]) {
+    assert.equal(nativeClick([control])().pressed, false);
+    assert.equal(control.presses, 0);
+}
+const duplicates = [nativeControl(), nativeControl()];
+assert.throws(nativeClick(duplicates), /ambiguous/);
+assert.ok(duplicates.every(control => control.presses === 0));
+const excessiveControls = Array.from({length: 4001}, () => nativeControl());
+assert.throws(nativeClick(excessiveControls), /traversal bound/);
+assert.ok(excessiveControls.every(control => control.presses === 0));
+const uncertainToggle = nativeControl({error: Error('Synthetic uncertain press')});
+assert.throws(nativeClick([uncertainToggle]), /Synthetic uncertain press/);
+assert.equal(uncertainToggle.presses, 1);
+const ordinaryButton = nativeControl({role: 'AXButton', subrole: '', label: 'More'});
+assert.equal(nativeClick([ordinaryButton], 'More')().pressed, true);
+assert.equal(ordinaryButton.presses, 1);
 context.$ = {AXIsProcessTrusted: () => true};
 context.ObjC.bindFunction = () => { throw Error('Synthetic missing native symbol'); };
 assert.throws(() => context.run(['probe', '42', '0', '']), /Native event-posting preflight unavailable/);
