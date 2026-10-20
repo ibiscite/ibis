@@ -1015,8 +1015,14 @@ test("a saved citation style, density and text size come back at start", async (
   });
   render(<App />);
   await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("style:apa"));
-  expect(document.documentElement.dataset.density).toBe("compact");
-  expect(document.documentElement.dataset.textSize).toBe("larger");
+  // The select changes when React commits the loaded choices, but density and
+  // text size reach <html> in an effect that runs after that commit. The load
+  // resolves outside act(), so waitFor can see the select before the effect
+  // has run; wait for the attributes themselves.
+  await waitFor(() => {
+    expect(document.documentElement.dataset.density).toBe("compact");
+    expect(document.documentElement.dataset.textSize).toBe("larger");
+  });
 });
 
 test.each(["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys"])("choosing %s survives a restart without copying", async (choice) => {
