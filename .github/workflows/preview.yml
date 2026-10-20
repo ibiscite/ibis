@@ -747,8 +747,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core
-          # The AppImage leaves the graphics drivers to the system, as every desktop has them; the runner does not.
-          sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgl1 libgl1-mesa-dri libgbm1 libdrm2 libwayland-client0 libx11-xcb1
+          # AppImages leave graphics drivers to the system. WebKit loads GLES dynamically, so ldd misses it.
+          sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgles2 libgl1 libgl1-mesa-dri libgbm1 libdrm2 libwayland-client0 libx11-xcb1
           /usr/bin/python3 scripts/update-e2e.py --self-test
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/update-e2e.py \
             --previous previous/Ibis-Linux.AppImage --expected dist/Ibis-Linux.AppImage --output update-e2e
