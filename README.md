@@ -29,7 +29,7 @@ There are two builds. Both are free and run on Windows, macOS and Linux.
 
 The two install as separate apps, so you can keep both. Each can update itself if you allow update checks when it first starts; updates are signed and checked before they install. The apps themselves are not signed by Apple or Microsoft yet, so your system may warn before opening them (the release page says what to click).
 
-**Version numbers** follow [semantic versioning](https://semver.org). Until 1.0 every release is a preview: `0.N.0` ships a milestone from the [roadmap](ROADMAP.md) and `0.N.1`, `0.N.2`, ... fix it. Tell us what works and what you miss through [a problem report or an idea](https://github.com/ibiscite/ibis/issues/new/choose).
+**Version numbers** follow [semantic versioning](https://semver.org). Until 1.0 every release is a preview: `0.N.0` ships a milestone from the [roadmap](ROADMAP.md) and `0.N.1`, `0.N.2`, ... add fixes and small features. Tell us what works and what you miss through [a problem report or an idea](https://github.com/ibiscite/ibis/issues/new/choose).
 
 The menu bar or tray menu shows which build and version you are running. Send questions and feedback to [GitHub Discussions](https://github.com/ibiscite/ibis/discussions), and problems to [the issues](https://github.com/ibiscite/ibis/issues/new/choose).
 
