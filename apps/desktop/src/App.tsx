@@ -9,6 +9,8 @@ import { formatCitation, FORMATTED_STYLES, provisional, type FormattedCitation }
 import { STYLE_NAMES, type StyleId } from "./format/styles";
 import { render } from "./format/markup";
 import { afterCopy, rowClickAction } from "./copyFeedback";
+import { KeysDialog } from "./features/picker/KeysDialog";
+import { MenuItem, MoreMenu } from "./features/picker/MoreMenu";
 import { AddGlyph, TypeIcon } from "./icons";
 import {
   COPY_FORMATS,
@@ -93,118 +95,6 @@ function libraryHealth(library: LibraryStatus | null | undefined): "done" | "loo
   if (library === null || library?.error) return "stop";
   if (!library?.has_snapshot) return "idle";
   return library.warnings > 0 || library.references === 0 ? "look" : "done";
-}
-
-/** A small menu: arrow keys move, Escape or a click outside closes it. */
-function MoreMenu({ children, onClose }: { children: React.ReactNode; onClose: (refocus: boolean) => void }) {
-  const menu = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    menu.current?.querySelector<HTMLElement>("[data-menu-item]")?.focus();
-    const outside = (e: PointerEvent) => {
-      const target = e.target as Node;
-      if (!menu.current?.contains(target) && !menu.current?.parentElement?.contains(target)) onClose(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, []);
-  return (
-    <div
-      id="more-menu"
-      role="menu"
-      aria-label={pickerText.more}
-      ref={menu}
-      onKeyDown={(e) => {
-        const items = [...(menu.current?.querySelectorAll<HTMLElement>("[data-menu-item]") ?? [])];
-        const at = items.indexOf(document.activeElement as HTMLElement);
-        const move = { ArrowDown: 1, ArrowUp: -1 }[e.key];
-        if (move !== undefined) {
-          e.preventDefault();
-          items[(at + move + items.length) % items.length]?.focus();
-        } else if (e.key === "Home" || e.key === "End") {
-          e.preventDefault();
-          items[e.key === "Home" ? 0 : items.length - 1]?.focus();
-        } else if (e.key === "Tab") {
-          // Leaving the menu returns to the search box, so keys keep working.
-          e.preventDefault();
-          onClose(false);
-          document.getElementById("search")?.focus();
-        }
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function MenuItem({ label, title, keys, checked, disabled, onSelect }: {
-  label: string; title?: string; keys?: string; checked?: boolean; disabled?: boolean; onSelect: () => void;
-}) {
-  // A checkable item keeps the menuitem role for focus handling; aria-checked
-  // is announced on menuitemcheckbox only, so the role changes with it. A
-  // disabled item stays focusable so arrow keys still reach it.
-  return (
-    <button type="button" role={checked === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={checked}
-      aria-disabled={disabled || undefined} data-menu-item tabIndex={-1} title={title}
-      onClick={() => { if (!disabled) onSelect(); }}>
-      <span>{label}</span>
-      {keys && <kbd aria-hidden="true">{keys}</kbd>}
-    </button>
-  );
-}
-
-/** Every key in one table, as a modal dialog: Escape or Close returns focus. */
-function KeysDialog({ bindings, onClose }: { bindings: readonly KeyBinding[]; onClose: () => void }) {
-  const dialog = useRef<HTMLDivElement>(null);
-  useEffect(() => { dialog.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
-  return (
-    <div className="keys-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div
-        ref={dialog}
-        role="dialog"
-        aria-modal="true"
-        // Clicking plain text inside keeps focus here, so Escape still closes it.
-        tabIndex={-1}
-        aria-labelledby="keys-title"
-        className="keys-dialog"
-        onKeyDown={(e) => {
-          // The picker's own keys wait until the dialog is closed.
-          e.stopPropagation();
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onClose();
-          } else if (e.key === "Tab") {
-            const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>("button, [tabindex='0']") ?? [])];
-            const at = focusable.indexOf(document.activeElement as HTMLElement);
-            e.preventDefault();
-            focusable[(at + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
-          }
-        }}
-      >
-        <div className="keys-heading">
-          <h2 id="keys-title">{keyText.title}</h2>
-          <button type="button" className="quiet-button" onClick={onClose}>{keyText.close}</button>
-        </div>
-        <div className="keys-scroll" tabIndex={0} role="group" aria-labelledby="keys-title">
-          <table>
-            <thead>
-              <tr><th scope="col">{keyText.keyColumn}</th><th scope="col">{keyText.actionColumn}</th><th scope="col">{keyText.regionColumn}</th></tr>
-            </thead>
-            <tbody>
-              {bindings.map((binding) => (
-                <tr key={`${binding.region}:${binding.action}`}>
-                  <td>{binding.keys.map((keys, i) => (
-                    <span key={keys}>{i > 0 && ` ${keyText.or} `}<kbd aria-keyshortcuts={ariaKeys(keys, isMac)}>{binding.action === "open" ? shortcutLabel(keys, isMac) : label(keys)}</kbd></span>
-                  ))}</td>
-                  <td>{keyText.actions[binding.action]}</td>
-                  <td>{keyText.regions[binding.region]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // A stable provider lets the development gallery use synthetic data without IPC.
@@ -1081,7 +971,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           {library?.note && <p role="status">{library.note}</p>}
         </section>
       </footer>
-      {keysOpen && <KeysDialog bindings={bindings} onClose={closeKeys} />}
+      {keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={closeKeys} />}
     </main>
   );
 }
