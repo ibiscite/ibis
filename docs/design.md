@@ -201,7 +201,9 @@ is pressed again.
 **Accessibility.** Reduced motion uses fades only. Screen readers hear the
 result count and, per row, title, first author, year and why it matched;
 "Copied" is announced politely. Every action has a key; focus rings are always
-visible (2 px, accent). Right-to-left titles align right within their row.
+visible (2 px, accent), except on the frameless macOS search field, where the
+caret and the active row are the cue, as in Spotlight. With increased contrast
+or forced colours, that field shows the ring too. Right-to-left titles align right within their row.
 
 ## Rollout
 

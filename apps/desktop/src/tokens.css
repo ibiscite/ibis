@@ -24,7 +24,7 @@
   --row-spacious: 4.75rem;     /* three lines */
   --row-height: var(--row-comfortable);
   --larger-text-scale: 1.15;
-  --window-radius: 14px;
+  --window-radius: 12px; /* macOS: matches the native 12 pt corner (native_corners.rs); Windows and Linux below */
   --status-dot-size: .5rem;
   --menu-min-width: 14rem;
   --menu-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 20%);
@@ -69,14 +69,12 @@
   --button-background: color-mix(in srgb, var(--text) 4%, var(--surface));
   --button-hover-background: color-mix(in srgb, var(--text) 8%, var(--surface));
   --hover-background: color-mix(in srgb, var(--text) 3%, var(--surface));
-  --active-background: Canvas;
   --selected-background: Highlight;
   --selected-text: HighlightText;
   --clear: transparent;
   --border-width: 1px;
   --focus-width: 2px;
   --focus-offset: 2px;
-  --active-edge-width: 2px;
   --alert-color: CanvasText;
   --alert-border-width: 3px;
   --button-radius: 6px;
@@ -86,7 +84,7 @@
   --button-padding: .35rem .55rem;
   --picker-height: 100dvh;
   --search-gap: .9rem;
-  --search-padding: 1.4rem 1.5rem;
+  --search-padding: var(--space-1) var(--space-4);
   --search-icon-width: 1.35rem;
   --search-min-width: 12rem;
   --search-icon-stroke: var(--icon-stroke);
@@ -137,8 +135,20 @@
   --contrast-border-width: 3px;
   --forced-selected-offset: -4px;
   --forced-search-offset: -3px;
-  --compact-search-padding: .9rem;
+  --compact-search-padding: var(--space-1) var(--space-3);
   --search-active-border: var(--accent);
+  --field-padding: var(--space-2) var(--space-3);
+  --field-background: var(--button-background);
+  --field-radius: var(--button-radius);
+  --clear-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
+  --field-edge: color-mix(in srgb, var(--line) 35%, var(--surface));
+  --pill-width: 3px;
+  --pill-height: 1rem;
+  /* The selected (active) row; macOS fills it with the accent. */
+  --row-active-background: var(--selected-background);
+  --row-active-text: var(--selected-text);
+  --row-active-muted: currentColor;
+  --row-active-edge: var(--clear);
   --gallery-padding: 1rem;
   --gallery-gap: 1.5rem;
   --gallery-heading-size: 1.5rem;
@@ -161,18 +171,35 @@
   }
 }
 @supports (color: AccentColor) { :root { --accent: AccentColor; } }
+/* Filled accent with its paired text colour, so any system accent stays legible. */
+@supports (color: AccentColorText) { :root { --selected-background: AccentColor; --selected-text: AccentColorText; } }
+
+/* Per platform (docs/design.md): only radius, the selected row and the search box change. */
+:root[data-platform="windows"], :root[data-platform="linux"] { --search-size: 1rem; --search-tracking: 0; }
+:root[data-platform="windows"] {
+  --window-radius: 8px; --button-radius: 4px; --result-radius: 4px; --key-radius: 4px;
+  --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
+}
+:root[data-platform="linux"] {
+  --window-radius: 14px; --field-radius: 9px;
+  /* Without color-mix (older WebKitGTK) the system pair keeps the row visible. */
+  --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --row-active-edge: var(--accent);
+}
 
 
 @supports (background: color-mix(in srgb, white 50%, black)) {
-  :root { --active-background: color-mix(in srgb, var(--accent) 9%, var(--surface)); --search-active-border: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+  :root { --search-active-border: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+  :root[data-platform="linux"] { --row-active-background: color-mix(in srgb, var(--accent) 15%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--text); }
 }
 
 @media (prefers-contrast: more) {
+  :root, :root[data-platform] { --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 @media (forced-colors: active) {
+  :root, :root[data-platform] { --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 
 /* Explicit contrast preview in the development states gallery. */
-:root[data-gallery-theme="contrast"] { --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+:root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }

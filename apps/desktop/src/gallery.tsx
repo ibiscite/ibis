@@ -4,6 +4,7 @@ import { emitTo } from "@tauri-apps/api/event";
 import { App, type PickerApi } from "./App";
 import { galleryProvider, galleryStates, type GalleryState } from "./gallery-fixtures";
 import { libraryMessages } from "./messages";
+import { setPlatform } from "./nativeAppearance";
 import "./styles.css";
 import "./gallery.css";
 
@@ -128,6 +129,7 @@ function Gallery() {
   );
 }
 
+setPlatform();
 const root = document.getElementById("root");
 if (root && (import.meta.env.DEV || import.meta.env.MODE === "evidence")) {
   const id = new URLSearchParams(window.location.search).get("state");
