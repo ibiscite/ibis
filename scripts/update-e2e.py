@@ -37,6 +37,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import MagicMock, patch
 import urllib.request
 from pathlib import Path
 
@@ -405,7 +406,11 @@ def powershell(script, **env):
 
 def uninstall_entries():
     import winreg
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, UNINSTALL) as root:
+    try:
+        root = winreg.OpenKey(winreg.HKEY_CURRENT_USER, UNINSTALL)
+    except FileNotFoundError:
+        return []  # A fresh runner account may have no per-user installations.
+    with root:
         return [winreg.EnumKey(root, index) for index in range(winreg.QueryInfoKey(root)[0])]
 
 
@@ -598,6 +603,32 @@ class Tests(unittest.TestCase):
             (folder / "ibis-desktop.exe").unlink()
             with self.assertRaises(AssertionError):
                 app_executable(folder)
+
+    def test_windows_install_can_start_without_an_uninstall_registry_parent(self):
+        registry = MagicMock()
+        key = MagicMock()
+        key.__enter__.return_value = key
+        registry.OpenKey.side_effect = [FileNotFoundError(), key]
+        registry.QueryInfoKey.return_value = (1, 0, 0)
+        registry.EnumKey.return_value = "Ibis Nightly"
+        with patch.dict(sys.modules, {"winreg": registry}):
+            before = uninstall_entries()
+            after = uninstall_entries()
+        self.assertEqual(before, [])
+        self.assertEqual(new_entries(before, after), ["Ibis Nightly"])
+        registry.EnumKey.assert_called_once_with(key.__enter__.return_value, 0)
+
+    def test_windows_registry_inventory_preserves_access_and_enumeration_errors(self):
+        registry = MagicMock()
+        with patch.dict(sys.modules, {"winreg": registry}):
+            registry.OpenKey.side_effect = PermissionError("synthetic registry denial")
+            with self.assertRaises(PermissionError):
+                uninstall_entries()
+            registry.OpenKey.side_effect = None
+            registry.QueryInfoKey.return_value = (1, 0, 0)
+            registry.EnumKey.side_effect = FileNotFoundError("synthetic vanished entry")
+            with self.assertRaises(FileNotFoundError):
+                uninstall_entries()
 
     def test_helper_answers_are_checked(self):
         self.assertEqual(look_result('{"pressed": false, "seen": ["[1] button: Later"]}'), (False, ["[1] button: Later"]))
