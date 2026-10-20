@@ -621,7 +621,7 @@ jobs:
           cat feed/latest.json
 
       # The update test (update-e2e job) starts the nightly being replaced and
-      # lets it update itself to this one. Only the file is kept; nothing from
+      # lets it update itself to this one. Only the files are kept; nothing from
       # it runs in this job.
       - name: Keep the previous nightly for the update test
         env:
@@ -630,7 +630,9 @@ jobs:
         run: |
           mkdir previous
           echo "Files of the nightly this run replaces, if it had an update feed." > previous/README.txt
-          gh release download nightly --repo "$REPO" --pattern Ibis-Linux.AppImage --pattern latest.json --dir previous ||
+          # The update packages the update test installs: one per system it runs on.
+          gh release download nightly --repo "$REPO" --pattern latest.json --pattern Ibis-Linux.AppImage \
+            --pattern Ibis-Windows-setup.exe --pattern Ibis-macOS-Apple-silicon.app.tar.gz --dir previous ||
             echo "No previous nightly with an update feed; the update test will be skipped."
 
       - name: Upload the previous nightly
@@ -695,12 +697,22 @@ jobs:
           gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis Nightly $version" --notes-file notes.md
 
   update-e2e:
-    name: Update the previous nightly to this one (Linux)
+    name: Update the previous nightly to this one (${{ matrix.name }})
     needs: nightly
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, package: Ibis-Linux.AppImage }
+          - { name: Windows, os: windows-2025, target: x86_64-pc-windows-msvc, package: Ibis-Windows-setup.exe }
+          - { name: macOS (Apple silicon), os: macos-15, target: aarch64-apple-darwin, package: Ibis-macOS-Apple-silicon.app.tar.gz }
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -717,22 +729,24 @@ jobs:
       - name: Download this build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: ibis-x86_64-unknown-linux-gnu
+          name: ibis-${{ matrix.target }}
           path: dist
 
-      # Runs only when the previous nightly can update (it has a feed) and the
-      # published feed now names this build, which the nightly job skips when
-      # main has already moved on.
+      # Runs only when the previous nightly can update (it has a feed and this
+      # system's package) and the published feed now names this build, which
+      # the nightly job skips when main has already moved on.
       - name: Decide whether to run
         id: decide
         env:
           REPO: ${{ github.repository }}
+          PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
           version=$(node scripts/update-feed.mjs version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           published=$(curl -fsSL "https://github.com/$REPO/releases/download/nightly/latest.json" | jq -r .version)
-          if [ ! -f previous/latest.json ] || [ ! -f previous/Ibis-Linux.AppImage ]; then
-            echo "::notice::Update test skipped: the previous nightly had no update feed."
+          if [ ! -f previous/latest.json ] || [ ! -f "previous/$PACKAGE" ]; then
+            echo "::notice::Update test skipped: the previous nightly had no update feed or no $PACKAGE."
           elif [ "$published" != "$version" ]; then
             echo "::notice::Update test skipped: the published nightly is $published, not this build ($version)."
           elif [ "$(jq -r .version previous/latest.json)" = "$version" ]; then
@@ -742,8 +756,10 @@ jobs:
             echo "Updating $(jq -r .version previous/latest.json) to $version"
           fi
 
-      - name: Update the previous nightly
-        if: steps.decide.outputs.run == 'true'
+      - name: Update the previous nightly (Linux)
+        if: steps.decide.outputs.run == 'true' && runner.os == 'Linux'
+        env:
+          PACKAGE: ${{ matrix.package }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core
@@ -751,13 +767,28 @@ jobs:
           sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgles2 libgl1 libgl1-mesa-dri libgbm1 libdrm2 libwayland-client0 libx11-xcb1
           /usr/bin/python3 scripts/update-e2e.py --self-test
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/update-e2e.py \
-            --previous previous/Ibis-Linux.AppImage --expected dist/Ibis-Linux.AppImage --output update-e2e
+            --previous "previous/$PACKAGE" --expected "dist/$PACKAGE" --output update-e2e
+
+      # Installs the previous nightly into the runner account (setup
+      # executable for the current user on Windows, the .app from its update
+      # archive on macOS) and allows update checks in that account's settings.
+      - name: Update the previous nightly (Windows and macOS)
+        if: steps.decide.outputs.run == 'true' && runner.os != 'Linux'
+        env:
+          PACKAGE: ${{ matrix.package }}
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          python=python3
+          if [ "$RUNNER_OS" = Windows ]; then python=python; fi
+          "$python" scripts/update-e2e.py --self-test
+          "$python" scripts/update-e2e.py --previous "previous/$PACKAGE" --expected "dist/$PACKAGE" \
+            --version "$VERSION" --output update-e2e
 
       - name: Upload the update test logs
         if: always() && steps.decide.outputs.run == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: update-e2e
+          name: update-e2e-${{ matrix.target }}
           path: update-e2e/*
           if-no-files-found: warn
           retention-days: 14
