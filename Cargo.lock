@@ -1942,7 +1942,7 @@ dependencies = [
 
 [[package]]
 name = "ibis"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1953,7 +1953,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "biblatex",
  "dunce",
@@ -1970,7 +1970,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-desktop"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "ibis-core",
  "ibis-zotero-local",
@@ -2006,7 +2006,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-zotero-local"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "ibis-core",
 ]
