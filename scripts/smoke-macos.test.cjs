@@ -31,6 +31,86 @@ for (const fatal of ['osascript is not allowed assistive access. (-1719)', 'A si
     assert.throws(() => context.readEditorWindowState(() => { throw Error(fatal); }), error => error.message === fatal);
 }
 
+function fullscreenTransition(states, {desired = true, owner = 7, visible = true, windowCounts = [1]} = {}) {
+    let elapsed = 0, reads = 0, observations = 0, windowLists = 0;
+    const writes = [];
+    const window = {position: () => [10, 20], size: () => [100, 200], attributes: {byName: name => {
+        assert.equal(name, 'AXFullScreen');
+        return {
+            get value() { return () => {
+                const state = states[Math.min(reads++, states.length - 1)];
+                if (state instanceof Error) throw state;
+                return state;
+            }; },
+            set value(state) { writes.push(state); },
+        };
+    }}};
+    const native = {
+        ObjC: {import() {}, deepUnwrap: value => value, castRefToObject: value => value},
+        Application: () => ({applicationProcesses: {whose: ({unixId}) => {
+            assert.equal(unixId, 7);
+            return () => [{windows: () => Array(windowCounts[Math.min(windowLists++, windowCounts.length - 1)]).fill(window)}];
+        }}}),
+        Date: {now: () => elapsed},
+        $: {
+            CGWindowListCopyWindowInfo: () => {
+                observations++;
+                const shown = typeof visible === 'function' ? visible(observations) : visible;
+                return [{kCGWindowOwnerPID: owner, kCGWindowAlpha: shown ? 1 : 0,
+                    kCGWindowBounds: {X: 10, Y: 20, Width: 100, Height: 200}}];
+            },
+            CFArrayGetCount: values => values.length,
+            CFArrayGetValueAtIndex: (values, index) => values[index],
+            NSThread: {sleepForTimeInterval: seconds => { elapsed += seconds * 1000; }},
+        },
+    };
+    vm.createContext(native);
+    vm.runInContext(fs.readFileSync(`${__dirname}/smoke-macos.js`, 'utf8'), native);
+    return {invoke: () => JSON.parse(native.run(['set-editor-fullscreen', '42', '7', String(desired)])),
+        writes, get reads() { return reads; }, get observations() { return observations; },
+        get windowLists() { return windowLists; }, get elapsed() { return elapsed; }};
+}
+
+// A ready sample followed by a transient negative must not be re-read in a
+// separate final guard, which used to reject before the wait budget expired.
+for (const desired of [true, false]) {
+    const transientFullscreen = fullscreenTransition([!desired, !desired, desired, !desired], {desired});
+    assert.deepEqual(transientFullscreen.invoke(), {fullscreen: desired, visible: true});
+    assert.equal(transientFullscreen.reads, 3);
+    assert.equal(transientFullscreen.observations, 2);
+    assert.equal(transientFullscreen.windowLists, 4); // Initial read/write, then one window per poll.
+    assert.deepEqual(transientFullscreen.writes, [desired]);
+    assert.equal(transientFullscreen.elapsed, 100);
+}
+
+const unreadableFullscreen = fullscreenTransition([true, Error('Synthetic AX transition'), false], {desired: false});
+assert.deepEqual(unreadableFullscreen.invoke(), {fullscreen: false, visible: true});
+assert.equal(unreadableFullscreen.elapsed, 100);
+assert.deepEqual(unreadableFullscreen.writes, [false]);
+const settlingVisibility = fullscreenTransition([false, true], {visible: observation => observation > 1});
+assert.deepEqual(settlingVisibility.invoke(), {fullscreen: true, visible: true});
+assert.equal(settlingVisibility.elapsed, 100);
+
+for (const fixture of [
+    fullscreenTransition([true, Error('Synthetic unknown AX state')], {desired: false}),
+    fullscreenTransition([false]),
+    fullscreenTransition([true], {desired: false}),
+    fullscreenTransition([true], {visible: false}),
+    fullscreenTransition([true], {owner: 42}),
+]) {
+    assert.throws(fixture.invoke, /Editor fullscreen transition did not complete on screen/);
+    assert.equal(fixture.elapsed, 20000);
+    assert.equal(fixture.observations, 200); // No extra final sample after the deadline.
+    assert.ok(fixture.writes.length <= 1);
+}
+for (const windowCount of [0, 2]) {
+    const invalidWindow = fullscreenTransition([false], {windowCounts: [1, 1, windowCount]});
+    assert.throws(invalidWindow.invoke, /A single synthetic editor window is required/);
+    assert.equal(invalidWindow.elapsed, 0);
+}
+assert.throws(fullscreenTransition([false, null]).invoke, /Editor fullscreen accessibility state unavailable/);
+assert.throws(fullscreenTransition([false, true], {owner: '7'}).invoke, /Window ownership metadata unavailable/);
+
 const events = [];
 context.sendPhysicalChord('ctrl+super+r', (...event) => events.push(event));
 assert.deepEqual(events, [

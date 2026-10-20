@@ -230,6 +230,13 @@ function run(argv) {
         if (typeof state !== 'boolean') throw Error('Editor fullscreen accessibility state unavailable');
         return state;
     };
+    const editorWindowState = () => readEditorWindowState(() => {
+        const window = editorWindow();
+        // Use the same owned window for AX state and CG visibility. Unknown
+        // AX state never counts as the requested non-fullscreen state.
+        const state = readEditorFullscreen(() => window.attributes.byName('AXFullScreen').value());
+        return {...state, visible: onScreen(editorId, [window])};
+    });
     const chooser = () => {
         const app = process(appId);
         if (!app) throw Error('Native picker process unavailable');
@@ -331,13 +338,7 @@ function run(argv) {
         break;
     }
     case 'editor-window-state': {
-        result = readEditorWindowState(() => {
-            const window = editorWindow();
-            // Keep window ownership/count and CG visibility errors outside the
-            // transient AX getter boundary; malformed metadata still fails closed.
-            const state = readEditorFullscreen(() => window.attributes.byName('AXFullScreen').value());
-            return {...state, visible: onScreen(editorId, [window])};
-        });
+        result = editorWindowState();
         break;
     }
     case 'set-editor-fullscreen': {
@@ -348,13 +349,17 @@ function run(argv) {
             catch (_) { throw Error('Editor fullscreen accessibility control unavailable'); }
         }
         const deadline = Date.now() + 20000;
-        while ((fullscreen(editorWindow()) !== desired || !onScreen(editorId, [editorWindow()])) && Date.now() < deadline) {
+        while (true) {
+            if (Date.now() >= deadline) throw Error('Editor fullscreen transition did not complete on screen');
+            const state = editorWindowState();
+            if (state.available === true && state.fullscreen === desired && state.visible === true) {
+                // Return this observation instead of querying again after the
+                // wait, when a Space transition could change the AX tree.
+                result = {fullscreen: state.fullscreen, visible: state.visible};
+                break;
+            }
             $.NSThread.sleepForTimeInterval(0.1);
         }
-        if (fullscreen(editorWindow()) !== desired || !onScreen(editorId, [editorWindow()])) {
-            throw Error('Editor fullscreen transition did not complete on screen');
-        }
-        result = {fullscreen: desired, visible: onScreen(editorId, [editorWindow()])};
         break;
     }
     case 'chooser-state': {
