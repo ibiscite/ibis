@@ -3,7 +3,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use ibis_core::settings;
+use ibis_core::settings::{self, CitationStyle, Density};
+use serde::{Deserialize, Serialize};
+use tauri::State;
 
 /// Settings errors can contain user-entered values or OS details. Only these
 /// fixed descriptions reach diagnostics or messages about failed saves.
@@ -48,6 +50,54 @@ impl SettingsFile {
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
         settings::update(&self.path, change).map_err(|error| settings_problem(&error).to_string())
+    }
+}
+
+/// How the picker looks and what it formats with, remembered across restarts
+/// (ADR 0020). The key format is remembered separately, on each copy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub(crate) struct PickerPreferences {
+    /// A style chosen in the format menu, or `null` to copy citation keys.
+    pub(crate) citation_style: Option<CitationStyle>,
+    pub(crate) density: Density,
+    pub(crate) larger_text: bool,
+}
+
+impl PickerPreferences {
+    fn from_settings(settings: &settings::Settings) -> Self {
+        PickerPreferences {
+            citation_style: settings.citation_style,
+            density: settings.density.unwrap_or(Density::Comfortable),
+            larger_text: settings.larger_text.unwrap_or(false),
+        }
+    }
+}
+
+/// The preferences the picker starts with.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> PickerPreferences {
+    PickerPreferences::from_settings(&settings::load(&settings_file.path).settings)
+}
+
+/// Remember the picker preferences; other settings in the file are kept.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn set_picker_preferences(
+    preferences: PickerPreferences,
+    settings_file: State<'_, SettingsFile>,
+) -> Result<(), String> {
+    settings_file.save_preferences(preferences).map(|_| ())
+}
+
+impl SettingsFile {
+    fn save_preferences(&self, preferences: PickerPreferences) -> Result<settings::Settings, String> {
+        self.update(|s| {
+            s.citation_style = preferences.citation_style;
+            // Defaults stay unwritten, so the file only names real choices.
+            s.density = Some(preferences.density).filter(|d| *d != Density::Comfortable);
+            s.larger_text = Some(preferences.larger_text).filter(|larger| *larger);
+        })
     }
 }
 
@@ -146,5 +196,32 @@ mod tests {
         );
         assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn picker_preferences_save_only_real_choices_and_keep_other_settings() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        file.update(|s| s.copy_format = Some(KeyFormat::Typst))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let chosen = PickerPreferences {
+            citation_style: Some(CitationStyle::Apa),
+            density: Density::Spacious,
+            larger_text: true,
+        };
+        let saved = file.save_preferences(chosen).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.copy_format, Some(KeyFormat::Typst));
+        assert_eq!(PickerPreferences::from_settings(&saved), chosen);
+        let defaults = PickerPreferences {
+            citation_style: None,
+            density: Density::Comfortable,
+            larger_text: false,
+        };
+        let saved = file.save_preferences(defaults).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(PickerPreferences::from_settings(&saved), defaults);
+        let text = std::fs::read_to_string(&file.path).unwrap_or_default();
+        for field in ["citation_style", "density", "larger_text"] {
+            assert!(!text.contains(field), "{field} is not written for the default");
+        }
     }
 }

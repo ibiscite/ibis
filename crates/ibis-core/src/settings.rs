@@ -40,6 +40,28 @@ pub enum ZoteroLibrary {
     Group(u64),
 }
 
+/// A bundled citation style the picker can format with (ADR 0020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(rename_all = "kebab-case")]
+pub enum CitationStyle {
+    Apa,
+    ChicagoAuthorDate,
+    HarvardCiteThemRight,
+    Ieee,
+    ModernLanguageAssociation,
+}
+
+/// How much each result row shows (ADR 0020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(rename_all = "lowercase")]
+pub enum Density {
+    Compact,
+    Comfortable,
+    Spacious,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -57,6 +79,15 @@ pub struct Settings {
     /// person has not been asked yet; nothing is checked until they say yes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_checks: Option<bool>,
+    /// Citation style the picker formats with; `None` copies in `copy_format`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub citation_style: Option<CitationStyle>,
+    /// Result row density. `None` means comfortable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub density: Option<Density>,
+    /// Larger text in the picker. `None` means the normal size.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub larger_text: Option<bool>,
 }
 
 impl Default for Settings {
@@ -67,6 +98,9 @@ impl Default for Settings {
             library: None,
             copy_format: None,
             update_checks: None,
+            citation_style: None,
+            density: None,
+            larger_text: None,
         }
     }
 }
@@ -226,6 +260,35 @@ mod tests {
         };
         save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, settings);
+    }
+
+    #[test]
+    fn picker_preferences_round_trip_and_stay_optional() {
+        let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
+        for field in ["citation_style", "density", "larger_text"] {
+            assert!(!saved.contains(field), "{field} is written only once chosen");
+        }
+        let settings = parse(
+            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true}"#,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
+        assert_eq!(settings.density, Some(Density::Compact));
+        assert_eq!(settings.larger_text, Some(true));
+        let path = dir("preferences").join("settings.json");
+        save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(load(&path).settings, settings);
+    }
+
+    #[test]
+    fn unknown_style_or_density_is_invalid_not_guessed() {
+        for text in [
+            r#"{"citation_style": "vancouver"}"#,
+            r#"{"density": "tiny"}"#,
+            r#"{"larger_text": "yes"}"#,
+        ] {
+            assert!(matches!(parse(text), Err(SettingsError::Invalid(_))), "{text}");
+        }
     }
 
     #[test]

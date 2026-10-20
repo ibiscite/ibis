@@ -131,7 +131,8 @@ status and increments `libraryVersion` to rerun the current search.
 
 `main.rs` obtains Tauri's `app_config_dir` and appends `settings.json`.
 [core settings.rs](../crates/ibis-core/src/settings.rs) defines `schema_version`,
-`shortcut`, `library` and `copy_format`. `load` reports problems and can recover
+`shortcut`, `library`, `copy_format`, `update_checks` and the picker preferences
+(`citation_style`, `density`, `larger_text`). `load` reports problems and can recover
 from backup or defaults. `save` uses a temporary file, rename and backup, and
 refuses to overwrite a newer schema.
 

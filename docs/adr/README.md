@@ -23,3 +23,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0017 | Lighter review for documentation and test changes | accepted (amends 0015) |
 | 0018 | Settings format 2: the library names its kind | accepted (supersedes part of 0016) |
 | 0019 | Signed in-app updates from GitHub Releases, with separate Stable and Nightly apps | accepted (applies 0008) |
+| 0020 | Remember picker preferences in settings format 2 | accepted (adds fields to 0018) |
