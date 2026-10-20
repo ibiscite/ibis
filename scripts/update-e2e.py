@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import unittest
+import urllib.request
 from pathlib import Path
 
 IDENTIFIER = "io.github.ibiscite.ibis.nightly"
@@ -97,6 +98,34 @@ def find_button(atspi, name):
     return None
 
 
+def inventory(atspi):
+    """Windows, dialogs, buttons and labels on screen, for a failure report.
+    Every app here is Ibis started on a synthetic library."""
+    found = []
+    for app in atspi.Registry.getDesktop(0):
+        if not app:
+            continue
+        stack = [app]
+        while stack and len(found) < 200:
+            item = stack.pop()
+            try:
+                role = item.getRoleName()
+                if role in ("frame", "dialog", "alert", "push button", "label") and item.name:
+                    found.append(f"{app.name}[{app.get_process_id()}] {role}: {item.name[:200]}")
+                stack.extend(child for child in item if child)
+            except Exception:
+                continue
+    return found
+
+
+def feed_version(url="https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"):
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            return json.load(response).get("version")
+    except Exception as error:  # Only for the failure report.
+        return f"unavailable ({type(error).__name__})"
+
+
 def run(args):
     import pyatspi
 
@@ -150,6 +179,9 @@ def run(args):
                     pass
     except AssertionError as error:
         report["error"] = str(error)
+        report["on_screen"] = inventory(pyatspi)
+        report["published_feed"] = feed_version()
+        report["running"] = [app.poll() is None for app in started]
     finally:
         for app in started:
             if app.poll() is None:
@@ -158,6 +190,11 @@ def run(args):
             log.close()
         (args.output / "update-e2e.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
+    if report["status"] != "passed":
+        log_path = args.output / "update-e2e-app.log"
+        if log_path.exists():
+            print("App output (last 60 lines):")
+            print("\n".join(log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-60:]))
     return 0 if report["status"] == "passed" else 1
 
 
