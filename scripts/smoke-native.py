@@ -354,6 +354,39 @@ def copy_with_diagnostics(native, report, key_window=None):
         raise
 
 
+def measure_startup(launch, snapshot, phases):
+    """Keep the launch-to-count timer, exposing only numeric probe overhead.
+
+    Readiness includes accessibility calls, predicate work and polling sleeps;
+    it is not an independent measurement of the app's library loading time.
+    """
+    phases.update(snapshot_calls=0, snapshot_ms=0, snapshot_max_ms=0)
+    started = time.monotonic()
+    try:
+        launch()
+    finally:
+        launched = time.monotonic()
+        phases["launch_ms"] = round((launched - started) * 1000, 2)
+    def observed():
+        before = time.monotonic()
+        try:
+            current = snapshot()
+        finally:
+            elapsed = (time.monotonic() - before) * 1000
+            phases["snapshot_calls"] += 1
+            phases["snapshot_ms"] += elapsed
+            phases["snapshot_max_ms"] = max(phases["snapshot_max_ms"], elapsed)
+        return "100,000 references" in strings(current)
+    try:
+        wait_for(observed, "100,000-reference library load", timeout=120)
+    finally:
+        finished = time.monotonic()
+        phases["readiness_ms"] = round((finished - launched) * 1000, 2)
+        for key in ("snapshot_ms", "snapshot_max_ms"):
+            phases[key] = round(phases[key], 2)
+    return (finished - started) * 1000
+
+
 def summarize_performance(samples):
     return {"status": "measured-without-budget", "references": 100000,
             "sample_count": len(samples), "samples": samples,
@@ -1223,16 +1256,17 @@ def main():
             samples = []
             for sample in range(3):
                 native.focus_editor()
-                before = time.monotonic()
-                launch(f"100000-{sample + 1}")
-                wait_for(lambda: "100,000 references" in strings(snapshot()), "100,000-reference library load", timeout=120)
-                startup = (time.monotonic() - before) * 1000
+                phases = {}
+                # Retain partial facts if readiness or a native probe fails.
+                report.setdefault("startup_phases", []).append(phases)
+                startup = measure_startup(lambda: launch(f"100000-{sample + 1}"), snapshot, phases)
                 before = time.monotonic()
                 query("smoke099999", "Ibis smoke reference 099999")
                 first = (time.monotonic() - before) * 1000
                 memory = native.memory()
                 assert memory > 0, "Native process-tree memory measurement unavailable"
-                samples.append({"startup_ms": round(startup, 2), "first_result_ms": round(first, 2), "memory_bytes": memory})
+                samples.append({"startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
+                                "memory_bytes": memory, "startup_phases": phases})
                 stop()
             report["performance"] = summarize_performance(samples)
             if args.budgets:
@@ -2139,6 +2173,48 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(performance["failed_metric"], "startup_ms")
         self.assertEqual(performance["ceilings"], {"startup_ms": 150, "first_result_ms": 15, "memory_bytes": 2000})
         self.assertEqual([sample["startup_ms"] for sample in performance["samples"]], [100, 200, 50])
+
+    def test_startup_phases_separate_launch_and_native_probes_without_extra_reads(self):
+        clock, phases = self.CopyClock(), {}
+        def launch():
+            clock.elapsed += 2
+        counts = iter(("loading", "100,000 references"))
+        def snapshot():
+            clock.elapsed += 3
+            return {"nodes": [{"name": next(counts)}]}
+        with patch(__name__ + ".time.monotonic", clock.monotonic), \
+             patch(__name__ + ".time.sleep", lambda interval: setattr(clock, "elapsed", clock.elapsed + interval)):
+            startup = measure_startup(launch, snapshot, phases)
+        self.assertAlmostEqual(startup, 8100)
+        self.assertEqual(phases, {"launch_ms": 2000, "readiness_ms": 6100,
+                                 "snapshot_calls": 2, "snapshot_ms": 6000, "snapshot_max_ms": 3000})
+        self.assertTrue(all(type(value) in (int, float) for value in phases.values()))
+
+    def test_startup_phases_keep_failed_probe_duration_and_original_error(self):
+        clock, phases = self.CopyClock(), {}
+        original = OSError("SYNTHETIC_PRIVATE_SNAPSHOT_TEXT")
+        def snapshot():
+            clock.elapsed += 4
+            raise original
+        with patch(__name__ + ".time.monotonic", clock.monotonic), self.assertRaises(OSError) as caught:
+            measure_startup(lambda: None, snapshot, phases)
+        self.assertIs(caught.exception, original)
+        self.assertEqual(phases, {"launch_ms": 0, "readiness_ms": 4000,
+                                 "snapshot_calls": 1, "snapshot_ms": 4000, "snapshot_max_ms": 4000})
+        self.assertNotIn("SYNTHETIC_PRIVATE", json.dumps(phases))
+
+    def test_startup_phases_keep_the_existing_readiness_deadline(self):
+        clock, phases = self.CopyClock(), {}
+        def snapshot():
+            clock.elapsed += 61
+            return {"nodes": []}
+        with patch(__name__ + ".time.monotonic", clock.monotonic), \
+             patch(__name__ + ".time.sleep", lambda interval: setattr(clock, "elapsed", clock.elapsed + interval)), \
+             self.assertRaisesRegex(AssertionError, "Timed out: 100,000-reference library load"):
+            measure_startup(lambda: None, snapshot, phases)
+        self.assertEqual(phases["snapshot_calls"], 2)
+        self.assertEqual(phases["snapshot_ms"], 122000)
+        self.assertEqual(phases["readiness_ms"], 122200)
 
     def test_macos_waits_for_new_editor_process_registration(self):
         registrations = iter((0, 12345))
