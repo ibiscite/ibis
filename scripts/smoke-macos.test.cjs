@@ -201,4 +201,38 @@ assert.equal(unicodeBindings, 1);
 assert.deepEqual(posted.map(event => [event.text, event.down, event.flags]), [
     ['汉', true, 0], ['汉', false, 0], ['😀', true, 0], ['😀', false, 0],
 ]);
+
+// Keyboard ownership is the picker window's own AXFocused (AppKit key window),
+// never the WebView's DOM focus on the search field (#454).
+function pickerKey(windows, {onScreen = true} = {}) {
+    const native = {
+        ObjC: {import() {}, deepUnwrap: value => value, castRefToObject: value => value},
+        Application: () => ({applicationProcesses: {whose: ({unixId}) => {
+            assert.equal(unixId, 42);
+            return () => [{windows: () => windows}];
+        }}}),
+        $: {
+            CGWindowListCopyWindowInfo: () => (onScreen ? [{kCGWindowOwnerPID: 42, kCGWindowAlpha: 1,
+                kCGWindowBounds: {X: 10, Y: 20, Width: 100, Height: 200}}] : []),
+            CFArrayGetCount: values => values.length,
+            CFArrayGetValueAtIndex: (values, index) => values[index],
+        },
+    };
+    vm.createContext(native);
+    vm.runInContext(fs.readFileSync(`${__dirname}/smoke-macos.js`, 'utf8'), native);
+    return JSON.parse(native.run(['picker-key', '42', '7', '']));
+}
+const window = (title, key) => ({title: () => title, description: () => '', name: () => title, value: () => '',
+    position: () => [10, 20], size: () => [100, 200],
+    attributes: {byName: name => {
+        assert.equal(name, 'AXFocused');
+        return {value: () => { if (key instanceof Error) throw key; return key; }};
+    }}});
+assert.equal(pickerKey([window('Ibis', true)]), true);
+assert.equal(pickerKey([window('Ibis', false)]), false);
+assert.equal(pickerKey([window('Ibis', Error('Synthetic AX read failure'))]), false);
+assert.equal(pickerKey([window('Other', true)]), false);
+assert.equal(pickerKey([window('Ibis', true)], {onScreen: false}), false);
+assert.equal(pickerKey([]), false);
+
 console.log('Native HID event-plan contracts passed; no macOS execution claimed.');

@@ -16,3 +16,4 @@ node_modules/
 
 # Agent worktrees
 /.claude/worktrees/
+__pycache__/

@@ -362,6 +362,14 @@ function run(argv) {
         }
         break;
     }
+    case 'picker-key': {
+        // AppKit answers a window's AXFocused from its key-window status, so
+        // this is keyboard ownership. The search field's AXFocused is only the
+        // WebView's DOM focus, which stays set after the panel resigns key.
+        const keyWindows = pickerWindows().filter(focused);
+        result = keyWindows.length > 0 && onScreen(appId, keyWindows);
+        break;
+    }
     case 'chooser-state': {
         const dialog = chooser();
         result = {visible: !!dialog, focused: !!dialog && dialog.nodes.some(focused),

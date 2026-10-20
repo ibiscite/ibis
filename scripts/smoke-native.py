@@ -272,9 +272,33 @@ def copy_picker_observation(native):
         return {"available": False}
 
 
-def copy_with_diagnostics(native, report):
+def quiet_key_window(key_window):
+    """One optional key-window probe for failure facts; never a readiness wait."""
+    try:
+        with open(os.devnull, "w") as quiet, redirect_stdout(quiet), redirect_stderr(quiet):
+            state = key_window()
+        return state if type(state) is bool else None
+    except Exception:
+        return None
+
+
+def copy_with_diagnostics(native, report, key_window=None):
+    """Press Return once in the picker and require the exact citation.
+
+    On macOS the search field's accessible focus is only the WebView's DOM
+    focus; it stays set when the panel is no longer the key window, and a
+    Return posted then goes to another app (#454). Where the platform can
+    observe it, wait for the picker to own the keyboard before pressing.
+    """
     prime_clipboard(native)
     before = copy_picker_observation(native)
+    if key_window is not None:
+        try:
+            wait_for(key_window, "picker is the key window before Return")
+        except AssertionError:
+            report["copy_failure"] = {"before_return": before, "key_window": False}
+            print("NATIVE COPY FAILURE " + json.dumps(report["copy_failure"]), file=sys.stderr)
+            raise
     native.key("Return")
     started = time.monotonic()
     clipboard = {"polls": 0, "expected": False, "sentinel": False, "empty": False}
@@ -293,6 +317,8 @@ def copy_with_diagnostics(native, report):
         clipboard["elapsed_seconds"] = round(time.monotonic() - started, 3)
         report["copy_failure"] = {"before_return": before, "clipboard": clipboard,
                                   "after_timeout": copy_picker_observation(native)}
+        if key_window is not None:
+            report["copy_failure"]["key_window_after_timeout"] = quiet_key_window(key_window)
         print("NATIVE COPY FAILURE " + json.dumps(report["copy_failure"]), file=sys.stderr)
         raise
 
@@ -600,6 +626,12 @@ class Scripted:
     def editor_focused(self):
         return self.call("editor-focused")
 
+    def picker_key(self):
+        state = self.call("picker-key")
+        if type(state) is not bool:
+            raise RuntimeError("Native picker key-window state unavailable")
+        return state
+
     def clipboard(self):
         return self.call("clipboard")
 
@@ -790,7 +822,7 @@ def main():
             assert "Ibis smoke reference 000001" in strings(snapshot()), "Expected native result missing"
 
             def copy():
-                copy_with_diagnostics(native, report)
+                copy_with_diagnostics(native, report, native.picker_key if system == "Darwin" else None)
                 wait_for(lambda: not snapshot()["visible"], "copy hides picker")
                 capture_editor_focus("after-copy-hides-picker")
                 try:
@@ -999,6 +1031,47 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(native.snapshot.call_count, 1)
         self.assertNotIn("copy_failure", report)
         self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
+
+    def test_return_waits_until_the_picker_owns_the_keyboard(self):
+        native, report, clock = Mock(), {}, self.CopyClock(1)
+        sentinel = "Ibis native smoke clipboard sentinel"
+        native.clipboard.side_effect = [sentinel, "[@smoke000001]"]
+        native.snapshot.return_value = self.copy_snapshot()
+        native.picker_key.side_effect = [False, False, True]
+        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep):
+            copy_with_diagnostics(native, report, native.picker_key)
+        self.assertEqual(native.mock_calls[:7], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(),
+                                                 call.picker_key(), call.picker_key(), call.picker_key(), call.key("Return")])
+        self.assertNotIn("copy_failure", report)
+
+    def test_return_is_never_sent_while_another_window_owns_the_keyboard(self):
+        native, report, clock = Mock(), {}, self.CopyClock()
+        native.clipboard.return_value = "Ibis native smoke clipboard sentinel"
+        native.snapshot.return_value = self.copy_snapshot()
+        native.picker_key.return_value = False
+        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+             patch("sys.stderr", new_callable=io.StringIO), \
+             self.assertRaisesRegex(AssertionError, "Timed out: picker is the key window before Return"):
+            copy_with_diagnostics(native, report, native.picker_key)
+        native.key.assert_not_called()
+        self.assertFalse(report["copy_failure"]["key_window"])
+        self.assertTrue(report["copy_failure"]["before_return"]["search_focused"])
+
+    def test_clipboard_timeout_records_key_window_once_and_quietly(self):
+        for probe, expected in ((Mock(side_effect=[True, False]), False),
+                                (Mock(side_effect=[True, RuntimeError("private helper payload")]), None)):
+            with self.subTest(expected=expected):
+                native, report, clock = Mock(), {}, self.CopyClock()
+                native.clipboard.return_value = "Ibis native smoke clipboard sentinel"
+                native.snapshot.return_value = self.copy_snapshot()
+                errors = io.StringIO()
+                with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+                     patch("sys.stderr", errors), self.assertRaisesRegex(AssertionError, "expected citation on OS clipboard"):
+                    copy_with_diagnostics(native, report, probe)
+                self.assertIs(report["copy_failure"]["key_window_after_timeout"], expected)
+                self.assertEqual(probe.call_count, 2)
+                self.assertEqual(native.key.call_args_list, [call("Return")])
+                self.assertNotIn("private", errors.getvalue() + json.dumps(report))
 
     def test_native_copy_timeout_records_fresh_state_without_reading_clipboard_again(self):
         native, report, clock = Mock(), {"last_native_state": {"visible": True}}, self.CopyClock()
