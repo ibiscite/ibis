@@ -247,20 +247,38 @@ fn block_splitting_scales_linearly() {
             .map(|i| format!("@misc{{k{i}, title={{T{i}}}}}\n"))
             .collect::<String>()
     };
-    let time = |src: &str| {
-        (0..3)
-            .map(|_| {
-                let start = std::time::Instant::now();
-                let _ = load(src);
-                start.elapsed()
-            })
-            .min()
-            .unwrap_or_default()
+    let small_src = build(2_000);
+    let large_src = build(20_000);
+    let time = |src: &str, count: usize, repeats: usize| {
+        let start = std::time::Instant::now();
+        for _ in 0..repeats {
+            let result = load(src);
+            assert_eq!(result.references.len(), count);
+            assert!(result.warnings.is_empty(), "{:?}", result.warnings);
+        }
+        start.elapsed()
     };
-    let small = time(&build(2_000));
-    let large = time(&build(20_000));
-    // Ten times the input may take at most ~25x the time; quadratic growth would be ~100x.
-    assert!(large < small * 25, "2k: {small:?}, 20k: {large:?}");
+    // Equal total records per batch give both sizes a comparable scheduling
+    // window. Adjacent, alternating batches avoid timing all small loads before
+    // all large loads while competing builds can change the machine's load.
+    let mut samples = (0..3)
+        .map(|round| {
+            let (small, large) = if round % 2 == 0 {
+                let small = time(&small_src, 2_000, 10);
+                (small, time(&large_src, 20_000, 1))
+            } else {
+                let large = time(&large_src, 20_000, 1);
+                (time(&small_src, 2_000, 10), large)
+            };
+            (large.as_secs_f64() / small.as_secs_f64(), small, large)
+        })
+        .collect::<Vec<_>>();
+    samples.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let (ratio, small, large) = samples[1];
+    // Keep the original per-load limit: 10x input must take <25x time, so
+    // one large load must take <2.5x ten small loads. Quadratic growth is ~10x
+    // per equal-work batch. The median tolerates one interrupted batch pair.
+    assert!(ratio < 2.5, "10 × 2k: {small:?}, 20k: {large:?}; samples: {samples:?}");
 }
 
 #[test]
