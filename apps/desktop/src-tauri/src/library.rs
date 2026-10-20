@@ -491,12 +491,21 @@ pub(crate) fn use_zotero_library(app: &AppHandle) {
         .state::<Mutex<Library>>()
         .lock()
         .ok()
-        .and_then(|library| match library.requested.as_ref().or(library.source.as_ref()) {
-            Some(Source::Zotero(chosen)) => Some(chosen.clone()),
-            _ => None,
-        })
+        .and_then(|library| zotero_choice(&library))
         .unwrap_or_else(|| ZoteroLibrary::User.into());
     open_zotero(app, chosen);
+}
+
+/// The Zotero libraries asked for last, or still shown after another choice
+/// failed, so going back to Zotero keeps the groups that were on.
+fn zotero_choice(library: &Library) -> Option<ZoteroLibraries> {
+    [library.requested.as_ref(), library.source.as_ref()]
+        .into_iter()
+        .flatten()
+        .find_map(|source| match source {
+            Source::Zotero(chosen) => Some(chosen.clone()),
+            _ => None,
+        })
 }
 
 /// Read these Zotero libraries from now on.
@@ -871,6 +880,19 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn going_back_to_zotero_after_a_failed_file_keeps_the_groups_that_were_on() {
+        let groups = ZoteroLibraries::new(vec![ZoteroLibrary::User, ZoteroLibrary::Group(42)])
+            .unwrap_or_else(|| panic!("a valid choice"));
+        let library = Library {
+            source: Some(Source::Zotero(groups.clone())),
+            requested: Some(Source::File(PathBuf::from("/synthetic/missing.bib"))),
+            ..Library::default()
+        };
+        assert_eq!(zotero_choice(&library), Some(groups));
+        assert_eq!(zotero_choice(&Library::default()), None);
+    }
 
     #[test]
     fn status_emission_is_serialized_but_native_menu_work_holds_no_library_lock() {
