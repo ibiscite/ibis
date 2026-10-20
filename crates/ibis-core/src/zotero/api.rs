@@ -283,7 +283,7 @@ fn unexported(
     Ok((warning, response))
 }
 
-fn request(transport: &mut impl Transport, library: Library, path: &str) -> Result<Response, ZoteroError> {
+pub(super) fn request(transport: &mut impl Transport, library: Library, path: &str) -> Result<Response, ZoteroError> {
     checked(transport.get(path)?, library)
 }
 
