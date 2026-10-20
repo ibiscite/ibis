@@ -16,14 +16,20 @@ Ibis is free, open source and private by design: everything works offline, nothi
 - Gentle library health checks: missing data, odd names, duplicate keys.
 - Windows, macOS and Linux. Keyboard, mouse and screen-reader friendly.
 
-## Try the latest build
+## Download
 
-The newest development build for Windows, macOS and Linux is always at **[Releases → nightly](https://github.com/ibiscite/ibis/releases/tag/nightly)**. It is rebuilt whenever the app changes, so it can be unfinished; numbered preview releases are steadier. Direct downloads: [Mac with Apple silicon (M1 and later)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg), [Mac with Intel](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg), [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe), [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage). It installs as **Ibis Nightly**, separate from the stable Ibis, and can update itself if you allow update checks when it first starts. Builds are not signed yet, so your system may warn before opening them (the release page says what to click). Tell us what works and what you miss through [a problem report or an idea](https://github.com/ibiscite/ibis/issues/new/choose).
+There are two builds. Both are free and run on Windows, macOS and Linux.
 
-## Which build to use
+| | **Ibis** (releases) | **Ibis Nightly** |
+|---|---|---|
+| What | Numbered previews, tested before release | The newest work from `main`, rebuilt after every change |
+| Version | `0.1.0`, `0.1.1`, `0.2.0`, ... | `0.1.1-nightly.20261020123456` (next version, then build time) |
+| Get it | [Releases](https://github.com/ibiscite/ibis/releases) (newest numbered release) | [Releases → Ibis Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) |
+| Direct downloads | [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage) | [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage) |
 
-- **Releases** (`vX.Y.Z`): the [newest numbered release](https://github.com/ibiscite/ibis/releases) is the steadier choice. Releases before 1.0 are marked as previews.
-- **Nightly**: the [rolling nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) is built from the latest `main`. It installs separately as **Ibis Nightly** and may break.
+The two install as separate apps, so you can keep both. Each can update itself if you allow update checks when it first starts; updates are signed and checked before they install. The apps themselves are not signed by Apple or Microsoft yet, so your system may warn before opening them (the release page says what to click).
+
+**Version numbers** follow [semantic versioning](https://semver.org). Until 1.0 every release is a preview: `0.N.0` ships a milestone from the [roadmap](ROADMAP.md) and `0.N.1`, `0.N.2`, ... fix it. Tell us what works and what you miss through [a problem report or an idea](https://github.com/ibiscite/ibis/issues/new/choose).
 
 The menu bar or tray menu shows which build and version you are running. Send questions and feedback to [GitHub Discussions](https://github.com/ibiscite/ibis/discussions), and problems to [the issues](https://github.com/ibiscite/ibis/issues/new/choose).
 
