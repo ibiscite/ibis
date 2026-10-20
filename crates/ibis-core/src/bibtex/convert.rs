@@ -73,7 +73,11 @@ pub(crate) fn convert(
     };
 
     let language = language_tag(entry, problems);
-    let english = language.as_deref().is_none_or(|l| l == "en" || l.starts_with("en-"));
+    let english = language.as_deref().is_none_or(|l| {
+        l.split('-')
+            .next()
+            .is_some_and(|primary| primary.eq_ignore_ascii_case("en"))
+    });
     let title = rich("title", &[("subtitle", ": "), ("titleaddon", ". ")])
         .map(|pieces| render(&if english { sentence_case(pieces) } else { pieces }));
     let short_title = rich("shorttitle", &[])
