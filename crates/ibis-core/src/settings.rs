@@ -165,6 +165,11 @@ pub enum SettingsError {
     Unreadable(#[from] io::Error),
     #[error("the settings file is not valid: {0}")]
     Invalid(String),
+    /// An invalid Zotero list member, counted from one; no member value is kept.
+    #[error(
+        "the settings file is not valid: Zotero library entry {position} must be \"user\" or {{\"group\": <non-negative integer ID>}}"
+    )]
+    InvalidZoteroLibraryEntry { position: usize },
     #[error("the settings file was written by a newer version of Ibis (format {0}); it was left unchanged")]
     NewerVersion(u32),
 }
@@ -199,7 +204,18 @@ fn parse(text: &str) -> Result<Settings, SettingsError> {
     if version < 2 {
         value = v1_to_v2(value);
     }
-    serde_json::from_value(value).map_err(invalid)
+    Settings::deserialize(&value).map_err(|error| {
+        // Untagged enums discard the failing member's context. Inspect the
+        // existing JSON only after failure; never include that value in text.
+        if let Some(libraries) = value.pointer("/library/zotero").and_then(Value::as_array) {
+            for (index, library) in libraries.iter().enumerate() {
+                if ZoteroLibrary::deserialize(library).is_err() {
+                    return SettingsError::InvalidZoteroLibraryEntry { position: index + 1 };
+                }
+            }
+        }
+        invalid(error)
+    })
 }
 
 /// Version 1 named the library by a bare path, always a BibTeX file.
@@ -533,7 +549,86 @@ mod tests {
             r#""/a/bare/path.bib""#,
         ] {
             let text = format!(r#"{{"schema_version": 2, "library": {bad}}}"#);
-            assert!(matches!(parse(&text), Err(SettingsError::Invalid(_))), "{bad}");
+            assert!(
+                matches!(
+                    parse(&text),
+                    Err(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. })
+                ),
+                "{bad}"
+            );
         }
+    }
+
+    #[test]
+    fn invalid_zotero_list_members_name_the_position_without_the_value() {
+        for bad in [
+            serde_json::json!("synthetic-private-value"),
+            serde_json::json!({ "group": "synthetic-private-value" }),
+            serde_json::json!({ "group": -1 }),
+            serde_json::json!({ "group": 1.5 }),
+            serde_json::json!({ "group": null }),
+            serde_json::json!({ "unknown": "synthetic-private-value" }),
+            serde_json::json!({ "group": 42, "unknown": "synthetic-private-value" }),
+            serde_json::json!(["synthetic-private-value"]),
+            serde_json::json!(null),
+            serde_json::json!(false),
+            serde_json::json!(42),
+        ] {
+            for position in 1..=3 {
+                let mut libraries = vec![serde_json::json!("user"), serde_json::json!({ "group": 42 })];
+                libraries.insert(position - 1, bad.clone());
+                let mut settings = serde_json::json!({ "schema_version": 2, "library": { "zotero": libraries } });
+                let Err(error) = parse(&settings.to_string()) else {
+                    panic!("expected the invalid-member error");
+                };
+                assert_eq!(
+                    error.to_string(),
+                    format!(
+                        "the settings file is not valid: Zotero library entry {position} must be \"user\" or {{\"group\": <non-negative integer ID>}}"
+                    )
+                );
+                assert!(
+                    matches!(error, SettingsError::InvalidZoteroLibraryEntry { position: actual } if actual == position)
+                );
+                settings["schema_version"] = serde_json::json!(99);
+                assert!(matches!(
+                    parse(&settings.to_string()),
+                    Err(SettingsError::NewerVersion(99))
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn an_invalid_zotero_member_recovers_without_rewriting_the_file() {
+        let path = dir("zotero-member").join("settings.json");
+        let good = Settings {
+            library: Some(LibrarySetting::Zotero(ZoteroLibrary::User.into())),
+            ..Settings::default()
+        };
+        save(&path, &good).unwrap_or_else(|e| panic!("{e}"));
+        save(&path, &good).unwrap_or_else(|e| panic!("{e}"));
+        let backup = fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+        let bad = r#"{"schema_version":2,"library":{"zotero":["user",{"group":"synthetic-private-value"}]}}"#;
+        fs::write(&path, bad).unwrap_or_else(|e| panic!("{e}"));
+
+        let loaded = load(&path);
+        assert_eq!(loaded.settings, good);
+        assert!(loaded.from_backup);
+        let error = loaded
+            .problem
+            .unwrap_or_else(|| panic!("expected the invalid-member error"));
+        assert_eq!(
+            error.to_string(),
+            "the settings file is not valid: Zotero library entry 2 must be \"user\" or {\"group\": <non-negative integer ID>}"
+        );
+        let mut changed = false;
+        let Err(update_error) = update(&path, |_| changed = true) else {
+            panic!("expected the invalid-member error");
+        };
+        assert_eq!(update_error.to_string(), error.to_string());
+        assert!(!changed);
+        assert_eq!(fs::read_to_string(&path).unwrap_or_default(), bad);
+        assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), backup);
     }
 }

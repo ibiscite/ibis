@@ -14,7 +14,19 @@ pub(crate) fn settings_problem(problem: &settings::SettingsError) -> &'static st
     match problem {
         settings::SettingsError::Unreadable(_) => "settings.json could not be read",
         settings::SettingsError::Invalid(_) => "settings.json is not valid",
+        settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
+            "settings.json has an invalid Zotero library entry"
+        }
         settings::SettingsError::NewerVersion(_) => "settings.json was written by a newer version of Ibis",
+    }
+}
+
+/// Interface and failed-save text may include a typed position, never raw
+/// serde or operating-system details. Diagnostics keep the fixed description.
+fn settings_message(problem: &settings::SettingsError) -> String {
+    match problem {
+        settings::SettingsError::InvalidZoteroLibraryEntry { .. } => problem.to_string(),
+        _ => settings_problem(problem).to_string(),
     }
 }
 
@@ -24,7 +36,7 @@ pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<
         let recovery = if loaded.from_backup { "the backup" } else { "defaults" };
         format!(
             "{}; using {recovery}. Changes are not being saved while this problem remains. Settings file: {}",
-            settings_problem(problem),
+            settings_message(problem),
             path.display()
         )
     })
@@ -50,7 +62,7 @@ impl SettingsFile {
             .writing
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
-        settings::update(&self.path, change).map_err(|error| settings_problem(&error).to_string())
+        settings::update(&self.path, change).map_err(|error| settings_message(&error))
     }
 }
 
@@ -138,6 +150,10 @@ mod tests {
         for (contents, problem) in [
             (format!(r#"{{"copy_format":"{private}"}}"#), "not valid"),
             (r#"{"schema_version":3}"#.to_string(), "newer version"),
+            (
+                format!(r#"{{"schema_version":2,"library":{{"zotero":["user",{{"group":"{private}"}}]}}}}"#),
+                "Zotero library entry 2 must be \"user\" or {\"group\": <non-negative integer ID>}",
+            ),
         ] {
             std::fs::write(&path, &contents).unwrap_or_else(|e| panic!("{e}"));
             let loaded = settings::load(&path);
@@ -148,25 +164,22 @@ mod tests {
             assert!(notice.contains("not being saved"));
             assert!(notice.contains(path.to_string_lossy().as_ref()));
             assert!(!notice.contains(private));
-            let failed = SettingsFile::new(path.clone()).update(|s| s.copy_format = Some(KeyFormat::Keys));
-            assert!(failed.is_err());
-            assert!(
-                !failed
-                    .err()
-                    .unwrap_or_else(|| panic!("expected the invalid settings save to fail"))
-                    .contains(private)
-            );
+            let Err(failed) = SettingsFile::new(path.clone()).update(|s| s.copy_format = Some(KeyFormat::Keys)) else {
+                panic!("expected the invalid settings save to fail");
+            };
+            assert!(failed.contains(problem));
+            assert!(!failed.contains(private));
             assert_eq!(
                 std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{e}")),
                 contents
             );
             std::fs::write(path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
             let recovered = settings::load(&path);
-            assert!(
-                settings_notice(&path, &recovered)
-                    .unwrap_or_else(|| panic!("expected a settings recovery notice"))
-                    .contains("backup")
-            );
+            let notice =
+                settings_notice(&path, &recovered).unwrap_or_else(|| panic!("expected a settings recovery notice"));
+            assert!(notice.contains("backup"));
+            assert!(notice.contains(problem));
+            assert!(!notice.contains(private));
             std::fs::remove_file(path.with_extension("json.bak")).unwrap_or_else(|e| panic!("{e}"));
         }
         std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
