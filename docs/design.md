@@ -9,6 +9,11 @@ current appearance. User-selectable looks may come later; this is the default.
 The prototypes were built outside the repository. Everything needed to implement
 the design is written down here.
 
+This includes longer-term targets as well as the current picker. Release scope
+comes from [ROADMAP.md](../ROADMAP.md); the rollout below separates remaining
+work from behavior already implemented. Native acceptance is recorded separately
+in [testing.md](testing.md), not established by this specification.
+
 ## Seven rules
 
 1. **One anatomy everywhere.** Search, list, detail, citation tray and footer, in
@@ -98,8 +103,14 @@ Three layers, each reached from the one before by something on screen:
 - **First minute:** type, press Enter, paste. Clicking a row copies it.
 - **First week:** → previews the attachment and "Cite page" fills in the page;
   Shift+Enter builds a citation with several sources; Tab shows recent items.
-- **Power:** `#tag`, `y:`, `a:` filters; Ctrl/⌘ 1–5 switches format; Ctrl/⌘ K
+- **Power:** `#tag`, `y:`, `a:` filters; the format menu; Ctrl/⌘ K
   for every action; pin; per-app behaviour.
+
+The format menu offers all seven key formats from [ADR 0016](adr/0016-settings-format.md):
+Pandoc, `\autocite`, `\parencite`, `\textcite`, `\cite`, Typst and bare keys.
+The five bundled citation styles are separate choices ([ADR 0020](adr/0020-picker-preferences.md)).
+Number-key bindings are not implemented or assigned here; the shared key table
+for #223 must name each binding before any are advertised.
 
 No pop-up tour and no "advanced mode". Tooltips appear after 600 ms and name the
 action and its key. Empty and no-result states say what to try next. Footer tips
@@ -116,6 +127,12 @@ the same setting in their documentation). The kept search lives in memory only
 and is never written to disk.
 It appears in 120 ms with a short fade. The at-cursor form opens under the text
 caret and flips above it near the bottom of the screen.
+
+The focused-window display is a target for rollout step 4. Today the picker uses
+the display with the pointer (the nearest display if the pointer is between
+displays). If pointer position is unavailable, it keeps its current display or
+uses the primary one; it does not yet offer a display-choice setting or save
+positions across restarts.
 
 **Moving.** Drag the handle or the empty part of the header; the list never
 starts a drag. It snaps to the centre line and the upper third within 18 px,
@@ -167,7 +184,12 @@ is pressed again.
 - Linux on Wayland: the compositor places windows and pinning on top is not
   available, so Ibis opens centred and "pinned" means "stays open". Pasting into
   other apps is generally not allowed, so Ibis copies and says "Press Ctrl+V".
-  The global shortcut goes through the system's shortcut dialog. On X11, Ibis
+  A future global shortcut goes through the system's shortcut dialog; the
+  preview has no GlobalShortcuts portal integration. Its existing shortcut
+  backend requires reachable X11/XWayland with XKB, and otherwise explains
+  the limitation while keeping the application launcher available. See
+  [Linux preview shortcut capability](compatibility.md#linux-preview-shortcut-capability).
+  On X11, Ibis
   can place its window, stay on top when pinned and register its shortcut
   directly, as on Windows.
 
@@ -180,22 +202,30 @@ visible (2 px, accent). Right-to-left titles align right within their row.
 
 Each step is one pull request against #223 (or an issue split from it), reviewed
 with the states gallery on every platform. Steps 1–3 need no new data or
-settings. Anything remembered across restarts (window position per display,
-display choice, density, text size, how long a search is kept, which tips were
-seen) needs a documented settings contract. [ADR 0018](adr/0018-settings-format-2.md)
-defines format 2; [ADR 0019](adr/0019-update-checks.md) and
+settings. Settings format 2 is recorded in [ADR 0018](adr/0018-settings-format-2.md);
+[ADR 0019](adr/0019-update-checks.md) and
 [ADR 0020](adr/0020-picker-preferences.md) add optional update and picker fields.
-Display choice and remembered position still need their own ADR.
+Density and Larger text are already remembered. Remaining choices kept across
+restarts (window position per display, display choice, how long a search is kept,
+which tips were seen) need an ADR before new `settings.json` fields are added.
 
 1. **Done (#307).** Design values in `tokens.css`: type scale, densities, radii,
-   motion and colour roles, without changing layout.
+   motion and colour roles, without changing layout. Remaining motion work:
+   enforce the 280 ms cap and reduced-motion behavior for every transition.
 2. Picker layout: header (search, format, pin), rows, footer with library status
    and More, empty and no-result text.
 3. Window behaviour that needs no settings: outside-click hiding, keeping the
    search in memory for a minute, the Escape ladder, and staying on top only
-   when pinned.
-4. Density and Larger text are settings under ADR 0020 (#407, #408).
-   Display choice and remembered position remain pending a separate ADR.
+   when pinned. Hide the quick picker from the taskbar, Dock and Alt+Tab; verify
+   each platform separately (macOS already uses an accessory panel). Add the
+   full-screen/presentation shortcut guard and its second-press override.
+   Separately verify the macOS panel opens over full-screen apps in the current
+   Space; the panel already has this configuration, which is not evidence that
+   every native scenario passes.
+4. Density and Larger text are settings under ADR 0020 (#407, #408). Remaining
+   work: an ADR for display choice and remembered per-display position, then
+   change the opening default from the pointer's display to the focused window's
+   display, with the pointer and last-position alternatives.
 5. Footer tips, and `#tag`, `y:` and `a:` filters (tags need source support).
 6. Recently cited and Recently added (needs a local history that stays on the
    device and, as PRIVACY.md promises, can be turned off and cleared).
@@ -203,4 +233,5 @@ Display choice and remembered position still need their own ADR.
 8. Attachments: the PDF or Web label and the preview pane (needs attachment
    data from Zotero).
 9. Later: one-line and at-cursor forms, the settings window, and alternative
-   looks users can choose.
+   looks users can choose; native Wayland GlobalShortcuts portal integration
+   and its system shortcut dialog need their own implementation and evidence.
