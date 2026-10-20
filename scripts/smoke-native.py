@@ -1092,7 +1092,10 @@ def main():
             assert "Ibis smoke reference 000001" in strings(snapshot()), "Expected native result missing"
 
             def copy():
-                copy_with_diagnostics(native, report, native.picker_key if system == "Darwin" else None)
+                # Installed release builds never report the non-activating panel as the
+                # key window although Return still reaches it (#454), so the
+                # key-window wait stays out of the native copy check.
+                copy_with_diagnostics(native, report)
                 wait_for(lambda: not snapshot()["visible"], "copy hides picker")
                 capture_editor_focus("after-copy-hides-picker")
                 try:
