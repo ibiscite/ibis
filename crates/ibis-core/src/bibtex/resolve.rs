@@ -430,7 +430,7 @@ impl<'a> Resolver<'a> {
         let mut xdata_keys: Vec<String> = xdata_keys
             .into_iter()
             .rev()
-            .filter(|k| last_seen.insert(k.to_lowercase()))
+            .filter(|k| last_seen.insert(k.clone()))
             .collect();
         xdata_keys.reverse();
         let mut parents: Vec<(Fields, Option<&str>)> = Vec::new();
