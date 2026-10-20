@@ -314,10 +314,19 @@ fn names(people: Vec<biblatex::Person>, raw: Option<&str>) -> Vec<Name> {
                 return Name::literal(&family);
             }
             let some = |s: String| (!s.is_empty()).then_some(s);
+            // An explicit BibLaTeX `useprefix=true` makes the prefix part of
+            // the surname; CSL must retain it when rendering or sorting names.
+            let particle = some(clean(&p.prefix));
+            let (dropping_particle, non_dropping_particle) = if p.use_prefix == Some(true) {
+                (None, particle)
+            } else {
+                (particle, None)
+            };
             Name {
                 family: some(family),
                 given: some(given),
-                dropping_particle: some(clean(&p.prefix)),
+                dropping_particle,
+                non_dropping_particle,
                 suffix: some(clean(&p.suffix)),
                 ..Name::default()
             }
