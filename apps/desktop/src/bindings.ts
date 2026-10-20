@@ -33,6 +33,11 @@ export const commands = {
 	/**  Hide the picker (Escape in the interface). */
 	hidePicker: () => __TAURI_INVOKE<void>("hide_picker"),
 	/**
+	 *  Pin or unpin the picker. Staying on top is best effort: Wayland does not
+	 *  allow it, and there pinned means only that the picker stays open.
+	 */
+	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
+	/**
 	 *  End the app. Closing the window only hides it, so this is the way out on
 	 *  Windows and Linux, which have no application menu with Quit.
 	 */

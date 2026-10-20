@@ -20,7 +20,7 @@
         "minHeight": 320,
         "decorations": false,
         "shadow": true,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "resizable": true,
         "maximizable": false,
         "center": true,

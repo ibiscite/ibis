@@ -12,6 +12,7 @@ export const {
   reloadLibrary,
   libraryStatus,
   hidePicker,
+  setPinned,
   quit,
   shortcutStatus,
   copyCitation,
@@ -26,6 +27,11 @@ export function search(query: string, limit = 20) {
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
 export function onPickerShown(handler: () => void): Promise<UnlistenFn> {
   return listen("picker:shown", handler);
+}
+
+/** Called whenever the picker is hidden, by any route. */
+export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
+  return listen("picker:hidden", handler);
 }
 
 /** Called when a library finishes opening, or fails to open. */

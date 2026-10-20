@@ -191,7 +191,7 @@ step 4 starts with a superseding ADR.
    and More, empty and no-result text.
 3. Window behaviour that needs no settings: outside-click hiding, keeping the
    search in memory for a minute, the Escape ladder, and staying on top only
-   when pinned (today the window is always on top).
+   when pinned.
 4. A superseding settings ADR, then display choice, remembered position,
    density and Larger text as settings.
 5. Footer tips, and `#tag`, `y:` and `a:` filters (tags need source support).

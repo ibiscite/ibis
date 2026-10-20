@@ -180,6 +180,8 @@ pub(crate) fn dismiss_picker(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     crate::panel::cancel_initial_presentation(app);
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
+        // The interface keeps its search for a minute after a real hide.
+        report(window.emit("picker:hidden", ()), NativeIssue::PickerEvent);
         dismiss_with(
             || window.hide(),
             || {
@@ -232,11 +234,31 @@ impl DialogOpen {
     }
 }
 
+/// Set while the user has pinned the picker: it then stays open beside the
+/// document and floats above it. Unpinned, it hides when focus moves away.
+#[derive(Default)]
+pub(crate) struct Pinned(pub(crate) AtomicBool);
+
+/// Pin or unpin the picker. Staying on top is best effort: Wayland does not
+/// allow it, and there pinned means only that the picker stays open.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn set_pinned(app: AppHandle, pinned: State<'_, Pinned>, on: bool) {
+    pinned.0.store(on, Ordering::SeqCst);
+    // The macOS panel is already a floating panel; it only needs to stay open.
+    #[cfg(not(target_os = "macos"))]
+    if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
+        report(window.set_always_on_top(on), NativeIssue::AlwaysOnTop);
+    }
+    #[cfg(target_os = "macos")]
+    let _ = app;
+}
+
 /// Whether the picker hides when it loses focus. Release builds hide it, like
-/// other launchers, except while one of its own dialogs has the focus;
-/// development builds never do, so the developer tools stay usable.
-pub(crate) fn hides_on_blur(release_build: bool, dialog_open: bool) -> bool {
-    release_build && !dialog_open
+/// other launchers, except while one of its own dialogs has the focus or it is
+/// pinned; development builds never do, so the developer tools stay usable.
+pub(crate) fn hides_on_blur(release_build: bool, dialog_open: bool, pinned: bool) -> bool {
+    release_build && !dialog_open && !pinned
 }
 
 #[cfg(test)]
@@ -379,9 +401,14 @@ mod tests {
     /// made the dialog disappear before it could be used.
     #[test]
     fn the_picker_stays_open_while_its_own_dialog_has_the_focus() {
-        assert!(hides_on_blur(true, false));
-        assert!(!hides_on_blur(true, true));
-        assert!(!hides_on_blur(false, false));
+        assert!(hides_on_blur(true, false, false));
+        assert!(!hides_on_blur(true, true, false));
+        assert!(!hides_on_blur(false, false, false));
+    }
+
+    #[test]
+    fn a_pinned_picker_stays_open_when_focus_moves_to_the_document() {
+        assert!(!hides_on_blur(true, false, true));
     }
 
     #[test]

@@ -65,9 +65,11 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       useZotero: async () => undefined,
       reloadLibrary: async () => undefined,
       hidePicker: async () => undefined,
+      setPinned: async () => undefined,
       quit: async () => undefined,
       onLibraryChanged: async () => () => undefined,
       onPickerShown: async () => () => undefined,
+      onPickerHidden: async () => () => undefined,
     },
   };
 }

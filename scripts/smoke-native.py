@@ -105,6 +105,44 @@ def search_focused(snapshot):
     return any(n.get("focused") for n in named(snapshot, "Search references"))
 
 
+def has_search_text(snapshot):
+    return any(n.get("value") for n in named(snapshot, "Search references"))
+
+
+ESCAPE_STEP_TIMEOUT = 5
+
+
+def escape_to_hide(native, snapshot, description):
+    """Escape clears a search first and hides on the next press.
+
+    macOS can report a cleared search value late, so with a search each press
+    waits only briefly and a picker that is still visible gets one spare press.
+    """
+    last = {}
+    if has_search_text(snapshot()):
+        for press in range(3):
+            if not snapshot()["visible"]:
+                return
+            native.key("Escape")
+            deadline = time.monotonic() + ESCAPE_STEP_TIMEOUT
+            while time.monotonic() < deadline:
+                last.update(snapshot())
+                if not last["visible"] or (press == 0 and not has_search_text(last)):
+                    break
+                time.sleep(0.1)
+    else:
+        native.key("Escape")
+    def hidden():
+        last.update(snapshot())
+        return not last["visible"]
+    try:
+        wait_for(hidden, description)
+    except AssertionError:
+        print("ESCAPE STATE " + json.dumps({"visible": bool(last.get("visible")),
+              "search_has_text": has_search_text(last) if last else None}), flush=True)
+        raise
+
+
 def prepare_initial_picker_show(native, snapshot):
     # A nonactivating panel can remain key while the editor is already the
     # frontmost application. Prove it is hidden before testing shortcut SHOW.
@@ -113,8 +151,7 @@ def prepare_initial_picker_show(native, snapshot):
             current = snapshot()
             return current["visible"] and search_focused(current)
         wait_for(ready, "initial picker search ready")
-        native.key("Escape")
-        wait_for(lambda: not snapshot()["visible"], "initial Escape hides picker")
+        escape_to_hide(native, snapshot, "initial Escape hides picker")
 
 
 EDITABLE_ROLES = {"edit", "text", "entry", "combobox", "axcombobox", "axtextfield", "axsearchfield", "controltype.edit", "controltype.combobox"}
@@ -628,8 +665,7 @@ def main():
                 native.key(shortcut)
                 focus_state("after-first-shortcut")
                 wait_for(picker_ready, "global shortcut visible, foreground and search focus")
-                native.key("Escape")
-                wait_for(lambda: not snapshot()["visible"], "Escape hides picker")
+                escape_to_hide(native, snapshot, "Escape hides picker")
                 native.focus_editor()
                 wait_for(native.editor_focused, "previous editor focused")
                 focus_state("before-second-shortcut")
@@ -640,8 +676,7 @@ def main():
             check("global shortcut shows foreground picker with focused search", show)
 
             def second_instance():
-                native.key("Escape")
-                wait_for(lambda: not snapshot()["visible"], "picker hidden before second launch")
+                escape_to_hide(native, snapshot, "picker hidden before second launch")
                 native.focus_editor()
                 wait_for(native.editor_focused, "editor focused before second launch")
                 capture_editor_focus("before-second-launch")
@@ -874,6 +909,42 @@ class ContractTests(unittest.TestCase):
         native.key("ctrl+super+r")
         self.assertEqual(native.events, [("Escape", True), ("editor", False), ("ctrl+super+r", False)])
         self.assertTrue(native.visible)
+
+    def test_escape_clears_a_search_before_it_hides(self):
+        state = {"visible": True, "value": "query"}
+        native = Mock()
+        def key(name):
+            if state["value"]:
+                state["value"] = ""
+            else:
+                state["visible"] = False
+        native.key.side_effect = key
+        snapshot = lambda: {"visible": state["visible"], "nodes": [{"name": "Search references", "value": state["value"]}]}
+        escape_to_hide(native, snapshot, "hidden")
+        self.assertEqual(native.key.call_args_list, [call("Escape"), call("Escape")])
+        self.assertFalse(state["visible"])
+
+    def test_escape_presses_again_when_a_cleared_search_is_reported_late(self):
+        state = {"visible": True, "presses": 0}
+        native = Mock()
+        def key(name):
+            state["presses"] += 1
+            state["visible"] = state["presses"] < 2
+        native.key.side_effect = key
+        snapshot = lambda: {"visible": state["visible"], "nodes": [{"name": "Search references", "value": "stale"}]}
+        with patch(__name__ + ".ESCAPE_STEP_TIMEOUT", 0.05):
+            escape_to_hide(native, snapshot, "hidden")
+        self.assertEqual(native.key.call_args_list, [call("Escape"), call("Escape")])
+
+    def test_escape_that_never_hides_fails_after_one_spare_press(self):
+        native = Mock()
+        snapshot = lambda: {"visible": True, "nodes": [{"name": "Search references", "value": "private query"}]}
+        with patch(__name__ + ".ESCAPE_STEP_TIMEOUT", 0.05), \
+             patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)), \
+             patch("builtins.print") as printed, self.assertRaises(AssertionError):
+            escape_to_hide(native, snapshot, "hidden")
+        self.assertEqual(native.key.call_count, 3)
+        self.assertNotIn("private query", printed.call_args.args[0])
 
     def test_hidden_initial_picker_does_not_send_escape_into_the_editor(self):
         native = self.InitialPickerModel(visible=False)

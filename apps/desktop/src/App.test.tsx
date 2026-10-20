@@ -78,6 +78,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     shortcut_status: () => ({ shortcut: "Control+Command+R", registered: true, error: null }),
     search: () => [],
     hide_picker: () => null,
+    set_pinned: () => null,
     copy_format: () => "pandoc",
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
   };
@@ -813,3 +814,79 @@ test("a row says why it matched only when the match is not visible", async () =>
   expect(rows[1]?.textContent).toContain("Matched in the abstract");
   expect(screen.getByText("Best matches")).toBeTruthy();
 });
+
+test("Escape clears the search before it hides the picker, keeping chosen references", async () => {
+  const calls = backend({ search: () => [result("a", "First")] });
+  render(<App />);
+  const box = screen.getByLabelText("Search references") as HTMLInputElement;
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.keyDown(box, { key: "Escape" });
+  expect(box.value).toBe("");
+  expect(within(screen.getByRole("list", { name: "Selected references" })).getByText("a")).toBeTruthy();
+  expect(calls).not.toContain("hide_picker");
+  fireEvent.keyDown(box, { key: "Escape" });
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+  expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+});
+
+test("a pinned picker stays open after copying, and Escape never unpins it", async () => {
+  const pins: unknown[] = [];
+  const calls = backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => ({ text: "@a", warnings: [] }),
+    set_pinned: ({ on }) => { pins.push(on); return null; },
+  });
+  render(<App />);
+  const pin = screen.getByRole("button", { name: "Pin Ibis" });
+  expect(pin.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(pin);
+  expect(pin.getAttribute("aria-pressed")).toBe("true");
+  await waitFor(() => expect(pins).toEqual([true]));
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await screen.findByText("@a");
+  fireEvent.keyDown(box, { key: "Escape" });
+  expect(pin.getAttribute("aria-pressed")).toBe("true");
+  expect(calls).not.toContain("hide_picker");
+  fireEvent.click(pin);
+  await waitFor(() => expect(pins).toEqual([true, false]));
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+});
+
+test("a failed pin is reported", async () => {
+  backend({ set_pinned: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
+  render(<App />);
+  const pin = screen.getByRole("button", { name: "Pin Ibis" });
+  fireEvent.click(pin);
+  expect((await screen.findByText("Ibis could not change the pin. Try again.")).getAttribute("role")).toBe("alert");
+  expect(pin.getAttribute("aria-pressed")).toBe("false");
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+});
+
+test.each([[30_000, true, "first"], [61_000, true, ""], [61_000, false, "first"]])(
+  "a search is kept unless the picker was hidden for over a minute (%i ms, hidden: %s)", async (away, hidden, kept) => {
+    backend({ search: () => [result("a", "First")] });
+    const now = vi.spyOn(performance, "now").mockReturnValue(1_000_000);
+    try {
+      render(<App />);
+      const box = screen.getByLabelText("Search references") as HTMLInputElement;
+      fireEvent.change(box, { target: { value: "first" } });
+      await screen.findByText("First");
+      // A pinned picker loses focus without hiding; only a real hide starts the minute.
+      fireEvent(window, new Event("blur"));
+      if (hidden) await act(async () => { await emit("picker:hidden"); });
+      now.mockReturnValue(1_000_000 + away);
+      await act(async () => { await emit("picker:shown"); });
+      expect(box.value).toBe(kept);
+      expect(document.activeElement).toBe(box);
+    } finally {
+      now.mockRestore();
+    }
+  });

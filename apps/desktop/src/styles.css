@@ -77,6 +77,12 @@ footer { border-top: var(--border-width) solid var(--line); padding: var(--foote
 .format-picker:focus-within { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
 .format-picker select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: default; }
 
+/* The pin appears with the pointer or while on, without moving anything. */
+.pin-button { display: inline-grid; place-items: center; min-width: var(--control-min-size); min-height: var(--control-min-size); padding: 0; background: var(--clear); border-color: var(--clear); color: var(--muted); opacity: 0; transition: opacity var(--motion-feedback) var(--motion-ease); }
+.pin-button svg { width: var(--icon-glyph-size); stroke-width: var(--icon-stroke); }
+main:hover .pin-button, .pin-button:focus-visible { opacity: 1; }
+.pin-button[aria-pressed="true"] { opacity: 1; color: var(--accent); }
+
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
 .more > button { min-height: var(--control-min-size); }
