@@ -18,8 +18,10 @@ in [testing.md](testing.md), not established by this specification.
 
 1. **One anatomy everywhere.** Search, list, detail, citation tray and footer, in
    that order, in every form from a one-line bar to the large settings window.
-2. **Native material, Ibis voice.** Glass on macOS, Mica on Windows, flat on
-   Linux. Type, spacing, icons and wording stay the same on every platform.
+2. **Native material, Ibis voice.** Each platform's material, used by layer:
+   content on the standard material, glass only on controls (macOS), Acrylic
+   for the Windows picker, flat on Linux. Type, spacing, icon drawings and
+   wording stay the same on every platform.
 3. **Readable first.** Nothing smaller than 12 px, metadata at 13 px, titles at
    15 px. Secondary text passes 4.5:1 contrast.
 4. **Easy to hit.** Every button is at least 32 px; 44 px on touch screens.
@@ -39,33 +41,110 @@ in [testing.md](testing.md), not established by this specification.
 
 | Role | Size / line | Example |
 |---|---|---|
-| Search | 22/28 (16 on Windows and Linux, which use a framed text box) | Search references… |
+| Search | 22/28 on macOS (frameless, sized like Spotlight's query); 16/22 on Windows and Linux, in a framed text box like PowerToys Run (16) and GNOME's search entries | Search references… |
 | Title | 15/20, semibold | Sleep spindles predict memory |
 | Body | 14/20 | Spindle density predicted recall. |
 | Meta | 13/18 | García, Okafor · 2021 |
 | Label | 12/16, semibold | Best matches |
 | Citation | 13, monospace | `[@garcia2021, p. 4]` |
 
-**Colour roles.** Selection and the main button use the system accent. Ibis
-scarlet (`#c23a1c` light, `#ff7a5c` dark) marks only the citation itself: the
-text that will be copied, the citation tray, the tile of a row added to the
-citation and the logo. The added tile is filled with the deeper brand scarlet
-(`#d2401f`) in dark mode, so its white check keeps 4.5:1 and the tile still
-stands 3:1 off the surface. Status uses Done
-(copied, inserted), Look (skipped, needs a look) and Stop (unreachable, failed),
-always with words or an icon as well as colour.
+**Colour roles.** Selection, focus, the main button and the menu highlight
+use the system accent ("you are here, act on this"). Ibis scarlet means "this is
+what gets pasted" and marks only the citation: the text that will be copied,
+the citation tray, the tile of a row added to the citation, and the logo. Ibis
+sets no app accent of its own, so a red or orange system accent never meets
+scarlet on a fill (on macOS, the Multicolor accent stays system blue). Status
+uses Done (copied, inserted), Look (skipped, needs a look) and Stop
+(unreachable, failed), always with words or an icon as well as colour.
 
-**Space and size.** A 4 px grid. Search bar 48–56 px, footer 40 px, icons 20 px
-with a 1.5 px stroke. Rows come in three densities: Compact 40 px (one line),
-Comfortable 58 px (default, two lines) and Spacious 76 px (three lines). A
-Larger text setting scales the whole window by 1.15, not just the letters.
+| Role | Token | Light | Dark | Over the macOS veil | More contrast, forced colours |
+|---|---|---|---|---|---|
+| Citation text | `--citation` | `#c23a1c` | `#ff7a5c` | `#982d16` / `#ff9d87` | `CanvasText` |
+| Added tile, behind a white check | `--citation-tile` | `#c23a1c` | `#d2401f` | as light / dark | `CanvasText` |
+| Brand scarlet | none in the app | `#d2401f` | `#d2401f` | | |
+| Done / Look / Stop | `--status-*` | `#1a7f37` / `#8a5a00` / `#c4314b` | `#5bc26f` / `#e3b341` / `#ff8a8a` | one step deeper | `CanvasText` |
+
+Text roles pass 4.5:1 on their surface; the added tile stands 3:1 off the
+surface and keeps its white check at 4.5:1. Brand scarlet is for the logo, the
+app icon, the website and store art. In the app it fills only the dark-mode
+added tile, never a control, a selection, a link or a focus ring. Stop is a
+rose, kept apart from scarlet in hue and lightness, and never used for the
+citation.
+
+**Space and size.** A 4 px grid. Rows come in three densities: Compact 40 px
+(one line), Comfortable 58 px (default, two lines) and Spacious 76 px (three
+lines). A Larger text setting scales the whole window by 1.15, not just the
+letters.
+
+| Token | Value | Notes |
+|---|---|---|
+| `--inset` | 8 px (Windows 4 px) | Window edge to the search field, the list and the footer. The band above the field is the drag handle. |
+| `--field-h` | 40 px | Search field, so the search band is 56 px (48 px on Windows). |
+| `--row-pad` / `--row-gap` | 12 px / 12 px | Row side padding; tile to text. |
+| `--tile` / `--icon` | 32 px / 20 px | Type tile (24 px with no fill in Compact) and its icon. |
+| Footer | 40 px | Text starts at `--inset + --row-pad`. |
+| Smallest target | 32 px, 44 px on touch | |
+
+Edges line up: the search icon is centred over the tile column and the
+placeholder starts where row titles start:
+
+```
+--lead     = row-pad + (tile − icon) / 2       field padding before the icon
+--lead-gap = (tile − icon) / 2 + row-gap       icon to placeholder
+text x     = inset + row-pad + tile + row-gap  64 px (60 px on Windows)
+```
+
+**Corners.** Nested shapes are concentric: an inner radius is its container's
+radius minus the inset between them, never larger. When the inset is close to
+or larger than the outer radius, the inner corner drops to a small floor
+instead of going square or looking like a separate floating slab.
+
+```
+--r-row  = max(--r-min, --r-win  − --inset)     rows, search field
+--r-tile = max(--r-min, --r-row  − --row-pad)   type tile, footer buttons
+--r-mi   = max(--r-min, --r-menu − --menu-pad)  menu items
+```
+
+| | macOS | Windows 11 | Linux (GNOME) |
+|---|---|---|---|
+| `--r-win` | 28 on macOS 26 and later; 12 pt before that (the native panel corner, #236) | 8 | 14 |
+| `--inset` · `--r-min` | 8 · 6 | 4 · 2 | 8 · 4 |
+| `--r-row` | 20 on macOS 26 and later; 6 before | 4 | 6 |
+| `--r-tile` | 8 on macOS 26 and later; 6 before | 2 | 4 |
+| `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 | 8 · 4 · 4 | 12 · 6 · 6 |
+| `--e2` menu shadow, plus a 1 px hairline | `0 12px 32px` black 16% | `0 8px 16px` black 14% | `0 2px 8px` black 20% |
+
+Not implemented yet: `tokens.css` still uses the earlier fixed radii (rows
+10 px on macOS, 9 px on Linux; tiles 7 px, 4 px on Windows) and a macOS menu
+shadow of `0 16px 40px` black 22%. On GNOME, rows are
+flat with the 6 px radius of Adwaita's sidebar and popover rows: a boxed list
+cannot be concentric at an 8 px inset in a 14 px window.
+
+**Menus.** The operating system's own menus are used only where the system owns
+them: the menu bar, the tray menu and right-click context menus ([ADR 0021](adr/0021-ui-foundation.md)).
+In-window menus (format, library scope, More) are Ibis's, but match that
+platform's native menu metrics: radius and padding from the table above, the
+native item padding (items stay at least 32 px high, rule 4), separators, and
+open and close motion. Check them side by side with a real
+menu on each platform before calling them done.
 
 **Motion.** 120 ms for feedback, 200 ms for panels, 280 ms for layout, all with
 `cubic-bezier(.2, .8, .2, 1)`. No bounce. With reduced motion, panels fade
 instead of sliding. Hover never moves anything.
 
-**Icons.** Ibis's own set: 20 px, 1.5 px stroke, rounded ends, the same on every
-platform, so a source or a reference type always looks the same. Seven type
+**Icons.** Ibis's own set: 20 px, 1.5 px stroke, rounded ends, the same
+drawings on every platform, so a source or a reference type always looks the
+same. Each platform gets them at its own weight:
+
+| | Base | macOS | Windows 11 | Linux (GNOME) |
+|---|---|---|---|---|
+| Grid | 20 px | 20 px | 16, 20, 24 px masters | 16 px, drawn natively |
+| Stroke | 1.5 px | 1.6 px (SF Symbols Regular) | 1 px (Fluent Regular) | 1.5 px (Adwaita symbolic), solid small details |
+| "On" state | filled | the `.fill` form | the Filled style | the button's checked fill, same drawing |
+
+GNOME icons are named `ibis-…-symbolic` and recoloured by GTK. Where the
+platform already has an icon with the exact meaning (menus, system dialogs), the
+platform's icon is used. Only the base set is implemented today. Seven type
 icons say what a reference is: article, book, chapter, thesis, web page, report
 and other (chosen from its CSL type). They never reuse an attachment drawing
 (the document or the globe), so a row never shows the same picture twice.
@@ -74,11 +153,11 @@ and other (chosen from its CSL type). They never reuse an attachment drawing
 
 | | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
-| Material | Translucent glass | Mica, content on a lighter layer | Flat |
-| Window radius | 12 pt, the native panel corner (#236) | 8 px (4 px controls) | 14 px |
+| Material | Standard material for the window; Liquid Glass only on the search bar (Rollout 9) | Desktop Acrylic (today: Mica) | Flat, opaque |
+| Corners | See **Corners** above | | |
 | Selected row | Filled accent, white text | Soft grey with an accent pill on the left | GTK's selection colour (filled accent) with its paired text |
 | Keyboard focus ring | 2 px accent, 1 px gap | 2 px in the text colour around a 1 px surface-coloured stroke (Fluent's focus visual) | 2 px, the accent mixed half toward the text colour, 1 px gap |
-| Search box | Frameless, large | Text box with an underline that turns accent on focus | Framed entry |
+| Search box | Frameless, large; with Liquid Glass, a 40 px capsule that also holds format and pin | Text box with an underline that turns accent on focus | Framed entry |
 | Shortcut labels | ⌘ ⌥ ⇧ | Ctrl Alt Shift | Ctrl Super Shift |
 | Copied | Pill near the top of the screen | Notice bottom-right | Toast at the bottom |
 
@@ -100,8 +179,25 @@ AppKit's vibrant blending, and without the veil secondary text drops below
 status colours are one step deeper (scarlet `#982d16` light, `#ff9d87` dark) so
 they keep 4.5:1; the opaque surface keeps the usual scarlet. Fills, hairlines
 and key caps are translucent so the material shows through, and the window edge
-is a 1 px hairline (black 10% in light, white 10% in dark), never a white rim. The newer Liquid Glass material
-(`NSGlassEffectView`, macOS 26) is a later step (Rollout 9).
+is a 1 px hairline (black 10% in light, white 10% in dark), never a white rim.
+
+**Materials by layer.** Every platform separates a content layer (the result
+list, preview and tray) from a control layer (search, format, pin).
+
+- **macOS.** Content stays on the standard material described above. Liquid
+  Glass (`NSGlassEffectView`, macOS 26) is a later step (Rollout 9) and then
+  covers only the search capsule: the regular variant, untinted, never on rows,
+  lists or the preview, and never glass on glass. Selection stays the system
+  accent. Ibis sets no blur or opacity of its own, so the macOS 27 glass
+  opacity setting, Reduce Transparency and Increase Contrast apply unchanged.
+- **Windows.** The picker is a transient, light-dismiss surface, which is what
+  Microsoft reserves Desktop Acrylic for. Content sits directly on it, with no
+  second layer. Mica is for long-lived windows such as settings. Both become the
+  solid surface when transparency effects are off or battery saver is on.
+  Today the picker uses Mica; the switch to Acrylic is not implemented.
+- **Linux.** Flat and opaque on `window_bg`, with the search entry on
+  `view_bg`. Ibis does not use the GNOME 51 blur API, since GNOME's own apps
+  stay flat.
 
 ## What shows, and when
 
@@ -110,7 +206,7 @@ is a 1 px hairline (black 10% in light, white 10% in dark), never a white rim. T
 | Search box | Always | The largest element, focused on open. Its placeholder lists what can be searched. |
 | Format (for example "Pandoc ▾") | Always | What is pasted depends on it. One word, no icon. |
 | More (Ctrl/⌘ K) | Always | The one door to every other action; each shows its shortcut, so the menu is also the cheat sheet. |
-| Pin | Pointer over the window, or while on | Rarely needed. Fades in without moving anything. |
+| Pin | Always, faint at rest | Tertiary text colour at rest, full strength on hover or while on, so it never moves or appears from nowhere. Its tooltip names the action ("Pin: keep Ibis open beside your document") and, once the key table assigns one, its key. The first time a click outside hides Ibis, a one-time footer tip explains the pin. |
 | Filter chips | Once added | `#tag`, `y:2019-2022` or `a:name` followed by a space becomes a removable chip. Backspace in an empty box removes the last one. |
 | Recently cited, Recently added, With PDF | While browsing | Shown when the search is empty or one is selected; hidden while typing so rows get the room. Tab cycles them. |
 | Tag and author suggestions | While typing `#` or `a:` | Take the place of the tabs. Enter or Tab picks the first. |
@@ -118,7 +214,7 @@ is a 1 px hairline (black 10% in light, white 10% in dark), never a white rim. T
 | Row: title and year | Always | Year at the right edge, in the same place on every row. |
 | Row: authors and journal | Comfortable and Spacious | Tells apart references with the same first author and year. The journal is the container title (journal, book or proceedings), else the publisher. Spacious adds the item type as one word ("Article", "Book"). One line: authors are shortened as in a citation ("García", "García, Okafor", or "García et al." for three or more; screen readers hear every name), then the journal, each with an ellipsis (the key and library label shorten first, never below a few letters, and the type word stays whole; only when enlarged text leaves no room do they move under them); a match in the journal is always named, since it may be shortened. Compact shows the first author ("García et al.") after the title. |
 | Row: why it matched | Only when hidden | "In the abstract: …sleep…" or "Tagged: …" when the match is not in the title or authors. |
-| PDF or Web label | When a file is attached | Says what is attached ("PDF · 12 pp") and opens the preview. No empty column otherwise. |
+| Attachment chip | When a file is attached | The platform's document (or globe) icon only, 16 px in a 24 px chip. "PDF, 12 pages" is its tooltip and accessible name, and it opens the preview. No empty column otherwise. |
 | "In 2 libraries" | Only for duplicates | Explains why one reference may differ between sources; it is listed once. |
 | Add button | Hovered or selected row | Takes the place of the type icon, so the row never reflows: a plus, or a check on a row already added. A row in the citation always shows a scarlet tile with a white check, the only scarlet on the row. A 32 px pointer target with its name in the tooltip ("Add García 2021 to citation"); it adds no Tab stop, because a listbox option holds no controls, and keyboards use Shift+Enter. |
 | Citation tray | Once a source is added | Page number per source and the exact text to be copied, in scarlet. |
@@ -318,7 +414,7 @@ which tips were seen) need an ADR before new `settings.json` fields are added.
 6. Recently cited and Recently added (needs a local history that stays on the
    device and, as PRIVACY.md promises, can be turned off and cleared).
 7. Citation tray with page numbers (0.3, with #24).
-8. Attachments: the PDF or Web label and the preview pane (needs attachment
+8. Attachments: the attachment chip and the preview pane (needs attachment
    data from Zotero).
 9. Later: one-line and at-cursor forms, the settings window, and alternative
    looks users can choose, including macOS Liquid Glass (which needs the newest
