@@ -122,7 +122,7 @@ function MenuItem({ label, title, keys, checked, disabled, onSelect }: {
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "setCopyFormat" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary">>;
 
 /** A citation-key syntax, or a citation style written as `style:<id>`. */
 export type Choice = CopyFormat | `style:${StyleId}`;
@@ -148,7 +148,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation, copyFormat,
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, quit, search, shortcutStatus, cslItems, copyFormatted,
     pickerPreferences, setPickerPreferences, useZoteroLibraries, zoteroGroups } = api;
-  const { findSources, openFoundLibrary } = api;
+  const { findSources, openFoundLibrary, setCopyFormat } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -215,6 +215,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const chooseFormat = (choice: Choice) => {
     setFormat(choice);
     savePreferences({ citation_style: styleOf(choice) });
+    // A key format is otherwise saved only when something is copied.
+    if (!styleOf(choice) && setCopyFormat) void perform("preferences", () => setCopyFormat(choice as CopyFormat));
   };
   const changeDensity = () => {
     const next = DENSITIES[(DENSITIES.indexOf(density) + 1) % DENSITIES.length] ?? "comfortable";

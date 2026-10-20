@@ -53,6 +53,11 @@ export const commands = {
 	/**  The format the picker starts with: the last one used, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**
+	 *  Remember a key format chosen before anything is copied, so it is used
+	 *  next time even if nothing is copied now.
+	 */
+	setCopyFormat: (format: KeyFormat) => __TAURI_INVOKE<null>("set_copy_format", { format }),
+	/**
 	 *  The selected records as CSL-JSON, in the order given, for the citation
 	 *  engine. Sent as JSON text so the fields stay exactly as the core writes them.
 	 */

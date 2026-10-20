@@ -127,6 +127,17 @@ pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
         .unwrap_or(KeyFormat::Pandoc)
 }
 
+/// Remember a key format chosen before anything is copied, so it is used
+/// next time even if nothing is copied now.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn set_copy_format(format: KeyFormat, settings_file: State<'_, SettingsFile>) -> Result<(), String> {
+    settings_file
+        .update(|s| s.copy_format = Some(format))
+        .map(|_| ())
+        .map_err(|e| format!("the format choice could not be saved: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

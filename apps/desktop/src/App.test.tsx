@@ -83,6 +83,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false }),
     set_picker_preferences: () => null,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
+    set_copy_format: () => null,
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
   };
   mockIPC(
@@ -1229,4 +1230,16 @@ test("shortcuts read as people type them on each system", async () => {
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
   expect(shortcutLabel("control+command+r", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Alt+Space", false)).toBe("Alt+Space");
+});
+
+test("a key format chosen before copying is saved at once; a style is saved with the picker choices", async () => {
+  const saved: unknown[] = [];
+  backend({ library_status: () => NO_LIBRARY, set_copy_format: ({ format }) => { saved.push(format); return null; } });
+  render(<App />);
+  const places = await screen.findByRole("region", { name: "Where do you write?" });
+  fireEvent.click(within(places).getByRole("button", { name: "Typst" }));
+  await waitFor(() => expect(saved).toEqual(["typst"]));
+  fireEvent.click(within(places).getByRole("button", { name: "Word or Google Docs" }));
+  await waitFor(() => expect((screen.getByLabelText("Copy as") as HTMLSelectElement).value).toBe("style:apa"));
+  expect(saved).toEqual(["typst"]);
 });

@@ -22,6 +22,7 @@ export const {
   shortcutStatus,
   copyCitation,
   copyFormat,
+  setCopyFormat,
   cslItems,
   copyFormatted,
   pickerPreferences,
