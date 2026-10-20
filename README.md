@@ -4,7 +4,7 @@
 
 Ibis is free, open source and private by design: everything works offline, nothing is tracked, and your libraries are never changed.
 
-> **Status: early development, working towards the first preview (0.1).** The core engine and the `ibis` command line tool read BibTeX/BibLaTeX files. The desktop picker runs from source: a global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens it, you search a `.bib` library or, while Zotero is open, your Zotero library, automatically pick up changes and copy a citation in Pandoc, BibLaTeX, LaTeX or Typst syntax. Installable preview builds, Zotero group libraries, reading Zotero while it is closed, formatted styles and direct insertion follow. See the [roadmap](ROADMAP.md).
+> **Status: early development, working towards the first preview (0.1).** The core engine and the `ibis` command line tool read BibTeX/BibLaTeX files. The desktop picker runs from source: a global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens it, you search a `.bib` library or, while Zotero is open, your Zotero library and any group libraries you choose (More menu), automatically pick up changes and copy a citation in Pandoc, BibLaTeX, LaTeX or Typst syntax. Installable preview builds, reading Zotero while it is closed, formatted styles and direct insertion follow. See the [roadmap](ROADMAP.md).
 
 ## Planned for 1.0
 

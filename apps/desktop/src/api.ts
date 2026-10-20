@@ -3,12 +3,16 @@ import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { commands, type KeyFormat, type LibraryStatus } from "./bindings";
 
-export type { Copied, Density, LibraryStatus, PickerPreferences, RecordId, SearchResult, ShortcutStatus } from "./bindings";
+export type {
+  Copied, Density, LibraryStatus, PickerPreferences, RecordId, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
+} from "./bindings";
 export type CopyFormat = KeyFormat;
 
 export const {
   chooseLibrary,
   useZotero,
+  useZoteroLibraries,
+  zoteroGroups,
   reloadLibrary,
   libraryStatus,
   hidePicker,

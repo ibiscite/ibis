@@ -1025,3 +1025,93 @@ test("unreadable saved choices are reported and never overwritten with defaults"
   expect(document.documentElement.dataset.textSize).toBe("larger");
   expect(calls).not.toContain("set_picker_preferences");
 });
+
+function zoteroStatus(libraries: unknown[]) {
+  return { state: "loaded", has_snapshot: true, zotero: true, zotero_libraries: libraries,
+    name: libraries.length > 1 ? `${libraries.length} Zotero libraries` : "Zotero library",
+    snapshot_name: "Zotero library", references: 2, warnings: 0, error: null, note: null };
+}
+
+test("More lists Zotero libraries as checkboxes and turning one on reads them together", async () => {
+  const chosen: unknown[][] = [];
+  backend({
+    library_status: () => zoteroStatus(["user"]),
+    zotero_groups: () => [{ id: 42, name: "Synthetic lab" }, { id: 7, name: "Reading group" }],
+    use_zotero_libraries: ({ libraries }) => { chosen.push(libraries as unknown[]); return null; },
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const group = await screen.findByRole("group", { name: "Zotero libraries" });
+  await within(group).findByRole("menuitemcheckbox", { name: "Synthetic lab" });
+  const [mine, lab, reading] = within(group).getAllByRole("menuitemcheckbox");
+  const boxes = [mine!, lab!, reading!];
+  expect(boxes.map((box) => [box.textContent, box.getAttribute("aria-checked")])).toEqual([
+    ["My Library", "true"], ["Synthetic lab", "false"], ["Reading group", "false"],
+  ]);
+  // The only library on cannot be turned off.
+  expect(mine!.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(mine!);
+  fireEvent.click(lab!);
+  await waitFor(() => expect(chosen).toEqual([["user", { group: 42 }]]));
+  expect(screen.getByRole("menu")).toBeTruthy();
+});
+
+test("with several Zotero libraries each result names its library, and a left group can be turned off", async () => {
+  const chosen: unknown[][] = [];
+  backend({
+    library_status: () => zoteroStatus(["user", { group: 42 }, { group: 9 }]),
+    zotero_groups: () => [{ id: 42, name: "Synthetic lab" }],
+    search: ({ query }) => (query ? [result("a", "Mine", "zotero:user"), result("b", "Shared", "zotero:group:42")] : []),
+    use_zotero_libraries: ({ libraries }) => { chosen.push(libraries as unknown[]); return null; },
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "x" } });
+  const shared = (await screen.findByText("Shared")).closest("li")!;
+  await within(shared).findByText("Synthetic lab");
+  expect(within(screen.getByText("Mine").closest("li")!).getByText("My Library")).toBeTruthy();
+  await chooseFromMore("Group 9", "menuitemcheckbox");
+  await waitFor(() => expect(chosen).toEqual([["user", { group: 42 }]]));
+});
+
+test("a failed group list is reported and My Library stays available", async () => {
+  backend({
+    library_status: () => zoteroStatus(["user"]),
+    zotero_groups: () => { throw new Error("synthetic: Zotero closed"); },
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
+  const group = screen.getByRole("group", { name: "Zotero libraries" });
+  expect(within(group).getAllByRole("menuitemcheckbox").map((box) => box.textContent)).toEqual(["My Library"]);
+});
+
+test("two Zotero libraries turned on before the first is reported are both kept, and a refused choice is undone", async () => {
+  const chosen: unknown[][] = [];
+  let refuse = false;
+  backend({
+    library_status: () => zoteroStatus(["user"]),
+    zotero_groups: () => [{ id: 42, name: "Synthetic lab" }, { id: 7, name: "Reading group" }],
+    use_zotero_libraries: ({ libraries }) => {
+      if (refuse) throw new Error("synthetic refusal");
+      chosen.push(libraries as unknown[]);
+      return null;
+    },
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const group = await screen.findByRole("group", { name: "Zotero libraries" });
+  fireEvent.click(await within(group).findByRole("menuitemcheckbox", { name: "Synthetic lab" }));
+  fireEvent.click(within(group).getByRole("menuitemcheckbox", { name: "Reading group" }));
+  await waitFor(() => expect(chosen).toEqual([["user", { group: 42 }], ["user", { group: 42 }, { group: 7 }]]));
+  expect(within(group).getByRole("menuitemcheckbox", { name: "Reading group" }).getAttribute("aria-checked")).toBe("true");
+
+  await act(async () => { await emit("library:changed", zoteroStatus(["user", { group: 42 }, { group: 7 }])); });
+  refuse = true;
+  const menu = screen.getByRole("group", { name: "Zotero libraries" });
+  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Reading group" }));
+  await screen.findByText(/could not start reading Zotero/);
+  expect(within(menu).getByRole("menuitemcheckbox", { name: "Reading group" }).getAttribute("aria-checked")).toBe("true");
+});

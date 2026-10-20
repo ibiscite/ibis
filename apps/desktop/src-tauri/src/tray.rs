@@ -121,6 +121,7 @@ mod tests {
         let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
             state: LibraryState::Loaded,
             zotero: false,
+            zotero_libraries: Vec::new(),
             has_snapshot: name.is_some(),
             name: name.map(String::from),
             snapshot_name: name.map(String::from),

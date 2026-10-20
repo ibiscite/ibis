@@ -25,13 +25,67 @@ pub const SCHEMA_VERSION: u32 = 2;
 pub enum LibrarySetting {
     /// A BibTeX/BibLaTeX file: `{"bibtex": "/path/refs.bib"}`.
     Bibtex(PathBuf),
-    /// A Zotero library, read from Zotero itself: `{"zotero": "user"}` or
-    /// `{"zotero": {"group": 42}}`.
-    Zotero(ZoteroLibrary),
+    /// Zotero libraries, read from Zotero itself: `{"zotero": "user"}`,
+    /// `{"zotero": {"group": 42}}`, or several read together:
+    /// `{"zotero": ["user", {"group": 42}]}`.
+    Zotero(ZoteroLibraries),
+}
+
+/// One or more Zotero libraries, in the order chosen, each at most once.
+/// One library is written as itself and several as a list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "OneOrMore", into = "OneOrMore")]
+pub struct ZoteroLibraries(Vec<ZoteroLibrary>);
+
+impl ZoteroLibraries {
+    /// The libraries, or `None` when there are none or one repeats.
+    pub fn new(libraries: Vec<ZoteroLibrary>) -> Option<Self> {
+        let repeats = libraries.iter().enumerate().any(|(i, l)| libraries[..i].contains(l));
+        (!libraries.is_empty() && !repeats).then_some(Self(libraries))
+    }
+
+    pub fn libraries(&self) -> &[ZoteroLibrary] {
+        &self.0
+    }
+}
+
+impl From<ZoteroLibrary> for ZoteroLibraries {
+    fn from(library: ZoteroLibrary) -> Self {
+        Self(vec![library])
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum OneOrMore {
+    One(ZoteroLibrary),
+    More(Vec<ZoteroLibrary>),
+}
+
+impl TryFrom<OneOrMore> for ZoteroLibraries {
+    type Error = &'static str;
+    fn try_from(value: OneOrMore) -> Result<Self, Self::Error> {
+        match value {
+            OneOrMore::One(library) => Ok(library.into()),
+            OneOrMore::More(libraries) => {
+                Self::new(libraries).ok_or("Zotero libraries must be a non-empty list without repeats")
+            }
+        }
+    }
+}
+
+impl From<ZoteroLibraries> for OneOrMore {
+    fn from(value: ZoteroLibraries) -> Self {
+        match value.0.as_slice() {
+            [library] => OneOrMore::One(*library),
+            _ => OneOrMore::More(value.0),
+        }
+    }
 }
 
 /// Which Zotero library to read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "lowercase")]
 pub enum ZoteroLibrary {
     /// The personal library ("My Library").
@@ -445,12 +499,19 @@ mod tests {
     fn zotero_libraries_are_written_as_documented() {
         let cases = [
             (
-                LibrarySetting::Zotero(ZoteroLibrary::User),
+                LibrarySetting::Zotero(ZoteroLibrary::User.into()),
                 serde_json::json!({ "zotero": "user" }),
             ),
             (
-                LibrarySetting::Zotero(ZoteroLibrary::Group(42)),
+                LibrarySetting::Zotero(ZoteroLibrary::Group(42).into()),
                 serde_json::json!({ "zotero": { "group": 42 } }),
+            ),
+            (
+                LibrarySetting::Zotero(
+                    ZoteroLibraries::new(vec![ZoteroLibrary::User, ZoteroLibrary::Group(42)])
+                        .unwrap_or_else(|| panic!("valid")),
+                ),
+                serde_json::json!({ "zotero": ["user", { "group": 42 }] }),
             ),
             (
                 LibrarySetting::Bibtex(PathBuf::from("/synthetic/refs.bib")),
@@ -465,6 +526,9 @@ mod tests {
         for bad in [
             r#"{"zotero": "everyone"}"#,
             r#"{"zotero": {"group": -1}}"#,
+            r#"{"zotero": []}"#,
+            r#"{"zotero": ["user", "user"]}"#,
+            r#"{"zotero": ["user", "everyone"]}"#,
             r#"{"onedrive": "x"}"#,
             r#""/a/bare/path.bib""#,
         ] {

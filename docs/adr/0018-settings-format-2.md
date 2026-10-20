@@ -12,7 +12,7 @@ Write `schema_version: 2`. Everything in ADR 0016 still holds — location, atom
 
 | Field | Format 2 value |
 | --- | --- |
-| `library` | `{ "bibtex": "/path/refs.bib" }`, `{ "zotero": "user" }` (My Library) or `{ "zotero": { "group": 42 } }` (a group library, by its numeric ID) |
+| `library` | `{ "bibtex": "/path/refs.bib" }`, `{ "zotero": "user" }` (My Library) or `{ "zotero": { "group": 42 } }` (a group library, by its numeric ID), or several read together, in order and each once: `{ "zotero": ["user", { "group": 42 }] }` (added for #298; one library is still written as itself) |
 
 **Migration.** Reading checks the version first, as before. A file of format 1, with no `schema_version`, or with `schema_version: 0` is converted by a pure function `v1_to_v2`: a string `library` becomes `{ "bibtex": <path> }`, and every other field is unchanged. Each later format adds one such step, applied in order, with a test per step. A file is converted in memory when read and written in the new format only on the next save. That save keeps the format 1 file as `settings.json.bak` until the save after it, which replaces the backup as usual. An older Ibis meeting a format 2 file reports it as written by a newer version, leaves it unchanged and uses its backup, as ADR 0016 already specifies.
 

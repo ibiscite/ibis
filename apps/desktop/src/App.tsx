@@ -15,6 +15,8 @@ import {
   type RecordId,
   type SearchResult,
   type ShortcutStatus,
+  type ZoteroGroup,
+  type ZoteroLibrary,
 } from "./api";
 
 /** True while an input method is composing text; Enter then confirms the text.
@@ -98,14 +100,16 @@ function MoreMenu({ children, onClose }: { children: React.ReactNode; onClose: (
   );
 }
 
-function MenuItem({ label, title, keys, checked, onSelect }: {
-  label: string; title?: string; keys?: string; checked?: boolean; onSelect: () => void;
+function MenuItem({ label, title, keys, checked, disabled, onSelect }: {
+  label: string; title?: string; keys?: string; checked?: boolean; disabled?: boolean; onSelect: () => void;
 }) {
   // A checkable item keeps the menuitem role for focus handling; aria-checked
-  // is announced on menuitemcheckbox only, so the role changes with it.
+  // is announced on menuitemcheckbox only, so the role changes with it. A
+  // disabled item stays focusable so arrow keys still reach it.
   return (
     <button type="button" role={checked === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={checked}
-      data-menu-item tabIndex={-1} title={title} onClick={onSelect}>
+      aria-disabled={disabled || undefined} data-menu-item tabIndex={-1} title={title}
+      onClick={() => { if (!disabled) onSelect(); }}>
       <span>{label}</span>
       {keys && <kbd aria-hidden="true">{keys}</kbd>}
     </button>
@@ -117,7 +121,7 @@ function MenuItem({ label, title, keys, checked, onSelect }: {
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "useZoteroLibraries" | "zoteroGroups">>;
 
 /** A citation-key syntax, or a citation style written as `style:<id>`. */
 type Choice = CopyFormat | `style:${StyleId}`;
@@ -126,6 +130,10 @@ type Choice = CopyFormat | `style:${StyleId}`;
 function choiceName(choice: Choice): string {
   const style = styleOf(choice);
   return style ? STYLE_NAMES[style] : copyFormatNames[choice as CopyFormat];
+}
+
+function sameLibrary(a: ZoteroLibrary, b: ZoteroLibrary) {
+  return a === b || (typeof a === "object" && typeof b === "object" && a.group === b.group);
 }
 
 function styleOf(choice: Choice): StyleId | null {
@@ -138,7 +146,7 @@ export type PickerPreview = { query?: string; copied?: Copied };
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation, copyFormat,
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, quit, search, shortcutStatus, cslItems, copyFormatted,
-    pickerPreferences, setPickerPreferences } = api;
+    pickerPreferences, setPickerPreferences, useZoteroLibraries, zoteroGroups } = api;
   const [query, setQuery] = useState(preview?.query ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [announcement, setAnnouncement] = useState("");
@@ -409,6 +417,49 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // The search box is the place to type; the shortcut works from anywhere in the picker.
   const isMenuShortcut = (e: React.KeyboardEvent) =>
     e.key.toLowerCase() === "k" && commandKey(e) && !e.altKey && !e.shiftKey;
+  // Zotero libraries: the ones chosen, and the groups Zotero offers, listed
+  // when the menu opens or when results come from several libraries.
+  const [groups, setGroups] = useState<ZoteroGroup[] | null>(null);
+  // A choice sent but not yet reported back, so a second toggle builds on it.
+  const [pendingLibraries, setPendingLibraries] = useState<ZoteroLibrary[] | null>(null);
+  const reportedLibraries = library?.zotero_libraries ?? [];
+  const sameChoice = (a: ZoteroLibrary[], b: ZoteroLibrary[]) =>
+    a.length === b.length && a.every((choice, i) => sameLibrary(choice, b[i]!));
+  useEffect(() => {
+    if (pendingLibraries && sameChoice(pendingLibraries, reportedLibraries)) setPendingLibraries(null);
+  }, [library]);
+  const chosenLibraries = pendingLibraries ?? reportedLibraries;
+  const severalLibraries = chosenLibraries.length > 1;
+  const wantGroups = Boolean(zoteroGroups && library?.zotero && (menuOpen || severalLibraries));
+  useEffect(() => {
+    if (!wantGroups || !zoteroGroups) return;
+    let current = true;
+    zoteroGroups()
+      .then((list) => { if (current) { setGroups(list); report("zoteroGroups", false); } })
+      .catch(() => { if (current) report("zoteroGroups"); });
+    return () => { current = false; };
+  }, [wantGroups, libraryVersion]);
+  const isChosen = (choice: ZoteroLibrary) => chosenLibraries.some((chosen) => sameLibrary(chosen, choice));
+  const toggleLibrary = (choice: ZoteroLibrary) => {
+    if (!useZoteroLibraries) return;
+    const next = isChosen(choice)
+      ? chosenLibraries.filter((chosen) => !sameLibrary(chosen, choice))
+      : [...chosenLibraries, choice];
+    if (next.length === 0) return;
+    setPendingLibraries(next);
+    void perform("zotero", () => useZoteroLibraries(next).catch((error: unknown) => {
+      setPendingLibraries(null);
+      throw error;
+    }));
+  };
+  const groupName = (id: number) => groups?.find((group) => group.id === id)?.name ?? pickerText.groupLibrary(id);
+  // Every group Zotero lists, plus chosen groups it no longer lists, so they can be turned off.
+  const offeredGroups = [...(groups?.map((group) => group.id) ?? []),
+    ...chosenLibraries.flatMap((chosen) => (typeof chosen === "object" ? [chosen.group] : []))]
+    .filter((id, i, all) => all.indexOf(id) === i);
+  const libraryOf = (source: string) =>
+    source === "zotero:user" ? pickerText.myLibrary
+      : source.startsWith("zotero:group:") ? groupName(Number(source.slice("zotero:group:".length))) : null;
   const closeMenu = (refocus: boolean) => {
     setMenuOpen(false);
     if (refocus) moreButton.current?.focus();
@@ -616,6 +667,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                 <span className="result-meta">
                   <span className="result-authors">{r.authors}</span>
                   <code className="result-key">{r.key}</code>
+                  {severalLibraries && libraryOf(r.id.source) && <span className="result-library">{libraryOf(r.id.source)}</span>}
                 </span>
                 {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
                 {selected.has(idKey(r.id)) && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
@@ -676,6 +728,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                 <MenuItem label={pickerText.chooseLibrary} title={pickerText.chooseTitle} onSelect={() => runFromMenu("choose", chooseLibrary)} />
                 {!library?.zotero && (
                   <MenuItem label={pickerText.useZotero} title={pickerText.useZoteroTitle} onSelect={() => runFromMenu("zotero", useZotero)} />
+                )}
+                {library?.zotero && useZoteroLibraries && (
+                  <div role="group" aria-label={pickerText.zoteroLibraries}>
+                    {(["user" as const, ...offeredGroups.map((id) => ({ group: id }))] as ZoteroLibrary[]).map((choice) => {
+                      const checked = isChosen(choice);
+                      const last = checked && chosenLibraries.length === 1;
+                      return (
+                        <MenuItem key={typeof choice === "object" ? choice.group : choice}
+                          label={typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary}
+                          title={last ? pickerText.keepOneLibrary : undefined} checked={checked} disabled={last}
+                          onSelect={() => toggleLibrary(choice)} />
+                      );
+                    })}
+                  </div>
                 )}
                 {library?.name && (
                   <MenuItem label={pickerText.reload} title={pickerText.reloadTitle} onSelect={() => runFromMenu("reload", reloadLibrary)} />

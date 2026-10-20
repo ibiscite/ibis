@@ -16,7 +16,7 @@ export type GalleryState = {
 };
 
 function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
-  return { state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false,
+  return { state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false, zotero_libraries: [],
     references: 24, warnings: 0, error: null, note: null, settings_notice: null, ...overrides };
 }
 
