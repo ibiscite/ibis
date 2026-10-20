@@ -79,6 +79,7 @@ fn main() {
         .manage(setup::Offered::default())
         .manage(DialogOpen::default())
         .manage(Pinned::default())
+        .manage(picker::FullScreenGuard::default())
         .manage(Mutex::new(ShortcutStatus::default()))
         .manage(updater::Updates::default())
         .invoke_handler(bindings::commands().invoke_handler())
@@ -147,6 +148,9 @@ fn main() {
             // The picker opens near the top of the display with the pointer.
             if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
                 place_on_active_display(app.handle(), &window, true);
+                // The window option alone does not reach GTK's first mapping.
+                #[cfg(not(target_os = "macos"))]
+                report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
             }
             // Settings live in the app's configuration folder, e.g. on macOS
             // ~/Library/Application Support/io.github.ibiscite.ibis/settings.json

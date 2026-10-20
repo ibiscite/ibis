@@ -4,6 +4,7 @@ import { copyFormatNames, densityNames, keyText, libraryMessages, operationFailu
 import { ariaKeys, KEY_TABLE, keyLabel, keysFor, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LibrarySetup, shortcutLabel } from "./LibrarySetup";
+import { usePointerSelection } from "./pointerSelection";
 import { formatCitation, FORMATTED_STYLES, provisional, type FormattedCitation } from "./format/formatted";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
 import { render } from "./format/markup";
@@ -228,6 +229,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // The query the shown results belong to; differs while a search is pending.
   const [resultsQuery, setResultsQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
+  const pointer = usePointerSelection(active, setActive);
   const [selected, setSelected] = useState<Map<string, SearchResult>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const [format, setFormat] = useState<Choice>("pandoc");
@@ -466,9 +468,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [query, library, libraryVersion]);
 
   // Keep the highlighted result visible while moving with the arrow keys.
+  // A row chosen by the pointer is already under it; scrolling would move it away.
   useEffect(() => {
+    if (pointer.fromPointer.current) {
+      pointer.fromPointer.current = false;
+      return;
+    }
     document.getElementById(`result-${active}`)?.scrollIntoView?.({ block: "nearest" });
-  }, [active]);
+  }, [active, pointer.fromPointer]);
 
   // Success is brief; warnings stay available until explicitly dismissed.
   useEffect(() => {
@@ -823,7 +830,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {announcement}
         </p>
-        <ul id="results" role="listbox" aria-label={pickerText.results}>
+        <ul id="results" role="listbox" aria-label={pickerText.results} onMouseMove={pointer.onMouseMove}>
           {results.map((r, i) => {
             const why = hiddenMatch(r.matched);
             return (

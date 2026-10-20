@@ -232,7 +232,15 @@ which tips were seen) need an ADR before new `settings.json` fields are added.
    full-screen/presentation shortcut guard and its second-press override.
    Separately verify the macOS panel opens over full-screen apps in the current
    Space; the panel already has this configuration, which is not evidence that
-   every native scenario passes. Also still to do in this step: undoing an Escape that cleared the search
+   every native scenario passes.
+   Status (#495): the quick picker asks to stay out of the taskbar on Windows
+   and Linux, and the Linux native smoke checks the X11 hints. The full-screen
+   guard (a second press within 2 seconds opens Ibis anyway) works where the
+   window manager reports full-screen windows (X11). Windows and macOS have no
+   detection yet: it needs native calls the safe dependencies do not offer, so
+   there the shortcut always opens Ibis. Hiding the picker from Windows Alt+Tab
+   needs a tool-window style for the same reason. (#509, #510)
+   Also still to do in this step: undoing an Escape that cleared the search
    (reopening within a minute brings it back), the "Copied" notice after hiding, and a click on a row copies it
    (Shift+click adds it to the tray).
 4. Density and Larger text are settings under ADR 0020 (#407, #408). Remaining

@@ -3,7 +3,7 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use tauri::{Runtime, WebviewWindow};
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
+use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
 
 /// Verify the protocol requests used to start global-hotkey's Linux worker.
 /// This checks real capabilities, including when an X11 app runs in a Wayland
@@ -44,6 +44,47 @@ pub(super) fn query<R: Runtime>(window: &WebviewWindow<R>) -> Result<Option<bool
     };
     let (connection, _) = x11rb::connect(None).map_err(|_| ())?;
     query_connection(&connection, picker).map(Some)
+}
+
+/// Whether the active window, as the window manager reports it, is full
+/// screen (a presentation, a video, a full-screen editor). `None` when no
+/// EWMH window manager names an active window, as on native Wayland apps.
+pub(super) fn foreground_full_screen() -> Result<Option<bool>, ()> {
+    let (connection, screen) = x11rb::connect(None).map_err(|_| ())?;
+    let root = connection.setup().roots.get(screen).ok_or(())?.root;
+    full_screen_in_front(&connection, root)
+}
+
+fn full_screen_in_front(connection: &impl Connection, root: u32) -> Result<Option<bool>, ()> {
+    let atom = |name: &[u8]| -> Result<u32, ()> {
+        Ok(connection
+            .intern_atom(false, name)
+            .map_err(|_| ())?
+            .reply()
+            .map_err(|_| ())?
+            .atom)
+    };
+    let property = |window: u32, name: u32, kind: AtomEnum, length: u32| {
+        connection
+            .get_property(false, window, name, kind, 0, length)
+            .map_err(|_| ())?
+            .reply()
+            .map_err(|_| ())
+    };
+    let active = property(root, atom(b"_NET_ACTIVE_WINDOW")?, AtomEnum::WINDOW, 1)?;
+    let Some(window) = active.value32().and_then(|mut values| values.next()) else {
+        return Ok(None);
+    };
+    if window == 0 {
+        return Ok(Some(false));
+    }
+    let full_screen = atom(b"_NET_WM_STATE_FULLSCREEN")?;
+    // A destroyed active window is an error here, so the caller lets the
+    // shortcut through rather than guessing.
+    let state = property(window, atom(b"_NET_WM_STATE")?, AtomEnum::ATOM, 64)?;
+    Ok(Some(
+        state.value32().is_some_and(|mut atoms| atoms.any(|a| a == full_screen)),
+    ))
 }
 
 fn query_connection(connection: &impl Connection, picker: u32) -> Result<bool, ()> {
@@ -154,6 +195,58 @@ mod tests {
         assert_eq!(query_connection(&connection, picker), Ok(true));
         synthetic(synthetic(connection.ungrab_keyboard(x11rb::CURRENT_TIME)).check());
         // Disconnecting destroys only this connection's synthetic windows.
+    }
+
+    #[test]
+    #[ignore = "requires an isolated X11 display; run with xvfb-run"]
+    fn a_full_screen_active_window_is_detected_from_window_manager_hints() {
+        use x11rb::protocol::xproto::{CreateWindowAux, PropMode, WindowClass};
+        use x11rb::wrapper::ConnectionExt as _;
+        fn synthetic<T, E>(result: Result<T, E>) -> T {
+            result.unwrap_or_else(|_| panic!("synthetic X11 request failed"))
+        }
+        let (connection, screen) = synthetic(x11rb::connect(None));
+        let root = connection.setup().roots[screen].root;
+        let atom = |name: &[u8]| synthetic(synthetic(connection.intern_atom(false, name)).reply()).atom;
+        let (active, state, full) = (
+            atom(b"_NET_ACTIVE_WINDOW"),
+            atom(b"_NET_WM_STATE"),
+            atom(b"_NET_WM_STATE_FULLSCREEN"),
+        );
+        // Without a window manager nothing names an active window.
+        synthetic(synthetic(connection.delete_property(root, active)).check());
+        assert_eq!(full_screen_in_front(&connection, root), Ok(None));
+        let window = synthetic(connection.generate_id());
+        synthetic(
+            synthetic(connection.create_window(
+                0,
+                window,
+                root,
+                0,
+                0,
+                80,
+                50,
+                0,
+                WindowClass::INPUT_OUTPUT,
+                0,
+                &CreateWindowAux::default(),
+            ))
+            .check(),
+        );
+        let set = |target: u32, name: u32, kind: AtomEnum, values: &[u32]| {
+            synthetic(synthetic(connection.change_property32(PropMode::REPLACE, target, name, kind, values)).check());
+        };
+        set(root, active, AtomEnum::WINDOW, &[window]);
+        assert_eq!(full_screen_in_front(&connection, root), Ok(Some(false)));
+        set(window, state, AtomEnum::ATOM, &[atom(b"_NET_WM_STATE_ABOVE"), full]);
+        assert_eq!(full_screen_in_front(&connection, root), Ok(Some(true)));
+        set(root, active, AtomEnum::WINDOW, &[0]);
+        assert_eq!(full_screen_in_front(&connection, root), Ok(Some(false)));
+        // A stale active window that no longer exists is unknown, not false.
+        synthetic(synthetic(connection.destroy_window(window)).check());
+        set(root, active, AtomEnum::WINDOW, &[window]);
+        assert_eq!(full_screen_in_front(&connection, root), Err(()));
+        synthetic(synthetic(connection.delete_property(root, active)).check());
     }
 
     #[test]

@@ -10,8 +10,11 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut}
 use crate::diagnostics::{NativeIssue, checked, report};
 use crate::placement::place_on_active_display;
 
+mod full_screen;
 #[cfg(target_os = "linux")]
 mod x11_focus;
+
+pub(crate) use full_screen::FullScreenGuard;
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
@@ -96,6 +99,9 @@ pub(crate) fn show_picker(app: &AppHandle) {
         #[cfg(not(target_os = "macos"))]
         {
             report(window.show(), NativeIssue::Show);
+            // The quick picker stays out of the taskbar and Alt+Tab. Showing a
+            // hidden window can bring its taskbar button back on Windows.
+            report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
             report(window.set_focus(), NativeIssue::Focus);
         }
         report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
@@ -160,11 +166,39 @@ pub(crate) fn toggle_picker(app: &AppHandle) {
         eprintln!("{}", toggle_trace(visible, focused));
         match toggle_action(visible, focused) {
             ToggleAction::Hide => dismiss_picker(app),
-            ToggleAction::Show => show_picker(app),
+            ToggleAction::Show if shortcut_allowed(app) => show_picker(app),
+            ToggleAction::Show => {
+                #[cfg(debug_assertions)]
+                eprintln!("ibis-picker: toggle ignored over full-screen app");
+            }
         }
     } else {
         show_picker(app);
     }
+}
+
+/// Whether the full-screen guard lets this press show the picker.
+fn shortcut_allowed(app: &AppHandle) -> bool {
+    app.try_state::<FullScreenGuard>()
+        .is_none_or(|guard| guard.allows(foreground_full_screen(), std::time::Instant::now()))
+}
+
+/// Whether a full-screen window is in front. Only X11 can tell today; macOS
+/// and Windows need native calls the current dependencies do not offer
+/// safely, so there the shortcut always works (#495).
+fn foreground_full_screen() -> Option<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        static FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
+        crate::diagnostics::checked_once(
+            x11_focus::foreground_full_screen(),
+            NativeIssue::FullScreen,
+            &FAILURE_REPORTED,
+        )
+        .flatten()
+    }
+    #[cfg(not(target_os = "linux"))]
+    None
 }
 
 /// Hide the picker (Escape in the interface).
@@ -309,6 +343,15 @@ pub(crate) fn dismiss_unless_refocused(app: &AppHandle, blur: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a settings window may appear in the taskbar or Alt+Tab (#495);
+    /// macOS already uses an accessory panel, where this option does nothing.
+    #[test]
+    fn the_quick_picker_is_kept_out_of_the_taskbar() {
+        let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap_or_default();
+        assert_eq!(config["app"]["windows"][0]["label"], "main");
+        assert_eq!(config["app"]["windows"][0]["skipTaskbar"], true);
+    }
 
     #[test]
     fn unavailable_shortcut_backend_never_calls_the_registration_plugin() {

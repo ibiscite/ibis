@@ -201,7 +201,7 @@ jobs:
         working-directory: .
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
 
       - name: Cache Rust build
         if: env.NATIVE == 'true'
@@ -312,6 +312,7 @@ jobs:
           /usr/bin/python3 scripts/smoke-native.py --self-test
           /usr/bin/python3 scripts/check-offline.test.py
           xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked x11_server_focus_stays_with_editor_during_keyboard_grab -- --ignored --nocapture
+          xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked a_full_screen_active_window_is_detected_from_window_manager_hints -- --ignored --nocapture
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-Linux --budgets scripts/smoke-budgets.json
 
       # macOS and Windows UI automation on hosted runners is the flakiest part

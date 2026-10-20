@@ -18,6 +18,10 @@ pub(crate) enum NativeIssue {
     HideApplication,
     #[cfg(not(target_os = "macos"))]
     AlwaysOnTop,
+    #[cfg(not(target_os = "macos"))]
+    SkipTaskbar,
+    #[cfg(target_os = "linux")]
+    FullScreen,
     Monitor,
     Size,
     Position,
@@ -45,6 +49,10 @@ impl NativeIssue {
             Self::HideApplication => "the application could not release focus",
             #[cfg(not(target_os = "macos"))]
             Self::AlwaysOnTop => "the picker could not change whether it stays on top",
+            #[cfg(not(target_os = "macos"))]
+            Self::SkipTaskbar => "the picker could not stay out of the taskbar",
+            #[cfg(target_os = "linux")]
+            Self::FullScreen => "whether a full-screen app is in front could not be read",
             Self::Monitor => "the picker monitor could not be read",
             Self::Size => "the picker size could not be read",
             Self::Position => "the picker could not be positioned",
@@ -141,6 +149,10 @@ mod tests {
             NativeIssue::HideApplication,
             #[cfg(not(target_os = "macos"))]
             NativeIssue::AlwaysOnTop,
+            #[cfg(not(target_os = "macos"))]
+            NativeIssue::SkipTaskbar,
+            #[cfg(target_os = "linux")]
+            NativeIssue::FullScreen,
             NativeIssue::Monitor,
             NativeIssue::Size,
             NativeIssue::Position,

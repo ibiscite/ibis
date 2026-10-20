@@ -270,7 +270,7 @@ jobs:
           . "$RUNNER_TEMP/diagnose.sh"
           sudo apt-get update
           # Only test tools here; the .deb must bring its own runtime libraries.
-          sudo apt-get install -y --no-install-recommends xvfb xauth xdotool openbox xterm python3-pyatspi xclip at-spi2-core fonts-noto-core fonts-noto-cjk
+          sudo apt-get install -y --no-install-recommends xvfb xauth xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core fonts-noto-core fonts-noto-cjk
           show sudo apt-get install -y ./dist/Ibis-Linux.deb
           package=$(dpkg-deb --field dist/Ibis-Linux.deb Package)
           app=$(dpkg -L "$package" | grep -m1 '^/usr/bin/')
