@@ -10,12 +10,15 @@ use serde_json::Value;
 use thiserror::Error;
 
 use super::{Library, load_items};
-use crate::model::LoadResult;
+use crate::model::{LoadResult, LoadWarning, WarningKind};
 
 /// Items requested per page; the most Zotero returns at once.
 pub const PAGE_SIZE: usize = 100;
-/// Pages read in one scan before giving up: one million items.
-const MAX_PAGES: usize = 10_000;
+/// Requests made in one scan before giving up: one million items, with room
+/// to narrow down items Zotero cannot export.
+const MAX_REQUESTS: usize = 12_000;
+/// Items Zotero could not export before the whole scan is given up as broken.
+const MAX_SKIPPED: usize = 100;
 /// Scans restarted because the library changed underneath them.
 const MAX_ATTEMPTS: usize = 3;
 
@@ -108,6 +111,12 @@ fn items_path(library: Library) -> String {
     }
 }
 
+/// Only top-level items are references. Asking for them alone spares Zotero
+/// a citation export for every child note and attachment (#301).
+fn top_items_path(library: Library) -> String {
+    format!("{}/top", items_path(library))
+}
+
 /// Read the library if it changed since `previous`, otherwise report that
 /// nothing changed. A change is detected cheaply with `since=`, which lists
 /// only the versions of changed items; any change reads the whole library at
@@ -153,38 +162,67 @@ pub fn scan(transport: &mut impl Transport, library: Library) -> Result<(LoadRes
 fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<(LoadResult, Snapshot)>, ZoteroError> {
     let mut items: Vec<Value> = Vec::new();
     let mut first: Option<Snapshot> = None;
-    for page in 0..MAX_PAGES {
-        let start = page * PAGE_SIZE;
-        let response = request(
-            transport,
-            library,
-            &format!(
-                "{}?format=json&include=data,csljson&limit={PAGE_SIZE}&start={start}",
-                items_path(library)
-            ),
-        )?;
-        let seen = snapshot(&response)?;
-        match &first {
-            None => first = Some(seen),
-            Some(first) if *first != seen => return Ok(None),
-            Some(_) => {}
+    let mut total: Option<usize> = None;
+    let mut skipped: Vec<LoadWarning> = Vec::new();
+    // Ranges still to read, last first. A page Zotero fails to export is
+    // split in halves until the one item it cannot export is found.
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    let mut next = 0;
+    for _ in 0..MAX_REQUESTS {
+        let (start, limit) = ranges.pop().unwrap_or_else(|| {
+            next += PAGE_SIZE;
+            (next - PAGE_SIZE, PAGE_SIZE)
+        });
+        let path = format!(
+            "{}?format=json&include=data,csljson&limit={limit}&start={start}",
+            top_items_path(library)
+        );
+        let response = transport.get(&path)?;
+        if response.status == 500 {
+            if limit > 1 {
+                ranges.push((start + limit / 2, limit - limit / 2));
+                ranges.push((start, limit / 2));
+            } else {
+                // A failed export carries no library version, so the skipped
+                // item is tied to one through the key lookup's answer.
+                let (warning, keys) = unexported(transport, library, start)?;
+                if !consistent(&keys, &mut first, &mut total)? {
+                    return Ok(None);
+                }
+                skipped.push(warning);
+                if skipped.len() > MAX_SKIPPED {
+                    return Err(ZoteroError::Status(500));
+                }
+            }
+            continue;
         }
-        let total: usize = response
-            .header("Total-Results")
-            .and_then(|t| t.parse().ok())
-            .ok_or(ZoteroError::Incomplete)?;
+        let response = checked(response, library)?;
+        if !consistent(&response, &mut first, &mut total)? {
+            return Ok(None);
+        }
+        let count = total.ok_or(ZoteroError::Incomplete)?;
         let Value::Array(page_items) = serde_json::from_slice(&response.body).map_err(|_| ZoteroError::Incomplete)?
         else {
             return Err(ZoteroError::Incomplete);
         };
-        if page_items.len() > PAGE_SIZE {
+        if page_items.len() > limit {
             return Err(ZoteroError::Incomplete);
         }
         let got = page_items.len();
         items.extend(page_items);
-        if items.len() >= total {
+        if !ranges.is_empty() {
+            continue;
+        }
+        if items.len() + skipped.len() >= count {
+            if items.is_empty() && !skipped.is_empty() {
+                // Zotero exported nothing at all: that is a broken Zotero,
+                // not an empty library.
+                return Err(ZoteroError::Status(500));
+            }
             let snapshot = first.ok_or(ZoteroError::Incomplete)?;
-            return Ok(Some((load_items(library, &items), snapshot)));
+            let mut result = load_items(library, &items);
+            result.warnings.extend(skipped);
+            return Ok(Some((result, snapshot)));
         }
         if got == 0 {
             // The library shrank between pages without a new version, or
@@ -195,8 +233,61 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
     Err(ZoteroError::TooLarge)
 }
 
+/// Whether `response` belongs to the same library version and size as the
+/// scan so far; the first answer sets both.
+fn consistent(
+    response: &Response,
+    first: &mut Option<Snapshot>,
+    total: &mut Option<usize>,
+) -> Result<bool, ZoteroError> {
+    let seen = snapshot(response)?;
+    let count: usize = response
+        .header("Total-Results")
+        .and_then(|t| t.parse().ok())
+        .ok_or(ZoteroError::Incomplete)?;
+    if first.as_ref().is_some_and(|first| *first != seen) || total.is_some_and(|total| total != count) {
+        return Ok(false);
+    }
+    *first = Some(seen);
+    *total = Some(count);
+    Ok(true)
+}
+
+/// A reading notice for the item at `position` that Zotero could not export,
+/// and the key lookup's answer. Listing keys exports nothing, so it answers
+/// even when the export fails, with the library version and size.
+fn unexported(
+    transport: &mut impl Transport,
+    library: Library,
+    position: usize,
+) -> Result<(LoadWarning, Response), ZoteroError> {
+    let response = request(
+        transport,
+        library,
+        &format!("{}?format=keys&limit=1&start={position}", top_items_path(library)),
+    )?;
+    let key = std::str::from_utf8(&response.body)
+        .ok()
+        .map(|keys| keys.trim().to_string())
+        .filter(|key| !key.is_empty() && key.len() <= 32 && key.bytes().all(|b| b.is_ascii_alphanumeric()));
+    let message = match &key {
+        Some(key) => format!("Zotero could not export the item `{key}`; it was skipped"),
+        None => "Zotero could not export one item; it was skipped".to_string(),
+    };
+    let warning = LoadWarning {
+        kind: WarningKind::Syntax,
+        line: None,
+        key,
+        message,
+    };
+    Ok((warning, response))
+}
+
 fn request(transport: &mut impl Transport, library: Library, path: &str) -> Result<Response, ZoteroError> {
-    let response = transport.get(path)?;
+    checked(transport.get(path)?, library)
+}
+
+fn checked(response: Response, library: Library) -> Result<Response, ZoteroError> {
     match response.status {
         200 => {}
         403 => return Err(ZoteroError::NotAllowed),
@@ -278,6 +369,123 @@ mod tests {
         (0..n).map(|i| format!("{prefix}{i}")).collect()
     }
 
+    /// A Zotero whose export fails for the items at `bad` positions, answering
+    /// any page by its `start` and `limit`, as the local API does.
+    struct Exporting {
+        keys: Vec<String>,
+        bad: Vec<usize>,
+        asked: Vec<String>,
+        version: u64,
+        /// Right after a key lookup, the library gains an item and the
+        /// failing export is fixed.
+        change_on_lookup: bool,
+    }
+
+    impl Exporting {
+        fn new(keys: Vec<String>, bad: Vec<usize>) -> Self {
+            Self {
+                keys,
+                bad,
+                asked: Vec::new(),
+                version: 9,
+                change_on_lookup: false,
+            }
+        }
+    }
+
+    impl Transport for Exporting {
+        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+            self.asked.push(path.to_string());
+            let number = |name: &str| -> usize {
+                path.split(['?', '&'])
+                    .find_map(|part| part.strip_prefix(name))
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0)
+            };
+            let (start, limit) = (number("start="), number("limit="));
+            let end = (start + limit).min(self.keys.len());
+            let range = start.min(end)..end;
+            if path.contains("format=keys") {
+                let mut answer = page(self.version, self.keys.len(), &[]);
+                answer.body = self.keys[range].join("\n").into_bytes();
+                if std::mem::take(&mut self.change_on_lookup) {
+                    self.version += 1;
+                    self.bad.clear();
+                    self.keys.push("NEW".into());
+                }
+                return Ok(answer);
+            }
+            if self.bad.iter().any(|bad| range.contains(bad)) {
+                return Ok(Response {
+                    status: 500,
+                    ..Response::default()
+                });
+            }
+            let keys: Vec<&str> = self.keys[range].iter().map(String::as_str).collect();
+            Ok(page(self.version, self.keys.len(), &keys))
+        }
+    }
+
+    #[test]
+    fn an_item_zotero_cannot_export_is_skipped_and_named_not_fatal() {
+        let mut zotero = Exporting::new(many("K", PAGE_SIZE + 30), vec![7, PAGE_SIZE + 3]);
+        let (result, _) = scan(&mut zotero, Library::User).unwrap_or_else(|e| panic!("{e}"));
+        let expected: Vec<String> = zotero
+            .keys
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !zotero.bad.contains(i))
+            .map(|(_, k)| k.clone())
+            .collect();
+        assert_eq!(keys(&result), expected);
+        let skipped: Vec<_> = result.warnings.iter().map(|w| (w.kind, w.key.as_deref())).collect();
+        assert_eq!(
+            skipped,
+            [(WarningKind::Syntax, Some("K7")), (WarningKind::Syntax, Some("K103"))]
+        );
+        assert!(result.warnings[0].message.contains("could not export"));
+        // Narrowing a page down costs a handful of requests, not one per item.
+        assert!(zotero.asked.len() < 40, "{} requests", zotero.asked.len());
+        assert!(zotero.asked.iter().all(|path| path.starts_with("users/0/items/top?")));
+    }
+
+    #[test]
+    fn a_zotero_that_cannot_export_anything_is_an_error_not_an_empty_library() {
+        let mut zotero = Exporting::new(many("K", 3 * MAX_SKIPPED), (0..3 * MAX_SKIPPED).collect());
+        assert_eq!(scan(&mut zotero, Library::User).err(), Some(ZoteroError::Status(500)));
+    }
+
+    #[test]
+    fn a_change_after_skipping_a_bad_first_item_restarts_the_scan() {
+        // The first item fails before any page has given a version, so its
+        // key lookup sets version 9. The library then changes: the next page
+        // at version 10 restarts the scan rather than dropping an item that
+        // version 10 exports fine.
+        let mut zotero = Exporting::new(many("K", 80), vec![0]);
+        zotero.change_on_lookup = true;
+        let (result, snapshot) = scan(&mut zotero, Library::User).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(result.references.len(), 81);
+        assert_eq!(keys(&result).first(), Some(&"K0"));
+        assert!(result.warnings.is_empty());
+        assert_eq!(snapshot.version, 10);
+    }
+
+    #[test]
+    fn a_library_whose_every_item_fails_is_an_error_not_empty() {
+        let mut zotero = Exporting::new(many("K", 3), vec![0, 1, 2]);
+        assert_eq!(scan(&mut zotero, Library::User).err(), Some(ZoteroError::Status(500)));
+    }
+
+    #[test]
+    fn a_skipped_item_whose_key_cannot_be_read_is_still_reported() {
+        let mut zotero = Exporting::new(vec!["A".into(), "B<script>".into(), "C".into()], vec![1]);
+        let (result, _) = scan(&mut zotero, Library::User).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(keys(&result), ["A", "C"]);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].key, None);
+        assert!(!result.warnings[0].message.contains("script"));
+    }
+
     #[test]
     fn a_library_is_read_page_by_page_at_one_version() {
         let first = many("A", PAGE_SIZE);
@@ -298,8 +506,8 @@ mod tests {
         assert_eq!(
             fake.asked,
             [
-                "groups/7/items?format=json&include=data,csljson&limit=100&start=0",
-                "groups/7/items?format=json&include=data,csljson&limit=100&start=100",
+                "groups/7/items/top?format=json&include=data,csljson&limit=100&start=0",
+                "groups/7/items/top?format=json&include=data,csljson&limit=100&start=100",
             ]
         );
     }
