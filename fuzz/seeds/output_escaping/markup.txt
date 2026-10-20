@@ -1,0 +1,1 @@
+synthetic	<script>alert('synthetic')</script>&amp;	1-3	<i>Italic</i> <span onclick="run()">literal</span>	!

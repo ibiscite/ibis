@@ -56,3 +56,10 @@ path = "fuzz_targets/bibtex_inheritance.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "output_escaping"
+path = "fuzz_targets/output_escaping.rs"
+test = false
+doc = false
+bench = false

@@ -83,3 +83,22 @@ cargo +nightly fuzz run bibtex_inheritance "$corpus_dir" -- -max_total_time=180 
 
 The test replays the synthetic seeds and all generated depth/flag combinations.
 CI owners should wire this target into nightly separately; it is local only today.
+
+`output_escaping` reuses `cite_render`'s syntax checkers for arbitrary keys,
+notes and locators. It also forces successful single/multi-reference renderings
+with control-free notes, checks empty-selection rejection, and validates the
+CSL rich text exported by the production Zotero mapper and BibTeX loader. Only
+the supported CSL tags and escaped text entities may occur; Zotero title and
+container text must round-trip through one entity decode without losing text.
+These are core CSL inputs, not clipboard HTML or RTF renderers: those paths are
+outside this Rust target's coverage.
+
+```sh
+cargo test -p ibis-fuzz --test output_escaping --locked
+corpus_dir=$(mktemp -d)
+cp fuzz/seeds/output_escaping/* "$corpus_dir/"
+cargo +nightly fuzz run output_escaping "$corpus_dir" -- -max_total_time=300 -timeout=5 -rss_limit_mb=1024 -max_len=16384
+```
+
+This target is local only. The existing nightly reporter accepts only its four
+registered targets, so CI owners must wire this target in separately.

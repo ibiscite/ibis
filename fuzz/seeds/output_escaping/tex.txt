@@ -1,0 +1,1 @@
+@book{synthetic,title={\textit{Emphasis} <script> & \textbf{Bold}},booktitle={\textsc{Small} $x_2$}}
