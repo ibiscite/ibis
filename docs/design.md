@@ -66,11 +66,11 @@ platform, so a source or a reference type always looks the same.
 | | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
 | Material | Translucent glass | Mica, content on a lighter layer | Flat |
-| Window radius | 20 px | 8 px (4 px controls) | 14 px |
+| Window radius | 12 pt, the native panel corner (#236) | 8 px (4 px controls) | 14 px |
 | Selected row | Filled accent, white text | Soft grey with an accent pill on the left | Accent tint |
 | Search box | Frameless, large | Text box with an underline that turns accent on focus | Framed entry |
 | Shortcut labels | ⌘ ⌥ ⇧ | Ctrl Alt Shift | Ctrl Super Shift |
-| Copied | Pill near the top of the screen | Notification bottom-right | Toast at the bottom |
+| Copied | Pill near the top of the screen | Notice bottom-right | Toast at the bottom |
 
 High contrast and reduced transparency replace every material with the opaque
 system surface, as [native appearance groundwork](https://github.com/ibiscite/ibis/pull/232#issuecomment-6282577029) already does.
@@ -155,13 +155,16 @@ per display. On small screens, the preview replaces the list instead of sitting
 beside it.
 
 **Giving focus back.** After Enter, Ibis hides and focus returns to the window it
-came from. If inserting fails, the citation is on the clipboard and a notice says
-why. Shift+Enter adds to the tray and keeps Ibis open. When pinned, Enter inserts
+came from, and a short "Copied" (or "Inserted") notice appears where the
+table above says, drawn by Ibis in a small window that never takes focus;
+native system notifications may replace it later. If inserting fails, the
+citation is on the clipboard and a notice says why. Shift+Enter adds to the tray and keeps Ibis open. When pinned, Enter inserts
 and Ibis stays open.
 
 **Escape** steps back one layer: close a menu or dialog, close the preview,
-clear the search and filters, then hide. With sources in the tray, the last step
-asks once before discarding them. Escape never unpins.
+clear the search and filters, then hide. Nothing asks for confirmation. After
+hiding, the search is kept in memory for a minute (#314); bringing back a search
+that Escape cleared is still to do (rollout step 3). Escape never unpins.
 
 **Pinned** Ibis floats above the document, keeps its place, and does not take
 focus until clicked or summoned. It is the only time Ibis stays on top.
@@ -212,16 +215,22 @@ which tips were seen) need an ADR before new `settings.json` fields are added.
 1. **Done (#307).** Design values in `tokens.css`: type scale, densities, radii,
    motion and colour roles, without changing layout. Remaining motion work:
    enforce the 280 ms cap and reduced-motion behavior for every transition.
-2. Picker layout: header (search, format, pin), rows, footer with library status
-   and More, empty and no-result text.
-3. Window behaviour that needs no settings: outside-click hiding, keeping the
-   search in memory for a minute, the Escape ladder, and staying on top only
+2. **Done in structure (#313); proportions and details in progress.** Picker
+   layout: header (search, format, pin), rows, footer with library status and
+   More, empty and no-result text. Remaining: header height, the per-platform
+   search box, selected row and the citation colour (#490); the footer's Enter
+   hint, the `?` key list and no-result actions (#491); rows that tell similar
+   references apart (#492).
+3. **Partly done (#314).** Window behaviour that needs no settings:
+   outside-click hiding, keeping the search in memory for a minute, the Escape ladder, and staying on top only
    when pinned. Hide the quick picker from the taskbar, Dock and Alt+Tab; verify
    each platform separately (macOS already uses an accessory panel). Add the
    full-screen/presentation shortcut guard and its second-press override.
    Separately verify the macOS panel opens over full-screen apps in the current
    Space; the panel already has this configuration, which is not evidence that
-   every native scenario passes.
+   every native scenario passes. Also still to do in this step: undoing an Escape that cleared the search
+   (reopening within a minute brings it back), the "Copied" notice after hiding, and a click on a row copies it
+   (Shift+click adds it to the tray).
 4. Density and Larger text are settings under ADR 0020 (#407, #408). Remaining
    work: an ADR for display choice and remembered per-display position, then
    change the opening default from the pointer's display to the focused window's
@@ -233,5 +242,6 @@ which tips were seen) need an ADR before new `settings.json` fields are added.
 8. Attachments: the PDF or Web label and the preview pane (needs attachment
    data from Zotero).
 9. Later: one-line and at-cursor forms, the settings window, and alternative
-   looks users can choose; native Wayland GlobalShortcuts portal integration
+   looks users can choose, including macOS Liquid Glass (which needs the newest
+   macOS material API); native Wayland GlobalShortcuts portal integration
    and its system shortcut dialog need their own implementation and evidence.
