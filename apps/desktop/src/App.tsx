@@ -2,7 +2,7 @@ import type React from "react";
 import * as nativeApi from "./api";
 import { copyFormatNames, densityNames, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LibrarySetup } from "./LibrarySetup";
+import { LibrarySetup, shortcutLabel } from "./LibrarySetup";
 import { formatCitation, FORMATTED_STYLES, provisional, type FormattedCitation } from "./format/formatted";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
 import { render } from "./format/markup";
@@ -125,7 +125,7 @@ export type PickerApi = Pick<typeof nativeApi,
   Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary">>;
 
 /** A citation-key syntax, or a citation style written as `style:<id>`. */
-type Choice = CopyFormat | `style:${StyleId}`;
+export type Choice = CopyFormat | `style:${StyleId}`;
 
 /** The one word the closed format control shows. */
 function choiceName(choice: Choice): string {
@@ -696,7 +696,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                   ? <><p>{pickerText.noMatches}</p><p className="empty-hint">{pickerText.noMatchesHint}</p></>
                   : <><p>{pickerText.typeToFind}</p><p className="empty-hint">{pickerText.typeToFindHint}</p></>
             ) : library?.state === "none" ? (
-              <LibrarySetup api={setupApi} perform={perform} />
+              <LibrarySetup api={setupApi} perform={perform}
+                writing={{ format, formatted: Boolean(cslItems && copyFormatted), choose: chooseFormat }}
+                shortcut={shortcut?.registered ? shortcutLabel(shortcut.shortcut, isMac) : null} />
             ) : null}
           </div>
         )}

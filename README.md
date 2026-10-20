@@ -4,7 +4,7 @@
 
 Ibis is free, open source and private by design: everything works offline, nothing is tracked, and your libraries are never changed.
 
-> **Status: early preview (0.1).** A global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens the picker. Search a `.bib` library or, while Zotero is open, your Zotero library and any group libraries you choose (More menu), and copy a citation key (Pandoc, BibLaTeX, LaTeX, Typst) or a formatted citation in APA, Chicago, Harvard, IEEE or MLA. Builds are unsigned. First-run setup, more styles, reading Zotero while it is closed and direct insertion follow. See the [roadmap](ROADMAP.md).
+> **Status: early preview (0.1).** A global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens the picker. Search a `.bib` library or, while Zotero is open, your Zotero library and any group libraries you choose (More menu), and copy a citation key (Pandoc, BibLaTeX, LaTeX, Typst) or a formatted citation in APA, Chicago, Harvard, IEEE or MLA. Builds are unsigned. More styles, reading Zotero while it is closed and direct insertion follow. See the [roadmap](ROADMAP.md).
 
 ## Planned for 1.0
 
@@ -27,7 +27,7 @@ The newest development build for Windows, macOS and Linux is always at **[Releas
 
 The menu bar or tray menu shows which build and version you are running. Send questions and feedback to [GitHub Discussions](https://github.com/ibiscite/ibis/discussions), and problems to [the issues](https://github.com/ibiscite/ibis/issues/new/choose).
 
-The first time the picker opens, it offers Zotero if Zotero is open and lists `.bib` files it finds in your Documents, Desktop and Downloads folders, by name only, so you can pick one; **Choose library…** opens any other file.
+The first time the picker opens, it offers Zotero if Zotero is open and lists `.bib` files it finds in your Documents, Desktop and Downloads folders, by name only, so you can pick one; **Choose library…** opens any other file. It also asks where you write (Markdown, LaTeX, Typst, or Word and Google Docs) and sets **Copy as** to match.
 
 ## Use with Zotero
 

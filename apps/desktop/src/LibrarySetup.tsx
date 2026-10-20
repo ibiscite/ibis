@@ -1,6 +1,8 @@
 import { useEffect, useId, useState } from "react";
+import type { Choice } from "./App";
 import type { Sources } from "./bindings";
 import { pickerText, setupText } from "./messages";
+import { STYLE_NAMES, type StyleId } from "./format/styles";
 
 type SetupApi = {
   chooseLibrary: () => Promise<unknown>;
@@ -11,12 +13,45 @@ type SetupApi = {
 
 type Action = "choose" | "zotero" | "findSources" | "openFound";
 
+/** Where people write, and the copy format that suits each. */
+const WRITING_PLACES: { name: string; choice: Choice; formatted?: true }[] = [
+  { name: setupText.places.markdown, choice: "pandoc" },
+  { name: setupText.places.latex, choice: "cite" },
+  { name: setupText.places.typst, choice: "typst" },
+  { name: setupText.places.word, choice: "style:apa", formatted: true },
+];
+
+/** A shortcut as people read it: `⌃⌘R` on macOS, `Ctrl+Shift+Y` elsewhere. */
+export function shortcutLabel(shortcut: string, mac: boolean): string {
+  // Settings may spell keys in any case and with the aliases the shortcut
+  // parser accepts, such as `CmdOrCtrl` or `KeyR`.
+  const names: Record<string, [mac: string, other: string]> = {
+    control: ["⌃", "Ctrl"], ctrl: ["⌃", "Ctrl"],
+    alt: ["⌥", "Alt"], option: ["⌥", "Alt"],
+    shift: ["⇧", "Shift"],
+    command: ["⌘", "Super"], cmd: ["⌘", "Super"], super: ["⌘", "Super"], meta: ["⌘", "Super"],
+    commandorcontrol: ["⌘", "Ctrl"], cmdorctrl: ["⌘", "Ctrl"], commandorctrl: ["⌘", "Ctrl"], cmdorcontrol: ["⌘", "Ctrl"],
+    space: ["Space", "Space"],
+  };
+  const keys = shortcut.split("+").map((key) => key.trim()).filter(Boolean).map((key) => {
+    const known = names[key.toLowerCase()];
+    if (known) return mac ? known[0] : known[1];
+    const plain = /^(?:Key|Digit)(.)$/i.exec(key)?.[1] ?? key;
+    return plain.length === 1 ? plain.toUpperCase() : plain;
+  });
+  return keys.join(mac ? "" : "+");
+}
+
 // First-run setup while no library is chosen: Zotero if it is open, `.bib`
 // files found nearby, or any file through the system chooser. Only names are
 // shown; nothing is read until one is picked.
-export function LibrarySetup({ api, perform }: {
+export function LibrarySetup({ api, perform, writing, shortcut }: {
   api: SetupApi;
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
+  /** The copy format now, whether formatted styles are offered, and how to change it. */
+  writing?: { format: Choice; formatted: boolean; choose: (choice: Choice) => void };
+  /** The shortcut that opens Ibis, when it is registered. */
+  shortcut?: string | null;
 }) {
   const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
   // Undefined while looking; null when looking failed or is not offered.
@@ -85,6 +120,23 @@ export function LibrarySetup({ api, perform }: {
           {setupText.lookAgain}
         </button>
       )}
+      {writing && (
+        <section aria-labelledby={`${heading}-writing`} className="setup-writing">
+          <p className="empty-hint" id={`${heading}-writing`}>{setupText.whereYouWrite}</p>
+          <div className="setup-choices">
+            {WRITING_PLACES.filter((place) => !place.formatted || writing.formatted).map((place) => (
+              <button type="button" key={place.name} aria-pressed={writing.format === place.choice}
+                onClick={() => writing.choose(place.choice)}>
+                {place.name}
+              </button>
+            ))}
+          </div>
+          {writing.format.startsWith("style:") && (
+            <p className="empty-hint">{setupText.styleHint(STYLE_NAMES[writing.format.slice("style:".length) as StyleId] ?? "")}</p>
+          )}
+        </section>
+      )}
+      {shortcut && <p className="empty-hint">{setupText.shortcut(shortcut)}</p>}
     </div>
   );
 }

@@ -32,6 +32,10 @@ export const setupText = {
   openFound: (name: string, folder: string) => (folder ? `Use ${name} in ${folder}` : `Use ${name}`),
   cutShort: "Some folders were too large to search fully. Use Choose library… if your file is not listed.",
   lookAgain: "Look again",
+  whereYouWrite: "Where do you write?",
+  places: { markdown: "Markdown or Pandoc", latex: "LaTeX", typst: "Typst", word: "Word or Google Docs" },
+  styleHint: (style: string) => `Citations copy as ${style}. Pick another style under Copy as.`,
+  shortcut: (keys: string) => `Open Ibis from any app with ${keys}.`,
   nothingFound: "No Zotero or .bib files found nearby. Use Choose library… to pick a file.",
   found: (files: number, zotero: boolean) =>
     [zotero ? "Zotero is open, so Use Zotero can read your library." : "",
