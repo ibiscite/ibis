@@ -166,6 +166,10 @@ jobs:
     needs: [changes, web]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # Only to open or update the issue when native UI smoke fails on main.
+      issues: write
     env:
       NATIVE: ${{ needs.changes.outputs.native }}
       # Pull requests run every behaviour check on all three systems. The slow
@@ -310,8 +314,12 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked x11_server_focus_stays_with_editor_during_keyboard_grab -- --ignored --nocapture
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-Linux --budgets scripts/smoke-budgets.json
 
+      # macOS and Windows UI automation on hosted runners is the flakiest part
+      # of CI (#361, #410). On pull requests it reports a warning instead of
+      # blocking the merge; on main a failure is red and opens an issue.
       - name: Exercise the native picker (macOS)
         id: native_macos
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 scripts/smoke-native.py --self-test
@@ -330,12 +338,16 @@ jobs:
           retention-days: 14
 
       - name: Exercise the full-screen macOS panel
+        id: native_panel
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 scripts/check-panel-macos.py --self-test
           python3 scripts/check-panel-macos.py --app target/debug/ibis-desktop --output screenshots/panel-macOS
 
       - name: Exercise the native picker (Windows)
+        id: native_windows
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
         run: |
           python scripts/smoke-native.py --self-test
@@ -346,6 +358,26 @@ jobs:
         run: |
           python3 -B scripts/test_native_appearance_macos.py
           python3 scripts/check-native-appearance-macos.py --app target/debug/ibis-desktop --output screenshots/appearance-macOS
+
+      - name: Report native UI failures
+        if: ${{ !cancelled() && (steps.native_macos.outcome == 'failure' || steps.native_panel.outcome == 'failure' || steps.native_windows.outcome == 'failure') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            echo "::warning title=Native UI smoke failed on $RUNNER_OS::Not blocking this pull request; main runs it again and reports failures in an issue. $RUN_URL"
+            exit 0
+          fi
+          title="Native UI smoke failing on main ($RUNNER_OS)"
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          body="Failed on $GITHUB_SHA: $RUN_URL"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label needs:triage --body "$body"
+          fi
 
       # Uploads still run after a job timeout (which counts as cancelled) so
       # a hang leaves its logs; publishing happens only in the screenshots job.

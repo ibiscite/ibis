@@ -98,6 +98,12 @@ Windows opens Notepad, macOS opens TextEdit, and Linux opens an xterm running
 contract by checking the OS clipboard and that the destination receives focus.
 It does not inject a citation into the editor.
 
+In CI the Linux smoke blocks every pull request. The macOS and Windows UI steps
+(native picker and full-screen panel) depend on hosted-runner desktop sessions
+and are sometimes flaky, so on pull requests they only add a warning. On `main`
+they block, and a failure opens or updates a "Native UI smoke failing on main"
+issue for that system.
+
 ```sh
 # Ubuntu/Debian runner dependencies (test tools, not app dependencies):
 sudo apt-get install xvfb xauth xdotool xclip xterm openbox python3-pyatspi
