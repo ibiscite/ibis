@@ -2,8 +2,9 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App, type PickerApi } from "./App";
-import { renderGalleryState } from "./gallery";
+import { galleryHref, renderGalleryState } from "./gallery";
 import { libraryMessages } from "./messages";
+import { platformOf } from "./nativeAppearance";
 
 const syntheticApi: PickerApi = {
   libraryStatus: async () => ({ state: "loaded", has_snapshot: true, zotero: false, zotero_libraries: [], name: "gallery.bib", snapshot_name: "gallery.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: null }),
@@ -32,6 +33,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   delete document.documentElement.dataset.galleryTheme;
   delete document.documentElement.dataset.gallerySize;
+  delete document.documentElement.dataset.galleryRendered;
   document.documentElement.removeAttribute("dir");
 });
 
@@ -55,7 +57,7 @@ test("the gallery keeps a seeded copy confirmation available for evidence captur
   expect(screen.getByText("[@preview]")).toBeTruthy();
 });
 
-const { galleryProvider, galleryStates } = await import("./gallery-fixtures");
+const { applyPlatformSwitch, galleryProvider, galleryStates, gallerySwitches, withSwitches } = await import("./gallery-fixtures");
 
 test.each([
   ["first-run", "Choose a library to get started"],
@@ -229,6 +231,111 @@ test("gallery readiness follows the shared library summary used by the picker", 
   } finally {
     await act(async () => stop());
     summary.mockRestore();
+    container.remove();
+  }
+});
+
+test("review switches accept only known values, once each, and never in the native evidence app", () => {
+  expect(gallerySwitches("?platform=windows&theme=dark&text=large&density=compact", false))
+    .toEqual({ platform: "windows", theme: "dark", text: "large", density: "compact" });
+  expect(gallerySwitches("?platform=macos&platform=linux&theme=sepia&text=LARGE&density=", false)).toEqual({});
+  expect(gallerySwitches("?platform=%3Cscript%3E&state=pinned", false)).toEqual({});
+  expect(gallerySwitches("?platform=windows&theme=dark", true)).toEqual({});
+});
+
+test("a state's own theme, density and text setting win over the switches", () => {
+  const switches = { theme: "dark", text: "large", density: "spacious" } as const;
+  const plain = withSwitches(galleryStates.find((state) => state.id === "pinned")!, switches);
+  expect([plain.theme, plain.density, plain.largerTextSetting]).toEqual(["dark", "spacious", true]);
+  const own = withSwitches(galleryStates.find((state) => state.id === "compact")!, switches);
+  expect(own.density).toBe("compact");
+  expect(withSwitches(galleryStates.find((state) => state.id === "high-contrast")!, switches).theme).toBe("contrast");
+  expect(withSwitches(galleryStates.find((state) => state.id === "pinned")!, {}).largerTextSetting).toBeUndefined();
+});
+
+test.each(["macos", "windows", "linux"] as const)("the %s platform switch is what the picker reads as the platform", (platform) => {
+  const target = {} as Navigator;
+  applyPlatformSwitch(platform, target);
+  expect(platformOf(target.platform)).toBe(platform);
+});
+
+test("gallery links keep the switches and drop unset ones", () => {
+  expect(galleryHref({ platform: "linux", theme: "dark" }, { state: "pinned" })).toBe("./gallery.html?state=pinned&platform=linux&theme=dark");
+  expect(galleryHref({ platform: "linux" }, { platform: "macos" })).toBe("./gallery.html?platform=macos");
+  expect(galleryHref({})).toBe("./gallery.html");
+});
+
+async function renderUntilAcknowledged(id: string, provider = galleryProvider(galleryStates.find((state) => state.id === id)!),
+  state = galleryStates.find((candidate) => candidate.id === id)!) {
+  vi.useFakeTimers();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
+  vi.stubGlobal("cancelAnimationFrame", (frame: number) => window.clearTimeout(frame));
+  const acknowledge = vi.fn(async () => undefined);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const stop = renderGalleryState(container, state, acknowledge, provider);
+  for (let i = 0; i < 4; i++) await act(() => vi.advanceTimersByTimeAsync(1000));
+  return { acknowledge, container, stop: async () => { await act(async () => stop()); container.remove(); } };
+}
+
+test.each([
+  ["pinned", (root: HTMLElement) => root.querySelector('button[aria-label="Pin Ibis"]')?.getAttribute("aria-pressed") === "true"],
+  ["menu-open", (root: HTMLElement) => root.querySelector('[role="menu"]') !== null],
+  ["keys", (root: HTMLElement) => root.querySelector('[role="dialog"]') !== null],
+  ["tray", (root: HTMLElement) => [...root.querySelectorAll('ul[aria-label="Selected references"] code')].map((key) => key.textContent).join() === "example2026,研究2026"],
+  ["compact", () => document.documentElement.dataset.density === "compact"],
+  ["spacious", () => document.documentElement.dataset.density === "spacious"],
+  ["larger-text", () => document.documentElement.dataset.textSize === "larger"],
+])("the %s review state is on screen before it is acknowledged", async (id, shown) => {
+  const run = await renderUntilAcknowledged(id);
+  try {
+    expect(shown(run.container)).toBe(true);
+    expect(run.acknowledge).toHaveBeenCalledExactlyOnceWith(id);
+  } finally {
+    await run.stop();
+  }
+});
+
+test("a seeded interaction that does not take is never acknowledged", async () => {
+  const state = galleryStates.find((candidate) => candidate.id === "pinned")!;
+  const provider = galleryProvider(state);
+  provider.api = { ...provider.api, setPinned: async () => { throw new Error("synthetic pin failure"); } };
+  const run = await renderUntilAcknowledged("pinned", provider);
+  try {
+    expect(run.container.querySelector('button[aria-label="Pin Ibis"]')?.getAttribute("aria-pressed")).toBe("false");
+    expect(run.acknowledge).not.toHaveBeenCalled();
+  } finally {
+    await run.stop();
+  }
+});
+
+test("switched settings reach the rendered picker", async () => {
+  const state = withSwitches(galleryStates.find((candidate) => candidate.id === "many-results")!, { theme: "dark", text: "large", density: "compact" });
+  const run = await renderUntilAcknowledged("many-results", galleryProvider(state), state);
+  try {
+    expect(document.documentElement.dataset.galleryTheme).toBe("dark");
+    expect(document.documentElement.dataset.density).toBe("compact");
+    expect(document.documentElement.dataset.textSize).toBe("larger");
+    expect(run.acknowledge).toHaveBeenCalledExactlyOnceWith("many-results");
+  } finally {
+    await run.stop();
+  }
+});
+
+test("outside the native app a rendered state is marked on the page for browser captures", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
+  vi.stubGlobal("cancelAnimationFrame", (frame: number) => window.clearTimeout(frame));
+  const state = galleryStates.find((candidate) => candidate.id === "tray")!;
+  const container = document.createElement("div");
+  document.body.append(container);
+  let stop: () => void = () => undefined;
+  try {
+    await act(async () => { stop = renderGalleryState(container, state); });
+    for (let i = 0; i < 4; i++) await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(document.documentElement.dataset.galleryRendered).toBe("tray");
+  } finally {
+    await act(async () => stop());
     container.remove();
   }
 });
