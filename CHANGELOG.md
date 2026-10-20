@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.1.1](https://github.com/ibiscite/ibis/compare/v0.1.0...v0.1.1) (2026-10-20)
+
+First-run setup finds Zotero and nearby `.bib` files and shows the shortcut, searches stay responsive on large libraries, copy format choices are kept, and the picker no longer overflows at large text sizes.
+
+
+### Features
+
+* ask where you write in first-run setup and show the shortcut ([#449](https://github.com/ibiscite/ibis/issues/449)) ([eb20f9a](https://github.com/ibiscite/ibis/commit/eb20f9adc2ca6c9e132a100e86ad93b36fb282ec))
+* find Zotero and nearby .bib files for first-run setup ([#427](https://github.com/ibiscite/ibis/issues/427)) ([f96a0b7](https://github.com/ibiscite/ibis/commit/f96a0b7b4caed46c1952c4400d5c0bf9df5fbea1))
+* offer Zotero and found .bib files in first-run setup ([#434](https://github.com/ibiscite/ibis/issues/434)) ([0aae22c](https://github.com/ibiscite/ibis/commit/0aae22cca6a7baec58a9b5ece1e16e75ea830fe2))
+* show the version on the nightly release and in the menu ([#435](https://github.com/ibiscite/ibis/issues/435)) ([0b71344](https://github.com/ibiscite/ibis/commit/0b71344af07d17daf16c136211d23e4487c2fe28))
+
+
+### Bug Fixes
+
+* keep copy format choices when quitting during settings loading ([#468](https://github.com/ibiscite/ibis/issues/468)) ([b37b9bc](https://github.com/ibiscite/ibis/commit/b37b9bc64530cbf08694ca1b946e55450ae00145))
+* keep macOS fullscreen observation within its wait budget ([#481](https://github.com/ibiscite/ibis/issues/481)) ([e4de867](https://github.com/ibiscite/ibis/commit/e4de86744e5bd89752e388ab11aab4c79b92a975))
+* keep the picker within the window at large text sizes ([#462](https://github.com/ibiscite/ibis/issues/462)) ([ac18e53](https://github.com/ibiscite/ibis/commit/ac18e539133b9fdb1cae872eb1f9cbd4d9ed8118))
+* keep Zotero groups after a library file fails to open ([#467](https://github.com/ibiscite/ibis/issues/467)) ([4135aaa](https://github.com/ibiscite/ibis/commit/4135aaadd272643c7fdb9a64c4bed2518a529817))
+* log the outcome of each automatic update check ([#456](https://github.com/ibiscite/ibis/issues/456)) ([82a656e](https://github.com/ibiscite/ibis/commit/82a656e5cc1b4d616103600c618749c4cdcccb93)), closes [#319](https://github.com/ibiscite/ibis/issues/319)
+* preserve explicit BibLaTeX name particles ([#426](https://github.com/ibiscite/ibis/issues/426)) ([630908a](https://github.com/ibiscite/ibis/commit/630908ad74b87cea2f6a11f0ee4a98f01db2d1a0))
+* refuse a Zotero group list that repeats a group, and strip invisible characters from group names ([#440](https://github.com/ibiscite/ibis/issues/440)) ([0ae432f](https://github.com/ibiscite/ibis/commit/0ae432f4c5132cf9fda025320b1f1a15f6c62125))
+* save a key copy format as soon as it is chosen ([#463](https://github.com/ibiscite/ibis/issues/463)) ([e28a050](https://github.com/ibiscite/ibis/commit/e28a050164a3697657ebe10b2aa4fc1aa9db68ce))
+
+
+### Performance
+
+* keep searches responsive on large libraries ([#388](https://github.com/ibiscite/ibis/issues/388)) ([7316312](https://github.com/ibiscite/ibis/commit/73163129f65fa176e80042a87cc8d91628eada68)), closes [#364](https://github.com/ibiscite/ibis/issues/364)
+
+
+### Documentation
+
+* clarify picker design targets and rollout ([#460](https://github.com/ibiscite/ibis/issues/460)) ([2b964bb](https://github.com/ibiscite/ibis/commit/2b964bb7e14cfc80622a04cb37089d8dbb3e8b7f))
+* consolidate contributor rules and testing guidance ([#428](https://github.com/ibiscite/ibis/issues/428)) ([f7d0b11](https://github.com/ibiscite/ibis/commit/f7d0b111b454e51a0ae1e20ffd4d30ab010a8bbb))
+* describe 0.1 by what shipped in 0.1.0 and narrow 0.2 to what is left ([#433](https://github.com/ibiscite/ibis/issues/433)) ([8657094](https://github.com/ibiscite/ibis/commit/8657094dc0d74f19812cf0f08c63c01a94136ca6))
+* explain releases, nightly and version numbers in the README ([#442](https://github.com/ibiscite/ibis/issues/442)) ([062f880](https://github.com/ibiscite/ibis/commit/062f8807c81594837c8ee243ef552512f1a18fd5))
+* explain Windows signing preparation and approval roles ([#459](https://github.com/ibiscite/ibis/issues/459)) ([be7a29e](https://github.com/ibiscite/ibis/commit/be7a29eab0a0d1c850bdbacfed7e552387ec2b90))
+* show meaningful interface changes with before and after screenshots ([#466](https://github.com/ibiscite/ibis/issues/466)) ([7d8cf58](https://github.com/ibiscite/ibis/commit/7d8cf587e13de743b31ade8c0878ce02484d8193))
+* write down one standard for labels, milestones and titles ([#439](https://github.com/ibiscite/ibis/issues/439)) ([ccb8ec4](https://github.com/ibiscite/ibis/commit/ccb8ec4b42367accc39a6aa7323e66310e6a63ac))
+
 ## 0.1.0 (2026-10-20)
 
 The first preview. Press the shortcut anywhere, search a `.bib` file or your Zotero library (personal and group libraries, while Zotero is open), and copy a citation key or a formatted citation in one of five styles. Ibis works offline and never changes your library. The apps are not signed by Apple or Microsoft yet, so your system may warn before opening them; in-app updates are opt-in and signed.
