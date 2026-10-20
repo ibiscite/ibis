@@ -2203,3 +2203,39 @@ test("quick clicks end in the state of the last click, and the app's own name is
   await waitFor(() => expect(system).toBe(false));
   expect(item.getAttribute("aria-checked")).toBe("false");
 });
+
+test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a click waiting for its preview (%s)", async (next) => {
+  const { InlineWorker } = await import("./format/inline-worker");
+  vi.stubGlobal("Worker", InlineWorker);
+  let release: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => { release = resolve; });
+  const output: unknown[] = [];
+  const calls = backend({
+    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false }),
+    search: () => [result("a", "First"), result("b", "Second")],
+    csl_items: ({ ids }) => ready.then(() => JSON.stringify((ids as { native_key: string }[]).map((id) => ({
+      id: id.native_key, type: "article-journal", title: id.native_key,
+      author: [{ family: "Smith" }], issued: { "date-parts": [[2020]] },
+    })))),
+    copy_formatted: (args) => { output.push(args); return null; },
+    copy_citation: (args) => { output.push(args); return { text: "[@b]", warnings: [] }; },
+  });
+  render(<App />);
+  const control = screen.getByLabelText("Copy as") as HTMLSelectElement;
+  await waitFor(() => expect(control.value).toBe("style:apa"));
+  fireEvent.click(await screen.findByText("Second"));
+  // Returning to APA must not revive the earlier click either.
+  if (next === "style:apa") fireEvent.change(control, { target: { value: "style:ieee" } });
+  fireEvent.change(control, { target: { value: next } });
+  await act(async () => { release(); await ready; });
+  if (next !== "pandoc") await waitFor(() => expect(document.querySelector(".format-preview")?.textContent).toContain(next === "style:ieee" ? "[1]" : "Smith"));
+  expect(output).toEqual([]);
+  expect(calls).not.toContain("hide_picker");
+  expect(calls).not.toContain("show_copied_notice");
+  fireEvent.click(screen.getByText("Second"));
+  await waitFor(() => expect(output).toHaveLength(1));
+  expect(output[0]).toMatchObject(next === "pandoc"
+    ? { format: "pandoc", ids: [{ source: "refs.bib", native_key: "b" }] }
+    : { text: next === "style:ieee" ? "[1]" : "(Smith, 2020)" });
+  expect(calls).toContain(next === "pandoc" ? "copy_citation" : "copy_formatted");
+});

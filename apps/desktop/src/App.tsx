@@ -232,6 +232,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     await quit();
   };
   const chooseFormat = (choice: Choice) => {
+    // A new format choice cancels the earlier click waiting for its preview.
+    setClickCopy(null);
     setFormat(choice);
     const chosenStyle = styleOf(choice);
     savePreferences({ citation_style: chosenStyle }, chosenStyle ? null : choice as CopyFormat);
