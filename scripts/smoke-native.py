@@ -6,6 +6,8 @@ capability. Only synthetic test text is recorded, never the accessibility tree o
 clipboard contents. See docs/testing.md before running on a personal desktop.
 """
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -242,10 +244,57 @@ def clean_settings(owned):
         owned.with_suffix(suffix).unlink(missing_ok=True)
 
 
+CLIPBOARD_SENTINEL = "Ibis native smoke clipboard sentinel"
+
+
 def prime_clipboard(native):
-    sentinel = "Ibis native smoke clipboard sentinel"
-    native.set_clipboard(sentinel)
-    assert native.clipboard() == sentinel, "Native clipboard sentinel could not be established"
+    native.set_clipboard(CLIPBOARD_SENTINEL)
+    assert native.clipboard() == CLIPBOARD_SENTINEL, "Native clipboard sentinel could not be established"
+
+
+def copy_picker_observation(native):
+    """One existing native probe, reduced to fixed facts; never a readiness wait."""
+    try:
+        # Scripted.call can print helper errors before raising. Optional probes
+        # must not disclose them or replace the actual copy-test failure.
+        with open(os.devnull, "w") as quiet, redirect_stdout(quiet), redirect_stderr(quiet):
+            current = native.snapshot()
+            if type(current["visible"]) is not bool:
+                return {"available": False}
+            lines = strings(current).splitlines()
+            return {"available": True, "visible": current["visible"],
+                    "search_focused": search_focused(current),
+                    "exact_search_value": query_failure_facts(current, "smoke000001", "")["exact_search_value"],
+                    "title_present": "Ibis smoke reference 000001" in lines,
+                    "one_result": "1 result" in lines,
+                    "copy_error_present": "Nothing was copied. Try again, or use Reload." in lines}
+    except Exception:
+        return {"available": False}
+
+
+def copy_with_diagnostics(native, report):
+    prime_clipboard(native)
+    before = copy_picker_observation(native)
+    native.key("Return")
+    started = time.monotonic()
+    clipboard = {"polls": 0, "expected": False, "sentinel": False, "empty": False}
+
+    def copied():
+        value = native.clipboard()
+        clipboard.update(polls=clipboard["polls"] + 1, expected=value == "[@smoke000001]",
+                         sentinel=value == CLIPBOARD_SENTINEL, empty=value == "")
+        return clipboard["expected"]
+
+    try:
+        # Keep the existing equality and deadline ordering. A slow native read
+        # can finish after the deadline; this is not a hard wall-clock bound.
+        wait_for(copied, "expected citation on OS clipboard")
+    except AssertionError:
+        clipboard["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        report["copy_failure"] = {"before_return": before, "clipboard": clipboard,
+                                  "after_timeout": copy_picker_observation(native)}
+        print("NATIVE COPY FAILURE " + json.dumps(report["copy_failure"]), file=sys.stderr)
+        raise
 
 
 def summarize_performance(samples):
@@ -741,9 +790,7 @@ def main():
             assert "Ibis smoke reference 000001" in strings(snapshot()), "Expected native result missing"
 
             def copy():
-                prime_clipboard(native)
-                native.key("Return")
-                wait_for(lambda: native.clipboard() == "[@smoke000001]", "expected citation on OS clipboard")
+                copy_with_diagnostics(native, report)
                 wait_for(lambda: not snapshot()["visible"], "copy hides picker")
                 capture_editor_focus("after-copy-hides-picker")
                 try:
@@ -919,6 +966,126 @@ def main():
 
 
 class ContractTests(unittest.TestCase):
+    class CopyClock:
+        def __init__(self, step=10):
+            self.elapsed = 0
+            self.step = step
+
+        def monotonic(self):
+            return self.elapsed
+
+        def sleep(self, interval):
+            self.elapsed += self.step
+
+    @staticmethod
+    def copy_snapshot(visible=True, focused=True, error=False):
+        return {"visible": visible, "nodes": [
+            {"name": "Search references", "role": "AXComboBox", "value": "smoke000001", "focused": focused},
+            {"name": "Ibis smoke reference 000001", "role": "AXStaticText"},
+            {"name": "1 result", "role": "AXStaticText"},
+            {"name": "Nothing was copied. Try again, or use Reload." if error else "", "role": "AXStaticText"},
+        ]}
+
+    def test_native_copy_accepts_a_later_equality_poll_without_another_return(self):
+        native, report, clock = Mock(), {}, self.CopyClock(19)
+        sentinel = "Ibis native smoke clipboard sentinel"
+        native.clipboard.side_effect = [sentinel, sentinel, "[@smoke000001]"]
+        native.snapshot.return_value = self.copy_snapshot()
+        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep):
+            copy_with_diagnostics(native, report)
+        self.assertEqual(native.key.call_args_list, [call("Return")])
+        self.assertEqual(native.clipboard.call_count, 3)
+        self.assertEqual(native.snapshot.call_count, 1)
+        self.assertNotIn("copy_failure", report)
+        self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
+
+    def test_native_copy_timeout_records_fresh_state_without_reading_clipboard_again(self):
+        native, report, clock = Mock(), {"last_native_state": {"visible": True}}, self.CopyClock()
+        sentinel = "Ibis native smoke clipboard sentinel"
+        native.clipboard.side_effect = [sentinel, sentinel, sentinel, "[@smoke000001]"]
+        native.snapshot.side_effect = [self.copy_snapshot(), self.copy_snapshot(visible=False, focused=False, error=True)]
+        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+             patch("sys.stderr", new_callable=io.StringIO), self.assertRaisesRegex(AssertionError, "Timed out: expected citation on OS clipboard"):
+            copy_with_diagnostics(native, report)
+        facts = report["copy_failure"]
+        self.assertTrue(facts["before_return"]["visible"])
+        self.assertFalse(facts["after_timeout"]["visible"])
+        self.assertFalse(facts["after_timeout"]["search_focused"])
+        self.assertTrue(facts["after_timeout"]["copy_error_present"])
+        self.assertEqual(facts["clipboard"], {"polls": 2, "elapsed_seconds": 20, "expected": False, "sentinel": True, "empty": False})
+        self.assertEqual(native.key.call_args_list, [call("Return")])
+        self.assertEqual(native.clipboard.call_count, 3, "A late diagnostic read must not replace the failed final poll")
+
+    def test_copy_keeps_success_from_a_poll_started_before_the_deadline(self):
+        native, report, clock = Mock(), {}, self.CopyClock()
+        native.snapshot.return_value = self.copy_snapshot()
+        reads = iter(["Ibis native smoke clipboard sentinel", "[@smoke000001]"])
+        def clipboard():
+            value = next(reads)
+            if value == "[@smoke000001]":
+                clock.elapsed = 25  # The existing wait accepts this completed read.
+            return value
+        native.clipboard.side_effect = clipboard
+        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep):
+            copy_with_diagnostics(native, report)
+        self.assertNotIn("copy_failure", report)
+        self.assertEqual(native.key.call_args_list, [call("Return")])
+
+    def test_optional_copy_observation_failure_does_not_fail_a_successful_copy(self):
+        native, report = Mock(), {}
+        native.clipboard.side_effect = ["Ibis native smoke clipboard sentinel", "[@smoke000001]"]
+        native.snapshot.side_effect = RuntimeError("private helper failure")
+        copy_with_diagnostics(native, report)
+        self.assertNotIn("copy_failure", report)
+        self.assertEqual(native.key.call_args_list, [call("Return")])
+
+    def test_optional_copy_observations_are_quiet_and_preserve_the_original_failure(self):
+        native, report = Mock(), {}
+        private = "private clipboard/document/helper payload"
+        def broken_snapshot():
+            print(private)
+            print(private, file=sys.stderr)
+            raise RuntimeError(private)
+        native.snapshot.side_effect = broken_snapshot
+        native.clipboard.return_value = "Ibis native smoke clipboard sentinel"
+        original = AssertionError("original copy wait failure")
+        output, errors = io.StringIO(), io.StringIO()
+        with patch(__name__ + ".wait_for", side_effect=original), patch("sys.stdout", output), patch("sys.stderr", errors), \
+             self.assertRaises(AssertionError) as caught:
+            copy_with_diagnostics(native, report)
+        self.assertIs(caught.exception, original)
+        self.assertEqual(report["copy_failure"]["before_return"], {"available": False})
+        self.assertEqual(report["copy_failure"]["after_timeout"], {"available": False})
+        self.assertNotIn(private, output.getvalue() + errors.getvalue() + json.dumps(report))
+        self.assertEqual(native.key.call_args_list, [call("Return")])
+
+    def test_copy_failure_facts_never_record_clipboard_or_accessible_payloads(self):
+        for clipboard in ("", "private unexpected clipboard payload"):
+            with self.subTest(empty=clipboard == ""):
+                native, report, clock = Mock(), {}, self.CopyClock()
+                native.clipboard.side_effect = ["Ibis native smoke clipboard sentinel", clipboard, clipboard]
+                native.snapshot.return_value = {"visible": True, "nodes": [
+                    {"name": "Search references", "role": "AXTextField", "value": "private query", "focused": True},
+                    {"name": "private Ibis smoke reference 000001 suffix"},
+                    {"name": "21 results"},
+                    {"name": "private Nothing was copied. Try again, or use Reload. suffix"},
+                ]}
+                errors = io.StringIO()
+                with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+                     patch("sys.stderr", errors), self.assertRaises(AssertionError):
+                    copy_with_diagnostics(native, report)
+                facts = report["copy_failure"]
+                self.assertFalse(facts["clipboard"]["expected"])
+                self.assertFalse(facts["clipboard"]["sentinel"])
+                self.assertEqual(facts["clipboard"]["empty"], clipboard == "")
+                for stage in ("before_return", "after_timeout"):
+                    self.assertFalse(facts[stage]["exact_search_value"])
+                    self.assertFalse(facts[stage]["title_present"])
+                    self.assertFalse(facts[stage]["one_result"])
+                    self.assertFalse(facts[stage]["copy_error_present"])
+                    self.assertTrue(all(type(value) is bool for value in facts[stage].values()))
+                self.assertNotIn("private", errors.getvalue() + json.dumps(report))
+
     class InitialPickerModel:
         def __init__(self, visible=True, search_ready=True, accepts_escape=True):
             self.visible, self.key_window = visible, visible
