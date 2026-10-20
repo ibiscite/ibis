@@ -79,6 +79,7 @@ def editor_focus_facts(native, stage):
 
 
 # Library actions live in the picker's More menu (Ctrl/Cmd+K), not the footer.
+TREE_SETTLE_SECONDS = 10
 MENU_ACTIONS = {"Choose library…", "Use Zotero", "Reload", "Quit Ibis"}
 
 
@@ -479,7 +480,20 @@ class Scripted:
         if getattr(self, "picker_app_pid", None) != self.app.pid:
             self.picker_handle = 0
             self.picker_app_pid = self.app.pid
-        current = self.call("snapshot", str(self.picker_handle))
+        current = None
+        def settled():
+            # While the interface renders, a control can disappear between
+            # listing the tree and reading it, and right after launch the
+            # window can still be half created (#361). The helper reports only
+            # that fact; any other helper failure still fails at once.
+            nonlocal current
+            current = self.call("snapshot", str(self.picker_handle))
+            if current == {"tree_changed": True}:
+                return False
+            if not isinstance(current, dict) or "tree_changed" in current:
+                raise RuntimeError("Native accessibility snapshot metadata unavailable")
+            return True
+        wait_for(settled, "native accessibility tree settles", timeout=TREE_SETTLE_SECONDS)
         handle = current.get("picker_handle")
         if handle is not None:
             if type(handle) is not int or handle == 0 or (self.picker_handle and handle != self.picker_handle):
@@ -1109,6 +1123,33 @@ class ContractTests(unittest.TestCase):
         with patch.object(native, "call", side_effect=[{"pressed": False}, {"pressed": True}]) as helper, patch("time.sleep"):
             native.click("Reload")
         self.assertEqual(helper.call_args_list, [(('click', 'Reload'),), (('click', 'Reload'),)])
+
+    def windows_native(self):
+        native = Scripted.__new__(Scripted)
+        native.system = "Windows"
+        native.app = Mock(pid=7)
+        return native
+
+    def test_windows_snapshot_rereads_only_a_tree_that_changed_while_being_read(self):
+        native = self.windows_native()
+        hidden = {"nodes": [], "visible": False, "foreground": False}
+        with patch.object(native, "call", side_effect=[{"tree_changed": True}, hidden]) as helper, patch("time.sleep"):
+            self.assertEqual(native.snapshot(), hidden)
+        self.assertEqual(helper.call_args_list, [call("snapshot", "0"), call("snapshot", "0")])
+
+    def test_windows_snapshot_fails_when_the_tree_never_settles_or_the_helper_fails(self):
+        native = self.windows_native()
+        clock = iter(range(0, 1000, 3))
+        with patch.object(native, "call", return_value={"tree_changed": True}) as helper, patch("time.sleep"), \
+                patch("time.monotonic", side_effect=lambda: next(clock)):
+            with self.assertRaisesRegex(AssertionError, "^Timed out: native accessibility tree settles$"):
+                native.snapshot()
+        self.assertEqual(helper.call_count, 3)
+        for failure in (subprocess.CalledProcessError(1, ["helper"]), {"tree_changed": False}, {"tree_changed": True, "nodes": []}):
+            with patch.object(native, "call", side_effect=[failure]) as helper:
+                with self.assertRaises((subprocess.CalledProcessError, RuntimeError)):
+                    native.snapshot()
+            self.assertEqual(helper.call_count, 1)
 
     def test_scripted_native_json_preserves_unicode_under_a_legacy_windows_locale(self):
         native = Scripted.__new__(Scripted)

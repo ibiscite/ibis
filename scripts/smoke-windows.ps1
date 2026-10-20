@@ -74,7 +74,11 @@ function Get-Tree {
   }
   if (!$window) { return @{nodes=@();visible=$false;foreground=$false} }
   $handle = [IntPtr] $window.Current.NativeWindowHandle
-  if ($handle -eq [IntPtr]::Zero) { throw 'Native picker window handle unavailable' }
+  if ($handle -eq [IntPtr]::Zero) {
+    # Right after launch the window can be listed before it has a handle.
+    if (!$Text -or $Text -eq '0') { return @{tree_changed=$true} }
+    throw 'Native picker window handle unavailable'
+  }
   # Retained UIA state and unrelated same-PID tray windows cannot establish
   # visibility. Keep querying the verified picker HWND's actual OS bit.
   $visible = [IbisSmoke]::IsWindowVisible($handle)
@@ -96,6 +100,21 @@ function Get-Tree {
     $nodes += @{role=$current.ControlType.ProgrammaticName;name=$current.Name;value=$value;focused=$current.HasKeyboardFocus}
   }
   @{nodes=$nodes;visible=$visible;foreground=([IbisSmoke]::ForegroundPid() -eq $AppId);picker_handle=$handle.ToInt64()}
+}
+# Only exception type names from this list are reported, never their text.
+function Get-ErrorKind($Failure) {
+  $known = 'ElementNotAvailableException', 'COMException', 'InvalidOperationException', 'TimeoutException',
+    'UnauthorizedAccessException', 'ArgumentException', 'RuntimeException'
+  $exception = $Failure.Exception
+  for ($cause = $exception; $cause; $cause = $cause.InnerException) {
+    # UIA_E_ELEMENTNOTAVAILABLE can also arrive as a bare COM error.
+    if ($cause -is [System.Windows.Automation.ElementNotAvailableException] -or
+        ($cause -is [System.Runtime.InteropServices.COMException] -and $cause.HResult -eq -2147220991)) {
+      return 'ElementNotAvailableException'
+    }
+    $exception = $cause
+  }
+  if ($known -contains $exception.GetType().Name) { $exception.GetType().Name } else { 'other' }
 }
 function Send-Chord([string] $Chord) {
   $map = @{ctrl=0x11;shift=0x10;alt=0x12;super=0x5b;space=0x20;escape=0x1b;return=0x0d}
@@ -141,7 +160,18 @@ try {
       if ($baseline.Contains([int] $actual.Id)) { throw 'Editor activation selected a preexisting process' }
       @{pid=[int] $actual.Id;started=[long] $actual.StartTime.ToUniversalTime().Ticks}
     }
-    'snapshot' { Get-Tree }
+    'snapshot' {
+      try { Get-Tree } catch {
+        # A control can vanish between listing the tree and reading it while
+        # the interface renders (#361). Until the picker window is first
+        # verified, UI Automation can also fail with a COM error while the
+        # window is being created. Report only that; Python re-reads.
+        $kind = Get-ErrorKind $_
+        $discovering = !$Text -or $Text -eq '0'
+        if ($kind -ne 'ElementNotAvailableException' -and !($discovering -and $kind -eq 'COMException')) { throw }
+        @{tree_changed=$true}
+      }
+    }
     'key' { Send-Chord $Text; $true }
     'text' {
       foreach ($character in $Text.ToCharArray()) {
@@ -224,5 +254,6 @@ try {
 } catch {
   # Never serialize exception text: UIA exceptions can contain accessible text.
   [Console]::Error.WriteLine("Windows native smoke action unavailable: $Action")
+  [Console]::Error.WriteLine('NATIVE HELPER ERROR ' + (Get-ErrorKind $_))
   exit 1
 }
