@@ -263,3 +263,41 @@
 /* Explicit contrast preview in the development states gallery. */
 :root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; }
 :root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+
+/* ADR 0021 look layer: local overrides preserve More/Keys until they migrate. */
+:root { --toolbar-menu-button-radius: 999px; --toolbar-menu-pressed: var(--button-hover-background); }
+:root .toolbar-menu-popover {
+  --menu-radius: 12px; --menu-padding: 6px; --menu-item-radius: 6px; --menu-item-height: 28px;
+  --menu-background: Canvas; --menu-highlight: var(--selected-background); --menu-highlight-text: var(--selected-text);
+  --menu-shadow: 0 12px 32px rgb(0 0 0 / 16%); --menu-enter-transform: none;
+  --menu-open-duration: 90ms; --menu-open-ease: linear;
+}
+@supports (color: light-dark(white, black)) {
+  :root[data-platform="macos"] .toolbar-menu-popover { --menu-background: light-dark(rgb(246 246 248 / 94%), rgb(40 40 44 / 94%)); }
+  :root[data-platform="macos"] { --toolbar-menu-pressed: light-dark(rgb(0 0 0 / 8%), rgb(255 255 255 / 14%)); }
+  :root[data-platform="windows"] .toolbar-menu-popover {
+    --menu-background: light-dark(#f9f9f9, #2c2c2c); --menu-highlight: light-dark(rgb(0 0 0 / 5.6%), rgb(255 255 255 / 8%));
+  }
+  :root[data-platform="windows"] { --toolbar-menu-pressed: light-dark(#fff, rgb(255 255 255 / 10%)); }
+  :root[data-platform="linux"] .toolbar-menu-popover {
+    --menu-background: light-dark(#fff, #38383c); --menu-highlight: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 10%));
+  }
+  :root[data-platform="linux"] { --toolbar-menu-pressed: light-dark(rgb(0 0 6 / 10%), rgb(255 255 255 / 12%)); }
+}
+:root[data-platform="windows"] { --toolbar-menu-button-radius: 4px; }
+:root[data-platform="windows"] .toolbar-menu-popover {
+  --menu-radius: 8px; --menu-padding: 4px; --menu-item-radius: 4px; --menu-item-height: 32px;
+  --menu-highlight-text: var(--text); --menu-shadow: 0 8px 16px rgb(0 0 0 / 14%);
+  --menu-enter-transform: translateY(-8px); --menu-open-duration: 200ms; --menu-open-ease: cubic-bezier(.2, .8, .2, 1);
+}
+:root[data-platform="linux"] { --toolbar-menu-button-radius: 6px; }
+:root[data-platform="linux"] .toolbar-menu-popover {
+  --menu-item-height: 32px; --menu-highlight-text: var(--text); --menu-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+  --menu-enter-transform: scale(.96); --menu-open-duration: 150ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .toolbar-menu-popover, :root[data-platform] .toolbar-menu-popover { --menu-enter-transform: none; --menu-open-duration: 100ms; }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root .toolbar-menu-popover, :root[data-platform] .toolbar-menu-popover { --menu-background: Canvas; --menu-highlight: Highlight; --menu-highlight-text: HighlightText; }
+}

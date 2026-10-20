@@ -1,5 +1,6 @@
 // First, so a ?platform= switch is in place as early as this page allows.
 import { galleryProvider, galleryStates, gallerySwitches, withSwitches, type GallerySwitches, type GalleryState } from "./gallery-fixtures";
+import { renderToolbarMenuGallery, toolbarMenuGalleryStates } from "./ui/ToolbarMenuGallery";
 import { createRoot } from "react-dom/client";
 import { isTauri } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
@@ -211,7 +212,7 @@ function Gallery({ switches }: { switches: GallerySwitches }) {
         )}
       </header>
       <div className="gallery-grid">
-        {galleryStates.map((state) => (
+        {[...galleryStates, ...(isTauri() ? [] : toolbarMenuGalleryStates)].map((state) => (
           <section key={state.id} aria-label={state.label}>
             <h2><a href={galleryHref(switches, { state: state.id })}>{state.label}</a></h2>
             <iframe src={galleryHref(switches, { state: state.id })} title={state.label} tabIndex={-1} />
@@ -229,7 +230,11 @@ if (root && (import.meta.env.DEV || import.meta.env.MODE === "evidence")) {
   const switches = gallerySwitches(window.location.search);
   const id = new URLSearchParams(window.location.search).get("state");
   const state = galleryStates.find((candidate) => candidate.id === id);
-  if (state) {
+  if (toolbarMenuGalleryStates.some((candidate) => candidate.id === id) && !isTauri()) {
+    if (switches.theme) document.documentElement.dataset.galleryTheme = switches.theme;
+    document.documentElement.dataset.textSize = switches.text === "large" ? "larger" : "normal";
+    renderToolbarMenuGallery(root, id!);
+  } else if (state) {
     renderGalleryState(root, withSwitches(state, switches));
   } else {
     if (switches.theme) document.documentElement.dataset.galleryTheme = switches.theme;

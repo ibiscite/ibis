@@ -29,6 +29,8 @@ const steps = [
   ["Test", "cargo", ["test", "--locked"]],
   ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
+  ["Desktop: UI import boundary tests", "node", ["--test", "scripts/ui-imports.test.mjs"]],
+  ["Desktop: UI import boundary", "node", ["scripts/ui-imports.mjs"]],
   // All desktop unit tests, including the generated-contract freshness check.
   ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"]],
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],

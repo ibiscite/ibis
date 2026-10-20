@@ -125,3 +125,9 @@ cargo +nightly fuzz run load_str -- -max_total_time=60 -timeout=5 -rss_limit_mb=
 ```
 
 The nightly runs `split_parse`, `load_str`, `csl_export` and `cite_render`, giving each 300 seconds with a persistent corpus seeded from synthetic fixtures, minimizing failures and opening deduplicated issues. `zotero_payload` is an additional local target; it is not in the nightly matrix. Fixed inputs become regression fixtures. Fuzz targets share the root lockfile outside default test members; only cargo-fuzz uses nightly instrumentation. See [fuzz/README.md](../fuzz/README.md) for reproduction, reporting and limits.
+
+The browser gallery also has `toolbar-menu` and `toolbar-menu-filtered` previews
+for the shared React Aria foundation (#585). They use generic synthetic examples,
+not the picker's format preference. The capture waits for visible item geometry,
+settled entry motion and fonts. These component previews are browser-only; native
+format-menu behavior and comparison with each OS's real menus remain #536.
