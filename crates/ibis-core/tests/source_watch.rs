@@ -64,18 +64,29 @@ fn change_bursts_publish_only_the_settled_contents() {
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
     let (tx, rx) = mpsc::channel();
+    let (resume, paused) = mpsc::channel();
+    let mut first_load = Some(paused);
     let _watch = SourceWatch::new(&path, move |result| {
+        let loaded = result.is_ok();
         let _ = tx.send(result);
+        // Hold the worker inside its first successful callback. File events
+        // still arrive, but no intermediate write can be read or published,
+        // even if this test thread is descheduled between writes.
+        if loaded && let Some(paused) = first_load.take() {
+            let _ = paused.recv();
+        }
     })
     .unwrap_or_else(|e| panic!("{e}"));
     assert!(next(&rx).is_ok());
     for contents in ["", "@misc{partial,", "@misc{new}"] {
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
-        std::thread::sleep(Duration::from_millis(30));
     }
+    resume.send(()).unwrap_or_else(|e| panic!("{e}"));
     let loaded = next(&rx).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(loaded.references[0].id.native_key, "new");
-    assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
+    let keys: Vec<_> = loaded.references.iter().map(|r| r.id.native_key.as_str()).collect();
+    assert_eq!(keys, ["new"]);
+    // Native backends can deliver duplicate notifications later. A quiet
+    // interval cannot establish their absence, so assert contents instead.
 }
 
 #[test]
