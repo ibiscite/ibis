@@ -441,7 +441,7 @@ jobs:
           mkdir feed
           mv dist/*.sig feed/
           node scripts/update-feed.mjs manifest feed "https://github.com/$REPO/releases/download/$TAG" \
-            "${TAG#v}" "Ibis $TAG. Release notes: https://github.com/$REPO/releases/tag/$TAG"
+            "${TAG#v}" "Ibis ${TAG#v}. Release notes: https://github.com/$REPO/releases/tag/$TAG"
           rm feed/*.sig
           cat feed/latest.json
 
@@ -451,37 +451,22 @@ jobs:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
-          cat > notes.md <<'EOF'
-          **Preview build. Not signed.** macOS may say the app cannot be checked for malicious software: right-click Ibis in Applications and choose Open. Windows SmartScreen may warn: choose More info, then Run anyway.
-
-          Verify a download before opening it:
-
-          - Checksums: compare the output of `shasum -a 256 <file>` (macOS, Linux) or `Get-FileHash <file>` (Windows) with the `SHA256SUMS-*.txt` files below.
-          - Provenance: run `gh attestation verify <file> --repo ibiscite/ibis --source-ref refs/tags/TAG --signer-workflow ibiscite/ibis/.github/workflows/preview.yml`, replacing TAG with this release's tag. This rejects builds from other branches.
-          EOF
-          cat > windows-setup.md <<'EOF'
-          **Windows installation:** if Microsoft WebView2 Runtime is missing, the installer downloads Microsoft's WebView2 bootstrapper and uses it to install the runtime. This one-time prerequisite setup requires an internet connection. The Ibis app works offline after setup.
-
-          EOF
+          # Release Please drafts the release with its generated change list;
+          # scripts/release-notes.mjs puts the download table and install notes
+          # in front and drops the commit hashes (#450).
           if gh release view "$TAG" --repo "$REPO" --json body,isDraft > release.json; then
             if [ "$(jq -r .isDraft release.json)" != true ]; then
               echo "::error::The release is already public; refusing to replace its packages."
               exit 1
             fi
-            jq -r .body release.json > existing-notes.md
+            jq -r .body release.json > generated-notes.md
+            node scripts/release-notes.mjs "$TAG" generated-notes.md > release-notes.md
             gh release upload "$TAG" dist/* --repo "$REPO" --clobber
-            cp existing-notes.md combined-notes.md
-            if ! grep -Fq '**Preview build. Not signed.**' existing-notes.md; then
-              cat notes.md existing-notes.md > combined-notes.md
-            fi
-            if ! grep -Fq '**Windows installation:**' combined-notes.md; then
-              cat windows-setup.md combined-notes.md > updated-notes.md
-              mv updated-notes.md combined-notes.md
-            fi
-            gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --notes-file combined-notes.md
+            gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis ${TAG#v}" --notes-file release-notes.md
           else
-            cat windows-setup.md notes.md > combined-notes.md
-            gh release create "$TAG" dist/* --repo "$REPO" --prerelease --draft --title "Ibis $TAG (preview)" --notes-file combined-notes.md --verify-tag
+            : > generated-notes.md
+            node scripts/release-notes.mjs "$TAG" generated-notes.md > release-notes.md
+            gh release create "$TAG" dist/* --repo "$REPO" --prerelease --draft --title "Ibis ${TAG#v}" --notes-file release-notes.md --verify-tag
             gh release edit "$TAG" --repo "$REPO" --draft=false
           fi
 
@@ -544,7 +529,7 @@ jobs:
             fi
           fi
           cat > feed-notes.md <<EOF
-          **The newest Ibis release, [Ibis $TAG](https://github.com/$REPO/releases/tag/$TAG), at links that stay the same,** for example \`https://github.com/$REPO/releases/download/stable/Ibis-Windows-setup.exe\`. See that release for its notes and how to verify a download. \`latest.json\` is the update feed the stable app reads.
+          **The newest Ibis release, [Ibis ${TAG#v}](https://github.com/$REPO/releases/tag/$TAG), at links that stay the same,** for example \`https://github.com/$REPO/releases/download/stable/Ibis-Windows-setup.exe\`. See that release for its notes and how to verify a download. \`latest.json\` is the update feed the stable app reads.
           EOF
           if ! gh release view "$FEED" --repo "$REPO" > /dev/null 2>&1; then
             gh release create "$FEED" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis update feed" --notes-file feed-notes.md

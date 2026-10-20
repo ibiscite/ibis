@@ -12,6 +12,7 @@ const steps = [
   ["Evidence publication tests", "node", ["--test", "scripts/evidence.test.mjs"]],
   ["Update feed tests", "node", ["--test", "scripts/update-feed.test.mjs"]],
   ["Hygiene tests", "node", ["--test", "scripts/hygiene.test.mjs"]],
+  ["Release notes tests", "node", ["--test", "scripts/release-notes.test.mjs"]],
   ["Format", "cargo", ["fmt", "--all", "--check"]],
   ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
   ["Test", "cargo", ["test", "--locked"]],

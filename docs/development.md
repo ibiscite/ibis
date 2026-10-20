@@ -58,6 +58,8 @@ No other labels. Each family has one colour.
 
 **Milestones.** Every open issue has one milestone: `0.N Name` for a planned release (matching `ROADMAP.md`), `1.0`, or `Later` for anything not scheduled. Each open milestone's description is one line saying what users can do when it ships, and names its tracking issue. A milestone closes when its release ships.
 
+**Versions and releases.** Versions follow semantic versioning; before 1.0, `0.N.0` ships milestone `0.N` and `0.N.1`, `0.N.2`, ... fix it. Release Please keeps a pull request titled `chore: release X.Y.Z`; merging it (only on the maintainer's word) tags `vX.Y.Z` and publishes the release **Ibis X.Y.Z** with a download table and the changes grouped by type (`scripts/release-notes.mjs`). Every non-documentation change on `main` also publishes **Ibis Nightly X.Y.Z-nightly.YYYYMMDDHHMMSS** on the rolling `nightly` tag, and the rolling `stable` tag mirrors the newest release so download links never change. No other tags.
+
 **Tracking issues.** Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body holds the current plan: what done means, **Now** (work in progress and where it is), the ordered **Queue**, what waits on the maintainer, what is deferred, and decisions taken. History goes in comments. After each merge, add one line saying what users can now do and what is next.
 
 ## Setting up a computer

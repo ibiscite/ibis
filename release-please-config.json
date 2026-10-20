@@ -1,6 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
+  "pull-request-title-pattern": "chore: release ${version}",
+  "pull-request-header": "Merging this pull request tags and publishes the release below.",
   "initial-version": "0.1.0",
   "prerelease": true,
   "draft": true,
