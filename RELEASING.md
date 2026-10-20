@@ -1,6 +1,6 @@
 # Maintaining and releasing Ibis
 
-Follow [AGENTS.md](AGENTS.md) for contributor and autonomous development permissions. Releases, tags and publishing always require an explicit maintainer request.
+Release authority and merge holds follow [AGENTS.md](AGENTS.md#working-autonomously).
 
 ## Real-library check
 
@@ -20,7 +20,7 @@ once accepted and integrated, include the SignPath credit described there.
 Updater signatures and operating-system code signing are separate.
 
 Release Please keeps a pull request titled `chore: release X.Y.Z`; merging it
-only on the maintainer's word updates `CHANGELOG.md` and the workspace version,
+under that authority updates `CHANGELOG.md` and the workspace version,
 tags `vX.Y.Z` and publishes **Ibis X.Y.Z** with a download table and changes
 grouped by type. Never edit versions by hand. Numbered release builds are
 produced only by CI from a tag; previews may be GitHub pre-releases. Data formats
@@ -51,14 +51,14 @@ replacement selects `.version` ([upstream explanation](https://github.com/google
 1. Organization settings → Actions → General → Workflow permissions: enable "Allow GitHub Actions to create and approve pull requests".
 2. Repository settings → Secrets and variables → Actions → Variables: add `RELEASE_PLEASE` with value `enabled`.
 
-Release Please then keeps a release pull request open. Bot-created proposals can require maintainer approval before CI runs. Review the final proposal, then approve or retrigger its validation as appropriate. All required checks and desktop checks must pass on the exact final head before a release can be considered; missing checks are incomplete validation. Do not bypass required checks to merge a release proposal. Merging the release pull request remains an explicit maintainer decision, separate from approving its CI runs.
+Release Please then keeps a release pull request open. Bot-created proposals can require maintainer approval before CI runs. Review the final proposal, then approve or retrigger its validation as appropriate. All required checks and desktop checks must pass on the exact final head before a release can be considered; missing checks are incomplete validation. Do not bypass required checks to merge a release proposal. Approving CI runs does not replace those merge conditions or the release authority linked above.
 
 ### Preview builds
 
 `.github/workflows/preview.yml` builds Windows (MSI and setup executable), macOS (Apple silicon and Intel disk images) and Linux (AppImage, .deb, .rpm) packages in CI, with SHA-256 checksums and build-provenance attestations. Packages are named `Ibis-<platform>.<extension>` (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`) with no version, so download links to a release or the nightly never change; the version is in the release title and tag. x64 packages have no architecture in their name and these names never change; ARM packages, when they arrive, add `-ARM` after the platform (`Ibis-Windows-ARM-setup.exe`, `Ibis-Linux-ARM.AppImage`).
 
 - **Dry run:** Actions → Preview builds → Run workflow. The packages are kept as workflow artifacts for 14 days; leave the publication checkbox unchecked. Nothing is published, including when the selected ref is a tag.
-- **Pre-release:** after an explicitly authorized release PR merge, Release Please creates a draft release and its tag, then dispatches Preview builds at that tag with publication enabled. Its `GITHUB_TOKEN` cannot trigger a second tag-push workflow, but explicit workflow dispatches can run. A maintainer's own `v*` tag push also builds and verifies packages before publishing a pre-release. Major-zero releases are marked as previews; the proposed first version remains `0.1.0`.
+- **Pre-release:** after a release PR merge under that authority, Release Please creates a draft release and its tag, then dispatches Preview builds at that tag with publication enabled. Its `GITHUB_TOKEN` cannot trigger a second tag-push workflow, but explicit workflow dispatches can run. A maintainer's own `v*` tag push also builds and verifies packages before publishing a pre-release. Major-zero releases are marked as previews; the proposed first version remains `0.1.0`.
 
 - **Nightly:** every push to `main` that changes more than documentation builds the same packages and replaces the `nightly` pre-release ([Releases → nightly](https://github.com/ibiscite/ibis/releases/tag/nightly), titled `Ibis Nightly <version>` with the version and commit at the top of its notes). The `nightly` tag moves to that commit; it never matches `v*`, so it starts no release build and Release Please ignores it. Runs are never cancelled; while one runs, only the newest waiting push is kept, and a run whose commit is no longer the head of `main` does not publish. Publication first checks every checksum and verifies each package's provenance against `refs/heads/main` and that commit; a failed build or check leaves the previous nightly in place. Packages are uploaded before the tag moves and the notes change, so the notes always name the commit that was fully published. To refresh it by hand, run Preview builds on `main` with publication checked. Builds from `main` are the separate app **Ibis Nightly** (identifier `io.github.ibiscite.ibis.nightly`, version `X.Y.Z-nightly.YYYYMMDDHHMMSS` from `scripts/update-feed.mjs`), without the MSI and `.rpm`, whose version formats cannot carry it.
 - **Updates (ADR 0019):** the nightly job and the tag release job, in the `updates` environment that only `main` and `v*` tags can use, sign the macOS app archives, the Windows setup executable and the AppImage with the Ibis update key, check that each signature names the key built into the app (the app itself verifies the signature before installing), and upload `latest.json` after the packages. A tag release must name the workspace version; once the release is public, the `stable-feed` job copies its packages and `latest.json` to the rolling `stable` pre-release, which the stable app reads and which gives fixed download links to the newest release. That job can be re-run on its own, and leaves the feed in place for a tag older than the one it names (a backport). Signatures live only in `latest.json`. After each nightly, the `update-e2e` job installs the nightly that was just replaced on Linux (the AppImage, under a virtual display), Windows (the setup executable) and Apple silicon macOS (the `.app` from its update archive), starts it with update checks on, presses "Install and Restart" through the system's accessibility interface and checks that the installed app is now the new version and that the new version started; it is skipped, with a notice, when the previous nightly had no feed or a newer commit took over publication. Losing the key or its password means testers reinstall once by hand; the maintainer keeps an offline backup.
@@ -77,8 +77,8 @@ gh run download RUN_ID --pattern 'ibis-*' --dir dist
 gh attestation verify FILE --repo ibiscite/ibis --source-ref refs/tags/TAG --source-digest TAG_COMMIT_SHA --signer-workflow ibiscite/ibis/.github/workflows/preview.yml
 ```
 
-After verification and offline review, publish only with explicit maintainer
-authorization: rerun at the same tag with publication on, or upload verified
+After verification and offline review, follow the release authority linked above:
+rerun at the same tag with publication on, or upload verified
 packages to the existing draft and publish it. Confirm the target tag and draft,
 keep the preview warning and verification instructions, and never move or delete
 a `v*` tag to recover a build. Already public releases are not overwritten.
