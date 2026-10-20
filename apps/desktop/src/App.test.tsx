@@ -1313,6 +1313,106 @@ test("a failed group list is reported and My Library stays available", async () 
   expect(within(group).getAllByRole("menuitemcheckbox").map((box) => box.textContent)).toEqual(["My Library"]);
 });
 
+test.each(["More", "Escape", "Tab", "outside click"])("closing More with %s dismisses its group-list error and reopening retries", async (closeWith) => {
+  let requests = 0;
+  let rejectRetry: (error: Error) => void = () => undefined;
+  backend({
+    library_status: () => zoteroStatus(["user"]),
+    zotero_groups: () => {
+      if (++requests === 1) throw new Error("synthetic: Zotero closed");
+      return new Promise((_, reject) => { rejectRetry = reject; });
+    },
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  const more = screen.getByRole("button", { name: /^More/ });
+  fireEvent.click(more);
+  await screen.findByText(/could not list your Zotero groups/);
+  if (closeWith === "More") fireEvent.click(more);
+  else if (closeWith === "outside click") fireEvent.pointerDown(screen.getByLabelText("Search references"));
+  else fireEvent.keyDown(screen.getByRole("menu"), { key: closeWith });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
+  fireEvent.click(more);
+  await waitFor(() => expect(requests).toBe(2));
+  expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
+  await act(async () => { rejectRetry(new Error("synthetic: still closed")); });
+  expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
+});
+
+test("background group-name lookup keeps cached names without showing a closed-menu error", async () => {
+  let unavailable = false;
+  backend({
+    library_status: () => zoteroStatus(["user", { group: 42 }]),
+    zotero_groups: () => {
+      if (unavailable) throw new Error("synthetic: Zotero closed");
+      return [{ id: 42, name: "Synthetic lab" }];
+    },
+    search: () => [result("shared", "Shared", "zotero:group:42")],
+  });
+  render(<App />);
+  const shared = (await screen.findByText("Shared")).closest("li")!;
+  await within(shared).findByText("Synthetic lab");
+  unavailable = true;
+  await act(async () => { await emit("library:changed", zoteroStatus(["user", { group: 42 }])); });
+  expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
+  expect(within(shared).getByText("Synthetic lab")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
+  expect(screen.getByRole("menuitemcheckbox", { name: "Synthetic lab" })).toBeTruthy();
+});
+
+test.each([false, true])("a late group-list failure stays dismissed after closing More (several libraries: %s)", async (several) => {
+  const rejected: ((error: Error) => void)[] = [];
+  const calls = backend({
+    library_status: () => zoteroStatus(several ? ["user", { group: 42 }] : ["user"]),
+    zotero_groups: () => new Promise((_, reject) => { rejected.push(reject); }),
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(calls).toContain("zotero_groups"));
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await act(async () => { rejected.forEach((reject) => reject(new Error("synthetic: late failure"))); });
+  expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
+});
+
+test("a late group-list failure from a previous opening cannot replace a successful menu refresh", async () => {
+  const requests: { resolve: (groups: unknown) => void; reject: (error: Error) => void }[] = [];
+  backend({
+    library_status: () => zoteroStatus(["user", { group: 42 }]),
+    zotero_groups: () => new Promise((resolve, reject) => { requests.push({ resolve, reject }); }),
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  const more = screen.getByRole("button", { name: /^More/ });
+  fireEvent.click(more);
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  const old = [...requests];
+  fireEvent.click(more);
+  const current = requests.at(-1)!;
+  await act(async () => { current.resolve([{ id: 42, name: "Synthetic lab" }]); });
+  expect(await screen.findByRole("menuitemcheckbox", { name: "Synthetic lab" })).toBeTruthy();
+  await act(async () => { old.forEach(({ reject }) => reject(new Error("synthetic: old failure"))); });
+  expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
+  expect(screen.getByRole("menuitemcheckbox", { name: "Synthetic lab" })).toBeTruthy();
+});
+
+test("switching to a file removes a previous Zotero group-list failure", async () => {
+  backend({
+    library_status: () => zoteroStatus(["user"]),
+    zotero_groups: () => { throw new Error("synthetic: Zotero closed"); },
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await screen.findByText(/could not list your Zotero groups/);
+  await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, zotero: false,
+    name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, note: null }); });
+  expect(screen.queryByRole("group", { name: "Zotero libraries" })).toBeNull();
+  expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
+});
+
 test("two Zotero libraries turned on before the first is reported are both kept, and a refused choice is undone", async () => {
   const chosen: unknown[][] = [];
   let refuse = false;
