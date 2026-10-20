@@ -13,9 +13,16 @@ export const operationFailures = {
   reload: "Ibis could not reload your library. Choose the file again.",
   hide: "Ibis could not hide this window. Try again.",
   pin: "Ibis could not change the pin. Try again.",
+  preferences: "Ibis could not read or save your picker choices. They apply until Ibis restarts.",
   quit: "Ibis could not quit. Try again.",
   pickerEvents: "Ibis could not focus the search box. Restart Ibis to try again.",
   libraryEvents: "Your library may not update automatically. Use Reload, or restart Ibis.",
+} as const;
+
+export const densityNames = {
+  compact: "Compact",
+  comfortable: "Comfortable",
+  spacious: "Spacious",
 } as const;
 
 export const pickerText = {
@@ -68,6 +75,9 @@ export const pickerText = {
   copyAs: "Copy as",
   quit: "Quit",
   quitLabel: "Quit Ibis",
+  density: (name: string) => `Rows: ${name}`,
+  densityTitle: "Show less or more of each reference",
+  largerText: "Larger text",
   keyHints: { copy: " Copy · ", add: " Add · ", hide: " Hide" },
   resultCount: (count: number) => `${count} ${count === 1 ? "result" : "results"}`,
   selectionCount: (count: number) => `${count} ${count === 1 ? "reference" : "references"} selected for citation`,

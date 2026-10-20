@@ -118,3 +118,13 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
   .key-hints { display: none; }
 }
 /* No animation: reduced-motion users get the same immediate feedback. */
+
+/* Remembered picker preferences (ADR 0020). Compact rows keep the title and
+   year only; spacious rows get room for a third line. */
+:root[data-density="compact"] { --row-height: var(--row-compact); }
+:root[data-density="compact"] .result-meta { display: none; }
+:root[data-density="spacious"] { --row-height: var(--row-spacious); }
+:root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
+[role="menuitemcheckbox"] { display: flex; justify-content: space-between; gap: var(--space-4); min-height: var(--control-min-size); align-items: center; text-align: start; border: 0; background: var(--clear); }
+[role="menuitemcheckbox"]:hover, [role="menuitemcheckbox"]:focus-visible { background: var(--hover-background); }
+[role="menuitemcheckbox"][aria-checked="true"]::after { content: "✓"; }
