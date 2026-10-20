@@ -566,6 +566,8 @@ test("combobox focus is separate from citation selection and only additions/remo
   await screen.findByText("First");
   const box = screen.getByRole("combobox", { name: "Search references" });
   const list = screen.getByRole("listbox", { name: "Results" });
+  expect(box.getAttribute("aria-autocomplete")).toBe("list");
+  expect(box.getAttribute("aria-controls")).toBe(list.id);
   expect(list.hasAttribute("aria-multiselectable")).toBe(false);
   expect(within(list).getAllByRole("option", { selected: true })).toHaveLength(1);
   const notice = screen.getByRole("status", { name: "Citation selection" });
@@ -586,6 +588,7 @@ test("combobox focus is separate from citation selection and only additions/remo
   expect(notice.textContent).toBe("1 reference selected for citation");
   fireEvent.change(box, { target: { value: "reorder" } });
   await waitFor(() => expect(within(list).getAllByRole("option")[0]?.textContent).toContain("Second"));
+  expect((box as HTMLInputElement).value).toBe("reorder");
   expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(true);
   expect(within(list).getAllByRole("option", { selected: true })).toHaveLength(1);
   expect(document.getElementById(box.getAttribute("aria-activedescendant")!)?.textContent).toContain("Second");

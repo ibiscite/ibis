@@ -763,6 +763,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           type="search"
           placeholder={pickerText.searchPlaceholder}
           role="combobox"
+          aria-autocomplete="list"
           aria-expanded={results.length > 0}
           aria-controls="results"
           aria-activedescendant={results[active] ? `result-${active}` : undefined}
