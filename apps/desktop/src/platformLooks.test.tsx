@@ -440,3 +440,36 @@ test("the Linux active row stands out 3:1 from neighbouring rows with Adwaita's 
   expect(ratio(mix(hex("#3584e4"), surface[0]!, .25), surface[0]!)).toBeLessThan(3);
 });
 
+
+test("dividers are quiet separators, distinct from 3:1 control edges", () => {
+  for (const selector of [".search-bar", "footer", ".copy-notice", ".format-preview", '[aria-label="Selected references"]']) {
+    expect(rules(styles, selector), selector).toMatch(/border-(top|bottom):\s*var\(--border-width\) solid var\(--separator\)/);
+  }
+  // Windows: Fluent's divider stroke; elsewhere Adwaita's text colour at 15%; macOS its 10% hairline.
+  expect(tokens).toMatch(/:root\[data-platform="windows"\] \{[^}]*--separator:\s*light-dark\(rgb\(0 0 0 \/ 6%\), rgb\(255 255 255 \/ 8%\)\)/);
+  expect(tokens).toMatch(/:root \{ --separator:\s*color-mix\(in srgb, currentColor 15%, transparent\); \}/);
+  // Contrast modes give every divider and edge the full system colour, and
+  // override the Windows look, which therefore comes first.
+  for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
+    expect(rules(tokens.slice(tokens.indexOf(media)), ":root[data-platform]"), media).toMatch(/--separator:\s*CanvasText/);
+    expect(tokens.indexOf('--separator: light-dark(rgb(0 0 0 / 6%)'), media).toBeLessThan(tokens.indexOf(media));
+  }
+});
+
+test("the search box draws one underline: the header rule never changes on focus", () => {
+  const plain = styles.slice(0, styles.indexOf("@media (prefers-contrast: more)"));
+  expect(plain).not.toMatch(/\.search-bar:focus-within/);
+  expect(tokens).not.toMatch(/--search-active-border/);
+});
+
+test("buttons and key caps are fills without an outline except in contrast modes", () => {
+  expect(rules(styles, "button")).toMatch(/border:\s*var\(--border-width\) solid var\(--button-edge\)/);
+  const kbd = rules(styles, "kbd");
+  expect(kbd).toMatch(/background:\s*var\(--button-background\)/);
+  expect(kbd).toMatch(/border:\s*var\(--border-width\) solid var\(--button-edge\)/);
+  expect(kbd).toMatch(/height:\s*var\(--key-cap\)/);
+  expect(rules(tokens, ":root")).toMatch(/--button-edge:\s*var\(--clear\)/);
+  for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
+    expect(rules(tokens.slice(tokens.indexOf(media)), ":root[data-platform]"), media).toMatch(/--button-edge:\s*(CanvasText|ButtonText)/);
+  }
+});

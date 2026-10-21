@@ -52,7 +52,7 @@ test("macOS fills and hairlines are translucent so the native material shows thr
   for (const token of ["--line", "--hover-background", "--button-background", "--button-hover-background"]) {
     for (const [, , , alpha] of rgba(body, token)) expect(alpha, token).toBeLessThan(.2);
   }
-  expect(body).toMatch(/--search-active-border:\s*var\(--line\)/);
+  expect(body).toMatch(/--separator:\s*var\(--line\)/);
 });
 
 test("only native success shows the material, under a veil; reduced transparency stays opaque", () => {
@@ -143,7 +143,7 @@ test("the frameless macOS buttons keep the pressed frame of the writing choice",
   const mac = native.slice(start + native.slice(start).indexOf("{") + 1, native.lastIndexOf("}"));
   const sheet = document.createElement("style");
   // jsdom does not resolve custom properties in border colours: substitute them.
-  const values: Record<string, string> = { "--clear": "transparent", "--accent": "rgb(10, 122, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px" };
+  const values: Record<string, string> = { "--clear": "transparent", "--button-edge": "transparent", "--accent": "rgb(10, 122, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px" };
   sheet.textContent = (mac.replace(/@supports[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, "") + styles)
     .replace(/var\((--[\w-]+)\)/g, (whole, name: string) => values[name] ?? whole);
   document.head.append(sheet);

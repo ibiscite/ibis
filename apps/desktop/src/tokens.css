@@ -82,13 +82,17 @@
   --surface: Canvas;
   --text: CanvasText;
   --muted: CanvasText;
-  --line: GrayText;
+  --line: GrayText;      /* control edges that need 3:1: fields, contrast modes */
+  --separator: var(--line); /* dividers between regions; quieter per look below */
   --active-edge: CanvasText;
   --accent: Highlight;
   --focus: CanvasText;
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --button-background: color-mix(in srgb, var(--text) 4%, var(--surface));
   --button-hover-background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  /* Buttons and key caps are fills without an edge, as in native toolbars;
+     Windows adds Fluent's faint control stroke, contrast modes a solid one. */
+  --button-edge: var(--clear);
   --hover-background: color-mix(in srgb, var(--text) 3%, var(--surface));
   --selected-background: Highlight;
   --selected-text: HighlightText;
@@ -106,7 +110,7 @@
   --alert-border-width: 3px;
   --button-radius: 6px;
   --key-radius: 5px;
-  --hint-radius: 3px;
+  --hint-radius: 4px;
   --button-padding: .35rem .55rem;
   --picker-height: 100dvh;
   /* Between the field and the header's controls. The search glyph sits over
@@ -156,12 +160,11 @@
   --icon-size: 1rem;
   --icon-padding: .15rem .4rem;
   --hint-size: var(--type-label-size);
-  --hint-padding: .1rem .25rem;
+  --key-cap: 1.25rem;
   --hint-margin: .2rem;
   --contrast-border-width: 3px;
   --forced-selected-offset: -4px;
   --forced-search-offset: -3px;
-  --search-active-border: var(--accent);
   --field-background: var(--button-background);
   --clear-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
   --field-edge: color-mix(in srgb, var(--line) 35%, var(--surface));
@@ -247,7 +250,7 @@
       --hover-background: light-dark(rgb(0 0 0 / 4.5%), rgb(255 255 255 / 6%));
       --button-background: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
       --button-hover-background: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
-      --search-active-border: var(--line);
+      --separator: var(--line);
       --button-radius: 8px; --hint-radius: 5px; --key-radius: 5px; --menu-radius: 12px;
       --menu-shadow: 0 1rem 2.5rem rgb(0 0 0 / 22%);
       --vibrancy-tint: light-dark(rgb(250 250 252 / 55%), rgb(30 30 34 / 55%));
@@ -266,23 +269,31 @@
 }
 
 @supports (background: color-mix(in srgb, white 50%, black)) {
-  :root { --search-active-border: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+  /* Dividers: Adwaita's $border_color (the text colour at 15%) by default and
+     on Linux; Windows and macOS set their own hairlines. */
+  :root { --separator: color-mix(in srgb, currentColor 15%, transparent); }
   /* Linux: Adwaita's half-accent focus ring, mixed toward the text colour
      rather than transparency so it reaches 3:1 on the surface in both themes. */
   :root[data-platform="linux"] { --focus-ring-color: color-mix(in srgb, var(--accent) 50%, var(--text)); }
 }
 
+/* Windows: Fluent's DividerStrokeColorDefault and ControlStrokeColorDefault.
+   Before the contrast blocks, which must override it. */
+@supports (color: light-dark(white, black)) {
+  :root[data-platform="windows"] { --separator: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 8%)); --button-edge: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 7%)); }
+}
+
 @media (prefers-contrast: more) {
-  :root, :root[data-platform] { --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
+  :root, :root[data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 @media (forced-colors: active) {
-  :root, :root[data-platform] { --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
+  :root, :root[data-platform] { --separator: CanvasText; --button-edge: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
 }
 
 /* Explicit contrast preview in the development states gallery. */
-:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; }
+:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; }
 :root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
 
 /* ADR 0021 look layer: local overrides preserve More/Keys until they migrate. */

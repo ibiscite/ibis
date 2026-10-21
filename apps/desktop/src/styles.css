@@ -8,7 +8,7 @@ body { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
 button, select {
   background: var(--button-background);
-  border: var(--border-width) solid var(--line);
+  border: var(--border-width) solid var(--button-edge);
   border-radius: var(--button-radius);
   padding: var(--button-padding);
 }
@@ -25,12 +25,11 @@ main {
   overflow: auto;
 }
 
-.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: var(--search-bar-height); padding: var(--inset); padding-block-end: calc(var(--inset) - var(--border-width)); border-bottom: var(--border-width) solid var(--line); cursor: move; user-select: none; }
+.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: var(--search-bar-height); padding: var(--inset); padding-block-end: calc(var(--inset) - var(--border-width)); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Edges line up"). */
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }
-.search-bar:focus-within { border-bottom-color: var(--search-active-border); }
 /* Reserve readable query space before wrapping controls, at every text size. */
 #search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); height: var(--field-h); font-size: var(--search-size); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
 #search::placeholder { color: var(--muted); }
@@ -128,16 +127,16 @@ main {
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }
 .notices p { margin: var(--notice-margin); }
 .copy-notice code, .format-preview .preview-text, [aria-label="Selected references"] code { color: var(--citation); }
-.copy-notice { border-bottom: var(--border-width) solid var(--line); padding-bottom: var(--copy-padding); }
-.format-preview { border-bottom: var(--border-width) solid var(--line); padding: var(--copy-padding); overflow-wrap: anywhere; }
+.copy-notice { border-bottom: var(--border-width) solid var(--separator); padding-bottom: var(--copy-padding); }
+.format-preview { border-bottom: var(--border-width) solid var(--separator); padding: var(--copy-padding); overflow-wrap: anywhere; }
 .format-preview .provisional { color: var(--muted); font-size: var(--metadata-size); margin: var(--metadata-gap) 0 0; }
 .dismiss { float: right; margin: var(--dismiss-margin); }
 [role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
-[aria-label="Selected references"] { display: flex; flex-wrap: wrap; gap: var(--selection-gap); list-style: none; padding: var(--selection-padding); margin: 0; border-bottom: var(--border-width) solid var(--line); }
+[aria-label="Selected references"] { display: flex; flex-wrap: wrap; gap: var(--selection-gap); list-style: none; padding: var(--selection-padding); margin: 0; border-bottom: var(--border-width) solid var(--separator); }
 [aria-label="Selected references"] li { border: var(--border-width) solid var(--line); border-radius: var(--button-radius); padding-inline-start: var(--selection-label-padding); overflow-wrap: anywhere; max-width: 100%; }
 [aria-label="Selected references"] button { border: 0; background: var(--clear); font-size: var(--metadata-size); }
 
-footer { display: flex; align-items: center; border-top: var(--border-width) solid var(--line); padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
+footer { display: flex; align-items: center; border-top: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
 .library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
@@ -192,7 +191,9 @@ main:hover .pin-button, .pin-button:focus-visible { opacity: 1; }
 [role="menuitem"] kbd { color: var(--muted); }
 .quiet-button, .icon-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
 .icon-button { font-size: var(--icon-size); padding: var(--icon-padding); }
-kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding: var(--hint-padding); border: var(--border-width) solid var(--line); border-radius: var(--hint-radius); margin-inline-start: var(--hint-margin); }
+/* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
+   20 px cap on the button fill; contrast modes give it an edge. */
+kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inline-block; min-width: var(--key-cap); height: var(--key-cap); line-height: calc(var(--key-cap) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--button-background); border: var(--border-width) solid var(--button-edge); border-radius: var(--hint-radius); margin-inline-start: var(--hint-margin); }
 
 @media (prefers-contrast: more) {
 
