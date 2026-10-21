@@ -13,6 +13,12 @@ This page describes the target, including longer-term parts. Release scope
 comes from [ROADMAP.md](../ROADMAP.md). What is built and what is left is tracked
 in #223 and the issues named under [Rollout](#rollout), not on this page.
 
+More detail:
+
+- [Design system foundations](design/system.md): decisions D1–D17, per-OS tokens, shapes, states and components.
+- [Settings window and shortcut customization](design/settings.md): pages, the shortcut recorder and conflict rules.
+- [Citation preview](design/preview.md): the citation shelf and the wide pane.
+
 ## Eight rules
 
 1. **One anatomy everywhere.** Search, list, detail, citation tray and footer, in
