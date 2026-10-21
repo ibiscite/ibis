@@ -509,6 +509,10 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
     let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) else {
         return;
     };
+    run_open(app, request, source, reload, remember);
+}
+
+fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, remember: bool) {
     publish_current(app);
     let previous = app
         .state::<Mutex<Library>>()
@@ -628,14 +632,8 @@ pub(crate) fn refresh_zotero(app: &AppHandle) {
         });
         return;
     }
-    let source = app
-        .state::<Mutex<Library>>()
-        .lock()
-        .ok()
-        .filter(|library| !library.opening && !library.checking)
-        .and_then(|library| zotero_to_check(&library).map(|source| retry(&library, source)));
-    if let Some((source, remember)) = source {
-        start_open(app, source, remember);
+    if let Some((request, source, reload)) = begin_zotero_retry(&app.state(), &app.state(), false) {
+        run_open(app, request, source, reload, !reload);
     }
 }
 
@@ -660,6 +658,42 @@ fn begin_check(
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
     library.checking = true;
     Some((request, source, library.zotero.clone()))
+}
+
+/// Returning to a visible picker must also recover a failed Zotero choice.
+/// Healthy libraries are checked only on show, and no timer retries failures.
+pub(crate) fn retry_zotero_on_focus(app: &AppHandle) {
+    if let Some((request, source, reload)) = begin_focus_retry(&app.state(), &app.state()) {
+        run_open(app, request, source, reload, !reload);
+    }
+}
+
+fn begin_focus_retry(library: &Mutex<Library>, requests: &LoadRequests) -> Option<(u64, Source, bool)> {
+    begin_zotero_retry(library, requests, true)
+}
+
+fn begin_zotero_retry(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    only_failed: bool,
+) -> Option<(u64, Source, bool)> {
+    let mut library = library.lock().ok()?;
+    if library.opening || library.checking || (only_failed && library.error.is_none()) {
+        return None;
+    }
+    let source = zotero_to_check(&library)?;
+    let reload = library.source.as_ref() == Some(&source);
+    let request = if reload {
+        // A retained library stays visible, with its failure, until Zotero
+        // answers. This is the same quiet check used when showing the picker.
+        library.checking = true;
+        requests.0.fetch_add(1, Ordering::SeqCst) + 1
+    } else {
+        // Eligibility and request reservation share the lock: focus and show
+        // cannot both start recovery of a choice that has never opened.
+        record_open(&mut library, requests, source.clone()).0
+    };
+    Some((request, source, reload))
 }
 
 /// The Zotero library to read again: the one asked for, even if it has not
@@ -878,6 +912,10 @@ fn begin_open(
 ) -> Option<(u64, bool, LibraryStatus)> {
     let source = source.into();
     let mut library = library.lock().ok()?;
+    Some(record_open(&mut library, requests, source))
+}
+
+fn record_open(library: &mut Library, requests: &LoadRequests, source: Source) -> (u64, bool, LibraryStatus) {
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
     let reload = library.source.as_ref() == Some(&source);
     library.requested = Some(source);
@@ -885,7 +923,7 @@ fn begin_open(
     library.checking = false;
     library.error = None;
     library.retained_error = None;
-    Some((request, reload, status(&library)))
+    (request, reload, status(library))
 }
 
 /// Choose a library with the system file dialog. The interface never passes
@@ -1991,6 +2029,196 @@ mod tests {
         let loaded_file = candidate(file, ibis_core::bibtex::load_str("synthetic", ""));
         assert_eq!(zotero_to_check(&loaded_file), None);
     }
+    #[test]
+    fn focus_return_recovers_the_failed_zotero_choice_without_reopening_the_picker() {
+        let groups = ZoteroLibraries::new(vec![ZoteroLibrary::Group(42), ZoteroLibrary::Group(7)])
+            .unwrap_or_else(|| panic!("valid chosen groups"));
+        let chosen = Source::Zotero(groups.clone());
+        for retained in [
+            None,
+            Some(Source::File(PathBuf::from("synthetic.bib"))),
+            Some(Source::Zotero(ZoteroLibrary::User.into())),
+        ] {
+            let library = Mutex::new(
+                retained
+                    .map(|source| candidate(source, ibis_core::bibtex::load_str("synthetic", "@misc{old}")))
+                    .unwrap_or_default(),
+            );
+            let requests = LoadRequests::default();
+            let (first, _, _) = begin_open(&library, &requests, chosen.clone()).unwrap_or_else(|| panic!("starts"));
+            install_loaded(&library, &requests, first, Err("Zotero is not running".into()));
+
+            // The synthetic loader becomes ready. Returning focus, without
+            // showing the picker again, must retry the choice that failed.
+            let (recovery, source, reload) = begin_focus_retry(&library, &requests)
+                .unwrap_or_else(|| panic!("focus must recover the failed chosen groups"));
+            assert_eq!(source, chosen);
+            assert!(!reload, "this choice has not opened yet");
+            assert!(
+                begin_focus_retry(&library, &requests).is_none(),
+                "only one recovery at a time"
+            );
+            assert!(
+                begin_zotero_retry(&library, &requests, false).is_none(),
+                "show cannot duplicate focus"
+            );
+            let loaded = zotero::load_items(
+                zotero::Library::Group(42),
+                &[serde_json::json!({
+                    "key": "SYN00001", "data": {"itemType": "book"},
+                    "csljson": {"type": "book", "title": "Synthetic recovered record"}
+                })],
+            );
+            let recovered = install_loaded(
+                &library,
+                &requests,
+                recovery,
+                Ok(Loaded::New(Box::new(candidate(source, loaded)))),
+            )
+            .unwrap_or_else(|| panic!("recovery is current"));
+            assert_eq!(recovered.state, LibraryState::Loaded);
+            assert!(recovered.error.is_none());
+            assert_eq!(recovered.zotero_libraries, groups.libraries());
+            assert_eq!(recovered.references, 1);
+            assert_eq!(recovered.source_counts.get("zotero:group:42"), Some(&1));
+            assert_eq!(recovered.source_counts.get("zotero:group:7"), Some(&0));
+            assert!(
+                begin_focus_retry(&library, &requests).is_none(),
+                "healthy focus does not check again"
+            );
+        }
+    }
+
+    #[test]
+    fn focus_retries_of_a_retained_zotero_snapshot_are_quiet_and_guarded() {
+        let source = Source::Zotero(ZoteroLibrary::Group(42).into());
+        let library = Mutex::new(candidate(
+            source.clone(),
+            ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Synthetic retained record}}"),
+        ));
+        let requests = LoadRequests::default();
+        assert!(
+            begin_focus_retry(&library, &requests).is_none(),
+            "healthy focus does not check"
+        );
+        let (request, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("show checks"));
+        assert!(
+            begin_focus_retry(&library, &requests).is_none(),
+            "checking is already in progress"
+        );
+        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        let before = library.lock().map(|l| status(&l)).unwrap_or_else(|e| panic!("{e}"));
+        let (request, retried, reload) = begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("retry"));
+        assert_eq!(retried, source);
+        assert!(reload, "a retained source keeps its versions and is not saved again");
+        let during = library.lock().map(|l| status(&l)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!((during.state, during.error), (before.state, before.error));
+        assert_eq!(during.references, before.references);
+        assert!(begin_focus_retry(&library, &requests).is_none());
+        assert!(begin_zotero_retry(&library, &requests, false).is_none());
+        let recovered = install_loaded(&library, &requests, request, Ok(Loaded::Unchanged))
+            .unwrap_or_else(|| panic!("current recovery"));
+        assert_eq!(recovered.state, LibraryState::Loaded);
+        assert!(recovered.error.is_none());
+        assert_eq!(recovered.revision, before.revision);
+        assert_eq!(recovered.references, 1);
+        assert!(begin_focus_retry(&library, &requests).is_none());
+
+        let file = Source::File(PathBuf::from("missing-synthetic.bib"));
+        let (request, _, _) = begin_open(&library, &requests, file).unwrap_or_else(|| panic!("file choice"));
+        assert!(
+            begin_focus_retry(&library, &requests).is_none(),
+            "opening is already in progress"
+        );
+        install_loaded(&library, &requests, request, Err("synthetic file missing".into()));
+        let before = requests.0.load(Ordering::SeqCst);
+        assert!(
+            begin_focus_retry(&library, &requests).is_none(),
+            "a failed file choice stays visible"
+        );
+        assert_eq!(requests.0.load(Ordering::SeqCst), before);
+        assert!(
+            library
+                .lock()
+                .ok()
+                .is_some_and(|l| l.error.as_deref() == Some("synthetic file missing"))
+        );
+        assert!(
+            begin_focus_retry(&Mutex::new(Library::default()), &requests).is_none(),
+            "setup selects nothing"
+        );
+    }
+
+    #[test]
+    fn simultaneous_focus_and_show_reserve_only_one_failed_choice_retry() {
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::Group(42).into()))
+            .unwrap_or_else(|| panic!("initial choice"));
+        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        let retries = std::thread::scope(|scope| {
+            let focus = scope.spawn(|| begin_focus_retry(&library, &requests));
+            let show = scope.spawn(|| begin_zotero_retry(&library, &requests, false));
+            [
+                focus.join().unwrap_or_else(|e| panic!("{e:?}")),
+                show.join().unwrap_or_else(|e| panic!("{e:?}")),
+            ]
+        });
+        assert_eq!(retries.into_iter().flatten().count(), 1);
+        assert_eq!(requests.0.load(Ordering::SeqCst), request + 1);
+    }
+
+    #[test]
+    fn later_focus_can_retry_an_unready_endpoint_but_old_completion_cannot_replace_a_new_choice() {
+        let source = Source::Zotero(ZoteroLibrary::Group(42).into());
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, source).unwrap_or_else(|| panic!("starts"));
+        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        let (unready, _, _) = begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("first return"));
+        install_loaded(
+            &library,
+            &requests,
+            unready,
+            Err("Zotero did not answer in time".into()),
+        );
+        assert_eq!(
+            requests.0.load(Ordering::SeqCst),
+            unready,
+            "failure starts no autonomous retry"
+        );
+        let (late, source, _) = begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("later return"));
+        let file = Source::File(PathBuf::from("synthetic-new.bib"));
+        let (newer, _, _) = begin_open(&library, &requests, file.clone()).unwrap_or_else(|| panic!("new choice"));
+        assert!(
+            install_loaded(
+                &library,
+                &requests,
+                late,
+                Ok(Loaded::New(Box::new(candidate(
+                    source,
+                    ibis_core::bibtex::load_str("synthetic", "@misc{old}"),
+                )))),
+            )
+            .is_none()
+        );
+        assert!(install_loaded(&library, &requests, late, Err("old failure".into())).is_none());
+        let current = install_loaded(
+            &library,
+            &requests,
+            newer,
+            Ok(Loaded::New(Box::new(candidate(
+                file,
+                ibis_core::bibtex::load_str("synthetic", "@misc{new}"),
+            )))),
+        )
+        .unwrap_or_else(|| panic!("new choice is current"));
+        assert!(!current.zotero);
+        assert_eq!(current.name.as_deref(), Some("synthetic-new.bib"));
+        assert_eq!(current.references, 1);
+        assert!(begin_focus_retry(&library, &requests).is_none());
+    }
+
     #[test]
     fn snapshot_revisions_bind_search_and_all_copy_paths_to_the_installed_index() {
         let source = Source::Zotero(ZoteroLibrary::User.into());

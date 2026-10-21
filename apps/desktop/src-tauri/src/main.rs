@@ -112,9 +112,10 @@ fn main() {
                     api.prevent_close();
                     dismiss_picker(window.app_handle());
                 }
-                #[cfg(target_os = "windows")]
                 WindowEvent::Focused(true) => {
+                    #[cfg(target_os = "windows")]
                     window.state::<picker::FocusChanges>().record();
+                    library::retry_zotero_on_focus(window.app_handle());
                 }
                 // Like other launchers, the picker hides when it loses focus, but
                 // not to its own file dialog.
