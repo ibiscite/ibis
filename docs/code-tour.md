@@ -110,7 +110,9 @@ existing licence and advisory policy.
 At startup, `main.rs` chooses the `IBIS_LIBRARY` override or saved library path
 and calls `start_open`. The Choose library button takes this path:
 `api.chooseLibrary` → Rust `choose_library` → `choose_library_file` → native
-dialog callback → `start_open(path, true)`. These Rust functions are in
+dialog callback → `start_open(path, true)`. The command `choose_library` is in
+[library/commands.rs](../apps/desktop/src-tauri/src/library/commands.rs); the
+functions after it are in
 [library/tasks.rs](../apps/desktop/src-tauri/src/library/tasks.rs). `DialogOpen` prevents
 duplicate dialogs and keeps the picker open while its own dialog has focus.
 

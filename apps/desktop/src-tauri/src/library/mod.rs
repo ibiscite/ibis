@@ -1,6 +1,7 @@
 //! The open library: loading off the main thread, the search command and
 //! choosing or reloading a library file or the Zotero library.
 //!
+//! - `error`: why loading or a command failed, as values.
 //! - `source`: where references come from and how a source is named.
 //! - `state`: the open library and the numbered requests that replace it.
 //! - `load`: reading a file or Zotero into a new library, off the main thread.
@@ -11,6 +12,7 @@
 //! - `commands`: the commands the interface calls.
 
 pub(crate) mod commands;
+mod error;
 mod load;
 mod retry;
 mod search;
@@ -19,6 +21,7 @@ mod state;
 mod status;
 mod tasks;
 
+pub(crate) use error::CommandError;
 pub(crate) use search::SearchRequests;
 pub(crate) use source::Source;
 pub(crate) use state::{Library, LoadRequests};

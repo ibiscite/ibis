@@ -11,6 +11,7 @@ use ibis_core::search::OwnedIndex;
 use ibis_core::source::SourceSnapshot;
 use ibis_core::zotero::libraries;
 
+use super::error::{CommandError, LoadError};
 use super::load::Loaded;
 use super::source::Source;
 use super::status::{LibraryStatus, status};
@@ -35,9 +36,9 @@ pub(crate) struct Library {
     pub(super) zotero: Option<libraries::Snapshots>,
     /// Neutral failure reason; status derives retention context from the current index.
     /// Automatic refreshes preserve a different rejected choice until the next request.
-    pub(crate) error: Option<String>,
+    pub(crate) error: Option<LoadError>,
     /// An automatic update problem while a different failed choice is retained.
-    pub(super) retained_error: Option<String>,
+    pub(super) retained_error: Option<LoadError>,
     /// A problem that is not a failure to open, such as an unsaved choice.
     pub(crate) note: Option<String>,
     /// Persistent startup recovery notice; includes a path for the interface only.
@@ -52,9 +53,9 @@ pub(crate) struct Library {
 }
 
 impl Library {
-    pub(crate) fn require_revision(&self, expected: &str) -> Result<(), String> {
+    pub(crate) fn require_revision(&self, expected: &str) -> Result<(), CommandError> {
         if self.source.is_none() || self.revision.to_string() != expected {
-            return Err("library snapshot changed".into());
+            return Err(CommandError::SnapshotChanged);
         }
         Ok(())
     }
@@ -81,7 +82,7 @@ pub(super) fn candidate(source: impl Into<Source>, loaded: ibis_core::model::Loa
 
 pub(super) fn dialog_path_error(library: &mut Library) {
     library.opening = false;
-    library.error = Some("the chosen file is not on this computer".to_string());
+    library.error = Some(LoadError::NotLocal);
 }
 
 pub(super) fn take_watch_source(
@@ -106,7 +107,7 @@ pub(crate) fn install(
     library: &Mutex<Library>,
     requests: &LoadRequests,
     request: u64,
-    loaded: Result<Library, String>,
+    loaded: Result<Library, LoadError>,
 ) -> Option<LibraryStatus> {
     install_result(library, requests, request, loaded, false)
 }
@@ -115,7 +116,7 @@ pub(super) fn install_automatic(
     library: &Mutex<Library>,
     requests: &LoadRequests,
     request: u64,
-    loaded: Result<Library, String>,
+    loaded: Result<Library, LoadError>,
 ) -> Option<LibraryStatus> {
     install_result(library, requests, request, loaded, true)
 }
@@ -124,7 +125,7 @@ pub(super) fn install_result(
     library: &Mutex<Library>,
     requests: &LoadRequests,
     request: u64,
-    loaded: Result<Library, String>,
+    loaded: Result<Library, LoadError>,
     automatic: bool,
 ) -> Option<LibraryStatus> {
     // Compare references outside the lock, so searches and status reads do
@@ -152,10 +153,7 @@ pub(super) fn install_result(
         && library.requested != library.source;
     // Never reuse a revision: even an exhausted counter retains the old index.
     let loaded = loaded.and_then(|mut new| {
-        new.revision = library
-            .revision
-            .checked_add(1)
-            .ok_or_else(|| "the library could not be updated; restart Ibis".to_string())?;
+        new.revision = library.revision.checked_add(1).ok_or(LoadError::RevisionExhausted)?;
         Ok(new)
     });
     match loaded {
@@ -200,7 +198,7 @@ pub(super) fn install_loaded(
     library: &Mutex<Library>,
     requests: &LoadRequests,
     request: u64,
-    loaded: Result<Loaded, String>,
+    loaded: Result<Loaded, LoadError>,
 ) -> Option<LibraryStatus> {
     match loaded {
         Ok(Loaded::New(new)) => install(library, requests, request, Ok(*new)),
@@ -257,6 +255,7 @@ mod tests {
     use ibis_core::settings::ZoteroLibrary;
     use ibis_core::source::{SourceError, SourceWatch};
 
+    use crate::library::error::ZOTERO_OFFLINE;
     use crate::library::load::load_library;
     use crate::library::search::search_snapshot;
     use crate::library::status::LibraryState;
@@ -279,7 +278,7 @@ mod tests {
         let (second, _, _) = begin_open(&library, &requests, PathBuf::from("synthetic/second.bib"))
             .unwrap_or_else(|| panic!("expected the current library request"));
         assert!(install(&library, &requests, first, Ok(Library::default())).is_none());
-        let failed = install(&library, &requests, second, Err("unavailable".into()))
+        let failed = install(&library, &requests, second, Err(SourceError::Unavailable.into()))
             .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(failed.state, LibraryState::Error);
         assert_eq!(failed.name.as_deref(), Some("second.bib"));
@@ -298,7 +297,7 @@ mod tests {
         assert!(reload);
         assert_eq!(loading.state, LibraryState::Reloading);
         assert!(loading.has_snapshot);
-        let failed = install(&library, &requests, request, Err("unavailable".into()))
+        let failed = install(&library, &requests, request, Err(SourceError::Unavailable.into()))
             .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(failed.state, LibraryState::Error);
         assert!(failed.has_snapshot);
@@ -358,7 +357,7 @@ mod tests {
         let _watch = SourceWatch::new(&path, move |loaded| {
             let loaded = loaded
                 .map(|loaded| candidate(selected.clone(), loaded))
-                .map_err(|error| error.to_string());
+                .map_err(LoadError::from);
             if let Some(status) = install_automatic(&watched_library, &watched_requests, request, loaded) {
                 let _ = send.send(status);
             }
@@ -412,16 +411,11 @@ mod tests {
         let requests = LoadRequests::default();
         let (request, _, _) =
             begin_open(&library, &requests, PathBuf::from("other/attempted.bib")).unwrap_or_else(|| panic!("open"));
-        let rejected = install(&library, &requests, request, Err(SourceError::Unreadable.to_string()))
+        let rejected = install(&library, &requests, request, Err(SourceError::Unreadable.into()))
             .unwrap_or_else(|| panic!("install"));
         // Watch-construction failures use this same automatic policy, too.
-        let unavailable = install_automatic(
-            &library,
-            &requests,
-            request,
-            Err(SourceError::WatchUnavailable.to_string()),
-        )
-        .unwrap_or_else(|| panic!("automatic install"));
+        let unavailable = install_automatic(&library, &requests, request, Err(SourceError::WatchUnavailable.into()))
+            .unwrap_or_else(|| panic!("automatic install"));
         assert_eq!(unavailable.error, rejected.error);
         let note = unavailable.note.unwrap_or_else(|| panic!("retained source note"));
         assert!(note.starts_with(original_note));
@@ -452,7 +446,7 @@ mod tests {
             "only the automatic note should clear"
         );
         assert_eq!(empty.settings_notice.as_deref(), Some("settings recovered"));
-        let partial = install_automatic(&library, &requests, request, Err(SourceError::Incomplete.to_string()))
+        let partial = install_automatic(&library, &requests, request, Err(SourceError::Incomplete.into()))
             .unwrap_or_else(|| panic!("partial update"));
         assert_eq!(partial.error, empty.error);
         assert!(
@@ -479,7 +473,7 @@ mod tests {
             )
             .is_none()
         );
-        assert!(install_automatic(&library, &requests, request, Err(SourceError::Unavailable.to_string())).is_none());
+        assert!(install_automatic(&library, &requests, request, Err(SourceError::Unavailable.into())).is_none());
         let loaded = install(
             &library,
             &requests,
@@ -504,7 +498,7 @@ mod tests {
         let requests = LoadRequests::default();
         let (request, reload, _) = begin_open(&library, &requests, path.clone()).unwrap_or_else(|| panic!("open"));
         assert!(reload);
-        install(&library, &requests, request, Err(SourceError::Unavailable.to_string()));
+        install(&library, &requests, request, Err(SourceError::Unavailable.into()));
         let recovered = install_automatic(
             &library,
             &requests,
@@ -532,7 +526,7 @@ mod tests {
             .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(opening.name.as_deref(), Some("attempted.bib"));
         assert_eq!(opening.snapshot_name.as_deref(), Some("active.bib"));
-        let failed = install(&library, &requests, request, Err("unavailable".to_string()))
+        let failed = install(&library, &requests, request, Err(SourceError::Unavailable.into()))
             .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(failed.name.as_deref(), Some("attempted.bib"));
         assert_eq!(failed.snapshot_name.as_deref(), Some("active.bib"));
@@ -595,7 +589,7 @@ mod tests {
         )
         .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(loaded.settings_notice, opening.settings_notice);
-        let failed = install(&library, &requests, request, Err("unavailable".to_string()))
+        let failed = install(&library, &requests, request, Err(SourceError::Unavailable.into()))
             .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(failed.settings_notice, opening.settings_notice);
     }
@@ -672,8 +666,11 @@ mod tests {
         assert!(install(&library, &requests, 1, Ok(named("older"))).is_none());
         let current = library.lock().map(|l| l.source.clone()).unwrap_or_default();
         assert_eq!(current, Some(Source::File(PathBuf::from("newer.bib"))));
-        let failed = install(&library, &requests, 2, Err("unreadable".into()));
-        assert_eq!(failed.and_then(|s| s.error).as_deref(), Some("unreadable"));
+        let failed = install(&library, &requests, 2, Err(SourceError::Unreadable.into()));
+        assert_eq!(
+            failed.and_then(|s| s.error).as_deref(),
+            Some("the library file is not UTF-8 text; save it as UTF-8")
+        );
     }
 
     #[test]
@@ -737,13 +734,8 @@ mod tests {
 
         let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::Group(7).into()))
             .unwrap_or_else(|| panic!("the refresh should start"));
-        let offline = install_loaded(
-            &library,
-            &requests,
-            request,
-            Err("Zotero is not running, or it is not accepting connections".into()),
-        )
-        .unwrap_or_else(|| panic!("the refresh is current"));
+        let offline = install_loaded(&library, &requests, request, Err(ZOTERO_OFFLINE))
+            .unwrap_or_else(|| panic!("the refresh is current"));
         assert_eq!(offline.references, 1);
         assert_eq!(
             (offline.updated_at, offline.checked_at),
@@ -791,7 +783,7 @@ mod tests {
         assert_eq!(unchanged.revision, old_revision);
         let (request, _, _) =
             begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
-        let failed = install(&library, &requests, request, Err("Zotero is unavailable".into()))
+        let failed = install(&library, &requests, request, Err(ZOTERO_OFFLINE))
             .unwrap_or_else(|| panic!("synthetic request is current"));
         assert_eq!(failed.revision, old_revision);
         let (request, _, _) =

@@ -7,13 +7,14 @@ use ibis_core::source::load_library_snapshot;
 use ibis_core::zotero::{self, libraries};
 use ibis_zotero_local::LocalZotero;
 
+use super::error::LoadError;
 use super::source::{Source, zotero_library};
 use super::state::{Library, candidate};
 
 /// Read, parse and index off the main thread. Initial loads tolerate damaged
 /// entries; reloads retain the last good snapshot for demonstrably partial data.
-pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, String> {
-    let (loaded, snapshot) = load_library_snapshot(&path, reload).map_err(|error| error.to_string())?;
+pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, LoadError> {
+    let (loaded, snapshot) = load_library_snapshot(&path, reload)?;
     let mut library = candidate(path, loaded);
     library.snapshot = Some(snapshot);
     Ok(library)
@@ -28,10 +29,13 @@ pub(crate) enum Loaded {
 
 /// Read the Zotero libraries, or only check for changes when `previous`
 /// holds the versions already loaded.
-pub(super) fn load_zotero(chosen: ZoteroLibraries, previous: Option<&libraries::Snapshots>) -> Result<Loaded, String> {
+pub(super) fn load_zotero(
+    chosen: ZoteroLibraries,
+    previous: Option<&libraries::Snapshots>,
+) -> Result<Loaded, LoadError> {
     let mut zotero = LocalZotero::default();
     let wanted: Vec<zotero::Library> = chosen.libraries().iter().copied().map(zotero_library).collect();
-    match libraries::refresh(&mut zotero, &wanted, previous).map_err(|e| e.to_string())? {
+    match libraries::refresh(&mut zotero, &wanted, previous)? {
         libraries::Refresh::Unchanged => Ok(Loaded::Unchanged),
         libraries::Refresh::Loaded { result, snapshots } => {
             let mut new = candidate(Source::Zotero(chosen), result);
@@ -45,7 +49,7 @@ pub(super) fn load_source(
     source: Source,
     reload: bool,
     previous: Option<libraries::Snapshots>,
-) -> Result<Loaded, String> {
+) -> Result<Loaded, LoadError> {
     match source {
         Source::File(path) => load_library(path, reload).map(|library| Loaded::New(Box::new(library))),
         Source::Zotero(chosen) => load_zotero(chosen, previous.as_ref().filter(|_| reload)),

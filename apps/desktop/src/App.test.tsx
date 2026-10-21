@@ -2540,7 +2540,7 @@ test("a pre-event copy rejection recovers without copying or hiding until a fres
     search: () => [{ ...result("ITEM0001", `Snapshot ${revision}`, "zotero:user"), revision }],
     copy_citation: (args) => {
       attempts.push(args.expectedRevision);
-      if (args.expectedRevision !== revision) throw "library snapshot changed";
+      if (args.expectedRevision !== revision) throw { code: "snapshot_changed" };
       writes.push(revision);
       return { text: "fresh copy", warnings: [] };
     },
@@ -2586,7 +2586,7 @@ test.each(["resolve", "reject"])("an older recovery status cannot override a new
   const calls = backend({
     library_status: () => ++reads === 1 ? { ...zoteroStatus(["user"]), revision } : new Promise((resolve, fail) => { finish = resolve; reject = fail; }),
     search: () => [{ ...result("a", `Recovery ${revision}`), revision }],
-    copy_citation: () => { throw "library snapshot changed"; },
+    copy_citation: () => { throw { code: "snapshot_changed" }; },
   });
   render(<App />);
   fireEvent.click(await screen.findByText("Recovery 1"));
@@ -2613,14 +2613,14 @@ test("a retired formatted preview sends its own revision and requires a fresh co
     search: () => [{ ...result("ITEM0001", `Formatted ${revision}`, "zotero:user"), revision }],
     picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false }),
     csl_items: ({ expectedRevision }) => {
-      if (expectedRevision !== revision) throw "library snapshot changed";
+      if (expectedRevision !== revision) throw { code: "snapshot_changed" };
       // Each revision has its own year, so the preview shows which one it formatted.
       const year = revision === "1" ? 2020 : 2021;
       return JSON.stringify([{ id: "ITEM0001", type: "book", title: "Synthetic", author: [{ family: "Smith" }], issued: { "date-parts": [[year]] } }]);
     },
     copy_formatted: ({ text, expectedRevision }) => {
       attempts.push(expectedRevision);
-      if (expectedRevision !== revision) throw "library snapshot changed";
+      if (expectedRevision !== revision) throw { code: "snapshot_changed" };
       writes.push(revision);
       copiedText = text;
       return null;
@@ -2824,7 +2824,7 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
     await screen.findByText("Keep the newer warning");
   }
   revision = "2"; // Backend replaced the snapshot without delivering its event.
-  await act(async () => { rejectOld("library snapshot changed"); });
+  await act(async () => { rejectOld({ code: "snapshot_changed" }); });
   await screen.findByText("First revision 2");
   expect(reads).toBeGreaterThan(1);
   expect(screen.queryByText("The library changed. Search again and reselect the references before copying.")).toBeNull();
@@ -2881,7 +2881,7 @@ test.each([
   if (selectedCopy) fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(attempts).toEqual(["1", "2"]));
   revision = refreshedRevision;
-  await act(async () => { rejectOld("library snapshot changed"); });
+  await act(async () => { rejectOld({ code: "snapshot_changed" }); });
   await waitFor(() => expect(reads).toBe(2));
   await waitFor(() => expect(searches).toBe(3));
   if (changedResults) await waitFor(() => expect(screen.queryByText("Pending 2 b")).toBeNull());

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { expect, it, vi } from "vitest";
-import { search } from "./api";
+import { isSnapshotChanged, search } from "./api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 
@@ -21,4 +21,12 @@ it("sends scope changes as fresh requests on the same interface page", async () 
   ]);
   expect(new Set(args.map(({ page }) => page)).size).toBe(1);
   expect(args.map(({ request }) => request)).toEqual([1, 2, 3]);
+});
+
+it("recognizes a changed library by its error code, not its wording", () => {
+  expect(isSnapshotChanged({ code: "snapshot_changed" })).toBe(true);
+  expect(isSnapshotChanged({ code: "failed", message: "library snapshot changed" })).toBe(false);
+  expect(isSnapshotChanged("library snapshot changed")).toBe(false);
+  expect(isSnapshotChanged(null)).toBe(false);
+  expect(isSnapshotChanged(undefined)).toBe(false);
 });

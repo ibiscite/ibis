@@ -9,7 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
-use crate::library::Library;
+use crate::library::{CommandError, Library};
 use crate::preferences::SettingsFile;
 
 #[derive(Serialize, specta::Type)]
@@ -52,10 +52,12 @@ pub(crate) fn prepare_snapshot<T>(
     library: &Mutex<Library>,
     expected: &str,
     prepare: impl FnOnce(&Library) -> Result<T, String>,
-) -> Result<T, String> {
-    let locked = library.lock().map_err(|_| "library state is unavailable".to_string())?;
+) -> Result<T, CommandError> {
+    let locked = library
+        .lock()
+        .map_err(|_| CommandError::from("library state is unavailable"))?;
     locked.require_revision(expected)?;
-    prepare(&locked)
+    Ok(prepare(&locked)?)
 }
 
 /// Copy the selected records as a citation to the clipboard. Format choices
@@ -68,7 +70,7 @@ pub(crate) fn copy_citation(
     expected_revision: String,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
-) -> Result<Copied, String> {
+) -> Result<Copied, CommandError> {
     let rendered = prepare_snapshot(&library, &expected_revision, |locked| {
         render_citation(locked.index.references(), &ids, format)
     })?;
@@ -91,7 +93,7 @@ pub(crate) fn csl_items(
     ids: Vec<RecordId>,
     expected_revision: String,
     library: State<'_, Mutex<Library>>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     prepare_snapshot(&library, &expected_revision, |locked| {
         csl_json(locked.index.references(), &ids)
     })
@@ -125,7 +127,7 @@ pub(crate) fn copy_formatted(
     expected_revision: String,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     write_formatted(&library, &expected_revision, text, html, |text, html| {
         app.clipboard()
             .write_html(html, Some(text))
@@ -139,12 +141,12 @@ pub(crate) fn write_formatted(
     text: String,
     html: String,
     write: impl FnOnce(String, String) -> Result<(), String>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     if text.len() + html.len() > MAX_FORMATTED {
         return Err("the formatted text is too large to copy".into());
     }
     prepare_snapshot(library, expected, |_| Ok(()))?;
-    write(text, html)
+    Ok(write(text, html)?)
 }
 
 /// The format the picker starts with: the last one chosen, or Pandoc.

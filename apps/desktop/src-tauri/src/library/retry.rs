@@ -98,6 +98,10 @@ mod tests {
     use ibis_core::settings::ZoteroLibrary;
     use ibis_core::zotero;
 
+    use ibis_core::source::SourceError;
+    use ibis_core::zotero::api::{TransportError, ZoteroError};
+
+    use crate::library::error::{LoadError, ZOTERO_OFFLINE};
     use crate::library::load::Loaded;
     use crate::library::state::{begin_open, candidate, install_loaded};
     use crate::library::status::{LibraryState, status};
@@ -128,7 +132,7 @@ mod tests {
         );
         install_loaded(&library, &requests, opened, Ok(Loaded::New(Box::new(loaded))));
         if let Ok(mut library) = library.lock() {
-            library.error = Some("Zotero is not running".into());
+            library.error = Some(ZOTERO_OFFLINE);
         }
         let shown = library.lock().ok().map(|l| status(&l)).map(|s| (s.state, s.error));
         let (request, source, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the check starts"));
@@ -147,12 +151,12 @@ mod tests {
         let (stale, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the next check starts"));
         let (choice, _, _) = begin_open(&library, &requests, PathBuf::from("synthetic.bib"))
             .unwrap_or_else(|| panic!("the choice starts"));
-        assert!(install_loaded(&library, &requests, stale, Err("Zotero is not running".into())).is_none());
-        let failed = install_loaded(&library, &requests, choice, Err("the file could not be read".into()))
+        assert!(install_loaded(&library, &requests, stale, Err(ZOTERO_OFFLINE)).is_none());
+        let failed = install_loaded(&library, &requests, choice, Err(SourceError::Unavailable.into()))
             .unwrap_or_else(|| panic!("the choice is current"));
         assert_eq!(
             failed.error.as_deref(),
-            Some("the file could not be read; keeping the last loaded references")
+            Some("the library file is unavailable; keeping the last loaded references")
         );
 
         let file = Mutex::new(candidate(
@@ -170,7 +174,7 @@ mod tests {
         let library = Mutex::new(Library::default());
         let requests = LoadRequests::default();
         let (request, _, _) = begin_open(&library, &requests, zotero.clone()).unwrap_or_else(|| panic!("starts"));
-        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        install_loaded(&library, &requests, request, Err(ZOTERO_OFFLINE));
         assert_eq!(
             library.lock().ok().and_then(|l| zotero_to_check(&l)),
             Some(zotero.clone())
@@ -179,14 +183,14 @@ mod tests {
         // A failed Zotero choice over a loaded file retries Zotero, not the file.
         let mut over_file = candidate(file.clone(), ibis_core::bibtex::load_str("synthetic", ""));
         over_file.requested = Some(zotero.clone());
-        over_file.error = Some("Zotero is not running".into());
+        over_file.error = Some(ZOTERO_OFFLINE);
         assert_eq!(zotero_to_check(&over_file), Some(zotero.clone()));
         assert!(retry(&over_file, zotero.clone()).1, "the choice is saved once it opens");
 
         // A failed file choice over a loaded Zotero library stays visible.
         let mut over_zotero = candidate(zotero, ibis_core::bibtex::load_str("synthetic", ""));
         over_zotero.requested = Some(file.clone());
-        over_zotero.error = Some("the file could not be read".into());
+        over_zotero.error = Some(SourceError::Unavailable.into());
         assert_eq!(zotero_to_check(&over_zotero), None);
 
         assert!(
@@ -214,7 +218,7 @@ mod tests {
             );
             let requests = LoadRequests::default();
             let (first, _, _) = begin_open(&library, &requests, chosen.clone()).unwrap_or_else(|| panic!("starts"));
-            install_loaded(&library, &requests, first, Err("Zotero is not running".into()));
+            install_loaded(&library, &requests, first, Err(ZOTERO_OFFLINE));
 
             // The synthetic loader becomes ready. Returning focus, without
             // showing the picker again, must retry the choice that failed.
@@ -274,7 +278,7 @@ mod tests {
             begin_focus_retry(&library, &requests).is_none(),
             "checking is already in progress"
         );
-        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        install_loaded(&library, &requests, request, Err(ZOTERO_OFFLINE));
         let before = library.lock().map(|l| status(&l)).unwrap_or_else(|e| panic!("{e}"));
         let (request, retried, reload) = begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("retry"));
         assert_eq!(retried, source);
@@ -298,7 +302,7 @@ mod tests {
             begin_focus_retry(&library, &requests).is_none(),
             "opening is already in progress"
         );
-        install_loaded(&library, &requests, request, Err("synthetic file missing".into()));
+        install_loaded(&library, &requests, request, Err(SourceError::Unavailable.into()));
         let before = requests.0.load(Ordering::SeqCst);
         assert!(
             begin_focus_retry(&library, &requests).is_none(),
@@ -309,7 +313,7 @@ mod tests {
             library
                 .lock()
                 .ok()
-                .is_some_and(|l| l.error.as_deref() == Some("synthetic file missing"))
+                .is_some_and(|l| l.error == Some(LoadError::Source(SourceError::Unavailable)))
         );
         assert!(
             begin_focus_retry(&Mutex::new(Library::default()), &requests).is_none(),
@@ -323,7 +327,7 @@ mod tests {
         let requests = LoadRequests::default();
         let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::Group(42).into()))
             .unwrap_or_else(|| panic!("initial choice"));
-        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        install_loaded(&library, &requests, request, Err(ZOTERO_OFFLINE));
         let retries = std::thread::scope(|scope| {
             let focus = scope.spawn(|| begin_focus_retry(&library, &requests));
             let show = scope.spawn(|| begin_zotero_retry(&library, &requests, false));
@@ -342,13 +346,13 @@ mod tests {
         let library = Mutex::new(Library::default());
         let requests = LoadRequests::default();
         let (request, _, _) = begin_open(&library, &requests, source).unwrap_or_else(|| panic!("starts"));
-        install_loaded(&library, &requests, request, Err("Zotero is not running".into()));
+        install_loaded(&library, &requests, request, Err(ZOTERO_OFFLINE));
         let (unready, _, _) = begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("first return"));
         install_loaded(
             &library,
             &requests,
             unready,
-            Err("Zotero did not answer in time".into()),
+            Err(LoadError::Zotero(ZoteroError::Transport(TransportError::TimedOut))),
         );
         assert_eq!(
             requests.0.load(Ordering::SeqCst),
@@ -370,7 +374,7 @@ mod tests {
             )
             .is_none()
         );
-        assert!(install_loaded(&library, &requests, late, Err("old failure".into())).is_none());
+        assert!(install_loaded(&library, &requests, late, Err(LoadError::Stopped)).is_none());
         let current = install_loaded(
             &library,
             &requests,

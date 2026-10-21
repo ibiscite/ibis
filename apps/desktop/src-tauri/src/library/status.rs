@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ibis_core::settings::ZoteroLibrary;
-use ibis_core::source::SourceError;
 use serde::Serialize;
 
+use super::error::LoadError;
 use super::source::{Source, zotero_library};
 use super::state::Library;
 
@@ -98,7 +98,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         references: library.index.references().len(),
         source_counts,
         warnings: library.warnings.len(),
-        error: library.error.clone().map(|error| {
+        error: library.error.map(|error| {
             let zotero = matches!(library.source, Some(Source::Zotero(_)));
             error_with_snapshot_context(error, !library.index.references().is_empty(), zotero)
         }),
@@ -129,7 +129,7 @@ pub(super) fn stale(library: &Library) -> bool {
     };
     library.requested.as_ref().is_none_or(|requested| requested == source)
         && retains(
-            error,
+            *error,
             !library.index.references().is_empty(),
             matches!(source, Source::Zotero(_)),
         )
@@ -147,27 +147,17 @@ pub(crate) const KEPT: &str = "; keeping the last loaded references";
 
 /// Retention belongs to the installed desktop snapshot, not the source error.
 /// Any failure to refresh Zotero keeps the references already read.
-pub(super) fn error_with_snapshot_context(error: String, has_references: bool, zotero: bool) -> String {
-    if retains(&error, has_references, zotero) {
+pub(super) fn error_with_snapshot_context(error: LoadError, has_references: bool, zotero: bool) -> String {
+    if retains(error, has_references, zotero) {
         format!("{error}{KEPT}")
     } else {
-        error
+        error.to_string()
     }
 }
 
 /// Whether this failure leaves the loaded references searchable.
-pub(super) fn retains(error: &str, has_references: bool, zotero: bool) -> bool {
-    has_references
-        && (zotero
-            || [
-                SourceError::Unavailable,
-                SourceError::Unreadable,
-                SourceError::Incomplete,
-                SourceError::LoadLimit,
-                SourceError::Changing,
-            ]
-            .iter()
-            .any(|source| source.to_string() == error))
+pub(super) fn retains(error: LoadError, has_references: bool, zotero: bool) -> bool {
+    has_references && (zotero || error.keeps_references())
 }
 
 #[cfg(test)]
@@ -176,6 +166,9 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Mutex;
 
+    use ibis_core::source::SourceError;
+
+    use crate::library::error::ZOTERO_OFFLINE;
     use crate::library::load::load_library;
     use crate::library::state::{LoadRequests, begin_open, candidate, install};
     use crate::tray::library_line;
@@ -198,7 +191,7 @@ mod tests {
         });
         let requests = LoadRequests::default();
         for (error, message) in &failures {
-            let empty = install(&library, &requests, 0, Err(error.to_string()))
+            let empty = install(&library, &requests, 0, Err((*error).into()))
                 .unwrap_or_else(|| panic!("expected the current library request"));
             assert_eq!(empty.error.as_deref(), Some(*message));
             assert_eq!(empty.references, 0);
@@ -208,7 +201,7 @@ mod tests {
         std::fs::write(&path, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));
         install(&library, &requests, 0, load_library(path, false));
         for (error, message) in &failures {
-            let retained = install(&library, &requests, 0, Err(error.to_string()))
+            let retained = install(&library, &requests, 0, Err((*error).into()))
                 .unwrap_or_else(|| panic!("expected the current library request"));
             assert_eq!(
                 retained.error,
@@ -221,18 +214,20 @@ mod tests {
     #[test]
     fn unrelated_errors_keep_their_original_context() {
         for error in [
-            SourceError::NotRegular.to_string(),
-            SourceError::TooLarge.to_string(),
-            SourceError::WatchUnavailable.to_string(),
-            "loading the library stopped unexpectedly".to_string(),
+            SourceError::NotRegular.into(),
+            SourceError::TooLarge.into(),
+            SourceError::WatchUnavailable.into(),
+            LoadError::Stopped,
+            LoadError::NotLocal,
+            LoadError::RevisionExhausted,
         ] {
-            assert_eq!(error_with_snapshot_context(error.clone(), true, false), error);
+            assert_eq!(error_with_snapshot_context(error, true, false), error.to_string());
         }
     }
 
     #[test]
     fn a_failed_switch_is_not_a_failed_update_of_the_searched_library() {
-        let open = |source: Source, error: &str| {
+        let open = |source: Source, error: LoadError| {
             let library = Mutex::new(candidate(
                 source,
                 ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Kept}}"),
@@ -240,14 +235,13 @@ mod tests {
             let requests = LoadRequests::default();
             let (request, _, _) = begin_open(&library, &requests, PathBuf::from("missing B.bib"))
                 .unwrap_or_else(|| panic!("the choice starts"));
-            install(&library, &requests, request, Err(error.to_string())).unwrap_or_else(|| panic!("current"))
+            install(&library, &requests, request, Err(error)).unwrap_or_else(|| panic!("current"))
         };
-        let unavailable = SourceError::Unavailable.to_string();
         for failed in [
-            open(PathBuf::from("A.bib").into(), &unavailable),
+            open(PathBuf::from("A.bib").into(), SourceError::Unavailable.into()),
             open(
                 Source::Zotero(ZoteroLibrary::User.into()),
-                "the library file is not UTF-8 text",
+                SourceError::Unreadable.into(),
             ),
         ] {
             assert!(!failed.stale, "{}", library_line(&failed));
@@ -266,8 +260,12 @@ mod tests {
         let requests = LoadRequests::default();
         let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::User.into()))
             .unwrap_or_else(|| panic!("the choice starts"));
-        let failed = install(&library, &requests, request, Err("Zotero is not running".into()))
-            .unwrap_or_else(|| panic!("current"));
+        let failed = install(&library, &requests, request, Err(ZOTERO_OFFLINE)).unwrap_or_else(|| panic!("current"));
+        // The file's references are kept, as after a failed switch to another file.
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("Zotero is not running, or it is not accepting connections; keeping the last loaded references")
+        );
         assert!(failed.zotero, "Zotero was asked for");
         assert!(!failed.snapshot_zotero, "but the file is what is searched");
         assert!(!failed.stale);

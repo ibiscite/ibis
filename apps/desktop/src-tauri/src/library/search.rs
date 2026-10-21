@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ibis_core::model::{RecordId, Reference};
-use ibis_core::search::OwnedIndex;
+use ibis_core::search::{MatchField, OwnedIndex};
 use serde::Serialize;
 
 /// The newest search each interface page has sent, so a search for a query
@@ -33,7 +33,7 @@ pub(crate) struct SearchResult {
     title: String,
     authors: String,
     year: Option<i32>,
-    matched: Vec<String>,
+    matched: Vec<MatchField>,
     /// Family name of the first author (or the whole name of an
     /// organization); empty when the record names no authors.
     first_author: String,
@@ -68,7 +68,7 @@ pub(super) fn surname(name: &ibis_core::model::Name) -> String {
 }
 
 impl SearchResult {
-    fn from(reference: &Reference, matched: Vec<String>, revision: &str) -> Self {
+    fn from(reference: &Reference, matched: Vec<MatchField>, revision: &str) -> Self {
         SearchResult {
             revision: revision.into(),
             first_author: reference.authors.first().map(surname).unwrap_or_default(),
@@ -124,10 +124,7 @@ pub(super) fn search_newest(
         .search_scoped_until(query, limit.min(200), scope, &outdated)
         .unwrap_or_default()
         .into_iter()
-        .map(|hit| {
-            let matched = hit.matched.iter().map(|m| format!("{m:?}").to_lowercase()).collect();
-            SearchResult::from(hit.reference, matched, revision)
-        })
+        .map(|hit| SearchResult::from(hit.reference, hit.matched, revision))
         .collect();
     if outdated() { Vec::new() } else { results }
 }
@@ -139,6 +136,9 @@ mod tests {
 
     use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
 
+    use ibis_core::source::SourceError;
+
+    use crate::library::error::ZOTERO_OFFLINE;
     use crate::library::source::Source;
     use crate::library::state::{Library, candidate};
     use crate::library::status::status;
@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(counts.values().sum::<usize>(), status(&library).references);
         // Counts describe the retained searchable snapshot, not a failed new selection.
         library.requested = Some(Source::Zotero(ZoteroLibrary::Group(99).into()));
-        library.error = Some("unavailable".into());
+        library.error = Some(SourceError::Unavailable.into());
         assert_eq!(status(&library).source_counts, counts);
         assert!(status(&Library::default()).source_counts.is_empty());
         let file = candidate(
@@ -287,7 +287,7 @@ mod tests {
         assert!(late.results.is_empty());
         assert_eq!(late.revision, captured.revision);
         library.requested = Some(Source::Zotero(ZoteroLibrary::Group(99).into()));
-        library.error = Some("synthetic reload failure".into());
+        library.error = Some(ZOTERO_OFFLINE);
         let retained = status(&library);
         assert_eq!(retained.revision, captured.revision);
         assert_eq!(retained.source_counts, captured.source_counts);
@@ -315,6 +315,20 @@ mod tests {
         assert_eq!(results.len(), 200);
         assert!(results.iter().all(|r| r.id.source == "file"));
         assert_eq!(index.source_counts().get("file"), Some(&220));
+    }
+
+    #[test]
+    fn matched_fields_reach_the_interface_under_their_serde_names() {
+        let refs = ibis_core::bibtex::load_str("t", "@article{a,title={Sleep},doi={10.1000/sleep}}").references;
+        let index = OwnedIndex::new(refs);
+        let results = search_newest(&index, "synthetic", "10.1000/sleep", 20, 1, &AtomicU32::new(0), None);
+        let row = serde_json::to_value(&results[0]).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(row["matched"], serde_json::json!(["doi"]));
+        // The names on the wire are the ones the interface already knows.
+        for field in [MatchField::Citekey, MatchField::Identifier] {
+            let name = serde_json::to_value(field).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(name, serde_json::json!(format!("{field:?}").to_lowercase()));
+        }
     }
 
     #[test]

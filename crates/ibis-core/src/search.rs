@@ -17,6 +17,7 @@ use crate::model::{Reference, strip_markup};
 
 /// Which part of a record matched a query term.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum MatchField {
     Citekey,

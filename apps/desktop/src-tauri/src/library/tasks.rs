@@ -17,6 +17,7 @@ use crate::picker::{DialogOpen, show_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
+use super::error::LoadError;
 use super::load::load_source;
 use super::retry::{begin_check, begin_focus_retry, begin_zotero_retry, retry, zotero_choice, zotero_to_check};
 use super::source::Source;
@@ -62,8 +63,11 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
     if let Ok(library) = library.lock() {
         // The interface note names the retained source. Log only the original
         // allowlisted messages, never the filename added for that interface.
-        for message in library.note.iter().chain(&library.retained_error) {
-            application_message(message);
+        if let Some(note) = &library.note {
+            application_message(note);
+        }
+        if let Some(error) = library.retained_error {
+            application_message(&error.to_string());
         }
         emit(status(&library));
     }
@@ -92,7 +96,7 @@ pub(super) fn watch_current(app: &AppHandle, request: u64) {
     let changed = move |loaded: Result<ibis_core::model::LoadResult, ibis_core::source::SourceError>| {
         let loaded = loaded
             .map(|loaded| candidate(selected.clone(), loaded))
-            .map_err(|e| e.to_string());
+            .map_err(LoadError::from);
         if install_automatic(&handle.state(), &handle.state(), request, loaded).is_some() {
             publish_current(&handle);
         }
@@ -109,7 +113,7 @@ pub(super) fn watch_current(app: &AppHandle, request: u64) {
         match watch {
             Ok(watch) => *current = Some(watch),
             Err(error) => {
-                if install_automatic(&app.state(), &app.state(), request, Err(error.to_string())).is_some() {
+                if install_automatic(&app.state(), &app.state(), request, Err(error.into())).is_some() {
                     publish_current(app);
                 }
             }
@@ -174,10 +178,9 @@ pub(super) fn run_open(app: &AppHandle, request: u64, source: Source, reload: bo
         })
         .await;
         #[cfg(debug_assertions)]
-        let (loaded, load_ms) =
-            loaded.unwrap_or_else(|_| (Err("loading the library stopped unexpectedly".to_string()), 0.0));
+        let (loaded, load_ms) = loaded.unwrap_or((Err(LoadError::Stopped), 0.0));
         #[cfg(not(debug_assertions))]
-        let loaded = loaded.unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
+        let loaded = loaded.unwrap_or(Err(LoadError::Stopped));
         #[cfg(debug_assertions)]
         let mut phases = LoadPhases {
             load_ms,
@@ -294,7 +297,7 @@ pub(crate) fn refresh_zotero(app: &AppHandle) {
         tauri::async_runtime::spawn(async move {
             let loaded = tauri::async_runtime::spawn_blocking(move || load_source(source, true, previous))
                 .await
-                .unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
+                .unwrap_or(Err(LoadError::Stopped));
             if install_loaded(&app.state(), &app.state(), request, loaded).is_some() {
                 publish_current(&app);
                 watch_current(&app, request);

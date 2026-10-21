@@ -1,7 +1,7 @@
 // UI conveniences around the generated Rust command contract.
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { commands, type KeyFormat, type LibraryStatus } from "./bindings";
+import { commands, type CommandError, type KeyFormat, type LibraryStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
@@ -64,7 +64,7 @@ export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]
   label,
 }));
 
-/** Only the fixed backend snapshot rejection becomes a recovery explanation. */
+/** Only the backend's snapshot rejection code becomes a recovery explanation. */
 export function isSnapshotChanged(error: unknown): boolean {
-  return error === "library snapshot changed";
+  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
 }
