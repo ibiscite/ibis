@@ -45,6 +45,7 @@ enum Command {
         #[arg(long, value_enum, default_value_t = Format::Pandoc)]
         format: Format,
         /// Page locator for a key, e.g. `--page smith2020=12-14`. Repeatable.
+        /// PAGES must contain non-whitespace text.
         #[arg(long = "page", value_name = "KEY=PAGES")]
         pages: Vec<String>,
         /// Check that every key exists in these files first.
@@ -272,7 +273,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 })
                 .collect();
             for spec in &pages {
-                let Some((key, value)) = spec.rsplit_once('=') else {
+                let Some((key, value)) = spec.rsplit_once('=').filter(|(_, value)| !value.trim().is_empty()) else {
                     bail!("--page needs KEY=PAGES, got `{spec}`")
                 };
                 let Some(item) = items.iter_mut().find(|i| i.key == key) else {

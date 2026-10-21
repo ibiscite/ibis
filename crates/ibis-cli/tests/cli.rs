@@ -494,17 +494,20 @@ fn page_locators_render_in_every_syntax_from_the_command_line() {
     assert!(String::from_utf8_lossy(&keys.stderr).starts_with("note: "));
 }
 
-/// An empty page value currently prints `[@k, p. ]` with exit code 0 (#607).
 #[test]
-#[ignore = "exposes #607: an empty --page value is rendered as a blank locator instead of being refused"]
 fn empty_page_values_are_refused() {
-    for value in ["k=", "k= "] {
-        let out = ibis(&["cite", "k", "--page", value]);
-        assert_eq!(out.status.code(), Some(1), "{value:?}");
-        assert!(
-            out.stdout.is_empty(),
-            "{value:?}: {}",
-            String::from_utf8_lossy(&out.stdout)
-        );
+    for format in ["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys"] {
+        for value in ["k=", "k= ", "k=\u{a0}", "k=\u{2003}"] {
+            for json in [false, true] {
+                let mut args = vec!["cite", "k", "--format", format, "--page", value];
+                if json {
+                    args.push("--json");
+                }
+                let out = ibis(&args);
+                assert_eq!(out.status.code(), Some(1), "{format} {value:?} json={json}");
+                assert!(out.stdout.is_empty(), "{format} {value:?} json={json}");
+                assert!(String::from_utf8_lossy(&out.stderr).contains("--page needs KEY=PAGES"));
+            }
+        }
     }
 }
