@@ -778,6 +778,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           }}
           onKeyDown={(e) => {
             if (composing(e)) return;
+            // A held Remove activation must not act again after focus returns.
+            if (e.key === "Enter" && e.repeat) {
+              e.preventDefault();
+              return;
+            }
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
               const step = e.key === "ArrowDown" ? 1 : -1;
@@ -872,7 +877,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           {[...selected.entries()].map(([key, r]) => (
             <li key={key}>
               <code>{r.key}</code>{" "}
-              <button type="button" onClick={() => toggle(r)} aria-label={removeLabel(r)}>
+              <button type="button" onClick={() => {
+                toggle(r);
+                input.current?.focus({ preventScroll: true });
+              }} aria-label={removeLabel(r)}>
                 {pickerText.remove}
               </button>
             </li>

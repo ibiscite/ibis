@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "source_commit": "63b27f16a702cb009d06a77826745f3a0efda630",
+  "browser": "151.0.7922.34",
+  "capture": "Real Chromium keyboard down/down-repeat/up; synthetic ID-derived provider, not native OS/clipboard acceptance",
+  "state": "tray-20, ID-derived synthetic copy provider",
+  "source_comparison": "App versus2e58123 differs only by5-line repeated-Enter guard after existing composition check; styles and markup unchanged. Earlier24-case boards retain their original2e source labels.",
+  "before_regression": {
+    "source_commit": "2e58123f6833c605c2562e3894af130285f8636b",
+    "normal_enter": "First down removes2\u21921 and focuses Search; repeated down copies unexpectedly and clears1\u21920.",
+    "shift_enter": "Repeat toggles again after focus transfer; can remove the surviving highlighted item or re-add a just-removed active item.",
+    "baseline": "Tests-onlyfe8ecc leaves focus on body and does not perform the repeated action."
+  },
+  "checks": [
+    "Actual Enter down, second down with repeat=true, up, then fresh press; both ordinary and Shift variants",
+    "No second copy/toggle while key remains held; fresh Shift+Enter toggles after release and fresh Enter copies exactly once",
+    "Repeated ArrowDown events continue to move the highlighted result",
+    "Exact full ID-derived text verified before recording hash; no page errors"
+  ],
+  "limits": [
+    "Synthetic browser/key events, not native OS or clipboard acceptance",
+    "Initial small-tray proof used its fixed example copy response; its expected-key assertion was invalid. Final12-case proof uses the existing ID-derived tray-20 provider."
+  ],
+  "columns": [
+    "platform_look",
+    "theme",
+    "shift",
+    "first_remaining",
+    "repeat_remaining",
+    "fresh_shift_remaining",
+    "repeated_arrow_active",
+    "copy_characters",
+    "copy_sha256",
+    "key_events_type_key_repeat_shift_target"
+  ],
+  "cases": [
+    ["macos","light",false,19,19,null,"result-20",1159,"78f51531b519a4fca78c86e13512553d8aff0cb740aae063bfefd9d1e53a818b",[["keydown","Enter",false,false,"BUTTON"],["keydown","Enter",true,false,"search"],["keyup","Enter",false,false,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["macos","light",true,19,19,18,"result-20",1098,"84eb2ae38c9921a4d2e0e0796b3c818d72c6d8ff5856ded0886c7980dc0d5d5e",[["keydown","Enter",false,true,"BUTTON"],["keydown","Enter",true,true,"search"],["keyup","Enter",false,true,"search"],["keydown","Enter",false,true,"search"],["keyup","Enter",false,true,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["macos","dark",false,19,19,null,"result-20",1159,"78f51531b519a4fca78c86e13512553d8aff0cb740aae063bfefd9d1e53a818b",[["keydown","Enter",false,false,"BUTTON"],["keydown","Enter",true,false,"search"],["keyup","Enter",false,false,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["macos","dark",true,19,19,18,"result-20",1098,"84eb2ae38c9921a4d2e0e0796b3c818d72c6d8ff5856ded0886c7980dc0d5d5e",[["keydown","Enter",false,true,"BUTTON"],["keydown","Enter",true,true,"search"],["keyup","Enter",false,true,"search"],["keydown","Enter",false,true,"search"],["keyup","Enter",false,true,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["windows","light",false,19,19,null,"result-20",1159,"78f51531b519a4fca78c86e13512553d8aff0cb740aae063bfefd9d1e53a818b",[["keydown","Enter",false,false,"BUTTON"],["keydown","Enter",true,false,"search"],["keyup","Enter",false,false,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["windows","light",true,19,19,18,"result-20",1098,"84eb2ae38c9921a4d2e0e0796b3c818d72c6d8ff5856ded0886c7980dc0d5d5e",[["keydown","Enter",false,true,"BUTTON"],["keydown","Enter",true,true,"search"],["keyup","Enter",false,true,"search"],["keydown","Enter",false,true,"search"],["keyup","Enter",false,true,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["windows","dark",false,19,19,null,"result-20",1159,"78f51531b519a4fca78c86e13512553d8aff0cb740aae063bfefd9d1e53a818b",[["keydown","Enter",false,false,"BUTTON"],["keydown","Enter",true,false,"search"],["keyup","Enter",false,false,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["windows","dark",true,19,19,18,"result-20",1098,"84eb2ae38c9921a4d2e0e0796b3c818d72c6d8ff5856ded0886c7980dc0d5d5e",[["keydown","Enter",false,true,"BUTTON"],["keydown","Enter",true,true,"search"],["keyup","Enter",false,true,"search"],["keydown","Enter",false,true,"search"],["keyup","Enter",false,true,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["linux","light",false,19,19,null,"result-20",1159,"78f51531b519a4fca78c86e13512553d8aff0cb740aae063bfefd9d1e53a818b",[["keydown","Enter",false,false,"BUTTON"],["keydown","Enter",true,false,"search"],["keyup","Enter",false,false,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["linux","light",true,19,19,18,"result-20",1098,"84eb2ae38c9921a4d2e0e0796b3c818d72c6d8ff5856ded0886c7980dc0d5d5e",[["keydown","Enter",false,true,"BUTTON"],["keydown","Enter",true,true,"search"],["keyup","Enter",false,true,"search"],["keydown","Enter",false,true,"search"],["keyup","Enter",false,true,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["linux","dark",false,19,19,null,"result-20",1159,"78f51531b519a4fca78c86e13512553d8aff0cb740aae063bfefd9d1e53a818b",[["keydown","Enter",false,false,"BUTTON"],["keydown","Enter",true,false,"search"],["keyup","Enter",false,false,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]],
+    ["linux","dark",true,19,19,18,"result-20",1098,"84eb2ae38c9921a4d2e0e0796b3c818d72c6d8ff5856ded0886c7980dc0d5d5e",[["keydown","Enter",false,true,"BUTTON"],["keydown","Enter",true,true,"search"],["keyup","Enter",false,true,"search"],["keydown","Enter",false,true,"search"],["keyup","Enter",false,true,"search"],["keydown","ArrowDown",false,false,"search"],["keydown","ArrowDown",true,false,"search"],["keyup","ArrowDown",false,false,"search"],["keydown","Enter",false,false,"search"],["keyup","Enter",false,false,"search"]]]
+  ]
+}
