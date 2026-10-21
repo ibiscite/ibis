@@ -321,11 +321,12 @@ function run(argv) {
             // WebKit maps labels to AXTitle or AXDescription depending on role.
             // Preserve each exposed name rather than guess which one it chose.
             const names = new Set([safe(() => item.title()), safe(() => item.description()), safe(() => item.name())]);
-            names.forEach(name => nodes.push({
-                role: safe(() => item.role()), name,
-                value: String(safe(() => item.value())),
-                focused: safe(() => item.attributes.byName('AXFocused').value(), false) === true,
-            }));
+            // Each alias describes this same element, so observe its state once.
+            // Keep fresh reads for every element and every snapshot invocation.
+            const role = safe(() => item.role());
+            const value = String(safe(() => item.value()));
+            const focused = safe(() => item.attributes.byName('AXFocused').value(), false) === true;
+            names.forEach(name => nodes.push({role, name, value, focused}));
         });
         // Hidden windows may remain in the AX tree. Match an on-screen CG
         // window to an AX picker frame; owner PID alone can match a tray item.
