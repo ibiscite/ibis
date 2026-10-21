@@ -1,0 +1,55 @@
+import type { Copied, LibraryStatus, LoginItem } from "../../api";
+import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
+import { libraryMessages, loginItemsPlace, loginItemText, operationFailures, pickerText } from "../../messages";
+
+/** An action whose failure the picker reports in its notices. */
+export type Operation = keyof typeof operationFailures;
+
+/** Problems and confirmations above the results: library and settings
+ * problems, failed actions, search and copy errors, and what was copied. */
+export function Notices({ library, busy, loadingMessage, failures, startAtLogin, error, copyError, copied, onDismissCopied }: {
+  library: LibraryStatus | null | undefined;
+  busy: boolean;
+  loadingMessage: string;
+  failures: Partial<Record<Operation, boolean>>;
+  startAtLogin: LoginItem | null;
+  error: string | null;
+  copyError: string | null;
+  copied: Copied | null;
+  onDismissCopied: () => void;
+}) {
+  return (
+    <div className="notices">
+      {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
+      {busy && <p role="status">{loadingMessage}</p>}
+      {library?.error && !hasRetainedFreshnessProblem(library) && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}
+      {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
+        <p role="alert" key={operation}>{operationFailures[operation]}</p>
+      ))}
+      {startAtLogin?.problem && startAtLogin.problem !== "unsupported" && (
+        <p role="alert">{loginItemText.problem(startAtLogin.problem, loginItemsPlace(navigator.platform), startAtLogin.name)}</p>
+      )}
+      {error && <p role="alert">{error}</p>}
+      {copyError && <p role="alert">{copyError}</p>}
+      {copied && (
+        <div role="status" className="copy-notice">
+          <p>
+            {pickerText.copied} <code>{copied.text}</code>
+          </p>
+          {copied.warnings.length > 0 && (
+            <>
+              <button type="button" className="dismiss" aria-label={pickerText.dismissWarnings} onClick={onDismissCopied}>
+                {pickerText.dismiss}
+              </button>
+              <ul aria-label={pickerText.copyWarnings}>
+                {copied.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

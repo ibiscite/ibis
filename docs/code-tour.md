@@ -37,6 +37,9 @@ MLA). More styles and direct insertion into other applications are future work.
 6. Core search normalizes case and accents, matches query terms and ranks the
    results. Rust returns record identities, display fields and matched fields;
    React displays them. The UI requests 20 results; Rust caps the limit at 200.
+   `App.tsx` holds the picker's state; the parts it draws (header, notices,
+   selection tray, result rows, footer and More menu) are props-only components
+   in [features/picker](../apps/desktop/src/features/picker/).
 
 The search effect's `current` flag ignores replies for superseded queries.
 `resultsQuery` records which query produced the visible results and also guards
