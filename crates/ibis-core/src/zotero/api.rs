@@ -5,6 +5,16 @@
 //! never touches the network. Zotero serves the API on
 //! `http://127.0.0.1:23119/api/` once "Allow other applications on this
 //! computer to communicate with Zotero" is on.
+//!
+//! A library is read page by page, each page starting where the items read
+//! so far end. Every page must carry `Last-Modified-Version` and
+//! `Total-Results`, the count of the whole listing, and all pages of one
+//! scan must agree on both; a disagreement means the library changed and
+//! the scan starts over. More items than the declared total, or a page with
+//! items when the total is zero, are an inconsistent answer and fail closed,
+//! so a partial or mismatched library is never published as complete. A
+//! short page inside a split export also fails closed if later ranges would
+//! leave unread items between the pages.
 
 use serde_json::Value;
 use thiserror::Error;
@@ -95,6 +105,15 @@ pub struct Snapshot {
     pub server_id: Option<String>,
 }
 
+impl Snapshot {
+    /// Whether `other` is known to be the same version of the same library.
+    /// Without a server ID on both sides, the server is unknown and the
+    /// answer is no, so the library is read again rather than assumed equal.
+    fn same_as(&self, other: &Snapshot) -> bool {
+        self.version == other.version && self.server_id.is_some() && self.server_id == other.server_id
+    }
+}
+
 /// The outcome of [`refresh`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refresh {
@@ -158,7 +177,7 @@ pub fn refresh(
                 previous.version
             ),
         )?;
-        let unchanged = snapshot(&probe)? == *previous
+        let unchanged = snapshot(&probe)?.same_as(previous)
             && serde_json::from_slice::<serde_json::Map<String, Value>>(&probe.body)
                 .map_err(|_| ZoteroError::Incomplete)?
                 .is_empty();
@@ -171,7 +190,8 @@ pub fn refresh(
 }
 
 /// Read every item of the library at one version. If the library changes
-/// between pages, the scan starts again, at most a few times.
+/// between pages, or its pages disagree on the item count, the scan starts
+/// again, at most a few times.
 pub fn scan(transport: &mut impl Transport, library: Library) -> Result<(LoadResult, Snapshot), ZoteroError> {
     for _ in 0..MAX_ATTEMPTS {
         if let Some(done) = scan_once(transport, library)? {
@@ -189,12 +209,10 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
     // Ranges still to read, last first. A page Zotero fails to export is
     // split in halves until the one item it cannot export is found.
     let mut ranges: Vec<(usize, usize)> = Vec::new();
-    let mut next = 0;
     for _ in 0..MAX_REQUESTS {
-        let (start, limit) = ranges.pop().unwrap_or_else(|| {
-            next += PAGE_SIZE;
-            (next - PAGE_SIZE, PAGE_SIZE)
-        });
+        // The next page starts right after the items seen so far, read or
+        // skipped, so nothing is passed over when a page comes back short.
+        let (start, limit) = ranges.pop().unwrap_or_else(|| (items.len() + skipped.len(), PAGE_SIZE));
         let path = format!(
             "{}?format=json&include=data,csljson&limit={limit}&start={start}",
             top_items_path(library)
@@ -232,10 +250,20 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
         }
         let got = page_items.len();
         items.extend(page_items);
+        if items.len() + skipped.len() > count {
+            // More items than Zotero declared: the count is wrong or the
+            // listing moved under the scan, so nothing it says can be trusted.
+            return Err(ZoteroError::Incomplete);
+        }
         if !ranges.is_empty() {
+            // A queued sibling starts after the whole requested range, not
+            // after a short answer. Never step over an unread gap.
+            if got < limit && items.len() + skipped.len() < count {
+                return Err(ZoteroError::Incomplete);
+            }
             continue;
         }
-        if items.len() + skipped.len() >= count {
+        if items.len() + skipped.len() == count {
             if items.is_empty() && !skipped.is_empty() {
                 // Zotero exported nothing at all: that is a broken Zotero,
                 // not an empty library.
@@ -588,6 +616,37 @@ mod tests {
     }
 
     #[test]
+    fn short_sequential_pages_still_read_every_item() {
+        let mut fake = Fake::default()
+            .answer(page(3, 3, &["A"]))
+            .answer(page(3, 3, &["B", "C"]));
+        let (result, _) = scan(&mut fake, Library::User).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(keys(&result), ["A", "B", "C"]);
+        assert!(result.warnings.is_empty());
+        assert_eq!(fake.asked.len(), 2);
+        assert!(fake.asked[1].ends_with("start=1"));
+    }
+
+    #[test]
+    fn a_short_split_page_at_the_total_still_reads_the_complete_library() {
+        let all = many("A", 20);
+        let all: Vec<&str> = all.iter().map(String::as_str).collect();
+        let mut fake = Fake::default()
+            .answer(Response {
+                status: 500,
+                ..Response::default()
+            })
+            .answer(page(3, 20, &all))
+            .answer(page(3, 20, &[]));
+        let (result, _) = scan(&mut fake, Library::User).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(keys(&result), all);
+        assert!(result.warnings.is_empty());
+        assert_eq!(fake.asked.len(), 3);
+        assert!(fake.asked[1].ends_with("limit=50&start=0"));
+        assert!(fake.asked[2].ends_with("limit=50&start=50"));
+    }
+
+    #[test]
     fn refused_missing_and_foreign_answers_are_explained() {
         let status = |status: u16| Response {
             status,
@@ -625,10 +684,11 @@ mod tests {
     fn refresh_reads_nothing_more_when_no_item_changed() {
         let previous = Snapshot {
             version: 4,
-            server_id: None,
+            server_id: Some("one".into()),
         };
         let mut probe = page(4, 0, &[]);
         probe.body = b"{}".to_vec();
+        probe.headers.push(("Zotero-Server-ID".into(), "one".into()));
         let mut fake = Fake::default().answer(probe);
         assert_eq!(
             refresh(&mut fake, Library::User, Some(&previous)),
@@ -664,5 +724,92 @@ mod tests {
             refresh(&mut fake, Library::User, Some(&previous)),
             Ok(Refresh::Loaded { .. })
         ));
+    }
+
+    #[test]
+    fn pages_that_disagree_on_the_total_at_one_version_restart_then_give_up() {
+        // Zotero's count is for the whole listing, so a different count on
+        // the next page means the library moved even though the version did
+        // not. A scan that never sees agreeing pages is reported, not
+        // published as a 101-item library.
+        let first = many("A", PAGE_SIZE);
+        let first: Vec<&str> = first.iter().map(String::as_str).collect();
+        let mut fake = Fake::default();
+        for _ in 0..MAX_ATTEMPTS {
+            fake = fake.answer(page(8, 200, &first)).answer(page(8, PAGE_SIZE + 1, &["B"]));
+        }
+        assert_eq!(scan(&mut fake, Library::User), Err(ZoteroError::Changing));
+        assert_eq!(fake.asked.len(), 2 * MAX_ATTEMPTS);
+        assert!(fake.asked.iter().step_by(2).all(|path| path.ends_with("start=0")));
+    }
+
+    #[test]
+    fn a_library_of_exactly_one_page_is_read_in_one_request() {
+        let keys = many("A", PAGE_SIZE);
+        let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+        let mut fake = Fake::default().answer(page(2, PAGE_SIZE, &keys));
+        let (result, _) = scan(&mut fake, Library::User).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(result.references.len(), PAGE_SIZE);
+        assert_eq!(fake.asked.len(), 1);
+    }
+
+    #[test]
+    fn a_total_that_cannot_be_counted_is_incomplete() {
+        let with_total = |total: &str| {
+            let mut answer = page(1, 0, &[]);
+            answer.headers.retain(|(n, _)| n != "Total-Results");
+            answer.headers.push(("Total-Results".into(), total.into()));
+            answer
+        };
+        for total in ["", "many", "-1", "1.5", "99999999999999999999999999", "1 2"] {
+            assert_eq!(
+                scan(&mut Fake::default().answer(with_total(total)), Library::User),
+                Err(ZoteroError::Incomplete),
+                "total {total:?}"
+            );
+        }
+        // Surrounding whitespace is what a header may carry; the count stands.
+        let mut fake = Fake::default().answer(with_total("  0 "));
+        assert!(scan(&mut fake, Library::User).is_ok());
+        let mut missing = page(1, 0, &[]);
+        missing.headers.retain(|(n, _)| n != "Total-Results");
+        assert_eq!(
+            scan(&mut Fake::default().answer(missing), Library::User),
+            Err(ZoteroError::Incomplete)
+        );
+    }
+
+    #[test]
+    fn refresh_rereads_when_either_server_id_is_unknown() {
+        // Same version and nothing changed, but without a server ID on both
+        // sides nobody knows whether this is the same Zotero.
+        let probe = |server_id: Option<&str>| {
+            let mut probe = page(4, 0, &[]);
+            probe.body = b"{}".to_vec();
+            if let Some(id) = server_id {
+                probe.headers.push(("Zotero-Server-ID".into(), id.into()));
+            }
+            probe
+        };
+        let previous = |server_id: Option<&str>| Snapshot {
+            version: 4,
+            server_id: server_id.map(str::to_string),
+        };
+        for (stored, sent) in [(None, None), (Some("one"), None), (None, Some("one"))] {
+            let mut fake = Fake::default().answer(probe(sent)).answer(page(4, 0, &[]));
+            assert!(
+                matches!(
+                    refresh(&mut fake, Library::User, Some(&previous(stored))),
+                    Ok(Refresh::Loaded { .. })
+                ),
+                "stored {stored:?}, sent {sent:?}"
+            );
+            assert_eq!(fake.asked.len(), 2);
+        }
+        let mut fake = Fake::default().answer(probe(Some("one")));
+        assert_eq!(
+            refresh(&mut fake, Library::User, Some(&previous(Some("one")))),
+            Ok(Refresh::Unchanged)
+        );
     }
 }

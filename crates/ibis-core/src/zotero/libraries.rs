@@ -226,7 +226,12 @@ mod tests {
     use crate::zotero::api::Response;
 
     fn ok(headers: &[(&str, String)], body: Value) -> Response {
-        let mut all = vec![("Zotero-API-Version".to_string(), "3".to_string())];
+        // One installation throughout: a refresh only trusts "unchanged"
+        // when the server is known on both sides.
+        let mut all = vec![
+            ("Zotero-API-Version".to_string(), "3".to_string()),
+            ("Zotero-Server-ID".to_string(), "fake-zotero".to_string()),
+        ];
         all.extend(headers.iter().map(|(n, v)| (n.to_string(), v.clone())));
         Response {
             status: 200,
