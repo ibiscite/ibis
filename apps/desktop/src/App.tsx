@@ -709,10 +709,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A formatted citation still being made, or one that failed, is not copied.
-  const enterAction = !searchFocused || chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
+  const enterAction = chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
     : chosen.length > 1 ? keyText.copySeveralAs(chosen.length, choiceName(format)) : keyText.copyAs(choiceName(format));
   const highlighted = current[active];
-  const shiftEnterAction = searchFocused && highlighted
+  const shiftEnterAction = highlighted
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
 
@@ -1023,10 +1023,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           <LibraryStatusLine library={library} groupName={groupName} />
           <small className="enter-hints" aria-label={keyText.footer} role="group">
             {altHeld ? <>
-              {shiftEnterAction && <span><kbd>{label(keysFor("add"))}</kbd> {shiftEnterAction}</span>}
+              {shiftEnterAction && <span className="search-hint" aria-hidden={!searchFocused}><kbd>{label(keysFor("add"))}</kbd> {shiftEnterAction}</span>}
               <span><kbd>{label(keysFor("escape"))}</kbd> {escapeAction}</span>
             </> : <>
-              {enterAction && <span><kbd>{label(keysFor("copy"))}</kbd> {enterAction}</span>}
+              {enterAction && <span className="search-hint" aria-hidden={!searchFocused}><kbd>{label(keysFor("copy"))}</kbd> {enterAction}</span>}
               <span><kbd>{label(keysFor("keys"))}</kbd> {keyText.allKeys}</span>
             </>}
           </small>

@@ -280,6 +280,8 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and wrap instead of overlapping. */
 .enter-hints { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); min-width: 0; color: var(--muted); font-size: var(--hint-size); overflow-wrap: anywhere; }
+/* Focus changes must not move More between pointer-down and pointer-up. */
+.enter-hints .search-hint[aria-hidden="true"] { visibility: hidden; }
 .enter-hints kbd { margin-inline: 0 var(--space-1); }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 
