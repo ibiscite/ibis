@@ -9,12 +9,13 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A newer push replaces the older run of the same branch or pull request. On
-# main, the newest commit contains every earlier merge, so its run tests them
-# all and the macOS and Windows runners are not kept busy by superseded states.
+# On a pull request, a newer push cancels the run in progress. On main, a run
+# that has started always finishes, so its caches are saved and its evidence is
+# collected; GitHub keeps only the newest waiting push and replaces older ones
+# before they start, so a burst of merges never runs every commit.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
