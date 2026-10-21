@@ -20,3 +20,12 @@ unsafe_code = "forbid"
 all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "warn"
+
+# Debug builds run the native smoke and performance checks in CI. Optimizing
+# dependencies and the parse/index crate brings the 100k library path near
+# release speed while keeping debug assertions and overflow checks (#9).
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.package.ibis-core]
+opt-level = 2
