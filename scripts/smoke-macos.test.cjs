@@ -283,6 +283,7 @@ assert.equal(pickerKey([]), false);
 // Snapshot aliases must share one observation of each element's state, while
 // separate elements and later polls still get fresh accessibility reads.
 function snapshotProbe(descriptions = [{}]) {
+    let ticks = 0, phases;
     const states = descriptions.map(description => ({names: ['Synthetic title alias', 'Synthetic description alias', 'Search references'],
         role: 'AXComboBox', value: 'smoke099999', focused: true, ...description}));
     const reads = states.map(() => ({role: 0, value: 0, focused: 0}));
@@ -301,6 +302,7 @@ function snapshotProbe(descriptions = [{}]) {
     const windows = _selector => [picker];
     windows[0] = picker;
     const native = {
+        Date: {now: () => ticks++},
         ObjC: {import() {}, deepUnwrap: value => value, castRefToObject: value => value},
         Application: () => ({applicationProcesses: {whose: ({unixId}) => {
             assert.equal(unixId, 42); return () => [{windows}];
@@ -312,12 +314,23 @@ function snapshotProbe(descriptions = [{}]) {
     };
     vm.createContext(native);
     vm.runInContext(fs.readFileSync(`${__dirname}/smoke-macos.js`, 'utf8'), native);
-    return {states, reads, invoke: () => JSON.parse(native.run(['snapshot', '42', '0', '']))};
+    return {states, reads, phases: () => phases, invoke: () => {
+        const result = JSON.parse(native.run(['snapshot', '42', '0', '']));
+        phases = result.probe_phases;
+        assert.deepEqual(Object.keys(phases).sort(), ['bootstrap_ms', 'elements', 'helper_ms',
+            'properties_ms', 'tree_ms', 'visibility_ms']);
+        assert.ok(Object.values(phases).every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0));
+        assert.equal(phases.elements, descriptions.length);
+        delete result.probe_phases;
+        return result;
+    }};
 }
 const aliased = snapshotProbe();
 assert.deepEqual(aliased.invoke(), {nodes: aliased.states[0].names.map(name => ({
     name, role: 'AXComboBox', value: 'smoke099999', focused: true})), visible: true, foreground: true});
 assert.deepEqual(aliased.reads, [{role: 1, value: 1, focused: 1}]);
+assert.deepEqual(aliased.phases(), {bootstrap_ms: 1, tree_ms: 1, properties_ms: 1,
+    visibility_ms: 1, helper_ms: 7, elements: 1});
 aliased.states[0].role = 'AXButton';
 aliased.states[0].value = 'new value';
 aliased.states[0].focused = false;

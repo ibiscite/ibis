@@ -9,6 +9,7 @@ import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -243,6 +244,43 @@ def fixed_toggle_diagnostics(paths):
             if line in allowed]
 
 
+PROBE_PHASE_KEYS = {"bootstrap_ms", "tree_ms", "properties_ms", "visibility_ms", "helper_ms", "elements"}
+LIBRARY_PHASE_KEYS = {"load_ms", "load_finished_ms", "install_ms", "publish_ms", "completed_ms", "accepted", "load_ok"}
+
+
+def numeric_phase_facts(value, keys):
+    if (not isinstance(value, dict) or set(value) != keys or
+            any(type(v) not in (int, float) or v < 0 or v > sys.float_info.max or not math.isfinite(v) for v in value.values())):
+        return None
+    if any(value[key] not in (0, 1) for key in ("accepted", "load_ok") if key in keys):
+        return None
+    if "elements" in keys and (type(value["elements"]) is not int or value["elements"] > 4000):
+        return None
+    return dict(value)
+
+
+def library_phase_diagnostics(paths):
+    facts = []
+    for path in paths:
+        try:
+            with path.open(encoding="utf-8", errors="replace") as log:
+                lines = log.read(1024 * 1024).splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if not line.startswith("ibis-library-phases: ") or len(line) > 2048:
+                continue
+            try:
+                value = numeric_phase_facts(json.loads(line.removeprefix("ibis-library-phases: ")), LIBRARY_PHASE_KEYS)
+            except (ValueError, TypeError, RecursionError):
+                continue
+            if value is not None:
+                facts.append(value)
+                if len(facts) == 64:
+                    return facts
+    return facts
+
+
 def settings_path(system, temporary, native=None, identifier="io.github.ibiscite.ibis"):
     if system == "Windows":
         # dirs7 uses SHGetKnownFolderPath, not the APPDATA environment variable.
@@ -359,6 +397,10 @@ def measure_startup(launch, snapshot, phases):
 
     Readiness includes accessibility calls, predicate work and polling sleeps;
     it is not an independent measurement of the app's library loading time.
+    Optional helper components overlap this interval and real backend work.
+    Missing/invalid diagnostics never supply readiness or change acceptance.
+    Backend clocks start at run_open, not process launch; absent debug lines
+    (including an unfinished/stopped load) are recorded as an empty list.
     """
     phases.update(snapshot_calls=0, snapshot_ms=0, snapshot_max_ms=0)
     started = time.monotonic()
@@ -376,6 +418,12 @@ def measure_startup(launch, snapshot, phases):
             phases["snapshot_calls"] += 1
             phases["snapshot_ms"] += elapsed
             phases["snapshot_max_ms"] = max(phases["snapshot_max_ms"], elapsed)
+        probe = numeric_phase_facts(current.get("probe_phases"), PROBE_PHASE_KEYS)
+        if probe is not None:
+            phases["probe_samples"] = phases.get("probe_samples", 0) + 1
+            totals = phases.setdefault("probe_phases", dict.fromkeys(PROBE_PHASE_KEYS, 0))
+            for key, value in probe.items():
+                totals[key] += value
         return "100,000 references" in strings(current)
     try:
         wait_for(observed, "100,000-reference library load", timeout=120)
@@ -1268,6 +1316,7 @@ def main():
                 samples.append({"startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
                                 "memory_bytes": memory, "startup_phases": phases})
                 stop()
+                phases["library_phases"] = library_phase_diagnostics([diagnostic_logs[-1]])
             report["performance"] = summarize_performance(samples)
             if args.budgets:
                 budgets = json.loads(args.budgets.read_text(encoding="utf-8"))[system]
@@ -1304,6 +1353,10 @@ def main():
                 app.kill()
         if log:
             log.close()
+        try:
+            report["library_phases"] = library_phase_diagnostics(diagnostic_logs)
+        except OSError:
+            report["library_phases"] = []
         if native:
             try:
                 native.close()
@@ -2173,6 +2226,69 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(performance["failed_metric"], "startup_ms")
         self.assertEqual(performance["ceilings"], {"startup_ms": 150, "first_result_ms": 15, "memory_bytes": 2000})
         self.assertEqual([sample["startup_ms"] for sample in performance["samples"]], [100, 200, 50])
+
+    def test_phase_facts_reject_private_extra_fields_and_nonfinite_or_negative_numbers(self):
+        valid = dict.fromkeys(PROBE_PHASE_KEYS, 1)
+        self.assertEqual(numeric_phase_facts(valid, PROBE_PHASE_KEYS), valid)
+        for bad in (True, -1, float('inf'), float('nan'), 10**1000, "private"):
+            self.assertIsNone(numeric_phase_facts(dict(valid, tree_ms=bad), PROBE_PHASE_KEYS))
+        self.assertIsNone(numeric_phase_facts(dict(valid, path="private"), PROBE_PHASE_KEYS))
+        self.assertIsNone(numeric_phase_facts({}, PROBE_PHASE_KEYS))
+
+    def test_library_phase_logs_are_fixed_numeric_and_bounded(self):
+        valid = dict.fromkeys(LIBRARY_PHASE_KEYS, 0)
+        valid.update(load_ms=12.5, accepted=1, load_ok=1)
+        with tempfile.TemporaryDirectory() as folder:
+            log = Path(folder) / "synthetic.log"
+            log.write_text("private error\nibis-library-phases: " + json.dumps(dict(valid, path="private")) +
+                           "\nibis-library-phases: not-json\n" +
+                           ("ibis-library-phases: " + json.dumps(valid) + "\n") * 100, encoding="utf-8")
+            self.assertEqual(library_phase_diagnostics([log]), [valid] * 64)
+            for accepted, load_ok in ((0, 0), (0, 1), (1, 0)):
+                valid.update(accepted=accepted, load_ok=load_ok)
+                log.write_text("ibis-library-phases: " + json.dumps(valid), encoding="utf-8")
+                self.assertEqual(library_phase_diagnostics([log]), [valid])
+
+    def test_unavailable_phase_logs_never_replace_valid_diagnostics(self):
+        valid = dict.fromkeys(LIBRARY_PHASE_KEYS, 0)
+        line = "ibis-library-phases: " + json.dumps(valid)
+        with tempfile.TemporaryDirectory() as folder:
+            log, missing = Path(folder) / "synthetic.log", Path(folder) / "missing.log"
+            log.write_text(line, encoding="utf-8")
+            self.assertEqual(library_phase_diagnostics([missing, log, missing]), [valid])
+            with patch.object(Path, "open", side_effect=[PermissionError(), io.StringIO(line)]):
+                self.assertEqual(library_phase_diagnostics([missing, log]), [valid])
+
+    def test_nested_phase_json_is_discarded_before_a_valid_record(self):
+        valid = dict.fromkeys(LIBRARY_PHASE_KEYS, 0)
+        line = "ibis-library-phases: " + json.dumps(valid)
+        with tempfile.TemporaryDirectory() as folder:
+            log = Path(folder) / "synthetic.log"
+            log.write_text("ibis-library-phases: " + "[" * 1000 + "0" + "]" * 1000 + "\n" + line,
+                           encoding="utf-8")
+            self.assertEqual(library_phase_diagnostics([log]), [valid])
+
+    def test_startup_phases_aggregate_only_fixed_probe_fields(self):
+        phases = {}
+        current = {"nodes": [{"name": "100,000 references"}],
+                   "probe_phases": dict.fromkeys(PROBE_PHASE_KEYS, 2)}
+        with patch("time.monotonic", return_value=1):
+            measure_startup(lambda: None, lambda: current, phases)
+        self.assertEqual(phases["probe_samples"], 1)
+        self.assertEqual(phases["probe_phases"], current["probe_phases"])
+        phases = {}
+        snapshots = iter([dict(current, nodes=[]), current])
+        with patch("time.monotonic", return_value=1), patch("time.sleep"):
+            measure_startup(lambda: None, lambda: next(snapshots), phases)
+        self.assertEqual(phases["snapshot_calls"], 2)
+        self.assertEqual(phases["probe_samples"], 2)
+        self.assertEqual(phases["probe_phases"], dict.fromkeys(PROBE_PHASE_KEYS, 4))
+        phases = {}
+        current["probe_phases"]["private"] = "never copied"
+        with patch("time.monotonic", return_value=1):
+            measure_startup(lambda: None, lambda: current, phases)
+        self.assertNotIn("probe_phases", phases)
+        self.assertNotIn("probe_samples", phases)
 
     def test_startup_phases_separate_launch_and_native_probes_without_extra_reads(self):
         clock, phases = self.CopyClock(), {}

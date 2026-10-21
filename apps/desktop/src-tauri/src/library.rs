@@ -512,7 +512,26 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
     run_open(app, request, source, reload, remember);
 }
 
+#[cfg(debug_assertions)]
+#[derive(Default, Serialize)]
+// Durations start inside run_open, not at process launch. load_ms excludes
+// scheduling; load_finished_ms includes it. Publish measures emit/tray work,
+// not webview receipt/rendering; completed includes watcher attachment.
+// An obsolete result has accepted=0 and publish_ms=0; source errors have
+// load_ok=0. A stopped worker has no returned load duration (load_ms=0).
+struct LoadPhases {
+    load_ms: f64,
+    load_finished_ms: f64,
+    install_ms: f64,
+    publish_ms: f64,
+    completed_ms: f64,
+    accepted: u8,
+    load_ok: u8,
+}
+
 fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, remember: bool) {
+    #[cfg(debug_assertions)]
+    let started = std::time::Instant::now();
     publish_current(app);
     let previous = app
         .state::<Mutex<Library>>()
@@ -522,10 +541,41 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, remembe
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let chosen = source.setting();
-        let loaded = tauri::async_runtime::spawn_blocking(move || load_source(source, reload, previous))
-            .await
-            .unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
-        if install_loaded(&app.state(), &app.state(), request, loaded).is_some() {
+        let loaded = tauri::async_runtime::spawn_blocking(move || {
+            #[cfg(debug_assertions)]
+            let loading = std::time::Instant::now();
+            let loaded = load_source(source, reload, previous);
+            #[cfg(debug_assertions)]
+            {
+                (loaded, loading.elapsed().as_secs_f64() * 1000.0)
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                loaded
+            }
+        })
+        .await;
+        #[cfg(debug_assertions)]
+        let (loaded, load_ms) =
+            loaded.unwrap_or_else(|_| (Err("loading the library stopped unexpectedly".to_string()), 0.0));
+        #[cfg(not(debug_assertions))]
+        let loaded = loaded.unwrap_or_else(|_| Err("loading the library stopped unexpectedly".to_string()));
+        #[cfg(debug_assertions)]
+        let mut phases = LoadPhases {
+            load_ms,
+            load_finished_ms: started.elapsed().as_secs_f64() * 1000.0,
+            load_ok: u8::from(loaded.is_ok()),
+            ..LoadPhases::default()
+        };
+        #[cfg(debug_assertions)]
+        let installing = std::time::Instant::now();
+        let installed = install_loaded(&app.state(), &app.state(), request, loaded);
+        #[cfg(debug_assertions)]
+        {
+            phases.install_ms = installing.elapsed().as_secs_f64() * 1000.0;
+            phases.accepted = u8::from(installed.is_some());
+        }
+        if installed.is_some() {
             let mut show_note = false;
             if remember && let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
                 // Saving and the note belong to this request, never a newer choice.
@@ -541,9 +591,23 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, remembe
                 // The choice may have come from the tray; make sure it is seen.
                 show_picker(&app);
             }
+            #[cfg(debug_assertions)]
+            let publishing = std::time::Instant::now();
             publish_current(&app);
+            #[cfg(debug_assertions)]
+            {
+                phases.publish_ms = publishing.elapsed().as_secs_f64() * 1000.0;
+            }
             // Reattach even after a failed choice so the retained source keeps updating.
             watch_current(&app, request);
+        }
+        #[cfg(debug_assertions)]
+        {
+            phases.completed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            // No source, request ID, reference, error or filesystem data.
+            if let Ok(json) = serde_json::to_string(&phases) {
+                eprintln!("ibis-library-phases: {json}");
+            }
         }
     });
 }
@@ -1077,6 +1141,41 @@ fn search_newest(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(debug_assertions)]
+    #[test]
+    fn load_phase_json_contains_only_fixed_numeric_fields_for_all_outcomes() {
+        for (accepted, load_ok) in [(1, 1), (1, 0), (0, 1), (0, 0)] {
+            let phases = super::LoadPhases {
+                load_ms: 1.25,
+                accepted,
+                load_ok,
+                ..Default::default()
+            };
+            let value = serde_json::to_value(phases).unwrap_or_else(|e| panic!("{e}"));
+            let fields = value.as_object().unwrap_or_else(|| panic!("numeric object"));
+            let mut expected = vec![
+                "load_ms",
+                "load_finished_ms",
+                "install_ms",
+                "publish_ms",
+                "completed_ms",
+                "accepted",
+                "load_ok",
+            ];
+            expected.sort_unstable();
+            let mut actual = fields.keys().map(String::as_str).collect::<Vec<_>>();
+            actual.sort_unstable();
+            assert_eq!(actual, expected);
+            assert!(
+                fields
+                    .values()
+                    .all(|value| value.as_f64().is_some_and(|n| n.is_finite() && n >= 0.0))
+            );
+            assert_eq!(fields["accepted"].as_u64(), Some(u64::from(accepted)));
+            assert_eq!(fields["load_ok"].as_u64(), Some(u64::from(load_ok)));
+        }
+    }
+
     #[test]
     fn results_carry_what_tells_similar_references_apart() {
         let long = "Long ".repeat(60);

@@ -1,4 +1,7 @@
 // JXA through osascript/System Events. No browser automation or app test hooks.
+// Diagnostic wall-clock milliseconds only; subprocess setup before JavaScript
+// and result serialization are outside this origin. Clamp clock corrections.
+const helperStarted = Date.now();
 ObjC.import('AppKit');
 ObjC.import('ApplicationServices');
 ObjC.import('CoreGraphics');
@@ -315,9 +318,15 @@ function run(argv) {
         break;
     }
     case 'snapshot': {
+        const treeStarted = Date.now();
+        const elapsed = start => Math.max(0, Date.now() - start);
+        const probe_phases = {bootstrap_ms: Math.max(0, treeStarted - helperStarted)};
         const app = process(appId);
         const nodes = [];
-        elements().forEach(item => {
+        const items = elements();
+        probe_phases.tree_ms = elapsed(treeStarted);
+        const propertiesStarted = Date.now();
+        items.forEach(item => {
             // WebKit maps labels to AXTitle or AXDescription depending on role.
             // Preserve each exposed name rather than guess which one it chose.
             const names = new Set([safe(() => item.title()), safe(() => item.description()), safe(() => item.name())]);
@@ -328,14 +337,19 @@ function run(argv) {
             const focused = safe(() => item.attributes.byName('AXFocused').value(), false) === true;
             names.forEach(name => nodes.push({role, name, value, focused}));
         });
+        probe_phases.properties_ms = elapsed(propertiesStarted);
+        const visibilityStarted = Date.now();
         // Hidden windows may remain in the AX tree. Match an on-screen CG
         // window to an AX picker frame; owner PID alone can match a tray item.
         // The Copied notice (#496) is a second window that is never the picker.
         const visible = onScreen(appId, app ? app.windows().filter(window => !labelled(window, 'Ibis notice')) : []);
+        probe_phases.visibility_ms = elapsed(visibilityStarted);
+        probe_phases.helper_ms = elapsed(helperStarted);
+        probe_phases.elements = items.length;
         // A nonactivating panel intentionally leaves the editor application
         // frontmost while accepting keyboard input in its own search field.
         // The AX keyboard focus is the relevant foreground proof here.
-        result = {nodes, visible,
+        result = {nodes, visible, probe_phases,
             foreground: visible && nodes.some(node => node.focused && node.name === 'Search references')};
         break;
     }
