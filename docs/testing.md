@@ -57,6 +57,8 @@ check incomplete. Review changed snapshots like code.
 
 **Interface accessibility.** Vitest runs axe-core on first-run and loaded states, with a broken-combobox control. JSDOM cannot establish rendered contrast or reflow; contrast has a numeric test, and native focus and screen-reader speech need separate evidence (#8, #79).
 
+**Copy completion.** Deferred IPC tests keep newer selections and notices intact when a copy finishes late, including selection/query changes that return to their earlier values, hide/reopen, reversed replies and pin changes. Obsolete stale-snapshot rejection must still refresh library data while leaving newer selection and feedback intact. A same-snapshot refresh preserves a valid pending copy, while a real replacement invalidates its completion. A selected citation stays independent of a search reply already pending when copying begins; ordinary post-clear notices still complete. Native clipboard timing remains a separate check.
+
 **Real Zotero.** `scripts/real-zotero.sh` runs `crates/ibis-zotero-local/tests/real_zotero.rs` against a downloaded Zotero in Linux CI, using a dedicated synthetic profile. It checks actual response shapes, versions and change detection; it never opens a personal library. Transport mocks remain useful for controlled failures.
 
 ## Native picker smoke

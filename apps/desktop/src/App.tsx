@@ -176,6 +176,24 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const report = (operation: Operation, failed = true) => {
     setFailures((previous) => ({ ...previous, [operation]: failed }));
   };
+  // Each completed copy owns only the interaction that started it. Map identity
+  // also distinguishes removing and re-adding the same selected references.
+  const snapshotRevision = library?.revision;
+  const highlightedChoice = choiceKey(results.slice(active, active + 1));
+  const latestHighlight = useRef(highlightedChoice);
+  latestHighlight.current = highlightedChoice;
+  // A selected citation owns its references independently of result highlighting.
+  const activeChoice = selected.size === 0 ? highlightedChoice : null;
+  const copyContext = useRef({ selected, query, format, snapshotRevision, activeChoice });
+  const before = copyContext.current;
+  if (before.selected !== selected || before.query !== query || before.format !== format || before.snapshotRevision !== snapshotRevision || before.activeChoice !== activeChoice) {
+    copyContext.current = { selected, query, format, snapshotRevision, activeChoice };
+  }
+  const copyRequest = useRef(0);
+  const copyVisibility = useRef(0);
+  const pickerShows = useRef(0);
+  const currentPin = useRef(pinned);
+  currentPin.current = pinned;
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
@@ -188,6 +206,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A click still waiting for its preview must never copy once the user has left.
   const [clickCopy, setClickCopy] = useState<string | null>(null);
   const hide = () => {
+    copyVisibility.current += 1;
     setClickCopy(null);
     void perform("hide", hidePicker);
   };
@@ -325,6 +344,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       return () => undefined;
     };
     const focusSearch = () => {
+      copyVisibility.current += 1;
+      pickerShows.current += 1;
       if (hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
       else if (hiddenAt.current !== null && escapedQuery.current !== null) {
         const escaped = escapedQuery.current;
@@ -340,6 +361,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
+      copyVisibility.current += 1;
       hiddenAt.current = performance.now();
       setKeysOpen(false);
       setAltHeld(false);
@@ -386,6 +408,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return () => {
       acceptInitialStatus = false;
       mounted = false;
+      copyVisibility.current += 1;
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlistenLibrary.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
@@ -412,7 +435,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           setResultsRevision(revision);
           if (revision !== library?.revision) refreshSnapshot();
           setResultsQuery(query);
-          setActive(0);
+          // An unchanged reply must not undo the user's newer row choice.
+          const sameResults = resultsQuery === query && resultsRevision === revision && choiceKey(results) === choiceKey(found);
+          if (!sameResults) setActive(0);
           setError(null);
           announcementTimer = window.setTimeout(() => {
             setAnnouncement(pickerText.resultCount(found.length));
@@ -505,6 +530,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Copy the chosen references in the chosen format.
   const copy = async () => {
     if (chosen.length === 0) return;
+    const request = ++copyRequest.current;
+    const context = copyContext.current;
+    const visibility = copyVisibility.current;
+    const shownAt = pickerShows.current;
+    const ownsCompletion = () => request === copyRequest.current && context === copyContext.current && visibility === copyVisibility.current;
     setCopied(null);
     setCopyError(null);
     if (shown === "stale" || !chosenRevision) {
@@ -531,19 +561,25 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }
     } catch (error) {
       const stale = nativeApi.isSnapshotChanged(error);
-      setCopyError(stale ? pickerText.snapshotChanged : pickerText.copyError);
+      if (ownsCompletion()) setCopyError(stale ? pickerText.snapshotChanged : pickerText.copyError);
+      // A retired request can reveal a replacement after the user has moved on.
       if (stale) refreshSnapshot();
       return;
     }
+    if (!ownsCompletion()) return;
     setCopied(outcome);
-    setSelected(new Map());
+    const clearedSelection = new Map<string, SearchResult>();
+    const completedContext = { ...context, selected: clearedSelection, activeChoice: latestHighlight.current };
+    copyContext.current = completedContext;
+    setSelected(clearedSelection);
     // After a copy, reopening keeps the current search, not one cleared before it.
     escapedQuery.current = null;
     // Get out of the way so the user can paste, unless there is something to
     // read or the picker is pinned beside the document.
-    if (afterCopy(outcome, pinned) === "hide-and-notify") {
+    if (afterCopy(outcome, currentPin.current) === "hide-and-notify") {
       void perform("hide", async () => {
         await hidePicker();
+        if (request !== copyRequest.current || shownAt !== pickerShows.current || completedContext !== copyContext.current) return;
         // The notice is extra; a failure to show it never undoes the copy.
         await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
       });

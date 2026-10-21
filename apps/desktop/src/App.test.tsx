@@ -2437,3 +2437,255 @@ test("a late search reply cannot replace rows from the newer snapshot", async ()
   fireEvent.click(screen.getByText("Late 3"));
   await waitFor(() => expect(copied).toEqual(["3"]));
 });
+
+
+test.each([false, true])("copy completion preserves selections changed while pending (pinned=%s)", async (pinned) => {
+  let release: (value: unknown) => void = () => undefined;
+  const calls = backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    copy_citation: () => new Promise((resolve) => { release = resolve; }),
+  });
+  render(<App />);
+  if (pinned) fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  fireEvent.click(await screen.findByText("First"), { shiftKey: true });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_citation"));
+  fireEvent.click(screen.getByText("Second"), { shiftKey: true });
+  await act(async () => { release({ text: "@a", warnings: [] }); });
+  expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
+  expect(screen.queryByRole("button", { name: "Remove a from the selection" })).not.toBeNull();
+  expect(calls).not.toContain("hide_picker");
+  expect(calls).not.toContain("show_copied_notice");
+});
+
+
+test.each(["selection ABA", "query ABA", "hide and reopen"])("copy completion ignores a newer interaction (%s)", async (change) => {
+  let release: (value: unknown) => void = () => undefined;
+  const calls = backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => new Promise((resolve) => { release = resolve; }),
+  });
+  render(<App />);
+  const first = await screen.findByText("First");
+  const box = screen.getByLabelText("Search references");
+  fireEvent.click(first, { shiftKey: true });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_citation"));
+  if (change === "selection ABA") {
+    fireEvent.click(first, { shiftKey: true });
+    fireEvent.click(first, { shiftKey: true });
+  } else if (change === "query ABA") {
+    fireEvent.change(box, { target: { value: "different" } });
+    fireEvent.change(box, { target: { value: "" } });
+  } else {
+    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  }
+  await act(async () => { release({ text: "obsolete copy", warnings: [] }); });
+  expect(screen.queryByRole("button", { name: "Remove a from the selection" })).not.toBeNull();
+  expect(screen.queryByText("obsolete copy")).toBeNull();
+  expect(calls).not.toContain("hide_picker");
+  expect(calls).not.toContain("show_copied_notice");
+});
+
+test.each(["success", "failure"])("an older copy cannot overwrite a newer copy's warning (%s)", async (oldOutcome) => {
+  const resolve: ((value: unknown) => void)[] = [];
+  const reject: ((reason: unknown) => void)[] = [];
+  backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => new Promise((done, fail) => { resolve.push(done); reject.push(fail); }),
+  });
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  fireEvent.click(await screen.findByText("First"), { shiftKey: true });
+  const box = screen.getByLabelText("Search references");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(resolve).toHaveLength(1));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(resolve).toHaveLength(2));
+  await act(async () => { resolve[1]!({ text: "new copy", warnings: ["New warning"] }); });
+  await screen.findByText("New warning");
+  await act(async () => {
+    if (oldOutcome === "success") resolve[0]!({ text: "old copy", warnings: ["Old warning"] });
+    else reject[0]!("old failure");
+  });
+  expect(screen.queryByText("New warning")).not.toBeNull();
+  expect(screen.queryByText("Old warning")).toBeNull();
+  expect(screen.queryByText("Nothing was copied. Try again, or use Reload.")).toBeNull();
+});
+
+test.each([false, true])("copy completion uses the current pin choice (initially=%s)", async (initiallyPinned) => {
+  let release: (value: unknown) => void = () => undefined;
+  const calls = backend({ search: () => [result("a", "First")], copy_citation: () => new Promise((resolve) => { release = resolve; }) });
+  render(<App />);
+  const pin = screen.getByRole("button", { name: "Pin Ibis" });
+  if (initiallyPinned) fireEvent.click(pin);
+  fireEvent.click(await screen.findByText("First"), { shiftKey: true });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_citation"));
+  fireEvent.click(pin);
+  await act(async () => { release({ text: "@a", warnings: [] }); });
+  expect(screen.queryByRole("button", { name: "Remove a from the selection" })).toBeNull();
+  expect(calls.includes("hide_picker")).toBe(initiallyPinned);
+});
+
+test("a delayed hide cannot show an old copy notice after reopening", async () => {
+  let releaseHide: () => void = () => undefined;
+  const calls = backend({
+    search: () => [result("a", "First")],
+    copy_citation: () => ({ text: "@a", warnings: [] }),
+    hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First"));
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+  await act(async () => { await emit("picker:shown"); releaseHide(); });
+  expect(calls).not.toContain("show_copied_notice");
+});
+
+test("a delayed hide cannot show an old notice over a newer selection", async () => {
+  let releaseHide: () => void = () => undefined;
+  const calls = backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    copy_citation: () => ({ text: "@a", warnings: [] }),
+    hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First"));
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+  fireEvent.click(screen.getByText("Second"), { shiftKey: true });
+  await act(async () => { releaseHide(); });
+  expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
+  expect(calls).not.toContain("show_copied_notice");
+});
+
+test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data without replacing a newer %s", async (change) => {
+  let revision = "1";
+  let rejectOld: (reason: unknown) => void = () => undefined;
+  let reads = 0;
+  const attempts: unknown[] = [];
+  const calls = backend({
+    library_status: () => { reads += 1; return { ...zoteroStatus(["user"]), revision }; },
+    search: () => [
+      { ...result("a", `First revision ${revision}`), revision },
+      { ...result("b", `Second revision ${revision}`), revision },
+    ],
+    copy_citation: (args) => {
+      attempts.push(args.expectedRevision);
+      if (attempts.length === 1) return new Promise((_resolve, reject) => { rejectOld = reject; });
+      return { text: "newer copy", warnings: ["Keep the newer warning"] };
+    },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  if (change === "copy feedback") fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  fireEvent.click(await screen.findByText("First revision 1"), { shiftKey: true });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(attempts).toHaveLength(1));
+  if (change === "selection") fireEvent.click(screen.getByText("Second revision 1"), { shiftKey: true });
+  else {
+    fireEvent.keyDown(box, { key: "Enter" });
+    await screen.findByText("Keep the newer warning");
+  }
+  revision = "2"; // Backend replaced the snapshot without delivering its event.
+  await act(async () => { rejectOld("library snapshot changed"); });
+  await screen.findByText("First revision 2");
+  expect(reads).toBeGreaterThan(1);
+  expect(screen.queryByText("The library changed. Search again and reselect the references before copying.")).toBeNull();
+  expect(calls).not.toContain("hide_picker");
+  expect(calls).not.toContain("show_copied_notice");
+  if (change === "selection") {
+    expect(screen.queryByRole("button", { name: "Remove a from the selection" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Remove a from the selection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove b from the selection" }));
+    fireEvent.click(screen.getByText("Second revision 2"));
+    await waitFor(() => expect(attempts).toEqual(["1", "2"]));
+  } else {
+    expect(screen.queryByText("Keep the newer warning")).not.toBeNull();
+    expect(attempts).toEqual(["1", "1"]);
+  }
+});
+
+test.each([
+  ...["2", "3"].flatMap((refreshedRevision) => [false, true].map((selectedCopy) => ({ refreshedRevision, selectedCopy, changedResults: false }))),
+  { refreshedRevision: "2", selectedCopy: false, changedResults: true },
+])("an old recovery preserves a pending copy only for the same snapshot and results ($refreshedRevision, selected=$selectedCopy, changed=$changedResults)", async ({ refreshedRevision, selectedCopy, changedResults }) => {
+  let revision = "1";
+  let reads = 0;
+  let searches = 0;
+  let rejectOld: (reason: unknown) => void = () => undefined;
+  let finishNew: (value: unknown) => void = () => undefined;
+  const attempts: unknown[] = [];
+  const calls = backend({
+    library_status: () => { reads += 1; return { ...zoteroStatus(["user"]), revision, source_counts: { "zotero:user": 2 } }; },
+    search: () => {
+      searches += 1;
+      const keys = changedResults ? (searches >= 3 ? ["a"] : ["b", "a"]) : ["a", "b"];
+      return keys.map((key) => ({ ...result(key, `Pending ${revision} ${key}`, "zotero:user"), revision }));
+    },
+    copy_citation: ({ expectedRevision }) => {
+      attempts.push(expectedRevision);
+      return attempts.length === 1
+        ? new Promise((_resolve, reject) => { rejectOld = reject; })
+        : new Promise((resolve) => { finishNew = resolve; });
+    },
+  });
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  fireEvent.click(await screen.findByText("Pending 1 a"), { shiftKey: true });
+  const box = screen.getByLabelText("Search references");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(attempts).toEqual(["1"]));
+  revision = "2";
+  await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
+  await screen.findByText("Pending 2 b");
+  fireEvent.click(screen.getByRole("button", { name: "Remove a from the selection" }));
+  fireEvent.click(screen.getByText("Pending 2 b"), { shiftKey: selectedCopy });
+  if (selectedCopy) fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(attempts).toEqual(["1", "2"]));
+  revision = refreshedRevision;
+  await act(async () => { rejectOld("library snapshot changed"); });
+  await waitFor(() => expect(reads).toBe(2));
+  await waitFor(() => expect(searches).toBe(3));
+  if (changedResults) await waitFor(() => expect(screen.queryByText("Pending 2 b")).toBeNull());
+  else await screen.findByText(`Pending ${refreshedRevision} b`);
+  await act(async () => { finishNew({ text: "new valid copy", warnings: ["Keep newest warning"] }); });
+  expect(Boolean(screen.queryByText("Keep newest warning"))).toBe(refreshedRevision === "2" && !changedResults);
+  expect(Boolean(screen.queryByRole("button", { name: "Remove b from the selection" }))).toBe(selectedCopy && refreshedRevision !== "2");
+  expect(screen.queryByText("The library changed. Search again and reselect the references before copying.")).toBeNull();
+  expect(calls).not.toContain("hide_picker");
+  expect(calls).not.toContain("show_copied_notice");
+});
+
+test.each(["warning", "notice"])("a search started before a selected copy preserves its completion (%s)", async (feedback) => {
+  let releaseSearch: (value: unknown) => void = () => undefined;
+  let finishCopy: (value: unknown) => void = () => undefined;
+  const notices: unknown[] = [];
+  const calls = backend({
+    search: ({ query }) => query === "pending"
+      ? new Promise((resolve) => { releaseSearch = resolve; })
+      : [result("a", "Selected before search")],
+    copy_citation: () => new Promise((resolve) => { finishCopy = resolve; }),
+    show_copied_notice: ({ text }) => { notices.push(text); return null; },
+  });
+  render(<App />);
+  if (feedback === "warning") fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  fireEvent.click(await screen.findByText("Selected before search"), { shiftKey: true });
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "pending" } });
+  await waitFor(() => expect(calls.filter((call) => call === "search")).toHaveLength(2));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_citation"));
+  await act(async () => { releaseSearch([result("b", "Search finished later")]); });
+  await screen.findByText("Search finished later");
+  await act(async () => { finishCopy({ text: "selected copy", warnings: feedback === "warning" ? ["Keep selected warning"] : [] }); });
+  expect(screen.queryByRole("button", { name: "Remove a from the selection" })).toBeNull();
+  if (feedback === "warning") {
+    expect(screen.queryByText("Keep selected warning")).not.toBeNull();
+    expect(calls).not.toContain("hide_picker");
+    expect(notices).toEqual([]);
+  } else {
+    await waitFor(() => expect(notices).toEqual(["selected copy"]));
+    expect(calls).toContain("hide_picker");
+  }
+});
