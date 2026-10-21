@@ -367,10 +367,8 @@ class MacOS:
 
     def look(self, pids, press=None):
         result = subprocess.run(["osascript", "-l", "JavaScript", "-e", MACOS_LOOK, press or "", *map(str, pids)],
-                                capture_output=True, text=True, encoding="utf-8", errors="strict", timeout=60)
-        if result.returncode:
-            raise RuntimeError(f"System Events helper failed: {result.stderr.strip()[-500:]}")
-        return look_result(result.stdout)
+                                capture_output=True, timeout=60)
+        return look_result(helper_stdout(result, "System Events"))
 
     def close(self):
         clean_settings(self.settings)
@@ -439,6 +437,15 @@ class Windows:
         clean_settings(self.settings)
 
 
+def helper_stdout(result, name):
+    """Decode in this thread: Windows text-pipe readers can lose decode errors."""
+    stdout = result.stdout.decode("utf-8", errors="strict")
+    stderr = result.stderr.decode("utf-8", errors="strict")
+    if result.returncode:
+        raise RuntimeError(f"{name} helper failed: {stderr.strip()[-500:]}")
+    return stdout
+
+
 def powershell(script, **env):
     """Runs a script from a file: commands read from standard input end at the
     first line break inside a block. Values arrive as environment variables."""
@@ -447,10 +454,8 @@ def powershell(script, **env):
         # JSON and paths must survive Windows' non-UTF-8 default code page.
         path.write_text("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n" + script, encoding="utf-8")
         result = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-File", str(path)],
-                                capture_output=True, text=True, encoding="utf-8", errors="strict", timeout=120, env=dict(os.environ, **env))
-    if result.returncode:
-        raise RuntimeError(f"PowerShell helper failed: {result.stderr.strip()[-500:]}")
-    return result.stdout
+                                capture_output=True, timeout=120, env=dict(os.environ, **env))
+    return helper_stdout(result, "PowerShell")
 
 
 def uninstall_entries():
@@ -705,12 +710,35 @@ class Tests(unittest.TestCase):
                     patch("subprocess.run", side_effect=lambda _command, **kwargs: run_child(command, **kwargs)):
                 self.assertEqual(helper(), (False, [expected], None))
 
+    def test_native_helpers_decode_binary_pipes_in_the_caller(self):
+        payload = json.dumps({"pressed": False, "seen": ["Synthetic 合成"]}, ensure_ascii=False).encode("utf-8")
+        mac = MacOS.__new__(MacOS)
+        for helper in (lambda: look_result(powershell("synthetic")), lambda: mac.look([123])):
+            def binary_result(command, **kwargs):
+                # Windows decodes text pipes on reader threads, where errors
+                # can be lost. Only bytes may cross that thread boundary.
+                self.assertTrue(kwargs["capture_output"])
+                self.assertFalse(kwargs.get("text", False))
+                self.assertIsNone(kwargs.get("encoding"))
+                self.assertIsNone(kwargs.get("errors"))
+                return subprocess.CompletedProcess(command, 0, stdout=payload, stderr=b"")
+            with self.subTest(helper=helper), patch("subprocess.run", side_effect=binary_result):
+                self.assertEqual(helper(), (False, ["Synthetic 合成"], None))
+
+    def test_native_helper_failure_keeps_decoded_utf8_diagnostics(self):
+        mac = MacOS.__new__(MacOS)
+        for helper in (lambda: powershell("synthetic"), lambda: mac.look([123])):
+            failed = subprocess.CompletedProcess([], 1, stdout=b"", stderr="Synthetic 合成".encode("utf-8"))
+            with self.subTest(helper=helper), patch("subprocess.run", return_value=failed):
+                with self.assertRaisesRegex(RuntimeError, "helper failed: Synthetic 合成"):
+                    helper()
+
     def test_powershell_sets_utf8_before_running_the_script(self):
         def inspect_script(command, **_kwargs):
             script = Path(command[-1]).read_text(encoding="utf-8")
             self.assertTrue(script.startswith("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n"))
             self.assertTrue(script.endswith("Write-Output '合成'"))
-            return subprocess.CompletedProcess(command, 0, stdout="合成", stderr="")
+            return subprocess.CompletedProcess(command, 0, stdout="合成".encode("utf-8"), stderr=b"")
         with patch("subprocess.run", side_effect=inspect_script):
             self.assertEqual(powershell("Write-Output '合成'"), "合成")
 
