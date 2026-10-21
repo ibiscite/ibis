@@ -2620,14 +2620,26 @@ namespace IbisSnapshotContract {
  public class ElementNotAvailableException : Exception {}
  public enum TreeScope { Children, Descendants }
  public class PropertyCondition { public PropertyCondition(object property, object value) {} }
+ public static class Condition { public static object TrueCondition=new object(); }
+ public static class ValuePattern { public static object Pattern=new object(); }
+ public static class TextPattern { public static object Pattern=new object(); }
  public static class AutomationElement {
   public static object ProcessIdProperty=new object(), NameProperty=new object();
   public static SnapshotRoot RootElement=new SnapshotRoot();
-  public static object FromHandle(IntPtr handle) { throw new InvalidOperationException(SnapshotFault.Marker); }
+  public static object FromHandle(IntPtr handle) {
+   SnapshotFault.Check("from-handle");
+   if (SnapshotFault.Scenario=="provider") throw new InvalidOperationException(SnapshotFault.Marker);
+   return new SnapshotWindow();
+  }
  }
 }
 public static class SnapshotFault {
  public static string Scenario, Marker="injected-private-clipboard-引用";
+ public static System.Collections.Generic.List<string> Reads=new System.Collections.Generic.List<string>();
+ public static void Check(string operation) {
+  Reads.Add(operation);
+  if (Scenario==operation) throw new InvalidOperationException(Marker);
+ }
 }
 public class SnapshotRoot {
  public object[] FindAll(IbisSnapshotContract.TreeScope scope, IbisSnapshotContract.PropertyCondition condition) {
@@ -2635,14 +2647,55 @@ public class SnapshotRoot {
   throw new InvalidOperationException(SnapshotFault.Marker);
  }
 }
+public class SnapshotWindow {
+ public SnapshotWindowInfo Current { get { return new SnapshotWindowInfo(); } }
+ public object[] FindAll(IbisSnapshotContract.TreeScope scope, object condition) {
+  SnapshotFault.Check("descendant-list"); return new object[] {new SnapshotNode()};
+ }
+}
+public class SnapshotWindowInfo {
+ public int NativeWindowHandle { get { SnapshotFault.Check("window-handle"); return 7; } }
+}
+public class SnapshotNode {
+ public SnapshotNodeInfo Current { get { SnapshotFault.Check("node-current"); return new SnapshotNodeInfo(); } }
+ public bool TryGetCurrentPattern(object kind, out object pattern) {
+  bool value=kind==IbisSnapshotContract.ValuePattern.Pattern;
+  SnapshotFault.Check(value ? "value-pattern" : "text-pattern");
+  bool present=value ? SnapshotFault.Scenario=="value-read" || SnapshotFault.Scenario=="success-value"
+   : SnapshotFault.Scenario=="text-read" || SnapshotFault.Scenario=="success-text";
+  pattern=present ? (object)new SnapshotPattern() : null; return present;
+ }
+}
+public class SnapshotNodeInfo {
+ public SnapshotType ControlType { get { SnapshotFault.Check("node-type"); return new SnapshotType(); } }
+ public string Name { get { SnapshotFault.Check("node-name"); return "Synthetic node"; } }
+ public bool HasKeyboardFocus { get { SnapshotFault.Check("node-focus"); return true; } }
+}
+public class SnapshotType { public string ProgrammaticName { get { return "ControlType.Edit"; } } }
+public class SnapshotPattern {
+ public SnapshotValue Current { get { return new SnapshotValue(); } }
+ public SnapshotRange DocumentRange { get { return new SnapshotRange(); } }
+}
+public class SnapshotValue {
+ public string Value { get { SnapshotFault.Check("value-read"); return "Synthetic value"; } }
+}
+public class SnapshotRange {
+ public string GetText(int limit) {
+  SnapshotFault.Check("text-read");
+  if (limit!=16385) throw new InvalidOperationException(SnapshotFault.Marker);
+  return "Synthetic value";
+ }
+}
 public static class IbisSmoke {
  public static bool IsWindow(IntPtr handle) { return SnapshotFault.Scenario!="ownership"; }
  public static uint OwnerPid(IntPtr handle) { return 42; }
  public static bool IsWindowVisible(IntPtr handle) { return true; }
+ public static uint ForegroundPid() { return 42; }
 }
 '@
 [SnapshotFault]::Scenario=$Scenario
 $Action='snapshot'; $AppId=42; $Text='7'
+$completed=$false
 try {
  switch ($Scenario) {
   'discovery' {$Text='0'}
@@ -2650,24 +2703,44 @@ try {
   'handle-parse' {$Text=[SnapshotFault]::Marker}
   'unknown-phase' {$script:SnapshotPhase=[SnapshotFault]::Marker; throw [SnapshotFault]::Marker}
   'case-variant' {$script:SnapshotPhase='DiScOvErY'; throw [SnapshotFault]::Marker}
+  'unknown-operation' {$script:SnapshotPhase='provider'; $script:SnapshotOperation=[SnapshotFault]::Marker; throw [SnapshotFault]::Marker}
+  'case-operation' {$script:SnapshotPhase='provider'; $script:SnapshotOperation='NoDe-NaMe'; throw [SnapshotFault]::Marker}
  }
- Get-Tree | Out-Null
+ $tree=Get-Tree
+ $completed=$true
+ if ($Scenario -like 'success-*') {
+  ConvertTo-Json -InputObject @{tree=$tree;reads=@([SnapshotFault]::Reads)} -Depth 10 -Compress
+  exit 0
+ }
  throw 'Expected snapshot rejection'
-} catch { & $fatal }
+} catch {
+ # A getter fault must abort immediately, not reach a later read or the sentinel.
+ if ([SnapshotFault]::Reads.Contains($Scenario) -and
+     ($completed -or [SnapshotFault]::Reads[-1] -cne $Scenario)) {
+  [Console]::Error.WriteLine('Native contract provider fault continued')
+  exit 3
+ }
+ & $fatal
+}
 '''
         cases = (
-            ("ownership", "ownership", "RuntimeException"),
-            ("handle-parse", "handle-parse", "other"),
-            ("discovery", "discovery", "InvalidOperationException"),
-            ("provider", "provider", "InvalidOperationException"),
-            ("window-bound", "window-bound", "RuntimeException"),
-            ("unknown-phase", "unknown", "RuntimeException"),
-            ("case-variant", "unknown", "RuntimeException"),
+            ("ownership", "ownership", "RuntimeException", "unknown"),
+            ("handle-parse", "handle-parse", "other", "unknown"),
+            ("discovery", "discovery", "InvalidOperationException", "unknown"),
+            ("provider", "provider", "InvalidOperationException", "from-handle"),
+            ("window-bound", "window-bound", "RuntimeException", "unknown"),
+            ("unknown-phase", "unknown", "RuntimeException", "unknown"),
+            ("case-variant", "unknown", "RuntimeException", "unknown"),
+            ("unknown-operation", "provider", "RuntimeException", "unknown"),
+            ("case-operation", "provider", "RuntimeException", "unknown"),
+            *((operation, "provider", "InvalidOperationException", operation) for operation in (
+                "from-handle", "window-handle", "descendant-list", "node-current", "value-pattern",
+                "value-read", "text-pattern", "text-read", "node-type", "node-name", "node-focus")),
         )
         with tempfile.TemporaryDirectory() as temporary:
             test = Path(temporary) / "snapshot-failure-contract.ps1"
             test.write_text(script, encoding="utf-8")
-            for scenario, phase, kind in cases:
+            for scenario, phase, kind, operation in cases:
                 with self.subTest(scenario=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                              "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
@@ -2675,10 +2748,25 @@ try {
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                     facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
                              for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
-                    self.assertEqual(facts, [{"phase": phase, "kind": kind}])
+                    self.assertEqual(facts, [{"phase": phase, "kind": kind, "operation": operation}])
                     self.assertIn(f"NATIVE HELPER ERROR {kind}", result.stderr)
                     self.assertEqual(result.stdout, "")
                     self.assertNotIn("injected-private-clipboard", result.stderr)
+            # The successful output and native property-read order stay unchanged.
+            for pattern in ("value", "text"):
+                with self.subTest(success=pattern):
+                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
+                                             "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
+                                             "-Scenario", f"success-{pattern}"], capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    facts = json.loads(result.stdout)
+                    self.assertEqual(facts["tree"], {"nodes": [{"role": "ControlType.Edit", "name": "Synthetic node",
+                                                           "value": "Synthetic value", "focused": True}],
+                                                     "visible": True, "foreground": True, "picker_handle": 7})
+                    reads = ["from-handle", "window-handle", "descendant-list", "node-current", "value-pattern"]
+                    reads += ["value-read"] if pattern == "value" else ["text-pattern", "text-read"]
+                    self.assertEqual(facts["reads"], reads + ["node-type", "node-name", "node-focus"])
+                    self.assertEqual(result.stderr, "")
 
     @unittest.skipUnless(platform.system() == "Windows" and shutil.which("pwsh"),
                          "Windows UI Automation is required to execute the real snapshot failure paths")
@@ -2693,7 +2781,7 @@ try {
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
                          for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
-                self.assertEqual(facts, [{"phase": phase, "kind": kind}])
+                self.assertEqual(facts, [{"phase": phase, "kind": kind, "operation": "unknown"}])
                 self.assertEqual(result.stdout, "")
                 self.assertNotIn("injected-private-clipboard", result.stderr)
 

@@ -71,6 +71,7 @@ function Get-AppWindow([int] $Id) {
   return $null
 }
 function Get-Tree {
+  $script:SnapshotOperation = 'unknown'
   if ($Text -and $Text -ne '0') {
     $script:SnapshotPhase = 'handle-parse'
     $handle = [IntPtr]::new([long]::Parse($Text, [System.Globalization.CultureInfo]::InvariantCulture))
@@ -80,13 +81,15 @@ function Get-Tree {
       throw 'Verified picker window identity was lost'
     }
     if (![IbisSmoke]::IsWindowVisible($handle)) { return @{nodes=@();visible=$false;foreground=$false;picker_handle=$handle.ToInt64()} }
+    $script:SnapshotOperation = 'from-handle'
     $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
   } else {
     $window = Get-AppWindow $AppId
   }
   if (!$window) { return @{nodes=@();visible=$false;foreground=$false} }
   $script:SnapshotPhase = 'provider'
-  $handle = [IntPtr] $window.Current.NativeWindowHandle
+  $script:SnapshotOperation = 'window-handle'
+  $handle = [IntPtr] $window.get_Current().get_NativeWindowHandle()
   if ($handle -eq [IntPtr]::Zero) {
     # Right after launch the window can be listed before it has a handle.
     if (!$Text -or $Text -eq '0') { return @{tree_changed=$true} }
@@ -97,6 +100,7 @@ function Get-Tree {
   # visibility. Keep querying the verified picker HWND's actual OS bit.
   $visible = [IbisSmoke]::IsWindowVisible($handle)
   if (!$visible) { return @{nodes=@();visible=$false;foreground=$false;picker_handle=$handle.ToInt64()} }
+  $script:SnapshotOperation = 'descendant-list'
   $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
   if ($elements.Count -gt 4000) {
     $script:SnapshotPhase = 'tree-bound'
@@ -104,20 +108,35 @@ function Get-Tree {
   }
   $nodes = @()
   foreach ($element in $elements) {
-    $current = $element.Current
+    # Dotted PowerShell getters suppress exceptions; explicit getters fail closed.
+    $script:SnapshotOperation = 'node-current'
+    $current = $element.get_Current()
     $value = ''
     $pattern = $null
-    if ($element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref] $pattern)) { $value = $pattern.Current.Value }
-    elseif ($element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref] $pattern)) {
-      # Root documents can include results, recovery paragraphs and the footer.
-      # A silent 500-character prefix can omit the very message being asserted.
-      $value = $pattern.DocumentRange.GetText(16385)
-      if ($value.Length -gt 16384) {
-        $script:SnapshotPhase = 'text-bound'
-        throw 'Native accessibility document exceeded smoke text bound'
+    $script:SnapshotOperation = 'value-pattern'
+    if ($element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref] $pattern)) {
+      $script:SnapshotOperation = 'value-read'
+      $value = $pattern.get_Current().get_Value()
+    } else {
+      $script:SnapshotOperation = 'text-pattern'
+      if ($element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref] $pattern)) {
+        # Root documents can include results, recovery paragraphs and the footer.
+        # A silent 500-character prefix can omit the very message being asserted.
+        $script:SnapshotOperation = 'text-read'
+        $value = $pattern.get_DocumentRange().GetText(16385)
+        if ($value.Length -gt 16384) {
+          $script:SnapshotPhase = 'text-bound'
+          throw 'Native accessibility document exceeded smoke text bound'
+        }
       }
     }
-    $nodes += @{role=$current.ControlType.ProgrammaticName;name=$current.Name;value=$value;focused=$current.HasKeyboardFocus}
+    $script:SnapshotOperation = 'node-type'
+    $role = $current.get_ControlType().get_ProgrammaticName()
+    $script:SnapshotOperation = 'node-name'
+    $name = $current.get_Name()
+    $script:SnapshotOperation = 'node-focus'
+    $focused = $current.get_HasKeyboardFocus()
+    $nodes += @{role=$role;name=$name;value=$value;focused=$focused}
   }
   @{nodes=$nodes;visible=$visible;foreground=([IbisSmoke]::ForegroundPid() -eq $AppId);picker_handle=$handle.ToInt64()}
 }
@@ -296,7 +315,10 @@ try {
   if ($Action -eq 'snapshot') {
     $phases = 'discovery', 'provider', 'handle-parse', 'ownership', 'window-bound', 'search-bound', 'tree-bound', 'text-bound'
     $phase = if ($phases -ccontains $script:SnapshotPhase) { $script:SnapshotPhase } else { 'unknown' }
-    [Console]::Error.WriteLine('NATIVE SNAPSHOT FAILURE ' + (ConvertTo-Json -InputObject @{phase=$phase;kind=$kind} -Compress))
+    $operations = 'from-handle', 'window-handle', 'descendant-list', 'node-current', 'value-pattern',
+      'value-read', 'text-pattern', 'text-read', 'node-type', 'node-name', 'node-focus'
+    $operation = if ($operations -ccontains $script:SnapshotOperation) { $script:SnapshotOperation } else { 'unknown' }
+    [Console]::Error.WriteLine('NATIVE SNAPSHOT FAILURE ' + (ConvertTo-Json -InputObject @{phase=$phase;kind=$kind;operation=$operation} -Compress))
   }
   exit 1
 }
