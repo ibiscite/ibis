@@ -20,6 +20,8 @@ afterEach(async () => {
   // Event listeners are removed asynchronously after unmount; let that
   // finish before the mocked Tauri internals are cleared.
   await new Promise((resolve) => setTimeout(resolve, 0));
+  // Closing a React Aria scope also restores focus on the next frame.
+  await act(async () => { await new Promise(requestAnimationFrame); });
   clearMocks();
 });
 
@@ -51,7 +53,11 @@ test("copy confirmation expires, but copy warnings remain until dismissed", asyn
 /** Opens the More menu and picks an action from it, as a user would. */
 async function chooseFromMore(name: string, role: "menuitem" | "menuitemcheckbox" = "menuitem") {
   if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.click(await screen.findByRole(role, { name }));
+  const item = await screen.findByRole(role, { name });
+  // fireEvent.click omits the focus a real pointer/keyboard activation gives
+  // the row; the shortcuts dialog uses it to choose its return destination.
+  act(() => item.focus());
+  fireEvent.click(item);
 }
 
 function result(key: string, title: string, source = "refs.bib") {
@@ -1071,6 +1077,7 @@ test("resizing More keeps its focused action visible without undoing manual scro
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: /^More/ }));
   const menu = await screen.findByRole("menu");
+  act(() => menu.focus());
   fireEvent.keyDown(document.activeElement!, { key: "End" });
   const last = document.activeElement as HTMLElement;
   expect(last.textContent).toContain("Quit Ibis");

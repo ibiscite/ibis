@@ -1,6 +1,8 @@
-import { Children, isValidElement, useEffect, useLayoutEffect, useRef, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { Button, Header, Keyboard, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
 import "./Menu.css";
+
+const ActionFocusContext = createContext<(() => void) | null>(null);
 
 type ItemProps = {
   id: string; label: string; title?: string; keys?: string;
@@ -20,10 +22,15 @@ export function MenuCheck({ checked }: { checked: boolean }) {
 
 /** One row: a leading check column, the label, and an optional shortcut. */
 export function MenuItem({ id, label, title, keys, checked, disabled, onAction }: ItemProps) {
+  const requestActionFocus = useContext(ActionFocusContext);
   return <AriaMenuItem id={id} className="menu-item" textValue={label}
     // A toggle keeps the menu open, as before, so several can be changed at once.
     shouldCloseOnSelect={checked === undefined && !disabled ? undefined : false}
-    onAction={() => { if (!disabled) onAction(); }}
+    onAction={() => {
+      if (disabled) return;
+      if (checked === undefined) requestActionFocus?.();
+      onAction();
+    }}
     render={(props) => <div {...props as ComponentPropsWithRef<"div">} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
       <MenuCheck checked={isSelected} />
@@ -76,6 +83,9 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const popover = useRef<HTMLElement | null>(null);
+  const pendingFocus = useRef<HTMLElement | null>(null);
+  const focusFrame = useRef(0);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
   useEffect(() => {
     if (!isOpen) return;
@@ -93,14 +103,36 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     window.addEventListener("resize", keepFocusedVisible);
     return () => window.removeEventListener("resize", keepFocusedVisible);
   }, [isOpen]);
-  // Escape returns to the menu button and Tab moves on. The move waits until
-  // the popover has let go of focus, but happens before the next key.
-  const pendingFocus = useRef<HTMLElement | null>(null);
+  // The exiting modal popover can refuse focus outside it. Retry after removal,
+  // and leave a newly focused dialog/control alone.
+  const restoreFocus = useCallback(() => {
+    const target = pendingFocus.current;
+    const active = document.activeElement;
+    if (target?.isConnected && (active === document.body || active === button.current || active === target || popover.current?.contains(active))) target.focus();
+    if (!popover.current) pendingFocus.current = null;
+  }, []);
+  const popoverRef = useCallback((node: HTMLElement | null) => {
+    popover.current = node;
+    if (!node && pendingFocus.current) focusFrame.current = requestAnimationFrame(restoreFocus);
+  }, [restoreFocus]);
   useLayoutEffect(() => {
-    if (isOpen || !pendingFocus.current) return;
-    pendingFocus.current.focus();
-    pendingFocus.current = null;
-  }, [isOpen]);
+    if (isOpen) {
+      pendingFocus.current = null;
+      cancelAnimationFrame(focusFrame.current);
+    } else restoreFocus();
+  }, [isOpen, restoreFocus]);
+  useEffect(() => {
+    // Any later user input supersedes the closing action's destination.
+    const cancel = () => { pendingFocus.current = null; };
+    document.addEventListener("pointerdown", cancel, true);
+    document.addEventListener("keydown", cancel, true);
+    return () => {
+      cancel();
+      cancelAnimationFrame(focusFrame.current);
+      document.removeEventListener("pointerdown", cancel, true);
+      document.removeEventListener("keydown", cancel, true);
+    };
+  }, []);
   const leave = (to: HTMLElement | null | undefined) => {
     pendingFocus.current = to ?? null;
     onOpenChange(false);
@@ -112,7 +144,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
-    <Popover className="menu-popover" placement={placement} offset={4} containerPadding={8}>
+    <Popover ref={popoverRef} className="menu-popover" placement={placement} offset={4} containerPadding={8}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (event.nativeEvent.isComposing) return;
         const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;
@@ -122,7 +154,9 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
         leave(to);
       }}>
         <AriaMenu ref={list} id={id} className="menu" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
-          {children}
+          <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
+            {children}
+          </ActionFocusContext.Provider>
         </AriaMenu>
       </div>
     </Popover>
