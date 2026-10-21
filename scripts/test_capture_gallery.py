@@ -57,18 +57,56 @@ class CaptureTests(unittest.TestCase):
         return launch
 
     def test_invalid_arguments_never_launch_an_app(self):
-        for extra in (["--wait", "-1"], ["--wait", "nan"], ["--ready-timeout", "inf"], ["--state", "unknown"], ["--app", str(self.root / "missing")]):
+        for extra in (["--settle", "-1"], ["--settle", "nan"], ["--ready-timeout", "inf"], ["--state", "unknown"], ["--app", str(self.root / "missing")]):
             with self.subTest(extra=extra), patch.object(gallery.subprocess, "Popen") as launch:
                 with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
                     gallery.main(["--app", str(self.app), "--output", str(self.output), *extra])
                 self.assertEqual(error.exception.code, 2)
                 launch.assert_not_called()
 
-    def test_cli_defaults_to_all_states_and_eight_seconds(self):
+    def test_cli_defaults_to_all_states_a_short_settle_and_todays_ceiling(self):
         with patch.object(gallery, "capture_gallery") as capture:
             self.assertEqual(gallery.main(["--app", str(self.app), "--output", str(self.output)]), 0)
         self.assertEqual(capture.call_args.kwargs["states"], gallery.STATES)
-        self.assertEqual(capture.call_args.kwargs["wait_seconds"], 8)
+        self.assertEqual(capture.call_args.kwargs["settle_seconds"], 1)
+        self.assertEqual(capture.call_args.kwargs["ready_timeout"], 23)
+
+    def test_capture_starts_once_acknowledged_after_only_a_short_settle(self):
+        for late in (False, True):
+            process = Process()
+            def launch(_args, **options):
+                ready = Path(options["env"]["IBIS_GALLERY_READY_FILE"])
+                acknowledgment = json.dumps({"state": options["env"]["IBIS_GALLERY_STATE"]})
+                if late:
+                    original = process.wait
+                    def render_then_wait(timeout=None):
+                        ready.write_text(acknowledgment, encoding="utf8")
+                        return original(timeout)
+                    process.wait = render_then_wait
+                else:
+                    ready.write_text(acknowledgment, encoding="utf8")
+                return process
+            def capture(destination, _platform):
+                destination.write_bytes(gallery.PNG_HEADER + b"synthetic pixels")
+            with self.subTest(late=late), patch.object(gallery.subprocess, "Popen", side_effect=launch), patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True), patch.object(gallery, "capture_screenshot", side_effect=capture):
+                gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux")
+            # No fixed startup sleep: one poll interval at most, then the 1 s settle.
+            self.assertEqual(process.waits[:2] if late else process.waits[:1], [0.1, 1] if late else [1])
+            self.assertTrue((self.output / "loading.png").is_file())
+
+    def test_an_app_that_exits_while_settling_fails_without_an_image(self):
+        process = Process()
+        original = process.wait
+        def exit_on_settle(timeout=None):
+            if timeout == 1:
+                process.alive = False
+            return original(timeout)
+        process.wait = exit_on_settle
+        with patch.object(gallery.subprocess, "Popen", side_effect=self.acknowledge(process)), patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True), patch.object(gallery, "capture_screenshot") as capture:
+            with self.assertRaisesRegex(gallery.CaptureError, "exited after rendering loading"):
+                gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux")
+        capture.assert_not_called()
+        self.assertFalse((self.output / "loading.png").exists())
 
     def test_a_live_app_without_the_selected_render_acknowledgment_only_gets_a_failure_image(self):
         for acknowledgment in (None, "not JSON", '{"state":"empty"}'):
@@ -81,7 +119,7 @@ class CaptureTests(unittest.TestCase):
 
             with self.subTest(acknowledgment=acknowledgment), patch.object(gallery.subprocess, "Popen", side_effect=launch), patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True), patch.object(gallery, "capture_screenshot") as capture:
                 with self.assertRaises(gallery.CaptureError):
-                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", wait_seconds=0, ready_timeout=0)
+                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", settle_seconds=0, ready_timeout=0)
                 capture.assert_called_once()
                 self.assertEqual(capture.call_args.args[0].name, "failure-loading.capture.tmp.png")
                 self.assertFalse((self.output / "loading.png").exists())
@@ -101,7 +139,7 @@ class CaptureTests(unittest.TestCase):
 
             with self.subTest(screenshot_fails=screenshot_fails), patch.object(gallery.subprocess, "Popen", return_value=process), patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True), patch.object(gallery, "capture_screenshot", side_effect=capture) as screenshot:
                 with self.assertRaisesRegex(gallery.CaptureError, "did not acknowledge rendering loading"):
-                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", wait_seconds=0, ready_timeout=0)
+                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", settle_seconds=0, ready_timeout=0)
                 self.assertEqual(screenshot.call_count, 1)
                 self.assertFalse(process.alive)
                 self.assertFalse((self.output / "loading.png").exists())
@@ -142,7 +180,7 @@ class CaptureTests(unittest.TestCase):
             destination.write_bytes(gallery.PNG_HEADER + b"synthetic pixels")
 
         with patch.object(gallery.subprocess, "Popen", side_effect=launch), patch.object(gallery.os, "killpg", side_effect=stop, create=True), patch.object(gallery, "capture_screenshot", side_effect=capture):
-            gallery.capture_gallery(self.app, self.output, states=("first-run", "rtl"), platform_name="Linux", wait_seconds=0)
+            gallery.capture_gallery(self.app, self.output, states=("first-run", "rtl"), platform_name="Linux", settle_seconds=0)
         self.assertEqual([env["IBIS_GALLERY_STATE"] for env in environments], ["first-run", "rtl"])
         self.assertTrue(all(env["IBIS_GALLERY"] == "1" for env in environments))
         self.assertTrue(all(not process.alive and len(process.waits) >= 2 for process in processes))
@@ -156,7 +194,7 @@ class CaptureTests(unittest.TestCase):
                 (self.output / f"{state}.png").write_bytes(gallery.PNG_HEADER + b"stale")
             with self.subTest(early_exit=early_exit), patch.object(gallery.subprocess, "Popen", side_effect=self.acknowledge(process)) as launch, patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True), patch.object(gallery, "capture_screenshot", side_effect=gallery.CaptureError("synthetic capture failure")) as capture:
                 with self.assertRaises(gallery.CaptureError):
-                    gallery.capture_gallery(self.app, self.output, states=("loading", "empty"), platform_name="Linux", wait_seconds=0)
+                    gallery.capture_gallery(self.app, self.output, states=("loading", "empty"), platform_name="Linux", settle_seconds=0)
                 self.assertFalse(process.alive)
                 self.assertEqual(launch.call_count, 1)
                 self.assertEqual(capture.call_count, 0 if early_exit else 1)
@@ -165,7 +203,7 @@ class CaptureTests(unittest.TestCase):
     def test_launch_failure_never_leaves_an_image(self):
         with patch.object(gallery.subprocess, "Popen", side_effect=OSError("synthetic launch failure")):
             with self.assertRaises(OSError):
-                gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", wait_seconds=0)
+                gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", settle_seconds=0)
         self.assertFalse(list(self.output.glob("*.png")))
 
     def test_a_missing_capture_cannot_reuse_an_old_staging_image(self):
@@ -175,7 +213,7 @@ class CaptureTests(unittest.TestCase):
         staging.write_bytes(gallery.PNG_HEADER + b"old screenshot")
         with patch.object(gallery.subprocess, "Popen", side_effect=self.acknowledge(process)), patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True), patch.object(gallery, "capture_screenshot"):
             with self.assertRaisesRegex(gallery.CaptureError, "was not written"):
-                gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", wait_seconds=0)
+                gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", settle_seconds=0)
         self.assertFalse(process.alive)
         self.assertFalse(staging.exists())
         self.assertFalse((self.output / "loading.png").exists())
@@ -191,7 +229,7 @@ class CaptureTests(unittest.TestCase):
 
             with self.subTest(result=result), patch.object(gallery.subprocess, "Popen", side_effect=self.acknowledge(process)), patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True), patch.object(gallery, "capture_screenshot", side_effect=capture):
                 with self.assertRaises(KeyboardInterrupt if result else gallery.CaptureError):
-                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", wait_seconds=0)
+                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Linux", settle_seconds=0)
                 self.assertFalse(process.alive)
                 self.assertFalse(list(self.output.glob("*.png")))
                 self.assertFalse(list(self.output.glob(".*.png")))
@@ -246,7 +284,7 @@ class CaptureTests(unittest.TestCase):
              patch.object(gallery.subprocess, "Popen", side_effect=launch), \
              patch.object(gallery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
              patch.object(gallery, "capture_screenshot", side_effect=capture):
-            gallery.capture_gallery(self.app, self.output, states=("first-run", "damaged-library"), platform_name="Windows", wait_seconds=0)
+            gallery.capture_gallery(self.app, self.output, states=("first-run", "damaged-library"), platform_name="Windows", settle_seconds=0)
             self.assertEqual(gallery.os.environ["WEBVIEW2_USER_DATA_FOLDER"], str(foreign))
         self.assertEqual(len(profiles), 2)
         self.assertTrue(all(not process.alive for process in processes))
@@ -269,7 +307,7 @@ class CaptureTests(unittest.TestCase):
                  patch.object(gallery.subprocess, "Popen", side_effect=launch), \
                  patch.object(gallery.subprocess, "run") as taskkill:
                 with self.assertRaises(OSError if launch_fails else gallery.CaptureError):
-                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Windows", wait_seconds=0)
+                    gallery.capture_gallery(self.app, self.output, states=("loading",), platform_name="Windows", settle_seconds=0)
                 taskkill.assert_not_called()
             self.assertEqual(len(profiles), 1)
             self.assertFalse(profiles[0].exists())
@@ -294,7 +332,7 @@ class CaptureTests(unittest.TestCase):
              patch.object(gallery, "capture_screenshot", side_effect=capture), \
              patch.object(gallery, "remove_tree", side_effect=locked_twice), \
              patch.object(gallery.time, "sleep"):
-            self.assertEqual(gallery.main(["--app", str(self.app), "--output", str(self.output), "--state", "loading", "--wait", "0"]), 0)
+            self.assertEqual(gallery.main(["--app", str(self.app), "--output", str(self.output), "--state", "loading", "--settle", "0"]), 0)
         self.assertEqual(len(attempts), 3)
         self.assertTrue((self.output / "loading.png").is_file())
 
@@ -314,7 +352,7 @@ class CaptureTests(unittest.TestCase):
              patch.object(gallery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
              patch.object(gallery, "capture_screenshot", side_effect=capture), \
              contextlib.redirect_stderr(error_output):
-            self.assertEqual(gallery.main(["--app", str(self.app), "--output", str(self.output), "--state", "loading", "--wait", "0"]), 1)
+            self.assertEqual(gallery.main(["--app", str(self.app), "--output", str(self.output), "--state", "loading", "--settle", "0"]), 1)
             cleanup.assert_called_once()
         self.assertFalse(process.alive)
         self.assertIn("Gallery capture failed", error_output.getvalue())
@@ -343,7 +381,7 @@ class CaptureTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0)
 
         with patch.object(gallery.subprocess, "Popen", side_effect=self.acknowledge(process)), patch.object(gallery.subprocess, "run", side_effect=capture), patch.object(gallery.os, "killpg", side_effect=lambda *_: process.kill(), create=True):
-            gallery.capture_gallery(self.app, self.output, states=("first-run",), platform_name="Darwin", wait_seconds=0)
+            gallery.capture_gallery(self.app, self.output, states=("first-run",), platform_name="Darwin", settle_seconds=0)
         self.assertEqual(sorted(path.name for path in self.output.iterdir()), ["first-run.png", "startup-first-run.log"])
 
     def test_cleanup_reaps_a_real_synthetic_process(self):

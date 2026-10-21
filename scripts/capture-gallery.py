@@ -176,12 +176,12 @@ def capture_failure_screen(output, state, platform_name):
             pass
 
 
-def capture_gallery(app, output, *, states=STATES, wait_seconds=8, ready_timeout=15, platform_name=None):
+def capture_gallery(app, output, *, states=STATES, settle_seconds=1, ready_timeout=23, platform_name=None):
     platform_name = platform_name or platform.system()
     if platform_name not in ("Linux", "Darwin", "Windows"):
         raise CaptureError("unsupported screenshot platform")
-    if any(not math.isfinite(value) or value < 0 for value in (wait_seconds, ready_timeout)) or not states or any(state not in STATES for state in states):
-        raise CaptureError("invalid gallery states or startup wait")
+    if any(not math.isfinite(value) or value < 0 for value in (settle_seconds, ready_timeout)) or not states or any(state not in STATES for state in states):
+        raise CaptureError("invalid gallery states, settle or ready timeout")
     app, output = Path(app).resolve(), Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     # A failed rerun must not accidentally upload screenshots from an earlier run.
@@ -194,12 +194,12 @@ def capture_gallery(app, output, *, states=STATES, wait_seconds=8, ready_timeout
         env = {**os.environ, "IBIS_GALLERY": "1", "IBIS_LIBRARY": str(source)}
         profiles = []
         try:
-            _capture_states(app, output, states, wait_seconds, ready_timeout, platform_name, temporary, env, profiles)
+            _capture_states(app, output, states, settle_seconds, ready_timeout, platform_name, temporary, env, profiles)
         finally:
             release_profiles(profiles)
 
 
-def _capture_states(app, output, states, wait_seconds, ready_timeout, platform_name, temporary, env, profiles):
+def _capture_states(app, output, states, settle_seconds, ready_timeout, platform_name, temporary, env, profiles):
     for state in states:
         if platform_name == "Windows":
             # WebView2 documents this override of userDataFolder, including
@@ -226,12 +226,8 @@ def _capture_states(app, output, states, wait_seconds, ready_timeout, platform_n
                     options["start_new_session"] = True
                 process = subprocess.Popen([str(app)], **options)
                 try:
-                    try:
-                        process.wait(timeout=wait_seconds)
-                    except subprocess.TimeoutExpired:
-                        pass
-                    else:
-                        raise CaptureError(f"app exited during {state} startup; see its startup log")
+                    # Poll for the app's own acknowledgment instead of a fixed
+                    # startup sleep; a state that never renders still fails.
                     try:
                         wait_until_rendered(process, ready_file, state, ready_timeout)
                     except CaptureError:
@@ -240,6 +236,13 @@ def _capture_states(app, output, states, wait_seconds, ready_timeout, platform_n
                         if process.poll() is None:
                             capture_failure_screen(output, state, platform_name)
                         raise
+                    # The web layer is ready; let the native frame finish painting.
+                    try:
+                        process.wait(timeout=settle_seconds)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    else:
+                        raise CaptureError(f"app exited after rendering {state}; see its startup log")
                     capture_screenshot(staging, platform_name)
                     if process.poll() is not None:
                         raise CaptureError(f"app exited while capturing {state}; see its startup log")
@@ -261,20 +264,20 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", required=True, type=Path, help="debug ibis-desktop executable with evidence assets")
     parser.add_argument("--output", required=True, type=Path, help="directory for PNGs and synthetic startup logs")
-    parser.add_argument("--wait", type=float, default=8, help="startup wait in seconds per state (default: 8)")
-    parser.add_argument("--ready-timeout", type=float, default=15, help="maximum additional wait for rendered-state acknowledgment (default: 15)")
-    parser.add_argument("--state", choices=STATES, action="append", help="capture only this state (repeatable; default: all 15)")
+    parser.add_argument("--settle", type=float, default=1, help="seconds to let the window paint after a state is rendered (default: 1)")
+    parser.add_argument("--ready-timeout", type=float, default=23, help="maximum wait in seconds for each rendered-state acknowledgment (default: 23)")
+    parser.add_argument("--state", choices=STATES, action="append", help=f"capture only this state (repeatable; default: all {len(STATES)})")
     args = parser.parse_args(argv)
     if not args.app.is_file() or (os.name != "nt" and not os.access(args.app, os.X_OK)):
         parser.error("--app must name an executable regular file")
-    if not math.isfinite(args.wait) or args.wait < 0:
-        parser.error("--wait must be a finite nonnegative number")
+    if not math.isfinite(args.settle) or args.settle < 0:
+        parser.error("--settle must be a finite nonnegative number")
     if not math.isfinite(args.ready_timeout) or args.ready_timeout < 0:
         parser.error("--ready-timeout must be a finite nonnegative number")
     if args.output.exists() and not args.output.is_dir():
         parser.error("--output must name a directory")
     try:
-        capture_gallery(args.app, args.output, states=tuple(args.state or STATES), wait_seconds=args.wait, ready_timeout=args.ready_timeout)
+        capture_gallery(args.app, args.output, states=tuple(args.state or STATES), settle_seconds=args.settle, ready_timeout=args.ready_timeout)
     except CaptureError as error:
         print(f"Gallery capture failed: {error}.", file=sys.stderr)
         return 1
