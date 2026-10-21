@@ -11,6 +11,11 @@ use crate::diagnostics::{NativeIssue, checked, report};
 use crate::placement::place_on_active_display;
 
 mod full_screen;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "visible-row activation will consume this policy (#756)")
+)]
+mod shortcut_policy;
 #[cfg(target_os = "linux")]
 mod x11_focus;
 
@@ -453,6 +458,20 @@ mod tests {
         let (_, label, error) = configured_shortcut(None);
         assert_eq!(label, shortcut_label());
         assert!(error.is_none());
+    }
+
+    #[test]
+    fn automatic_suggestion_policy_preserves_configured_and_empty_settings() {
+        for label in ["Ctrl+Q", "Ctrl+Alt+Y", "CmdOrCtrl+K"] {
+            let (shortcut, shown, error) = configured_shortcut(Some(label));
+            assert_eq!(Some(shortcut), label.parse::<Shortcut>().ok());
+            assert_eq!(shown, label);
+            assert!(error.is_none());
+        }
+        let (shortcut, shown, error) = configured_shortcut(Some(""));
+        assert_eq!(shortcut, default_shortcut());
+        assert_eq!(shown, shortcut_label());
+        assert!(error.is_some());
     }
 
     /// The label users see must name the shortcut that is registered.
