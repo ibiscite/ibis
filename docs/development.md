@@ -2,14 +2,105 @@
 
 This project favours small, verified, reversible steps.
 
-## Flow of work
+## Contribution standard
 
-1. **Issue.** Every change starts from an issue that states the user-visible outcome and acceptance criteria. Its labels, title and milestone follow [Issues, labels and milestones](#issues-labels-and-milestones).
-2. **Branch.** One short-lived branch per issue, named `<type>/<issue>-<short-description>`, e.g. `feat/12-zotero-snapshot-reader`, created from `main`; the type matches the pull request title's type. Besides `main` and the bots' `release-please--*` and `dependabot/*` branches, the only long-lived branch is `evidence`, a data branch where CI publishes synthetic native screenshots (`scripts/publish-evidence.mjs`); never open pull requests from it or delete it.
-3. **Test first.** Add a failing test or fixture that captures the acceptance criteria, then implement.
-4. **Check.** `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform. It does not run the web builds that CI's Web interface job checks (`pnpm build`, and `pnpm exec vite build --mode evidence` for the screenshot gallery); run those in `apps/desktop` when you change the build setup.
-5. **Pull request and review.** Follow [AGENTS.md](../AGENTS.md#working-autonomously) for review, merge permissions and required checks. Use a Conventional Commit title and link the issue (`Closes #12`). Describe the resulting behaviour, verification and limits for someone who did not write the change.
-6. **Merge.** Follow the [same merge conditions](../AGENTS.md#working-autonomously); `main` history is never rewritten.
+One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do what; this section says how.
+
+### Issues
+
+- **One outcome per issue**, small enough for one pull request (about 300 changed lines). Split bigger work into GitHub sub-issues before it starts. After a partial pull request, rewrite the issue to what remains. Never open an issue only so a pull request has something to close; use `Part of #N` instead.
+- **Title:** a plain sentence about the outcome or the problem, at most 70 characters, with no commit prefix or bracket tag: "Paste into the previous application", "Zotero mapper drops malformed name fields".
+- **Body** (at most 200 words): **Problem** (what a user sees now), **Done when** (one to five testable checkboxes) and optional **Notes** (code pointers, decisions). The Task issue form has this shape. Long investigations go in comments.
+- **Review follow-ups:** one issue per reviewed pull request, titled "Follow-ups to <thing> (#PR review)", with one checkbox per P3 finding.
+- **Ideas and questions** start in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions); an issue is opened when the work is agreed.
+
+### Labels
+
+| Family | Labels | Rule |
+| --- | --- | --- |
+| Type | `type:bug`, `type:feature`, `type:task`, `type:docs` | Exactly one on every issue. `task` covers tests, CI, build, performance, refactoring and maintenance. |
+| Area | `area:core`, `area:desktop`, `area:cli`, `area:formatting`, `area:zotero`, `area:infra`, `area:a11y`, `area:security` | Only when it narrows the issue down. `infra` is CI, test harnesses, packaging and release tooling; `security` includes privacy. |
+| Platform | `platform:linux`, `platform:macos`, `platform:windows` | Only when it affects some platforms, not all. |
+| Status | `status:needs-design`, `status:blocked`, `status:needs-maintainer` | Exceptions only. `needs-design`: a short plan is reviewed before code. `needs-maintainer`: a reserved decision or the maintainer's own hands. |
+| Other | `tracking`, `upstream`, `good first issue` | |
+| Bots | `autorelease: pending`, `autorelease: tagged`, `dependencies` | Added by Release Please and Dependabot; leave them alone. |
+
+No other labels; each family has one colour. Pull requests need no labels: the title's type says it. There are no priority labels: the milestone and the order of the tracking issue's Queue say what comes first.
+
+### Milestones
+
+- Release milestones are named `0.N Name` to match `ROADMAP.md`, plus `1.0`; `Later` holds anything not scheduled. A milestone closes when its release ships.
+- A release milestone holds only work that blocks that release. If it would not stop the release, move it to the next milestone or `Later`.
+- **An open issue without a milestone is untriaged.** Triage means: fix the title and labels, then set a milestone or close the issue.
+- Each open milestone's description is one line saying what users can do when it ships, and names its tracking issue.
+
+### Tracking issue
+
+Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body is a dashboard of at most 60 lines:
+
+```markdown
+**Goal:** one line. Scope: ROADMAP.md.
+
+## Done means
+- [ ] … (at most 6)
+
+## Now
+- one line each, with an issue or pull request number (at most 5)
+
+## Queue
+1. **Lane name** (files it owns)
+   1. #N short title
+
+## Waiting on the maintainer
+- #N what is needed, recommended answer
+
+## Decisions
+- **YYYY-MM-DD** one line (newest 10; older ones move to a "Decisions archive" comment)
+```
+
+Every issue in the Queue is in this milestone. History, run links and evidence go in comments. After each merge, comment one line: what users can now do, what is next.
+
+### Branches and worktrees
+
+- One short-lived branch per pull request, `<type>/<issue>-<short-name>` from `origin/main`, for example `feat/22-setup-library`; `<type>` is the pull request title's type. No other prefixes.
+- One writer per worktree: `git fetch origin main && git worktree add ../wt/<name> -b <branch> origin/main`. Remove the worktree after merging.
+- Long-lived branches: `main`, the bots' `release-please--*` and `dependabot/*`, and `evidence`, a data branch where CI publishes synthetic native screenshots (`scripts/publish-evidence.mjs`); never open pull requests from `evidence` or delete it.
+- Merged branches are deleted automatically, and the weekly hygiene run deletes head branches of closed pull requests. `main` history is never rewritten.
+
+### Commits
+
+```text
+fix: keep Typst citation notes as literal text
+
+Optional body: at most five lines on behaviour.
+
+Signed-off-by: Name <email>
+Assisted-by: <tool and model>
+```
+
+The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci`, `build`, `refactor`, `chore`, `revert`; optional scope; `!` or a `BREAKING CHANGE:` footer for breaking changes) in the imperative mood, at most 72 characters, lower case after the colon, with no full stop. Sign off every commit (`git commit -s`, Developer Certificate of Origin). Disclose AI help with an `Assisted-by:` trailer or the tool's co-author line (ADR 0011). No hashes, run IDs or conversation notes. Squash your own fixups before review so a branch has a few meaningful commits. Release notes come from these commits; see [RELEASING.md](../RELEASING.md).
+
+### Pull requests
+
+- **Title:** a Conventional Commit, because it becomes the commit on `main`: `fix: keep good entries when a .bib file has a duplicate key`.
+- **Body:** the template in `.github/pull_request_template.md`, **at most 250 words** excluding images: `Closes #N` (or `Part of #N`), What and why, How it works (plain words for a maintainer who did not write it), Verification, and Screenshots for interface changes. A pull request closes at most one issue.
+- **Evidence** (CI run links, hashes, logs, measurement tables) goes in one comment titled `Evidence for <short SHA>`, never in the body or the commits.
+- **Drafts:** open the pull request as a draft early; mark it ready when `node scripts/check.mjs` has passed on the final commit.
+- **Interface changes** show before/after screenshots with synthetic data, light and dark, for each affected operating system, labelled with the source commit and "browser" or "native", naming any applicable views still missing. Link them from the `evidence` branch or a comment attachment; do not commit them to `docs/images/` unless a document uses them. Detect image format and size from the file bytes before choosing an extension or writing metadata.
+
+### Review and merge
+
+- **Code:** an independent review of the exact head commit by another session, preferably another model, posted as a comment that starts `Independent review of <full SHA> by <tool and model>` and gives the verdict, findings (each P1 and P2 with the commit that fixed it; P3s in one follow-up issue) and the checks run, in at most 150 words plus optional `<details>`. After a small fix the reviewer re-checks only the changed lines and names the new commit; a large fix or a design change needs a new full review. A rebase with an identical tree keeps the review.
+- **Documentation only, or tests and synthetic fixtures only:** the author's adversarial check (step 5 of the loop in AGENTS.md), recorded in a comment, replaces the independent review (ADR 0017).
+- **Merge** by squash only when all required checks pass on that commit. Never use `--admin` or another bypass. While a release is going out (a hold announced on the tracking issue), nobody merges to `main` until the release pull request has merged and the hold is lifted, because every merge rebuilds the release pull request.
+
+### Versions and releases
+
+Version numbers, release and nightly titles, tags and download links follow [RELEASING.md](../RELEASING.md#releases).
+
+## Checking a change
+
+`node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform. It does not run the web builds that CI's Web interface job checks (`pnpm build`, and `pnpm exec vite build --mode evidence` for the screenshot gallery); run those in `apps/desktop` when you change the build setup.
 
 ## Working quickly and safely
 
@@ -37,29 +128,8 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
   test "$(git rev-parse next-branch^{tree})" = "$tree" && echo unchanged
   ```
 
-- **Review in parallel.** Run the one independent review of the final diff while CI runs, and save findings in the pull request (fixed, P3 filed as an issue, or rejected with a reason).
+- **Review in parallel.** Run the one independent review of the final diff while CI runs, and save findings in the pull request (fixed, P3s in one follow-up issue, or rejected with a reason).
 - **Independent work in parallel.** Issues that touch different files can be worked on at the same time, each in its own worktree and branch. Two writers never share a checkout. Shared files (`Cargo.toml`, `Cargo.lock`, `apps/desktop/src-tauri/src/main.rs`, `ROADMAP.md`) are changed by one branch at a time.
-
-## Issues, labels and milestones
-
-One standard for every issue and pull request, open or closed:
-
-- **Type**, exactly one: `type:bug`, `type:feature`, `type:docs`, `type:test`, `type:ci`, `type:build` (packaging and release tooling), `type:perf`, `type:chore` (refactoring, maintenance, planning). A pull request takes the type of its title prefix (`fix:` is `type:bug`, `refactor:` is `type:chore`).
-- **Area**, one or more where it helps: `area:core`, `area:desktop`, `area:cli`, `area:formatting`, `area:search`, `area:testing`, `area:a11y`, `area:i18n`, `area:privacy`, `area:security`, `area:ux`, `area:compatibility`, `area:integration`, `area:extensions`, `area:health`.
-- **Platform** and **source**, only when it applies to some of them: `platform:linux`, `platform:macos`, `platform:windows`, `platform:web`; `source:zotero`, `source:bibtex`.
-- **Status**: `status:ready` (can be picked up), `status:blocked`, `status:needs-design` (a short plan is reviewed before code).
-- **Needs**: `needs:triage` (new finding, not yet placed), `needs:review`, `needs:maintainer` (a reserved decision only).
-- **Specials**: `tracking`, `good first issue`, `help wanted`, `upstream`. Release Please and Dependabot add their own labels (`autorelease: pending`, `autorelease: tagged`, `dependencies`); leave them alone. Dependabot pull requests also get `type:chore`.
-
-No other labels. Each family has one colour.
-
-**Titles.** An issue title is a plain sentence about the outcome or the problem, with no commit prefix or bracket tag: "Paste into the previous application", "Zotero mapper silently drops malformed CSL text". A pull request title is a Conventional Commit (`fix: keep Typst citation notes as literal text`), because it becomes the commit on `main`.
-
-**Milestones.** Every open issue has one milestone: `0.N Name` for a planned release (matching `ROADMAP.md`), `1.0`, or `Later` for anything not scheduled. Each open milestone's description is one line saying what users can do when it ships, and names its tracking issue. A milestone closes when its release ships.
-
-**Versions and releases.** Version numbers, release and nightly titles, tags and download links follow [RELEASING.md](../RELEASING.md#releases).
-
-**Tracking issues.** Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body holds the current plan: what done means, **Now** (work in progress and where it is), the ordered **Queue**, what waits on the maintainer, what is deferred, and decisions taken. History goes in comments. After each merge, add one line saying what users can now do and what is next.
 
 ## Setting up a computer
 
@@ -158,12 +228,6 @@ The picker opens without a title bar near the top of the usable area of the disp
 Enter in the search box copies; a clean, unpinned copy hides the picker. Shift+Enter adds or removes the highlighted reference from the citation. Escape closes an open menu or keyboard dialog first, then clears the search, then hides; chosen references survive clearing and hiding. Search and selection are kept in memory until the picker reopens after more than a minute hidden. A search cleared by Escape also returns on an earlier reopening unless new typing or a completed copy replaced it. The pin beside the format keeps the picker open and on top beside your document (on Wayland it only stays open); unpinned, the picker hides when you click elsewhere or after a clean copy. Copy confirmations expire after 2.4 seconds; copy warnings stay until dismissed.
 
 The output format sits beside the search box; the footer names the library source and reference count, shows freshness or recovery details when they matter, and says what Enter will copy (holding Alt shows what Shift+Enter and Escape do instead). More (Ctrl/⌘ K) holds Choose library, Use Zotero, Reload, Rows (compact, comfortable or spacious), Larger text, Start Ibis when you log in, Keyboard shortcuts and Quit. Starting at login is stored by the system, not in `settings.json` (see [design.md](design.md#settings)); a development build registers as "Ibis (development)", so it never replaces an installed Ibis's entry. `?` outside the search box, or Ctrl/⌘ / anywhere, lists every key in one table built from `apps/desktop/src/keys.ts`. When nothing matches, the picker offers to clear the search, and to search all Zotero libraries when only some are on. The chosen citation style, rows and text size are remembered across restarts (ADR 0020).
-
-## Commits and releases
-
-Commit conventions and disclosure are in [AGENTS.md](../AGENTS.md#version-control).
-Versioning, release automation, nightly builds and recovery are in
-[RELEASING.md](../RELEASING.md).
 
 ## Workflow linting
 

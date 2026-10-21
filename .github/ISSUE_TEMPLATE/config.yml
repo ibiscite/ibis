@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Idea or question
+    url: https://github.com/ibiscite/ibis/discussions/new/choose
+    about: Ideas and questions start here; an issue is opened when work is agreed.
   - name: Security problem
     url: https://github.com/ibiscite/ibis/security/advisories/new
     about: Report vulnerabilities privately.

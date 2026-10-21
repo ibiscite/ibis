@@ -27,7 +27,7 @@ does not authorize signing or publication.
 - **Reviewers** check the exact proposed commit. All required checks must pass,
   and product code needs an independent review with every P1 and P2 finding
   fixed. The documentation and test-only exceptions are in
-  [AGENTS.md](../AGENTS.md#working-autonomously). Authorized agents may merge
+  [development.md](development.md#review-and-merge). Authorized agents may merge
   changes under those rules; AI assistance does not bypass them.
 - **The maintainer** has final responsibility for the project and explicitly
   authorizes releases, tags and publication. The maintainer will also approve

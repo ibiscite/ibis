@@ -1,0 +1,24 @@
+name: Task
+description: A planned piece of work with a clear outcome (maintainer and agents).
+labels: [type:task]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What a user (or contributor) sees now, in a few sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: One to five testable checkboxes.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Optional pointers to code, decisions or related issues.

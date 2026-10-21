@@ -1,33 +1,26 @@
-<!-- Title: a Conventional Commit, e.g. "fix: keep good entries when a .bib file has a duplicate key". -->
+<!-- Title: a Conventional Commit, e.g. "fix: keep good entries when a .bib file has a duplicate key".
+     Body: at most 250 words. Run links, hashes and logs go in a comment "Evidence for <short SHA>".
+     Standard: docs/development.md#contribution-standard -->
 
-## Change
+Closes #
 
-Closes #N
+## What and why
 
-What user problem does this solve, and what happens now?
+<!-- What a user notices now, and why it matters. -->
 
 ## How it works
 
-In plain words, for someone who did not write it: which files matter, how the pieces fit together, and where to look if it breaks.
+<!-- Plain words for someone who did not write it: which files matter and where to look if it breaks. -->
 
 ## Verification
 
-- [ ] A test or fixture fails without this change and passes with it
-- [ ] `node scripts/check.mjs` passes
-- [ ] Docs/snapshots updated if behaviour changed
+- [ ] A test or fixture fails without this change
+- [ ] `node scripts/check.mjs` passed on the final commit
+- [ ] No real library data, document text, paths or credentials anywhere
+- Manual checks (operating system, app), or "none":
 
-Anything tested manually (which OS, which app, which library)?
+## Screenshots
 
-## Visual evidence (for meaningful interface changes)
+<!-- Interface changes only: before/after, synthetic data, light and dark, each affected OS, labelled with commit and browser/native; name views still missing. Delete this section otherwise. -->
 
-Embed or link before/after screenshots so reviewers can compare without installing a build. Use synthetic references; label each capture with its source commit, OS, light/dark appearance, and native app or browser preview.
-
-Which relevant OS and appearance views are covered? Explain applicable views still missing and any native behavior still unverified. Reuse the existing gallery and evidence artifacts where useful; nonvisual changes need no screenshots.
-
-## AI assistance
-
-Did an AI tool help write this change? Which one? (Welcome — just say so.)
-
-## Privacy
-
-- [ ] No real library data, document text, paths or credentials in code, tests, logs or this description
+AI assistance: <!-- "none", or the tool and model -->

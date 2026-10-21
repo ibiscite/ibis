@@ -1,6 +1,6 @@
 name: App compatibility
 description: Inserting or pasting into a specific app did not work (or worked — that helps too!).
-labels: [type:bug, area:compatibility, needs:triage]
+labels: [type:bug, area:desktop]
 body:
   - type: markdown
     attributes:

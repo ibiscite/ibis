@@ -1,6 +1,6 @@
 # Maintaining and releasing Ibis
 
-Release authority and merge holds follow [AGENTS.md](AGENTS.md#working-autonomously).
+Release authority follows [AGENTS.md](AGENTS.md#authority); merge holds follow [Review and merge](docs/development.md#review-and-merge).
 
 ## Real-library check
 
@@ -11,7 +11,7 @@ When source reading, search or output changes, also test against a **controlled*
 Versions follow [Semantic Versioning](https://semver.org/). Before 1.0,
 `0.N.0` ships milestone `0.N`; `0.N.1`, `0.N.2`, ... add fixes and small features. Release notes
 come from Conventional Commits; commit conventions are in
-[AGENTS.md](AGENTS.md#version-control). To request a milestone version, use
+[docs/development.md](docs/development.md#commits). To request a milestone version, use
 `Release-As: 0.N.0` in a commit body on `main`.
 
 The [code signing policy](docs/code-signing.md) records the current unsigned
