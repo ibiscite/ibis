@@ -25,6 +25,7 @@ const steps = [
   ["Hygiene tests", "node", ["--test", "scripts/hygiene.test.mjs"]],
   ["Pull request convention tests", "node", ["--test", "scripts/pr-lint.test.mjs"]],
   ["Release notes tests", "node", ["--test", "scripts/release-notes.test.mjs"]],
+  ["Geometry spec tests", "node", ["--test", "scripts/gallery-geometry.test.mjs"]],
   ["Format", "cargo", ["fmt", "--all", "--check"]],
   ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
   ["Test", "cargo", ["test", "--locked"]],

@@ -21,14 +21,14 @@ import { createServer } from "node:http";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LOOKS = { platform: ["macos", "windows", "linux"], theme: ["light", "dark"], text: ["normal", "large"] };
 const NAMES = { macos: "macOS", windows: "Windows", linux: "Linux", light: "Light", dark: "Dark", normal: "Normal text", large: "Larger text" };
 // As each system's webview reports it; must match PLATFORM_NAMES in gallery-fixtures.ts.
-const PLATFORM_NAMES = { macos: "MacIntel", windows: "Win32", linux: "Linux x86_64" };
-const VIEWPORT = { width: 720, height: 480 }; // the picker window (tauri.conf.json)
+export const PLATFORM_NAMES = { macos: "MacIntel", windows: "Win32", linux: "Linux x86_64" };
+export const VIEWPORT = { width: 720, height: 480 }; // the picker window (tauri.conf.json)
 // Frames the catalog cannot describe: they need the browser's pointer or media emulation.
 const VARIANTS = [
   { id: "pin-hover", state: "many-results", label: "Pointer on the pin", hover: ".pin-button" },
@@ -41,7 +41,7 @@ const FRAME_TIMEOUT = 60_000;
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
   ".png": "image/png", ".woff2": "font/woff2", ".json": "application/json", ".ico": "image/x-icon" };
 
-class Unavailable extends Error {}
+export class Unavailable extends Error {}
 
 function parse(argv) {
   const options = { output: path.join(repo, "target", "gallery-contact-sheet"), dist: path.join(repo, "apps", "desktop", "dist"),
@@ -70,7 +70,7 @@ function parse(argv) {
   return options;
 }
 
-async function loadPlaywright() {
+export async function loadPlaywright() {
   try {
     return await import("playwright");
   } catch {
@@ -90,7 +90,7 @@ async function loadPlaywright() {
 }
 
 /** Static files from the built gallery, on loopback only, never outside `dist`. */
-function serve(dist) {
+export function serve(dist) {
   const server = createServer(async (request, response) => {
     let file = "";
     try {
@@ -151,13 +151,13 @@ async function contactSheet(browser, output, text, columns, states, frames, labe
   }
 }
 
-async function main() {
-  const options = parse(process.argv.slice(2));
+/** Builds the evidence gallery unless `build` is false, then starts Chromium and the loopback server. */
+export async function openGallery({ build, dist }) {
   const { chromium } = await loadPlaywright();
-  if (options.build) {
+  if (build) {
     execFileSync("pnpm", ["exec", "vite", "build", "--mode", "evidence"], { cwd: path.join(repo, "apps", "desktop"), stdio: "inherit", shell: process.platform === "win32" });
   }
-  const dist = path.resolve(options.dist);
+  dist = path.resolve(dist);
   try {
     await readFile(path.join(dist, "gallery.html"));
   } catch {
@@ -169,7 +169,17 @@ async function main() {
   } catch (error) {
     throw new Unavailable(`Playwright's Chromium could not start: ${error.message.split("\n")[0]}`);
   }
-  const server = await serve(dist);
+  try {
+    return { browser, server: await serve(dist) };
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
+}
+
+async function main() {
+  const options = parse(process.argv.slice(2));
+  const { browser, server } = await openGallery(options);
   const base = `http://127.0.0.1:${server.address().port}`;
   const failures = [];
   try {
@@ -272,7 +282,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = error instanceof Unavailable ? 2 : 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = error instanceof Unavailable ? 2 : 1;
+  });
+}

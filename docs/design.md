@@ -93,6 +93,10 @@ placeholder starts where row titles start:
 text x     = inset + row-pad + tile + row-gap  64 px (60 px on Windows)
 ```
 
+These numbers are also in [`design-geometry.json`](design-geometry.json), which
+`node scripts/gallery-geometry.mjs` measures the evidence gallery against;
+change both together (a test checks that they agree).
+
 **Corners.** Nested shapes are concentric: an inner radius is its container's
 radius minus the inset between them, never larger. When the inset is close to
 or larger than the outer radius, the inner corner drops to a small floor

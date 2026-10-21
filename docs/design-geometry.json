@@ -1,0 +1,16 @@
+{
+  "$comment": "Picker geometry from docs/design.md (Space and size, Corners), in CSS px at normal text. scripts/gallery-geometry.mjs measures the evidence gallery against it; derived values (text x, row and tile radii) follow the formulas in docs/design.md. Change this file and docs/design.md together.",
+  "tolerance": 0.5,
+  "rowHeight": { "compact": 40, "comfortable": 58, "spacious": 76 },
+  "footer": 40,
+  "fieldHeight": 40,
+  "rowPad": 12,
+  "rowGap": 12,
+  "tile": 32,
+  "icon": 20,
+  "platforms": {
+    "macos": { "inset": 8, "rWin": 28, "rMin": 6, "searchBand": 56 },
+    "windows": { "inset": 4, "rWin": 8, "rMin": 2, "searchBand": 48 },
+    "linux": { "inset": 8, "rWin": 14, "rMin": 4, "searchBand": 56 }
+  }
+}
