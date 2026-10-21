@@ -65,6 +65,37 @@ function seedSteps(root: HTMLElement, state: GalleryState): (() => void)[] {
   return steps;
 }
 
+function selectionContained(root: HTMLElement, state: GalleryState): boolean {
+  const main = root.querySelector("main");
+  // Zero-size JSDOM geometry is not browser evidence.
+  if (!state.tray || !main?.getBoundingClientRect().width) return true;
+  const content = root.querySelector(".picker-content")?.getBoundingClientRect();
+  const viewport = root.querySelector(".results-area")?.getBoundingClientRect();
+  const active = root.querySelector<HTMLElement>("[data-active]");
+  const row = active?.getBoundingClientRect();
+  if (!content || !viewport || !active || !row) return false;
+  const top = Math.max(0, content.top, viewport.top);
+  const bottom = Math.min(innerHeight, content.bottom, viewport.bottom);
+  const visibleTop = Math.max(top, row.top);
+  const visibleBottom = Math.min(bottom, row.bottom);
+  const hit = (node: Element, x: number, y: number) => typeof document.elementFromPoint !== "function"
+    || node.contains(document.elementFromPoint(x, y));
+  const bands = [root.querySelector('[aria-label="Selected references"]'), root.querySelector(".format-preview"), root.querySelector(".results-area")]
+    .filter((node) => node !== null).map((node) => node.getBoundingClientRect());
+  return main.scrollTop === 0 && main.scrollHeight <= main.clientHeight + 1 && document.documentElement.scrollHeight <= innerHeight + 1
+    && bottom - top >= 24 && visibleBottom - visibleTop >= Math.min(row.height, bottom - top) - 1
+    && hit(active, (Math.max(row.left, content.left) + Math.min(row.right, content.right)) / 2, (visibleTop + visibleBottom) / 2)
+    && bands.every((box, i) => i === 0 || bands[i - 1]!.bottom <= box.top + 1)
+    && [".search-bar", "footer"].every((selector) => {
+      const box = root.querySelector(selector)?.getBoundingClientRect();
+      return box && box.top >= 0 && box.bottom <= innerHeight + 1;
+    })
+    && [root.querySelector("#search"), root.querySelector('footer button[aria-haspopup="menu"]')].every((node) => {
+      const box = node?.getBoundingClientRect();
+      return node && box && box.top >= 0 && box.bottom <= innerHeight + 1 && hit(node, (box.left + box.right) / 2, (box.top + box.bottom) / 2);
+    });
+}
+
 /** The seeded settings and interactions are on screen, and nothing else is. */
 function seeded(root: HTMLElement, state: GalleryState): boolean {
   const html = document.documentElement;
@@ -77,7 +108,9 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (pinButton(root)?.getAttribute("aria-pressed") === "true") === Boolean(state.pinned)
     && (root.querySelector('[role="menu"]') !== null) === Boolean(state.menuOpen)
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
-    && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li`).length === (state.tray ?? 0);
+    && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li`).length === (state.tray ?? 0)
+    && (!state.formatted || root.querySelector(".format-preview .preview-text") !== null)
+    && selectionContained(root, state);
 }
 
 type GalleryDiagnosticStage = "frontend-mounted" | "effects-settled" | "rendered";

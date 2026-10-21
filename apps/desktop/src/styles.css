@@ -226,6 +226,23 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
   /* Let the line break after the separator rather than inside a word. */
   .result-separator { white-space: pre-wrap; }
 }
+/* Selection keeps the outer controls fixed. At very short heights only the
+   central content can scroll; the tray and preview retain their own scrollports. */
+.picker-content { display: contents; }
+main[data-selection] { height: var(--picker-height); min-height: 0; overflow: hidden; }
+main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; }
+main[data-selection] > .picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size; }
+main[data-selection] [aria-label="Selected references"], main[data-selection] .format-preview, main[data-selection] .notices { flex: none; max-height: 6rem; overflow: auto; }
+main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overflow: auto; }
+/* Use the available middle height, not a guessed header/footer size. Under
+   pressure results join its scrollport, so wheel input has one vertical owner. */
+@container (max-height: 18rem) {
+  main[data-selection] .results-area { flex: none; overflow: visible; }
+}
+@container (max-height: 24rem) {
+  main[data-selection] .picker-content:has(.notices:not(:empty)) .results-area { flex: none; overflow: visible; }
+}
+
 /* No animation: reduced-motion users get the same immediate feedback. */
 
 /* Remembered picker preferences (ADR 0020). Compact rows keep the title and

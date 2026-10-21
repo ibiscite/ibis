@@ -60,6 +60,7 @@ contracts documented with each component.
 4. Update documentation and snapshots in the same change, and review snapshot diffs like code.
 5. Decisions that are hard to reverse (license, persisted data formats, public CLI or API contracts, network use, security boundaries) require an ADR.
 6. Run `node scripts/check.mjs` before reporting work as complete, and report its result accurately.
+7. Use an explicit working directory or absolute paths for edits, and inspect the diff before testing.
 
 ## Privacy and security
 

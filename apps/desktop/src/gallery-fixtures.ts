@@ -25,6 +25,7 @@ export type GalleryState = {
   pinned?: boolean;
   menuOpen?: boolean;
   tray?: number;
+  formatted?: boolean;
   keys?: boolean;
 };
 
@@ -117,6 +118,10 @@ const many = Array.from({ length: 20 }, (_, index) => reference(`example${index 
   "Example, Sample", index % 2 === 0 ? "Journal of Synthetic Studies" : "Proceedings of the Example Conference on Memory and Language",
   itemTypes[index % itemTypes.length]));
 
+const largeSelection = Array.from({ length: 50 }, (_, i) => reference(
+  `synthetic_${String(i + 1).padStart(2, "0")}_${"long_key_".repeat(5)}`,
+  `Selection study ${i + 1}: a synthetic reference`, "Example, Sample", "Journal of Synthetic Studies"));
+
 export const galleryStates: readonly GalleryState[] = [
   { id: "first-run", label: "First run", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, zotero: false, references: 0 }) },
   { id: "loading", label: "Opening a library", library: library({ state: "loading", has_snapshot: false, zotero: false, snapshot_name: null, references: 0 }) },
@@ -147,6 +152,10 @@ export const galleryStates: readonly GalleryState[] = [
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
+  ...[20, 40, 50].map((count) => ({ id: `tray-${count}`, label: `${count} long keys selected`,
+    library: library({ references: 50 }), query: "selection", results: largeSelection, tray: count, pinned: true })),
+  { id: "tray-preview", label: "50 selected with formatted preview", library: library({ references: 50 }), query: "selection",
+    results: largeSelection, tray: 50, pinned: true, formatted: true },
   { id: "tray", label: "Several references chosen", library: library(), query: "memory", results: examples, tray: 2 },
   { id: "keys", label: "All keys", library: library(), query: "memory", results: examples, keys: true },
   { id: "compact", label: "Compact rows", library: library(), query: "memory", results: many, density: "compact", tray: 2 },
@@ -160,9 +169,15 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
     api: {
       libraryStatus: async () => state.library,
       search: async () => ({ revision: state.library.revision, results: state.results ?? [] }),
-      copyCitation: async () => ({ text: "[@example2026]", warnings: [] }),
+      copyCitation: async (ids) => ({ text: (state.tray ?? 0) >= 20 ? `[@${ids.map((id) => id.native_key).join("; @")}]` : "[@example2026]", warnings: [] }),
+      ...((state.tray ?? 0) >= 20 ? {
+        cslItems: async (ids: Parameters<NonNullable<PickerApi["cslItems"]>>[0]) => JSON.stringify(ids.map((id) => ({
+          id: id.native_key, type: "book", title: "Synthetic preview pressure", author: [{ family: id.native_key }], issued: { "date-parts": [[2026]] },
+        }))),
+        copyFormatted: async () => null,
+      } : {}),
       copyFormat: async () => "pandoc",
-      pickerPreferences: async () => ({ citation_style: null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false }),
+      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false }),
       setPickerPreferences: async () => null,
       shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       chooseLibrary: async () => undefined,

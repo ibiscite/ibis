@@ -465,13 +465,19 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
 
   // Keep the highlighted result visible while moving with the arrow keys.
   // A row chosen by the pointer is already under it; scrolling would move it away.
+  // Selection/preview reflow follows the highlight only while Search has focus.
+  const previousActive = useRef(active);
   useEffect(() => {
+    const moved = previousActive.current !== active;
+    previousActive.current = active;
     if (pointer.fromPointer.current) {
       pointer.fromPointer.current = false;
       return;
     }
+    if (!moved && (selected.size === 0 || document.activeElement !== input.current)) return;
     document.getElementById(`result-${active}`)?.scrollIntoView?.({ block: "nearest" });
-  }, [active, pointer.fromPointer]);
+  }, [active, pointer.fromPointer, selected.size,
+    selected.size > 0 ? formatted : null, selected.size > 0 ? format : null, selected.size > 0 ? searchFocused : null]);
 
   // Success is brief; warnings stay available until explicitly dismissed.
   useEffect(() => {
@@ -712,6 +718,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
 
   return (
     <main
+      data-selection={selected.size > 0 || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
       onBlur={() => setSearchFocused(false)}
       onKeyDown={(e) => {
@@ -824,6 +831,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           </svg>
         </button>
       </header>
+      <div className="picker-content">
       <div className="notices">
         {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
         {busy && <p role="status">{loadingMessage}</p>}
@@ -872,7 +880,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         </ul>
       )}
       {style && chosen.length > 0 && (
-        <section aria-label={pickerText.preview} className="format-preview">
+        <section aria-label={pickerText.preview} className="format-preview" tabIndex={selected.size > 0 ? 0 : undefined}>
           {shown === null && <p role="status">{pickerText.previewPending}</p>}
           {shown === "failed" && <p role="alert">{pickerText.previewError}</p>}
           {shown === "stale" && <p role="alert">{pickerText.snapshotChanged}</p>}
@@ -1008,6 +1016,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             ) : null}
           </div>
         )}
+      </div>
       </div>
       <footer>
         <section aria-label={pickerText.libraryRegion} className="library-bar">

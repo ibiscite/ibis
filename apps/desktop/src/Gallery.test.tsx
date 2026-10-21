@@ -109,6 +109,51 @@ test("a gallery state with horizontal overflow is not accepted as rendered", asy
   }
 });
 
+test.each(["overflow", "document-overflow", "clipped", "covered"])("selected-reference evidence rejects %s content", async (fault) => {
+  vi.useFakeTimers();
+  vi.stubGlobal("innerHeight", 320);
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
+  vi.stubGlobal("cancelAnimationFrame", (frame: number) => window.clearTimeout(frame));
+  let overflow = true;
+  const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.tagName === "MAIN" ? (overflow && fault === "overflow" ? 700 : 320)
+      : this.tagName === "HTML" && overflow && fault === "document-overflow" ? 700 : 0;
+  });
+  const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(320);
+  const geometry = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.tagName === "MAIN") return new DOMRect(0, 0, 720, 320);
+    if (this.tagName === "FOOTER") return new DOMRect(0, 280, 720, 40);
+    if (this.id === "search") return new DOMRect(40, 10, 400, 40);
+    if (this.matches('footer button')) return new DOMRect(620, 284, 84, 32);
+    if (this.matches(".results-area, .picker-content")) return new DOMRect(0, 80, 720, 200);
+    if (this.hasAttribute("data-active")) return new DOMRect(0, overflow && fault === "clipped" ? 500 : 100, 720, 60);
+    if (this.matches('[aria-label="Selected references"]')) return new DOMRect(0, 0, 720, 80);
+    return new DOMRect(0, 0, 720, 80);
+  });
+  const state = galleryStates.find((candidate) => candidate.id === "tray")!;
+  const acknowledge = vi.fn(async () => undefined);
+  const container = document.createElement("div");
+  document.body.append(container);
+  let stop: () => void = () => undefined;
+  const originalHit = document.elementFromPoint;
+  document.elementFromPoint = (_x, y) => container.querySelector(y < 80 ? "#search" : y >= 280 ? 'footer button[aria-haspopup="menu"]'
+    : overflow && fault === "covered" ? "footer" : "[data-active]");
+  try {
+    await act(async () => { stop = renderGalleryState(container, state, acknowledge); });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(acknowledge).not.toHaveBeenCalled();
+    overflow = false;
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith("tray");
+  } finally {
+    await act(async () => stop());
+    container.remove();
+    height.mockRestore(); client.mockRestore(); geometry.mockRestore();
+    document.elementFromPoint = originalHit;
+  }
+});
+
 test("render acknowledgment waits for the synthetic search and its actual result rows", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
@@ -190,26 +235,51 @@ test("render acknowledgment waits for startup effects even after the first-run U
   }
 });
 
-test.each(galleryStates.map((state) => state.id))("the rendered %s fixture acknowledges exactly that state", async (id) => {
+async function expectRenderedFixture(id: string): Promise<void> {
   vi.useFakeTimers();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
   vi.stubGlobal("cancelAnimationFrame", (frame: number) => window.clearTimeout(frame));
   const state = galleryStates.find((candidate) => candidate.id === id)!;
+  // This tests acknowledgement, not CSL throughput across 50 fake-frame changes.
+  // Browser pressure captures use the real worker and formatter.
+  const text = "Synthetic formatted preview pressure. ".repeat(50);
+  const formatting = state.formatted ? vi.spyOn(await import("./format/formatted"), "formatCitation")
+    .mockResolvedValue({ text, html: text, markup: [text], warnings: [] }) : null;
   const acknowledge = vi.fn(async () => undefined);
   const container = document.createElement("div");
   document.body.append(container);
   let stop: () => void = () => undefined;
   try {
     await act(async () => { stop = renderGalleryState(container, state, acknowledge); });
-    await act(() => vi.advanceTimersByTimeAsync(1000));
-    await act(() => vi.advanceTimersByTimeAsync(1000));
+    if ((state.tray ?? 0) >= 20) {
+      // Include the initial results announcement, then commit every interaction
+      // separately. Bulk clock advances can seed against an uncommitted tree.
+      for (let i = 0; i < state.tray! * 2 + 32 && acknowledge.mock.calls.length === 0; i++) {
+        await act(() => vi.advanceTimersByTimeAsync(16));
+      }
+      expect(container.querySelectorAll('[aria-label="Selected references"] > li')).toHaveLength(state.tray!);
+      expect(container.querySelector("[data-active]")?.id).toBe(`result-${state.tray! - 1}`);
+      if (state.formatted) expect(container.querySelector(".format-preview .preview-text")?.textContent).toBe(text);
+    } else {
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+    }
     expect(acknowledge).toHaveBeenCalledExactlyOnceWith(id);
   } finally {
     await act(async () => stop());
     container.remove();
+    formatting?.mockRestore();
   }
-});
+}
 
+test.each(galleryStates.filter((state) => (state.tray ?? 0) < 20).map((state) => state.id))(
+  "the rendered %s fixture acknowledges exactly that state", expectRenderedFixture,
+);
+// Up to 100 committed interactions and full 50-row DOM checks exceed the default
+// wall-clock limit on CI. Keep these bounded separately from app latency budgets.
+test.each(galleryStates.filter((state) => (state.tray ?? 0) >= 20).map((state) => state.id))(
+  "the rendered %s fixture acknowledges exactly that state", { timeout: 15_000 }, expectRenderedFixture,
+);
 
 test("gallery readiness follows the shared library summary used by the picker", async () => {
   vi.useFakeTimers();

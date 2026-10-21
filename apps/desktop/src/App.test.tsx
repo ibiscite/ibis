@@ -370,6 +370,40 @@ test("the selection is kept by record identity across queries and copied in orde
   });
 });
 
+test.each([20, 40, 50])("%i long-key selections retain order across queries and first/middle/last removal", async (count) => {
+  const records = Array.from({ length: count }, (_, i) => result(`synthetic_${i}_${"long_key_".repeat(5)}`, `Selection reference ${i}`));
+  const copies: Record<string, unknown>[] = [];
+  backend({
+    search: ({ query }) => query === "" ? [] : records.slice(Number(query) * 20, (Number(query) + 1) * 20),
+    copy_citation: (args) => {
+      copies.push(args);
+      return { text: `[@${(args.ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] };
+    },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  for (let start = 0; start < count; start += 20) {
+    fireEvent.change(box, { target: { value: String(start / 20) } });
+    await screen.findByText(`Selection reference ${start}`);
+    for (let i = start; i < Math.min(start + 20, count); i++) {
+      fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+      if (i + 1 < Math.min(start + 20, count)) fireEvent.keyDown(box, { key: "ArrowDown" });
+    }
+  }
+  const tray = screen.getByRole("list", { name: "Selected references" });
+  expect(within(tray).getAllByRole("listitem")).toHaveLength(count);
+  const removed = [0, Math.floor(count / 2), count - 1];
+  for (const i of removed) fireEvent.click(within(tray).getByRole("button", { name: `Remove ${records[i]!.key} from the selection` }));
+  const expected = records.filter((_, i) => !removed.includes(i));
+  expect([...tray.querySelectorAll("code")].map((node) => node.textContent)).toEqual(expected.map((record) => record.key));
+  box.focus();
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(copies[0]).toEqual({ ids: expected.map((record) => record.id), format: "pandoc", expectedRevision: "1" });
+  await screen.findByText(`[@${expected.map((record) => record.key).join("; @")}]`);
+  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+});
+
 test("warnings keep the picker open and failures say nothing was copied", async () => {
   let fail = false;
   const calls = backend({
