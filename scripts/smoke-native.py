@@ -495,6 +495,211 @@ def supporting_wm_window(xprop_line):
     return match.group(1) if match else None
 
 
+CENSUS_PIDS, CENSUS_WINDOWS, CENSUS_NODES = 32, 64, 4000
+CENSUS_MAP_STATES = ("IsUnMapped", "IsUnviewable", "IsViewable", "unknown")
+
+
+def linux_census_facts(pid, wm_pid):
+    if any(type(value) is not int or not 0 < value <= 0x7fffffff for value in (pid, wm_pid)):
+        raise ValueError("Census requires owned process identities")
+    booleans = ("app_alive wm_alive process_query_available process_query_succeeded process_tree_complete "
+                "x_root_available x_root_succeeded window_query_available window_query_complete window_bound_hit "
+                "map_queries_available atspi_attempted atspi_available atspi_desktop_succeeded atspi_complete "
+                "atspi_bound_hit named_search expected_count").split()
+    counts = ("window_queries_failed window_queries_empty ownership_mismatches window_properties_failed "
+              "map_queries_attempted map_queries_failed exact_windows descendant_windows exact_hidden descendant_hidden "
+              "atspi_apps atspi_exact_apps atspi_descendant_apps atspi_nodes atspi_queries_failed").split()
+    return {**dict.fromkeys(booleans, False), **dict.fromkeys(counts, 0), "app_pid": pid, "wm_pid": wm_pid,
+            "descendant_pids": [], "map_states": {scope: dict.fromkeys(CENSUS_MAP_STATES, 0) for scope in ("exact", "descendant")}}
+
+
+def linux_census_frame(output, pid, wm_pid):
+    """Accept only fixed numeric/Boolean fields, including after worker timeout."""
+    template = linux_census_facts(pid, wm_pid)
+    def valid(value, expected):
+        if type(expected) is dict:
+            return type(value) is dict and value.keys() == expected.keys() and all(valid(value[key], item) for key, item in expected.items())
+        if type(expected) is list:
+            return type(value) is list and len(value) <= CENSUS_PIDS and all(type(item) is int and 0 < item <= 0x7fffffff for item in value)
+        return type(value) is type(expected) and (type(value) is bool or 0 <= value <= 0x7fffffff)
+    if type(output) is bytes:
+        output = output.decode("utf-8", errors="replace")
+    if type(output) is not str or len(output) > 65536:
+        return None
+    last = None
+    for line in output.splitlines()[-8:]:
+        try:
+            value = json.loads(line)
+            if valid(value, template) and value["app_pid"] == pid and value["wm_pid"] == wm_pid:
+                last = value
+        except (ValueError, TypeError):
+            pass
+    return last
+
+
+def linux_census(pid, wm_pid, alive, runner, bridge_loader, emit):
+    """Read-only failure census: no titles, text, paths, XIDs or raw errors escape."""
+    facts = linux_census_facts(pid, wm_pid)
+    facts.update(app_alive=bool(alive(pid)), wm_alive=bool(alive(wm_pid)))
+    def flush():
+        frame = linux_census_frame(json.dumps(facts), pid, wm_pid)
+        if frame is not None:
+            emit(frame)
+    def command(argv):
+        try:
+            result = runner(argv)
+            if result is None:
+                return False, False, False, ""
+            valid = type(result.stdout) is str and len(result.stdout) <= 131072
+            return True, result.returncode == 0 and valid, result.returncode == 1 and result.stdout == "" and result.stderr == "", result.stdout if valid else ""
+        except (OSError, subprocess.SubprocessError):
+            return True, False, False, ""
+    available, succeeded, _, text = command(["ps", "-eo", "pid=,ppid="])
+    facts.update(process_query_available=available, process_query_succeeded=succeeded)
+    owned = {pid}
+    if succeeded and all(re.fullmatch(r"\s*[0-9]{1,10}\s+[0-9]{1,10}\s*", line) for line in text.splitlines()):
+        rows = [tuple(map(int, line.split())) for line in text.splitlines()]
+        valid_rows = any(child == pid for child, _ in rows) and all(max(child, parent) <= 0x7fffffff for child, parent in rows)
+        for _ in range(CENSUS_PIDS if valid_rows else 0):
+            found = owned | {child for child, parent in rows if child > 0 and parent in owned}
+            if len(found) > CENSUS_PIDS:
+                break
+            if found == owned:
+                facts["process_tree_complete"] = True
+                break
+            owned = found
+    facts["descendant_pids"] = sorted(owned - {pid})
+    available, succeeded, _, _ = command(["xprop", "-root", "_NET_CLIENT_LIST"])
+    facts.update(x_root_available=available, x_root_succeeded=succeeded, window_query_complete=True)
+    windows = set()
+    for owner in sorted(owned):
+        available, succeeded, empty, text = command(["xdotool", "search", "--pid", str(owner)])
+        facts["window_query_available"] |= available
+        lines = text.splitlines()
+        facts["window_bound_hit"] |= len(lines) > CENSUS_WINDOWS
+        valid = len(lines) <= CENSUS_WINDOWS and all(re.fullmatch(r"[0-9]{1,10}", line) and 0 < int(line) <= 0xffffffff for line in lines)
+        if not (succeeded or empty) or not valid:
+            facts["window_queries_failed"] += 1
+            facts["window_query_complete"] = False
+            continue
+        facts["window_queries_empty"] += not lines
+        windows.update(map(int, lines))
+        if len(windows) > CENSUS_WINDOWS:
+            facts.update(window_bound_hit=True, window_query_complete=False)
+            windows = set(sorted(windows)[:CENSUS_WINDOWS])
+            break
+    for window in sorted(windows):
+        _, succeeded, _, text = command(["xprop", "-id", str(window), "_NET_WM_PID", "_NET_WM_STATE"])
+        owner = re.search(r"^_NET_WM_PID\(CARDINAL\) = ([0-9]{1,10})$", text, re.M)
+        if not succeeded or not owner:
+            facts["window_properties_failed"] += 1
+            continue
+        if int(owner[1]) not in owned:
+            facts["ownership_mismatches"] += 1
+            continue
+        scope = "exact" if int(owner[1]) == pid else "descendant"
+        facts[f"{scope}_windows"] += 1
+        state = re.search(r"^_NET_WM_STATE\(ATOM\) = ([A-Z0-9_, ]*)$", text, re.M)
+        facts[f"{scope}_hidden"] += bool(state and "_NET_WM_STATE_HIDDEN" in state[1].split(", "))
+        available, succeeded, _, text = command(["xwininfo", "-id", str(window), "-stats"])
+        facts["map_queries_available"] |= available
+        facts["map_queries_attempted"] += 1
+        mapped = re.search(r"^\s*Map State: (IsUnMapped|IsUnviewable|IsViewable)\s*$", text, re.M)
+        status = mapped[1] if succeeded and mapped else "unknown"
+        facts["map_states"][scope][status] += 1
+        facts["map_queries_failed"] += status == "unknown"
+    flush()  # Preserve process/X facts even if importing or querying AT-SPI blocks.
+    facts["atspi_attempted"] = True
+    try:
+        bridge = bridge_loader()
+        facts["atspi_available"] = True
+        flush()
+        desktop = bridge.Registry.getDesktop(0)
+        count = desktop.childCount
+        if type(count) is not int or not 0 <= count <= 0x7fffffff:
+            raise ValueError("Invalid census node count")
+        facts.update(atspi_desktop_succeeded=True, atspi_apps=count, atspi_bound_hit=count > CENSUS_PIDS)
+        stack = []
+        for index in range(min(count, CENSUS_PIDS)):
+            try:
+                app = desktop[index]
+                owner = app.get_process_id()
+                if type(owner) is int and owner in owned:
+                    facts["atspi_exact_apps" if owner == pid else "atspi_descendant_apps"] += 1
+                    stack.append(app)
+            except Exception:
+                facts["atspi_queries_failed"] += 1
+        while stack and facts["atspi_nodes"] < CENSUS_NODES:
+            node = stack.pop()
+            facts["atspi_nodes"] += 1
+            try:
+                name = node.name
+                facts["named_search"] |= type(name) is str and name == "Search references"
+                values = [name] if type(name) is str and len(name) <= 500 else []
+                try:
+                    text = node.queryText()
+                    length = text.characterCount
+                    if type(length) is not int or length < 0:
+                        raise ValueError("Invalid census text length")
+                    values.append(text.getText(0, min(length, 500)))
+                except NotImplementedError:
+                    pass
+                facts["expected_count"] |= any(type(value) is str and re.search(r"(?<!\w)3 references(?!\w)", value) is not None for value in values)
+                children = node.childCount
+                if type(children) is not int or not 0 <= children <= 0x7fffffff:
+                    raise ValueError("Invalid census node count")
+                remaining = CENSUS_NODES - facts["atspi_nodes"] - len(stack)
+                facts["atspi_bound_hit"] |= children > remaining
+                stack.extend(node[index] for index in range(min(children, max(0, remaining))))
+            except Exception:
+                facts["atspi_queries_failed"] += 1
+        facts["atspi_complete"] = not facts["atspi_bound_hit"] and not facts["atspi_queries_failed"]
+    except Exception:
+        facts["atspi_queries_failed"] += 1
+    flush()
+    return facts
+
+
+def linux_census_command(argv, deadline):
+    if not shutil.which(argv[0]):
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired("census", 0)
+    return subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                          timeout=min(.3, remaining), env=dict(os.environ, LC_ALL="C"))
+
+
+def linux_failure_census(native):
+    result = {"worker_completed": False, "worker_timed_out": False, "facts_valid": False}
+    pid, wm_pid = native.app.pid, native.wm.pid
+    output = ""
+    try:
+        child = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--linux-failure-census", str(pid), str(wm_pid)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=4)
+        result["worker_completed"], output = child.returncode == 0, child.stdout
+    except subprocess.TimeoutExpired as error:
+        result["worker_timed_out"], output = True, error.stdout
+    except OSError:
+        pass
+    facts = linux_census_frame(output, pid, wm_pid)
+    if facts is not None:
+        result.update(facts_valid=True, facts=facts)
+    return result
+
+
+def linux_census_worker(pid, wm_pid):
+    deadline = time.monotonic() + 3
+    def alive(owner):
+        try:
+            os.kill(owner, 0)
+            return True
+        except OSError:
+            return False
+    linux_census(pid, wm_pid, alive, lambda argv: linux_census_command(argv, deadline),
+                 lambda: __import__("pyatspi"), lambda frame: print(json.dumps(frame), flush=True))
+
+
 class Linux:
     def __init__(self):
         for program in ("xdotool", "xclip", "xterm", "openbox", "xprop"):
@@ -1130,7 +1335,16 @@ def main():
                     print("NATIVE EDITOR FOCUS " + json.dumps(facts), flush=True)
 
             def check(name, action):
-                action()
+                try:
+                    action()
+                except Exception:
+                    if system == "Linux":
+                        try:
+                            report["linux_census"] = linux_failure_census(native)
+                        except Exception:
+                            report["linux_census"] = {"collector_failed": True}
+                        print("LINUX FAILURE CENSUS " + json.dumps(report["linux_census"]), file=sys.stderr)
+                    raise
                 report["checks"].append({"name": name, "status": "passed"})
                 print(f"PASS {name}", flush=True)
 
@@ -1404,6 +1618,144 @@ def main():
 
 
 class ContractTests(unittest.TestCase):
+    class CensusNode:
+        def __init__(self, pid=0, name="", children=(), value=None):
+            self.pid, self.name, self.children, self.value = pid, name, children, value
+            self.childCount = len(children)
+        def __getitem__(self, index):
+            return self.children[index]
+        def get_process_id(self):
+            return self.pid
+        def queryText(self):
+            if self.value is None:
+                raise NotImplementedError
+            return Mock(characterCount=len(self.value), getText=lambda start, end: self.value[start:end])
+
+    def census_commands(self, argv):
+        rows = {("ps", "-eo", "pid=,ppid="): "100 1\n200 100\n300 200\n999 1\n",
+                ("xprop", "-root", "_NET_CLIENT_LIST"): "_NET_CLIENT_LIST(WINDOW): window id # 0xa\n",
+                ("xdotool", "search", "--pid", "100"): "10\n",
+                ("xdotool", "search", "--pid", "200"): "11\n",
+                ("xdotool", "search", "--pid", "300"): "12\n"}
+        if argv[:2] == ["xprop", "-id"]:
+            owner = {"10": 100, "11": 200, "12": 300}[argv[2]]
+            text = f"_NET_WM_PID(CARDINAL) = {owner}\n_NET_WM_STATE(ATOM) = _NET_WM_STATE_HIDDEN\n"
+        elif argv[0] == "xwininfo":
+            state = {"10": "IsViewable", "11": "IsUnMapped", "12": "IsUnviewable"}[argv[2]]
+            text = f'window 0x1 "PRIVATE_TITLE"\n  Map State: {state}\n'
+        else:
+            text = rows[tuple(argv)]
+        return subprocess.CompletedProcess(argv, 0, text, "")
+
+    def census_fixture(self, count="3 references", *, runner=None, frames=None):
+        desktop = self.CensusNode(children=[self.CensusNode(100, "PRIVATE_TITLE", [
+            self.CensusNode(name="Search references"), self.CensusNode(value=count)]), self.CensusNode(999, "PRIVATE_OTHER")])
+        def bridge():
+            self.assertTrue(frames, "process/X facts must precede AT-SPI discovery")
+            return Mock(Registry=Mock(getDesktop=lambda _: desktop))
+        return linux_census(100, 55, lambda _: True, runner or self.census_commands, bridge, frames.append)
+
+    def test_linux_census_flushes_owned_unmapped_process_x_facts_before_atspi(self):
+        frames = []
+        facts = self.census_fixture(frames=frames)
+        self.assertFalse(frames[0]["atspi_attempted"])
+        self.assertEqual((frames[0]["exact_windows"], frames[0]["descendant_windows"]), (1, 2))
+        self.assertEqual(facts["descendant_pids"], [200, 300])
+        self.assertEqual(facts["map_states"]["descendant"]["IsUnMapped"], 1)
+        self.assertTrue(facts["named_search"] and facts["expected_count"] and facts["atspi_complete"])
+        self.assertNotIn("PRIVATE", json.dumps(frames))
+
+    def test_linux_census_does_not_accept_thirteen_as_three_references(self):
+        for text, expected in (("13 references", False), ("123 references", False), ("3 references", True),
+                               ("example.bib · 3 references · updated", True)):
+            with self.subTest(text=text):
+                self.assertEqual(self.census_fixture(text, frames=[])["expected_count"], expected)
+
+    def test_linux_census_missing_failed_and_empty_queries_are_distinct(self):
+        for result, available, complete, empty in ((None, False, False, 0),
+                (subprocess.CompletedProcess([], 1, "", "PRIVATE_ERROR"), True, False, 0),
+                (subprocess.CompletedProcess([], 1, "", ""), True, True, 3)):
+            def runner(argv):
+                return result if argv[0] == "xdotool" else self.census_commands(argv)
+            facts = self.census_fixture(runner=runner, frames=[])
+            self.assertEqual((facts["window_query_available"], facts["window_query_complete"], facts["window_queries_empty"]),
+                             (available, complete, empty))
+            self.assertNotIn("PRIVATE", json.dumps(facts))
+
+    def test_linux_census_rejects_private_or_wrong_identity_frames_and_retains_timeout_partial(self):
+        facts = self.census_fixture(frames=[])
+        native = Mock(app=Mock(pid=100), wm=Mock(pid=55))
+        for invalid in ({**facts, "PRIVATE_PATH": "PRIVATE_PAYLOAD"}, {**facts, "app_pid": 999},
+                        {**facts, "atspi_nodes": "PRIVATE_TEXT"}):
+            self.assertIsNone(linux_census_frame(json.dumps(invalid), 100, 55))
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired([], 4, output=json.dumps(facts).encode(), stderr=b"PRIVATE_ERROR")):
+            result = linux_failure_census(native)
+        self.assertTrue(result["worker_timed_out"] and result["facts_valid"])
+        self.assertEqual(result["facts"], facts)
+        self.assertNotIn("PRIVATE", json.dumps(result))
+
+    def test_linux_census_commands_are_available_and_separately_time_bounded(self):
+        with patch("shutil.which", return_value=None), patch("subprocess.run") as command:
+            self.assertIsNone(linux_census_command(["missing"], time.monotonic() + 3))
+            command.assert_not_called()
+        with patch("shutil.which", return_value="synthetic-tool"), patch("subprocess.run") as command:
+            linux_census_command(["xprop", "-root", "_NET_CLIENT_LIST"], time.monotonic() + 3)
+            self.assertLessEqual(command.call_args.kwargs["timeout"], .3)
+            self.assertEqual(command.call_args.kwargs["env"]["LC_ALL"], "C")
+
+    def test_linux_census_bounds_cycles_and_rejects_unbounded_text_reads(self):
+        node = self.CensusNode(100)
+        node.children, node.childCount = [node], 1
+        bridge = Mock(Registry=Mock(getDesktop=lambda _: self.CensusNode(children=[node])))
+        facts = linux_census(100, 55, lambda _: True, self.census_commands, lambda: bridge, lambda _: None)
+        self.assertTrue(facts["atspi_bound_hit"])
+        self.assertEqual(facts["atspi_nodes"], CENSUS_NODES)
+        read = Mock(characterCount=-1)
+        node.children, node.childCount, node.queryText = [], 0, lambda: read
+        facts = linux_census(100, 55, lambda _: True, self.census_commands, lambda: bridge, lambda _: None)
+        read.getText.assert_not_called()
+        self.assertFalse(facts["atspi_complete"])
+
+    def test_linux_census_blocked_desktop_retains_flushed_process_x_frame(self):
+        source = ("import runpy,json,time; from types import SimpleNamespace as S; "
+                  "m=runpy.run_path(" + repr(str(Path(__file__).resolve())) + "); "
+                  "bridge=S(Registry=S(getDesktop=lambda _: time.sleep(30))); "
+                  "m['linux_census'](100,55,lambda _: True,lambda _: None,lambda: bridge,lambda f: print(json.dumps(f),flush=True))")
+        command = [sys.executable, "-c", source]
+        execute = subprocess.run
+        with patch("subprocess.run", side_effect=lambda _argv, **options: execute(command, **options)):
+            result = linux_failure_census(Mock(app=Mock(pid=100), wm=Mock(pid=55)))
+        self.assertTrue(result["worker_timed_out"] and result["facts_valid"])
+        self.assertTrue(result["facts"]["atspi_available"])
+        self.assertFalse(result["facts"]["atspi_desktop_succeeded"])
+
+    def test_linux_census_errors_keep_the_original_failure_and_teardown(self):
+        for error in (RuntimeError("PRIVATE_COLLECTOR_ERROR"), subprocess.TimeoutExpired([], 4)):
+            native, app = Mock(), Mock(pid=100)
+            app.poll.return_value = None
+            class Native:
+                def __init__(self):
+                    self.wm = Mock(pid=55)
+                def close(self):
+                    native.close()
+            with tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                executable, output = folder / "synthetic-app", folder / "output"
+                executable.touch()
+                with patch("sys.argv", ["smoke", "--app", str(executable), "--output", str(output)]), \
+                     patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux", Native), \
+                     patch("subprocess.Popen", return_value=app), patch("builtins.print"), \
+                     patch(__name__ + ".wait_for", side_effect=AssertionError("Timed out: synthetic library startup")), \
+                     patch(__name__ + ".linux_failure_census", side_effect=error, create=True) as collector:
+                    self.assertEqual(main(), 1)
+                report = json.loads((output / "smoke.json").read_text())
+                collector.assert_called_once()
+                self.assertEqual(report["reason"], "Timed out: synthetic library startup")
+                self.assertTrue(report["linux_census"]["collector_failed"])
+                self.assertNotIn("PRIVATE", json.dumps(report))
+                app.terminate.assert_called_once()
+                native.close.assert_called_once()
+
     def preference_probe(self, failure=None, *, scripted_system=None):
         clock, launches, actions = [0.0], [], []
         # Exercise the Scripted Quit protocol while keeping settings in the
@@ -3074,5 +3426,12 @@ if(!$rejected) {throw 'Missing owned window accepted'}
 if __name__ == "__main__":
     if sys.argv[1:] == ["--self-test"]:
         unittest.main(argv=[sys.argv[0]])
+    elif sys.argv[1:2] == ["--linux-failure-census"]:
+        try:
+            if platform.system() != "Linux" or len(sys.argv) != 4:
+                raise ValueError("Private census mode unavailable")
+            linux_census_worker(int(sys.argv[2]), int(sys.argv[3]))
+        except Exception:
+            sys.exit(1)
     else:
         sys.exit(main())
