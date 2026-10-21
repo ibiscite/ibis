@@ -1,13 +1,15 @@
 //! User settings, stored as versioned JSON.
 //!
-//! Settings are small and human-editable. Saving is atomic and keeps the
-//! previous file as a backup, so a crash or a bad edit never loses the last
-//! working settings. A file written by a newer version of Ibis is refused
+//! Settings are small and human-editable. Saving is atomic, flushed to disk
+//! before the old file is replaced, and keeps the previous file as a backup,
+//! so a crash, a power cut or a bad edit never loses the last working
+//! settings. Fields this build does not know are kept on save, so builds
+//! that add fields within one format do not erase each other's (ADR 0022). A file written by a newer version of Ibis is refused
 //! rather than overwritten; a file written by an older version is migrated
 //! when it is read, one version step at a time (ADR 0018).
 
-use std::fs;
-use std::io;
+use std::fs::{self, File};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -142,6 +144,10 @@ pub struct Settings {
     /// Larger text in the picker. `None` means the normal size.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub larger_text: Option<bool>,
+    /// Fields this build does not know, written by another version of Ibis
+    /// or by hand. Kept as they are and written back on save.
+    #[serde(flatten)]
+    pub unknown: serde_json::Map<String, Value>,
 }
 
 impl Default for Settings {
@@ -155,6 +161,7 @@ impl Default for Settings {
             citation_style: None,
             density: None,
             larger_text: None,
+            unknown: serde_json::Map::new(),
         }
     }
 }
@@ -277,12 +284,34 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| SettingsError::Invalid(e.to_string()))?;
     let temporary = path.with_extension("json.tmp");
-    fs::write(&temporary, format!("{json}\n"))?;
+    // The new contents reach the disk before they replace the old file, so a
+    // power cut leaves either file whole, never an empty one.
+    let mut file = File::create(&temporary)?;
+    file.write_all(format!("{json}\n").as_bytes())?;
+    file.sync_all()?;
+    drop(file);
     if path.exists() {
-        fs::copy(path, backup_path(path))?;
+        let backup = backup_path(path);
+        fs::copy(path, &backup)?;
+        // Windows flushes only a handle opened for writing.
+        fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
     }
     fs::rename(&temporary, path)?;
+    sync_directory(path);
     Ok(())
+}
+
+/// Flush the folder holding `path`, so the rename itself survives a power
+/// cut. Unix only: Windows cannot open a folder as a file, and NTFS journals
+/// the rename. Best effort: the file is already in place, and some file
+/// systems refuse to flush a folder.
+fn sync_directory(path: &Path) {
+    #[cfg(unix)]
+    if let Some(directory) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        let _ = File::open(directory).and_then(|d| d.sync_all());
+    }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 /// Change settings on disk: read the file as it is now, apply `change` and
@@ -466,6 +495,47 @@ mod tests {
             Err(SettingsError::Invalid(_))
         ));
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ not json");
+    }
+
+    #[test]
+    fn saves_keep_fields_another_ibis_version_wrote() {
+        let directory = dir("unknown");
+        let path = directory.path().join("settings.json");
+        let newer_build = serde_json::json!({
+            "schema_version": 2,
+            "citation_style": "apa",
+            "window_position": { "display": "synthetic", "x": 10, "y": -20 },
+            "later_flag": [true, null, 1.5],
+        });
+        fs::write(&path, newer_build.to_string()).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.shortcut = Some("Alt+Space".into())).unwrap_or_else(|e| panic!("{e}"));
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved["shortcut"], "Alt+Space");
+        assert_eq!(saved["citation_style"], "apa");
+        assert_eq!(saved["window_position"], newer_build["window_position"]);
+        assert_eq!(saved["later_flag"], newer_build["later_flag"]);
+
+        // A format 1 file keeps its unknown fields through migration too.
+        fs::write(&path, r#"{"library": "/synthetic/refs.bib", "kept": "yes"}"#).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.larger_text = Some(true)).unwrap_or_else(|e| panic!("{e}"));
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved["kept"], "yes");
+        assert_eq!(saved["schema_version"], 2);
+        assert_eq!(saved["library"], serde_json::json!({ "bibtex": "/synthetic/refs.bib" }));
+    }
+
+    #[test]
+    fn a_temporary_file_left_by_an_interrupted_save_does_not_leak_into_the_next() {
+        let directory = dir("interrupted");
+        let path = directory.path().join("settings.json");
+        let stale = format!("{{\"schema_version\": 2, \"shortcut\": \"{}\"}}", "x".repeat(4096));
+        fs::write(path.with_extension("json.tmp"), stale).unwrap_or_else(|e| panic!("{e}"));
+        save(&path, &Settings::default()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(load(&path).settings, Settings::default());
+        assert!(load(&path).problem.is_none());
+        assert!(!path.with_extension("json.tmp").exists());
     }
 
     #[test]
