@@ -138,7 +138,10 @@ main {
 [aria-label="Selected references"] button { border: 0; background: var(--clear); font-size: var(--metadata-size); }
 
 footer { display: flex; align-items: center; border-top: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
-.library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); }
+/* The bar carries the footer's block padding: one line is the 32 px More
+   button with 4 px above (counting the divider) and below, so the footer stays
+   40 px, and wrapped lines never touch the divider or the window's corners. */
+.library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); padding-block: calc(var(--space-1) - var(--border-width)) var(--space-1); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
 .library-status { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--footer-gap); color: var(--muted); }
@@ -182,7 +185,7 @@ main:hover .pin-button, .pin-button:focus-visible { opacity: 1; }
 
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
-.more > button { min-height: var(--control-min-size); }
+.more > button { min-height: var(--control-min-size); padding-block: 0; }
 .quiet-button, .icon-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
 .icon-button { font-size: var(--icon-size); padding: var(--icon-padding); }
 /* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
@@ -191,7 +194,8 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
 
 @media (prefers-contrast: more) {
 
-  [role="option"][data-active] { border-color: var(--active-edge); border-width: var(--contrast-border-width); }
+  /* The 3 px edge comes out of the side padding, so the text stays put. */
+  [role="option"][data-active] { border-color: var(--active-edge); border-width: var(--contrast-border-width); padding-inline: calc(var(--row-pad) - var(--contrast-border-width)); }
   /* The tile carries the citation state as an inverted square with its check. */
   [data-active][data-citation-selected] .result-tile { background: var(--row-active-text); color: var(--row-active-background); }
   :root[data-platform] #search { border-color: var(--line); }
