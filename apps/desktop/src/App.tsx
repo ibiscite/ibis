@@ -522,15 +522,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (!style || !cslItems || chosen.length === 0 || staleSelection || !chosenRevision) return;
     let live = true;
     const key = previewKey;
+    const replaced = new AbortController();
     cslItems(chosen.map((r) => r.id), chosenRevision)
-      .then((csl) => formatCitation(csl, style))
+      .then((csl) => formatCitation(csl, style, { signal: replaced.signal }))
       .then((result) => { if (live) setFormatted({ key, result }); })
       .catch((error) => { if (live) {
         const stale = nativeApi.isSnapshotChanged(error);
         setFormatted({ key, result: stale ? "stale" : "failed" });
         if (stale) refreshSnapshot();
       } });
-    return () => { live = false; };
+    return () => { live = false; replaced.abort(); };
   }, [previewKey]);
 
   // Copy the chosen references in the chosen format.

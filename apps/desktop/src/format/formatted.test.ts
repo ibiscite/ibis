@@ -1,4 +1,4 @@
-import { FormatClient } from "./client";
+import { CANCELLED, FormatClient } from "./client";
 import { InlineWorker } from "./inline-worker";
 import { formatCitation } from "./formatted";
 
@@ -12,13 +12,19 @@ describe("formatted citation for the picker", () => {
   const client = new FormatClient(() => new InlineWorker());
 
   it("formats the chosen references and names the ones it could not", async () => {
-    const result = await formatCitation(csl, "apa", client);
+    const result = await formatCitation(csl, "apa", { client });
     expect(result.text).toBe("(Garcia, 2021); Broken");
     expect(result.html).toBe("(Garcia, 2021); Broken");
     expect(result.warnings).toEqual(["“Broken”: this style could not format the reference, so its title is shown instead"]);
   });
 
   it("rejects data that is not a list of references", async () => {
-    await expect(formatCitation("{}", "apa", client)).rejects.toThrow("the references could not be read");
+    await expect(formatCitation("{}", "apa", { client })).rejects.toThrow("the references could not be read");
+  });
+
+  it("does not format a preview that was already replaced", async () => {
+    const replaced = new AbortController();
+    replaced.abort();
+    await expect(formatCitation(csl, "apa", { client, signal: replaced.signal })).rejects.toThrow(CANCELLED);
   });
 });

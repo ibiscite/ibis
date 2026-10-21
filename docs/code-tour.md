@@ -81,7 +81,10 @@ existing licence and advisory policy.
    escaping helper when output is wrong.
 5. For a bundled style, `api.cslItems` calls `copy::csl_items`, which exports the
    chosen snapshot's records as CSL-JSON. [formatted.ts](../apps/desktop/src/format/formatted.ts)
-   sends them to the formatting worker for the preview. `api.copyFormatted`
+   sends them to the formatting worker for the preview; the worker's
+   [client](../apps/desktop/src/format/client.ts) sends one request at a time,
+   drops previews replaced before they start, and stops a worker that makes no
+   progress for 5 s. `api.copyFormatted`
    passes that completed preview's text, HTML and snapshot revision to
    `copy_formatted`, which validates the revision and writes HTML with a
    plain-text alternative. The desktop picker does not write RTF.
