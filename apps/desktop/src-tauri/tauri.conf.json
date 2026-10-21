@@ -35,15 +35,43 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/linux/512x512/io.github.ibiscite.ibis.png"
+    ],
     "macOS": {
       "signingIdentity": "-"
+    },
+    "linux": {
+      "deb": {
+        "desktopTemplate": "icons/source/ibis.desktop",
+        "files": {
+          "/usr/share/icons/hicolor/128x128/apps/io.github.ibiscite.ibis.png": "icons/linux/128x128/io.github.ibiscite.ibis.png",
+          "/usr/share/icons/hicolor/256x256/apps/io.github.ibiscite.ibis.png": "icons/linux/256x256/io.github.ibiscite.ibis.png",
+          "/usr/share/icons/hicolor/512x512/apps/io.github.ibiscite.ibis.png": "icons/linux/512x512/io.github.ibiscite.ibis.png",
+          "/usr/share/icons/hicolor/symbolic/apps/io.github.ibiscite.ibis-symbolic.svg": "icons/source/io.github.ibiscite.ibis-symbolic.svg"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/icons/hicolor/128x128/apps/io.github.ibiscite.ibis.png": "icons/linux/128x128/io.github.ibiscite.ibis.png",
+          "/usr/share/icons/hicolor/256x256/apps/io.github.ibiscite.ibis.png": "icons/linux/256x256/io.github.ibiscite.ibis.png",
+          "/usr/share/icons/hicolor/512x512/apps/io.github.ibiscite.ibis.png": "icons/linux/512x512/io.github.ibiscite.ibis.png",
+          "/usr/share/icons/hicolor/symbolic/apps/io.github.ibiscite.ibis-symbolic.svg": "icons/source/io.github.ibiscite.ibis-symbolic.svg"
+        }
+      }
     }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1RDQyOTVCRjYyNzM0N0MKUldSOE5DZjJXeW5VUldibkJiL3JLdmVGVUFaRGQ5cGtTb3NDdUZPLzg4bjF4c3N1TEtuTEFZVmwK",
-      "endpoints": ["https://github.com/ibiscite/ibis/releases/download/stable/latest.json"]
+      "endpoints": [
+        "https://github.com/ibiscite/ibis/releases/download/stable/latest.json"
+      ]
     }
   }
 }

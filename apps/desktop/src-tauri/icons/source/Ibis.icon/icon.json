@@ -1,0 +1,64 @@
+{
+  "groups": [
+    {
+      "name": "Eye",
+      "layers": [
+        {
+          "name": "Eye",
+          "image-name": "eye.svg",
+          "glass": false,
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:0.7529411765,0.2117647059,0.1019607843,1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bird",
+      "layers": [
+        {
+          "name": "Bird",
+          "image-name": "bird.svg",
+          "glass": false,
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:1,1,1,1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  },
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.8980392157,0.3254901961,0.1764705882,1",
+          "srgb:0.7529411765,0.2117647059,0.1019607843,1"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.8980392157,0.3254901961,0.1764705882,1",
+          "srgb:0.7529411765,0.2117647059,0.1019607843,1"
+        ]
+      }
+    }
+  ]
+}
