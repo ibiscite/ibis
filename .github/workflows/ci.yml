@@ -592,3 +592,34 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           arguments: --all-features --locked
+
+  # One check that stands for every required job, for the ruleset to require
+  # instead of six names. A matrix job skipped because a job it needs failed
+  # never reports its per-system checks; this job always reports. Skipped
+  # counts as passing only for the documentation-only path, where the
+  # changes job decided not to build the native app.
+  result:
+    name: CI result
+    if: always()
+    needs: [changes, test, web, desktop, fidelity, dependencies]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every needed job to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          NATIVE: ${{ needs.changes.outputs.native }}
+        run: |
+          echo "Results: $RESULTS (native build: $NATIVE)"
+          for result in $RESULTS; do
+            case "$result" in
+              success) ;;
+              skipped)
+                if [ "$NATIVE" != false ]; then
+                  echo "::error::A required job was skipped although the native app had to be built."
+                  exit 1
+                fi
+                ;;
+              *) echo "::error::A required job ended '$result'."; exit 1 ;;
+            esac
+          done
