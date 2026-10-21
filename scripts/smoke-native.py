@@ -718,8 +718,17 @@ class Scripted:
         if getattr(self, "last_action", None) != action:
             print(f"NATIVE ACTION {action}", flush=True)
         self.last_action = action
+        arguments = [action, str(getattr(getattr(self, "app", None), "pid", 0)), str(getattr(self, "editor_pid", 0)), text]
+        if self.system == "Windows" and action == "click":
+            # A modal popover hides Search from UIA, so discovery cannot run
+            # again. Only the HWND established by this process's snapshot fits.
+            handle = getattr(self, "picker_handle", None)
+            if (getattr(self, "picker_app_pid", None) != getattr(getattr(self, "app", None), "pid", None)
+                    or type(handle) is not int or handle == 0):
+                raise RuntimeError("Verified native picker window identity unavailable")
+            arguments.append(str(handle))
         try:
-            result = subprocess.run(self.command + [action, str(getattr(getattr(self, "app", None), "pid", 0)), str(getattr(self, "editor_pid", 0)), text], encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+            result = subprocess.run(self.command + arguments, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         except subprocess.TimeoutExpired as error:
             # Never print TimeoutExpired itself: its command contains paths and
             # synthetic clipboard/query arguments. The fixed action is enough.
@@ -2432,6 +2441,24 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(helper.call_args_list[0].args, ("snapshot", "0"))
             self.assertEqual(helper.call_args_list[1].args, ("snapshot", "456"))
 
+    def test_windows_click_reuses_verified_picker_when_a_modal_menu_hides_search(self):
+        native = Scripted.__new__(Scripted)
+        native.system, native.command = "Windows", ["synthetic-helper"]
+        native.app = type("App", (), {"pid": 123})()
+        native.picker_app_pid, native.picker_handle = 123, 456
+        result = subprocess.CompletedProcess([], 0, '{"pressed":true}', "")
+        for handle in (456, -2147483647):
+            with self.subTest(verified_handle=handle), patch("subprocess.run", return_value=result) as helper:
+                native.picker_handle = handle
+                native.call("click", "Reload")
+                self.assertEqual(helper.call_args.args[0], ["synthetic-helper", "click", "123", "0", "Reload", str(handle)])
+        for owner, handle in ((124, 456), (123, 0), (123, True), (123, 1.5)):
+            with self.subTest(owner=owner, handle=handle), patch("subprocess.run") as helper:
+                native.picker_app_pid, native.picker_handle = owner, handle
+                with self.assertRaisesRegex(RuntimeError, "identity"):
+                    native.call("click", "Reload")
+                helper.assert_not_called()
+
     def test_windows_snapshots_fail_closed_if_the_verified_picker_identity_changes(self):
         native = Scripted.__new__(Scripted)
         native.system, native.picker_app_pid, native.picker_handle = "Windows", 123, 456
@@ -2853,9 +2880,19 @@ $clause=$clause.Replace('[System.Windows.Automation.', '[IbisClickContract.')
 $operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
 Add-Type @'
 using System;
+public static class IbisSmoke {
+ public static bool Valid=true, Visible=true; public static uint Owner=42;
+ public static long Handle=7;
+ public static bool IsWindow(IntPtr handle) { return Valid && handle.ToInt64()==Handle; }
+ public static bool IsWindowVisible(IntPtr handle) { return Visible; }
+ public static uint OwnerPid(IntPtr handle) { return Owner; }
+}
 namespace IbisClickContract {
  public enum TreeScope { Descendants }
- public class AutomationElement { public static string NameProperty="name"; }
+ public class AutomationElement {
+  public static string NameProperty="name"; public static ClickWindow Window;
+  public static ClickWindow FromHandle(IntPtr handle) { return Window; }
+ }
  public class PropertyCondition { public string Value; public PropertyCondition(string property,string value) { Value=value; } }
  public class ControlType { public static string Button="button", MenuItem="menu", Text="text"; }
  public class InvokePattern { public static int Pattern=1; }
@@ -2879,15 +2916,29 @@ public class ClickWindow {
 }
 }
 '@
-$AppId=42; $Text='Typst'; $script:window=[IbisClickContract.ClickWindow]::new()
-function Get-AppWindow { param($Id) if($Id -ne 42) {throw 'Unexpected owner'}; $script:window }
-foreach ($pattern in @(1,2,3)) {
- $element=[IbisClickContract.ClickElement]::new(); $element.Supported=$pattern; $script:window.Elements=@($element)
- $result=& $operation
- if(!$result.pressed -or !$result.button_role -or $element.Action.Activations -ne 1 -or
-    $result.invoke_pattern -ne ($pattern -eq 1) -or $result.expand_collapse_pattern -ne ($pattern -eq 2) -or
-    $result.toggle_pattern -ne ($pattern -eq 3)) {throw 'Native pattern did not activate once'}
+$AppId=42; $PickerHandle=7; $Text='Typst'; $script:window=[IbisClickContract.ClickWindow]::new()
+[IbisClickContract.AutomationElement]::Window=$script:window
+# This window has no Search control: only the opened modal menu's target.
+foreach ($nativeHandle in @(7,-2147483647)) {
+ [IbisSmoke]::Handle=$nativeHandle; $PickerHandle=$nativeHandle
+ foreach ($pattern in @(1,2,3)) {
+  $element=[IbisClickContract.ClickElement]::new(); $element.Supported=$pattern; $script:window.Elements=@($element)
+  $result=& $operation
+  if(!$result.pressed -or !$result.button_role -or $element.Action.Activations -ne 1 -or
+     $result.invoke_pattern -ne ($pattern -eq 1) -or $result.expand_collapse_pattern -ne ($pattern -eq 2) -or
+     $result.toggle_pattern -ne ($pattern -eq 3)) {throw 'Native pattern did not activate once'}
+ }
 }
+[IbisSmoke]::Handle=7; $PickerHandle=7
+foreach ($failure in @('stale','foreign','hidden','missing-handle')) {
+ $element=[IbisClickContract.ClickElement]::new(); $script:window.Elements=@($element)
+ [IbisSmoke]::Valid=$failure -ne 'stale'; [IbisSmoke]::Visible=$failure -ne 'hidden'
+ [IbisSmoke]::Owner=if($failure -eq 'foreign') {43} else {42}
+ $PickerHandle=if($failure -eq 'missing-handle') {0} else {7}
+ $rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
+ if(!$rejected -or $element.Action.Activations -ne 0) {throw 'Unverified picker reached activation'}
+}
+[IbisSmoke]::Valid=$true; [IbisSmoke]::Visible=$true; [IbisSmoke]::Owner=42; $PickerHandle=7
 foreach ($failure in @('missing','wrong-label','text-toggle','menu-toggle','duplicate','unsupported','uncertain','bound')) {
  $element=[IbisClickContract.ClickElement]::new(); $script:window.Elements=@($element)
  switch($failure) {
@@ -2904,7 +2955,7 @@ foreach ($failure in @('missing','wrong-label','text-toggle','menu-toggle','dupl
  $expected=if($failure -eq 'uncertain') {1} else {0}
  if(!$rejected -or $element.Action.Activations -ne $expected) {throw 'Unsafe or repeated activation'}
 }
-$script:window=$null
+[IbisClickContract.AutomationElement]::Window=$null
 $rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
 if(!$rejected) {throw 'Missing owned window accepted'}
 '''
