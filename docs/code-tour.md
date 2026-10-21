@@ -30,9 +30,10 @@ MLA). More styles and direct insertion into other applications are future work.
 4. Typing updates React's `query`. The search effect calls `api.search`, which
    calls the generated `commands.search` function in
    [bindings.ts](../apps/desktop/src/bindings.ts).
-5. The Rust command `library::search` in
-   [library.rs](../apps/desktop/src-tauri/src/library.rs) reads the installed
-   library and calls `OwnedIndex::search_scoped_until` in
+5. The Rust command `search` in
+   [library/commands.rs](../apps/desktop/src-tauri/src/library/commands.rs)
+   takes the installed index, and
+   [library/search.rs](../apps/desktop/src-tauri/src/library/search.rs) calls `OwnedIndex::search_scoped_until` in
    [core search.rs](../crates/ibis-core/src/search.rs).
 6. Core search normalizes case and accents, matches query terms and ranks the
    results. Rust returns record identities, display fields and matched fields;
@@ -110,7 +111,7 @@ At startup, `main.rs` chooses the `IBIS_LIBRARY` override or saved library path
 and calls `start_open`. The Choose library button takes this path:
 `api.chooseLibrary` → Rust `choose_library` → `choose_library_file` → native
 dialog callback → `start_open(path, true)`. These Rust functions are in
-[library.rs](../apps/desktop/src-tauri/src/library.rs). `DialogOpen` prevents
+[library/tasks.rs](../apps/desktop/src-tauri/src/library/tasks.rs). `DialogOpen` prevents
 duplicate dialogs and keeps the picker open while its own dialog has focus.
 
 `start_open` numbers the request synchronously and loads in a background task.
@@ -124,7 +125,7 @@ an initial load. The parsing path is:
 | Resolve | [resolve.rs](../crates/ibis-core/src/bibtex/resolve.rs): `Resolver::resolve` | Macro expansion, inherited fields, precedence, structural limits and caches. |
 | Parse fields | [bibtex/mod.rs](../crates/ibis-core/src/bibtex/mod.rs): `load_entry` | Resolved text passed to `biblatex::Bibliography::parse`; per-entry panic containment. |
 | Convert | [convert.rs](../crates/ibis-core/src/bibtex/convert.rs): `convert` | Names, dates, protected text and CSL-like normalized fields. |
-| Index | [desktop library.rs](../apps/desktop/src-tauri/src/library.rs): `candidate`, `install` | `OwnedIndex`, warnings, request generation and installed state. |
+| Index | [desktop library/state.rs](../apps/desktop/src-tauri/src/library/state.rs): `candidate`, `install` | `OwnedIndex`, warnings, request generation and installed state. |
 
 [bibtex/mod.rs](../crates/ibis-core/src/bibtex/mod.rs)'s `load_with_budget`
 coordinates parsing and returns a [LoadResult](../crates/ibis-core/src/model.rs):
@@ -141,7 +142,7 @@ with a warning; a limited reload returns an error so it cannot replace the index
 
 ## Reloading: who keeps the last good library?
 
-`watch_current` in desktop `library.rs` constructs
+`watch_current` in desktop `library/tasks.rs` constructs
 [SourceWatch](../crates/ibis-core/src/source.rs). It watches containing directories
 so editor save-by-rename works, and also manages symlink target watches.
 The bounded worker coalesces events and calls `stable_read`: two identical

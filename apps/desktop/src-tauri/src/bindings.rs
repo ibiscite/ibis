@@ -3,15 +3,15 @@
 pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::new()
         .commands(tauri_specta::collect_commands![
-            crate::library::choose_library,
-            crate::library::reload_library,
-            crate::library::use_zotero,
+            crate::library::commands::choose_library,
+            crate::library::commands::reload_library,
+            crate::library::commands::use_zotero,
             crate::setup::find_sources,
             crate::setup::open_found_library,
-            crate::library::use_zotero_libraries,
-            crate::library::zotero_groups,
-            crate::library::library_status,
-            crate::library::search,
+            crate::library::commands::use_zotero_libraries,
+            crate::library::commands::zotero_groups,
+            crate::library::commands::library_status,
+            crate::library::commands::search,
             crate::copy::copy_citation,
             crate::copy::copy_format,
             crate::copy::csl_items,
