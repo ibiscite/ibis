@@ -245,16 +245,8 @@ jobs:
     needs: [changes, web]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    permissions:
-      contents: read
-      # Only to open or update the issue when native UI smoke fails on main.
-      issues: write
     env:
       NATIVE: ${{ needs.changes.outputs.native }}
-      # Pull requests run every behaviour check on all three systems. The slow
-      # macOS and Windows evidence (all gallery states, appearance changes)
-      # runs on main and on manual runs, where it covers each merged change.
-      EVIDENCE: ${{ github.event_name != 'pull_request' || matrix.os == 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
@@ -377,19 +369,11 @@ jobs:
             } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
 
-      - name: Capture every synthetic picker state
-        if: ${{ !cancelled() && env.NATIVE == 'true' && env.EVIDENCE == 'true' && steps.native_build.outcome == 'success' }}
+      - name: Capture every synthetic picker state (Linux)
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
-          if [ "$RUNNER_OS" = Windows ]; then
-            python -B scripts/test_capture_gallery.py
-            python scripts/capture-gallery.py --app target/debug/ibis-desktop.exe --output screenshots/gallery-Windows
-          elif [ "$RUNNER_OS" = Linux ]; then
-            python3 -B scripts/test_capture_gallery.py
-            xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-Linux
-          else
-            python3 -B scripts/test_capture_gallery.py
-            python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-macOS
-          fi
+          python3 -B scripts/test_capture_gallery.py
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-Linux
 
       - name: Exercise the native picker (Linux)
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
@@ -401,13 +385,122 @@ jobs:
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/smoke-Linux --budgets scripts/smoke-budgets.json
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/preferences-Linux --first-run-preferences
 
-      # macOS and Windows UI automation on hosted runners is the flakiest part
-      # of CI (#361, #410). On pull requests it reports a warning instead of
-      # blocking the merge; on main a failure is red and opens an issue.
+      # The Native UI job exercises this exact build on macOS and Windows.
+      - name: Keep the built app for Native UI
+        if: env.NATIVE == 'true' && runner.os != 'Linux' && steps.native_build.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-app-${{ github.sha }}-${{ runner.os }}
+          path: target/debug/ibis-desktop${{ runner.os == 'Windows' && '.exe' || '' }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+      # Uploads still run after a job timeout (which counts as cancelled) so
+      # a hang leaves its logs; publishing happens only in the screenshots job.
+      - name: Keep screenshots and startup logs
+        if: always() && env.NATIVE == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: picker-${{ github.sha }}-${{ runner.os }}
+          path: screenshots/*
+          if-no-files-found: warn
+          retention-days: 14
+
+  native-ui:
+    name: Native UI (${{ matrix.os }})
+    # Not a required check. macOS and Windows UI automation on hosted runners
+    # is the flakiest part of CI (#361, #410, #464), so it runs here, beside
+    # the required Desktop jobs instead of inside them: a failure turns this
+    # job red where everyone can see it without holding a pull request, and
+    # on main it also opens or updates an issue.
+    needs: [changes, desktop]
+    # Desktop is one matrix, so its result is failed if any system failed.
+    # Run whenever it ran; a system whose build failed has no app to exercise.
+    if: ${{ !cancelled() && needs.changes.outputs.native == 'true' && needs.desktop.result != 'skipped' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Only to read whether this system's Desktop job failed.
+      actions: read
+      # Only to open or update the issue when native UI smoke fails on main.
+      issues: write
+    env:
+      # The slow macOS and Windows evidence (all gallery states, appearance
+      # changes) runs on main and on manual runs, where it covers each merge.
+      EVIDENCE: ${{ github.event_name != 'pull_request' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the app built by Desktop
+        id: app
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-app-${{ github.sha }}-${{ runner.os }}
+          path: target/debug
+
+      # A missing app is only expected when this system's Desktop job failed
+      # (that required check is already red); otherwise nothing was tested.
+      - name: Check why the app is missing
+        id: missing
+        if: steps.app.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP: Desktop (${{ matrix.os }})
+          JOBS: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=100
+        run: |
+          conclusion=$(gh api "$JOBS" --jq ".jobs[] | select(.name == \"$DESKTOP\") | .conclusion")
+          case "$conclusion" in
+            failure | cancelled | timed_out)
+              echo "::warning::$DESKTOP ended '$conclusion' and built no app, so native UI was not exercised." ;;
+            *)
+              echo "::error::$DESKTOP ended '${conclusion:-unknown}' but its app could not be downloaded; native UI was not exercised."
+              exit 1 ;;
+          esac
+
+      - name: Prepare the app
+        if: steps.app.outcome == 'success'
+        run: |
+          chmod +x target/debug/ibis-desktop* || true
+          mkdir -p screenshots
+
+      # Add to the Desktop job's screenshots and logs so evidence publication
+      # still sees one artifact per system.
+      - name: Download the Desktop screenshots
+        id: shots
+        if: steps.app.outcome == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: picker-${{ github.sha }}-${{ runner.os }}
+          path: screenshots
+
+      - name: Capture every synthetic picker state
+        if: ${{ !cancelled() && env.EVIDENCE == 'true' && steps.app.outcome == 'success' }}
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            python -B scripts/test_capture_gallery.py
+            python scripts/capture-gallery.py --app target/debug/ibis-desktop.exe --output screenshots/gallery-Windows
+          else
+            python3 -B scripts/test_capture_gallery.py
+            python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-macOS
+          fi
+
       - name: Exercise the native picker (macOS)
         id: native_macos
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && steps.app.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 scripts/smoke-native.py --self-test
           python3 scripts/check-offline.test.py
@@ -415,7 +508,7 @@ jobs:
           python3 scripts/smoke-native.py --app target/debug/ibis-desktop --output screenshots/preferences-macOS --first-run-preferences
 
       - name: Keep failed macOS native diagnostics immediately
-        if: always() && env.NATIVE == 'true' && runner.os == 'macOS' && steps.native_macos.outcome == 'failure'
+        if: always() && runner.os == 'macOS' && steps.native_macos.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-failure-${{ github.sha }}-macOS
@@ -429,38 +522,31 @@ jobs:
 
       - name: Exercise the full-screen macOS panel
         id: native_panel
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && steps.app.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 scripts/check-panel-macos.py --self-test
           python3 scripts/check-panel-macos.py --app target/debug/ibis-desktop --output screenshots/panel-macOS
 
       - name: Exercise the native picker (Windows)
         id: native_windows
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
+        if: ${{ !cancelled() && steps.app.outcome == 'success' && runner.os == 'Windows' }}
         run: |
           python scripts/smoke-native.py --self-test
           python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/smoke-Windows --budgets scripts/smoke-budgets.json
           python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/preferences-Windows --first-run-preferences
 
       - name: Observe native materials and accessibility changes (macOS)
-        if: ${{ !cancelled() && env.NATIVE == 'true' && env.EVIDENCE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && env.EVIDENCE == 'true' && steps.app.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           python3 -B scripts/test_native_appearance_macos.py
           python3 scripts/check-native-appearance-macos.py --app target/debug/ibis-desktop --output screenshots/appearance-macOS
 
-      - name: Report native UI failures
-        if: ${{ !cancelled() && (steps.native_macos.outcome == 'failure' || steps.native_panel.outcome == 'failure' || steps.native_windows.outcome == 'failure') }}
+      - name: Report native UI failures on main
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && (steps.missing.outcome == 'failure' || steps.native_macos.outcome == 'failure' || steps.native_panel.outcome == 'failure' || steps.native_windows.outcome == 'failure') }}
         env:
           GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ "$EVENT" = pull_request ]; then
-            echo "::warning title=Native UI smoke failed on $RUNNER_OS::Not blocking this pull request; main runs it again and reports failures in an issue. $RUN_URL"
-            exit 0
-          fi
           title="Native UI smoke failing on main ($RUNNER_OS)"
           number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           body="Failed on $GITHUB_SHA: $RUN_URL"
@@ -470,20 +556,33 @@ jobs:
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label type:task --label area:infra --body "$body"
           fi
 
-      # Uploads still run after a job timeout (which counts as cancelled) so
-      # a hang leaves its logs; publishing happens only in the screenshots job.
-      - name: Keep screenshots and startup logs
-        if: always() && env.NATIVE == 'true'
+      # Replaces the Desktop job's artifact with the same files plus these,
+      # but only when those files were downloaded first.
+      - name: Keep screenshots and logs
+        if: always() && steps.shots.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: picker-${{ github.sha }}-${{ runner.os }}
           path: screenshots/*
           if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+      # Without them, keep this job's files apart so Desktop's are never
+      # replaced; evidence publication does not read this name.
+      - name: Keep screenshots and logs separately
+        if: always() && steps.app.outcome == 'success' && steps.shots.outcome != 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-ui-${{ github.sha }}-${{ runner.os }}
+          path: screenshots/*
+          if-no-files-found: warn
+          overwrite: true
           retention-days: 14
 
   screenshots:
     name: Collect picker screenshots
-    needs: [changes, desktop]
+    needs: [changes, desktop, native-ui]
     # A failed Web interface skips every Desktop job, so there is nothing to
     # publish. One failed Desktop platform still leaves the others to publish.
     if: ${{ !cancelled() && needs.changes.outputs.native == 'true' && needs.desktop.result != 'skipped' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}

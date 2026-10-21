@@ -73,7 +73,7 @@ python3 scripts/smoke-native.py --app target/debug/ibis-desktop \
 python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/smoke-Windows --budgets scripts/smoke-budgets.json
 ```
 
-Exit 0 is a pass, 1 a failure and 2 unavailable, never a pass. `--self-test` tests the harness alone. Linux smoke blocks pull requests; macOS and Windows warn on pull requests and block on `main`, where a failure opens or updates an issue.
+Exit 0 is a pass, 1 a failure and 2 unavailable, never a pass. `--self-test` tests the harness alone. Linux smoke runs in the required `Desktop (ubuntu-24.04)` check and blocks pull requests. macOS and Windows smoke run in the separate `Native UI (…)` jobs on the app the Desktop job built: they are not required checks, so a failure turns that job red without blocking a merge, and on `main` it also opens or updates an issue.
 
 **First-run preferences.** `--first-run-preferences` (instead of `--budgets`) runs the first-run check (#486): choose a writing format, quit, restart and copy, and the copy must use the saved format without choosing it again. Quit must finish within ten seconds. What it does not cover is listed in #238.
 
