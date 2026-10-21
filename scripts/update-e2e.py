@@ -56,53 +56,67 @@ UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 WINDOWS_LOOK = r"""
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $A = [System.Windows.Automation.AutomationElement]
-$T = [System.Windows.Automation.ControlType]
 $S = [System.Windows.Automation.TreeScope]
 $seen = [System.Collections.Generic.List[string]]::new()
-$probe = @{ pids = 0; windows = 0; elements = 0; errors = [System.Collections.Generic.List[string]]::new() }
+$probe = @{ pids = 0; windows = 0; elements = 0; errors = [System.Collections.Generic.List[string]]::new()
+  attempted = $false; blocked = $false; offer_matches = 0; action_matches = 0
+  invoke_available = $false; enabled = $false; on_screen = $false }
 # Only the exception's type name is kept: its message can name paths or windows.
 function Note($id, $error) { if ($probe.errors.Count -lt 50) { $probe.errors.Add("[$id] " + $error.Exception.GetType().Name) } }
-function Press($item) {
-  try { $item.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return 'invoke' } catch { return $null }
-}
 function Answer($pressed, $how) {
-  @{ pressed = $pressed; seen = @($seen); probe = @{ pids = $probe.pids; windows = $probe.windows; elements = $probe.elements; errors = @($probe.errors); pressed_by = $how } } | ConvertTo-Json -Compress -Depth 4
+  $probe.errors = @($probe.errors); $probe.pressed_by = $how
+  @{ pressed = $pressed; seen = @($seen); probe = $probe } | ConvertTo-Json -Compress -Depth 4
 }
-foreach ($id in ($env:IBIS_PIDS -split ',' | Where-Object { $_ })) {
-  $probe.pids++
-  $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, [int]$id)
-  $windows = @()
-  try { $windows = @($A::RootElement.FindAll($S::Children, $condition)) } catch { Note $id $_; continue }
-  foreach ($window in $windows) {
-    $probe.windows++
-    try { $seen.Add("[$id] window: " + $window.Current.Name) } catch { Note $id $_ }
-    if ($env:IBIS_PRESS) {
-      # A direct search by name does not depend on walking every element.
-      try {
-        $wanted = [System.Windows.Automation.AndCondition]::new(
-          [System.Windows.Automation.PropertyCondition]::new($A::ControlTypeProperty, $T::Button),
-          [System.Windows.Automation.PropertyCondition]::new($A::NameProperty, $env:IBIS_PRESS))
-        $button = $window.FindFirst($S::Descendants, $wanted)
-        if ($button) { $how = Press $button; if ($how) { Answer $true $how; exit 0 } }
-      } catch { Note $id $_ }
-    }
-    $items = @()
-    try { $items = @($window.FindAll($S::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) } catch { Note $id $_; continue }
-    foreach ($item in $items) {
-      $probe.elements++
-      try {
-        $type = $item.Current.ControlType
-        $name = $item.Current.Name
-        if (-not $name) { continue }
-        if ($type -eq $T::Button -and $env:IBIS_PRESS -and $name.Replace('&', '') -eq $env:IBIS_PRESS) {
-          $how = Press $item
-          if ($how) { Answer $true $how; exit 0 }
-        }
-        if ($seen.Count -lt 200) { $seen.Add("[$id] " + $type.ProgrammaticName.Replace('ControlType.', '') + ": " + $name) }
-      } catch { Note $id $_; continue }  # Elements vanish while windows change.
+try {
+  $ids = @($env:IBIS_PIDS -split ',' | Where-Object { $_ } | Select-Object -Unique)
+  if ($ids.Count -gt 20 -or ($env:IBIS_PRESS -and $env:IBIS_PRESS -cne 'Install and Restart')) { throw 'Invalid update scope' }
+  $owned = @(); $offers = @()
+  foreach ($id in $ids) {
+    if ($id -notmatch '^[1-9][0-9]{0,9}$') { throw 'Invalid update process' }
+    $probe.pids++
+    $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, [int]$id)
+    $windows = @($A::RootElement.FindAll($S::Children, $condition))
+    $probe.windows += $windows.Count
+    if ($probe.windows -gt 20) { throw 'Update window bound exceeded' }
+    foreach ($window in $windows) {
+      if ($window.Current.ProcessId -ne [int]$id) { throw 'Update window owner changed' }
+      $owned += $window
+      $seen.Add("[$id] window: " + $window.Current.Name)
+      if ($window.Current.Name -ceq 'An update is available') { $offers += $window }
     }
   }
-}
+  $probe.offer_matches = $offers.Count
+  if ($env:IBIS_PRESS -and $offers.Count -gt 1) { throw 'Update offer is ambiguous' }
+  $places = if ($env:IBIS_PRESS) { $offers } else { $owned }
+  $matches = @()
+  foreach ($window in $places) {
+    $items = @($window.FindAll($S::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
+    $probe.elements += $items.Count
+    if ($probe.elements -gt 4000) { throw 'Update element bound exceeded' }
+    foreach ($item in $items) {
+      $name = $item.Current.Name
+      if ($env:IBIS_PRESS -and $name -ceq $env:IBIS_PRESS) { $matches += $item }
+      if ($name -and $seen.Count -lt 200) { $seen.Add($item.Current.ControlType.ProgrammaticName + ': ' + $name) }
+    }
+  }
+  $probe.action_matches = $matches.Count
+  if ($env:IBIS_PRESS -and $offers.Count -eq 1 -and $matches.Count -gt 0) {
+    if ($matches.Count -ne 1) { throw 'Update action is ambiguous' }
+    $item = $matches[0]; $window = $offers[0]
+    if ($item.Current.ProcessId -ne $window.Current.ProcessId) { throw 'Update action owner changed' }
+    $probe.enabled = $item.Current.IsEnabled -and $window.Current.IsEnabled
+    $probe.on_screen = !$item.Current.IsOffscreen -and !$window.Current.IsOffscreen
+    $invoke = $null
+    $probe.invoke_available = $item.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)
+    if (!$probe.enabled -or !$probe.on_screen -or !$probe.invoke_available -or !$invoke) { throw 'Update action unavailable' }
+    # Only absence polls. An uncertain invocation must never reach a retry,
+    # and a successful invocation may immediately destroy the AX element.
+    $probe.attempted = $true
+    $invoke.Invoke()
+    Answer $true 'invoke'
+    exit 0
+  }
+} catch { $probe.blocked = $true; Note 0 $_ }
 Answer $false $null
 """
 
@@ -374,6 +388,16 @@ class MacOS:
         clean_settings(self.settings)
 
 
+class WindowsActivationFailure(AssertionError):
+    def __init__(self, probe):
+        super().__init__("Windows update activation failed or its outcome is unknown")
+        flags = {"attempted", "blocked", "invoke_available", "enabled", "on_screen"}
+        counts = {"pids", "windows", "elements", "offer_matches", "action_matches"}
+        self.probe = {key: value for key, value in (probe.items() if isinstance(probe, dict) else [])
+                      if (key in flags and type(value) is bool)
+                      or (key in counts and type(value) is int and 0 <= value <= 2147483647)}
+
+
 class Windows:
     """Installed for the current user by the setup executable; the updater
     runs the new setup executable, which starts the app again."""
@@ -428,7 +452,27 @@ class Windows:
                 "installed_version": self.installed_version(), "executable_changed": changed}
 
     def look(self, pids, press=None):
-        return look_result(powershell(WINDOWS_LOOK, IBIS_PIDS=",".join(map(str, pids)), IBIS_PRESS=press or ""))
+        probe = None
+        try:
+            result = look_result(powershell(WINDOWS_LOOK, IBIS_PIDS=",".join(map(str, pids)), IBIS_PRESS=press or ""))
+            pressed, _, probe = result
+            if press:
+                flags = ("attempted", "blocked", "invoke_available", "enabled", "on_screen")
+                limits = {"pids": 20, "windows": 20, "elements": 4000, "offer_matches": 1, "action_matches": 1}
+                valid = (isinstance(probe, dict) and all(type(probe.get(key)) is bool for key in flags)
+                         and all(type(probe.get(key)) is int and 0 <= probe[key] <= limit for key, limit in limits.items())
+                         and probe.get("errors") == [] and not probe["blocked"] and probe["attempted"] == pressed)
+                if not valid or (pressed and (not all(probe[key] for key in ("invoke_available", "enabled", "on_screen"))
+                                              or any(probe[key] < 1 for key in limits) or probe.get("pressed_by") != "invoke")) \
+                        or (not pressed and (probe["action_matches"] != 0 or probe.get("pressed_by") is not None)):
+                    raise RuntimeError("Windows update action metadata is unavailable or blocked")
+            return result
+        except (RuntimeError, ValueError, subprocess.TimeoutExpired):
+            if press:
+                # offered() retries those helper errors; AssertionError instead
+                # ends qualification when an activation may have happened.
+                raise WindowsActivationFailure(probe) from None
+            raise
 
     def close(self):
         uninstaller = self.folder / "uninstall.exe"
@@ -527,6 +571,8 @@ def run(args):
                 report["status"] = "passed"
             except Exception as error:
                 report["error"] = str(error) if isinstance(error, AssertionError) else f"{type(error).__name__}: {error}"
+                if isinstance(error, WindowsActivationFailure) and error.probe:
+                    seen["probe"] = error.probe
                 if seen["helper"]:
                     report["last_helper_problem"] = seen["helper"]
                 if seen["probe"] is not None:
@@ -569,6 +615,167 @@ def run(args):
 
 
 class Tests(unittest.TestCase):
+    @staticmethod
+    def windows_probe(pressed=False):
+        return {"attempted": pressed, "blocked": False, "pids": 1, "windows": int(pressed), "elements": int(pressed),
+                "offer_matches": int(pressed), "action_matches": int(pressed), "invoke_available": pressed,
+                "enabled": pressed, "on_screen": pressed, "errors": [], "pressed_by": "invoke" if pressed else None}
+
+    def test_windows_success_requires_complete_uncoerced_qualification_facts(self):
+        for field, value in (("offer_matches", True), ("action_matches", "1"), ("enabled", 1), ("on_screen", None),
+                             ("invoke_available", False), ("windows", 0), ("pressed_by", None), ("errors", ["synthetic"])):
+            probe = self.windows_probe(True)
+            probe[field] = value
+            with self.subTest(field=field), patch(__name__ + ".powershell", return_value=json.dumps({"pressed": True, "seen": [], "probe": probe})):
+                with self.assertRaises(AssertionError):
+                    Windows.__new__(Windows).look({42}, BUTTON)
+        with patch(__name__ + ".powershell", return_value='{"pressed":true,"seen":[],"probe":{"attempted":true}}'):
+            with self.assertRaises(AssertionError):
+                Windows.__new__(Windows).look({42}, BUTTON)
+
+    def test_windows_fatal_activation_keeps_only_fixed_failure_facts(self):
+        probe = {"attempted": True, "blocked": True, "invoke_available": False, "action_matches": 1,
+                 "private": "synthetic payload", "enabled": "synthetic payload", "elements": -1}
+        with patch(__name__ + ".powershell", return_value=json.dumps({"pressed": False, "seen": [], "probe": probe})):
+            with self.assertRaises(AssertionError) as failure:
+                Windows.__new__(Windows).look({42}, BUTTON)
+        self.assertEqual(getattr(failure.exception, "probe", None),
+                         {"attempted": True, "blocked": True, "invoke_available": False, "action_matches": 1})
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required for the Windows update activation contract")
+    def test_windows_offer_uses_exact_ownership_uniqueness_and_invocation_capability(self):
+        # Execute the actual embedded helper with private provider models.
+        # Never shadow System.* types: Windows may bind its real assemblies.
+        model = r'''
+param([string]$Scenario)
+$ErrorActionPreference='Stop'
+Add-Type @'
+using System;
+namespace IbisUpdateContract {
+ public enum TreeScope { Children, Descendants }
+ public class Condition { public static object TrueCondition=new object(); }
+ public class PropertyCondition { public object Value; public PropertyCondition(object key,object value) {Value=value;} }
+ public class AndCondition { public AndCondition(object a,object b) {} }
+ public class ControlType {
+  public string ProgrammaticName; public ControlType(string name) {ProgrammaticName="ControlType."+name;}
+  public static ControlType Button=new ControlType("Button"), Pane=new ControlType("Pane");
+ }
+ public class InvokePattern { public static object Pattern=new object(); }
+ public class AutomationElement {
+  public static object ProcessIdProperty=new object(), ControlTypeProperty=new object(), NameProperty=new object();
+  public static Node RootElement=new Node();
+ }
+ public class Node {
+  public string Name="", Type="Pane"; public int ProcessId=42; public bool IsEnabled=true, IsOffscreen=false;
+  public bool Supported=true, ThrowOnRead=false, Fail=false; public int Invocations=0;
+  public Node[] Nodes=new Node[0];
+  public Node Current { get {if(ThrowOnRead && Invocations>0) throw new Exception("synthetic stale element"); return this;} }
+  public ControlType ControlType { get {return Type=="Button" ? IbisUpdateContract.ControlType.Button : IbisUpdateContract.ControlType.Pane;} }
+  public Node[] FindAll(TreeScope scope,object condition) {return Nodes;}
+  public Node FindFirst(TreeScope scope,object condition) {return Nodes.Length>0 ? Nodes[0] : null;}
+  public bool TryGetCurrentPattern(object pattern,ref object value) {value=Supported && pattern==InvokePattern.Pattern ? this : null; return value!=null;}
+  public object GetCurrentPattern(object pattern) {if(!Supported) throw new Exception("unsupported"); return this;}
+  public void Invoke() {Invocations++; if(Fail) throw new Exception("synthetic uncertain invocation");}
+ }
+}
+'@
+$window=[IbisUpdateContract.Node]::new(); $window.Name='An update is available'
+$item=[IbisUpdateContract.Node]::new(); $item.Name='Install and Restart'; $item.ThrowOnRead=$true
+$window.Nodes=@($item); [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window)
+switch($Scenario) {
+ 'button' {$item.Type='Button'}
+ 'wrong-owner' {$item.ProcessId=43}
+ 'wrong-window' {$window.Name='Other dialog'}
+ 'wrong-name' {$item.Name='Install and Restart suffix'}
+ 'disabled' {$item.IsEnabled=$false}
+ 'hidden' {$item.IsOffscreen=$true}
+ 'unsupported' {$item.Supported=$false}
+ 'duplicate-action' {$window.Nodes=@($item,$item)}
+ 'duplicate-window' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)}
+ 'missing-window' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@()}
+ 'wrong-window-owner' {$window.ProcessId=43}
+ 'window-bound' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window)*21}
+ 'case-name' {$item.Name='install and restart'}
+ 'case-window' {$window.Name='an update is available'}
+ 'bound' {$window.Nodes=@($item)*4001}
+ 'uncertain' {$item.Fail=$true}
+}
+$env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
+function Contract-Result($pressed,$how) {
+ $expected=$Scenario -in @('pane','button')
+ if($pressed -ne $expected -or $item.Invocations -ne [int]($expected -or $Scenario -eq 'uncertain')) {throw 'Unsafe or missing activation'}
+ if($probe.attempted -ne ($expected -or $Scenario -eq 'uncertain')) {throw 'Incorrect attempt metadata'}
+ if($probe.blocked -ne ($Scenario -notin @('pane','button','wrong-window','wrong-name','case-name','case-window','missing-window'))) {throw 'Unsafe observation can poll'}
+ if($expected -and $how -ne 'invoke') {throw 'Incorrect invocation metadata'}
+}
+'''
+        # Assert activation counters, retaining real serialization for the caller.
+        helper = WINDOWS_LOOK.replace("Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes", "")
+        helper = helper.replace("System.Windows.Automation.", "IbisUpdateContract.")
+        helper = helper.replace("function Answer($pressed, $how) {",
+                                "function Answer($pressed, $how) {\n  Contract-Result $pressed $how")
+        with tempfile.TemporaryDirectory() as temporary:
+            script = Path(temporary) / "update-contract.ps1"
+            script.write_text(model + helper, encoding="utf-8")
+            for scenario in ("pane", "button", "wrong-owner", "wrong-window", "wrong-name", "disabled", "hidden",
+                             "unsupported", "duplicate-action", "duplicate-window", "missing-window", "wrong-window-owner",
+                             "window-bound", "case-name", "case-window", "bound", "uncertain"):
+                with self.subTest(scenario=scenario):
+                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), scenario],
+                                            capture_output=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode("utf-8", errors="replace"))
+                    payload = result.stdout.decode("utf-8")
+                    pressed, _, probe = look_result(payload)
+                    with patch(__name__ + ".powershell", return_value=payload):
+                        if probe["blocked"]:
+                            with self.assertRaises(WindowsActivationFailure):
+                                Windows.__new__(Windows).look({42}, BUTTON)
+                        else:
+                            self.assertEqual(Windows.__new__(Windows).look({42}, BUTTON)[0], scenario in ("pane", "button"))
+                    self.assertEqual(pressed, scenario in ("pane", "button"))
+
+    def test_windows_activation_uncertainty_is_fatal_instead_of_pollable(self):
+        windows = Windows.__new__(Windows)
+        for problem in (RuntimeError("synthetic helper failure"), ValueError("synthetic malformed JSON"),
+                        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "synthetic"),
+                        subprocess.TimeoutExpired("synthetic", 120)):
+            with self.subTest(problem=type(problem).__name__), patch(__name__ + ".powershell", side_effect=problem) as helper:
+                with self.assertRaises(AssertionError):  # offered() does not retry AssertionError.
+                    windows.look({42}, BUTTON)
+                self.assertEqual(helper.call_count, 1)
+        for probe in (None, {}, {"attempted": True}, {"attempted": "false"}, {"attempted": False, "blocked": True}):
+            payload = json.dumps({"pressed": False, "seen": [], "probe": probe})
+            with self.subTest(probe=probe), patch(__name__ + ".powershell", return_value=payload):
+                with self.assertRaises(AssertionError):
+                    windows.look({42}, BUTTON)
+
+    def test_uncertain_windows_press_is_not_retried_by_the_offer_loop(self):
+        windows = Windows.__new__(Windows)
+        windows.command, windows.config = ["synthetic"], None
+        windows.instances, windows.facts, windows.close = MagicMock(return_value={42}), MagicMock(return_value={}), MagicMock()
+        def two_polls(predicate, _timeout, message, **_kwargs):
+            for _ in range(2):
+                if predicate():
+                    return True
+            raise AssertionError(message)
+        for problem in (RuntimeError("synthetic"), ValueError("synthetic"), subprocess.TimeoutExpired("synthetic", 120)):
+            with self.subTest(problem=type(problem).__name__), tempfile.TemporaryDirectory() as temporary, \
+                    patch.dict(SYSTEMS, {"Windows": lambda *_args: windows}), patch("platform.system", return_value="Windows"), \
+                    patch(__name__ + ".powershell", side_effect=problem) as helper, \
+                    patch(__name__ + ".wait_for", side_effect=two_polls), patch(__name__ + ".feed_version", return_value="synthetic"), \
+                    patch("subprocess.Popen"), patch("os.kill"), patch("builtins.print"):
+                args = argparse.Namespace(output=Path(temporary))
+                self.assertEqual(run(args), 1)
+                self.assertEqual(sum(bool(call.kwargs.get("IBIS_PRESS")) for call in helper.call_args_list), 1)
+
+    def test_windows_absence_can_poll_but_success_returns_the_single_attempt(self):
+        windows = Windows.__new__(Windows)
+        for pressed in (False, True):
+            probe = self.windows_probe(pressed)
+            payload = json.dumps({"pressed": pressed, "seen": [], "probe": probe})
+            with patch(__name__ + ".powershell", return_value=payload):
+                self.assertEqual(windows.look({42}, BUTTON), (pressed, [], probe))
+
     def test_settings_allow_update_checks_in_the_nightly_folder(self):
         with tempfile.TemporaryDirectory() as temporary:
             settings = seed_settings(Path(temporary))
@@ -754,7 +961,7 @@ class Tests(unittest.TestCase):
 
 def main():
     if sys.argv[1:] == ["--self-test"]:
-        unittest.main(argv=[sys.argv[0]])
+        unittest.main(argv=[sys.argv[0]], verbosity=2)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--previous", type=Path, required=True, help="Package of the nightly being replaced")
     parser.add_argument("--expected", type=Path, required=True, help="Package of the new nightly")

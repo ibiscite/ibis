@@ -191,10 +191,16 @@ jobs:
         run: echo "::notice::Only documentation changed, so the native app was not built or exercised."
 
       - name: Checkout
-        if: env.NATIVE == 'true'
+        if: env.NATIVE == 'true' || runner.os == 'Windows'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Check Windows updater activation contracts
+        if: runner.os == 'Windows'
+        run: |
+          command -v pwsh
+          python -B scripts/update-e2e.py --self-test
 
       - name: Install system WebView libraries (Linux)
         if: env.NATIVE == 'true' && (runner.os == 'Linux')
