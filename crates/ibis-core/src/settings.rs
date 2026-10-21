@@ -181,11 +181,25 @@ pub enum SettingsError {
     NewerVersion(u32),
 }
 
+/// The outcome of the existing primary-file read, independent of parsing or backup recovery.
+/// This is in-memory provenance, never a persisted setting or raw diagnostic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrimaryRead {
+    /// The read returned NotFound; normal loading immediately used defaults.
+    Missing,
+    /// UTF-8 contents were read; `Loaded::problem` says whether they were valid.
+    Present,
+    /// The read failed for another reason; normal backup recovery was attempted.
+    Unreadable,
+}
+
 /// Result of loading: the settings to use, and a problem to show the user, if any.
 #[derive(Debug)]
 pub struct Loaded {
     pub settings: Settings,
     pub problem: Option<SettingsError>,
+    /// Captured by the primary read, not inferred from the returned settings.
+    pub primary_read: PrimaryRead,
     /// Recovery provenance from the same read, even if the backup equals defaults.
     pub from_backup: bool,
 }
@@ -240,21 +254,23 @@ fn v1_to_v2(mut value: Value) -> Value {
 /// Load settings. A missing file gives defaults. An unreadable or invalid file
 /// falls back to the backup, then to defaults, and reports the problem.
 pub fn load(path: &Path) -> Loaded {
-    let primary = match fs::read_to_string(path) {
-        Ok(text) => parse(&text),
+    let (primary_read, primary) = match fs::read_to_string(path) {
+        Ok(text) => (PrimaryRead::Present, parse(&text)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             return Loaded {
                 settings: Settings::default(),
                 problem: None,
+                primary_read: PrimaryRead::Missing,
                 from_backup: false,
             };
         }
-        Err(e) => Err(SettingsError::Unreadable(e)),
+        Err(e) => (PrimaryRead::Unreadable, Err(SettingsError::Unreadable(e))),
     };
     match primary {
         Ok(settings) => Loaded {
             settings,
             problem: None,
+            primary_read,
             from_backup: false,
         },
         Err(problem) => {
@@ -265,6 +281,7 @@ pub fn load(path: &Path) -> Loaded {
             Loaded {
                 settings: backup.unwrap_or_default(),
                 problem: Some(problem),
+                primary_read,
                 from_backup,
             }
         }
@@ -348,6 +365,72 @@ mod tests {
         let loaded = load(&directory.path().join("missing/settings.json"));
         assert_eq!(loaded.settings, Settings::default());
         assert!(loaded.problem.is_none());
+    }
+
+    #[test]
+    fn primary_read_distinguishes_missing_from_present_default_and_shortcut_choices() {
+        let directory = dir("primary-read");
+        let path = directory.path().join("settings.json");
+        let missing = load(&path);
+        assert_eq!(missing.primary_read, PrimaryRead::Missing);
+        assert_eq!(missing.settings, Settings::default());
+        assert!(missing.problem.is_none());
+        assert!(!missing.from_backup);
+        for (text, shortcut) in [
+            ("{}", None),
+            (r#"{"schema_version":2}"#, None),
+            (r#"{"shortcut":null}"#, None),
+            (r#"{"shortcut":"Control+Command+R"}"#, Some("Control+Command+R")),
+            (r#"{"shortcut":"Control+Nonsense"}"#, Some("Control+Nonsense")),
+            (r#"{"shortcut":""}"#, Some("")),
+        ] {
+            fs::write(&path, text).unwrap_or_else(|e| panic!("{e}"));
+            let present = load(&path);
+            assert_eq!(present.primary_read, PrimaryRead::Present);
+            assert_eq!(present.settings.shortcut.as_deref(), shortcut);
+            assert!(present.problem.is_none());
+            assert!(!present.from_backup);
+            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), text);
+        }
+        // Provenance is captured by that load, not recalculated from the current file.
+        assert_eq!(missing.primary_read, PrimaryRead::Missing);
+    }
+
+    #[test]
+    fn a_missing_primary_still_ignores_an_existing_backup() {
+        let directory = dir("missing-with-backup");
+        let path = directory.path().join("settings.json");
+        let backup = r#"{"shortcut":"Alt+Space"}"#;
+        fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
+        let loaded = load(&path);
+        assert_eq!(loaded.primary_read, PrimaryRead::Missing);
+        assert_eq!(loaded.settings, Settings::default());
+        assert!(loaded.problem.is_none());
+        assert!(!loaded.from_backup);
+        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
+    }
+
+    #[test]
+    fn unreadable_primary_provenance_keeps_problem_and_default_backup_recovery() {
+        for invalid_utf8 in [false, true] {
+            let directory = dir("unreadable-primary");
+            let path = directory.path().join("settings.json");
+            if invalid_utf8 {
+                fs::write(&path, [0xff, 0xfe]).unwrap_or_else(|e| panic!("{e}"));
+            } else {
+                fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
+            }
+            for with_backup in [false, true] {
+                if with_backup {
+                    fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+                }
+                let loaded = load(&path);
+                assert_eq!(loaded.primary_read, PrimaryRead::Unreadable);
+                assert!(matches!(loaded.problem, Some(SettingsError::Unreadable(_))));
+                assert_eq!(loaded.settings, Settings::default());
+                assert_eq!(loaded.from_backup, with_backup);
+            }
+        }
     }
 
     #[test]
@@ -438,10 +521,12 @@ mod tests {
         for primary in ["{ invalid", r#"{"schema_version":3}"#] {
             fs::write(&path, primary).unwrap_or_else(|e| panic!("{e}"));
             let fallback = load(&path);
+            assert_eq!(fallback.primary_read, PrimaryRead::Present);
             assert!(fallback.problem.is_some());
             assert!(!fallback.from_backup);
             fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
             let recovered = load(&path);
+            assert_eq!(recovered.primary_read, PrimaryRead::Present);
             assert!(recovered.problem.is_some());
             assert!(recovered.from_backup);
             assert_eq!(recovered.settings, Settings::default());

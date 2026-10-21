@@ -134,6 +134,7 @@ mod tests {
             problem: Some(settings::SettingsError::Unreadable(std::io::Error::other(
                 "synthetic-private-detail",
             ))),
+            primary_read: settings::PrimaryRead::Unreadable,
             from_backup: false,
         };
         let notice = settings_notice(Path::new("synthetic/settings.json"), &loaded)
