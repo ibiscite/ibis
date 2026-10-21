@@ -49,63 +49,106 @@ REPLACE_TIMEOUT = 300
 RESTART_TIMEOUT = 60
 UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 
-# Lists the named processes' windows, buttons and texts, or presses the named
-# button. Prints {"pressed": bool, "seen": [...]}.
+# Lists the named processes' windows and named elements, or presses the named
+# button. Prints {"pressed": bool, "seen": [...], "probe": {...}}, where the
+# probe holds only counts, error numbers or exception type names, and how a
+# press was made.
 WINDOWS_LOOK = r"""
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $A = [System.Windows.Automation.AutomationElement]
 $T = [System.Windows.Automation.ControlType]
+$S = [System.Windows.Automation.TreeScope]
 $seen = [System.Collections.Generic.List[string]]::new()
+$probe = @{ pids = 0; windows = 0; elements = 0; errors = [System.Collections.Generic.List[string]]::new() }
+# Only the exception's type name is kept: its message can name paths or windows.
+function Note($id, $error) { if ($probe.errors.Count -lt 50) { $probe.errors.Add("[$id] " + $error.Exception.GetType().Name) } }
+function Press($item) {
+  try { $item.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return 'invoke' } catch { return $null }
+}
+function Answer($pressed, $how) {
+  @{ pressed = $pressed; seen = @($seen); probe = @{ pids = $probe.pids; windows = $probe.windows; elements = $probe.elements; errors = @($probe.errors); pressed_by = $how } } | ConvertTo-Json -Compress -Depth 4
+}
 foreach ($id in ($env:IBIS_PIDS -split ',' | Where-Object { $_ })) {
+  $probe.pids++
   $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, [int]$id)
-  foreach ($window in $A::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $condition)) {
-    try {
-      $seen.Add("[$id] window: " + $window.Current.Name)
-      foreach ($item in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+  $windows = @()
+  try { $windows = @($A::RootElement.FindAll($S::Children, $condition)) } catch { Note $id $_; continue }
+  foreach ($window in $windows) {
+    $probe.windows++
+    try { $seen.Add("[$id] window: " + $window.Current.Name) } catch { Note $id $_ }
+    if ($env:IBIS_PRESS) {
+      # A direct search by name does not depend on walking every element.
+      try {
+        $wanted = [System.Windows.Automation.AndCondition]::new(
+          [System.Windows.Automation.PropertyCondition]::new($A::ControlTypeProperty, $T::Button),
+          [System.Windows.Automation.PropertyCondition]::new($A::NameProperty, $env:IBIS_PRESS))
+        $button = $window.FindFirst($S::Descendants, $wanted)
+        if ($button) { $how = Press $button; if ($how) { Answer $true $how; exit 0 } }
+      } catch { Note $id $_ }
+    }
+    $items = @()
+    try { $items = @($window.FindAll($S::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) } catch { Note $id $_; continue }
+    foreach ($item in $items) {
+      $probe.elements++
+      try {
         $type = $item.Current.ControlType
         $name = $item.Current.Name
-        if (-not $name -or ($type -ne $T::Button -and $type -ne $T::Text)) { continue }
+        if (-not $name) { continue }
         if ($type -eq $T::Button -and $env:IBIS_PRESS -and $name.Replace('&', '') -eq $env:IBIS_PRESS) {
-          $item.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-          @{ pressed = $true; seen = @() } | ConvertTo-Json -Compress
-          exit 0
+          $how = Press $item
+          if ($how) { Answer $true $how; exit 0 }
         }
         if ($seen.Count -lt 200) { $seen.Add("[$id] " + $type.ProgrammaticName.Replace('ControlType.', '') + ": " + $name) }
-      }
-    } catch { continue }  # Elements vanish while windows change.
+      } catch { Note $id $_; continue }  # Elements vanish while windows change.
+    }
   }
 }
-@{ pressed = $false; seen = @($seen) } | ConvertTo-Json -Compress
+Answer $false $null
 """
 
 MACOS_LOOK = r"""
+ObjC.import('ApplicationServices');
 function run(argv) {
   const [press, ...pids] = argv;
   const events = Application('System Events');
   const seen = [];
+  // Only Apple event error numbers are kept, never their text.
+  const probe = { pids: pids.length, processes: 0, windows: 0, errors: [], trusted: null, pressed_by: null };
+  try { probe.trusted = Boolean($.AXIsProcessTrusted()); } catch (e) { probe.trusted = null; }
+  const note = (pid, e) => { if (probe.errors.length < 50) probe.errors.push(`[${pid}] ${Number.isInteger(e && e.errorNumber) ? e.errorNumber : 'error'}`); };
   const text = (item) => { try { return String(item.name() || item.value() || ''); } catch (e) { return ''; } };
-  const windows = (pid) => {
-    try { return [].concat(...events.processes.whose({ unixId: Number(pid) })().map((app) => app.windows())); }
-    catch (e) { return []; }  // The process quit while being read.
+  const processes = (pid) => {
+    try { return events.processes.whose({ unixId: Number(pid) })(); }
+    catch (e) { note(pid, e); return []; }  // The process quit while being read, or no permission.
   };
+  const answer = () => JSON.stringify({ pressed: probe.pressed_by !== null, seen: seen.slice(0, 200), probe });
   for (const pid of pids) {
-    for (const window of windows(pid)) {
-      try {
+    const apps = processes(pid);
+    probe.processes += apps.length;
+    for (const app of apps) {
+      let windows = [];
+      try { windows = app.windows(); } catch (e) { note(pid, e); continue; }
+      probe.windows += windows.length;
+      for (const window of windows) {
         seen.push(`[${pid}] window: ${text(window)}`);
-        for (const place of [window].concat(window.sheets())) {
-          for (const button of place.buttons()) {
+        let places = [window];
+        try { places = places.concat(window.sheets()); } catch (e) { note(pid, e); }
+        for (const place of places) {
+          let buttons = [], labels = [];
+          try { buttons = place.buttons(); } catch (e) { note(pid, e); }
+          try { labels = place.staticTexts(); } catch (e) { note(pid, e); }
+          for (const button of buttons) {
             if (press && text(button) === press) {
-              button.click();
-              return JSON.stringify({ pressed: true, seen: [] });
+              try { button.click(); probe.pressed_by = 'click'; return answer(); } catch (e) { note(pid, e); }
             }
             seen.push(`[${pid}] button: ${text(button)}`);
           }
-          for (const label of place.staticTexts()) seen.push(`[${pid}] text: ${text(label)}`);
+          for (const label of labels) seen.push(`[${pid}] text: ${text(label)}`);
         }
-      } catch (e) { continue; }  // Windows change while being read.
+      }
     }
   }
-  return JSON.stringify({ pressed: false, seen: seen.slice(0, 200) });
+  return answer();
 }
 """
 
@@ -150,11 +193,16 @@ def environment(inherited, config, library):
 
 
 def look_result(stdout):
-    """The helpers' answer; anything else is a helper failure, never a pass."""
+    """The helpers' answer; anything else is a helper failure, never a pass.
+    The optional probe holds fixed counts, error codes and exception type
+    names saying where a look stopped, so an empty answer is never blind."""
     result = json.loads(stdout)
     if not isinstance(result, dict) or type(result.get("pressed")) is not bool or not isinstance(result.get("seen"), list):
         raise RuntimeError("accessibility helper returned an unexpected answer")
-    return result["pressed"], [str(item) for item in result["seen"]]
+    probe = result.get("probe")
+    if probe is not None and not isinstance(probe, dict):
+        raise RuntimeError("accessibility helper returned an unexpected probe")
+    return result["pressed"], [str(item) for item in result["seen"]], probe
 
 
 def instances(appimage, proc=Path("/proc")):
@@ -265,13 +313,13 @@ class Linux:
                     role = item.getRoleName()
                     if press and role == "push button" and item.name == press:
                         item.queryAction().doAction(0)
-                        return True, []
+                        return True, [], None
                     if role in ("frame", "dialog", "alert", "push button", "label") and item.name and len(seen) < 200:
                         seen.append(f"{app.name}[{app.get_process_id()}] {role}: {item.name[:200]}")
                     stack.extend(child for child in item if child)
                 except Exception:  # Accessibility objects vanish while windows change.
                     continue
-        return False, seen
+        return False, seen, None
 
     def close(self):
         pass
@@ -319,7 +367,7 @@ class MacOS:
 
     def look(self, pids, press=None):
         result = subprocess.run(["osascript", "-l", "JavaScript", "-e", MACOS_LOOK, press or "", *map(str, pids)],
-                                capture_output=True, text=True, timeout=60)
+                                capture_output=True, text=True, encoding="utf-8", errors="strict", timeout=60)
         if result.returncode:
             raise RuntimeError(f"System Events helper failed: {result.stderr.strip()[-500:]}")
         return look_result(result.stdout)
@@ -396,9 +444,10 @@ def powershell(script, **env):
     first line break inside a block. Values arrive as environment variables."""
     with tempfile.TemporaryDirectory(prefix="ibis update helper ") as folder:
         path = Path(folder) / "helper.ps1"
-        path.write_text(script, encoding="utf-8")
+        # JSON and paths must survive Windows' non-UTF-8 default code page.
+        path.write_text("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n" + script, encoding="utf-8")
         result = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-File", str(path)],
-                                capture_output=True, text=True, timeout=120, env=dict(os.environ, **env))
+                                capture_output=True, text=True, encoding="utf-8", errors="strict", timeout=120, env=dict(os.environ, **env))
     if result.returncode:
         raise RuntimeError(f"PowerShell helper failed: {result.stderr.strip()[-500:]}")
     return result.stdout
@@ -433,7 +482,7 @@ def run(args):
             folder = Path(temporary)
             library = folder / "synthetic.bib"
             library.write_text("@article{update1, title = {Synthetic update test}, year = {2026}}\n", encoding="utf-8")
-            seen = {"helper": None}
+            seen = {"helper": None, "probe": None}
             try:
                 install = SYSTEMS[platform.system()](folder, args)
                 report["steps"].append("previous nightly installed")
@@ -450,7 +499,8 @@ def run(args):
                 def offered():
                     seen["old"] = install.instances()
                     try:
-                        return install.look(seen["old"], BUTTON)[0]
+                        pressed, _, seen["probe"] = install.look(seen["old"], BUTTON)
+                        return pressed
                     except (RuntimeError, ValueError, subprocess.TimeoutExpired) as problem:
                         seen["helper"] = str(problem)  # Windows change while being read.
                         return False
@@ -474,10 +524,14 @@ def run(args):
                 report["error"] = str(error) if isinstance(error, AssertionError) else f"{type(error).__name__}: {error}"
                 if seen["helper"]:
                     report["last_helper_problem"] = seen["helper"]
+                if seen["probe"] is not None:
+                    report["last_probe"] = seen["probe"]  # From the last look that answered.
                 if install:
                     report.update(install.facts())
                     try:
-                        report["on_screen"] = install.look(install.instances())[1]
+                        pids = install.instances()
+                        report["instances"] = len(pids)
+                        _, report["on_screen"], report["on_screen_probe"] = install.look(pids)
                     except Exception as problem:
                         report["on_screen"] = f"unavailable ({problem})"
                 report["published_feed"] = feed_version()
@@ -631,11 +685,43 @@ class Tests(unittest.TestCase):
                 uninstall_entries()
 
     def test_helper_answers_are_checked(self):
-        self.assertEqual(look_result('{"pressed": false, "seen": ["[1] button: Later"]}'), (False, ["[1] button: Later"]))
-        self.assertEqual(look_result('{"pressed": true, "seen": []}'), (True, []))
-        for bad in ('{"pressed": "yes", "seen": []}', '{"seen": []}', '[]', '{"pressed": true, "seen": "x"}'):
+        self.assertEqual(look_result('{"pressed": false, "seen": ["[1] button: Later"]}'), (False, ["[1] button: Later"], None))
+        self.assertEqual(look_result('{"pressed": true, "seen": []}'), (True, [], None))
+        probe = {"pids": 1, "processes": 1, "windows": 0, "errors": ["[1] -25211"]}
+        self.assertEqual(look_result(json.dumps({"pressed": False, "seen": [], "probe": probe})), (False, [], probe))
+        for bad in ('{"pressed": "yes", "seen": []}', '{"seen": []}', '[]', '{"pressed": true, "seen": "x"}',
+                    '{"pressed": false, "seen": [], "probe": "x"}'):
             with self.assertRaises(RuntimeError):
                 look_result(bad)
+
+    def test_native_helpers_preserve_utf8_when_the_default_encoding_is_cp1252(self):
+        expected = "Synthetic 合成 한국어 \u0081"
+        payload = json.dumps({"pressed": False, "seen": [expected]}, ensure_ascii=False).encode("utf-8")
+        run_child = subprocess.run
+        command = [sys.executable, "-c", f"import sys; sys.stdout.buffer.write(bytes.fromhex('{payload.hex()}'))"]
+        mac = MacOS.__new__(MacOS)
+        for helper in (lambda: look_result(powershell("Write-Output 'synthetic'")), lambda: mac.look([123])):
+            with self.subTest(helper=helper), patch("locale.getencoding", return_value="cp1252"), \
+                    patch("subprocess.run", side_effect=lambda _command, **kwargs: run_child(command, **kwargs)):
+                self.assertEqual(helper(), (False, [expected], None))
+
+    def test_powershell_sets_utf8_before_running_the_script(self):
+        def inspect_script(command, **_kwargs):
+            script = Path(command[-1]).read_text(encoding="utf-8")
+            self.assertTrue(script.startswith("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n"))
+            self.assertTrue(script.endswith("Write-Output '合成'"))
+            return subprocess.CompletedProcess(command, 0, stdout="合成", stderr="")
+        with patch("subprocess.run", side_effect=inspect_script):
+            self.assertEqual(powershell("Write-Output '合成'"), "合成")
+
+    def test_malformed_native_helper_utf8_is_a_failure(self):
+        run_child = subprocess.run
+        command = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xff')"]
+        mac = MacOS.__new__(MacOS)
+        for helper in (lambda: powershell("synthetic"), lambda: mac.look([123])):
+            with self.subTest(helper=helper), patch("subprocess.run", side_effect=lambda _command, **kwargs: run_child(command, **kwargs)):
+                with self.assertRaises(UnicodeDecodeError):
+                    helper()
 
 
 def main():
