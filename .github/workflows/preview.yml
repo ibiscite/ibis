@@ -5,6 +5,10 @@ name: Preview builds
 #
 # - Every push to main replaces the rolling "nightly" pre-release, so the
 #   newest merged state can always be downloaded from one place.
+# - Once a day, and when run manually with "Only rerun the update test", the
+#   update-e2e job updates the nightly that the newest nightly replaced to the
+#   newest nightly, using the packages that nightly's run kept. Until #493 is
+#   fixed it fails on Windows and macOS, so it no longer runs after every push.
 # - Run manually (Actions → Preview builds → Run workflow) for a dry run:
 #   leave publication unchecked; packages stay in workflow artifacts.
 # - A maintainer's tag push, or Release Please's explicit dispatch at its tag,
@@ -26,10 +30,16 @@ on:
     tags: ["v*"]
     # Path filters never apply to tag pushes, so releases always build.
     paths-ignore: ["**.md", "docs/**"]
+  schedule:
+    - cron: "37 4 * * *"
   workflow_dispatch:
     inputs:
       publish:
         description: Publish verified packages (at a v tag, or refresh nightly on main)
+        type: boolean
+        default: false
+      update_test:
+        description: Only rerun the update test on the newest nightly (main only; builds nothing)
         type: boolean
         default: false
 
@@ -38,13 +48,29 @@ permissions:
 
 # Runs are never cancelled, so publication is never cut off halfway. While one
 # runs, only the newest waiting push to main is kept.
+# The update test has its own group, so a waiting push never replaces it.
 concurrency:
-  group: preview-${{ github.ref_name }}
+  group: preview-${{ github.ref_name }}${{ (github.event_name == 'schedule' || inputs.update_test) && '-update-test' || '' }}
   cancel-in-progress: false
 
 jobs:
+  # A manual run that would silently do nothing fails here instead.
+  inputs:
+    name: Check the run options
+    if: github.event_name == 'workflow_dispatch' && inputs.update_test && (github.ref != 'refs/heads/main' || inputs.publish)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Refuse conflicting options
+        run: |
+          echo "::error::\"Only rerun the update test\" runs only on main and cannot be combined with publishing. Run it on main with publishing unchecked."
+          exit 1
+
   build:
     name: Build (${{ matrix.name }})
+    # The update test alone builds and publishes nothing; every later
+    # publishing job needs this one, so it is skipped with it.
+    if: github.event_name != 'schedule' && !inputs.update_test
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -641,7 +667,8 @@ jobs:
           name: previous-nightly
           path: previous/*
           if-no-files-found: error
-          retention-days: 3
+          # As long as the packages, so the daily update test can use both.
+          retention-days: 14
 
       # The nightly tag moves to each new main commit. It never matches v*, so
       # it starts no release build, and Release Please ignores it.
@@ -697,12 +724,19 @@ jobs:
           gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis Nightly $version" --notes-file notes.md
 
   update-e2e:
-    name: Update the previous nightly to this one (${{ matrix.name }})
-    needs: nightly
+    name: Update the previous nightly to the newest (${{ matrix.name }})
+    # Not after every push until #493 is fixed: it fails on Windows and macOS.
+    # It reuses the files the newest nightly's own run kept, so it tests the
+    # same update a push run would have tested.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.update_test)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
       contents: read
+      # Only to download the artifacts of the run that published the nightly.
+      actions: read
+      # Only to open or update the issue when the daily run fails.
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -714,29 +748,67 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Checkout
+      # The nightly tag names the commit of the newest nightly. The first run
+      # at that commit that kept files published it: it kept the nightly it
+      # replaced and its own packages (both for 14 days).
+      - name: Find the run that published the nightly
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ matrix.target }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$REPO/git/ref/tags/nightly" --jq .object.sha)
+          # Assigned first, so an API error fails the step instead of an empty loop.
+          runs=$(gh api "repos/$REPO/actions/workflows/preview.yml/runs?branch=main&head_sha=$sha" --jq '.workflow_runs | reverse | .[].id')
+          run=""
+          for id in $runs; do
+            names=$(gh api "repos/$REPO/actions/runs/$id/artifacts?per_page=100" --jq '.artifacts[] | select(.expired | not) | .name')
+            if grep -qx previous-nightly <<< "$names" && grep -qx "ibis-$TARGET" <<< "$names"; then run=$id; break; fi
+          done
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ -n "$run" ]; then
+            echo "run=$run" >> "$GITHUB_OUTPUT"
+            echo "Testing the nightly from ${sha:0:12}, published by run $run"
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            echo "::notice::Update test skipped: the run that published nightly ${sha:0:12} kept no unexpired previous nightly."
+          else
+            echo "::error::The run that published nightly ${sha:0:12} kept no unexpired previous nightly, so nothing was tested."
+            exit 1
+          fi
+
+      - name: Checkout the nightly's commit
+        if: steps.source.outputs.run != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.sha }}
+          ref: ${{ steps.source.outputs.sha }}
 
       - name: Download the previous nightly
+        if: steps.source.outputs.run != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: previous-nightly
           path: previous
+          run-id: ${{ steps.source.outputs.run }}
+          github-token: ${{ github.token }}
 
-      - name: Download this build
+      - name: Download the newest nightly's build
+        if: steps.source.outputs.run != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ibis-${{ matrix.target }}
           path: dist
+          run-id: ${{ steps.source.outputs.run }}
+          github-token: ${{ github.token }}
 
       # Runs only when the previous nightly can update (it has a feed and this
-      # system's package) and the published feed now names this build, which
-      # the nightly job skips when main has already moved on.
+      # system's package) and the published feed still names this build.
       - name: Decide whether to run
         id: decide
+        if: steps.source.outputs.run != ''
         env:
           REPO: ${{ github.repository }}
           PACKAGE: ${{ matrix.package }}
@@ -792,3 +864,20 @@ jobs:
           path: update-e2e/*
           if-no-files-found: warn
           retention-days: 14
+
+      # A red scheduled run notifies nobody by itself.
+      - name: Report a failed daily update test
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ matrix.name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Installed-update test failing on main ($NAME)"
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          body="Failed on the newest nightly: $RUN_URL"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label type:task --label area:infra --body "$body"
+          fi
