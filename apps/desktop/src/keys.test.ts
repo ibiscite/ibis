@@ -50,9 +50,19 @@ test("an accelerator falls back to the physical key only when the layout types a
   expect(matchesAccelerator(press("й", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
   expect(matchesAccelerator(press("Й", { code: "KeyQ", metaKey: true }), "CmdOrCtrl+Q", true)).toBe(true);
   expect(matchesAccelerator(press("κ", { code: "KeyK", ctrlKey: true }), "CmdOrCtrl+K", false)).toBe(true);
-  // A Latin layout means what it types: AZERTY's Q key types "a", Dvorak's X key types "q".
+  // Greek and Hebrew type ASCII punctuation on the Q key: ; and /.
+  expect(matchesAccelerator(press(";", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
+  expect(matchesAccelerator(press("/", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
+  expect(matchesAccelerator(press("/", { code: "KeyQ", metaKey: true }), "CmdOrCtrl+Q", true)).toBe(true);
+  // Punctuation on its own key is never a letter shortcut.
+  expect(matchesAccelerator(press(";", { code: "Semicolon", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(false);
+  expect(matchesAccelerator(press("/", { code: "Slash", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(false);
+  // A Latin layout means what it types: AZERTY's Q key types "a" and its A key
+  // types "q"; Dvorak's X key types "q" and its Q key types "'".
   expect(matchesAccelerator(press("a", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(false);
+  expect(matchesAccelerator(press("q", { code: "KeyA", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
   expect(matchesAccelerator(press("q", { code: "KeyX", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
+  expect(matchesAccelerator(press("x", { code: "KeyB", ctrlKey: true }), "CmdOrCtrl+B", false)).toBe(false);
 });
 
 test("every letter accelerator in the table can be matched", () => {

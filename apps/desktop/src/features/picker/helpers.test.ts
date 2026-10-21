@@ -1,7 +1,9 @@
 import { expect, test } from "vitest";
+import type React from "react";
 import type { SearchResult } from "../../api";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
+import { isKeysShortcut, isMenuShortcut, isQuitShortcut } from "./shortcuts";
 
 const record = (more: Partial<SearchResult> = {}): SearchResult => ({
   revision: "1", id: { source: "refs.bib", native_key: "a" }, key: "a", title: "T", authors: "García", year: 2021,
@@ -34,4 +36,16 @@ test("rows name a hidden match, shorten three or more authors and title the tile
   expect(tileName(record())).toBe("García 2021");
   expect(tileName(record({ year: null }))).toBe("García");
   expect(tileName(record({ first_author: "  " }))).toBe("a");
+});
+
+test("a letter shortcut typed as punctuation is not the keys shortcut", () => {
+  const press = (key: string, code: string) =>
+    ({ key, code, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, target: null }) as unknown as React.KeyboardEvent;
+  // Hebrew types / on the Q key: Ctrl+Q there quits rather than listing the keys.
+  expect(isQuitShortcut(press("/", "KeyQ"), false)).toBe(true);
+  expect(isKeysShortcut(press("/", "KeyQ"), false)).toBe(false);
+  // Ctrl+/ on its own key, and Ctrl+? on AZERTY's comma key, still list the keys.
+  expect(isKeysShortcut(press("/", "Slash"), false)).toBe(true);
+  expect(isKeysShortcut({ ...press("?", "KeyM"), shiftKey: true } as React.KeyboardEvent, false)).toBe(true);
+  expect(isMenuShortcut(press("/", "Slash"), false)).toBe(false);
 });

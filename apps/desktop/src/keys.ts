@@ -80,9 +80,9 @@ export function commandKey(e: KeyPress, mac: boolean): boolean {
 }
 
 /** Whether a key press is an accelerator from the key table, such as `CmdOrCtrl+Q`.
- * Letters match in any case (Caps Lock). A layout that types a non-Latin
- * letter there (Cyrillic, Greek) matches by the physical key instead; a Latin
- * layout matches what it types, so AZERTY's Q key is A. */
+ * Letters match in any case (Caps Lock). When the key types anything but a
+ * Latin letter (Cyrillic й, Greek ;, Hebrew /), the physical key decides
+ * instead; a Latin layout matches what it types, so AZERTY's Q key is A. */
 export function matchesAccelerator(e: KeyPress, accelerator: string, mac: boolean): boolean {
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
   const key = parts[parts.length - 1] ?? "";
@@ -91,5 +91,5 @@ export function matchesAccelerator(e: KeyPress, accelerator: string, mac: boolea
   if (!command || e.altKey !== modifiers.has("alt") || e.shiftKey !== modifiers.has("shift")) return false;
   if (e.key.toLowerCase() === key.toLowerCase()) return true;
   const physical = /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : /^\d$/.test(key) ? `Digit${key}` : null;
-  return physical !== null && e.code === physical && e.key.length === 1 && !/^[\x20-\x7e]$/.test(e.key);
+  return physical !== null && e.code === physical && e.key.length === 1 && !/^[a-z]$/i.test(e.key);
 }

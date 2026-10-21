@@ -16,9 +16,10 @@ export function typesText(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement && !["button", "checkbox", "radio", "range", "color", "file", "submit", "reset"].includes(target.type);
 }
 
-/** `?` outside a text field, or Ctrl/⌘ with / (or ?) anywhere. */
+/** `?` outside a text field, or Ctrl/⌘ with / (or ?) anywhere. Hebrew types /
+ * on the Q key, so a press that is a letter shortcut is not this one. */
 export function isKeysShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
-  if (e.altKey) return false;
+  if (e.altKey || isQuitShortcut(e, mac) || isMenuShortcut(e, mac)) return false;
   if ((e.key === "/" || e.key === "?") && commandKey(e, mac)) return true;
   return e.key === "?" && !e.ctrlKey && !e.metaKey && !typesText(e.target);
 }
