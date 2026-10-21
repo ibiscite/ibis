@@ -2598,18 +2598,22 @@ test("a retired formatted preview sends its own revision and requires a fresh co
   let revision = "1";
   const attempts: unknown[] = [];
   const writes: string[] = [];
+  let copiedText: unknown;
   const calls = backend({
     library_status: () => ({ ...zoteroStatus(["user"]), revision }),
     search: () => [{ ...result("ITEM0001", `Formatted ${revision}`, "zotero:user"), revision }],
     picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false }),
     csl_items: ({ expectedRevision }) => {
       if (expectedRevision !== revision) throw "library snapshot changed";
-      return JSON.stringify([{ id: "ITEM0001", type: "book", title: "Synthetic", author: [{ family: "Smith" }], issued: { "date-parts": [[2020]] } }]);
+      // Each revision has its own year, so the preview shows which one it formatted.
+      const year = revision === "1" ? 2020 : 2021;
+      return JSON.stringify([{ id: "ITEM0001", type: "book", title: "Synthetic", author: [{ family: "Smith" }], issued: { "date-parts": [[year]] } }]);
     },
-    copy_formatted: ({ expectedRevision }) => {
+    copy_formatted: ({ text, expectedRevision }) => {
       attempts.push(expectedRevision);
       if (expectedRevision !== revision) throw "library snapshot changed";
       writes.push(revision);
+      copiedText = text;
       return null;
     },
   });
@@ -2622,13 +2626,17 @@ test("a retired formatted preview sends its own revision and requires a fresh co
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
     await screen.findByText("The library changed. Search again and reselect the references before copying.");
     await screen.findByText("Formatted 2");
-    await within(preview).findByText("(Smith, 2020)");
+    // The preview is rebuilt for the new rows, and the retired one read the
+    // same text, so look up the current region and wait for revision 2's year.
+    await waitFor(() => within(screen.getByRole("region", { name: "Preview" })).getByText("(Smith, 2021)"));
+    expect(screen.queryByText("(Smith, 2020)")).toBeNull();
     expect(attempts).toEqual(["1"]);
     expect(writes).toEqual([]);
     expect(calls).not.toContain("hide_picker");
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
     await waitFor(() => expect(writes).toEqual(["2"]));
     expect(attempts).toEqual(["1", "2"]);
+    expect(copiedText).toBe("(Smith, 2021)");
   } finally {
     vi.unstubAllGlobals();
   }
