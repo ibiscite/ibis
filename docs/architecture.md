@@ -7,11 +7,11 @@
  small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [planned]
                       └─ Browser extension, launcher integrations, web build  [later]
    │
-   ├─ Sources: BibTeX/BibLaTeX · Zotero · RIS · CSL-JSON · others later
-   ├─ Store and search index
-   ├─ Formatting: citeproc-js with official CSL styles; key-based syntaxes in Rust
-   ├─ Insertion: state machine + destination profiles
-   └─ Health rules
+   ├─ Sources: BibTeX/BibLaTeX · Zotero (open) · RIS, CSL-JSON, Zotero closed [planned]
+   ├─ Search index in memory · persistent store                     [planned]
+   ├─ Key-based syntaxes in Rust (CSL styles: citeproc-js in the web UI for now)
+   ├─ Insertion: state machine + destination profiles              [planned]
+   └─ Health rules                                                  [planned]
 ```
 
 ## Principles
@@ -42,7 +42,7 @@ Each record has an identity (source + native key), normalized fields that map to
   Clean first-parent inheritance snapshots are shared across references within a 4 MiB cache, including retained field allocations and empty-entry metadata.
   Only complete, warning-free walks qualify; roots still compute their own diagnostics. Replay preserves the per-root evaluation quota, while actual cache metadata work and subsequent field copies consume load credits.
   The desktop watches the containing directory using `notify`, so save-by-rename keeps working. Selected symlinks also watch the resolved target directory and update that watch when the selected link changes. An absent target file in an existing directory is watched by its parent so creating the file recovers automatically. A bounded worker coalesces changes, waits for a quiet interval and requires two identical reads before publishing an indexed replacement. Unreadable, missing or unclosed files retain the last loaded references and show a safe error. Initial opens remain tolerant of damaged entries. A stable empty file replaces the index with an empty library. Writer intent cannot be inferred from a syntactically valid prefix; stability checks bound the observation period rather than guaranteeing that a paused writer has finished. Network filesystems may not deliver notifications; Reload remains available.
-- **Zotero:** local API when Zotero is running; otherwise a consistent read-only snapshot of its database, through an adapter tested against each supported Zotero schema; Better BibTeX exports as a third option. See ADR 0006.
+- **Zotero:** the local API while Zotero is running, or a Better BibTeX export as a `.bib` file. Reading a consistent read-only snapshot of Zotero's database while Zotero is closed is planned for 0.3 (#14). See ADR 0006.
 
 ## Search
 
@@ -50,11 +50,11 @@ Keyword search is instant, case- and accent-insensitive, works in every script a
 
 ## Formatting
 
-Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
+Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. For now this runs in the desktop web interface (`apps/desktop/src/format/`), not in the core, so the command line cannot format with styles; moving it into the core is planned for 0.5 (#366). Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
 
 ## Insertion
 
-Every insertion ends in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
+Planned for 0.4; today the picker copies. Every insertion will end in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
 
 ## Desktop process model
 
