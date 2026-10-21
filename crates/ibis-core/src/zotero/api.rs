@@ -6,15 +6,19 @@
 //! `http://127.0.0.1:23119/api/` once "Allow other applications on this
 //! computer to communicate with Zotero" is on.
 //!
-//! A library is read page by page, each page starting where the items read
-//! so far end. Every page must carry `Last-Modified-Version` and
-//! `Total-Results`, the count of the whole listing, and all pages of one
-//! scan must agree on both; a disagreement means the library changed and
-//! the scan starts over. More items than the declared total, or a page with
-//! items when the total is zero, are an inconsistent answer and fail closed,
-//! so a partial or mismatched library is never published as complete. A
-//! short page inside a split export also fails closed if later ranges would
-//! leave unread items between the pages.
+//! A library is read page by page, oldest item first, each page starting
+//! where the items read so far end. Every page must carry
+//! `Last-Modified-Version` and `Total-Results`, the count of the whole
+//! listing, and all pages of one scan must agree on both; a disagreement
+//! means the library changed and the scan starts over. So does an item key
+//! seen twice in one scan: Zotero 7.0 reports the synced library version, so
+//! a local edit mid-scan shows only as a listing that moved. More items than
+//! the declared total, or a page with items when the total is zero, are an
+//! inconsistent answer and fail closed, so a partial or mismatched library
+//! is never published as complete. A short page inside a split export also
+//! fails closed if later ranges would leave unread items between the pages.
+
+use std::collections::HashSet;
 
 use serde_json::Value;
 use thiserror::Error;
@@ -31,6 +35,10 @@ const MAX_REQUESTS: usize = 12_000;
 const MAX_SKIPPED: usize = 100;
 /// Scans restarted because the library changed underneath them.
 const MAX_ATTEMPTS: usize = 3;
+/// The listing order of every page: oldest first. Editing an item never
+/// moves it, unlike Zotero's default `dateModified` order, and Zotero 7.0
+/// changes neither the version nor the total on a local edit.
+const ORDER: &str = "sort=dateAdded&direction=asc";
 
 /// A response from Zotero. Header names are matched without regard to case.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -206,6 +214,9 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
     let mut first: Option<Snapshot> = None;
     let mut total: Option<usize> = None;
     let mut skipped: Vec<LoadWarning> = Vec::new();
+    // Every key read so far. A key that comes back means the listing moved
+    // under the scan, so another item may have been passed over.
+    let mut seen: HashSet<String> = HashSet::new();
     // Ranges still to read, last first. A page Zotero fails to export is
     // split in halves until the one item it cannot export is found.
     let mut ranges: Vec<(usize, usize)> = Vec::new();
@@ -214,7 +225,7 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
         // skipped, so nothing is passed over when a page comes back short.
         let (start, limit) = ranges.pop().unwrap_or_else(|| (items.len() + skipped.len(), PAGE_SIZE));
         let path = format!(
-            "{}?format=json&include=data,csljson&limit={limit}&start={start}",
+            "{}?format=json&include=data,csljson&{ORDER}&limit={limit}&start={start}",
             top_items_path(library)
         );
         let response = transport.get(&path)?;
@@ -227,6 +238,11 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
                 // item is tied to one through the key lookup's answer.
                 let (warning, keys) = unexported(transport, library, start)?;
                 if !consistent(&keys, &mut first, &mut total)? {
+                    return Ok(None);
+                }
+                if let Some(key) = &warning.key
+                    && !seen.insert(key.clone())
+                {
                     return Ok(None);
                 }
                 skipped.push(warning);
@@ -249,6 +265,13 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
             return Err(ZoteroError::Incomplete);
         }
         let got = page_items.len();
+        for item in &page_items {
+            if let Some(key) = item.get("key").and_then(Value::as_str)
+                && !seen.insert(key.to_string())
+            {
+                return Ok(None);
+            }
+        }
         items.extend(page_items);
         if items.len() + skipped.len() > count {
             // More items than Zotero declared: the count is wrong or the
@@ -314,7 +337,10 @@ fn unexported(
     let response = request(
         transport,
         library,
-        &format!("{}?format=keys&limit=1&start={position}", top_items_path(library)),
+        &format!(
+            "{}?format=keys&{ORDER}&limit=1&start={position}",
+            top_items_path(library)
+        ),
     )?;
     let key = std::str::from_utf8(&response.body)
         .ok()
@@ -514,6 +540,12 @@ mod tests {
         // Narrowing a page down costs a handful of requests, not one per item.
         assert!(zotero.asked.len() < 40, "{} requests", zotero.asked.len());
         assert!(zotero.asked.iter().all(|path| path.starts_with("users/0/items/top?")));
+        // The key lookup must list items in the same order as the pages.
+        assert!(
+            zotero.asked.iter().all(|path| path.contains(ORDER)),
+            "{:?}",
+            zotero.asked
+        );
     }
 
     #[test]
@@ -573,8 +605,8 @@ mod tests {
         assert_eq!(
             fake.asked,
             [
-                "groups/7/items/top?format=json&include=data,csljson&limit=100&start=0",
-                "groups/7/items/top?format=json&include=data,csljson&limit=100&start=100",
+                "groups/7/items/top?format=json&include=data,csljson&sort=dateAdded&direction=asc&limit=100&start=0",
+                "groups/7/items/top?format=json&include=data,csljson&sort=dateAdded&direction=asc&limit=100&start=100",
             ]
         );
     }
@@ -741,6 +773,65 @@ mod tests {
         assert_eq!(scan(&mut fake, Library::User), Err(ZoteroError::Changing));
         assert_eq!(fake.asked.len(), 2 * MAX_ATTEMPTS);
         assert!(fake.asked.iter().step_by(2).all(|path| path.ends_with("start=0")));
+    }
+
+    /// A Zotero 7.0 that ignores the requested order and, like its default
+    /// `dateModified` order, moves an item edited mid-scan to the front
+    /// without changing the library version or the total.
+    struct Reordering {
+        keys: Vec<String>,
+        pages: usize,
+        /// Pages after which an item is edited.
+        edits_after: Vec<usize>,
+    }
+
+    impl Transport for Reordering {
+        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+            let number = |name: &str| -> usize {
+                path.split(['?', '&'])
+                    .find_map(|part| part.strip_prefix(name))
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0)
+            };
+            let (start, limit) = (number("start="), number("limit="));
+            if self.edits_after.contains(&self.pages) {
+                let edited = self.keys.remove(150);
+                self.keys.insert(0, edited);
+            }
+            self.pages += 1;
+            let end = (start + limit).min(self.keys.len());
+            let keys: Vec<&str> = self.keys[start.min(end)..end].iter().map(String::as_str).collect();
+            Ok(page(0, self.keys.len(), &keys))
+        }
+    }
+
+    #[test]
+    fn an_edit_between_pages_that_reorders_items_restarts_the_scan() {
+        let mut zotero = Reordering {
+            keys: many("K", 250),
+            pages: 0,
+            edits_after: vec![1],
+        };
+        let (result, _) = scan(&mut zotero, Library::User).unwrap_or_else(|e| panic!("{e}"));
+        let mut got = keys(&result);
+        got.sort_unstable();
+        got.dedup();
+        assert_eq!(
+            got.len(),
+            250,
+            "an item is missing from a library published as complete"
+        );
+        assert!(result.warnings.iter().all(|w| w.kind != WarningKind::DuplicateKey));
+    }
+
+    #[test]
+    fn a_listing_that_keeps_reordering_is_reported_not_published() {
+        let mut zotero = Reordering {
+            keys: many("K", 250),
+            pages: 0,
+            edits_after: (0..100).collect(),
+        };
+        assert_eq!(scan(&mut zotero, Library::User).err(), Some(ZoteroError::Changing));
     }
 
     #[test]

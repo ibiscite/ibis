@@ -242,7 +242,7 @@ fn attachment_kinds_use_the_existing_single_page_request() {
         assert_eq!(loaded.references[0].title_plain().as_deref(), Some("日本 < b > 한국어"));
         assert_eq!(
             transport.asked,
-            ["groups/7/items/top?format=json&include=data,csljson&limit=100&start=0"]
+            ["groups/7/items/top?format=json&include=data,csljson&sort=dateAdded&direction=asc&limit=100&start=0"]
         );
     }
 }
