@@ -9,10 +9,9 @@ current appearance. User-selectable looks may come later; this is the default.
 The prototypes were built outside the repository. Everything needed to implement
 the design is written down here.
 
-This includes longer-term targets as well as the current picker. Release scope
-comes from [ROADMAP.md](../ROADMAP.md); the rollout below separates remaining
-work from behavior already implemented. Native acceptance is recorded separately
-in [testing.md](testing.md), not established by this specification.
+This page describes the target, including longer-term parts. Release scope
+comes from [ROADMAP.md](../ROADMAP.md). What is built and what is left is tracked
+in #223 and the issues named under [Rollout](#rollout), not on this page.
 
 ## Eight rules
 
@@ -114,9 +113,7 @@ instead of going square or looking like a separate floating slab.
 | `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 | 8 · 4 · 4 | 12 · 6 · 6 |
 | `--e2` menu shadow, plus a 1 px hairline | `0 12px 32px` black 16% | `0 8px 16px` black 14% | `0 2px 8px` black 20% |
 
-Not implemented yet: `tokens.css` still uses the earlier fixed radii (rows
-10 px on macOS, 9 px on Linux; tiles 7 px, 4 px on Windows) and a macOS menu
-shadow of `0 16px 40px` black 22%. On GNOME, rows are
+On GNOME, rows are
 flat with the 6 px radius of Adwaita's sidebar and popover rows: a boxed list
 cannot be concentric at an 8 px inset in a 14 px window.
 
@@ -144,25 +141,21 @@ same. Each platform gets them at its own weight:
 
 GNOME icons are named `ibis-…-symbolic` and recoloured by GTK. Where the
 platform already has an icon with the exact meaning (menus, system dialogs), the
-platform's icon is used. Only the base set is implemented today. Seven type
+platform's icon is used. Seven type
 icons say what a reference is: article, book, chapter, thesis, web page, report
 and other (chosen from its CSL type). They never reuse an attachment drawing
 (the document or the globe), so a row never shows the same picture twice.
 
 **App icon (#579).** Direction 1, the ibis, variation B (upright stance and
-shortened neck), gradient G1 (`#e5532d` to `#c0361a`). The desktop assets now
-come from the approved optical transform, with separate small and symbolic
-masters. macOS uses the issue's authorised ICNS-only fallback; the layered
-source is an unshipped prototype pending #663. [Regeneration and delivery limits](../apps/desktop/src-tauri/icons/source/README.md)
-record the proposed Windows unplated adaptation and native acceptance still
-needed. The maintainer's final rendered-size
-look remains required before merge.
+shortened neck), gradient G1 (`#e5532d` to `#c0361a`), with separate small and
+symbolic masters. How the assets are regenerated is in the
+[icon source notes](../apps/desktop/src-tauri/icons/source/README.md).
 
 **Per platform.** Only these change:
 
 | | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
-| Material | Standard material for the window; Liquid Glass only on the search bar (Rollout 9) | Desktop Acrylic (today: Mica) | Flat, opaque |
+| Material | Standard material for the window; Liquid Glass only on the search bar (Rollout 9) | Desktop Acrylic | Flat, opaque |
 | Corners | See **Corners** above | | |
 | Selected row | Filled accent, white text | Soft grey with an accent pill on the left | GTK's selection colour (filled accent) with its paired text |
 | Keyboard focus ring | 2 px accent, 1 px gap | 2 px in the text colour around a 1 px surface-coloured stroke (Fluent's focus visual) | 2 px, the accent mixed half toward the text colour, 1 px gap |
@@ -205,7 +198,6 @@ list, preview and tray) from a control layer (search, format, pin).
   Microsoft reserves Desktop Acrylic for. Content sits directly on it, with no
   second layer. Mica is for long-lived windows such as settings. Both become the
   solid surface when transparency effects are off or battery saver is on.
-  Today the picker uses Mica; the switch to Acrylic is not implemented.
 - **Linux.** Flat and opaque on `window_bg`, with the search entry on
   `view_bg`. Ibis does not use the GNOME 51 blur API, since GNOME's own apps
   stay flat.
@@ -297,12 +289,6 @@ and is never written to disk.
 It appears in 120 ms with a short fade. The at-cursor form opens under the text
 caret and flips above it near the bottom of the screen.
 
-The focused-window display is a target for rollout step 4. Today the picker uses
-the display with the pointer (the nearest display if the pointer is between
-displays). If pointer position is unavailable, it keeps its current display or
-uses the primary one; it does not yet offer a display-choice setting or save
-positions across restarts.
-
 **Moving.** Drag the handle or the empty part of the header; the list never
 starts a drag. It snaps to the centre line and the upper third within 18 px,
 showing a thin guide; Alt places it freely. Position is remembered per display;
@@ -332,12 +318,10 @@ and Ibis stays open.
 
 **Escape** steps back one layer: close a menu or dialog, close the preview,
 clear the search and filters, then hide. Nothing asks for confirmation. After
-hiding, the search is kept in memory for a minute (#314). The current quick
-picker closes a menu or keyboard dialog, clears the query while preserving
-chosen references, then hides. Reopening within that minute restores even a
-query cleared by Escape, unless new typing or a completed copy replaced it;
-reopening after more than a minute hidden clears the search and selection.
-The preview and filter steps remain planned. Escape never unpins.
+hiding, the search is kept in memory for a minute. Clearing keeps the chosen
+references. Reopening within that minute restores even a query cleared by
+Escape, unless new typing or a completed copy replaced it; reopening later
+clears the search and selection. Escape never unpins.
 
 **Pinned** Ibis floats above the document, keeps its place, and does not take
 focus until clicked or summoned. It is the only time Ibis stays on top.
@@ -392,71 +376,36 @@ Ibis offers to start at login: once during first-run setup, beside the
 shortcut it teaches, and always in More and the menu bar or tray menu. It is
 off until the person ticks it: Apple's App Review Guideline 2.4.5(iii) asks
 Mac apps for consent first, and Raycast, Alfred, PowerToys and 1Password offer
-it as a setting. A login start
-leaves the picker hidden until the shortcut is pressed. The tick is read from
-the system, never from `settings.json`, each time the picker or More opens and,
-on macOS and Windows, each time the menu bar or tray icon is clicked. So
-turning Ibis off in System Settings > General > Login Items (macOS) or Task
-Manager's Startup apps (Windows) shows at once. Most Linux tray hosts do not
-report clicks, so there the tray tick catches up with the desktop's startup
-settings the next time the picker or More opens. If the system refuses, the tick shows the real state and a
-sentence says where to change it; while macOS waits for the person to approve
-the login item there, the picker says so each time it opens. Ibis Nightly and development builds register under their own
-names and never replace stable Ibis's entry.
-
-- macOS 13 and later: `SMAppService.mainApp` (Open at Login). Older macOS
-  shows no choice.
-- Windows: Ibis writes only the current user's `Run` key. Reading and
-  removing also look at the all-users key, where an administrator may have
-  added Ibis.
-- Linux: an XDG autostart file in `$XDG_CONFIG_HOME/autostart`, skipped by the
-  session if the program has been removed (`TryExec`). When an AppImage has
-  moved, Ibis repoints the entry it wrote and keeps the person's own keys; a
-  linked or hand-written entry is left alone.
+it as a setting. A login start leaves the picker hidden until the shortcut is
+pressed. The tick is read from the system each time, never from
+`settings.json`, so turning Ibis off in the system's own startup settings shows
+at once; if the system refuses, the tick shows the real state and a sentence
+says where to change it. Ibis Nightly and development builds register under
+their own names. How each platform stores the entry is in
+`apps/desktop/src-tauri/src/login_item.rs` and [PRIVACY.md](../PRIVACY.md).
 
 ## Rollout
 
 Each step is one pull request against #223 (or an issue split from it), reviewed
-with the states gallery on every platform. Steps 1–3 need no new data or
-settings. Settings format 2 is recorded in [ADR 0018](adr/0018-settings-format-2.md);
-[ADR 0019](adr/0019-update-checks.md) and
-[ADR 0020](adr/0020-picker-preferences.md) add optional update and picker fields.
-Density and Larger text are already remembered. Remaining choices kept across
-restarts (window position per display, display choice, how long a search is kept,
-which tips were seen) need an ADR before new `settings.json` fields are added.
+with the states gallery on every platform. Settings format 2 is
+[ADR 0018](adr/0018-settings-format-2.md); [ADR 0019](adr/0019-update-checks.md)
+and [ADR 0020](adr/0020-picker-preferences.md) add optional update and picker
+fields. Any other choice kept across restarts (window position per display,
+display choice, how long a search is kept, which tips were seen) needs an ADR
+before it adds a `settings.json` field.
 
-1. **Done (#307).** Design values in `tokens.css`: type scale, densities, radii,
-   motion and colour roles, without changing layout. Remaining motion work:
-   enforce the 280 ms cap and reduced-motion behavior for every transition.
-2. **Done in structure (#313); proportions and details in progress.** Picker
-   layout: header (search, format, pin), rows, footer with library status and
-   More, empty and no-result text. Remaining: header height, the per-platform
-   search box, selected row and the citation colour (#490); the footer's Enter
-   hint, the `?` key list and no-result actions (#491); rows that tell similar
-   references apart (#492).
-3. **Partly done (#314).** Window behaviour that needs no settings:
-   outside-click hiding, keeping the search in memory for a minute, the Escape ladder, and staying on top only
-   when pinned. Hide the quick picker from the taskbar, Dock and Alt+Tab; verify
-   each platform separately (macOS already uses an accessory panel). Add the
-   full-screen/presentation shortcut guard and its second-press override.
-   Separately verify the macOS panel opens over full-screen apps in the current
-   Space; the panel already has this configuration, which is not evidence that
-   every native scenario passes.
-   Status (#495): the quick picker asks to stay out of the taskbar on Windows
-   and Linux, and the Linux native smoke checks the X11 hints. The full-screen
-   guard (a second press within 2 seconds opens Ibis anyway) works where the
-   window manager reports full-screen windows (X11). Windows and macOS have no
-   detection yet: it needs native calls the safe dependencies do not offer, so
-   there the shortcut always opens Ibis. Hiding the picker from Windows Alt+Tab
-   needs a tool-window style for the same reason. (#509, #510)
-   Also implemented: reopening within a minute restores an Escape-cleared
-   query unless typing or a completed copy replaced it; a clean unpinned copy
-   shows the "Copied" notice after hiding, and a row click copies while
-   Shift+click adds to the citation (#496).
-4. Density and Larger text are settings under ADR 0020 (#407, #408). Remaining
-   work: an ADR for display choice and remembered per-display position, then
-   change the opening default from the pointer's display to the focused window's
-   display, with the pointer and last-position alternatives.
+1. Design values in `tokens.css` (#307, done); per-platform corner radii and
+   spacing from **Corners** (#576); the 280 ms cap and reduced motion for every
+   transition.
+2. Picker layout (#313), header and platform looks (#490), footer, `?` key
+   list and no-result actions (#491), rows that tell similar references apart
+   (#492); all done.
+3. Window behaviour that needs no settings: outside-click hiding, the Escape
+   ladder, the kept search and pinning (#314, done); "Copied" after hiding and
+   copy on row click (#496, done); staying out of the taskbar and Alt+Tab, and
+   the full-screen guard (#495, #509, #510).
+4. Density and Larger text (ADR 0020, done); then an ADR for display choice and
+   remembered per-display position, and opening on the focused window's display.
 5. Footer tips, and `#tag`, `y:` and `a:` filters (tags need source support).
 6. Recently cited and Recently added (needs a local history that stays on the
    device and, as PRIVACY.md promises, can be turned off and cleared).
@@ -467,3 +416,6 @@ which tips were seen) need an ADR before new `settings.json` fields are added.
    looks users can choose, including macOS Liquid Glass (which needs the newest
    macOS material API); native Wayland GlobalShortcuts portal integration
    and its system shortcut dialog need their own implementation and evidence.
+
+Also open: Desktop Acrylic instead of Mica on Windows (#577), per-platform icon
+weights, and the layered macOS app icon (#663).
