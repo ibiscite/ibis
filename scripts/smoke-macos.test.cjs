@@ -181,15 +181,23 @@ function nativeClick(controls, text = 'Typst') {
     return () => JSON.parse(native.run(['click', '42', '0', text]));
 }
 
-function nativeControl({role = 'AXCheckBox', subrole = 'AXToggle', label = 'Typst', error} = {}) {
-    let presses = 0;
-    return {role: () => role, subrole: () => subrole, description: () => label,
-        name: () => label, title: () => label, value: () => false,
-        attributes: {byName: () => ({value: () => label})},
-        actions: {byName: name => {
+function nativeControl({role = 'AXCheckBox', subrole = 'AXToggle', label = 'Typst', error,
+    invalidatedByPress = false} = {}) {
+    let presses = 0, staleReads = 0;
+    const read = value => {
+        if (invalidatedByPress && presses > 0) {
+            staleReads++;
+            throw Error('Synthetic stale accessibility element');
+        }
+        return value;
+    };
+    return {role: () => read(role), subrole: () => read(subrole), description: () => read(label),
+        name: () => read(label), title: () => read(label), value: () => read(false),
+        get attributes() { return read({byName: () => ({value: () => read(label)})}); },
+        get actions() { return read({byName: name => {
             assert.equal(name, 'AXPress');
             return {perform() { presses++; if (error) throw error; }};
-        }}, get presses() { return presses; }};
+        }}); }, get presses() { return presses; }, get staleReads() { return staleReads; }};
 }
 
 const typstToggle = nativeControl();
@@ -213,6 +221,22 @@ assert.equal(uncertainToggle.presses, 1);
 const ordinaryButton = nativeControl({role: 'AXButton', subrole: '', label: 'More'});
 assert.equal(nativeClick([ordinaryButton], 'More')().pressed, true);
 assert.equal(ordinaryButton.presses, 1);
+// Quit destroys the app; menu actions can also replace their AX element.
+// Nothing may touch that element after a successful, single AXPress.
+for (const [role, subrole, label] of [
+    ['AXButton', '', 'More'], ['AXMenuItem', '', 'Quit Ibis'], ['AXCheckBox', 'AXToggle', 'Typst'],
+]) {
+    const disappearing = nativeControl({role, subrole, label, invalidatedByPress: true});
+    const result = nativeClick([disappearing], label)();
+    assert.equal(disappearing.staleReads, 0);
+    assert.equal(disappearing.presses, 1);
+    assert.deepEqual(result, {pressed: true, button_count: 1, exact_label_matches: 1,
+        successful_attribute_reads: 8, attribute_types: ['boolean', 'string'],
+        known_action: label === 'More', button_role: role === 'AXButton', toggle_role: role === 'AXCheckBox'});
+}
+assert.deepEqual(nativeClick([])(), {pressed: false, button_count: 0, exact_label_matches: 0,
+    successful_attribute_reads: 0, attribute_types: [], known_action: false,
+    button_role: false, toggle_role: false});
 context.$ = {AXIsProcessTrusted: () => true};
 context.ObjC.bindFunction = () => { throw Error('Synthetic missing native symbol'); };
 assert.throws(() => context.run(['probe', '42', '0', '']), /Native event-posting preflight unavailable/);

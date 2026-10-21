@@ -431,15 +431,18 @@ function run(argv) {
             return labels.some(label => aliases.includes(label));
         });
         if (matches.length > 1) throw Error('Named native button is ambiguous');
-        // Watcher notices can change the WebKit tree between role and label
-        // reads. Only absence is retried by Python's bounded native wait.
-        // An AXPress failure propagates immediately and is never retried.
-        if (matches.length === 1) matches[0].actions.byName('AXPress').perform();
+        // Observe control roles before activation: Quit or a menu transition
+        // can invalidate the AX element. These facts describe the control,
+        // not the resulting checkbox value or application state.
         result = {pressed: matches.length === 1, button_count: buttons.length,
             exact_label_matches: matches.length, successful_attribute_reads: successfulReads,
             attribute_types: [...types].sort(), known_action: ['Reload', 'Choose library…', 'More'].includes(text),
             button_role: matches.length === 1 && safe(() => matches[0].role()) === 'AXButton',
             toggle_role: matches.length === 1 && toggle(matches[0])};
+        // Watcher notices can change the WebKit tree between role and label
+        // reads. Only absence is retried by Python's bounded native wait.
+        // An AXPress failure propagates immediately and is never retried.
+        if (matches.length === 1) matches[0].actions.byName('AXPress').perform();
         break;
     }
     case 'focus-editor': process(editorId).frontmost = true; result = true; break;
