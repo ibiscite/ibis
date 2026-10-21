@@ -41,7 +41,8 @@ test("report contains lossless input, failure and reproduction details, escaping
     if (!body) return [];
     created = body;
   });
-  assert.deepEqual(created.labels, ["area:testing"]);
+  assert.deepEqual(created.labels, ["type:bug", "area:infra"]);
+  assert.match(created.title, /^Fuzzing found a crash in split_parse \([0-9a-f]{12}\)$/);
   assert.ok(created.body.includes(input.toString("base64")));
   assert.ok(created.body.includes("cargo +nightly fuzz run split_parse"));
   assert.ok(created.body.includes("deadly signal"));

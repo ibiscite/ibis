@@ -13,6 +13,7 @@ cargo test -p ibis-desktop      # desktop crate tests (plain cargo test skips th
 pnpm -C apps/desktop test       # interface tests
 cargo run -p ibis -- --help     # command line tool
 cargo insta review              # review changed snapshots (cargo install cargo-insta)
+node scripts/pr-lint.mjs --title "…" --branch "…" --body-file pr.md   # check a pull request before opening it
 ```
 
 ## Authority
@@ -40,7 +41,7 @@ Without this authorization (for example an outside contributor's agent), do not 
 - A check that fails twice for the same reason: stop retrying, diagnose, record the result in the issue.
 - No new workflows, harnesses, ADRs or dependencies unless the issue asks for them. Prefer maintained libraries to new code and fewer dependencies to more. Dependencies must pass `cargo deny check`; before adding one, confirm on its registry page and repository that the exact name exists and is maintained (AI tools suggest look-alike names).
 - Hard-to-reverse decisions (license, persisted data formats, public CLI or API contracts, network use, security boundaries) need an ADR.
-- When an agent repeats a mistake, add a check to `scripts/check.mjs` (preferred) or one line here; remove lines that no longer matter.
+- When an agent repeats a mistake, add a check to `scripts/check.mjs` or `scripts/pr-lint.mjs` (preferred) or one line here; remove lines that no longer matter.
 
 ## Code, privacy and security
 

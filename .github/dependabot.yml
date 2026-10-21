@@ -4,7 +4,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    labels: ["dependencies", "type:chore"]
+    labels: ["dependencies"]
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -18,7 +18,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    labels: ["dependencies", "type:chore"]
+    labels: ["dependencies"]
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -32,7 +32,7 @@ updates:
     directory: /apps/desktop
     schedule:
       interval: monthly
-    labels: ["dependencies", "type:chore"]
+    labels: ["dependencies"]
     commit-message:
       prefix: "chore"
       include: "scope"

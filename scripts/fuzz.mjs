@@ -36,14 +36,14 @@ export function minimize(input, reproduce, signature, budgetMs = 120_000) {
 export async function report(repository, target, input, problem, runUrl, request) {
   const marker = `<!-- fuzz:${problem.signature} -->`;
   for (let page = 1; ; page++) {
-    const issues = await request(`/repos/${repository}/issues?state=open&labels=area%3Atesting&per_page=100&page=${page}`);
+    const issues = await request(`/repos/${repository}/issues?state=open&labels=area%3Ainfra&per_page=100&page=${page}`);
     if (issues.some((issue) => issue.body?.includes(marker))) return false;
     if (issues.length < 100) break;
   }
   const encoded = input.toString("base64");
   await request(`/repos/${repository}/issues`, {
-    title: `fuzz: ${target} ${problem.kind} (${problem.signature.slice(0, 12)})`,
-    labels: ["area:testing"],
+    title: `Fuzzing found a ${problem.kind} in ${target} (${problem.signature.slice(0, 12)})`,
+    labels: ["type:bug", "area:infra"],
     body: `${marker}\nNightly fuzzing found a ${problem.kind} in \`${target}\`. [Workflow run](${runUrl}).\n\nFailure signature:\n\n    ${problem.detail.replaceAll("\n", "\n    ")}\n\nMinimized input (${input.length} bytes, lossless base64):\n\n    ${encoded}\n\nDecode the base64 into \`reproducer\`, then run:\n\n    cargo +nightly fuzz run ${target} reproducer -- ${limits.join(" ")}\n\nMinimization deletes bytes while preserving the failure signature, bounded to two minutes; reduction may stop at that budget. Before closing a fix, add the input to \`fixtures/bibtex/\` with a regression test.`,
   });
   return true;

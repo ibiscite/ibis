@@ -3,23 +3,28 @@ name: Repository hygiene
 # Weekly tidy-up (#443): deletes head branches whose pull requests are all
 # finished, and keeps one "Repository hygiene report" issue listing stale pull
 # requests and issues or labels outside the naming standard in
-# docs/development.md. See scripts/hygiene.mjs.
+# docs/development.md. See scripts/hygiene.mjs. On pull requests it only
+# checks title, branch and body against the conventions (scripts/pr-lint.mjs),
+# so editing a description re-runs that check in seconds without full CI.
 
 on:
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
 
 concurrency:
-  group: hygiene
-  cancel-in-progress: false
+  group: hygiene-${{ github.event.pull_request.number || 'weekly' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   hygiene:
     name: Repository hygiene
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -35,3 +40,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/hygiene.mjs --apply
+
+  conventions:
+    name: Pull request conventions
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check title, branch and description
+        run: node scripts/pr-lint.mjs

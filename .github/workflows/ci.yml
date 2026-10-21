@@ -389,7 +389,7 @@ jobs:
           if [ -n "$number" ]; then
             gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label needs:triage --body "$body"
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label type:task --label area:infra --body "$body"
           fi
 
       # Uploads still run after a job timeout (which counts as cancelled) so

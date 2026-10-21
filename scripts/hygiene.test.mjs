@@ -5,7 +5,7 @@ import { findings } from "./hygiene.mjs";
 const now = Date.parse("2026-11-01T00:00:00Z");
 const base = { now, branches: [], pulls: [], issues: [], labels: [] };
 const pr = (number, head, state, closedAt, extra = {}) => ({
-  number, head, headSha: `sha-${head}`, base: "main", state, closedAt, updatedAt: closedAt ?? "2026-10-31T00:00:00Z", labels: ["type:chore"], ...extra,
+  number, head, headSha: `sha-${head}`, base: "main", state, closedAt, updatedAt: closedAt ?? "2026-10-31T00:00:00Z", labels: [], ...extra,
 });
 const branch = (name, sha = `sha-${name}`) => ({ name, sha });
 
@@ -49,7 +49,7 @@ test("reports stale pull requests, untyped or unscheduled issues, prefixed title
       { number: 9, title: "fix: crash on empty file", labels: [], milestone: undefined },
       { number: 10, title: "Repository hygiene report", labels: [], milestone: undefined },
     ],
-    labels: ["type:bug", "area:core", "tracking", "dependencies", "bug", "rust"],
+    labels: ["type:bug", "area:core", "tracking", "dependencies", "bug", "rust", "needs:triage", "type:chore"],
   });
   assert.deepEqual(r.problems, [
     "#7: pull request with no activity for 14 days",
@@ -58,19 +58,12 @@ test("reports stale pull requests, untyped or unscheduled issues, prefixed title
     "#9: title starts with a commit prefix",
     "label `bug` is outside the naming standard",
     "label `rust` is outside the naming standard",
+    "label `needs:triage` is outside the naming standard",
+    "label `type:chore` is outside the naming standard",
   ]);
 });
 
-test("reports open pull requests without a type: label, except bot branches", () => {
-  const r = findings({
-    ...base,
-    pulls: [
-      pr(11, "fix/11-untyped", "open", null, { labels: ["area:core"] }),
-      pr(12, "fix/12-typed", "open", null, { labels: ["type:bug"] }),
-      pr(13, "fix/13-merged", "closed", "2026-10-20T00:00:00Z", { labels: [] }),
-      pr(14, "release-please--branches--main", "open", null, { labels: ["autorelease: pending"] }),
-      pr(15, "dependabot/cargo/x", "open", null, { labels: ["dependencies"] }),
-    ],
-  });
-  assert.deepEqual(r.problems, ["#11: pull request with no type: label"]);
+test("pull requests need no labels", () => {
+  const r = findings({ ...base, pulls: [pr(11, "fix/11-unlabelled", "open", null)] });
+  assert.deepEqual(r.problems, []);
 });

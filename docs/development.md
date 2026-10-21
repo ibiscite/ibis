@@ -87,6 +87,7 @@ The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci
 - **Evidence** (CI run links, hashes, logs, measurement tables) goes in one comment titled `Evidence for <short SHA>`, never in the body or the commits.
 - **Drafts:** open the pull request as a draft early; mark it ready when `node scripts/check.mjs` has passed on the final commit.
 - **Interface changes** show before/after screenshots with synthetic data, light and dark, for each affected operating system, labelled with the source commit and "browser" or "native", naming any applicable views still missing. Link them from the `evidence` branch or a comment attachment; do not commit them to `docs/images/` unless a document uses them. Detect image format and size from the file bytes before choosing an extension or writing metadata.
+- **Checked automatically:** `node scripts/pr-lint.mjs --title … --branch … --body-file …` checks the title, branch, issue link, length, evidence and template sections before you open the pull request; the "Pull request conventions" job runs the same check on every pull request and re-runs when the description is edited.
 
 ### Review and merge
 

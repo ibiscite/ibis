@@ -30,7 +30,7 @@ bounded to two minutes; the result need not be globally minimal. Original inputs
 reduced inputs and the original log are retained as failure artifacts. Build errors
 and unreproducible findings fail the job instead of silently becoming successes.
 
-In Actions, the script opens an `area:testing` issue with lossless base64 input,
+In Actions, the script opens a `type:bug`, `area:infra` issue with lossless base64 input,
 failure details, reproduction command and run link. It scans every page of open
 issues for a signature marker before creating one. Signatures combine target,
 failure class and relevant stack symbols with addresses and build paths removed;

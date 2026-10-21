@@ -5,15 +5,18 @@
 //                                      the "Repository hygiene report" issue
 //
 // Needs the GitHub CLI signed in (GH_TOKEN in CI) and GITHUB_REPOSITORY or
-// --repo owner/name. The label standard below mirrors "Issues, labels and
-// milestones" in docs/development.md; change both together.
+// --repo owner/name. The label set below mirrors "Labels" in the contribution
+// standard in docs/development.md; change both together.
 
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const LABEL_FAMILIES = /^(type|area|platform|source|status|needs):/;
-const LABEL_EXTRAS = new Set([
-  "tracking", "good first issue", "help wanted", "upstream",
+export const LABELS = new Set([
+  "type:bug", "type:feature", "type:task", "type:docs",
+  "area:core", "area:desktop", "area:cli", "area:formatting", "area:zotero", "area:infra", "area:a11y", "area:security",
+  "platform:linux", "platform:macos", "platform:windows",
+  "status:needs-design", "status:blocked", "status:needs-maintainer",
+  "tracking", "upstream", "good first issue",
   "autorelease: pending", "autorelease: tagged", "dependencies",
 ]);
 const KEEP_BRANCH = /^(main|nightly|stable|evidence|release-please--.*|dependabot\/.*)$/;
@@ -37,9 +40,6 @@ export function findings({ now, branches, pulls, issues, labels }) {
     if (p.state === "open" && !KEEP_BRANCH.test(p.head) && now - Date.parse(p.updatedAt) > STALE_DAYS * DAY) {
       out.problems.push(`#${p.number}: pull request with no activity for ${STALE_DAYS} days`);
     }
-    if (p.state === "open" && !KEEP_BRANCH.test(p.head) && !p.labels.some((l) => l.startsWith("type:"))) {
-      out.problems.push(`#${p.number}: pull request with no type: label`);
-    }
   }
   for (const i of issues) {
     if (i.title === REPORT_TITLE) continue;
@@ -48,7 +48,7 @@ export function findings({ now, branches, pulls, issues, labels }) {
     if (TITLE_PREFIX.test(i.title)) out.problems.push(`#${i.number}: title starts with a commit prefix`);
   }
   for (const name of labels) {
-    if (!LABEL_FAMILIES.test(name) && !LABEL_EXTRAS.has(name)) out.problems.push(`label \`${name.replaceAll("`", "")}\` is outside the naming standard`);
+    if (!LABELS.has(name)) out.problems.push(`label \`${name.replaceAll("`", "")}\` is outside the naming standard`);
   }
   return out;
 }
@@ -107,7 +107,7 @@ function main() {
   const body = `Found by the weekly hygiene run. Fix these, then the next run closes this issue.\n\n${result.problems.map((p) => `- ${p}`).join("\n")}\n`;
   if (!apply) return;
   if (result.problems.length && report) gh(["api", "-X", "PATCH", `repos/${repo}/issues/${report.number}`, "-f", `body=${body}`]);
-  else if (result.problems.length) gh(["api", `repos/${repo}/issues`, "-f", `title=${REPORT_TITLE}`, "-f", `body=${body}`, "-f", "labels[]=type:chore", "-f", "labels[]=needs:triage"]);
+  else if (result.problems.length) gh(["api", `repos/${repo}/issues`, "-f", `title=${REPORT_TITLE}`, "-f", `body=${body}`, "-f", "labels[]=type:task", "-f", "labels[]=area:infra"]);
   else if (report) gh(["api", "-X", "PATCH", `repos/${repo}/issues/${report.number}`, "-f", "state=closed", "-f", "state_reason=completed"]);
 }
 
