@@ -16,6 +16,7 @@ import platform
 import re
 import shutil
 import signal
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -435,22 +436,40 @@ def measure_startup(launch, snapshot, phases):
     return (finished - started) * 1000
 
 
+PERF_METRICS = ("startup_ms", "first_result_ms", "memory_bytes")
+TIMED_METRICS = ("startup_ms", "first_result_ms")
+MEASURED_LAUNCHES = 3
+# Any single launch, warm-up included, fails above this multiple of the budget (#464).
+HARD_CEILING_FACTOR = 1.5
+
+
 def summarize_performance(samples):
+    measured = [sample for sample in samples if not sample.get("warmup")]
+    if not measured:
+        raise ValueError("No measured 100k launches")
     return {"status": "measured-without-budget", "references": 100000,
-            "sample_count": len(samples), "samples": samples,
-            "summary": "per-metric maxima from fresh app processes; OS file caches persist",
-            **{metric: max(sample[metric] for sample in samples)
-               for metric in ("startup_ms", "first_result_ms", "memory_bytes")},
+            "sample_count": len(measured), "warmup_count": len(samples) - len(measured), "samples": samples,
+            "summary": "timings: median of fresh measured launches after one discarded warm-up; memory: maximum of all launches; "
+                       "OS file caches persist",
+            **{metric: statistics.median(sample[metric] for sample in measured) for metric in TIMED_METRICS},
+            "memory_bytes": max(sample["memory_bytes"] for sample in samples),
+            "maxima": {metric: max(sample[metric] for sample in samples) for metric in TIMED_METRICS},
             "memory_kind": "summed current process-tree RSS/working set; shared pages may be counted more than once"}
 
 
 def enforce_performance_budgets(performance, budgets):
-    ceilings = {metric: budgets[metric] for metric in ("startup_ms", "first_result_ms", "memory_bytes")}
-    performance.update(status="failed", ceilings=ceilings)
+    ceilings = {metric: budgets[metric] for metric in PERF_METRICS}
+    hard = {metric: ceilings[metric] * HARD_CEILING_FACTOR for metric in TIMED_METRICS}
+    performance.update(status="failed", ceilings=ceilings, hard_ceilings=hard)
     for metric, ceiling in ceilings.items():
         if not 0 < performance[metric] <= ceiling:
             performance["failed_metric"] = metric
-            raise AssertionError(f"100k {metric} exceeded measured baseline budget")
+            kind = "maximum" if metric == "memory_bytes" else "median"
+            raise AssertionError(f"100k {kind} {metric} exceeded measured baseline budget")
+    for metric, ceiling in hard.items():
+        if not performance["maxima"][metric] <= ceiling:
+            performance["failed_metric"] = metric
+            raise AssertionError(f"100k single-launch {metric} exceeded {HARD_CEILING_FACTOR}x budget hard ceiling")
     performance["status"] = "passed"
 
 
@@ -1302,18 +1321,19 @@ def main():
 
             library.write_text(fixture(100000), encoding="utf-8")
             samples = []
-            for sample in range(3):
+            # Launch 0 is a warm-up held only to the hard ceiling; the gate uses the median of the rest (#464).
+            for sample in range(1 + MEASURED_LAUNCHES):
                 native.focus_editor()
                 phases = {}
                 # Retain partial facts if readiness or a native probe fails.
                 report.setdefault("startup_phases", []).append(phases)
-                startup = measure_startup(lambda: launch(f"100000-{sample + 1}"), snapshot, phases)
+                startup = measure_startup(lambda: launch("100000-warmup" if sample == 0 else f"100000-{sample}"), snapshot, phases)
                 before = time.monotonic()
                 query("smoke099999", "Ibis smoke reference 099999")
                 first = (time.monotonic() - before) * 1000
                 memory = native.memory()
                 assert memory > 0, "Native process-tree memory measurement unavailable"
-                samples.append({"startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
+                samples.append({"warmup": sample == 0, "startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
                                 "memory_bytes": memory, "startup_phases": phases})
                 stop()
                 phases["library_phases"] = library_phase_diagnostics([diagnostic_logs[-1]])
@@ -2214,18 +2234,50 @@ class ContractTests(unittest.TestCase):
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 
-    def test_performance_budget_rejects_a_single_slow_sample_even_when_the_mean_is_below_budget(self):
-        performance = summarize_performance([
-            {"startup_ms": 100, "first_result_ms": 10, "memory_bytes": 1000},
-            {"startup_ms": 200, "first_result_ms": 9, "memory_bytes": 900},
-            {"startup_ms": 50, "first_result_ms": 11, "memory_bytes": 999},
-        ])
-        with self.assertRaisesRegex(AssertionError, "startup_ms"):
-            enforce_performance_budgets(performance, {"startup_ms": 150, "first_result_ms": 15, "memory_bytes": 2000})
-        self.assertEqual(performance["status"], "failed")
-        self.assertEqual(performance["failed_metric"], "startup_ms")
-        self.assertEqual(performance["ceilings"], {"startup_ms": 150, "first_result_ms": 15, "memory_bytes": 2000})
-        self.assertEqual([sample["startup_ms"] for sample in performance["samples"]], [100, 200, 50])
+    BUDGETS = {"startup_ms": 100, "first_result_ms": 10, "memory_bytes": 2000}
+
+    @staticmethod
+    def perf_samples(warmup, *startups, first=5, memory=1000):
+        return [{"warmup": True, "startup_ms": warmup, "first_result_ms": first, "memory_bytes": memory}] + [
+            {"warmup": False, "startup_ms": startup, "first_result_ms": first, "memory_bytes": memory} for startup in startups]
+
+    def test_performance_budget_gates_the_median_and_ignores_the_warm_up(self):
+        performance = summarize_performance(self.perf_samples(140, 90, 140, 60))
+        enforce_performance_budgets(performance, self.BUDGETS)
+        self.assertEqual(performance["status"], "passed")
+        self.assertEqual((performance["startup_ms"], performance["sample_count"], performance["warmup_count"]), (90, 3, 1))
+        self.assertEqual(performance["maxima"]["startup_ms"], 140)
+        self.assertEqual(performance["hard_ceilings"], {"startup_ms": 150.0, "first_result_ms": 15.0})
+
+    def test_performance_budget_fails_any_launch_above_the_hard_ceiling_warm_up_included(self):
+        for samples in (self.perf_samples(151, 50, 50, 50), self.perf_samples(50, 50, 151, 50)):
+            performance = summarize_performance(samples)
+            with self.assertRaisesRegex(AssertionError, "single-launch startup_ms"):
+                enforce_performance_budgets(performance, self.BUDGETS)
+            self.assertEqual((performance["status"], performance["failed_metric"]), ("failed", "startup_ms"))
+        performance = summarize_performance(self.perf_samples(50, 50, 50, 50, first=5) + [
+            {"warmup": False, "startup_ms": 50, "first_result_ms": 16, "memory_bytes": 1000}])
+        with self.assertRaisesRegex(AssertionError, "single-launch first_result_ms"):
+            enforce_performance_budgets(performance, self.BUDGETS)
+
+    def test_performance_budget_still_fails_a_real_regression_where_every_launch_is_slow(self):
+        performance = summarize_performance(self.perf_samples(130, 110, 120, 105))
+        self.assertTrue(all(sample["startup_ms"] <= 150 for sample in performance["samples"]))
+        with self.assertRaisesRegex(AssertionError, "median startup_ms"):
+            enforce_performance_budgets(performance, self.BUDGETS)
+        self.assertEqual((performance["status"], performance["failed_metric"]), ("failed", "startup_ms"))
+
+    def test_performance_memory_uses_the_maximum_of_every_launch(self):
+        samples = self.perf_samples(50, 50, 50, 50)
+        samples[0]["memory_bytes"] = 2001
+        performance = summarize_performance(samples)
+        self.assertEqual(performance["memory_bytes"], 2001)
+        with self.assertRaisesRegex(AssertionError, "maximum memory_bytes"):
+            enforce_performance_budgets(performance, self.BUDGETS)
+
+    def test_performance_summary_requires_a_measured_launch(self):
+        with self.assertRaises(ValueError):
+            summarize_performance(self.perf_samples(50))
 
     def test_phase_facts_reject_private_extra_fields_and_nonfinite_or_negative_numbers(self):
         valid = dict.fromkeys(PROBE_PHASE_KEYS, 1)

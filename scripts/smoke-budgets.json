@@ -1,5 +1,6 @@
 {
   "_scope": "Initial hosted debug native qualification, including automation overhead; not release budgets or peak memory limits",
+  "_gate": "One discarded warm-up launch, then three measured launches. startup_ms and first_result_ms must have a median within the budget, and every launch, the warm-up included, must stay within 1.5 times the budget. memory_bytes is the maximum over all launches (#464)",
   "_rounding": "At least 1.5 times observed maxima, rounded up to 2 seconds startup, 1 second first result and 64 MiB current tree memory",
   "Linux": {
     "startup_ms": 32000,
