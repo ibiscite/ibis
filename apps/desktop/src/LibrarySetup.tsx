@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import type { Choice } from "./features/picker/choice";
 import type { Sources } from "./bindings";
 import { loginItemText, pickerText, setupText } from "./messages";
+import { currentPlatform } from "./platform";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
 
 type SetupApi = {
@@ -123,9 +124,9 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
       {shortcut && <p className="empty-hint">{setupText.shortcut(shortcut)}</p>}
       {startAtLogin && (
         // The shortcut works only while Ibis runs, so this sits beside it.
-        <label className="setup-login empty-hint" title={loginItemText.title}>
+        <label className="setup-login empty-hint" title={loginItemText.title(currentPlatform())}>
           <input type="checkbox" checked={startAtLogin.enabled} onChange={startAtLogin.toggle} />
-          {loginItemText.label(startAtLogin.name)}
+          {loginItemText.sentence(startAtLogin.name, currentPlatform())}
         </label>
       )}
     </div>

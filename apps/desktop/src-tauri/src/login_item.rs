@@ -398,30 +398,52 @@ pub(crate) fn toggle_from_menu(app: &AppHandle) {
             let name = app.package_info().name.clone();
             app.dialog()
                 .message(problem_message(problem, &name))
-                .title(menu_label(&name))
+                .title(menu_label())
                 .show(|_| {});
         }
     });
 }
 
-/// The menu item's label, such as "Start Ibis When You Log In".
-pub(crate) fn menu_label(name: &str) -> String {
-    format!("Start {name} When You Log In")
+/// The system these words are for: "macos", "windows" or "linux".
+fn system() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else {
+        "linux"
+    }
+}
+
+/// The menu item's label in this system's own words (#581). The picker's More
+/// menu reads the same (`loginItemText.label` in `messages.ts`).
+pub(crate) fn menu_label() -> &'static str {
+    label_for(system())
+}
+
+fn label_for(system: &str) -> &'static str {
+    match system {
+        "macos" => "Open at Login",
+        "windows" => "Start when you sign in",
+        _ => "Start on Login",
+    }
 }
 
 /// What to tell the person, and where to look, in the menu bar or tray.
 /// The picker has its own copy of these sentences in `messages.ts`.
 pub(crate) fn problem_message(problem: LoginItemProblem, name: &str) -> String {
-    let place = if cfg!(target_os = "macos") {
-        "System Settings > General > Login Items"
-    } else if cfg!(target_os = "windows") {
-        "Settings > Apps > Startup"
-    } else {
-        "your desktop's startup applications settings"
+    problem_for(problem, name, system())
+}
+
+fn problem_for(problem: LoginItemProblem, name: &str, system: &str) -> String {
+    let (place, when) = match system {
+        "macos" => ("System Settings > General > Login Items", "log in"),
+        "windows" => ("Settings > Apps > Startup", "sign in"),
+        _ => ("your desktop's startup applications settings", "log in"),
     };
     match problem {
         LoginItemProblem::Unsupported => {
-            format!("This system cannot start {name} when you log in. You can add it in {place}.")
+            format!("This system cannot start {name} when you {when}. You can add it in {place}.")
         }
         LoginItemProblem::NeedsApproval => {
             format!("macOS is waiting for your approval. Turn on {name} in {place}.")
@@ -430,7 +452,7 @@ pub(crate) fn problem_message(problem: LoginItemProblem, name: &str) -> String {
             format!("The system did not let {name} change this. You can change it in {place}.")
         }
         LoginItemProblem::Unreadable => {
-            format!("{name} could not check whether it starts when you log in. Look in {place}.")
+            format!("{name} could not check whether it starts when you {when}. Look in {place}.")
         }
     }
 }
@@ -699,6 +721,23 @@ mod tests {
             assert!(message.contains("Ibis Nightly"), "{message}");
             assert!(message.ends_with('.'), "{message}");
         }
-        assert_eq!(menu_label("Ibis"), "Start Ibis When You Log In");
+        // The same words as `loginItemText` in messages.ts.
+        assert_eq!(
+            ["macos", "windows", "linux"].map(label_for),
+            ["Open at Login", "Start when you sign in", "Start on Login"]
+        );
+        assert_eq!(menu_label(), label_for(system()));
+        let mac = problem_for(LoginItemProblem::NeedsApproval, "Ibis", "macos");
+        assert!(mac.ends_with("General > Login Items."), "{mac}");
+        let windows = problem_for(LoginItemProblem::Unreadable, "Ibis", "windows");
+        assert_eq!(
+            windows,
+            "Ibis could not check whether it starts when you sign in. Look in Settings > Apps > Startup."
+        );
+        let linux = problem_for(LoginItemProblem::Unsupported, "Ibis", "linux");
+        assert!(
+            linux.contains("when you log in") && linux.contains("startup applications"),
+            "{linux}"
+        );
     }
 }

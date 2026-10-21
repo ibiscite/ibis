@@ -1,4 +1,5 @@
 import type { KeyFormat, LibraryStatus, LoginItemProblem } from "./bindings";
+import type { Platform } from "./platform";
 
 /** Production picker text. Accessible names are stable automation contracts.
  * Native error reasons, notes, settings notices, shortcut errors and copy warnings
@@ -25,23 +26,38 @@ export const operationFailures = {
 } as const;
 
 /** Where people turn login items on and off on each system. */
-export function loginItemsPlace(platform: string): string {
-  if (/Mac|iPhone|iPad/.test(platform)) return "System Settings > General > Login Items";
-  if (/Win/.test(platform)) return "Settings > Apps > Startup";
+export function loginItemsPlace(platform: Platform): string {
+  if (platform === "macos") return "System Settings > General > Login Items";
+  if (platform === "windows") return "Settings > Apps > Startup";
   return "your desktop's startup applications settings";
 }
 
-/** Starting Ibis at login. The menu bar or tray has the same sentences in login_item.rs. */
+/**
+ * Starting Ibis at login, in each system's own words (#581): Apple's "Open at
+ * Login", Microsoft's "sign in", and GNOME header capitalization for menu
+ * items. The menu bar or tray has the same words in login_item.rs.
+ */
 export const loginItemText = {
-  label: (name: string) => `Start ${name} when you log in`,
-  title: "Keep the shortcut ready after you restart or log in",
-  problem: (problem: LoginItemProblem, place: string, name: string) => ({
-    unsupported: `This system cannot start ${name} when you log in. You can add it in ${place}.`,
-    needs_approval: `macOS is waiting for your approval. Turn on ${name} in ${place}.`,
-    refused: `The system did not let ${name} change this. You can change it in ${place}.`,
-    unreadable: `${name} could not check whether it starts when you log in. Look in ${place}.`,
-  })[problem],
+  /** The More menu item; the menu bar or tray item reads the same. */
+  label: (platform: Platform) => ({ macos: "Open at Login", windows: "Start when you sign in", linux: "Start on Login" })[platform],
+  /** The setup screen's check box, a sentence that names the app. */
+  sentence: (name: string, platform: Platform) => `Start ${name} when you ${signIn(platform)}`,
+  title: (platform: Platform) => `Keep the shortcut ready after you restart or ${signIn(platform)}`,
+  problem: (problem: LoginItemProblem, platform: Platform, name: string) => {
+    const place = loginItemsPlace(platform);
+    const when = signIn(platform);
+    return ({
+      unsupported: `This system cannot start ${name} when you ${when}. You can add it in ${place}.`,
+      needs_approval: `macOS is waiting for your approval. Turn on ${name} in ${place}.`,
+      refused: `The system did not let ${name} change this. You can change it in ${place}.`,
+      unreadable: `${name} could not check whether it starts when you ${when}. Look in ${place}.`,
+    })[problem];
+  },
 } as const;
+
+function signIn(platform: Platform) {
+  return platform === "windows" ? "sign in" : "log in";
+}
 
 export const setupText = {
   looking: "Looking for Zotero and .bib files…",

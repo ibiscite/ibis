@@ -599,16 +599,19 @@ Until the settings window exists (rollout step 9), settings live in the More
 menu and the menu bar or tray menu, and each takes effect at once.
 
 **Start Ibis when you log in.** The shortcut only works while Ibis runs, so
-Ibis offers to start at login: once during first-run setup, beside the
-shortcut it teaches, and always in More and the menu bar or tray menu. It is
-off until the person turns it on: Apple's App Review Guideline 2.4.5(iii) asks
-Mac apps for consent first, and Raycast, Alfred, PowerToys and 1Password offer
-it as a setting. A login start leaves the picker hidden until the shortcut is
-pressed. The switch is read from the system each time, never from
-`settings.json`, so turning Ibis off in the system's own startup settings shows
-at once; if the system refuses, the switch shows the real state and a sentence
-says where to change it. Ibis Nightly and development builds register under
-their own names. How each platform stores the entry is in
+Ibis offers to start at login: once during first-run setup, beside the shortcut
+it teaches, and always in More and the menu bar or tray menu. It is off until
+the person turns it on: Apple's App Review Guideline 2.4.5(iii) asks Mac apps for
+consent first, and Raycast, Alfred, PowerToys and 1Password offer it as a
+setting. The menu item uses each system's own words, the same in More and the
+menu bar or tray: "Open at Login" on macOS (Apple's term), "Start when you sign
+in" on Windows (Microsoft says *sign in*), and "Start on Login" on Linux (GNOME
+capitalizes menu items; GNOME has no official term). A login start leaves the
+picker hidden until the shortcut is pressed. The switch is read from the system
+each time, never from `settings.json`, so turning Ibis off in the system's own
+startup settings shows at once; if the system refuses, the switch shows the real
+state and a sentence says where to change it. Ibis Nightly and development
+builds register under their own names. How each platform stores the entry is in
 `apps/desktop/src-tauri/src/login_item.rs` and [PRIVACY.md](../PRIVACY.md).
 
 ## Rollout

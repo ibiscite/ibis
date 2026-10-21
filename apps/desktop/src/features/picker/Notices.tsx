@@ -1,6 +1,7 @@
 import type { Copied, LibraryStatus, LoginItem } from "../../api";
 import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
-import { libraryMessages, loginItemsPlace, loginItemText, operationFailures, pickerText } from "../../messages";
+import { libraryMessages, loginItemText, operationFailures, pickerText } from "../../messages";
+import { currentPlatform } from "../../platform";
 
 /** An action whose failure the picker reports in its notices. */
 export type Operation = keyof typeof operationFailures;
@@ -27,7 +28,7 @@ export function Notices({ library, busy, loadingMessage, failures, startAtLogin,
         <p role="alert" key={operation}>{operationFailures[operation]}</p>
       ))}
       {startAtLogin?.problem && startAtLogin.problem !== "unsupported" && (
-        <p role="alert">{loginItemText.problem(startAtLogin.problem, loginItemsPlace(navigator.platform), startAtLogin.name)}</p>
+        <p role="alert">{loginItemText.problem(startAtLogin.problem, currentPlatform(), startAtLogin.name)}</p>
       )}
       {error && <p role="alert">{error}</p>}
       {copyError && <p role="alert">{copyError}</p>}

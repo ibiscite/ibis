@@ -103,7 +103,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         Some(items) if items.available() => Some(CheckMenuItem::with_id(
             app,
             "login",
-            login_item::menu_label(&name),
+            login_item::menu_label(),
             true,
             items.read().enabled,
             None::<&str>,

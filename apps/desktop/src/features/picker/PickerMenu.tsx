@@ -3,7 +3,7 @@ import type { Density, LibraryStatus, LoginItem, ZoteroLibrary } from "../../api
 import { ariaKeys, keyLabel, keysFor } from "../../keys";
 import { LibraryDetail } from "../../LibraryStatusLine";
 import { densityNames, keyText, loginItemText, pickerText } from "../../messages";
-import { isMac } from "../../platform";
+import { currentPlatform, isMac } from "../../platform";
 import { MenuItem, MenuSection, MenuSeparator, MoreMenu } from "./MoreMenu";
 
 const label = (accelerator: string) => keyLabel(accelerator, isMac);
@@ -60,7 +60,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       <MenuSection id="view-toggles">
         <MenuItem id="larger-text" label={pickerText.largerText} checked={largerText} onAction={actions.largerText} />
         {startAtLogin && (
-          <MenuItem id="start-at-login" label={loginItemText.label(startAtLogin.item.name)} title={loginItemText.title} checked={startAtLogin.item.enabled} onAction={startAtLogin.toggle} />
+          <MenuItem id="start-at-login" label={loginItemText.label(currentPlatform())} title={loginItemText.title(currentPlatform())} checked={startAtLogin.item.enabled} onAction={startAtLogin.toggle} />
         )}
       </MenuSection>
       <MenuSeparator />
