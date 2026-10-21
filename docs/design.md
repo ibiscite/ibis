@@ -80,7 +80,7 @@ letters.
 | `--inset` | 8 px (Windows 4 px) | Window edge to the search field, the list and the footer. The band above the field is the drag handle. |
 | `--field-h` | 40 px | Search field, so the search band is 56 px (48 px on Windows). |
 | `--row-pad` / `--row-gap` | 12 px / 12 px | Row side padding; tile to text. |
-| `--tile` / `--icon` | 32 px / 20 px | Type tile (24 px with no fill in Compact) and its icon. |
+| `--tile` / `--icon` | 32 px / 20 px | Type tile and its icon. Compact draws a 24 px tile with no fill, centred in the 32 px column, so titles stay aligned with the search text. |
 | Footer | 40 px | Text starts at `--inset + --row-pad`. |
 | Smallest target | 32 px, 44 px on touch | |
 
@@ -113,9 +113,12 @@ instead of going square or looking like a separate floating slab.
 | `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 | 8 · 4 · 4 | 12 · 6 · 6 |
 | `--e2` menu shadow, plus a 1 px hairline | `0 12px 32px` black 16% | `0 8px 16px` black 14% | `0 2px 8px` black 20% |
 
-On GNOME, rows are
-flat with the 6 px radius of Adwaita's sidebar and popover rows: a boxed list
-cannot be concentric at an 8 px inset in a 14 px window.
+On GNOME, rows are flat with the 6 px radius of Adwaita's sidebar and popover
+rows: a boxed list cannot be concentric at an 8 px inset in a 14 px window.
+
+Each look sets only `--r-win`, `--inset` and `--r-min` (and the menu pair);
+every inner radius follows from them. With Larger text the inset grows with the
+text and the window corner does not, so inner radii shrink toward the floor.
 
 **Menus.** The operating system's own menus are used only where the system owns
 them: the menu bar, the tray menu and right-click context menus ([ADR 0021](adr/0021-ui-foundation.md)).

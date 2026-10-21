@@ -27,7 +27,7 @@
      glow), and menus of the same glass that blur the list beneath them. */
   :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) body::after {
     content: ""; position: fixed; inset: 0; z-index: 3; pointer-events: none;
-    border-radius: var(--window-radius);
+    border-radius: var(--r-win);
     box-shadow: inset 0 0 0 var(--border-width) var(--glass-edge);
   }
   :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) :is([role="menu"], .keys-dialog) {

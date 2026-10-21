@@ -25,25 +25,29 @@ main {
   overflow: auto;
 }
 
-.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: var(--search-bar-height); padding: var(--search-padding); border-bottom: var(--border-width) solid var(--line); cursor: move; user-select: none; }
+.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: var(--search-bar-height); padding: var(--inset); padding-block-end: calc(var(--inset) - var(--border-width)); border-bottom: var(--border-width) solid var(--line); cursor: move; user-select: none; }
 .search-bar svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
+/* The search glyph is centred over the tile column and the query starts where
+   row titles start (docs/design.md, "Edges line up"). */
+.search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }
 .search-bar:focus-within { border-bottom-color: var(--search-active-border); }
 /* Reserve readable query space before wrapping controls, at every text size. */
-#search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--search-icon-width) - var(--search-gap))); font-size: var(--search-size); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: var(--search-input-padding); outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
+#search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); height: var(--field-h); font-size: var(--search-size); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
 #search::placeholder { color: var(--muted); }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue (Windows adds its accent underline). Contrast and forced colours restore
    it below. The clear glyph is quiet like the other icons: secondary colour,
    16 px glyph in a 32 px target. */
-#search { border-radius: var(--button-radius); }
+#search { border-radius: var(--r-row); }
 #search:focus-visible { outline: none; box-shadow: none; }
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: var(--control-min-size); height: var(--control-min-size); margin: 0; background: var(--muted); -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; cursor: default; }
 #search::-webkit-search-cancel-button:hover { background: var(--text); }
 /* Windows and Linux search in a framed 16 px text box with the icon inside it.
-   The icon overlaps the box's start padding, so the flex row never changes. */
+   The icon overlaps the box's start padding, so the flex row never changes;
+   the box starts at the inset and its text still starts at the row titles. */
 /* Only the search glyph (the header's direct child), never the pin icon inside its button. */
-:root[data-platform="windows"] .search-bar > svg, :root[data-platform="linux"] .search-bar > svg { position: relative; z-index: 1; margin-inline: var(--space-3) calc(-1 * (var(--search-icon-width) + var(--space-3) + var(--search-gap))); }
-:root[data-platform="windows"] #search, :root[data-platform="linux"] #search { padding: var(--field-padding); padding-inline-start: calc(var(--search-icon-width) + 2 * var(--space-3)); border-radius: var(--field-radius); background: var(--field-background); }
+:root[data-platform="windows"] .search-bar > svg, :root[data-platform="linux"] .search-bar > svg { position: relative; z-index: 1; margin-inline: var(--lead) calc(-1 * (var(--lead) + var(--search-icon-width) + var(--search-gap))); }
+:root[data-platform="windows"] #search, :root[data-platform="linux"] #search { padding: 0 var(--space-1); padding-inline-start: calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width)); border-radius: var(--r-row); background: var(--field-background); }
 /* Windows: like a Fluent TextBox, focus turns the field solid with a 2 px accent
    underline and no ring (TextBox does not use the system focus visual). */
 :root[data-platform="windows"] #search { border: var(--border-width) solid var(--field-edge); border-bottom-color: var(--line); }
@@ -52,10 +56,12 @@ main {
 :root[data-platform="linux"] #search { border: var(--border-width) solid var(--clear); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
-.results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; padding: var(--results-padding); scrollbar-width: thin; }
+.results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; padding: var(--inset); scrollbar-width: thin; }
 .results-heading { display: flex; justify-content: space-between; padding: var(--heading-padding); color: var(--muted); font-size: var(--heading-size); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
 #results { list-style: none; padding: 0; margin: 0; }
-[role="option"] { position: relative; display: flex; align-items: center; gap: var(--space-3); min-height: var(--row-height); cursor: default; padding: var(--result-padding); margin: var(--result-margin); border-radius: var(--result-radius); border: var(--border-width) solid var(--clear); }
+/* Rows are exactly --row-height and touch; the clear border (an edge only in
+   increased contrast) is taken from the side padding so titles stay aligned. */
+[role="option"] { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid var(--clear); }
 .result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 /* The leading tile (docs/design.md, row anatomy): the type icon on a quiet
    fill. On hover and on the active row the icon gives way to the add control in
@@ -63,9 +69,9 @@ main {
    scarlet tile with a white check, the only scarlet on the row. Fills only, no
    rings (rule 8). Compact rows draw a 24 px tile without a fill whose control
    still covers 32 px. */
-.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile-size); height: var(--tile-size); border-radius: var(--tile-radius); background: var(--tile-background); color: var(--muted); }
+.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile-size); height: var(--tile-size); border-radius: var(--r-tile); background: var(--tile-background); color: var(--muted); }
 .result-tile .type-icon { width: var(--icon-glyph-size); height: var(--icon-glyph-size); }
-.result-tile .tile-button { position: absolute; inset: var(--tile-button-inset); display: grid; place-items: center; border-radius: var(--tile-radius); color: inherit; cursor: default; opacity: 0; }
+.result-tile .tile-button { position: absolute; inset: 0; display: grid; place-items: center; border-radius: var(--r-tile); color: inherit; cursor: default; opacity: 0; }
 .result-tile .tile-button:active { background: color-mix(in srgb, currentColor 14%, transparent); }
 [role="option"]:hover .tile-button, [data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
 [role="option"]:hover .type-icon, [data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
@@ -131,8 +137,8 @@ main {
 [aria-label="Selected references"] li { border: var(--border-width) solid var(--line); border-radius: var(--button-radius); padding-inline-start: var(--selection-label-padding); overflow-wrap: anywhere; max-width: 100%; }
 [aria-label="Selected references"] button { border: 0; background: var(--clear); font-size: var(--metadata-size); }
 
-footer { border-top: var(--border-width) solid var(--line); padding: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
-.library-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); }
+footer { display: flex; align-items: center; border-top: var(--border-width) solid var(--line); padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
+.library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
 .library-status { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--footer-gap); color: var(--muted); }
@@ -177,6 +183,8 @@ main:hover .pin-button, .pin-button:focus-visible { opacity: 1; }
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
 .more > button { min-height: var(--control-min-size); }
+/* The menu keeps 8 px from the window edge even where the inset is 4 px (Windows). */
+.more > [role="menu"] { inset-inline-end: calc(var(--space-2) - var(--inset)); }
 [role="menu"] { position: absolute; bottom: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: 1; min-width: min(var(--menu-min-width), calc(100vw - 2 * var(--space-4))); max-width: calc(100vw - 2 * var(--space-4)); overflow-wrap: anywhere; display: flex; flex-direction: column; padding: var(--space-1); background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); box-shadow: var(--menu-shadow); }
 .more [role="menu"] { transform: translateY(calc(-1 * var(--more-menu-offset, 0px))); overflow-y: auto; }
 [role="menuitem"] { display: flex; justify-content: space-between; gap: var(--space-4); min-height: var(--control-min-size); align-items: center; text-align: start; border: 0; background: var(--clear); }
@@ -216,9 +224,8 @@ kbd { font: inherit; font-size: var(--hint-size); display: inline-block; padding
      a tall footer and a tiny nested results viewport. */
   main { height: auto; min-height: var(--picker-height); overflow: visible; }
   .results-area { flex: none; overflow: visible; }
-  .search-bar { padding: var(--compact-search-padding); }
   /* Keep an editable search row when enlarged text leaves no room for controls. */
-  #search { flex-basis: calc(100% - var(--search-icon-width) - var(--search-gap)); }
+  #search { flex-basis: calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap)); }
   .result-meta { flex-wrap: wrap; }
   /* Authors and container flow as one wrapping run of text. */
   .result-byline { display: block; }
@@ -247,7 +254,11 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 
 /* Remembered picker preferences (ADR 0020). Compact rows keep the title and
    year only; spacious rows get room for a third line. */
-:root[data-density="compact"] { --row-height: var(--row-compact); --result-padding: var(--space-2) 1rem; --tile-size: 1.5rem; --tile-button-inset: -.25rem; --tile-background: var(--clear); --tile-active-background: var(--clear); }
+/* Compact draws a 24 px tile without a fill, centred in the 32 px tile column
+   so titles still start where the search text does; its control covers 32 px. */
+:root[data-density="compact"] { --row-height: var(--row-compact); --tile-background: var(--clear); --tile-active-background: var(--clear); }
+:root[data-density="compact"] .result-tile { width: var(--tile-compact); height: var(--tile-compact); margin-inline: calc((var(--tile-size) - var(--tile-compact)) / 2); }
+:root[data-density="compact"] .result-tile .tile-button { inset: calc((var(--tile-compact) - var(--tile-size)) / 2); }
 :root[data-density="compact"] .result-meta { display: none; }
 :root[data-density="spacious"] { --row-height: var(--row-spacious); }
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }

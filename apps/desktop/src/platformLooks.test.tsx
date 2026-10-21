@@ -40,9 +40,10 @@ test("the platform comes from the same signal as the shortcut labels", () => {
 test("the search header is the 48–56 px search bar, not an 80 px block", () => {
   const bar = rules(styles, ".search-bar");
   expect(bar).toMatch(/min-height:\s*var\(--search-bar-height\)/);
-  const padding = tokens.match(/--search-padding:\s*([^;]+);/)?.[1];
-  expect(padding).toBe("var(--space-1) var(--space-4)");
-  expect(tokens).toMatch(/--search-bar-height:\s*3\.5rem/);
+  expect(bar).toMatch(/padding:\s*var\(--inset\)/);
+  // The 40 px field plus the inset above and below: 56 px, 48 px on Windows.
+  expect(tokens).toMatch(/--search-bar-height:\s*calc\(var\(--field-h\) \+ 2 \* var\(--inset\)\)/);
+  expect(tokens).toMatch(/--field-h:\s*2\.5rem/);
 });
 
 test("Windows and Linux search in a 16 px framed box; macOS stays frameless and large", () => {
@@ -92,13 +93,77 @@ test("high contrast keeps a non-colour edge on the active row", () => {
   expect(rules(contrast, '[role="option"][data-active]')).toMatch(/border-color:\s*var\(--active-edge\)/);
 });
 
+/** The chain's inputs for one look: the base layer, then that platform's block (rem at 16 px). */
+function geometry(platform?: string): Record<string, number> {
+  const px = (value: string, scope: Record<string, number>): number => {
+    const v = value.trim();
+    const ref = v.match(/^var\((--[\w-]+)\)$/);
+    if (ref) return scope[ref[1]!]!;
+    if (v.endsWith("rem")) return parseFloat(v) * 16;
+    if (v.endsWith("px")) return parseFloat(v);
+    throw new Error(`unexpected value ${v}`);
+  };
+  const scope: Record<string, number> = {};
+  const blocks = [rules(tokens, ":root")];
+  if (platform) blocks.push(rules(tokens, `:root[data-platform="${platform}"]`));
+  for (const block of blocks) {
+    for (const [, name, value] of block.matchAll(/(--(?:space-\d|inset|r-win|r-min|r-menu|menu-pad|row-pad|row-gap|tile-size|icon-glyph-size|field-h)):\s*([^;]+);/g)) {
+      scope[name!] = px(value!, scope);
+    }
+  }
+  return scope;
+}
+
+test("every inner radius follows one concentric chain per platform", () => {
+  // The formulas are written once in the base layer; looks set only their inputs.
+  const base = rules(tokens, ":root");
+  expect(base).toMatch(/--r-row:\s*max\(var\(--r-min\), calc\(var\(--r-win\) - var\(--inset\)\)\);/);
+  expect(base).toMatch(/--r-tile:\s*max\(var\(--r-min\), calc\(var\(--r-row\) - var\(--row-pad\)\)\);/);
+  expect(base).toMatch(/--r-mi:\s*max\(var\(--r-min\), calc\(var\(--r-menu\) - var\(--menu-pad\)\)\);/);
+  for (const name of ["--r-row", "--r-tile", "--r-mi"]) {
+    for (const platform of ["windows", "linux"]) expect(rules(tokens, `:root[data-platform="${platform}"]`), `${platform} ${name}`).not.toContain(`${name}:`);
+  }
+  // docs/design.md, Corners: macOS before 26 (the native 12 pt corner), Windows 11, GNOME.
+  const expected = { macos: [12, 8, 6, 6, 12, 6], windows: [8, 4, 4, 2, 8, 4], linux: [14, 8, 6, 4, 12, 6] };
+  for (const [platform, [win, inset, row, tile, menu, item]] of Object.entries(expected)) {
+    const g = geometry(platform === "macos" ? undefined : platform);
+    const rRow = Math.max(g["--r-min"]!, g["--r-win"]! - g["--inset"]!);
+    const rTile = Math.max(g["--r-min"]!, rRow - g["--row-pad"]!);
+    const rMi = Math.max(g["--r-min"]!, g["--r-menu"]! - g["--menu-pad"]!);
+    expect([g["--r-win"], g["--inset"], rRow, rTile, g["--r-menu"], rMi], platform).toEqual([win, inset, row, tile, menu, item]);
+  }
+  // The old literal radii are gone, so nothing bypasses the chain.
+  expect(tokens).not.toMatch(/--(window|result|tile|field)-radius:/);
+  expect(styles).not.toMatch(/var\(--(window|result|tile|field)-radius\)/);
+});
+
+test("the search text starts where row titles start, with the glyph over the tile column", () => {
+  for (const platform of ["macos", "windows", "linux"]) {
+    const g = geometry(platform === "macos" ? undefined : platform);
+    const lead = g["--row-pad"]! + (g["--tile-size"]! - g["--icon-glyph-size"]!) / 2;
+    const leadGap = (g["--tile-size"]! - g["--icon-glyph-size"]!) / 2 + g["--row-gap"]!;
+    const textX = g["--inset"]! + lead + g["--icon-glyph-size"]! + leadGap;
+    expect(textX, platform).toBe(g["--inset"]! + g["--row-pad"]! + g["--tile-size"]! + g["--row-gap"]!);
+    expect(textX, platform).toBe(platform === "windows" ? 60 : 64);
+    expect(g["--inset"]! + lead + g["--icon-glyph-size"]! / 2, platform).toBe(g["--inset"]! + g["--row-pad"]! + g["--tile-size"]! / 2);
+  }
+  expect(rules(styles, ".search-bar > svg")).toMatch(/margin-inline:\s*var\(--lead\) calc\(var\(--lead-gap\) - var\(--search-gap\)\)/);
+  expect(rules(styles, '[role="option"]')).toMatch(/padding:\s*0 calc\(var\(--row-pad\) - var\(--border-width\)\)/);
+  expect(rules(styles, '[role="option"]')).toMatch(/gap:\s*var\(--row-gap\)/);
+  expect(rules(styles, ".results-area")).toMatch(/padding:\s*var\(--inset\)/);
+  // The framed box's text start pays for its 1 px border.
+  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\) - var\(--border-width\)\)/);
+  // Logical sides only, so a right-to-left picker mirrors.
+  expect(rules(styles, "footer")).toMatch(/padding-inline:\s*var\(--footer-padding\)/);
+});
+
 test("window radius follows each platform and macOS matches the native corner", () => {
-  // macOS keeps the natively verified 12 pt corner for 0.2; the token must agree with it.
+  // macOS keeps the natively verified 12 pt corner until macOS 26 detection lands; the token must agree with it.
   const native = corners.match(/CORNER_RADIUS_POINTS: f64 = ([\d.]+);/)?.[1];
-  expect(rules(tokens, ":root")).toMatch(new RegExp(`--window-radius:\\s*${Number(native)}px`));
-  expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--window-radius:\s*8px/);
+  expect(rules(tokens, ":root")).toMatch(new RegExp(`--r-win:\\s*${Number(native)}px`));
+  expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-win:\s*8px/);
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--button-radius:\s*4px/);
-  expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--window-radius:\s*14px/);
+  expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-win:\s*14px/);
 });
 
 test("scarlet marks only the citation: copied text, preview and tray", () => {
