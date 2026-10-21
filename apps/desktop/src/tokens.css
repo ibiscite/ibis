@@ -191,6 +191,12 @@
 /* Filled accent with its paired text colour, so any system accent stays legible. */
 @supports (color: AccentColorText) { :root { --selected-background: AccentColor; --selected-text: AccentColorText; } }
 
+/* WKWebView accepts AccentColorText but resolves it to black. Use the paired
+   native list colours on macOS; contrast overrides below still take priority. */
+@supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
+  :root[data-platform="macos"] { --selected-background: -apple-system-selected-content-background; --selected-text: -apple-system-alternate-selected-text; }
+}
+
 /* Per platform (docs/design.md): only radius, the selected row, the focus ring and the search box change. */
 :root[data-platform="windows"], :root[data-platform="linux"] { --search-size: 1rem; --search-tracking: 0; }
 :root[data-platform="windows"] {

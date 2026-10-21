@@ -54,6 +54,21 @@ test("Windows and Linux search in a 16 px framed box; macOS stays frameless and 
   expect(tokens).toMatch(/--search-size:\s*var\(--type-search-size\)/);
 });
 
+test("macOS selection uses a supported native background and text pair before contrast overrides", () => {
+  // WKWebView accepts AccentColorText but resolves it to black on blue.
+  // The paired Apple list colours were checked in native light/dark probes.
+  const guard = "@supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text)";
+  const start = tokens.indexOf(guard);
+  expect(start).toBeGreaterThan(tokens.indexOf("@supports (color: AccentColorText)"));
+  const block = tokens.slice(start).match(/^[^{]+\{\s*:root\[data-platform="macos"\]\s*\{([^{}]*)\}/)?.[1];
+  expect(block).toMatch(/--selected-background:\s*-apple-system-selected-content-background;/);
+  expect(block).toMatch(/--selected-text:\s*-apple-system-alternate-selected-text;/);
+  for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
+    expect(tokens.indexOf(media)).toBeGreaterThan(start);
+    expect(rules(tokens.slice(tokens.indexOf(media)), ":root[data-platform]")).toMatch(/--selected-background:\s*Highlight;\s*--selected-text:\s*HighlightText;/);
+  }
+});
+
 test("the selected row follows each platform", () => {
   const active = rules(styles, '[role="option"][data-active]');
   expect(active).toMatch(/background:\s*var\(--row-active-background\)/);

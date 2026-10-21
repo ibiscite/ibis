@@ -161,6 +161,8 @@ and other (chosen from its CSL type). They never reuse an attachment drawing
 | Shortcut labels | ⌘ ⌥ ⇧ | Ctrl Alt Shift | Ctrl Super Shift |
 | Copied | Pill near the top of the screen | Notice bottom-right | Toast at the bottom |
 
+On macOS, use WebKit's paired selected-content background and alternate-selected text when both are supported. `AccentColorText` can resolve to black even on saturated blue; keyword support alone does not establish a native pair or custom-accent following. Generic fallbacks remain for other engines, and increased contrast and forced colours retain their system Highlight pair.
+
 The Linux selected row uses the full selection colour rather than a tint: focus
 stays in the search box while ↑ ↓ move the selection, so the fill is the only
 cue, and libadwaita's list tint (25 % accent, `$view_selected_color`) or a
