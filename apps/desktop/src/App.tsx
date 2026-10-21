@@ -35,6 +35,10 @@ function composing(e: React.KeyboardEvent): boolean {
 }
 
 /** Selection is keyed by record identity, never by list position or citation key. */
+function choiceKey(records: SearchResult[]): string {
+  return JSON.stringify(records.map((record) => [record.id.source, record.id.native_key, record.revision]));
+}
+
 function idKey(id: RecordId): string {
   return `${id.source}\u0000${id.native_key}`;
 }
@@ -131,6 +135,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [announcement, setAnnouncement] = useState("");
   // The query the shown results belong to; differs while a search is pending.
   const [resultsQuery, setResultsQuery] = useState<string | null>(null);
+  const [resultsRevision, setResultsRevision] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const pointer = usePointerSelection(active, setActive);
   const [selected, setSelected] = useState<Map<string, SearchResult>>(new Map());
@@ -139,13 +144,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   // The formatted preview, tagged with the style, choice and library it was
   // made for, so Enter never copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" } | null>(null);
+  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale" } | null>(null);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [error, setError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const statusReads = useRef(0);
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
   const input = useRef<HTMLInputElement>(null);
@@ -342,6 +348,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .catch(() => subscriptionFailure("pickerEvents"));
     const unlisten = onPickerShown(focusSearch).catch(() => subscriptionFailure("pickerEvents"));
     const unlistenLibrary = onLibraryChanged((status) => {
+      statusReads.current += 1;
       acceptInitialStatus = false;
       setLibrary(status);
       report("status", false);
@@ -399,9 +406,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     let current = true;
     let announcementTimer: number | undefined;
     search(query)
-      .then((found) => {
+      .then(({ revision, results: found }) => {
         if (current) {
           setResults(found);
+          setResultsRevision(revision);
+          if (revision !== library?.revision) refreshSnapshot();
           setResultsQuery(query);
           setActive(0);
           setError(null);
@@ -458,23 +467,38 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Results belong to the query that produced them. While a newer search is
   // pending, the rows still on screen are not acted on or offered by any key,
   // click or footer hint; only these current results are.
-  const current = resultsQuery === query ? results : [];
+  const current = resultsQuery === query && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
   // The selection, or the highlighted result when nothing is selected.
   const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1);
-  const chosenKey = chosen.map((r) => idKey(r.id)).join("\u0001");
+  const chosenKey = choiceKey(chosen);
+  const chosenRevision = chosen[0]?.revision;
+  const staleSelection = chosen.length > 0 && (!chosenRevision || chosen.some((record) => record.revision !== chosenRevision) || chosenRevision !== library?.revision);
   const previewKey = `${style}\u0002${libraryVersion}\u0002${chosenKey}`;
   // What Enter would copy now; null while it is being formatted.
-  const shown = formatted?.key === previewKey ? formatted.result : null;
+  const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
+  const refreshSnapshot = () => {
+    const request = ++statusReads.current;
+    void libraryStatus().then((status) => {
+      if (statusReads.current !== request) return;
+      setLibrary(status);
+      setLibraryVersion((version) => version + 1);
+      report("status", false);
+    }).catch(() => { if (statusReads.current === request) report("status"); });
+  };
 
   // Format the preview again whenever the choice or the style changes.
   useEffect(() => {
-    if (!style || !cslItems || chosen.length === 0) return;
+    if (!style || !cslItems || chosen.length === 0 || staleSelection || !chosenRevision) return;
     let live = true;
     const key = previewKey;
-    cslItems(chosen.map((r) => r.id))
+    cslItems(chosen.map((r) => r.id), chosenRevision)
       .then((csl) => formatCitation(csl, style))
       .then((result) => { if (live) setFormatted({ key, result }); })
-      .catch(() => { if (live) setFormatted({ key, result: "failed" }); });
+      .catch((error) => { if (live) {
+        const stale = nativeApi.isSnapshotChanged(error);
+        setFormatted({ key, result: stale ? "stale" : "failed" });
+        if (stale) refreshSnapshot();
+      } });
     return () => { live = false; };
   }, [previewKey]);
 
@@ -483,6 +507,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (chosen.length === 0) return;
     setCopied(null);
     setCopyError(null);
+    if (shown === "stale" || !chosenRevision) {
+      setCopyError(pickerText.snapshotChanged);
+      refreshSnapshot();
+      return;
+    }
     let outcome: Copied;
     try {
       if (style && copyFormatted) {
@@ -491,16 +520,19 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           setCopyError(shown === null ? pickerText.previewNotReady : pickerText.previewError);
           return;
         }
-        await copyFormatted(shown.text, shown.html);
+        await copyFormatted(shown.text, shown.html, chosenRevision);
         outcome = { text: shown.text, warnings: shown.warnings };
       } else {
         outcome = await copyCitation(
           chosen.map((r) => r.id),
           format as CopyFormat,
+          chosenRevision,
         );
       }
-    } catch {
-      setCopyError(pickerText.copyError);
+    } catch (error) {
+      const stale = nativeApi.isSnapshotChanged(error);
+      setCopyError(stale ? pickerText.snapshotChanged : pickerText.copyError);
+      if (stale) refreshSnapshot();
       return;
     }
     setCopied(outcome);
@@ -635,7 +667,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A formatted citation still being made, or one that failed, is not copied.
-  const enterAction = !searchFocused || chosen.length === 0 || (style && (shown === null || shown === "failed")) ? null
+  const enterAction = !searchFocused || chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
     : chosen.length > 1 ? keyText.copySeveralAs(chosen.length, choiceName(format)) : keyText.copyAs(choiceName(format));
   const highlighted = current[active];
   const shiftEnterAction = searchFocused && highlighted
@@ -807,7 +839,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         <section aria-label={pickerText.preview} className="format-preview">
           {shown === null && <p role="status">{pickerText.previewPending}</p>}
           {shown === "failed" && <p role="alert">{pickerText.previewError}</p>}
-          {shown && shown !== "failed" && (
+          {shown === "stale" && <p role="alert">{pickerText.snapshotChanged}</p>}
+          {shown && shown !== "failed" && shown !== "stale" && (
             <>
               <div className="preview-text">{render(shown.markup)}</div>
               {provisional(style) && <p className="provisional">{pickerText.provisional}</p>}
@@ -858,7 +891,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                   if (action === "none") return;
                   setActive(i);
                   if (action === "toggle") toggle(r);
-                  else setClickCopy(selected.size > 0 ? chosenKey : idKey(r.id));
+                  else setClickCopy(selected.size > 0 ? chosenKey : choiceKey([r]));
                   input.current?.focus();
                 }}
               >

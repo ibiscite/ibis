@@ -63,3 +63,8 @@ export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]
   value: value as KeyFormat,
   label,
 }));
+
+/** Only the fixed backend snapshot rejection becomes a recovery explanation. */
+export function isSnapshotChanged(error: unknown): boolean {
+  return error === "library snapshot changed";
+}

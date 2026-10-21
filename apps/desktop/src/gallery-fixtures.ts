@@ -88,7 +88,7 @@ if (typeof window !== "undefined") {
 }
 
 function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
-  return { state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false, zotero_libraries: [],
+  return { revision: "gallery", state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false, zotero_libraries: [],
     references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-gallery": overrides.references ?? 24 } : {}, warnings: 0, error: null, note: null, settings_notice: null,
     snapshot_zotero: false, stale: false, updated_at: null, checked_at: hoursAgo(3), ...overrides };
 }
@@ -100,7 +100,7 @@ function hoursAgo(hours: number) {
 
 function reference(key: string, title: string, authors = "Example Author", container: string | null = null, itemType = "article-journal"): SearchResult {
   const names = authors.split(", ");
-  return { id: { source: "synthetic-gallery", native_key: key }, key, title, authors, year: 2026, matched: ["title"],
+  return { revision: "gallery", id: { source: "synthetic-gallery", native_key: key }, key, title, authors, year: 2026, matched: ["title"],
     first_author: names[0] ?? "", author_count: names.length, container, item_type: itemType };
 }
 
@@ -157,7 +157,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
     preview: { query: state.query, copied: state.copied },
     api: {
       libraryStatus: async () => state.library,
-      search: async () => state.results ?? [],
+      search: async () => ({ revision: state.library.revision, results: state.results ?? [] }),
       copyCitation: async () => ({ text: "[@example2026]", warnings: [] }),
       copyFormat: async () => "pandoc",
       pickerPreferences: async () => ({ citation_style: null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false }),

@@ -84,6 +84,8 @@ pub(crate) struct Library {
     checking: bool,
     /// Shared so a search can run without holding the library lock.
     pub(crate) index: Arc<OwnedIndex>,
+    /// In-memory index revision; transported as an opaque string for JavaScript.
+    revision: u64,
     pub(crate) warnings: Vec<LoadWarning>,
     /// Exact initial load observation, reused when attaching the watcher.
     snapshot: Option<SourceSnapshot>,
@@ -105,6 +107,15 @@ pub(crate) struct Library {
     /// When the source was last found to match `index`: a read, or a Zotero
     /// check that found nothing changed. Kept when a later attempt fails.
     checked_at: Option<SystemTime>,
+}
+
+impl Library {
+    pub(crate) fn require_revision(&self, expected: &str) -> Result<(), String> {
+        if self.source.is_none() || self.revision.to_string() != expected {
+            return Err("library snapshot changed".into());
+        }
+        Ok(())
+    }
 }
 
 /// Counts requests to open a library, so a load that finishes after a newer
@@ -135,6 +146,7 @@ pub(crate) struct LibraryWatch(pub(crate) Mutex<Option<SourceWatch>>);
 #[derive(Clone, Serialize, specta::Type)]
 pub(crate) struct LibraryStatus {
     pub(crate) state: LibraryState,
+    pub(crate) revision: String,
     /// Whether the requested library is Zotero rather than a file.
     pub(crate) zotero: bool,
     /// The Zotero libraries requested, in order; empty for a file.
@@ -180,6 +192,8 @@ pub(crate) enum LibraryState {
 
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchResult {
+    /// Revision captured with the index used for this result.
+    revision: String,
     /// Identity of the record; selection and copying use this, not the key.
     id: RecordId,
     key: String,
@@ -221,8 +235,9 @@ fn surname(name: &ibis_core::model::Name) -> String {
 }
 
 impl SearchResult {
-    fn from(reference: &Reference, matched: Vec<String>) -> Self {
+    fn from(reference: &Reference, matched: Vec<String>, revision: &str) -> Self {
         SearchResult {
+            revision: revision.into(),
             first_author: reference.authors.first().map(surname).unwrap_or_default(),
             author_count: u32::try_from(reference.authors.len()).unwrap_or(u32::MAX),
             container: reference.container_plain().map(|text| capped(text, CONTAINER_LIMIT)),
@@ -248,6 +263,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         }
     }
     LibraryStatus {
+        revision: library.revision.to_string(),
         state: if library.opening {
             if library.source.is_some() && library.source == library.requested {
                 LibraryState::Reloading
@@ -668,6 +684,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         .lock()
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
+            revision: String::new(),
             state: LibraryState::Error,
             zotero: false,
             zotero_libraries: Vec::new(),
@@ -781,6 +798,14 @@ fn install_result(
         && library.source.is_some()
         && library.requested.is_some()
         && library.requested != library.source;
+    // Never reuse a revision: even an exhausted counter retains the old index.
+    let loaded = loaded.and_then(|mut new| {
+        new.revision = library
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| "the library could not be updated; restart Ibis".to_string())?;
+        Ok(new)
+    });
     match loaded {
         Ok(mut new) => {
             new.settings_notice = library.settings_notice.take();
@@ -945,9 +970,9 @@ pub(crate) async fn search(
     scope: Option<Vec<String>>,
     library: State<'_, Mutex<Library>>,
     requests: State<'_, SearchRequests>,
-) -> Result<Vec<SearchResult>, String> {
+) -> Result<SearchReply, String> {
     // The library lock is held only to take the index.
-    let index = {
+    let (index, revision) = {
         let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
         if library.source.is_none() {
             return Err(match &library.error {
@@ -955,10 +980,11 @@ pub(crate) async fn search(
                 None => "no library is open".to_string(),
             });
         }
-        Arc::clone(&library.index)
+        (Arc::clone(&library.index), library.revision.to_string())
     };
-    Ok(search_newest(
+    Ok(search_snapshot(
         &index,
+        revision,
         &query,
         limit,
         request,
@@ -967,9 +993,30 @@ pub(crate) async fn search(
     ))
 }
 
+/// A search keeps its snapshot identity even when no references match.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct SearchReply {
+    revision: String,
+    results: Vec<SearchResult>,
+}
+
+fn search_snapshot(
+    index: &OwnedIndex,
+    revision: String,
+    query: &str,
+    limit: usize,
+    request: u32,
+    newest: &AtomicU32,
+    scope: Option<&[String]>,
+) -> SearchReply {
+    let results = search_newest(index, &revision, query, limit, request, newest, scope);
+    SearchReply { revision, results }
+}
+
 /// Run a search unless a newer request has started, stopping if one does.
 fn search_newest(
     index: &OwnedIndex,
+    revision: &str,
     query: &str,
     limit: usize,
     request: u32,
@@ -984,7 +1031,7 @@ fn search_newest(
         .into_iter()
         .map(|hit| {
             let matched = hit.matched.iter().map(|m| format!("{m:?}").to_lowercase()).collect();
-            SearchResult::from(hit.reference, matched)
+            SearchResult::from(hit.reference, matched, revision)
         })
         .collect();
     if outdated() { Vec::new() } else { results }
@@ -1005,7 +1052,7 @@ mod tests {
         let results: Vec<SearchResult> = loaded
             .references
             .iter()
-            .map(|r| SearchResult::from(r, Vec::new()))
+            .map(|r| SearchResult::from(r, Vec::new(), "synthetic"))
             .collect();
         assert_eq!(results[0].first_author, "García");
         assert_eq!(results[0].author_count, 2);
@@ -1038,7 +1085,7 @@ mod tests {
         let results: Vec<SearchResult> = loaded
             .references
             .iter()
-            .map(|r| SearchResult::from(r, Vec::new()))
+            .map(|r| SearchResult::from(r, Vec::new(), "synthetic"))
             .collect();
         assert_eq!(
             (results[0].author_count, results[0].authors.as_str()),
@@ -1063,15 +1110,15 @@ mod tests {
         let index = Arc::clone(&library.index);
         let requests = SearchRequests::default();
         let scope = vec!["zotero:group:7".into()];
-        let results = search_newest(&index, "研究", 1, 2, &requests.newest(1), Some(&scope));
+        let results = search_newest(&index, "synthetic", "研究", 1, 2, &requests.newest(1), Some(&scope));
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id.source, "zotero:group:7");
-        assert!(search_newest(&index, "10.1000/scope", 20, 1, &requests.newest(1), None).is_empty());
+        assert!(search_newest(&index, "synthetic", "10.1000/scope", 20, 1, &requests.newest(1), None).is_empty());
         assert_eq!(
-            search_newest(&index, "10.1000/scope", 20, 1, &requests.newest(2), None).len(),
+            search_newest(&index, "synthetic", "10.1000/scope", 20, 1, &requests.newest(2), None).len(),
             2
         );
-        assert!(search_newest(&index, "研究", 20, 3, &requests.newest(1), Some(&[])).is_empty());
+        assert!(search_newest(&index, "synthetic", "研究", 20, 3, &requests.newest(1), Some(&[])).is_empty());
         assert!(Arc::ptr_eq(&index, &library.index));
         let counts = status(&library).source_counts;
         assert_eq!(counts.get("zotero:user"), Some(&1));
@@ -1091,13 +1138,76 @@ mod tests {
     }
 
     #[test]
+    fn scoped_snapshot_replies_keep_revision_and_retained_source_counts_together() {
+        let chosen = ZoteroLibraries::new(vec![
+            ZoteroLibrary::User,
+            ZoteroLibrary::Group(7),
+            ZoteroLibrary::Group(8),
+        ])
+        .unwrap_or_else(|| panic!("valid synthetic libraries"));
+        let mut loaded = ibis_core::bibtex::load_str("zotero:user", "@misc{same,title={研究}}");
+        loaded
+            .references
+            .extend(ibis_core::bibtex::load_str("zotero:group:7", "@misc{same,title={研究}}").references);
+        let mut library = candidate(Source::Zotero(chosen), loaded);
+        library.revision = u64::MAX - 1;
+        let captured = status(&library);
+        let index = Arc::clone(&library.index);
+        let scope = vec!["zotero:group:7".into()];
+        let newest = AtomicU32::default();
+        let scoped = search_snapshot(&index, captured.revision.clone(), "研究", 20, 1, &newest, Some(&scope));
+        assert_eq!(scoped.revision, captured.revision);
+        assert_eq!(scoped.results.len(), 1);
+        assert_eq!(scoped.results[0].id.source, "zotero:group:7");
+        assert_eq!(scoped.results[0].revision, captured.revision);
+        let all = search_snapshot(&index, captured.revision.clone(), "研究", 20, 2, &newest, None);
+        assert_eq!(all.results.len(), 2);
+        for (request, scope) in [
+            (3, Vec::new()),
+            (4, vec!["zotero:group:8".into()]),
+            (5, vec!["unknown".into()]),
+        ] {
+            let empty = search_snapshot(
+                &index,
+                captured.revision.clone(),
+                "研究",
+                20,
+                request,
+                &newest,
+                Some(&scope),
+            );
+            assert!(empty.results.is_empty());
+            assert_eq!(empty.revision, captured.revision);
+        }
+        let late = search_snapshot(&index, captured.revision.clone(), "研究", 20, 1, &newest, None);
+        assert!(late.results.is_empty());
+        assert_eq!(late.revision, captured.revision);
+        library.requested = Some(Source::Zotero(ZoteroLibrary::Group(99).into()));
+        library.error = Some("synthetic reload failure".into());
+        let retained = status(&library);
+        assert_eq!(retained.revision, captured.revision);
+        assert_eq!(retained.source_counts, captured.source_counts);
+        assert_eq!(retained.source_counts.get("zotero:group:8"), Some(&0));
+        assert_eq!(retained.source_counts.values().sum::<usize>(), retained.references);
+        assert!(Arc::ptr_eq(&index, &library.index));
+    }
+
+    #[test]
     fn scoped_results_keep_the_desktop_result_cap() {
         let bib = (0..220)
             .map(|n| format!("@misc{{key{n},title={{研究}}}}\n"))
             .collect::<String>();
         let index = OwnedIndex::new(ibis_core::bibtex::load_str("file", &bib).references);
         let scope = vec!["file".into(), "file".into()];
-        let results = search_newest(&index, "研究", usize::MAX, 1, &AtomicU32::new(0), Some(&scope));
+        let results = search_newest(
+            &index,
+            "synthetic",
+            "研究",
+            usize::MAX,
+            1,
+            &AtomicU32::new(0),
+            Some(&scope),
+        );
         assert_eq!(results.len(), 200);
         assert!(results.iter().all(|r| r.id.source == "file"));
         assert_eq!(index.source_counts().get("file"), Some(&220));
@@ -1108,10 +1218,19 @@ mod tests {
         let refs = ibis_core::bibtex::load_str("t", "@article{a,title={Sleep},year={2020}}").references;
         let index = OwnedIndex::new(refs);
         let newest = AtomicU32::new(0);
-        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest, None).len(), 1);
-        assert!(search_newest(&index, "sleep", 20, 1, &newest, None).is_empty());
-        assert_eq!(search_newest(&index, "sleep", 20, 2, &newest, None).len(), 1);
-        assert_eq!(search_newest(&index, "sleep", 20, 3, &newest, None).len(), 1);
+        assert_eq!(
+            search_newest(&index, "synthetic", "sleep", 20, 2, &newest, None).len(),
+            1
+        );
+        assert!(search_newest(&index, "synthetic", "sleep", 20, 1, &newest, None).is_empty());
+        assert_eq!(
+            search_newest(&index, "synthetic", "sleep", 20, 2, &newest, None).len(),
+            1
+        );
+        assert_eq!(
+            search_newest(&index, "synthetic", "sleep", 20, 3, &newest, None).len(),
+            1
+        );
     }
 
     #[test]
@@ -1120,14 +1239,14 @@ mod tests {
         let index = OwnedIndex::new(refs);
         let requests = SearchRequests::default();
         assert_eq!(
-            search_newest(&index, "sleep", 20, 500, &requests.newest(1), None).len(),
+            search_newest(&index, "synthetic", "sleep", 20, 500, &requests.newest(1), None).len(),
             1
         );
         assert_eq!(
-            search_newest(&index, "sleep", 20, 1, &requests.newest(2), None).len(),
+            search_newest(&index, "synthetic", "sleep", 20, 1, &requests.newest(2), None).len(),
             1
         );
-        assert!(search_newest(&index, "sleep", 20, 499, &requests.newest(1), None).is_empty());
+        assert!(search_newest(&index, "synthetic", "sleep", 20, 499, &requests.newest(1), None).is_empty());
     }
 
     use super::*;
@@ -1871,5 +1990,152 @@ mod tests {
         );
         let loaded_file = candidate(file, ibis_core::bibtex::load_str("synthetic", ""));
         assert_eq!(zotero_to_check(&loaded_file), None);
+    }
+    #[test]
+    fn snapshot_revisions_bind_search_and_all_copy_paths_to_the_installed_index() {
+        let source = Source::Zotero(ZoteroLibrary::User.into());
+        let make = |key: &str, title: &str| {
+            let mut loaded = ibis_core::bibtex::load_str("synthetic", &format!("@misc{{{key}, title={{{title}}}}}"));
+            loaded.references[0].id = RecordId {
+                source: "zotero:user".into(),
+                native_key: "ITEM0001".into(),
+            };
+            candidate(source.clone(), loaded)
+        };
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let (request, _, _) =
+            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
+        let first = install(&library, &requests, request, Ok(make("oldkey", "Sleep old")))
+            .unwrap_or_else(|| panic!("synthetic request is current"));
+        let (old_index, old_revision) = {
+            let locked = library.lock().unwrap_or_else(|e| panic!("{e}"));
+            (Arc::clone(&locked.index), first.revision.clone())
+        };
+        let (request, _, loading) =
+            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
+        assert_eq!(loading.revision, old_revision);
+        let unchanged = install_loaded(&library, &requests, request, Ok(Loaded::Unchanged))
+            .unwrap_or_else(|| panic!("synthetic request is current"));
+        assert_eq!(unchanged.revision, old_revision);
+        let (request, _, _) =
+            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
+        let failed = install(&library, &requests, request, Err("Zotero is unavailable".into()))
+            .unwrap_or_else(|| panic!("synthetic request is current"));
+        assert_eq!(failed.revision, old_revision);
+        let (request, _, _) =
+            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
+        let replaced = install(&library, &requests, request, Ok(make("newkey", "Sleep new")))
+            .unwrap_or_else(|| panic!("synthetic request is current"));
+        assert_ne!(replaced.revision, old_revision);
+        // The index has changed, but no event has been published to JavaScript.
+        let late_reply = search_snapshot(
+            &old_index,
+            old_revision.clone(),
+            "sleep",
+            20,
+            1,
+            &AtomicU32::default(),
+            None,
+        );
+        assert_eq!(late_reply.revision, old_revision);
+        let empty = search_snapshot(
+            &old_index,
+            old_revision.clone(),
+            "no-match",
+            20,
+            2,
+            &AtomicU32::default(),
+            None,
+        );
+        assert!(empty.results.is_empty());
+        assert_eq!(empty.revision, old_revision);
+        let late = late_reply.results;
+        assert_eq!(late[0].key, "oldkey");
+        assert_eq!(late[0].revision, old_revision);
+        let ids = vec![late[0].id.clone()];
+        let looked_up = std::cell::Cell::new(false);
+        let retired = crate::copy::prepare_snapshot(&library, &old_revision, |locked| {
+            looked_up.set(true);
+            crate::copy::render_citation(locked.index.references(), &ids, ibis_core::cite::KeyFormat::Pandoc)
+        });
+        assert!(retired.is_err());
+        assert!(!looked_up.get());
+        assert!(
+            crate::copy::prepare_snapshot(&library, &old_revision, |locked| crate::copy::csl_json(
+                locked.index.references(),
+                &ids
+            ))
+            .is_err()
+        );
+        let wrote = std::cell::Cell::new(false);
+        assert!(
+            crate::copy::write_formatted(
+                &library,
+                &old_revision,
+                "old preview".into(),
+                "old preview".into(),
+                |_, _| {
+                    wrote.set(true);
+                    Ok(())
+                }
+            )
+            .is_err()
+        );
+        assert!(!wrote.get());
+        let current = crate::copy::prepare_snapshot(&library, &replaced.revision, |locked| {
+            crate::copy::render_citation(locked.index.references(), &ids, ibis_core::cite::KeyFormat::Pandoc)
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(current.text, "[@newkey]");
+        let json = crate::copy::prepare_snapshot(&library, &replaced.revision, |locked| {
+            crate::copy::csl_json(locked.index.references(), &ids)
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert!(json.contains("Sleep new"));
+        crate::copy::write_formatted(
+            &library,
+            &replaced.revision,
+            "new preview".into(),
+            "new preview".into(),
+            |text, html| {
+                assert!(
+                    library.try_lock().is_ok(),
+                    "clipboard I/O does not hold the library mutex"
+                );
+                assert_eq!(text, "new preview");
+                assert_eq!(html, "new preview");
+                wrote.set(true);
+                Ok(())
+            },
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert!(wrote.get());
+        let (request, _, _) =
+            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
+        let empty = install(
+            &library,
+            &requests,
+            request,
+            Ok(candidate(source, ibis_core::bibtex::load_str("synthetic", ""))),
+        )
+        .unwrap_or_else(|| panic!("synthetic request is current"));
+        assert!(empty.has_snapshot);
+        assert_eq!(empty.references, 0);
+        assert_ne!(empty.revision, replaced.revision);
+        let locked = library.lock().unwrap_or_else(|e| panic!("{e}"));
+        assert!(locked.require_revision(&replaced.revision).is_err());
+        assert!(locked.require_revision(&empty.revision).is_ok());
+        let reply = search_snapshot(
+            &locked.index,
+            empty.revision.clone(),
+            "",
+            20,
+            3,
+            &AtomicU32::default(),
+            None,
+        );
+        assert!(reply.results.is_empty());
+        assert_eq!(reply.revision, empty.revision);
     }
 }

@@ -171,6 +171,7 @@ mod tests {
     #[test]
     fn the_library_line_explains_failures_and_stays_short() {
         let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
+            revision: "synthetic".into(),
             state: LibraryState::Loaded,
             zotero: false,
             zotero_libraries: Vec::new(),

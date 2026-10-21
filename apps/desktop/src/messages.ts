@@ -75,6 +75,7 @@ export const pickerText = {
   dragSearchBar: "Drag the search bar edge to move the picker",
   searchError: "Ibis could not search your library. Use Reload, then try again.",
   copyError: "Nothing was copied. Try again, or use Reload.",
+  snapshotChanged: "The library changed. Search again and reselect the references before copying.",
   copied: "Copied",
   keyFormats: "Citation keys",
   formattedStyles: "Formatted citation",

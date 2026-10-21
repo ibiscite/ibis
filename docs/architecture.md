@@ -69,3 +69,16 @@ pinned JavaScript/TypeScript parser; it is a contributor boundary check, not a
 security sandbox for computed module names. During
 incremental migration, toolbar-menu role overrides in `tokens.css` apply locally
 to its popover, preserving the existing More menu and keys dialog roles.
+
+Desktop search replies and each result carry an opaque in-memory index revision,
+captured with the index under the library mutex. Scope filtering and request
+cancellation preserve it even for empty replies. Per-source status counts still
+describe the retained snapshot, including chosen empty Zotero libraries.
+A replacement retires that revision; loading,
+failed reloads retaining the index, and unchanged Zotero checks keep it. Selected
+references and formatted previews retain the revision they came from. Key copy,
+CSL retrieval and formatted copy validate it under that same mutex before
+preparing output; clipboard I/O follows after unlocking. Stale or mixed choices
+are refused with a fixed refresh/reselection explanation, rather than resolving
+old visible identities against new metadata. This does not change core/CLI
+search types or persisted settings.

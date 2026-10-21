@@ -19,20 +19,20 @@ afterEach(async () => {
 });
 
 function result(key: string, title: string) {
-  return { id: { source: "refs.bib", native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"], first_author: "Smith", author_count: 1 };
+  return { revision: "1", id: { source: "refs.bib", native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"], first_author: "Smith", author_count: 1 };
 }
 
 function backend(search: (query: string) => ReturnType<typeof result>[]) {
   mockIPC((cmd, args) => {
     const handlers: Record<string, () => unknown> = {
       shortcut_status: () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
-      search: () => search(String((args as { query?: string } | undefined)?.query ?? "")),
+      search: () => ({ revision: "1", results: search(String((args as { query?: string } | undefined)?.query ?? "")) }),
       hide_picker: () => null,
       set_pinned: () => null,
       copy_format: () => "pandoc",
       picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false }),
       set_picker_preferences: () => null,
-      library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 0, error: null, note: null }),
+      library_status: () => ({ revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 0, error: null, note: null }),
     };
     const handler = handlers[cmd];
     if (!handler) throw new Error(`unexpected command ${cmd}`);

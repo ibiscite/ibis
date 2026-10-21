@@ -47,6 +47,17 @@ pub(crate) fn render_citation(
     cite::render(format, &items).map_err(|e| e.to_string())
 }
 
+/// Validate and prepare from one locked snapshot; clipboard I/O happens afterward.
+pub(crate) fn prepare_snapshot<T>(
+    library: &Mutex<Library>,
+    expected: &str,
+    prepare: impl FnOnce(&Library) -> Result<T, String>,
+) -> Result<T, String> {
+    let locked = library.lock().map_err(|_| "library state is unavailable".to_string())?;
+    locked.require_revision(expected)?;
+    prepare(&locked)
+}
+
 /// Copy the selected records as a citation to the clipboard. Format choices
 /// are saved separately when selected, even if no citation is copied.
 #[tauri::command]
@@ -54,13 +65,13 @@ pub(crate) fn render_citation(
 pub(crate) fn copy_citation(
     ids: Vec<RecordId>,
     format: KeyFormat,
+    expected_revision: String,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, String> {
-    let rendered = {
-        let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
-        render_citation(library.index.references(), &ids, format)?
-    };
+    let rendered = prepare_snapshot(&library, &expected_revision, |locked| {
+        render_citation(locked.index.references(), &ids, format)
+    })?;
     app.clipboard()
         .write_text(rendered.text.clone())
         .map_err(|e| format!("the clipboard could not be written ({e})"))?;
@@ -76,9 +87,14 @@ pub(crate) fn copy_citation(
 /// engine. Sent as JSON text so the fields stay exactly as the core writes them.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn csl_items(ids: Vec<RecordId>, library: State<'_, Mutex<Library>>) -> Result<String, String> {
-    let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
-    csl_json(library.index.references(), &ids)
+pub(crate) fn csl_items(
+    ids: Vec<RecordId>,
+    expected_revision: String,
+    library: State<'_, Mutex<Library>>,
+) -> Result<String, String> {
+    prepare_snapshot(&library, &expected_revision, |locked| {
+        csl_json(locked.index.references(), &ids)
+    })
 }
 
 pub(crate) fn csl_json(references: &[Reference], ids: &[RecordId]) -> Result<String, String> {
@@ -103,13 +119,32 @@ const MAX_FORMATTED: usize = 16 * 1024 * 1024;
 /// alternative, so word processors keep italics and plain editors get text.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn copy_formatted(text: String, html: String, app: AppHandle) -> Result<(), String> {
+pub(crate) fn copy_formatted(
+    text: String,
+    html: String,
+    expected_revision: String,
+    app: AppHandle,
+    library: State<'_, Mutex<Library>>,
+) -> Result<(), String> {
+    write_formatted(&library, &expected_revision, text, html, |text, html| {
+        app.clipboard()
+            .write_html(html, Some(text))
+            .map_err(|e| format!("the clipboard could not be written ({e})"))
+    })
+}
+
+pub(crate) fn write_formatted(
+    library: &Mutex<Library>,
+    expected: &str,
+    text: String,
+    html: String,
+    write: impl FnOnce(String, String) -> Result<(), String>,
+) -> Result<(), String> {
     if text.len() + html.len() > MAX_FORMATTED {
         return Err("the formatted text is too large to copy".into());
     }
-    app.clipboard()
-        .write_html(html, Some(text))
-        .map_err(|e| format!("the clipboard could not be written ({e})"))
+    prepare_snapshot(library, expected, |_| Ok(()))?;
+    write(text, html)
 }
 
 /// The format the picker starts with: the last one chosen, or Pandoc.
