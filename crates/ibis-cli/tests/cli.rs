@@ -318,3 +318,193 @@ fn cite_prints_keys_exactly_as_given() {
     let out = ibis(&["cite", "a\u{200f}b", "--format", "keys"]);
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), "a\u{200f}b");
 }
+
+#[test]
+fn usage_errors_exit_2_while_help_and_version_exit_0() {
+    // Nothing to do, an unknown command, options that exclude each other and
+    // a number that does not fit are all usage errors: code 2 and no output
+    // on stdout that a script could mistake for a result.
+    let file = write("cli-usage", "refs.bib", "@article{k, title={T}}\n");
+    for args in [
+        vec![],
+        vec!["bogus"],
+        vec!["csl", "--all", "k", "--bib", s(&file)],
+        vec!["search", "k", "--bib", s(&file), "--limit", "99999999999999999999"],
+        vec!["cite"],
+        vec!["check"],
+    ] {
+        let out = ibis(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(
+            out.stdout.is_empty(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("Usage:") || stderr.contains("try '--help'"),
+            "{args:?}: {stderr}"
+        );
+    }
+
+    let version = ibis(&["--version"]);
+    assert_eq!(version.status.code(), Some(0));
+    assert!(version.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&version.stdout).trim_end(),
+        format!("ibis {}", env!("CARGO_PKG_VERSION"))
+    );
+
+    let help = ibis(&["--help"]);
+    assert_eq!(help.status.code(), Some(0));
+    assert!(help.stderr.is_empty());
+    let text = String::from_utf8_lossy(&help.stdout);
+    for command in ["search", "cite", "check", "csl"] {
+        assert!(
+            text.lines().any(|line| line.trim_start().starts_with(command)),
+            "{command} missing from --help"
+        );
+    }
+}
+
+#[test]
+fn empty_library_files_load_cleanly_in_every_command() {
+    let empty = write("cli-empty", "empty.bib", "");
+
+    let check = ibis(&["check", s(&empty)]);
+    assert_eq!(check.status.code(), Some(0));
+    assert!(check.stderr.is_empty());
+    assert!(
+        String::from_utf8_lossy(&check.stdout).ends_with(": 0 references loaded, 0 problems\n"),
+        "{}",
+        String::from_utf8_lossy(&check.stdout)
+    );
+
+    let json = ibis(&["check", s(&empty), "--json"]);
+    assert_eq!(json.status.code(), Some(0));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(report[0]["loaded"], 0);
+    assert_eq!(report[0]["warnings"], serde_json::json!([]));
+
+    let search = ibis(&["search", "anything", "--bib", s(&empty)]);
+    assert_eq!(search.status.code(), Some(0));
+    assert!(search.stderr.is_empty());
+    assert_eq!(String::from_utf8_lossy(&search.stdout), "No matches.\n");
+
+    let csl = ibis(&["csl", "--all", "--bib", s(&empty)]);
+    assert_eq!(csl.status.code(), Some(0));
+    assert!(csl.stderr.is_empty());
+    assert_eq!(String::from_utf8_lossy(&csl.stdout).trim_end(), "[]");
+
+    // An empty file has no keys, so citing one against it is the usual
+    // not-found error, not a crash or a silent success.
+    let cite = ibis(&["cite", "k", "--bib", s(&empty)]);
+    assert_eq!(cite.status.code(), Some(1));
+    assert!(cite.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&cite.stderr).contains("not found"));
+}
+
+#[test]
+fn byte_order_marks_and_windows_line_endings_are_read_as_plain_text() {
+    // Files saved by Windows editors start with U+FEFF and end lines with CRLF.
+    let file = write(
+        "cli-bom-crlf",
+        "windows.bib",
+        "\u{feff}@article{bom, title={With BOM}, year={2020}}\r\n@article{crlf, title={Second}, year={2021}}\r\n",
+    );
+
+    let check = ibis(&["check", s(&file)]);
+    assert_eq!(
+        check.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&check.stdout)
+    );
+    assert!(String::from_utf8_lossy(&check.stdout).contains("2 references loaded, 0 problems"));
+
+    let csl = ibis(&["csl", "--all", "--bib", s(&file)]);
+    assert_eq!(csl.status.code(), Some(0), "{}", String::from_utf8_lossy(&csl.stderr));
+    let items: serde_json::Value = serde_json::from_slice(&csl.stdout).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(items[0]["id"], "bom");
+    assert_eq!(items[0]["title"], "With BOM");
+    assert_eq!(items[0]["issued"]["date-parts"][0][0], 2020);
+    assert_eq!(items[1]["id"], "crlf");
+    assert_eq!(items[1]["title"], "Second");
+    assert_eq!(items[1]["issued"]["date-parts"][0][0], 2021);
+    // Neither the mark nor the carriage return survives into any value.
+    let text = String::from_utf8_lossy(&csl.stdout);
+    assert!(
+        !text.contains('\u{feff}') && !text.contains("\\r") && !text.contains('\r'),
+        "{text:?}"
+    );
+
+    let search = ibis(&["search", "bom", "--bib", s(&file), "--json"]);
+    let value: serde_json::Value = serde_json::from_slice(&search.stdout).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(value["results"][0]["reference"]["citekey"], "bom");
+    assert_eq!(value["warnings"], serde_json::json!([]));
+}
+
+#[test]
+fn page_options_must_name_a_cited_key_with_a_printable_value() {
+    for (args, message) in [
+        (vec!["cite", "k", "--page", "k"], "--page needs KEY=PAGES, got `k`"),
+        (
+            vec!["cite", "k", "--page", "other=3"],
+            "--page refers to `other`, which is not being cited",
+        ),
+        (
+            vec!["cite", "k", "--page", "k=1\u{7}"],
+            "text contains a control character",
+        ),
+    ] {
+        let out = ibis(&args);
+        assert_eq!(out.status.code(), Some(1), "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stderr),
+            format!("ibis: {message}\n"),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn page_locators_render_in_every_syntax_from_the_command_line() {
+    for (format, expected) in [
+        ("pandoc", "[@k, pp. 12-14]"),
+        ("autocite", "\\autocite[12--14]{k}"),
+        ("parencite", "\\parencite[12--14]{k}"),
+        ("textcite", "\\textcite[12--14]{k}"),
+        ("cite", "\\cite[pp.~12--14]{k}"),
+        ("typst", "@k[pp. 12\u{2013}14]"),
+    ] {
+        let out = ibis(&["cite", "k", "--format", format, "--page", "k=12-14"]);
+        assert_eq!(out.status.code(), Some(0), "{format}");
+        assert!(
+            out.stderr.is_empty(),
+            "{format}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), expected, "{format}");
+    }
+    // Bare keys cannot carry a page: the key is printed and the loss is said on stderr.
+    let keys = ibis(&["cite", "k", "--format", "keys", "--page", "k=12"]);
+    assert_eq!(keys.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&keys.stdout).trim_end(), "k");
+    assert!(String::from_utf8_lossy(&keys.stderr).starts_with("note: "));
+}
+
+/// An empty page value currently prints `[@k, p. ]` with exit code 0 (#607).
+#[test]
+#[ignore = "exposes #607: an empty --page value is rendered as a blank locator instead of being refused"]
+fn empty_page_values_are_refused() {
+    for value in ["k=", "k= "] {
+        let out = ibis(&["cite", "k", "--page", value]);
+        assert_eq!(out.status.code(), Some(1), "{value:?}");
+        assert!(
+            out.stdout.is_empty(),
+            "{value:?}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+}
