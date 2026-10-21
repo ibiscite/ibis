@@ -163,6 +163,8 @@ symbolic masters. How the assets are regenerated is in the
 | | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
 | Material | Standard material for the window; Liquid Glass only on the search bar (Rollout 9) | Desktop Acrylic | Flat, opaque |
+| System font | SF Pro (`-apple-system`) | Segoe UI Variable (Text) | Adwaita Sans or Cantarell (GTK's `system-ui`) |
+| Neutrals | Translucent fills over the material (below) | Fluent: surface `#f3f3f3` / `#202020`, text `#1b1b1b` / `#fff`, secondary `#606060` / `#cfcfcf`; controls on `ControlFillColorDefault` | Adwaita `window_bg` `#fafafb` / `#222226`, `window_fg`; buttons and entry on the control fill (text at 8%) |
 | Corners | See **Corners** above | | |
 | Selected row | Filled accent, white text | Soft grey with an accent pill on the left | GTK's selection colour (filled accent) with its paired text |
 | Keyboard focus ring | 2 px accent, 1 px gap | 2 px in the text colour around a 1 px surface-coloured stroke (Fluent's focus visual) | 2 px, the accent mixed half toward the text colour, 1 px gap |

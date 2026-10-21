@@ -11,6 +11,7 @@ button, select {
   border: var(--border-width) solid var(--button-edge);
   border-radius: var(--button-radius);
   padding: var(--button-padding);
+  min-height: var(--control-min-size);
 }
 button:hover { background: var(--button-hover-background); }
 /* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
@@ -31,7 +32,7 @@ main {
    row titles start (docs/design.md, "Edges line up"). */
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }
 /* Reserve readable query space before wrapping controls, at every text size. */
-#search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); height: var(--field-h); font-size: var(--search-size); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
+#search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); height: var(--field-h); font-size: var(--search-size); line-height: var(--search-line); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
 #search::placeholder { color: var(--muted); }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue (Windows adds its accent underline). Contrast and forced colours restore
@@ -50,13 +51,13 @@ main {
 /* Windows: like a Fluent TextBox, focus turns the field solid with a 2 px accent
    underline and no ring (TextBox does not use the system focus visual). */
 :root[data-platform="windows"] #search { border: var(--border-width) solid var(--field-edge); border-bottom-color: var(--line); }
-:root[data-platform="windows"] #search:focus { outline: none; background: var(--surface); border-bottom-color: var(--accent); box-shadow: inset 0 calc(-1 * var(--border-width)) var(--accent); }
+:root[data-platform="windows"] #search:focus { outline: none; background: var(--field-active-background); border-bottom-color: var(--accent); box-shadow: inset 0 calc(-1 * var(--border-width)) var(--accent); }
 /* Linux: a framed entry. */
 :root[data-platform="linux"] #search { border: var(--border-width) solid var(--clear); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
 .results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; padding: var(--inset); scrollbar-width: thin; }
-.results-heading { display: flex; justify-content: space-between; padding: var(--heading-padding); color: var(--muted); font-size: var(--heading-size); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
+.results-heading { display: flex; justify-content: space-between; padding: var(--heading-padding); color: var(--muted); font-size: var(--heading-size); line-height: var(--type-label-line); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
 #results { list-style: none; padding: 0; margin: 0; }
 /* Rows are exactly --row-height and touch; the clear border (an edge only in
    increased contrast) is taken from the side padding so titles stay aligned. */

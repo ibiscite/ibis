@@ -13,7 +13,7 @@
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
   /* Space and size on a 4 px grid. */
-  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-6: 1.5rem;
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   /* One geometry chain (docs/design.md, "Space and size" and "Corners"):
      the look layers below set only --r-win, --inset and --r-min; every inner
      radius and the search band follow from them. Radii are px (they follow the
@@ -87,7 +87,7 @@
   --active-edge: CanvasText;
   --accent: Highlight;
   --focus: CanvasText;
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --button-background: color-mix(in srgb, var(--text) 4%, var(--surface));
   --button-hover-background: color-mix(in srgb, var(--text) 8%, var(--surface));
   /* Buttons and key caps are fills without an edge, as in native toolbars;
@@ -109,9 +109,8 @@
   --alert-color: CanvasText;
   --alert-border-width: 3px;
   --button-radius: 6px;
-  --key-radius: 5px;
   --hint-radius: 4px;
-  --button-padding: .35rem .55rem;
+  --button-padding: 0 var(--space-3); /* height from --control-min-size (rule 4) */
   --picker-height: 100dvh;
   /* Between the field and the header's controls. The search glyph sits over
      the tile column and the query starts where row titles start:
@@ -123,8 +122,9 @@
   --search-min-width: 12rem;
   --search-icon-stroke: var(--icon-stroke);
   --search-size: var(--type-search-size);
+  --search-line: var(--type-search-line);
   --search-tracking: -.025em;
-  --search-focus-offset: 5px;
+  --search-focus-offset: 4px;
   --hidden-size: 1px;
   --hidden-margin: -1px;
   --hidden-clip: inset(50%);
@@ -139,33 +139,32 @@
   --title-tracking: -.01em;
   --metadata-size: var(--type-meta-size);
   --metadata-line-height: var(--type-meta-line);
-  --metadata-gap: .2rem;
+  --metadata-gap: var(--space-1);
   --key-size: var(--type-citation-size);
   --key-max-width: 30%;
-  --key-padding: .25rem .4rem;
   --empty-padding: 2rem 1rem;
-  --notice-padding: 0 1rem;
-  --notice-margin: .65rem 0;
+  --notice-padding: 0 calc(var(--inset) + var(--row-pad));
+  --notice-margin: var(--space-3) 0;
   --copy-padding: .5rem;
   --dismiss-margin: .5rem 0 .5rem .5rem;
-  --alert-padding: .65rem;
-  --selection-gap: .4rem;
-  --selection-padding: .6rem 1rem;
+  --alert-padding: var(--space-3);
+  --selection-gap: var(--space-2);
+  --selection-padding: var(--space-2) calc(var(--inset) + var(--row-pad));
   --selection-label-padding: .5rem;
   --footer-padding: calc(var(--inset) + var(--row-pad)) var(--inset); /* inline start, end */
   --footer-size: var(--type-label-size);
-  --footer-gap: .4rem;
+  --footer-gap: var(--space-2);
   --library-min-width: 14rem;
-  --library-notice-margin: .3rem 0;
+  --library-notice-margin: var(--space-1) 0;
   --icon-size: 1rem;
-  --icon-padding: .15rem .4rem;
+  --icon-padding: var(--space-1) var(--space-2);
   --hint-size: var(--type-label-size);
   --key-cap: 1.25rem;
-  --hint-margin: .2rem;
+  --hint-margin: var(--space-1);
   --contrast-border-width: 3px;
-  --forced-selected-offset: -4px;
   --forced-search-offset: -3px;
   --field-background: var(--button-background);
+  --field-active-background: var(--surface);
   --clear-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
   --field-edge: color-mix(in srgb, var(--line) 35%, var(--surface));
   /* The leading tile of a result row: 32 px, a quiet fill, 20 px icon. */
@@ -200,6 +199,30 @@
     --active-edge: light-dark(#83838d, #898993);
     --focus: light-dark(#145ccc, #9bc4ff);
   }
+  /* Each look's own neutrals (docs/design.md, "Per platform"). Increased
+     contrast, forced colours and the contrast preview keep the system colours. */
+  @media (prefers-contrast: no-preference) and (forced-colors: none) {
+    /* Windows 11 (Fluent 2): SolidBackgroundFillColorBase, TextFillColorPrimary
+       and Secondary; controls and the text box on ControlFillColorDefault, list
+       hover on SubtleFillColorSecondary; a focused text box turns solid. */
+    :root[data-platform="windows"]:not([data-gallery-theme="contrast"]) {
+      --surface: light-dark(#f3f3f3, #202020);
+      --text: light-dark(#1b1b1b, #ffffff);
+      --muted: light-dark(#606060, #cfcfcf);
+      --button-background: light-dark(rgb(255 255 255 / 70%), rgb(255 255 255 / 6%));
+      --button-hover-background: light-dark(rgb(249 249 249 / 50%), rgb(255 255 255 / 8%));
+      --hover-background: light-dark(rgb(0 0 0 / 4%), rgb(255 255 255 / 6%));
+      --field-active-background: light-dark(#ffffff, #1e1e1e);
+    }
+    /* GNOME (libadwaita): window_bg and window_fg; buttons and the entry on
+       the control fill (the text colour at 8%). */
+    :root[data-platform="linux"]:not([data-gallery-theme="contrast"]) {
+      --surface: light-dark(#fafafb, #222226);
+      --text: light-dark(#323236, #ffffff);
+      --button-background: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 8%));
+      --button-hover-background: light-dark(rgb(0 0 6 / 12%), rgb(255 255 255 / 12%));
+    }
+  }
 }
 @supports (color: AccentColor) { :root { --accent: AccentColor; } }
 /* Filled accent with its paired text colour, so any system accent stays legible. */
@@ -212,10 +235,14 @@
 }
 
 /* Per platform (docs/design.md): only radius, the selected row, the focus ring and the search box change. */
-:root[data-platform="windows"], :root[data-platform="linux"] { --search-size: 1rem; --search-tracking: 0; }
+:root[data-platform="windows"], :root[data-platform="linux"] { --search-size: 1rem; --search-line: 1.375rem; --search-tracking: 0; }
+/* The system UI font: Segoe UI Variable on Windows 11 (its Text optical size
+   for UI text), Adwaita Sans or Cantarell from GTK on GNOME. */
+:root[data-platform="windows"] { --font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
+:root[data-platform="linux"] { --font-family: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
 :root[data-platform="windows"] {
   --r-win: 8px; --inset: var(--space-1); --r-min: 2px; --r-menu: 8px; --menu-pad: 4px;
-  --button-radius: 4px; --key-radius: 4px;
+  --button-radius: 4px;
   --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
   --tile-active-background: light-dark(#fff, rgb(255 255 255 / 10%));
   /* Fluent's focus visual: an outer stroke in the text colour (black in light
@@ -251,7 +278,7 @@
       --button-background: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
       --button-hover-background: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
       --separator: var(--line);
-      --button-radius: 8px; --hint-radius: 5px; --key-radius: 5px; --menu-radius: 12px;
+      --button-radius: 8px; --hint-radius: 5px; --menu-radius: 12px;
       --menu-shadow: 0 1rem 2.5rem rgb(0 0 0 / 22%);
       --vibrancy-tint: light-dark(rgb(250 250 252 / 55%), rgb(30 30 34 / 55%));
       /* A hairline, as on a native panel: no white rim or glow (prototype round six). */
