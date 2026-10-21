@@ -29,7 +29,7 @@ Citation tools usually fail at the edges: an unusual editor, a keyboard layout, 
 | Remote desktop, Citrix, virtual machine windows | all | Profile: plain text, longer delays. |
 | Canvas-based editors (Google Docs) | browsers | Clipboard paste only; no accessibility-API insertion. |
 | Applications that transform pasted text (Slack mentions, Notion links, smart quotes) | all | Per-profile escaping and output flavour. |
-| Wayland: no global focus information or input injection on some compositors | Linux | Capability tiers: GlobalShortcuts portal or `ibis pick` bound to a desktop shortcut; RemoteDesktop portal with persisted consent; wlroots virtual keyboard; otherwise copy only. |
+| Wayland: no global focus information or input injection on some compositors | Linux | Capability tiers: GlobalShortcuts portal or the planned `ibis toggle` bound to a desktop shortcut; RemoteDesktop portal with persisted consent; wlroots virtual keyboard; otherwise copy only. |
 | Flatpak or Snap sandbox | Linux | Native packages are primary; sandboxed builds run in copy-and-portal mode and say so. |
 | Antivirus or device management restrictions on input simulation | Windows, macOS | Signed builds; documented permissions; `RegisterHotKey` rather than low-level hooks. |
 

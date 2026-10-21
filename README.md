@@ -4,7 +4,7 @@
 
 Ibis is free, open source and private by design: everything works offline, nothing is tracked, and your libraries are never changed.
 
-> **Status: early preview (0.1).** A global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens the picker. Search a `.bib` library or, while Zotero is open, your Zotero library and any group libraries you choose (More menu), and copy a citation key (Pandoc, BibLaTeX, LaTeX, Typst) or a formatted citation in APA, Chicago, Harvard, IEEE or MLA. Ibis can start when you log in, so the shortcut is always ready: tick **Start Ibis when you log in** during first-run setup, in the More menu or in the menu bar or tray menu (off until you choose it). Builds are unsigned. More styles, reading Zotero while it is closed and direct insertion follow. See the [roadmap](ROADMAP.md).
+> **Status: early preview (0.1).** A global shortcut (Ctrl+Shift+Y, or Control+Command+R on macOS) opens the picker. Search a `.bib` library or, while Zotero is open, your Zotero library and any group libraries you choose (More menu), and copy a citation key (Pandoc, BibLaTeX, LaTeX, Typst) or a formatted citation in APA, Chicago, Harvard, IEEE or MLA. Paste a DOI, ISBN, PubMed ID (`PMID:…`) or arXiv ID to find a matching record already in your library; Ibis does not fetch it from the internet. Ibis can start when you log in, so the shortcut is always ready: tick **Start Ibis when you log in** during first-run setup, in the More menu or in the menu bar or tray menu (off until you choose it). Builds are unsigned. More styles, reading Zotero while it is closed and direct insertion follow. See the [roadmap](ROADMAP.md).
 
 ## Planned for 1.0
 
@@ -23,7 +23,7 @@ There are two builds. Both are free and run on Windows, macOS and Linux.
 | | **Ibis** (releases) | **Ibis Nightly** |
 |---|---|---|
 | What | Numbered previews, tested before release | The newest work from `main`, rebuilt after every change |
-| Version | `0.1.0`, `0.1.1`, `0.2.0`, ... | `0.1.1-nightly.20261020123456` (next version, then build time) |
+| Version | `0.1.0`, `0.1.1`, `0.2.0`, ... | `X.Y.Z-nightly.YYYYMMDDHHMMSS` (next patch version, then source commit time in UTC) |
 | Get it | [Releases](https://github.com/ibiscite/ibis/releases) (newest numbered release) | [Releases → Ibis Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) |
 | Direct downloads | [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage) | [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage) |
 
@@ -42,7 +42,7 @@ The first time the picker opens, it offers Zotero if Zotero is open and lists `.
 
 With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. It never changes anything in Zotero.
 
-The first time, turn on Zotero's local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Citation keys come from Zotero's own Citation Key field, or from Better BibTeX if you use it.
+The first time, turn on Zotero's local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis tries Zotero's own Citation Key field first, then a `Citation Key:` line in Extra, then the citation key in Zotero's CSL export (for example a Better BibTeX key).
 
 If you prefer a file, or Zotero is usually closed, let Zotero keep a `.bib` file up to date instead:
 

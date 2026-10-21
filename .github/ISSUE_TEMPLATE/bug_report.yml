@@ -23,7 +23,8 @@ body:
     id: version
     attributes:
       label: Ibis version
-      placeholder: "ibis --version"
+      description: "Copy the build and version from Ibis's menu bar or tray menu. For a CLI report, run ibis --version."
+      placeholder: "Ibis X.Y.Z / Ibis Nightly X.Y.Z-nightly.YYYYMMDDHHMMSS"
     validations:
       required: true
   - type: input

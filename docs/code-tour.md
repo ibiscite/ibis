@@ -2,9 +2,10 @@
 
 Follow one action through the code, then use the tests beside that action.
 Paths below describe the current desktop picker and CLI. The broader design in
-[architecture.md](architecture.md) also includes planned integrations. Citation
-styles and direct insertion into other applications are future work; today's
-picker searches a `.bib` library or a running Zotero and copies citation keys.
+[architecture.md](architecture.md) also includes planned integrations. Today's
+picker searches a `.bib` library or a running Zotero and copies citation keys
+or formatted citations in five bundled styles (APA, Chicago, Harvard, IEEE and
+MLA). More styles and direct insertion into other applications are future work.
 
 ## Words used here
 
@@ -31,7 +32,7 @@ picker searches a `.bib` library or a running Zotero and copies citation keys.
    [bindings.ts](../apps/desktop/src/bindings.ts).
 5. The Rust command `library::search` in
    [library.rs](../apps/desktop/src-tauri/src/library.rs) reads the installed
-   library and calls `OwnedIndex::search` in
+   library and calls `OwnedIndex::search_scoped_until` in
    [core search.rs](../crates/ibis-core/src/search.rs).
 6. Core search normalizes case and accents, matches query terms and ranks the
    results. Rust returns record identities, display fields and matched fields;
@@ -69,19 +70,26 @@ existing licence and advisory policy.
 
 1. `App.tsx`'s `copy` handler chooses selected records in selection order, or the
    highlighted result if it belongs to the current query.
-2. `api.copyCitation` crosses the generated bridge to `copy_citation` in
+2. For key formats, `api.copyCitation` crosses the generated bridge to `copy_citation` in
    [copy.rs](../apps/desktop/src-tauri/src/copy.rs).
 3. `render_citation` resolves each `RecordId` against the installed references.
    Identity is **source plus native key**; identical keys in different libraries
-   must not select the same record. A missing selection fails before writing.
+   must not select the same record. A missing selection or changed snapshot
+   revision fails before writing.
 4. [core cite.rs](../crates/ibis-core/src/cite.rs)'s `render` validates keys and
    applies the chosen Pandoc, LaTeX, BibLaTeX or Typst syntax. Follow that format's
    escaping helper when output is wrong.
-5. The desktop command writes the rendered text with the clipboard plugin and
-   returns text and warnings to React. Format choices are saved when selected,
+5. For a bundled style, `api.cslItems` calls `copy::csl_items`, which exports the
+   chosen snapshot's records as CSL-JSON. [formatted.ts](../apps/desktop/src/format/formatted.ts)
+   sends them to the formatting worker for the preview. `api.copyFormatted`
+   passes that completed preview's text, HTML and snapshot revision to
+   `copy_formatted`, which validates the revision and writes HTML with a
+   plain-text alternative. The desktop picker does not write RTF.
+6. Key copies return text and warnings to React; formatted copies use the
+   preview's warnings. Format choices are saved when selected,
    through the same locked settings update as the other picker preferences,
    even if no citation is copied.
-   React hides the picker after a successful copy with no warnings; otherwise
+   React hides an unpinned picker after a successful copy with no warnings; otherwise
    it keeps the result or error visible. Every dismissal (copy, Escape, shortcut,
    blur or close) uses `picker::dismiss_picker`: it hides the window and, on
    macOS, the application, returning focus for the next paste. On macOS the
@@ -206,8 +214,8 @@ values before changing target-specific citation escaping.
 **An issue says CSL export crashed (#111).** Read
 [csl_export.rs](../fuzz/fuzz_targets/csl_export.rs): it imports the input before
 `library::csl_items` → `Reference::to_csl_json` → JSON serialization. Find the first
-failing stage. The oversized uncertain-year fix is in `convert::date_value` and
-`date_parser_overflows`, with a regression in
+failing stage. The oversized uncertain-year fix is in `convert::date_value`,
+with the `oversized_uncertain_years_keep_the_reference_and_warn` regression in
 [bibtex_robustness.rs](../crates/ibis-core/tests/bibtex_robustness.rs). Use the fuzz
 issue's exact lossless-base64 input and target; “deadly signal” names a failure
 signature, not the Rust function that failed.

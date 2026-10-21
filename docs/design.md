@@ -323,8 +323,12 @@ and Ibis stays open.
 
 **Escape** steps back one layer: close a menu or dialog, close the preview,
 clear the search and filters, then hide. Nothing asks for confirmation. After
-hiding, the search is kept in memory for a minute (#314); bringing back a search
-that Escape cleared is still to do (rollout step 3). Escape never unpins.
+hiding, the search is kept in memory for a minute (#314). The current quick
+picker closes a menu or keyboard dialog, clears the query while preserving
+chosen references, then hides. Reopening within that minute restores even a
+query cleared by Escape, unless new typing or a completed copy replaced it;
+reopening after more than a minute hidden clears the search and selection.
+The preview and filter steps remain planned. Escape never unpins.
 
 **Pinned** Ibis floats above the document, keeps its place, and does not take
 focus until clicked or summoned. It is the only time Ibis stays on top.
@@ -436,9 +440,10 @@ which tips were seen) need an ADR before new `settings.json` fields are added.
    detection yet: it needs native calls the safe dependencies do not offer, so
    there the shortcut always opens Ibis. Hiding the picker from Windows Alt+Tab
    needs a tool-window style for the same reason. (#509, #510)
-   Also still to do in this step: undoing an Escape that cleared the search
-   (reopening within a minute brings it back), the "Copied" notice after hiding, and a click on a row copies it
-   (Shift+click adds it to the tray).
+   Also implemented: reopening within a minute restores an Escape-cleared
+   query unless typing or a completed copy replaced it; a clean unpinned copy
+   shows the "Copied" notice after hiding, and a row click copies while
+   Shift+click adds to the citation (#496).
 4. Density and Larger text are settings under ADR 0020 (#407, #408). Remaining
    work: an ADR for display choice and remembered per-display position, then
    change the opening default from the pointer's display to the focused window's
