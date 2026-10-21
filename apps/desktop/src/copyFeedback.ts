@@ -2,6 +2,7 @@
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied } from "./api";
 import { copiedNoticeText } from "./messages";
+import { platformOf, type Platform } from "./platform";
 
 /**
  * After a copy: hide the picker and say "Copied" in the small notice window,
@@ -42,11 +43,9 @@ export function rowClickAction(click: RowClick): "copy" | "toggle" | "none" {
   return click.shiftKey ? "toggle" : "copy";
 }
 
-export type NoticePlatform = "macos" | "windows" | "linux";
+export type NoticePlatform = Platform;
 
-export function noticePlatform(platform: string): NoticePlatform {
-  return /Mac|iPhone|iPad/.test(platform) ? "macos" : /Win/.test(platform) ? "windows" : "linux";
-}
+export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 
 /**
  * Draw the notice: a check mark, "Copied" and the copied text on one line.

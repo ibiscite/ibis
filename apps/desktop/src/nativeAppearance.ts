@@ -1,13 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
+import { platformOf } from "./platform";
+
+export { platformOf, type Platform } from "./platform";
 
 type Dispose = () => void;
-
-export type Platform = "macos" | "windows" | "linux";
-
-/** Same signal as the shortcut labels in App.tsx; anything else gets the GNOME look. */
-export function platformOf(name: string): Platform {
-  return /Mac|iPhone|iPad/.test(name) ? "macos" : /Win/.test(name) ? "windows" : "linux";
-}
 
 /** Exposes the platform to CSS for its search box, selected row and radius. */
 export function setPlatform(name = typeof navigator === "undefined" ? "" : navigator.platform): void {

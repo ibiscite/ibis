@@ -1,18 +1,20 @@
-import type React from "react";
 import * as nativeApi from "./api";
-import { copiedNoticeText, copyFormatNames, densityNames, keyText, libraryMessages, loginItemsPlace, loginItemText, operationFailures as FAILURE_MESSAGES, pickerText, rowText } from "./messages";
-import { ariaKeys, KEY_TABLE, keyLabel, keysFor, type KeyBinding } from "./keys";
+import { copiedNoticeText, densityNames, keyText, libraryMessages, loginItemsPlace, loginItemText, operationFailures as FAILURE_MESSAGES, pickerText, rowText } from "./messages";
+import { ariaKeys, KEY_TABLE, keyLabel, keysFor, shortcutLabel, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LibrarySetup, shortcutLabel } from "./LibrarySetup";
+import { LibrarySetup } from "./LibrarySetup";
 import { hasRetainedFreshnessProblem, LibraryDetail, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
 import { formatCitation, FORMATTED_STYLES, provisional, type FormattedCitation } from "./format/formatted";
-import { STYLE_NAMES, type StyleId } from "./format/styles";
 import { render } from "./format/markup";
 import { afterCopy, rowClickAction } from "./copyFeedback";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { MenuItem, MoreMenu } from "./features/picker/MoreMenu";
 import { AddGlyph, TypeIcon } from "./icons";
+import { isMac } from "./platform";
+import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice } from "./features/picker/choice";
+import { abbreviatedAuthors, hiddenMatch, tileName } from "./features/picker/rows";
+import { composing, isKeysShortcut, isMenuShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import {
   COPY_FORMATS,
   type Copied,
@@ -21,27 +23,11 @@ import {
   type LibraryStatus,
   type LoginItem,
   type PickerPreferences,
-  type RecordId,
   type SearchResult,
   type ShortcutStatus,
   type ZoteroGroup,
   type ZoteroLibrary,
 } from "./api";
-
-/** True while an input method is composing text; Enter then confirms the text.
- * Some WebKit versions report the confirming Enter with key code 229 only. */
-function composing(e: React.KeyboardEvent): boolean {
-  return e.nativeEvent.isComposing || e.keyCode === 229;
-}
-
-/** Selection is keyed by record identity, never by list position or citation key. */
-function choiceKey(records: SearchResult[]): string {
-  return JSON.stringify(records.map((record) => [record.id.source, record.id.native_key, record.revision]));
-}
-
-function idKey(id: RecordId): string {
-  return `${id.source}\u0000${id.native_key}`;
-}
 
 type Operation = keyof typeof FAILURE_MESSAGES;
 
@@ -51,50 +37,10 @@ const DENSITIES: Density[] = ["compact", "comfortable", "spacious"];
 const KEEP_SEARCH_MS = 60_000;
 const SAVE_BEFORE_QUIT_MS = 2_000;
 
-// Shortcut labels follow the platform: ⌘ on macOS, Ctrl elsewhere.
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const label = (accelerator: string) => keyLabel(accelerator, isMac);
-// Ctrl+K is "delete to end of line" in macOS text fields, so there only ⌘K opens More.
-const commandKey = (e: React.KeyboardEvent) => (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
-
-/** Typing a character there enters text, so a bare `?` is not a command. */
-function typesText(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable || target instanceof HTMLTextAreaElement) return true;
-  return target instanceof HTMLInputElement && !["button", "checkbox", "radio", "range", "color", "file", "submit", "reset"].includes(target.type);
-}
-
-/** `?` outside a text field, or Ctrl/⌘ with / (or ?) anywhere. */
-function isKeysShortcut(e: React.KeyboardEvent): boolean {
-  if (e.altKey) return false;
-  if ((e.key === "/" || e.key === "?") && commandKey(e)) return true;
-  return e.key === "?" && !e.ctrlKey && !e.metaKey && !typesText(e.target);
-}
-
-// Fields a row already shows; a match anywhere else is named under the row.
-const VISIBLE_FIELDS = new Set(["title", "author", "citekey", "year"]);
-
-/** The strongest match the row does not show, if every match is hidden. */
-function hiddenMatch(matched: string[]): string | null {
-  if (matched.length === 0 || matched.some((field) => VISIBLE_FIELDS.has(field))) return null;
-  return matched[0] ?? null;
-}
-
-/** Rows name one or two authors in full and shorten three or more to
- * "García et al.". The count comes from the record's creators, so a name with
- * a comma is one; with one or two creators the joined surnames are the short form. */
-function abbreviatedAuthors(r: SearchResult): boolean {
-  return Boolean(r.first_author) && r.author_count > 2;
-}
 
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
 const etAl = <bdi>{rowText.etAl}</bdi>;
-
-/** "García 2021" for the tile's tooltip: first author and year, else the key. */
-function tileName(r: SearchResult): string {
-  const first = r.first_author?.trim();
-  return first ? (r.year === null ? first : `${first} ${r.year}`) : r.key;
-}
 
 // A stable provider lets the development gallery use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
@@ -102,23 +48,6 @@ export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
   Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
-
-/** A citation-key syntax, or a citation style written as `style:<id>`. */
-export type Choice = CopyFormat | `style:${StyleId}`;
-
-/** The one word the closed format control shows. */
-function choiceName(choice: Choice): string {
-  const style = styleOf(choice);
-  return style ? STYLE_NAMES[style] : copyFormatNames[choice as CopyFormat];
-}
-
-function sameLibrary(a: ZoteroLibrary, b: ZoteroLibrary) {
-  return a === b || (typeof a === "object" && typeof b === "object" && a.group === b.group);
-}
-
-function styleOf(choice: Choice): StyleId | null {
-  return choice.startsWith("style:") ? (choice.slice("style:".length) as StyleId) : null;
-}
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -611,9 +540,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     ? libraryMessages.reloading(library.name)
     : libraryMessages.opening(library?.name ?? null);
 
-  // The search box is the place to type; the shortcut works from anywhere in the picker.
-  const isMenuShortcut = (e: React.KeyboardEvent) =>
-    e.key.toLowerCase() === "k" && commandKey(e) && !e.altKey && !e.shiftKey;
   // Zotero libraries: the ones chosen, and the groups Zotero offers, listed
   // when the menu opens or when results come from several libraries.
   const [groups, setGroups] = useState<ZoteroGroup[] | null>(null);
@@ -742,7 +668,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           e.preventDefault();
           if (menuOpen) closeMenu(true);
           else setMenuOpen(true);
-        } else if (e.key === "q" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        } else if (isQuitShortcut(e)) {
           e.preventDefault();
           void perform("quit", quitAfterSaving);
         }
@@ -861,8 +787,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
                   {pickerText.dismiss}
                 </button>
                 <ul aria-label={pickerText.copyWarnings}>
-                  {copied.warnings.map((w) => (
-                    <li key={w}>{w}</li>
+                  {copied.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
                   ))}
                 </ul>
               </>

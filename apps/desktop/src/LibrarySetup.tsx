@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import type { Choice } from "./App";
+import type { Choice } from "./features/picker/choice";
 import type { Sources } from "./bindings";
 import { loginItemText, pickerText, setupText } from "./messages";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
@@ -21,26 +21,8 @@ const WRITING_PLACES: { name: string; choice: Choice; formatted?: true }[] = [
   { name: setupText.places.word, choice: "style:apa", formatted: true },
 ];
 
-/** A shortcut as people read it: `⌃⌘R` on macOS, `Ctrl+Shift+Y` elsewhere. */
-export function shortcutLabel(shortcut: string, mac: boolean): string {
-  // Settings may spell keys in any case and with the aliases the shortcut
-  // parser accepts, such as `CmdOrCtrl` or `KeyR`.
-  const names: Record<string, [mac: string, other: string]> = {
-    control: ["⌃", "Ctrl"], ctrl: ["⌃", "Ctrl"],
-    alt: ["⌥", "Alt"], option: ["⌥", "Alt"],
-    shift: ["⇧", "Shift"],
-    command: ["⌘", "Super"], cmd: ["⌘", "Super"], super: ["⌘", "Super"], meta: ["⌘", "Super"],
-    commandorcontrol: ["⌘", "Ctrl"], cmdorctrl: ["⌘", "Ctrl"], commandorctrl: ["⌘", "Ctrl"], cmdorcontrol: ["⌘", "Ctrl"],
-    space: ["Space", "Space"],
-  };
-  const keys = shortcut.split("+").map((key) => key.trim()).filter(Boolean).map((key) => {
-    const known = names[key.toLowerCase()];
-    if (known) return mac ? known[0] : known[1];
-    const plain = /^(?:Key|Digit)(.)$/i.exec(key)?.[1] ?? key;
-    return plain.length === 1 ? plain.toUpperCase() : plain;
-  });
-  return keys.join(mac ? "" : "+");
-}
+// Kept here for imports written before the label moved to keys.ts.
+export { shortcutLabel } from "./keys";
 
 // First-run setup while no library is chosen: Zotero if it is open, `.bib`
 // files found nearby, or any file through the system chooser. Only names are

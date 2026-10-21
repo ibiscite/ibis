@@ -289,6 +289,28 @@ test("Quit is available from the picker and from the keyboard", async () => {
   await waitFor(() => expect(calls.filter((c) => c === "quit")).toHaveLength(2));
 });
 
+test("the quit shortcut works with Caps Lock on, like the More shortcut", async () => {
+  const calls = backend({ search: () => [result("a", "First")], quit: () => null });
+  render(<App />);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "K", ctrlKey: true });
+  expect(screen.getByRole("menu")).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Q", ctrlKey: true });
+  await waitFor(() => expect(calls).toContain("quit"));
+});
+
+test("identical copy warnings are both listed without duplicate React keys", async () => {
+  const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  backend({ search: () => [result("a", "First")], copy_citation: () => ({ text: "@a", warnings: ["Missing year", "Missing year"] }) });
+  render(<App />);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByLabelText("Copy warnings");
+  expect(screen.getAllByText("Missing year")).toHaveLength(2);
+  expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+  errors.mockRestore();
+});
+
 test("a rejected shortcut setting is explained even when the default works", async () => {
   backend({
     shortcut_status: () => ({

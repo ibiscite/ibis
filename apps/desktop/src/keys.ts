@@ -1,4 +1,3 @@
-import { shortcutLabel } from "./LibrarySetup";
 import { keyText } from "./messages";
 
 export type KeyRegion = keyof typeof keyText.regions;
@@ -48,4 +47,49 @@ export function keyLabel(accelerator: string, mac: boolean): string {
 export function ariaKeys(accelerator: string, mac: boolean): string {
   return accelerator.split(/\+(?!$)/).map((part) =>
     part === "CmdOrCtrl" ? (mac ? "Meta" : "Control") : part.length === 1 ? part.toUpperCase() : part).join("+");
+}
+
+/** A shortcut as people read it: `⌃⌘R` on macOS, `Ctrl+Shift+Y` elsewhere. */
+export function shortcutLabel(shortcut: string, mac: boolean): string {
+  // Settings may spell keys in any case and with the aliases the shortcut
+  // parser accepts, such as `CmdOrCtrl` or `KeyR`.
+  const names: Record<string, [mac: string, other: string]> = {
+    control: ["⌃", "Ctrl"], ctrl: ["⌃", "Ctrl"],
+    alt: ["⌥", "Alt"], option: ["⌥", "Alt"],
+    shift: ["⇧", "Shift"],
+    command: ["⌘", "Super"], cmd: ["⌘", "Super"], super: ["⌘", "Super"], meta: ["⌘", "Super"],
+    commandorcontrol: ["⌘", "Ctrl"], cmdorctrl: ["⌘", "Ctrl"], commandorctrl: ["⌘", "Ctrl"], cmdorcontrol: ["⌘", "Ctrl"],
+    space: ["Space", "Space"],
+  };
+  const keys = shortcut.split("+").map((key) => key.trim()).filter(Boolean).map((key) => {
+    const known = names[key.toLowerCase()];
+    if (known) return mac ? known[0] : known[1];
+    const plain = /^(?:Key|Digit)(.)$/i.exec(key)?.[1] ?? key;
+    return plain.length === 1 ? plain.toUpperCase() : plain;
+  });
+  return keys.join(mac ? "" : "+");
+}
+
+/** The parts of a key press a shortcut depends on. */
+export type KeyPress = Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">;
+
+/** The command modifier on its own: ⌘ on macOS, Ctrl elsewhere. Ctrl+K is
+ * "delete to end of line" in macOS text fields, so there only ⌘ counts. */
+export function commandKey(e: KeyPress, mac: boolean): boolean {
+  return mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+}
+
+/** Whether a key press is an accelerator from the key table, such as `CmdOrCtrl+Q`.
+ * Letters match in any case (Caps Lock). A layout that types a non-Latin
+ * letter there (Cyrillic, Greek) matches by the physical key instead; a Latin
+ * layout matches what it types, so AZERTY's Q key is A. */
+export function matchesAccelerator(e: KeyPress, accelerator: string, mac: boolean): boolean {
+  const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
+  const key = parts[parts.length - 1] ?? "";
+  const modifiers = new Set(parts.slice(0, -1).map((part) => part.toLowerCase()));
+  const command = modifiers.has("cmdorctrl") ? commandKey(e, mac) : !e.ctrlKey && !e.metaKey;
+  if (!command || e.altKey !== modifiers.has("alt") || e.shiftKey !== modifiers.has("shift")) return false;
+  if (e.key.toLowerCase() === key.toLowerCase()) return true;
+  const physical = /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : /^\d$/.test(key) ? `Digit${key}` : null;
+  return physical !== null && e.code === physical && e.key.length === 1 && !/^[\x20-\x7e]$/.test(e.key);
 }

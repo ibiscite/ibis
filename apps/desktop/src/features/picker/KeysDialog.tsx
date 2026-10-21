@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { keyText } from "../../messages";
-import { ariaKeys, keyLabel, type KeyBinding } from "../../keys";
-import { shortcutLabel } from "../../LibrarySetup";
+import { ariaKeys, keyLabel, shortcutLabel, type KeyBinding } from "../../keys";
 
 /** Every key in one table, as a modal dialog: Escape or Close returns focus. */
 export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly KeyBinding[]; isMac: boolean; onClose: () => void }) {

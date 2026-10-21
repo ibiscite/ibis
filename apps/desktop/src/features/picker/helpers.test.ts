@@ -1,0 +1,37 @@
+import { expect, test } from "vitest";
+import type { SearchResult } from "../../api";
+import { choiceKey, choiceName, idKey, sameLibrary, styleOf } from "./choice";
+import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
+
+const record = (more: Partial<SearchResult> = {}): SearchResult => ({
+  revision: "1", id: { source: "refs.bib", native_key: "a" }, key: "a", title: "T", authors: "García", year: 2021,
+  matched: [], first_author: "García", author_count: 1, container: null, item_type: "article-journal", ...more,
+});
+
+test("a choice names a key format or a citation style", () => {
+  expect(styleOf("pandoc")).toBeNull();
+  expect(styleOf("style:apa")).toBe("apa");
+  expect(choiceName("style:apa")).toBe("APA");
+  expect(choiceName("pandoc")).toBeTruthy();
+});
+
+test("selection identity is the record, not its key or position", () => {
+  expect(idKey({ source: "a", native_key: "b" })).not.toBe(idKey({ source: "a\u0000b", native_key: "" }));
+  expect(choiceKey([record()])).not.toBe(choiceKey([record({ revision: "2" })]));
+  expect(choiceKey([record({ key: "x" })])).toBe(choiceKey([record({ key: "y" })]));
+  expect(sameLibrary("user", "user")).toBe(true);
+  expect(sameLibrary({ group: 3 }, { group: 3 })).toBe(true);
+  expect(sameLibrary({ group: 3 }, "user")).toBe(false);
+});
+
+test("rows name a hidden match, shorten three or more authors and title the tile", () => {
+  expect(hiddenMatch([])).toBeNull();
+  expect(hiddenMatch(["abstract", "title"])).toBeNull();
+  expect(hiddenMatch(["abstract", "note"])).toBe("abstract");
+  expect(abbreviatedAuthors(record({ author_count: 2 }))).toBe(false);
+  expect(abbreviatedAuthors(record({ author_count: 3 }))).toBe(true);
+  expect(abbreviatedAuthors(record({ author_count: 3, first_author: undefined }))).toBe(false);
+  expect(tileName(record())).toBe("García 2021");
+  expect(tileName(record({ year: null }))).toBe("García");
+  expect(tileName(record({ first_author: "  " }))).toBe("a");
+});
