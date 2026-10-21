@@ -11,10 +11,14 @@ const MARK: &str = "X-Ibis-Autostart=true";
 /// inherited by every child of any AppImage, so `APPIMAGE` counts only when
 /// this process runs from inside that mount; otherwise it names someone
 /// else's program (#530 review).
+/// A packager can embed the public launcher path at compile time when the
+/// executable itself needs a wrapper's environment. Invalid paths refuse
+/// autostart rather than silently falling back to an unwrapped executable.
 pub(crate) fn launch_program(
     current_exe: Option<PathBuf>,
     appimage: Option<PathBuf>,
     appdir: Option<PathBuf>,
+    package_launcher: Option<&str>,
 ) -> Option<PathBuf> {
     match (current_exe.map(live_path), appimage, appdir) {
         (Some(exe), Some(image), Some(dir))
@@ -22,7 +26,13 @@ pub(crate) fn launch_program(
         {
             Some(image)
         }
-        (exe, _, _) => exe,
+        (exe, _, _) => match package_launcher {
+            None => exe,
+            Some(path) if Path::new(path).is_absolute() && !path.chars().any(char::is_control) => {
+                Some(PathBuf::from(path))
+            }
+            Some(_) => None,
+        },
     }
 }
 
@@ -270,6 +280,7 @@ mod tests {
                 p("/tmp/.mount_IbisAb/usr/bin/ibis-desktop"),
                 p("/home/a/Apps/Ibis-Linux.AppImage"),
                 p("/tmp/.mount_IbisAb"),
+                None,
             ),
             p("/home/a/Apps/Ibis-Linux.AppImage")
         );
@@ -280,22 +291,62 @@ mod tests {
                 p("/usr/bin/ibis-desktop"),
                 p("/home/a/Apps/Terminal.AppImage"),
                 p("/tmp/.mount_TermXy"),
+                None,
             ),
             p("/usr/bin/ibis-desktop")
         );
         assert_eq!(
-            launch_program(p("/usr/bin/ibis-desktop"), p("/home/a/Apps/Terminal.AppImage"), None),
+            launch_program(
+                p("/usr/bin/ibis-desktop"),
+                p("/home/a/Apps/Terminal.AppImage"),
+                None,
+                None
+            ),
             p("/usr/bin/ibis-desktop")
         );
         assert_eq!(
-            launch_program(p("/usr/bin/ibis-desktop"), p("/x.AppImage"), p("/")),
+            launch_program(p("/usr/bin/ibis-desktop"), p("/x.AppImage"), p("/"), None),
             p("/usr/bin/ibis-desktop")
         );
         assert_eq!(
-            launch_program(p("/tmp/.mount_a/ibis"), p("relative.AppImage"), p("/tmp/.mount_a")),
+            launch_program(
+                p("/tmp/.mount_a/ibis"),
+                p("relative.AppImage"),
+                p("/tmp/.mount_a"),
+                None
+            ),
             p("/tmp/.mount_a/ibis")
         );
-        assert_eq!(launch_program(None, p("/x.AppImage"), p("/tmp/.mount_a")), None);
+        assert_eq!(launch_program(None, p("/x.AppImage"), p("/tmp/.mount_a"), None), None);
+    }
+
+    #[test]
+    fn packaged_login_uses_the_launcher_instead_of_the_wrapped_program() {
+        let executable = Some(PathBuf::from("/nix/store/example-ibis/bin/.ibis-desktop-wrapped"));
+        let launcher = "/nix/store/example-ibis/bin/ibis-desktop";
+        assert_eq!(
+            launch_program(executable.clone(), None, None, Some(launcher)),
+            Some(PathBuf::from(launcher))
+        );
+        assert_eq!(launch_program(executable.clone(), None, None, None), executable);
+        for invalid in ["", "relative/ibis", "/nix/store/ibis\nother"] {
+            assert_eq!(launch_program(executable.clone(), None, None, Some(invalid)), None);
+        }
+        // The launcher's existence is checked by DesktopFile::enable.
+        assert_eq!(
+            launch_program(None, None, None, Some(launcher)),
+            Some(PathBuf::from(launcher))
+        );
+        // Even a configured package keeps the existing AppImage ownership rule.
+        assert_eq!(
+            launch_program(
+                Some(PathBuf::from("/tmp/.mount_Ibis/bin/ibis-desktop")),
+                Some(PathBuf::from("/home/a/Ibis.AppImage")),
+                Some(PathBuf::from("/tmp/.mount_Ibis")),
+                Some(launcher),
+            ),
+            Some(PathBuf::from("/home/a/Ibis.AppImage"))
+        );
     }
 
     #[test]
@@ -455,13 +506,13 @@ mod tests {
         std::fs::write(&upgraded, "").unwrap_or_default();
         let deleted = |path: &Path| PathBuf::from(format!("{} (deleted)", path.display()));
         assert_eq!(
-            launch_program(Some(deleted(&upgraded)), None, None),
+            launch_program(Some(deleted(&upgraded)), None, None, None),
             Some(upgraded.clone())
         );
 
         let removed = home.path().join("removed-ibis");
         let dead = deleted(&removed);
-        assert_eq!(launch_program(Some(dead.clone()), None, None), Some(dead.clone()));
+        assert_eq!(launch_program(Some(dead.clone()), None, None, None), Some(dead.clone()));
         let path = home.path().join("autostart/ibis.desktop");
         let entry = file(path.clone(), "Ibis", &dead.to_string_lossy());
         assert_eq!(

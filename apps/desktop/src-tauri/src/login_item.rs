@@ -224,6 +224,7 @@ fn platform_entry(app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
         std::env::current_exe().ok(),
         env.appimage.map(std::path::PathBuf::from),
         env.appdir.map(std::path::PathBuf::from),
+        option_env!("IBIS_PACKAGE_LAUNCHER"),
     )?;
     Some(Box::new(linux::DesktopFile {
         path: config.join("autostart").join(file),
