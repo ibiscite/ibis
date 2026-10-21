@@ -58,6 +58,7 @@ Citation tools usually fail at the edges: an unusual editor, a keyboard layout, 
 | Duplicate keys across libraries | Identity is source plus key; conflicts are shown. |
 | Missing date, date ranges, uncertain dates | No invented values; "n.d." from the locale. |
 | Trashed Zotero items and children of trashed items | Excluded, matching Zotero's own behaviour. |
+| Rich text in Zotero titles (`<i>`, `<b>`, `<sub>`, `<sup>`, `<span class="nocase">`, small caps) | Kept for citations, whatever the case and spacing inside the tag (`<I>`, `<i >`); any other `<`, `>` or `&` is shown literally. Search and display use the text without markup. |
 | Retracted items | Flag shown when the source provides it. |
 
 ## Output

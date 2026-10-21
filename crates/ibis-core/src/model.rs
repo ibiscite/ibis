@@ -331,7 +331,10 @@ pub fn strip_markup(rich: &str) -> String {
             _ => {}
         }
     }
-    out.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&amp;", "&")
 }
 
 /// Category of a problem found while loading a source.
@@ -364,4 +367,20 @@ pub struct LoadWarning {
 pub struct LoadResult {
     pub references: Vec<Reference>,
     pub warnings: Vec<LoadWarning>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_markup;
+
+    #[test]
+    fn strip_markup_removes_tags_and_decodes_entities() {
+        assert_eq!(strip_markup("<i>Q</i> &amp; A"), "Q & A");
+        assert_eq!(strip_markup("a &lt;b&gt; &quot;c&quot;"), "a <b> \"c\"");
+        // Double-escaped text decodes exactly one level.
+        assert_eq!(strip_markup("&amp;lt;x&amp;gt;"), "&lt;x&gt;");
+        assert_eq!(strip_markup("&amp;amp;"), "&amp;");
+        assert_eq!(strip_markup("&unknown; & <"), "&unknown; & ");
+        assert_eq!(strip_markup(""), "");
+    }
 }

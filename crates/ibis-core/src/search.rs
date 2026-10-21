@@ -13,7 +13,7 @@ use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::is_combining_mark;
 
 use crate::identifier::{self, Identifier};
-use crate::model::Reference;
+use crate::model::{Reference, strip_markup};
 
 /// Which part of a record matched a query term.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -196,7 +196,7 @@ fn prepare(r: &Reference) -> [String; 8] {
         r.year().map(|y| y.to_string()).unwrap_or_default(),
         normalize(r.doi.as_deref().unwrap_or("")),
         normalize(&r.keywords.join(" ")),
-        normalize(r.container_title.as_deref().unwrap_or("")),
+        normalize(&r.container_title.as_deref().map(strip_markup).unwrap_or_default()),
         normalize(r.abstract_text.as_deref().unwrap_or("")),
     ]
 }
@@ -475,6 +475,21 @@ mod tests {
             variables: Default::default(),
             raw: None,
         }
+    }
+
+    #[test]
+    fn container_search_ignores_rich_text_markup_and_entities() {
+        let mut r = reference("k", "Title", "Smith", 2020);
+        r.container_title = Some("<i>Q</i> &amp; A".into());
+        let refs = [r];
+        let index = Index::new(&refs);
+        for query in ["q & a", "Q A", "q&a"] {
+            let hits = index.search(query, 10);
+            assert_eq!(hits.len(), 1, "{query}");
+            assert!(hits[0].matched.contains(&MatchField::Container), "{query}");
+        }
+        assert!(index.search("amp", 10).is_empty());
+        assert_eq!(prepare(&refs[0])[6], "q a");
     }
 
     #[test]

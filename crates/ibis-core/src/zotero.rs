@@ -389,30 +389,21 @@ fn partial_date(parts: &Value, name: &str, problems: &mut Vec<String>) -> Option
 }
 
 /// Zotero titles are plain text with a few HTML tags for rich text. Keep the
-/// tags CSL understands and escape everything else, so a title such as
-/// "p < 0.05" is never mistaken for markup.
+/// tags CSL understands, written in their canonical lower-case form, and
+/// escape everything else, so a title such as "p < 0.05" is never mistaken
+/// for markup. Tag names and attributes match ASCII case-insensitively and
+/// may have trailing spaces or space after a closing slash (`<I>`, `<i >`,
+/// `</ i>`), as Zotero's editor and imports produce them. A space immediately
+/// after `<` stays literal text.
 fn rich_text(title: &str) -> String {
-    const TAGS: [&str; 11] = [
-        "<i>",
-        "</i>",
-        "<b>",
-        "</b>",
-        "<sub>",
-        "</sub>",
-        "<sup>",
-        "</sup>",
-        "<span class=\"nocase\">",
-        "<span style=\"font-variant:small-caps;\">",
-        "</span>",
-    ];
     let mut out = String::with_capacity(title.len());
     let mut rest = title;
     while let Some(c) = rest.chars().next() {
         if c == '<'
-            && let Some(tag) = TAGS.iter().find(|tag| rest.starts_with(**tag))
+            && let Some((tag, len)) = rich_text_tag(rest)
         {
             out.push_str(tag);
-            rest = &rest[tag.len()..];
+            rest = &rest[len..];
             continue;
         }
         match c {
@@ -424,6 +415,65 @@ fn rich_text(title: &str) -> String {
         rest = &rest[c.len_utf8()..];
     }
     out
+}
+
+/// The canonical form and source length of the rich-text tag that starts at
+/// the `<` beginning `rest`, if it is one CSL understands. Only a bounded
+/// prefix is examined, so a long run of `<` or spaces stays linear.
+fn rich_text_tag(rest: &str) -> Option<(&'static str, usize)> {
+    // Otherwise a comparison such as `a < b > c` becomes a bold tag and
+    // loses its variable when converted to plain display/search text.
+    if rest.as_bytes().get(1).is_some_and(u8::is_ascii_whitespace) {
+        return None;
+    }
+    /// Longest accepted tag plus room for whitespace.
+    const MAX_TAG_LEN: usize = 64;
+    const ATTRIBUTES: [(&str, &str, &str); 2] = [
+        ("class=\"nocase\"", "<span class=\"nocase\">", "</span>"),
+        (
+            "style=\"font-variant:small-caps;\"",
+            "<span style=\"font-variant:small-caps;\">",
+            "</span>",
+        ),
+    ];
+    const SIMPLE: [(&str, &str, &str); 4] = [
+        ("i", "<i>", "</i>"),
+        ("b", "<b>", "</b>"),
+        ("sub", "<sub>", "</sub>"),
+        ("sup", "<sup>", "</sup>"),
+    ];
+    let end = rest.bytes().take(MAX_TAG_LEN).position(|b| b == b'>')?;
+    let inner = rest[1..end].trim_matches(|c: char| c.is_ascii_whitespace());
+    let (closing, inner) = match inner.strip_prefix('/') {
+        Some(inner) => (true, inner.trim_start_matches(|c: char| c.is_ascii_whitespace())),
+        None => (false, inner),
+    };
+    let mut words = inner.split_ascii_whitespace();
+    let name = words.next()?;
+    let attribute = words.next();
+    if words.next().is_some() {
+        return None;
+    }
+    let (open, close) = if name.eq_ignore_ascii_case("span") {
+        match attribute {
+            None if closing => ("", "</span>"),
+            Some(attribute) => ATTRIBUTES
+                .iter()
+                .find(|(wanted, _, _)| attribute.eq_ignore_ascii_case(wanted))
+                .map(|(_, open, close)| (*open, *close))?,
+            None => return None,
+        }
+    } else {
+        if attribute.is_some() {
+            return None;
+        }
+        SIMPLE
+            .iter()
+            .find(|(wanted, _, _)| name.eq_ignore_ascii_case(wanted))
+            .map(|(_, open, close)| (*open, *close))?
+    };
+    let tag = if closing { close } else { open };
+    (!tag.is_empty()).then_some((tag, end + 1))
 }
 
 #[cfg(test)]
@@ -756,6 +806,85 @@ mod tests {
         )
         .references[0];
         assert_eq!(r.title_plain().as_deref(), Some("a < b"));
+    }
+
+    #[test]
+    fn spaced_comparisons_stay_literal_in_titles_and_search() {
+        for (title, escaped, query) in [
+            ("a < b > c", "a &lt; b &gt; c", "b"),
+            ("日本 < i > 한국어", "日本 &lt; i &gt; 한국어", "i"),
+            ("a < /b > c", "a &lt; /b &gt; c", "b"),
+            ("a <\tb > c", "a &lt;\tb &gt; c", "b"),
+        ] {
+            let result = load_items(
+                Library::User,
+                &[item("K", json!({}), json!({ "type": "book", "title": title }))],
+            );
+            assert!(result.warnings.is_empty());
+            let reference = &result.references[0];
+            assert_eq!(reference.title.as_deref(), Some(escaped), "{title}");
+            assert_eq!(reference.title_plain().as_deref(), Some(title), "{title}");
+            assert_eq!(
+                crate::search::Index::new(&result.references).search(query, 10).len(),
+                1,
+                "{title}"
+            );
+        }
+    }
+
+    #[test]
+    fn rich_text_tags_ignore_case_and_inner_whitespace() {
+        assert_eq!(rich_text("<I>Memory</I>"), "<i>Memory</i>");
+        assert_eq!(rich_text("<i >x</i >"), "<i>x</i>");
+        assert_eq!(rich_text("</ i>"), "</i>");
+        assert_eq!(rich_text("H<SUB>2</SUB>O"), "H<sub>2</sub>O");
+        assert_eq!(rich_text("E = mc<Sup >2</sup>"), "E = mc<sup>2</sup>");
+        assert_eq!(
+            rich_text("<Span Class=\"nocase\">iPhone</span>"),
+            "<span class=\"nocase\">iPhone</span>"
+        );
+        assert_eq!(
+            rich_text("<span  class=\"nocase\" >iPhone</SPAN >"),
+            "<span class=\"nocase\">iPhone</span>"
+        );
+        assert_eq!(
+            rich_text("<SPAN STYLE=\"font-variant:small-caps;\">dna</span>"),
+            "<span style=\"font-variant:small-caps;\">dna</span>"
+        );
+        // Other scripts around and inside tags.
+        assert_eq!(rich_text("Été <B>🌙 日本</B> ß"), "Été <b>🌙 日本</b> ß");
+    }
+
+    #[test]
+    fn rich_text_escapes_everything_outside_the_allowlist() {
+        assert_eq!(rich_text("<i x>a</i>"), "&lt;i x&gt;a</i>");
+        assert_eq!(rich_text("<img>"), "&lt;img&gt;");
+        assert_eq!(rich_text("<SCRIPT>"), "&lt;SCRIPT&gt;");
+        assert_eq!(rich_text("<span class=\"other\">"), "&lt;span class=\"other\"&gt;");
+        assert_eq!(rich_text("<span class='nocase'>"), "&lt;span class='nocase'&gt;");
+        assert_eq!(rich_text("<i"), "&lt;i");
+        assert_eq!(rich_text("<"), "&lt;");
+        assert_eq!(rich_text(""), "");
+        assert_eq!(rich_text("<ı>"), "&lt;ı&gt;"); // dotless i is not ASCII `i`
+        assert_eq!(rich_text("<I>a<i x>b</I>"), "<i>a&lt;i x&gt;b</i>");
+        assert_eq!(rich_text("<i><i></i>"), "<i><i></i>");
+        assert_eq!(rich_text("<<i>>"), "&lt;<i>&gt;");
+    }
+
+    #[test]
+    fn rich_text_is_linear_on_hostile_input() {
+        let start = std::time::Instant::now();
+        let lts = "<".repeat(100_000);
+        assert_eq!(rich_text(&lts), "&lt;".repeat(100_000));
+        let spaces = "<i".to_owned() + &" ".repeat(100_000);
+        assert_eq!(rich_text(&spaces), "&lt;i".to_owned() + &" ".repeat(100_000));
+        let tags = "<I>".repeat(350_000); // about 1 MB
+        assert_eq!(rich_text(&tags), "<i>".repeat(350_000));
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(1),
+            "{:?}",
+            start.elapsed()
+        );
     }
 
     #[test]
