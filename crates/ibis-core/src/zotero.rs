@@ -8,7 +8,9 @@
 //!
 //! Notes, attachments, annotations and items in the trash are not citable
 //! references and are left out without a warning, as Zotero's own citation
-//! dialog does. Anything else that cannot be read becomes a [`LoadWarning`].
+//! dialog does. Each item does say what kind of file its best attachment is
+//! (`links.attachment`), and only that kind is kept (#573). Anything else
+//! that cannot be read becomes a [`LoadWarning`].
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,7 +22,7 @@ pub mod api;
 pub mod libraries;
 
 use crate::model::{
-    Issued, LoadResult, LoadWarning, Name, PartialDate, RecordId, Reference, WarningKind, days_in_month,
+    AttachmentKind, Issued, LoadResult, LoadWarning, Name, PartialDate, RecordId, Reference, WarningKind, days_in_month,
 };
 
 /// Which Zotero library items belong to. Identity is the library plus the
@@ -53,6 +55,9 @@ const TEXT_FIELDS: [&str; 6] = ["title", "container-title", "DOI", "URL", "abstr
 
 /// Variables that describe the export, not the work.
 const IGNORED: [&str; 4] = ["id", "type", "citation-key", "keyword"];
+
+/// Longest `attachmentType` value that is read; a longer one is ignored.
+const MAX_ATTACHMENT_TYPE_LEN: usize = 256;
 
 /// Turn Zotero items (each an object with `key`, `data` and `csljson`, as
 /// the API returns them with `include=data,csljson`) into references.
@@ -165,6 +170,7 @@ fn load_item(library: Library, item: &Value) -> Result<Loaded, (Option<String>, 
         language: text(csl, "language"),
         eprints: Vec::new(),
         variables: BTreeMap::new(),
+        attachment: attachment_kind(item),
         raw: serde_json::to_string(item).ok(),
     };
     for (name, value) in csl {
@@ -214,6 +220,32 @@ fn is_trashed(data: &Map<String, Value>) -> bool {
         Some(Value::Number(n)) => n.as_u64().is_some_and(|n| n != 0),
         _ => false,
     }
+}
+
+/// The kind of the item's best attachment, from the MIME type Zotero puts in
+/// `links.attachment.attachmentType` of every item it serializes (the web
+/// API and the local API alike). A linked URL is not a best attachment, so
+/// it gives none. Only the kind is read: the link's href, size and anything
+/// else stay in `raw`. Anything missing or malformed gives no kind without a
+/// warning, since the reference itself is fine.
+fn attachment_kind(item: &Value) -> Option<AttachmentKind> {
+    let mime = item.get("links")?.get("attachment")?.get("attachmentType")?.as_str()?;
+    if mime.len() > MAX_ATTACHMENT_TYPE_LEN {
+        return None;
+    }
+    // Drop parameters such as `; charset=binary`, then compare as MIME
+    // types are compared: ASCII case-insensitively.
+    let essence = mime.split(';').next().unwrap_or_default().trim();
+    if essence.is_empty() {
+        return None;
+    }
+    Some(if essence.eq_ignore_ascii_case("application/pdf") {
+        AttachmentKind::Pdf
+    } else if essence.eq_ignore_ascii_case("text/html") || essence.eq_ignore_ascii_case("application/xhtml+xml") {
+        AttachmentKind::WebPage
+    } else {
+        AttachmentKind::Other
+    })
 }
 
 /// The item's CSL-JSON. The web API sends it as an object; Zotero's local API

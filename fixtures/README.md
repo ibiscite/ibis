@@ -12,7 +12,7 @@ Rules:
 | --- | --- |
 | `bibtex/` | `.bib` files: real-world quirks, damaged files, empty file |
 | `updates/` | A synthetic update package signed with a throwaway test key, and a second unrelated public key (neither private half was kept), for the offline update check test |
-| `zotero/` | (planned) synthetic Zotero local-API pages and database snapshots for Zotero 7–10, including trashed parents and children |
+| `zotero/` | Synthetic Zotero local-API item envelopes (`key`, `links`, `data`, `csljson`); database snapshots for Zotero 7–10, including trashed parents and children, are still planned |
 
 `bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input
 from #111. The robustness tests also exercise invalid zero months in uncertain
@@ -36,3 +36,13 @@ literal escaped braces, and CSL export without invented author/date metadata.
 `bibtex/fuzz-signed-year.bib` is the exact 25-byte synthetic reproducer from
 #155. Date-guard tests require its reference to survive with field warnings
 instead of a caught parser panic, in both debug and release builds.
+
+`zotero/attachments.json` (#573) holds one parent item per attachment case:
+a stored PDF, a saved web page (`text/html`), an XHTML page, a linked URL
+only (Zotero reports no best attachment), an EPUB, a parent without children,
+a PDF with MIME parameters and odd case, and a child attachment item. Each
+`_fixture` field says what the item exercises. `zotero/attachments-hostile.json`
+has malformed `links` values (numbers, arrays, oversized or empty MIME types,
+links as text) and sentinel private values (href, key, title, path, URL,
+size) that must never appear outside `raw`. `crates/ibis-core/tests/zotero_attachments.rs`
+loads both in the object and the local-API text CSL form.

@@ -1,0 +1,104 @@
+[
+  {
+    "_fixture": "PDF parent: the best attachment is a stored PDF file",
+    "key": "SYN00001",
+    "version": 7,
+    "links": {
+      "self": { "href": "http://localhost:23119/api/users/0/items/SYN00001", "type": "application/json" },
+      "attachment": {
+        "href": "http://localhost:23119/api/users/0/items/SYN00011",
+        "type": "application/json",
+        "attachmentType": "application/pdf",
+        "attachmentSize": 123
+      }
+    },
+    "data": { "key": "SYN00001", "itemType": "journalArticle", "citationKey": "synthetic-pdf" },
+    "csljson": { "id": "0/SYN00001", "type": "article-journal", "title": "Synthetic article with a PDF" }
+  },
+  {
+    "_fixture": "snapshot parent: the best attachment is a saved web page (text/html)",
+    "key": "SYN00002",
+    "version": 7,
+    "links": {
+      "attachment": {
+        "href": "http://localhost:23119/api/users/0/items/SYN00012",
+        "type": "application/json",
+        "attachmentType": "text/html",
+        "attachmentSize": 4567
+      }
+    },
+    "data": { "key": "SYN00002", "itemType": "webpage", "citationKey": "synthetic-snapshot" },
+    "csljson": { "id": "0/SYN00002", "type": "webpage", "title": "Synthetic page with a snapshot", "URL": "https://example.org/snapshot" }
+  },
+  {
+    "_fixture": "XHTML parent: a saved page served as application/xhtml+xml, with no size",
+    "key": "SYN00003",
+    "version": 7,
+    "links": {
+      "attachment": {
+        "href": "http://localhost:23119/api/users/0/items/SYN00013",
+        "type": "application/json",
+        "attachmentType": "application/xhtml+xml"
+      }
+    },
+    "data": { "key": "SYN00003", "itemType": "webpage", "citationKey": "synthetic-xhtml" },
+    "csljson": { "id": "0/SYN00003", "type": "webpage", "title": "Synthetic page saved as XHTML" }
+  },
+  {
+    "_fixture": "linked URL only: Zotero reports no best attachment for a linked URL, so there is no links.attachment",
+    "key": "SYN00004",
+    "version": 7,
+    "links": {
+      "self": { "href": "http://localhost:23119/api/users/0/items/SYN00004", "type": "application/json" }
+    },
+    "data": { "key": "SYN00004", "itemType": "webpage", "citationKey": "synthetic-linked-url" },
+    "csljson": { "id": "0/SYN00004", "type": "webpage", "title": "Synthetic page with only a linked URL", "URL": "https://example.org/linked" }
+  },
+  {
+    "_fixture": "EPUB parent: a stored file of a kind Ibis does not preview",
+    "key": "SYN00005",
+    "version": 7,
+    "links": {
+      "attachment": {
+        "href": "http://localhost:23119/api/users/0/items/SYN00015",
+        "type": "application/json",
+        "attachmentType": "application/epub+zip",
+        "attachmentSize": 89012
+      }
+    },
+    "data": { "key": "SYN00005", "itemType": "book", "citationKey": "synthetic-epub" },
+    "csljson": { "id": "0/SYN00005", "type": "book", "title": "Synthetic book as an EPUB" }
+  },
+  {
+    "_fixture": "parent without children: no links.attachment at all",
+    "key": "SYN00006",
+    "version": 7,
+    "links": {},
+    "data": { "key": "SYN00006", "itemType": "book", "citationKey": "synthetic-bare" },
+    "csljson": { "id": "0/SYN00006", "type": "book", "title": "Synthetic book without attachments" }
+  },
+  {
+    "_fixture": "MIME parameters and case: 'Application/PDF; charset=binary' still counts as a PDF",
+    "key": "SYN00007",
+    "version": 7,
+    "links": {
+      "attachment": {
+        "href": "http://localhost:23119/api/users/0/items/SYN00017",
+        "type": "application/json",
+        "attachmentType": " Application/PDF; charset=binary "
+      }
+    },
+    "data": { "key": "SYN00007", "itemType": "report", "citationKey": "synthetic-pdf-parameters" },
+    "csljson": { "id": "0/SYN00007", "type": "report", "title": "Synthetic report with a PDF and MIME parameters" }
+  },
+  {
+    "_fixture": "a child attachment item itself is still not a reference (#301)",
+    "key": "SYN00011",
+    "version": 7,
+    "links": {
+      "up": { "href": "http://localhost:23119/api/users/0/items/SYN00001", "type": "application/json" }
+    },
+    "data": { "key": "SYN00011", "itemType": "attachment", "parentItem": "SYN00001", "contentType": "application/pdf", "filename": "synthetic.pdf" },
+    "csljson": { "id": "0/SYN00011", "type": "document", "title": "synthetic.pdf" }
+  }
+]

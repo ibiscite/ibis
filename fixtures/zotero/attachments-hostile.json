@@ -1,0 +1,61 @@
+[
+  {
+    "_fixture": "links.attachment is a number, not an object",
+    "key": "SYN00101",
+    "version": 7,
+    "links": { "attachment": 42 },
+    "data": { "key": "SYN00101", "itemType": "book" },
+    "csljson": { "id": "0/SYN00101", "type": "book", "title": "Synthetic book with a numeric attachment link" }
+  },
+  {
+    "_fixture": "attachmentType is an array, not a string",
+    "key": "SYN00102",
+    "version": 7,
+    "links": { "attachment": { "href": "http://localhost:23119/api/users/0/items/SYN00112", "attachmentType": ["application/pdf"] } },
+    "data": { "key": "SYN00102", "itemType": "book" },
+    "csljson": { "id": "0/SYN00102", "type": "book", "title": "Synthetic book with an array attachment type" }
+  },
+  {
+    "_fixture": "attachmentType is a huge string (longer than the 256-byte bound); the test also builds longer ones",
+    "key": "SYN00103",
+    "version": 7,
+    "links": { "attachment": { "attachmentType": "application/pdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdfpdf" } },
+    "data": { "key": "SYN00103", "itemType": "book" },
+    "csljson": { "id": "0/SYN00103", "type": "book", "title": "Synthetic book with an oversized attachment type" }
+  },
+  {
+    "_fixture": "attachmentType is empty or only parameters",
+    "key": "SYN00104",
+    "version": 7,
+    "links": { "attachment": { "attachmentType": " ; charset=utf-8" } },
+    "data": { "key": "SYN00104", "itemType": "book" },
+    "csljson": { "id": "0/SYN00104", "type": "book", "title": "Synthetic book with an empty attachment type" }
+  },
+  {
+    "_fixture": "links itself is a string, not an object",
+    "key": "SYN00105",
+    "version": 7,
+    "links": "application/pdf",
+    "data": { "key": "SYN00105", "itemType": "book" },
+    "csljson": { "id": "0/SYN00105", "type": "book", "title": "Synthetic book whose links are text" }
+  },
+  {
+    "_fixture": "attachment object full of sentinel private values that must never leave core outside raw",
+    "key": "SYN00106",
+    "version": 7,
+    "links": {
+      "attachment": {
+        "href": "http://localhost:23119/api/users/0/items/SENTINEL-HREF-KEY",
+        "key": "SENTINEL-ATTACHMENT-KEY",
+        "title": "SENTINEL-ATTACHMENT-TITLE",
+        "path": "/home/sentinel-user/Zotero/storage/SENTINEL-PATH/sentinel.pdf",
+        "url": "https://example.org/SENTINEL-URL",
+        "type": "application/json",
+        "attachmentType": "application/pdf",
+        "attachmentSize": 999999999999
+      }
+    },
+    "data": { "key": "SYN00106", "itemType": "book", "citationKey": "synthetic-sentinels" },
+    "csljson": { "id": "0/SYN00106", "type": "book", "title": "Synthetic book with a PDF and private attachment details" }
+  }
+]

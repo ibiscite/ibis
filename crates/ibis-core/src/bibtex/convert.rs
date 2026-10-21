@@ -307,6 +307,8 @@ pub(crate) fn convert(
         language,
         eprints,
         variables,
+        // BibTeX `file` fields are not read (#573): paths are personal data.
+        attachment: None,
         raw: Some(raw.to_string()),
     }
 }

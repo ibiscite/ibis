@@ -183,6 +183,18 @@ impl Issued {
     }
 }
 
+/// What kind of file a reference's best attachment is.
+///
+/// Only the kind is known: a PDF, a saved web page (a snapshot) or some other
+/// stored file such as an EPUB. A linked URL without a file is no attachment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttachmentKind {
+    Pdf,
+    WebPage,
+    Other,
+}
+
 /// One bibliographic record from any source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reference {
@@ -231,6 +243,11 @@ pub struct Reference {
     /// `edition`, `ISBN`, ...), keyed by their CSL variable name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub variables: BTreeMap<String, String>,
+    /// The kind of the record's best attachment, when the source knows one.
+    /// Only the kind is kept: no file path, item key, title, URL or size, so
+    /// nothing personal about the file leaves the source record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<AttachmentKind>,
     /// Original source text of the record, kept verbatim so nothing is lost.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw: Option<String>,

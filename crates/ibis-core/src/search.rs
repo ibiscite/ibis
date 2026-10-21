@@ -473,6 +473,7 @@ mod tests {
             language: None,
             eprints: vec![],
             variables: Default::default(),
+            attachment: None,
             raw: None,
         }
     }
