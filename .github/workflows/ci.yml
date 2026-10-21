@@ -3,10 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
-    # A merge that changes only documentation was already checked on its pull
-    # request and cannot change what the build or tests produce.
-    paths-ignore: ["**.md", "docs/**"]
+    # A merge that changes only Markdown was already checked on its pull
+    # request and in the merge queue. Other files under docs/ (for example
+    # docs/design-geometry.json) feed tests, so they run CI.
+    paths-ignore: ["**.md"]
   pull_request:
+  # The merge queue tests each pull request on top of current main. Every job
+  # that "CI result" needs runs in full here; nothing is filtered by path.
+  merge_group:
   workflow_dispatch:
   # Weekly drift check of the pinned Nix inputs. That run also does the Linux
   # checks but skips the native app build (see the changes job).
@@ -98,9 +102,10 @@ jobs:
       native: ${{ steps.classify.outputs.native }}
       nix: ${{ steps.classify.outputs.nix }}
     steps:
-      # A pull request that changes only documentation skips the native app
-      # build. The Desktop jobs still run and pass in seconds, so the required
-      # checks report. Pushes to main, and anything unclear, build in full.
+      # A pull request that changes only documentation (Markdown, licence
+      # files, issue templates) skips the native app build. The Desktop jobs still run and pass in seconds, so the required
+      # checks report. Pushes to main, merge queue runs and anything unclear
+      # build in full.
       # The Nix package is rebuilt only when its inputs change (a stale
       # nix/pnpm-deps-hash fails on the pull request that causes it), weekly
       # and on manual runs. The weekly run skips the native app build.
@@ -129,7 +134,7 @@ jobs:
             while IFS= read -r file; do
               case "$file" in
                 fixtures/*) native=true ;;
-                *.md | docs/* | LICENSE* | .github/ISSUE_TEMPLATE/*) ;;
+                *.md | LICENSE* | .github/ISSUE_TEMPLATE/*) ;;
                 *) native=true ;;
               esac
               case "$file" in
@@ -183,8 +188,6 @@ jobs:
           rustup toolchain install 1.90.0 --profile minimal
           cargo +1.90.0 test --locked
 
-      - name: Script tests
-        run: node --test scripts/check.test.mjs scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs scripts/update-feed.test.mjs scripts/release-notes.test.mjs
 
   web:
     name: Web interface
@@ -197,20 +200,21 @@ jobs:
       run:
         working-directory: apps/desktop
     steps:
+      # Checkout and install always run: the script tests below need the
+      # interface's dependencies (the UI import check parses with Vite's
+      # parser), and some read Markdown (docs/design.md), so they run even on
+      # a documentation-only change.
       - name: Checkout
-        if: env.NATIVE == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up pnpm
-        if: env.NATIVE == 'true'
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: apps/desktop/package.json
 
       - name: Set up Node.js
-        if: env.NATIVE == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -218,8 +222,14 @@ jobs:
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
 
       - name: Install web dependencies
-        if: env.NATIVE == 'true'
         run: pnpm install --frozen-lockfile
+
+      # Every script test, as scripts/check.mjs runs them locally.
+      - name: Script tests and UI import boundary
+        working-directory: .
+        run: |
+          node --test scripts/*.test.mjs
+          node scripts/ui-imports.mjs
 
       - name: Type check and test the interface
         if: env.NATIVE == 'true'
@@ -428,8 +438,9 @@ jobs:
       issues: write
     env:
       # The slow macOS and Windows evidence (all gallery states, appearance
-      # changes) runs on main and on manual runs, where it covers each merge.
-      EVIDENCE: ${{ github.event_name != 'pull_request' }}
+      # changes) runs on main and on manual runs, where it covers each merge,
+      # but not in the merge queue, which waits only for required checks.
+      EVIDENCE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
     strategy:
       fail-fast: false
       matrix:
@@ -542,7 +553,7 @@ jobs:
           python3 scripts/check-native-appearance-macos.py --app target/debug/ibis-desktop --output screenshots/appearance-macOS
 
       - name: Report native UI failures on main
-        if: ${{ !cancelled() && github.event_name != 'pull_request' && (steps.missing.outcome == 'failure' || steps.native_macos.outcome == 'failure' || steps.native_panel.outcome == 'failure' || steps.native_windows.outcome == 'failure') }}
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && (steps.missing.outcome == 'failure' || steps.native_macos.outcome == 'failure' || steps.native_panel.outcome == 'failure' || steps.native_windows.outcome == 'failure') }}
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -694,9 +705,10 @@ jobs:
 
   # One check that stands for every required job, for the ruleset to require
   # instead of six names. A matrix job skipped because a job it needs failed
-  # never reports its per-system checks; this job always reports. Skipped
-  # counts as passing only for the documentation-only path, where the
-  # changes job decided not to build the native app.
+  # never reports its per-system checks; this job always reports. Every
+  # needed job must succeed: none of them has a condition of its own, so
+  # skipped only happens when something upstream failed or was cancelled.
+  # It also refuses stacked pull requests: every pull request targets main.
   result:
     name: CI result
     if: always()
@@ -704,21 +716,25 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Require every needed job to pass
+      - name: Require every needed job to pass and main as the base
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
-          NATIVE: ${{ needs.changes.outputs.native }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
         run: |
-          echo "Results: $RESULTS (native build: $NATIVE)"
-          for result in $RESULTS; do
-            case "$result" in
-              success) ;;
-              skipped)
-                if [ "$NATIVE" != false ]; then
-                  echo "::error::A required job was skipped although the native app had to be built."
-                  exit 1
-                fi
-                ;;
-              *) echo "::error::A required job ended '$result'."; exit 1 ;;
-            esac
+          echo "Results: $RESULTS"
+          if [ "$EVENT" = pull_request ] && [ "$BASE" != main ]; then
+            echo "::error::This pull request targets '$BASE'. Stacked pull requests are not allowed: retarget it to main."
+            exit 1
+          fi
+          set -- $RESULTS
+          if [ "$#" -ne 6 ]; then
+            echo "::error::Expected 6 job results, got $#."
+            exit 1
+          fi
+          for result in "$@"; do
+            if [ "$result" != success ]; then
+              echo "::error::A required job ended '$result'."
+              exit 1
+            fi
           done
