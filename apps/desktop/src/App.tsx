@@ -759,10 +759,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} searchFocused={searchFocused}
-        moreButtonRef={moreButton} menuOpen={menuOpen}
-        onMoreClick={() => (menuOpen ? closeMenu(true) : setMenuOpen(true))}
-        menu={menuOpen && (
-          <PickerMenu onClose={closeMenu} library={library} libraryDetail={libraryDetail}
+        more={
+          <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? setMenuOpen(true) : closeMenu(false))}
+            buttonRef={moreButton} searchRef={input} library={library} libraryDetail={libraryDetail}
             zotero={library?.zotero && useZoteroLibraries ? {
               offered: ["user" as const, ...offeredGroups.map((id) => ({ group: id }))],
               isChosen, chosenCount: chosenLibraries.length,
@@ -780,7 +779,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               keys: openKeys,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />
-        )} />
+        } />
       {keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={closeKeys} />}
     </main>
   );

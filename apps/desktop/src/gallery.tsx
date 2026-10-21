@@ -61,7 +61,7 @@ function seedSteps(root: HTMLElement, state: GalleryState): (() => void)[] {
   }
   if (state.pinned) steps.push(() => pinButton(root)?.click());
   if (state.keys) steps.push(() => press(root.querySelector("main"), "?"));
-  if (state.menuOpen) steps.push(() => root.querySelector<HTMLButtonElement>('footer button[aria-haspopup="menu"]')?.click());
+  if (state.menuOpen) steps.push(() => root.querySelector<HTMLButtonElement>('footer button[aria-haspopup]')?.click());
   return steps;
 }
 
@@ -90,7 +90,7 @@ function selectionContained(root: HTMLElement, state: GalleryState): boolean {
       const box = root.querySelector(selector)?.getBoundingClientRect();
       return box && box.top >= 0 && box.bottom <= innerHeight + 1;
     })
-    && [root.querySelector("#search"), root.querySelector('footer button[aria-haspopup="menu"]')].every((node) => {
+    && [root.querySelector("#search"), root.querySelector('footer button[aria-haspopup]')].every((node) => {
       const box = node?.getBoundingClientRect();
       return node && box && box.top >= 0 && box.bottom <= innerHeight + 1 && hit(node, (box.left + box.right) / 2, (box.top + box.bottom) / 2);
     });
@@ -99,14 +99,16 @@ function selectionContained(root: HTMLElement, state: GalleryState): boolean {
 /** The seeded settings and interactions are on screen, and nothing else is. */
 function seeded(root: HTMLElement, state: GalleryState): boolean {
   const html = document.documentElement;
-  const menu = root.querySelector<HTMLElement>('[role="menu"]');
+  // Menus open in a popover outside the picker's root.
+  const menu = document.querySelector<HTMLElement>('[role="menu"]');
   const box = menu?.getBoundingClientRect();
   // Real browser captures require a safe viewport inset; zero-size jsdom is no proof.
   const menuFits = !box || box.width === 0 || (box.top >= 8 && box.left >= 8 && box.bottom <= innerHeight - 8 && box.right <= innerWidth - 8);
-  return menuFits && html.dataset.density === (state.density ?? "comfortable")
+  // A menu still fading in is not its final look.
+  return menuFits && !document.querySelector("[data-entering]") && html.dataset.density === (state.density ?? "comfortable")
     && html.dataset.textSize === (state.largerTextSetting ? "larger" : "normal")
     && (pinButton(root)?.getAttribute("aria-pressed") === "true") === Boolean(state.pinned)
-    && (root.querySelector('[role="menu"]') !== null) === Boolean(state.menuOpen)
+    && (menu !== null) === Boolean(state.menuOpen)
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
     && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li`).length === (state.tray ?? 0)
     && (!state.formatted || root.querySelector(".format-preview .preview-text") !== null)

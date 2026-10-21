@@ -1,6 +1,6 @@
 import type React from "react";
 import type { LibraryStatus } from "../../api";
-import { ariaKeys, keyLabel, keysFor } from "../../keys";
+import { keyLabel, keysFor } from "../../keys";
 import { LibraryStatusLine } from "../../LibraryStatusLine";
 import { keyText, pickerText } from "../../messages";
 import { isMac } from "../../platform";
@@ -12,7 +12,7 @@ export type KeyHints = { enter: string | null; shiftEnter: string | null; escape
 
 /** The footer: library status, what Enter (or, with Alt held, the other keys)
  * does now, and the More button with its menu. */
-export function PickerFooter({ library, groupName, hints, altHeld, searchFocused, moreButtonRef, menuOpen, onMoreClick, menu }: {
+export function PickerFooter({ library, groupName, hints, altHeld, searchFocused, more }: {
   library: LibraryStatus | null | undefined;
   groupName: (id: number) => string;
   hints: KeyHints;
@@ -20,11 +20,8 @@ export function PickerFooter({ library, groupName, hints, altHeld, searchFocused
   altHeld: boolean;
   /** Search-box keys are hidden from screen readers while focus is elsewhere. */
   searchFocused: boolean;
-  moreButtonRef: React.Ref<HTMLButtonElement>;
-  menuOpen: boolean;
-  onMoreClick: () => void;
-  /** The More menu, while it is open. */
-  menu: React.ReactNode;
+  /** The More button and its menu. */
+  more: React.ReactNode;
 }) {
   return (
     <footer>
@@ -40,20 +37,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, searchFocused
           </>}
         </small>
         <span className="more">
-          <button
-            type="button"
-            ref={moreButtonRef}
-            className="quiet-button"
-            aria-haspopup="menu"
-            aria-keyshortcuts={ariaKeys(keysFor("more"), isMac)}
-            aria-expanded={menuOpen}
-            aria-controls={menuOpen ? "more-menu" : undefined}
-            title={pickerText.moreTitle(label(keysFor("more")))}
-            onClick={onMoreClick}
-          >
-            {pickerText.more} <kbd aria-hidden="true">{label(keysFor("more"))}</kbd>
-          </button>
-          {menu}
+          {more}
         </span>
         {library?.note && <p role="status">{library.note}</p>}
       </section>

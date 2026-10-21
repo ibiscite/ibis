@@ -66,7 +66,7 @@ test("only native success shows the material, under a veil; reduced transparency
   expect(native.slice(fallback)).toMatch(/:root\[data-native-appearance\] \{ background: var\(--surface\); \}/);
   // The panel edge and glass menus exist only while the material is applied.
   expect(native).toMatch(/\[data-native-appearance="vibrancy"\][^{]*body::after/);
-  expect(native).toMatch(/\[data-native-appearance="vibrancy"\][^{]*\[role="menu"\][^{]*\{[^}]*backdrop-filter/);
+  expect(native).toMatch(/\[data-native-appearance="vibrancy"\][^{]*\.menu-popover[^{]*\{[^}]*backdrop-filter/);
 });
 
 test("secondary text keeps 4.5:1 over the veiled material, on the brightest and darkest backdrops", () => {
@@ -163,5 +163,5 @@ test("the frameless macOS buttons keep the pressed frame of the writing choice",
 
 test("menus stay opaque where the webview cannot blur behind them", () => {
   const fallback = native.slice(native.indexOf("@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))"));
-  expect(fallback).toMatch(/\[role="menu"\], \.keys-dialog\)\s*\{\s*background:\s*var\(--surface\);/);
+  expect(fallback).toMatch(/\.menu-popover, \.keys-dialog\)\s*\{\s*background:\s*var\(--surface\);/);
 });

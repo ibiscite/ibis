@@ -1,0 +1,78 @@
+/* In-window menus (More, format, library scope): one frame and one row, with
+   each platform's native menu metrics; radius and padding come from the
+   geometry chain in tokens.css (docs/design.md, Corners and Menus;
+   ADR 0021 §5). These are the look-layer tokens for menus. */
+.menu-popover {
+  --menu-radius: var(--r-menu); --menu-padding: var(--menu-pad); --menu-item-radius: var(--r-mi); --menu-item-height: 28px;
+  --menu-background: Canvas; --menu-highlight: var(--selected-background); --menu-highlight-text: var(--selected-text);
+  --menu-shadow: 0 12px 32px rgb(0 0 0 / 16%); --menu-enter-transform: none;
+  --menu-open-duration: 90ms; --menu-open-ease: linear;
+}
+@supports (color: light-dark(white, black)) {
+  :root[data-platform="macos"] .menu-popover { --menu-background: light-dark(rgb(246 246 248 / 94%), rgb(40 40 44 / 94%)); }
+  :root[data-platform="windows"] .menu-popover {
+    --menu-background: light-dark(#f9f9f9, #2c2c2c); --menu-highlight: light-dark(rgb(0 0 0 / 5.6%), rgb(255 255 255 / 8%));
+  }
+  :root[data-platform="linux"] .menu-popover {
+    --menu-background: light-dark(#fff, #38383c); --menu-highlight: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 10%));
+  }
+}
+/* macOS menus are translucent and blur what is beneath; without a blur, stay opaque. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-platform="macos"] .menu-popover { -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-platform="macos"] .menu-popover { --menu-background: Canvas; }
+}
+/* Fluent MenuFlyout: 8 px flyout and 4 px rows from the geometry chain, 32 px high, sliding in from its button. */
+:root[data-platform="windows"] .menu-popover {
+  --menu-item-height: 32px;
+  --menu-highlight-text: var(--text); --menu-shadow: 0 8px 16px rgb(0 0 0 / 14%);
+  --menu-enter-transform: translateY(-8px); --menu-open-duration: 200ms; --menu-open-ease: cubic-bezier(.2, .8, .2, 1);
+}
+:root[data-platform="windows"] .menu-popover[data-placement="top"] { --menu-enter-transform: translateY(8px); }
+/* libadwaita popover menu: 12 px, 6 px rows, 32 px high. */
+:root[data-platform="linux"] .menu-popover {
+  --menu-item-height: 32px; --menu-highlight-text: var(--text); --menu-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+  --menu-enter-transform: scale(.96); --menu-open-duration: 150ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .menu-popover, :root[data-platform] .menu-popover { --menu-enter-transform: none; --menu-open-duration: 100ms; }
+  .menu-popover[data-exiting] { animation-duration: 100ms; }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root .menu-popover, :root[data-platform] .menu-popover { --menu-background: Canvas; --menu-highlight: Highlight; --menu-highlight-text: HighlightText; }
+}
+
+.menu-popover {
+  box-sizing: border-box; min-width: min(var(--menu-min-width), calc(100vw - 16px)); max-width: calc(100vw - 16px);
+  display: flex; flex-direction: column; padding: var(--menu-padding); overflow: hidden; overflow-wrap: anywhere;
+  border: 1px solid var(--field-edge); border-radius: var(--menu-radius); box-shadow: var(--menu-shadow);
+  background: var(--menu-background); color: var(--text); font: var(--metadata-size) var(--font-family);
+}
+.menu-popover[data-entering] { animation: menu-enter var(--menu-open-duration) var(--menu-open-ease); }
+.menu-popover[data-exiting] { animation: menu-exit 80ms cubic-bezier(.4, 0, 1, 1); }
+@keyframes menu-enter { from { opacity: 0; transform: var(--menu-enter-transform); } to { opacity: 1; transform: none; } }
+@keyframes menu-exit { to { opacity: 0; } }
+.menu-frame { display: contents; }
+/* The menu and its rows never show a focus ring: the highlight is a fill. */
+.menu-popover [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; outline: none; overflow: auto; }
+.menu-section { display: flex; flex-direction: column; }
+.menu-separator { height: 1px; margin: 4px 8px; border: 0; background: var(--separator); }
+/* A line above a section, aligned with the labels after the check column. */
+.menu-header { padding-inline-start: 22px; }
+.menu-item {
+  display: flex; align-items: center; min-height: var(--menu-item-height); padding: 0 10px 0 6px; gap: 6px;
+  border-radius: var(--menu-item-radius); outline: none; cursor: default; text-align: start;
+}
+.menu-check { flex: 0 0 18px; display: inline-flex; justify-content: center; }
+.menu-label { flex: 1 1 auto; min-width: 0; }
+.menu-keys { margin-inline-start: 16px; color: var(--muted); font: inherit; }
+.menu-item[data-focused] { background: var(--menu-highlight); color: var(--menu-highlight-text); }
+.menu-item[data-focused] .menu-keys { color: inherit; }
+.menu-item[aria-disabled="true"] { color: var(--muted); }
+@media (prefers-contrast: more) { .menu-item[data-focused] { outline: 1px solid currentColor; outline-offset: -1px; } }
+@media (forced-colors: active) {
+  .menu-item[data-focused] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .menu-item[aria-disabled="true"] { color: GrayText; }
+}

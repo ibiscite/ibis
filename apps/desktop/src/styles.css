@@ -183,13 +183,6 @@ main:hover .pin-button, .pin-button:focus-visible { opacity: 1; }
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
 .more > button { min-height: var(--control-min-size); }
-/* The menu keeps 8 px from the window edge even where the inset is 4 px (Windows). */
-.more > [role="menu"] { inset-inline-end: calc(var(--space-2) - var(--inset)); }
-[role="menu"] { position: absolute; bottom: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: 1; min-width: min(var(--menu-min-width), calc(100vw - 2 * var(--space-4))); max-width: calc(100vw - 2 * var(--space-4)); overflow-wrap: anywhere; display: flex; flex-direction: column; padding: var(--space-1); background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); box-shadow: var(--menu-shadow); }
-.more [role="menu"] { transform: translateY(calc(-1 * var(--more-menu-offset, 0px))); overflow-y: auto; }
-[role="menuitem"] { display: flex; justify-content: space-between; gap: var(--space-4); min-height: var(--control-min-size); align-items: center; text-align: start; border: 0; background: var(--clear); }
-[role="menuitem"]:hover, [role="menuitem"]:focus-visible { background: var(--hover-background); }
-[role="menuitem"] kbd { color: var(--muted); }
 .quiet-button, .icon-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
 .icon-button { font-size: var(--icon-size); padding: var(--icon-padding); }
 /* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
@@ -264,15 +257,8 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 :root[data-density="compact"] .result-meta { display: none; }
 :root[data-density="spacious"] { --row-height: var(--row-spacious); }
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
-[role="menuitemcheckbox"] { display: flex; justify-content: space-between; gap: var(--space-4); min-height: var(--control-min-size); align-items: center; text-align: start; border: 0; background: var(--clear); }
-[role="menuitemcheckbox"]:hover, [role="menuitemcheckbox"]:focus-visible { background: var(--hover-background); }
-[role="menuitemcheckbox"][aria-checked="true"]::after { content: "✓"; }
-[role="menu"] [role="group"] { border-block: var(--border-width) solid var(--line); }
-/* The library line opens More: it never widens the menu and is read as the group's name. */
-[role="menu"] > .menu-library { border-block-start: 0; }
 .menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) var(--space-2) var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--hint-size); overflow-wrap: break-word; }
 .menu-detail-title { color: var(--text); font-weight: var(--type-strong-weight); }
-[role="menuitemcheckbox"][aria-disabled="true"] { color: var(--muted); }
 
 /* Rows that tell similar references apart (#492). Comfortable and Spacious
    rows show shortened authors and the container on one line; Spacious adds

@@ -136,7 +136,7 @@ test.each(["overflow", "document-overflow", "clipped", "covered"])("selected-ref
   document.body.append(container);
   let stop: () => void = () => undefined;
   const originalHit = document.elementFromPoint;
-  document.elementFromPoint = (_x, y) => container.querySelector(y < 80 ? "#search" : y >= 280 ? 'footer button[aria-haspopup="menu"]'
+  document.elementFromPoint = (_x, y) => container.querySelector(y < 80 ? "#search" : y >= 280 ? 'footer button[aria-haspopup]'
     : overflow && fault === "covered" ? "footer" : "[data-active]");
   try {
     await act(async () => { stop = renderGalleryState(container, state, acknowledge); });
@@ -356,7 +356,7 @@ async function renderUntilAcknowledged(id: string, provider = galleryProvider(ga
 
 test.each([
   ["pinned", (root: HTMLElement) => root.querySelector('button[aria-label="Pin Ibis"]')?.getAttribute("aria-pressed") === "true"],
-  ["menu-open", (root: HTMLElement) => root.querySelector('[role="menu"]') !== null],
+  ["menu-open", () => document.querySelector('[role="menu"]') !== null],
   ["keys", (root: HTMLElement) => root.querySelector('[role="dialog"]') !== null],
   ["tray", (root: HTMLElement) => [...root.querySelectorAll('ul[aria-label="Selected references"] code')].map((key) => key.textContent).join() === "example2026,研究2026"],
   ["compact", () => document.documentElement.dataset.density === "compact"],

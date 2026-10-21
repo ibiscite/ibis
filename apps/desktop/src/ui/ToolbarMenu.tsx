@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject, type ComponentPropsWithRef } from "react";
 import { Autocomplete, Button, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
+import { MenuCheck } from "./Menu";
 import "./ToolbarMenu.css";
 
 export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean }[] };
@@ -28,12 +29,12 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   // Controlled selection and the action guard prevent picking them.
   const menu = <Menu className="toolbar-menu" aria-label={label} selectionMode="single" selectedKeys={[selectedKey]}
     onAction={(key) => { if (!sections.flatMap((section) => section.items).find((item) => item.id === key)?.disabled) onAction(String(key)); }}>
-    {sections.map((section) => <MenuSection key={section.id} id={section.id}>
+    {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       <Header className="toolbar-menu-heading">{section.label}</Header>
-      {section.items.map((item) => <MenuItem className="toolbar-menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={!item.disabled}
+      {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={!item.disabled}
         render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-disabled={item.disabled || undefined} />}>
-        {({ isSelected }) => <><span className="toolbar-menu-check" aria-hidden="true">{isSelected ? "✓" : ""}</span>
-          <Text slot="label">{item.label}</Text><Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined}>{item.sample}</Text></>}
+        {({ isSelected }) => <><MenuCheck checked={isSelected} />
+          <Text slot="label" className="menu-label">{item.label}</Text><Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined}>{item.sample}</Text></>}
       </MenuItem>)}
     </MenuSection>)}
   </Menu>;
@@ -45,7 +46,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     onKeyDown={(event) => { if (open && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
       <Button className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m3 4.5 3 3 3-3" /></svg></Button>
-      <Popover className="toolbar-menu-popover" placement="bottom end" offset={6}>
+      <Popover className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6}>
         {filtered ? <Autocomplete filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>

@@ -94,15 +94,16 @@ test("keyboard opening and pointer activation keep unavailable items inert", asy
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const menuCss = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
+const toolbarCss = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
+const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
 const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8");
 test("menu role tokens exist, forced colours frame the button, and reduced motion removes movement", () => {
-  const definitions = new Set([...tokens.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
-  expect([...menuCss.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
-  expect(menuCss).toMatch(/forced-colors: active[\s\S]*border: 1px solid ButtonText/);
+  const definitions = new Set([...(tokens + menuCss + toolbarCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
+  expect([...(menuCss + toolbarCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
+  expect(toolbarCss).toMatch(/forced-colors: active[\s\S]*border: 1px solid ButtonText/);
   expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
-  expect(tokens).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
-  expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*transition: none/);
+  expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
+  expect(toolbarCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*transition: none/);
 });
 
 test("Space on an unavailable choice neither selects nor closes", async () => {
@@ -132,14 +133,11 @@ test("an empty filter keeps the menu open and Escape still contains the layer", 
   expect(screen.queryByRole("menu")).toBeNull();
 });
 
-test("toolbar shadows stay local while legacy More and keys shadows retain their values", () => {
-  const legacy = tokens.slice(0, tokens.indexOf("/* ADR 0021 look layer"));
-  expect(legacy).toContain("--menu-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 20%);");
-  expect(legacy).toContain("--menu-shadow: 0 1rem 2.5rem rgb(0 0 0 / 22%);");
-  const look = tokens.slice(legacy.length);
-  for (const [, selector] of look.matchAll(/([^{}]+)\{[^{}]*--menu-shadow:/g)) expect(selector).toContain(".toolbar-menu-popover");
-  expect(look).toMatch(/windows"\] \.toolbar-menu-popover\s*\{[^}]*--menu-item-height: 32px/);
-  expect(look).toMatch(/linux"\] \.toolbar-menu-popover\s*\{[^}]*--menu-item-height: 32px/);
+test("menu shadows stay on the menu popover while the keys dialog keeps its own", () => {
+  expect(tokens).toContain("--menu-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 20%);");
+  for (const [, selector] of menuCss.matchAll(/([^{}]+)\{[^{}]*--menu-shadow:/g)) expect(selector).toContain(".menu-popover");
+  expect(menuCss).toMatch(/windows"\] \.menu-popover\s*\{[^}]*--menu-item-height: 32px/);
+  expect(menuCss).toMatch(/linux"\] \.menu-popover\s*\{[^}]*--menu-item-height: 32px/);
 });
 
 test.each(["ctrlKey", "metaKey"])("%s shortcuts reach the picker only outside composition", async (modifier) => {
