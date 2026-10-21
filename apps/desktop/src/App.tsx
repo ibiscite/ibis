@@ -18,24 +18,21 @@ import { ResultList } from "./features/picker/ResultList";
 import { EmptyState } from "./features/picker/EmptyState";
 import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
+import { useOperations } from "./features/picker/useOperations";
+import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import {
   type Copied,
   type CopyFormat,
-  type Density,
   type LibraryStatus,
   type LoginItem,
-  type PickerPreferences,
   type SearchResult,
   type ShortcutStatus,
   type ZoteroGroup,
   type ZoteroLibrary,
 } from "./api";
 
-const DENSITIES: Density[] = ["compact", "comfortable", "spacious"];
-
 // A search comes back if the picker returns within a minute, as in Raycast.
 const KEEP_SEARCH_MS = 60_000;
-const SAVE_BEFORE_QUIT_MS = 2_000;
 
 const noLibrary = () => null;
 
@@ -50,9 +47,9 @@ export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
-  const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation, copyFormat,
-    hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, quit, search, shortcutStatus, cslItems, copyFormatted,
-    pickerPreferences, setPickerPreferences, useZoteroLibraries, zoteroGroups } = api;
+  const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
+    hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted,
+    useZoteroLibraries, zoteroGroups } = api;
   const { findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
@@ -66,7 +63,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const pointer = usePointerSelection(active, setActive);
   const [selected, setSelected] = useState<Map<string, SearchResult>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
-  const [format, setFormat] = useState<Choice>("pandoc");
+  const { failures, setFailures, report, perform } = useOperations();
+  const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
+  const { format, density, largerText, changeDensity, toggleLargerText, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   // The formatted preview, tagged with the style, choice and library it was
   // made for, so Enter never copies a preview of an earlier choice.
@@ -98,10 +97,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A search Escape cleared comes back on reopening within the same minute.
   const escapedQuery = useRef<string | null>(null);
   const [restored, setRestored] = useState(0);
-  const [failures, setFailures] = useState<Partial<Record<Operation, boolean>>>({});
-  const report = (operation: Operation, failed = true) => {
-    setFailures((previous) => ({ ...previous, [operation]: failed }));
-  };
   // Each completed copy owns only the interaction that started it. Map identity
   // also distinguishes removing and re-adding the same selected references.
   const snapshotRevision = library?.revision;
@@ -125,10 +120,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   useEffect(() => {
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
   }, [setupDone]);
-  const perform = async (operation: Operation, action: () => Promise<unknown>) => {
-    try { await action(); report(operation, false); }
-    catch { report(operation); }
-  };
   // A click still waiting for its preview must never copy once the user has left.
   const [clickCopy, setClickCopy] = useState<string | null>(null);
   const hide = () => {
@@ -142,70 +133,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     setSelected(new Map());
     setActive(0);
   };
-  // Saved preferences, once read; choices made before that wait in `pending`
-  // so a slow read never overwrites them and a failed read never resets the
-  // file to defaults.
-  const [density, setDensity] = useState<Density>("comfortable");
-  const [largerText, setLargerText] = useState(false);
-  const savedPreferences = useRef<PickerPreferences | null>(null);
-  const pending = useRef<Partial<PickerPreferences>>({});
-  const pendingKeyFormat = useRef<{ format: CopyFormat; saved: boolean } | null>(null);
-  const preferenceSave = useRef<Promise<unknown>>(Promise.resolve());
-  const preferenceLoad = useRef<Promise<void>>(Promise.resolve());
-  const savePreferences = (change: Partial<PickerPreferences>, keyFormat: CopyFormat | null = null) => {
-    if (keyFormat !== null) pendingKeyFormat.current = { format: keyFormat, saved: false };
-    pending.current = { ...pending.current, ...change };
-    if (!savedPreferences.current) return;
-    const next = { ...savedPreferences.current, ...pending.current } as PickerPreferences;
-    const chosenKey = pendingKeyFormat.current;
-    pending.current = {};
-    savedPreferences.current = next;
-    // Preserve choice order and retry an unsaved key. Queued density/style
-    // changes do not rewrite a key whose earlier save already succeeded.
-    const save = preferenceSave.current.catch(() => undefined)
-      .then(() => setPickerPreferences(next, chosenKey && !chosenKey.saved ? chosenKey.format : null))
-      .then(() => {
-        if (chosenKey) chosenKey.saved = true;
-        if (pendingKeyFormat.current === chosenKey) pendingKeyFormat.current = null;
-      });
-    preferenceSave.current = save;
-    void perform("preferences", () => save);
-  };
-  const quitAfterSaving = async () => {
-    // Drain choices already made, including ones awaiting the initial read.
-    // A failed or stuck settings command must never trap someone in the app.
-    let timer: number | undefined;
-    await Promise.race([
-      preferenceLoad.current.then(() => preferenceSave.current).catch(() => undefined),
-      new Promise<void>((resolve) => { timer = window.setTimeout(resolve, SAVE_BEFORE_QUIT_MS); }),
-    ]);
-    window.clearTimeout(timer);
-    await quit();
-  };
   const chooseFormat = (choice: Choice) => {
     // A new format choice cancels the earlier click waiting for its preview.
     setClickCopy(null);
-    setFormat(choice);
-    const chosenStyle = styleOf(choice);
-    savePreferences({ citation_style: chosenStyle }, chosenStyle ? null : choice as CopyFormat);
+    preferences.chooseFormat(choice);
   };
-  const changeDensity = () => {
-    const next = DENSITIES[(DENSITIES.indexOf(density) + 1) % DENSITIES.length] ?? "comfortable";
-    setDensity(next);
-    savePreferences({ density: next });
-  };
-  const toggleLargerText = () => {
-    setLargerText(!largerText);
-    savePreferences({ larger_text: !largerText });
-  };
-  useEffect(() => {
-    document.documentElement.dataset.density = density;
-    document.documentElement.dataset.textSize = largerText ? "larger" : "normal";
-    return () => {
-      delete document.documentElement.dataset.density;
-      delete document.documentElement.dataset.textSize;
-    };
-  }, [density, largerText]);
 
   useEffect(() => {
     // Only Alt on its own, or Alt still down from that, counts; any other key ends it.
@@ -309,28 +241,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     shortcutStatus()
       .then(setShortcut)
       .catch(() => { setShortcut(null); report("shortcut"); });
-    // The saved style wins over the saved key format; a choice made while
-    // these load wins over both.
-    preferenceLoad.current = Promise.allSettled([copyFormat(), pickerPreferences()]).then(([key, saved]) => {
-      if (!mounted) return;
-      if (key.status === "rejected") report("format");
-      if (saved.status === "rejected") {
-        // Without saved preferences the saved key format still applies.
-        report("preferences");
-        if (pending.current.citation_style === undefined && key.status === "fulfilled") setFormat(key.value);
-        return;
-      }
-      const loaded = { ...saved.value, ...pending.current } as PickerPreferences;
-      savedPreferences.current = saved.value;
-      setDensity(loaded.density);
-      setLargerText(loaded.larger_text);
-      const chosen = pending.current.citation_style !== undefined;
-      if (Object.keys(pending.current).length > 0) savePreferences({});
-      if (chosen) return;
-      const style = saved.value.citation_style;
-      if (style && cslItems && copyFormatted) setFormat(`style:${style}`);
-      else if (key.status === "fulfilled") setFormat(key.value);
-    });
+    preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;
       mounted = false;
