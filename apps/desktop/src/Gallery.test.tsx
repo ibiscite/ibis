@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App, type PickerApi } from "./App";
-import { galleryHref, renderGalleryState } from "./gallery";
+import { galleryHref, galleryThemeFor, renderGalleryState } from "./gallery";
 import { libraryMessages } from "./messages";
 import { platformOf } from "./nativeAppearance";
 
@@ -320,6 +320,13 @@ test("a state's own theme, density and text setting win over the switches", () =
   expect(own.density).toBe("compact");
   expect(withSwitches(galleryStates.find((state) => state.id === "high-contrast")!, switches).theme).toBe("contrast");
   expect(withSwitches(galleryStates.find((state) => state.id === "pinned")!, {}).largerTextSetting).toBeUndefined();
+});
+
+test("the high-contrast state uses the real contrast rules when the browser applies them", () => {
+  expect(galleryThemeFor("contrast", false)).toBe("contrast");
+  expect(galleryThemeFor("contrast", true)).toBeUndefined();
+  expect(galleryThemeFor("dark", true)).toBe("dark");
+  expect(galleryThemeFor(undefined, false)).toBe("light");
 });
 
 test.each(["macos", "windows", "linux"] as const)("the %s platform switch is what the picker reads as the platform", (platform) => {

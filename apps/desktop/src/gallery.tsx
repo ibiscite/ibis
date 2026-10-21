@@ -113,6 +113,17 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && selectionContained(root, state);
 }
 
+/**
+ * The explicit contrast copy (data-gallery-theme="contrast") is for the native
+ * evidence app, which cannot ask its webview for increased contrast. A browser
+ * that already applies it, such as the contact sheet's Playwright emulation,
+ * renders the real prefers-contrast and forced-colors rules instead.
+ */
+export function galleryThemeFor(theme: GalleryState["theme"], systemContrast = typeof matchMedia === "function"
+  && matchMedia("(prefers-contrast: more), (forced-colors: active)").matches): "light" | "dark" | "contrast" | undefined {
+  return theme === "contrast" && systemContrast ? undefined : theme ?? "light";
+}
+
 type GalleryDiagnosticStage = "frontend-mounted" | "effects-settled" | "rendered";
 
 function reportGalleryStage(state: string, stage: GalleryDiagnosticStage): void {
@@ -163,7 +174,9 @@ export function renderGalleryState(
     onLibraryChanged: (handler) => track(() => provider.api.onLibraryChanged(handler)),
     onPickerShown: (handler) => track(() => provider.api.onPickerShown(handler)),
   };
-  document.documentElement.dataset.galleryTheme = state.theme ?? "light";
+  const theme = galleryThemeFor(state.theme);
+  if (theme) document.documentElement.dataset.galleryTheme = theme;
+  else delete document.documentElement.dataset.galleryTheme;
   document.documentElement.dataset.gallerySize = state.largeText ? "large" : "normal";
   document.documentElement.dir = state.direction ?? "ltr";
   document.title = `${state.label} — Ibis picker states`;

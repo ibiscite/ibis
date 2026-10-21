@@ -11,6 +11,9 @@
 // it on 127.0.0.1 only, and writes one PNG per frame plus contact-sheet-<text>.png.
 // These are browser renders: system fonts, materials (vibrancy, Mica) and window
 // chrome are not the native ones; CI's native captures cover those.
+// The pointer rests outside the window, so frames show the picker at rest; the
+// pin-hover frame puts it on the pin. High contrast and forced colours are the
+// browser's own emulation, not a CSS copy (the native evidence app keeps that).
 // Needs Playwright with its Chromium already installed (it never downloads one).
 // Exit codes: 0 every frame rendered, 1 a frame failed, 2 Playwright or Chromium unavailable.
 import { execFileSync } from "node:child_process";
@@ -26,6 +29,15 @@ const NAMES = { macos: "macOS", windows: "Windows", linux: "Linux", light: "Ligh
 // As each system's webview reports it; must match PLATFORM_NAMES in gallery-fixtures.ts.
 const PLATFORM_NAMES = { macos: "MacIntel", windows: "Win32", linux: "Linux x86_64" };
 const VIEWPORT = { width: 720, height: 480 }; // the picker window (tauri.conf.json)
+// Frames the catalog cannot describe: they need the browser's pointer or media emulation.
+const VARIANTS = [
+  { id: "pin-hover", state: "many-results", label: "Pointer on the pin", hover: ".pin-button" },
+  { id: "forced-colors", state: "high-contrast", label: "Forced colours (emulated)", media: { forcedColors: "active" } },
+];
+const MEDIA = { "high-contrast": { contrast: "more" } };
+// A frame that has not rendered by then is failed; the 50-reference preview
+// takes several seconds on a busy machine.
+const FRAME_TIMEOUT = 60_000;
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
   ".png": "image/png", ".woff2": "font/woff2", ".json": "application/json", ".ico": "image/x-icon" };
 
@@ -164,10 +176,12 @@ async function main() {
     // The catalog page lists every state, so this script never keeps its own copy.
     const catalog = await browser.newPage();
     await catalog.goto(`${base}/gallery.html`);
-    let states = await catalog.$$eval(".gallery-grid h2 a", (links) => links.map((link) => ({
+    const listed = await catalog.$$eval(".gallery-grid h2 a", (links) => links.map((link) => ({
       id: new URL(link.href).searchParams.get("state"), label: link.textContent ?? "" })));
     await catalog.close();
-    if (states.length === 0) throw new Error("the gallery lists no states");
+    if (listed.length === 0) throw new Error("the gallery lists no states");
+    let states = [...listed.map((state) => ({ ...state, state: state.id, media: MEDIA[state.id] })),
+      ...VARIANTS.filter((variant) => listed.some((state) => state.id === variant.state))];
     const unknown = options.state.filter((id) => !states.some((state) => state.id === id));
     if (unknown.length > 0) throw new Error(`unknown state ${unknown.join(", ")}`);
     if (options.state.length > 0) states = states.filter((state) => options.state.includes(state.id));
@@ -188,38 +202,60 @@ async function main() {
         contexts.set(theme, await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: options.scale, colorScheme: theme, reducedMotion: "reduce" }));
       }
     }
+    const render = async (job, timeout) => {
+      const name = `${job.text}/${job.platform}-${job.theme}/${job.state.id}`;
+      const dir = path.join(output, job.text, `${job.platform}-${job.theme}`);
+      await mkdir(dir, { recursive: true });
+      const page = await contexts.get(job.theme).newPage();
+      if (job.state.media) await page.emulateMedia(job.state.media);
+      // Headless Chromium starts the pointer at (0, 0), inside the picker, so
+      // every :hover rule (the pin, the first row) would show in a rest frame.
+      await page.mouse.move(-1, -1);
+      // The bundled picker reads the platform for its key labels (⌘ or Ctrl) before
+      // the gallery's own ?platform= switch can run, so report it from the start.
+      await page.addInitScript((platform) => {
+        Object.defineProperty(navigator, "platform", { configurable: true, get: () => platform });
+      }, PLATFORM_NAMES[job.platform]);
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+      const query = new URLSearchParams({ state: job.state.state, platform: job.platform, theme: job.theme, text: job.text });
+      try {
+        await page.goto(`${base}/gallery.html?${query}`);
+        await page.waitForFunction((id) => document.documentElement.dataset.galleryRendered === id, job.state.state, { timeout });
+        if (job.state.hover) await page.hover(job.state.hover, { timeout: 5_000 });
+        // Let hover fades finish; endless ones (a spinner) never do and are skipped,
+        // and a paused one is waited for at most two seconds.
+        await page.evaluate(() => Promise.race([new Promise((resolve) => setTimeout(resolve, 2_000)), Promise.all(document.getAnimations()
+          .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+          .map((animation) => animation.finished.catch(() => undefined)))]));
+        if (errors.length > 0) throw new Error(errors.join("; "));
+        const png = await page.screenshot({ path: path.join(dir, `${job.state.id}.png`) });
+        frames.set(name, { png });
+        return null;
+      } catch (error) {
+        await page.screenshot({ path: path.join(dir, `failure-${job.state.id}.png`) }).catch(() => undefined);
+        return `${name}: ${error.message.split("\n")[0]}`;
+      } finally {
+        await page.close();
+      }
+    };
     let next = 0;
+    const retry = [];
     const worker = async () => {
       while (next < jobs.length) {
         const job = jobs[next++];
-        const name = `${job.text}/${job.platform}-${job.theme}/${job.state.id}`;
-        const dir = path.join(output, job.text, `${job.platform}-${job.theme}`);
-        await mkdir(dir, { recursive: true });
-        const page = await contexts.get(job.theme).newPage();
-        // The bundled picker reads the platform for its key labels (⌘ or Ctrl) before
-        // the gallery's own ?platform= switch can run, so report it from the start.
-        await page.addInitScript((platform) => {
-          Object.defineProperty(navigator, "platform", { configurable: true, get: () => platform });
-        }, PLATFORM_NAMES[job.platform]);
-        const errors = [];
-        page.on("pageerror", (error) => errors.push(error.message));
-        page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-        const query = new URLSearchParams({ state: job.state.id, platform: job.platform, theme: job.theme, text: job.text });
-        try {
-          await page.goto(`${base}/gallery.html?${query}`);
-          await page.waitForFunction((id) => document.documentElement.dataset.galleryRendered === id, job.state.id, { timeout: 15_000 });
-          if (errors.length > 0) throw new Error(errors.join("; "));
-          const png = await page.screenshot({ path: path.join(dir, `${job.state.id}.png`) });
-          frames.set(name, { png });
-        } catch (error) {
-          failures.push(`${name}: ${error.message.split("\n")[0]}`);
-          await page.screenshot({ path: path.join(dir, `failure-${job.state.id}.png`) }).catch(() => undefined);
-        } finally {
-          await page.close();
-        }
+        if (await render(job, FRAME_TIMEOUT)) retry.push(job);
       }
     };
     await Promise.all(Array.from({ length: 4 }, worker));
+    // A frame that failed beside others gets one more try on its own, so CPU
+    // contention never decides what the evidence shows; a real failure fails twice.
+    for (const job of retry) {
+      const failure = await render(job, FRAME_TIMEOUT);
+      if (failure) failures.push(failure);
+      else await rm(path.join(output, job.text, `${job.platform}-${job.theme}`, `failure-${job.state.id}.png`), { force: true });
+    }
     const browserName = `Chromium ${browser.version()}`;
     const label = `Ibis picker states, ${source()}. Browser render in ${browserName}, synthetic data; not a native capture`;
     for (const text of options.text) await contactSheet(browser, output, text, columns, states, frames, label);
