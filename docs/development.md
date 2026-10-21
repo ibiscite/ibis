@@ -8,10 +8,9 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 
 ### Issues
 
-- **One outcome per issue**, small enough for one pull request (about 300 changed lines). Split bigger work into GitHub sub-issues before it starts. After a partial pull request, rewrite the issue to what remains. Never open an issue only so a pull request has something to close; use `Part of #N` instead.
-- **Title:** a plain sentence about the outcome or the problem, at most 70 characters, with no commit prefix or bracket tag: "Paste into the previous application", "Zotero mapper drops malformed name fields".
-- **Body** (at most 200 words): **Problem** (what a user sees now), **Done when** (one to five testable checkboxes) and optional **Notes** (code pointers, decisions). The Task issue form has this shape. Long investigations go in comments.
-- **Review follow-ups:** one issue per reviewed pull request, titled "Follow-ups to <thing> (#PR review)", with one checkbox per P3 finding.
+- **One outcome per issue**, small enough for one pull request (about 300 changed lines). After a partial pull request, rewrite the issue to what remains. Never open an issue only so a pull request has something to close; use `Part of #N` instead.
+- **Title:** a plain sentence about the outcome or the problem, with no commit prefix: "Zotero mapper drops malformed name fields".
+- **Body:** what a user sees now, and when it is done. The Task issue form has this shape.
 - **Ideas and questions** start in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions); an issue is opened when the work is agreed.
 
 ### Labels
@@ -32,33 +31,28 @@ No other labels; each family has one colour. Pull requests need no labels: the t
 - Release milestones are named `0.N Name` to match `ROADMAP.md`, plus `1.0`; `Later` holds anything not scheduled. A milestone closes when its release ships.
 - A release milestone holds only work that blocks that release. If it would not stop the release, move it to the next milestone or `Later`.
 - **An open issue without a milestone is untriaged.** Triage means: fix the title and labels, then set a milestone or close the issue.
-- Each open milestone's description is one line saying what users can do when it ships, and names its tracking issue.
 
 ### Tracking issue
 
-Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body is a dashboard of at most 60 lines:
+Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body:
 
 ```markdown
 **Goal:** one line. Scope: ROADMAP.md.
 
-## Done means
-- [ ] … (at most 6)
-
 ## Now
-- one line each, with an issue or pull request number (at most 5)
+- one line per open pull request: what it does, what it waits on
 
 ## Queue
-1. **Lane name** (files it owns)
-   1. #N short title
+1. #N short title
 
 ## Waiting on the maintainer
 - #N what is needed, recommended answer
 
 ## Decisions
-- **YYYY-MM-DD** one line (newest 10; older ones move to a "Decisions archive" comment)
+- **YYYY-MM-DD** one line
 ```
 
-Every issue in the Queue is in this milestone. History, run links and evidence go in comments. After each merge, comment one line: what users can now do, what is next.
+Keep the body current (Now and Queue). Comment on the issue only for decisions and handoffs. Every issue in the Queue is in this milestone.
 
 ### Branches and worktrees
 
@@ -78,22 +72,21 @@ Signed-off-by: Name <email>
 Assisted-by: <tool and model>
 ```
 
-The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci`, `build`, `refactor`, `chore`, `revert`; optional scope; `!` or a `BREAKING CHANGE:` footer for breaking changes) in the imperative mood, at most 72 characters, lower case after the colon, with no full stop. Sign off every commit (`git commit -s`, Developer Certificate of Origin). Disclose AI help with an `Assisted-by:` trailer or the tool's co-author line (ADR 0011). No hashes, run IDs or conversation notes. Squash your own fixups before review so a branch has a few meaningful commits. Release notes come from these commits; see [RELEASING.md](../RELEASING.md).
+The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci`, `build`, `refactor`, `chore`, `revert`; optional scope; `!` or a `BREAKING CHANGE:` footer for breaking changes) in the imperative mood, at most 72 characters, lower case after the colon, with no full stop. Sign off every commit (`git commit -s`, Developer Certificate of Origin). Disclose AI help with an `Assisted-by:` trailer or the tool's co-author line (ADR 0011). No hashes, run IDs or conversation notes. Release notes come from these commits; see [RELEASING.md](../RELEASING.md).
 
 ### Pull requests
 
 - **Title:** a Conventional Commit, because it becomes the commit on `main`: `fix: keep good entries when a .bib file has a duplicate key`.
 - **Body:** the template in `.github/pull_request_template.md`, **at most 250 words** excluding images: `Closes #N` (or `Part of #N`), What and why, How it works (plain words for a maintainer who did not write it), Verification, and Screenshots for interface changes. A pull request closes at most one issue.
-- **Evidence** (CI run links, hashes, logs, measurement tables) goes in one comment titled `Evidence for <short SHA>`, never in the body or the commits.
-- **Drafts:** open the pull request as a draft early; mark it ready when `node scripts/check.mjs` has passed on the final commit.
-- **Interface changes** show before/after screenshots with synthetic data, light and dark, for each affected operating system, labelled with the source commit and "browser" or "native", naming any applicable views still missing. Link them from the `evidence` branch or a comment attachment; do not commit them to `docs/images/` unless a document uses them. Detect image format and size from the file bytes before choosing an extension or writing metadata.
+- **Evidence** (CI run links, hashes, logs) goes in a pull request comment or the review, never in the body or the commits.
+- **Interface changes** link CI's synthetic screenshots on the `evidence` branch, or attach before/after images made with synthetic data. Do not commit them to `docs/images/` unless a document uses them.
 - **Checked automatically:** `node scripts/pr-lint.mjs --title … --branch … --body-file …` checks the title, branch, issue link, length, evidence and template sections before you open the pull request; the "Pull request conventions" job runs the same check on every pull request and re-runs when the description is edited.
 
 ### Review and merge
 
-- **Code:** an independent review of the exact head commit by another session, preferably another model, posted as a comment that starts `Independent review of <full SHA> by <tool and model>` and gives the verdict, findings (each P1 and P2 with the commit that fixed it; P3s in one follow-up issue) and the checks run, in at most 150 words plus optional `<details>`. After a small fix the reviewer re-checks only the changed lines and names the new commit; a large fix or a design change needs a new full review. A rebase with an identical tree keeps the review.
-- **Documentation only, or tests and synthetic fixtures only:** the author's adversarial check (step 5 of the loop in AGENTS.md), recorded in a comment, replaces the independent review (ADR 0017).
-- **Merge** by squash only when all required checks pass on that commit. The squash commit's title is the pull request title plus ` (#N)`, and its message is short: `Closes #N`, the `Assisted-by:` trailer, and `Signed-off-by:` naming whoever actually signed the branch's commits, never someone else. Never use `--admin` or another bypass. While a release is going out (a hold announced on the tracking issue), nobody merges to `main` until the release pull request has merged and the hold is lifted, because every merge rebuilds the release pull request.
+- **Code:** an independent review of the exact head commit by another session, preferably another model, posted as a comment that starts `Independent review of <full SHA> by <tool and model>`, gives the verdict and lists the P1 and P2 findings. After a small fix the reviewer re-checks only the changed lines and names the new commit; a large fix or a design change needs a new full review. A rebase with an identical tree keeps the review.
+- **Documentation only, or tests and synthetic fixtures only:** the author's adversarial check (step 5 of the loop in AGENTS.md), recorded in the pull request body or a comment, replaces the independent review (ADR 0017).
+- **Merge** by squash only when all required checks pass on that commit. The squash commit's title is the pull request title plus ` (#N)`, and its message is short: `Closes #N`, the `Assisted-by:` trailer, and `Signed-off-by:` naming whoever actually signed the branch's commits, never someone else. Never use `--admin` or another bypass. When the merge queue is enabled, the release pull request merges like any other. Until then, while a release hold is announced on the tracking issue, nobody merges to `main` until the release pull request has merged, because every merge rebuilds it.
 
 ### Versions and releases
 
@@ -104,8 +97,6 @@ Version numbers, release and nightly titles, tags and download links follow [REL
 `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform. It does not run the web builds that CI's Web interface job checks (`pnpm build`, and `pnpm exec vite build --mode evidence` for the screenshot gallery); run those in `apps/desktop` when you change the build setup.
 
 ## Working quickly and safely
-
-CI takes a few minutes per pull request. Most delay comes from waiting, so work is arranged to overlap:
 
 - **Verify the exact commit.** Run the full check in a clean checkout of the commit. Use a fresh target directory as well: sharing a target across checkouts can reuse stale project test binaries (#387).
 
@@ -120,9 +111,8 @@ CI takes a few minutes per pull request. Most delay comes from waiting, so work 
 
   Keep failed output for diagnosis. Remove the verification worktree after inspecting the result. This is POSIX shell; on Windows, run it in Git Bash.
 
-- **Branch from `main`, never from another branch.** While a pull request waits, start an unrelated issue in its own worktree. Stacked branches merged by squash have silently reverted changes on `main`. After merging `main` into a branch, `git diff origin/main` must show only that branch's change.
-- **Review in parallel.** Run the one independent review of the final diff while CI runs, and save findings in the pull request (fixed, P3s in one follow-up issue, or rejected with a reason).
-- **Independent work in parallel.** Issues that touch different files can be worked on at the same time, each in its own worktree and branch. Two writers never share a checkout. Shared files (`Cargo.toml`, `Cargo.lock`, `apps/desktop/src-tauri/src/main.rs`, `ROADMAP.md`) are changed by one branch at a time.
+- **Branch from `main`, never from another branch.** Stacked branches merged by squash have silently reverted changes on `main`. After merging `main` into a branch, `git diff origin/main` must show only that branch's change.
+- **Review while CI runs**, and record each finding in the pull request as fixed, filed or rejected with a reason.
 
 ## Setting up a computer
 
