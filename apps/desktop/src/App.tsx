@@ -4,7 +4,7 @@ import { copiedNoticeText, copyFormatNames, densityNames, keyText, libraryMessag
 import { ariaKeys, KEY_TABLE, keyLabel, keysFor, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LibrarySetup, shortcutLabel } from "./LibrarySetup";
-import { LibraryDetail, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
+import { hasRetainedFreshnessProblem, LibraryDetail, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
 import { formatCitation, FORMATTED_STYLES, provisional, type FormattedCitation } from "./format/formatted";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
@@ -827,7 +827,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <div className="notices">
         {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
         {busy && <p role="status">{loadingMessage}</p>}
-        {library?.error && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}
+        {library?.error && !hasRetainedFreshnessProblem(library) && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}
         {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
           <p role="alert" key={operation}>{FAILURE_MESSAGES[operation]}</p>
         ))}

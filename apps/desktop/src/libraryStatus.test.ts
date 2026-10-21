@@ -36,7 +36,7 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
   ["a watched file", file(), "thesis.bib · 1,204 references", "done"],
   ["reading notices", file({ warnings: 2 }), "thesis.bib · 1,204 references · 2 reading notices", "look"],
   ["empty", zotero({ references: 0 }), "Zotero · no references", "look"],
-  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero · not updated · checked 2 hours ago", "stop"],
+  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero · not updated · checked 2 hours ago", "look"],
   ["never opened", zotero({ state: "error", has_snapshot: false, snapshot_name: null, references: 0, error: "Zotero is not running" }), "Zotero · not opened", "stop"],
   ["failed switch between files", file({ state: "error", name: "missing.bib", error: "The library file is unavailable; keeping the last loaded references" }), "thesis.bib · 1,204 references", "stop"],
   ["failed switch from a file to Zotero", file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }), "thesis.bib · 1,204 references", "stop"],
@@ -65,7 +65,7 @@ test("the detail is a short line, then libraries, check time and any problem", (
     ["Zotero · 1,204 references", `My Library, Group 41, Group 9 · checked 3 hours ago, ${clockAt(3)}`]);
   expect(detail(file({ warnings: 1 }))).toEqual(["thesis.bib · 1,204 references · 1 reading notice", `checked 3 hours ago, ${clockAt(3)}`]);
   expect(detail(zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }))).toEqual(
-    ["Zotero · 1,204 references", `My Library · checked 2 hours ago, ${clockAt(2)} · Zotero could not be reached`]);
+    ["Zotero · 1,204 references", `My Library · checked 2 hours ago, ${clockAt(2)} · Zotero library could not be read. ${kept}. Open Zotero, then reload.`]);
   expect(detail(file({ state: "error", name: "missing.bib", error: "The library file is unavailable" }))).toEqual(
     ["thesis.bib · 1,204 references", `checked 3 hours ago, ${clockAt(3)} · missing.bib could not be opened`]);
   expect(detail(file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }))).toEqual(
@@ -91,7 +91,7 @@ test("screen readers can read the detail, including the count kept after a faile
   }));
   expect(container.querySelector(".library-status")?.textContent).toMatch(/^thesis\.bib · not updated · checked /);
   expect(strip(container.querySelector(".library-detail")?.textContent ?? null)).toMatch(
-    /^thesis\.bib · 4 references\. checked .+ ago, .+ · the file could not be read$/);
+    /^thesis\.bib · 4 references\. checked .+ ago, .+ · The library could not be opened: thesis\.bib\. The library file is unavailable; keeping the last loaded references\. Choose it again or reconnect the drive\.$/);
 });
 
 test("every footer text sits in an element WebKitGTK exposes, not a plain span beside one", () => {

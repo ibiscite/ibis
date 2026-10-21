@@ -6,6 +6,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
 import { App, type PickerApi } from "./App";
 import { libraryMessages, pickerText } from "./messages";
+import { hasRetainedFreshnessProblem } from "./LibraryStatusLine";
 import { setPlatform } from "./nativeAppearance";
 import { trackInputModality } from "./inputModality";
 import "./styles.css";
@@ -23,7 +24,7 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
   const rows = [...root.querySelectorAll('#results [role="option"]')];
   const results = state.results ?? [];
   const label = libraryMessages.summary(library);
-  const alerts = [library.settings_notice, library.error ? libraryMessages.openError(library.name, library.error, library.zotero) : null]
+  const alerts = [library.settings_notice, library.error && !hasRetainedFreshnessProblem(library) ? libraryMessages.openError(library.name, library.error, library.zotero) : null]
     .filter((text): text is string => text !== null);
   const actualAlerts = [...root.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
   const searched = library.state !== "none" && library.state !== "loading" && !(library.state === "error" && !library.has_snapshot);
@@ -67,7 +68,11 @@ function seedSteps(root: HTMLElement, state: GalleryState): (() => void)[] {
 /** The seeded settings and interactions are on screen, and nothing else is. */
 function seeded(root: HTMLElement, state: GalleryState): boolean {
   const html = document.documentElement;
-  return html.dataset.density === (state.density ?? "comfortable")
+  const menu = root.querySelector<HTMLElement>('[role="menu"]');
+  const box = menu?.getBoundingClientRect();
+  // Real browser captures require a safe viewport inset; zero-size jsdom is no proof.
+  const menuFits = !box || box.width === 0 || (box.top >= 8 && box.left >= 8 && box.bottom <= innerHeight - 8 && box.right <= innerWidth - 8);
+  return menuFits && html.dataset.density === (state.density ?? "comfortable")
     && html.dataset.textSize === (state.largerTextSetting ? "larger" : "normal")
     && (pinButton(root)?.getAttribute("aria-pressed") === "true") === Boolean(state.pinned)
     && (root.querySelector('[role="menu"]') !== null) === Boolean(state.menuOpen)

@@ -35,7 +35,7 @@ Choose product defaults that users notice (for example the shortcut) from eviden
 
 Without that authorization (for example, an outside contributor's agent), follow "Version control" below.
 
-For meaningful interface changes, include before/after screenshots using synthetic data for the relevant operating systems and light/dark appearances, label the source commit and browser or native capture, and explain any applicable views still missing.
+For meaningful interface changes, include before/after screenshots using synthetic data for the relevant operating systems and light/dark appearances, label the source commit and browser or native capture, and explain any applicable views still missing. Detect screenshot encoding and dimensions from the file bytes before choosing its extension or writing image metadata.
 
 ### The loop
 

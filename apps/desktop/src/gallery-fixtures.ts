@@ -143,6 +143,8 @@ export const galleryStates: readonly GalleryState[] = [
     error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" }), query: "memory", results: examples },
   { id: "copied-notice", label: "Copied notice after hiding", library: library(), query: "memory", results: examples, notice: "[@example2026]" },
   // Browser-only review states (board M); the native evidence app captures the fifteen above.
+  { id: "file-kept-menu", label: "Retained file details in More", library: library({ state: "error", name: "example.bib", snapshot_name: "example.bib", stale: true,
+    references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
   { id: "tray", label: "Several references chosen", library: library(), query: "memory", results: examples, tray: 2 },

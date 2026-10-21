@@ -900,6 +900,33 @@ test("the design scale keeps text readable and every colour role legible in both
   }
 });
 
+test("resizing More keeps its focused action visible without undoing manual scrolling", async () => {
+  backend();
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^More/ }));
+  const menu = await screen.findByRole("menu");
+  fireEvent.keyDown(document.activeElement!, { key: "End" });
+  const last = document.activeElement as HTMLElement;
+  expect(last.textContent).toContain("Quit Ibis");
+  // JSDOM supplies no layout: model a fractional resized scrollport with Quit below it.
+  const menuBox = vi.spyOn(menu, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 8, 240, 191.531));
+  const itemBox = vi.spyOn(last, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 220.4, 240, 32));
+  const height = vi.spyOn(menu, "clientHeight", "get").mockReturnValue(190);
+  const border = vi.spyOn(menu, "clientTop", "get").mockReturnValue(1);
+  try {
+    fireEvent.scroll(menu);
+    expect(menu.scrollTop).toBe(0);
+    fireEvent.resize(window);
+    expect(menu.scrollTop).toBe(54);
+    expect(document.activeElement).toBe(last);
+  } finally {
+    menuBox.mockRestore();
+    itemBox.mockRestore();
+    height.mockRestore();
+    border.mockRestore();
+  }
+});
+
 test("Ctrl+K opens More with every action, Escape closes it before hiding the picker", async () => {
   const calls = backend({ hide_picker: () => null, reload_library: () => null });
   render(<App />);
@@ -1961,8 +1988,8 @@ test("the footer names the source and count, the age only when it matters, and t
     error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" };
   await emit("library:changed", status);
   await waitFor(() => expect(item.textContent).toBe("Zotero · not updated · checked 2 hours ago"));
-  expect(item.getAttribute("data-health")).toBe("stop");
-  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · checked 2 hours ago, .+ · Zotero could not be reached$/);
+  expect(item.getAttribute("data-health")).toBe("look");
+  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · checked 2 hours ago, .+ · 2 Zotero libraries could not be read\. Zotero is not running, or it is not accepting connections; keeping the last loaded references\. Open Zotero, then reload\.$/);
 });
 
 test("? lists every key in a modal dialog, but a ? typed in the search is text", async () => {
@@ -2688,4 +2715,51 @@ test.each(["warning", "notice"])("a search started before a selected copy preser
     await waitFor(() => expect(notices).toEqual(["selected copy"]));
     expect(calls).toContain("hide_picker");
   }
+});
+
+test.each([false, true])("retained stale freshness stays in accessible footer details with retry (Zotero=%s)", async (zotero) => {
+  const reason = zotero ? "Zotero is not running; keeping the last loaded references" : "The library file is unavailable; keeping the last loaded references";
+  const name = zotero ? "Zotero library" : "refs.bib";
+  const calls = backend({
+    library_status: () => ({ ...zoteroStatus(["user"]), state: "error", zotero, snapshot_zotero: zotero, name, snapshot_name: name, stale: true, error: reason }),
+    search: () => [result("kept", "Retained searchable reference")],
+    reload_library: () => null,
+  });
+  const { container } = render(<App />);
+  await screen.findByText("Retained searchable reference");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not updated");
+  expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
+  expect(container.querySelector(".library-detail")?.textContent).toContain(reason);
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(screen.getByRole("menu").textContent).toContain(reason);
+  expect(screen.getByRole("group", { name: new RegExp(zotero ? "Open Zotero, then reload" : "Choose it again or reconnect") })).toBeTruthy();
+  await chooseFromMore("Reload");
+  await waitFor(() => expect(calls).toContain("reload_library"));
+});
+
+test("retained stale freshness does not hide settings or copy failures", async () => {
+  const notice = "Synthetic settings recovery notice";
+  backend({
+    library_status: () => ({ ...zoteroStatus(["user"]), state: "error", stale: true, error: "Zotero is not running; keeping the last loaded references", settings_notice: notice }),
+    search: () => [result("kept", "Retained reference with errors")],
+    copy_citation: () => { throw new Error("synthetic clipboard failure"); },
+  });
+  render(<App />);
+  await screen.findByText("Retained reference with errors");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(screen.getByRole("alert").textContent).toContain(notice);
+  fireEvent.click(screen.getByText("Retained reference with errors"));
+  await screen.findByText("Nothing was copied. Try again, or use Reload.");
+  expect(screen.getAllByRole("alert")).toHaveLength(2);
+});
+
+test("a retained freshness warning does not hide an actual search failure", async () => {
+  backend({
+    library_status: () => ({ ...zoteroStatus(["user"]), state: "error", stale: true, error: "Zotero is not running; keeping the last loaded references" }),
+    search: () => { throw new Error("synthetic search failure"); },
+  });
+  render(<App />);
+  await screen.findByText("Ibis could not search your library. Use Reload, then try again.");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
 });

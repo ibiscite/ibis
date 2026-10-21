@@ -234,7 +234,8 @@ export const libraryMessages = {
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
       checked === null ? null : `checked ${ago(checked, now)}, ${clock(checked, now)}`,
-      status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
+      status.stale && status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
+        : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
         : status.error ? `${isolate(status.zotero ? "Zotero" : status.name ?? "the chosen library")} could not be opened` : null,
     ].filter((part): part is string => part !== null);
     const first = status.stale ? `${isolate(snapshotLabel(status))} · ${count(status.references, "reference")}` : summary;

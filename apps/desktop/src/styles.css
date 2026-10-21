@@ -178,6 +178,7 @@ main:hover .pin-button, .pin-button:focus-visible { opacity: 1; }
 .more { position: relative; margin-inline-start: auto; }
 .more > button { min-height: var(--control-min-size); }
 [role="menu"] { position: absolute; bottom: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: 1; min-width: min(var(--menu-min-width), calc(100vw - 2 * var(--space-4))); max-width: calc(100vw - 2 * var(--space-4)); overflow-wrap: anywhere; display: flex; flex-direction: column; padding: var(--space-1); background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); box-shadow: var(--menu-shadow); }
+.more [role="menu"] { transform: translateY(calc(-1 * var(--more-menu-offset, 0px))); overflow-y: auto; }
 [role="menuitem"] { display: flex; justify-content: space-between; gap: var(--space-4); min-height: var(--control-min-size); align-items: center; text-align: start; border: 0; background: var(--clear); }
 [role="menuitem"]:hover, [role="menuitem"]:focus-visible { background: var(--hover-background); }
 [role="menuitem"] kbd { color: var(--muted); }

@@ -2,11 +2,16 @@ import { useEffect, useState } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
 import { appLocale, isolate, libraryMessages, pickerText } from "./messages";
 
+/** A same-source freshness failure whose retained index remains searchable. */
+export function hasRetainedFreshnessProblem(library: LibraryStatus | null | undefined): boolean {
+  return Boolean(library?.has_snapshot && library.stale && library.error);
+}
+
 /** Done, Look or Stop for the footer dot; words carry the same meaning. */
 export function libraryHealth(library: LibraryStatus | null | undefined): "done" | "look" | "stop" | "idle" {
-  if (library === null || library?.error) return "stop";
+  if (library === null || (library?.error && !hasRetainedFreshnessProblem(library))) return "stop";
   if (!library?.has_snapshot) return "idle";
-  return library.warnings > 0 || library.references === 0 ? "look" : "done";
+  return hasRetainedFreshnessProblem(library) || library.warnings > 0 || library.references === 0 ? "look" : "done";
 }
 
 const lists = new Intl.ListFormat(appLocale, { style: "short", type: "unit" });
