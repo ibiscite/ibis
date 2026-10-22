@@ -254,7 +254,7 @@ fn v1_to_v2(mut value: Value) -> Value {
 /// Load settings. A missing file gives defaults. An unreadable or invalid file
 /// falls back to the backup, then to defaults, and reports the problem.
 pub fn load(path: &Path) -> Loaded {
-    let (primary_read, primary) = match fs::read_to_string(path) {
+    let (primary_read, primary) = match read_regular(path) {
         Ok(text) => (PrimaryRead::Present, parse(&text)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             return Loaded {
@@ -274,9 +274,7 @@ pub fn load(path: &Path) -> Loaded {
             from_backup: false,
         },
         Err(problem) => {
-            let backup = fs::read_to_string(backup_path(path))
-                .ok()
-                .and_then(|text| parse(&text).ok());
+            let backup = read_regular(&backup_path(path)).ok().and_then(|text| parse(&text).ok());
             let from_backup = backup.is_some();
             Loaded {
                 settings: backup.unwrap_or_default(),
@@ -291,16 +289,24 @@ pub fn load(path: &Path) -> Loaded {
 /// Save settings atomically, keeping the previous file as a backup. Refuses to
 /// replace a file written by a newer version.
 pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
-    if let Ok(text) = fs::read_to_string(path)
+    if let Ok(text) = read_regular(path)
         && let Err(SettingsError::NewerVersion(v)) = parse(&text)
     {
         return Err(SettingsError::NewerVersion(v));
+    }
+    let temporary = path.with_extension("json.tmp");
+    let backup = backup_path(path);
+    for candidate in [path, temporary.as_path(), backup.as_path()] {
+        if let Err(error) = require_regular(candidate)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            return Err(SettingsError::Unreadable(error));
+        }
     }
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| SettingsError::Invalid(e.to_string()))?;
-    let temporary = path.with_extension("json.tmp");
     // The new contents reach the disk before they replace the old file, so a
     // power cut leaves either file whole, never an empty one.
     let mut file = File::create(&temporary)?;
@@ -308,7 +314,6 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
     file.sync_all()?;
     drop(file);
     if path.exists() {
-        let backup = backup_path(path);
         fs::copy(path, &backup)?;
         // Windows flushes only a handle opened for writing.
         fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
@@ -335,7 +340,7 @@ fn sync_directory(path: &Path) {
 /// save the result. Edits made to the file since it was loaded are kept. A file
 /// that cannot be read or is invalid is left untouched and the problem returned.
 pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Settings, SettingsError> {
-    let current = match fs::read_to_string(path) {
+    let current = match read_regular(path) {
         Ok(text) => parse(&text)?,
         Err(e) if e.kind() == io::ErrorKind::NotFound => Settings::default(),
         Err(e) => return Err(SettingsError::Unreadable(e)),
@@ -346,6 +351,23 @@ pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Setting
         save(path, &changed)?;
     }
     Ok(changed)
+}
+
+// Metadata follows ordinary file symlinks, preserving their existing behavior.
+// This refuses special files before opening them; it is not an external-writer lock.
+fn require_regular(path: &Path) -> io::Result<()> {
+    if !fs::metadata(path)?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "settings path is not a regular file",
+        ));
+    }
+    Ok(())
+}
+
+fn read_regular(path: &Path) -> io::Result<String> {
+    require_regular(path)?;
+    fs::read_to_string(path)
 }
 
 #[cfg(test)]

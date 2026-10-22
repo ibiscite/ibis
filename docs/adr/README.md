@@ -19,10 +19,11 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0013 | Permit NCSA for the isolated fuzzing dependency | accepted |
 | 0014 | Share one lockfile with fuzz infrastructure | accepted (amends 0013 workspace layout) |
 | 0015 | Autonomous agents work under standing maintainer authorization | accepted (amends 0011; amended by 0017) |
-| 0016 | Keep versioned, human-editable settings in the platform configuration folder | accepted (library field and migration superseded by 0018; amended by 0022) |
+| 0016 | Keep versioned, human-editable settings in the platform configuration folder | accepted (library field and migration superseded by 0018; amended by 0022; location superseded by 0023) |
 | 0017 | Lighter review for documentation and test changes | accepted (amends 0015) |
 | 0018 | Settings format 2: the library names its kind | accepted (supersedes part of 0016) |
 | 0019 | Signed in-app updates from GitHub Releases, with separate Stable and Nightly apps | accepted (applies 0008) |
 | 0020 | Remember picker preferences in settings format 2 | accepted (adds fields to 0018) |
 | 0021 | Build the desktop interface on React Aria Components and layered CSS tokens | accepted |
 | 0022 | Keep unknown settings fields and flush settings before replacing them | accepted (amends 0016) |
+| 0023 | Use the owned domain for the app identity and preserve channel settings | accepted (supersedes location in 0016) |

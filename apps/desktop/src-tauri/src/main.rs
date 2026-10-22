@@ -12,6 +12,7 @@ mod diagnostics;
 mod feedback;
 #[cfg(debug_assertions)]
 mod gallery;
+mod identity;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
@@ -175,9 +176,8 @@ fn main() {
                 #[cfg(not(target_os = "macos"))]
                 report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
             }
-            // Settings live in the app's configuration folder, e.g. on macOS
-            // ~/Library/Application Support/io.github.ibiscite.ibis/settings.json
-            let settings_path = app.path().app_config_dir()?.join("settings.json");
+            let location = identity::settings_location(&app.path().app_config_dir()?, &app.config().identifier);
+            let settings_path = location.path;
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
             if let Some(problem) = &loaded.problem {
@@ -185,6 +185,12 @@ fn main() {
             }
             if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
                 library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
+                if location.using_legacy {
+                    library.settings_notice = Some(match library.settings_notice.take() {
+                        Some(problem) => format!("{} {problem}", identity::MIGRATION_NOTICE),
+                        None => identity::MIGRATION_NOTICE.to_string(),
+                    });
+                }
             }
             let (shortcut, label, setting_error) = configured_shortcut(loaded.settings.shortcut.as_deref());
             let registration_error = register_shortcut(app.handle(), shortcut).err().map(str::to_string);
