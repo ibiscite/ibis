@@ -191,6 +191,49 @@ mod tests {
     }
 
     #[test]
+    fn settings_recovery_and_preference_changes_leave_damaged_files_untouched() {
+        for contents in [
+            b"".as_slice(),
+            b"{invalid synthetic settings",
+            b"\xff",
+            br#"{"schema_version":999}"#,
+        ] {
+            for has_backup in [false, true] {
+                let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+                let file = SettingsFile::new(directory.path().join("settings.json"));
+                let backup = file.path.with_extension("json.bak");
+                let temporary = file.path.with_extension("json.tmp");
+                let backup_contents = br#"{"schema_version":2,"copy_format":"typst"}"#;
+                std::fs::write(&file.path, contents).unwrap_or_else(|e| panic!("{e}"));
+                std::fs::write(&temporary, b"synthetic unfinished save").unwrap_or_else(|e| panic!("{e}"));
+                if has_backup {
+                    std::fs::write(&backup, backup_contents).unwrap_or_else(|e| panic!("{e}"));
+                }
+                let loaded = settings::load(&file.path);
+                assert!(loaded.problem.is_some());
+                assert_eq!(loaded.from_backup, has_backup);
+                assert_eq!(loaded.settings.copy_format, has_backup.then_some(KeyFormat::Typst));
+                assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
+                let chosen = PickerPreferences::from_settings(&loaded.settings);
+                assert!(file.save_preferences(chosen, Some(KeyFormat::Cite)).is_err());
+                assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
+                if has_backup {
+                    assert_eq!(
+                        std::fs::read(&backup).unwrap_or_else(|e| panic!("{e}")),
+                        backup_contents
+                    );
+                } else {
+                    assert!(!backup.exists());
+                }
+                assert_eq!(
+                    std::fs::read(&temporary).unwrap_or_else(|e| panic!("{e}")),
+                    b"synthetic unfinished save"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn settings_saves_from_several_threads_never_lose_each_other() {
         let dir = std::env::temp_dir().join(format!("ibis-concurrent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
