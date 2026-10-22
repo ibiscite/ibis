@@ -9,7 +9,8 @@ source, reviews and build workflows are public in the
 Windows installers and macOS apps are not yet signed with an operating-system
 code signing certificate. The operating system may warn on first install.
 Ibis's updater signatures are separate: the app accepts an update only when
-its signature matches the Ibis update key built into the app
+its signature matches the Ibis update key built into the app and authenticates
+the advertised version within the installed channel
 ([ADR 0019](adr/0019-update-checks.md)). An updater signature does not establish
 a Windows publisher or remove the first-install warning.
 

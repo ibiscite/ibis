@@ -461,13 +461,14 @@ jobs:
             echo "::error::$TAG does not match the workspace version $(node scripts/update-feed.mjs release)."
             exit 1
           fi
+          VERSION="${TAG#v}"
           for file in Ibis-macOS-Apple-silicon.app.tar.gz Ibis-macOS-Intel.app.tar.gz Ibis-Windows-setup.exe Ibis-Linux.AppImage; do
-            apps/desktop/node_modules/.bin/tauri signer sign "dist/$file" > /dev/null
+            apps/desktop/node_modules/.bin/tauri signer sign --app-version "$VERSION" "dist/$file" > /dev/null
           done
           mkdir feed
           mv dist/*.sig feed/
           node scripts/update-feed.mjs manifest feed "https://github.com/$REPO/releases/download/$TAG" \
-            "${TAG#v}" "Ibis ${TAG#v}. Release notes: https://github.com/$REPO/releases/tag/$TAG"
+            "$VERSION" "Ibis ${TAG#v}. Release notes: https://github.com/$REPO/releases/tag/$TAG"
           rm feed/*.sig
           cat feed/latest.json
 
@@ -636,13 +637,14 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          VERSION="$(node scripts/update-feed.mjs version)"
           for file in Ibis-macOS-Apple-silicon.app.tar.gz Ibis-macOS-Intel.app.tar.gz Ibis-Windows-setup.exe Ibis-Linux.AppImage; do
-            apps/desktop/node_modules/.bin/tauri signer sign "dist/$file" > /dev/null
+            apps/desktop/node_modules/.bin/tauri signer sign --app-version "$VERSION" "dist/$file" > /dev/null
           done
           mkdir feed
           mv dist/*.sig feed/
           node scripts/update-feed.mjs manifest feed "https://github.com/$REPO/releases/download/nightly" \
-            "$(node scripts/update-feed.mjs version)" "Nightly build of ${SHA:0:12} on main."
+            "$VERSION" "Nightly build of ${SHA:0:12} on main."
           rm feed/*.sig
           cat feed/latest.json
 

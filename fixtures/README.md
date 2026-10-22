@@ -11,7 +11,7 @@ Rules:
 | Folder | Contents |
 | --- | --- |
 | `bibtex/` | `.bib` files: real-world quirks, damaged files, empty file |
-| `updates/` | A synthetic update package signed with a throwaway test key, and a second unrelated public key (neither private half was kept), for the offline update check test |
+| `updates/` | A synthetic package with unversioned, Stable and Nightly signatures from CLI 2.12.3, a forged trusted comment, and an unrelated public key; throwaway private keys were discarded |
 | `zotero/` | Synthetic Zotero local-API item envelopes (`key`, `links`, `data`, `csljson`); database snapshots for Zotero 7–10, including trashed parents and children, are still planned |
 
 `bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input

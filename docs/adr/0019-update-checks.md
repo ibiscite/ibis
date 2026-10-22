@@ -24,3 +24,32 @@ Testers should get fixes without reinstalling by hand. Builds are already publis
 - Testers of today's nightly (installed as "Ibis") move to "Ibis Nightly" once, by hand.
 - macOS and Windows still warn on first install until the apps are code-signed; updates after that install without a new download.
 - Linux updates cover the AppImage; `.deb` and `.rpm` installs are updated by hand until a package repository exists.
+
+## Amendment: authenticate the update version (2026-10-22, #921)
+
+- Every manually signed release and nightly package uses the pinned Tauri CLI's
+  `signer sign --app-version` with the same version written to `latest.json`.
+  Minisign's global signature covers the trusted comment's `version:` field.
+  Publication checks that the field exactly matches the build version.
+- Both apps set `requireSignedVersion: true`: bytes and trusted comment must
+  verify with the built-in key before the updater compares the signed version
+  with the advertised version. Missing or mismatched versions are refused.
+  Updater 2.14.0 compares parsed semantic versions, normalizing a leading `v`;
+  prerelease and build metadata remain part of signed-version equality.
+- Offers must increase within the installed app's channel: plain Stable
+  versions accept only plain versions; `nightly.*` accepts only `nightly.*`.
+  The shared key alone does not authenticate a channel. An older artifact
+  advertised as newer fails signature/version verification; an honestly
+  advertised downgrade or cross-channel substitution is never offered.
+- CLI 2.12.3's signatures remain valid for installed 0.1.x clients without the
+  flag (v0.1.1 locks updater 2.14.0 and minisign-verify 0.3.0). Signing and
+  enforcement therefore ship together. Existing clients gain enforcement
+  after that update; their earlier unversioned signatures are still unsafe
+  until then. Endpoints and the signing secret/key stay unchanged.
+- Interrupted downloads and partial cached packages fail verification before
+  installation; retrying a complete download remains possible. This does not
+  promise rollback after an operating-system installer has started; installed
+  update/restart acceptance on each platform remains tracked by #493.
+
+Upstream: [CLI 2.12.3 signing](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.3/crates/tauri-cli/src/helpers/updater_signature.rs),
+[updater 2.14.0 verification](https://github.com/tauri-apps/plugins-workspace/blob/updater-v2.14.0/plugins/updater/src/updater.rs).

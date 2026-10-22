@@ -130,10 +130,24 @@ pub(crate) fn user_agent<R: tauri::Runtime>(app: &AppHandle<R>) -> String {
 }
 
 fn updater<R: tauri::Runtime>(app: &AppHandle<R>, timeout: Duration) -> tauri_plugin_updater::Result<Updater> {
-    app.updater_builder()
+    updater_builder(app)?.timeout(timeout).build()
+}
+
+fn updater_builder<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> tauri_plugin_updater::Result<tauri_plugin_updater::UpdaterBuilder> {
+    Ok(app
+        .updater_builder()
         .header("User-Agent", user_agent(app))?
-        .timeout(timeout)
-        .build()
+        .version_comparator(|current, release| {
+            // The shared signing key authenticates versions, not app identity.
+            // Only plain releases or nightly prereleases in the same channel
+            // may advance; never relax the plugin's no-downgrade comparison.
+            let same_channel = (current.pre.is_empty() && release.version.pre.is_empty())
+                || (current.pre.as_str().starts_with("nightly.")
+                    && release.version.pre.as_str().starts_with("nightly."));
+            same_channel && release.version > current
+        }))
 }
 
 async fn check(app: &AppHandle, asked: bool) {
@@ -300,6 +314,7 @@ mod tests {
             json!(["https://github.com/ibiscite/ibis/releases/download/stable/latest.json"])
         );
         assert!(has_update_key(Some(updater)), "the Ibis update key must be built in");
+        assert_eq!(updater["requireSignedVersion"], true);
         assert!(updater.get("dangerousInsecureTransportProtocol").is_none());
     }
 
@@ -402,7 +417,10 @@ mod tests {
         let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/updates");
         let read = |name: &str| std::fs::read(fixtures.join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
         let package = read("package.bin");
-        let signature = String::from_utf8(read("package.bin.sig")).unwrap_or_default();
+        let signature = String::from_utf8(read("package-versioned.bin.sig")).unwrap_or_default();
+        let unversioned = String::from_utf8(read("package.bin.sig")).unwrap_or_default();
+        let stable = String::from_utf8(read("package-stable.bin.sig")).unwrap_or_default();
+        let forged = String::from_utf8(read("package-forged-comment.bin.sig")).unwrap_or_default();
         let key = String::from_utf8(read("test-key.pub")).unwrap_or_default();
         let mut tampered = package.clone();
         tampered[0] ^= 1;
@@ -411,7 +429,7 @@ mod tests {
         let base = format!("http://{}", server.local_addr().unwrap_or_else(|e| panic!("{e}")));
         let platform = json!({ "signature": signature.trim(), "url": format!("{base}/package.bin") });
         let tampered_platform = json!({ "signature": signature.trim(), "url": format!("{base}/tampered.bin") });
-        let manifest = |entry: &serde_json::Value| {
+        let manifest = |entry: &serde_json::Value, version: &str| {
             let platforms: serde_json::Map<_, _> = [
                 "darwin-aarch64-app",
                 "darwin-x86_64-app",
@@ -421,13 +439,46 @@ mod tests {
             .into_iter()
             .map(|target| (target.to_string(), entry.clone()))
             .collect();
-            json!({ "version": "9.9.9-nightly.209912312359", "notes": "Synthetic notes.", "pub_date": "2099-12-31T23:59:00Z", "platforms": platforms })
+            json!({ "version": version, "notes": "Synthetic notes.", "pub_date": "2099-12-31T23:59:00Z", "platforms": platforms })
                 .to_string()
                 .into_bytes()
         };
+        let version = "9.9.9-nightly.209912312359";
         let files = [
-            ("/latest.json", manifest(&platform)),
-            ("/tampered.json", manifest(&tampered_platform)),
+            ("/latest.json", manifest(&platform, version)),
+            ("/prefixed.json", manifest(&platform, &format!("v{version}"))),
+            ("/replay.json", manifest(&platform, "9.9.9-nightly.209912312400")),
+            (
+                "/stable.json",
+                manifest(
+                    &json!({ "signature": stable.trim(), "url": format!("{base}/package.bin") }),
+                    "9.9.9",
+                ),
+            ),
+            (
+                "/forged.json",
+                manifest(
+                    &json!({ "signature": forged.trim(), "url": format!("{base}/package.bin") }),
+                    "9.9.9-nightly.209912312400",
+                ),
+            ),
+            ("/metadata.json", manifest(&platform, &format!("{version}+other"))),
+            ("/tampered.json", manifest(&tampered_platform, version)),
+            (
+                "/unversioned.json",
+                manifest(
+                    &json!({ "signature": unversioned.trim(), "url": format!("{base}/package.bin") }),
+                    version,
+                ),
+            ),
+            (
+                "/interrupted.json",
+                manifest(
+                    &json!({ "signature": signature.trim(), "url": format!("{base}/interrupted.bin") }),
+                    version,
+                ),
+            ),
+            ("/interrupted.bin", package[..package.len() / 2].to_vec()),
             ("/package.bin", package.clone()),
             ("/tampered.bin", tampered),
         ];
@@ -460,7 +511,7 @@ mod tests {
                     Some(body) => write!(
                         stream,
                         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                        body.len()
+                        body.len() + usize::from(path == "/interrupted.bin")
                     )
                     .and_then(|()| stream.write_all(body)),
                     None => write!(
@@ -471,47 +522,47 @@ mod tests {
             }
         });
 
-        let app_with_key = |pubkey: &str| {
+        let app_with_key = |pubkey: &str, current: &str, strict: bool| {
             let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+            context.package_info_mut().version = current.parse().unwrap_or_else(|e| panic!("{e}"));
             context.config_mut().plugins.0.insert(
                 "updater".into(),
-                json!({ "pubkey": pubkey, "endpoints": [], "dangerousInsecureTransportProtocol": true }),
+                json!({ "pubkey": pubkey, "endpoints": [], "requireSignedVersion": strict, "dangerousInsecureTransportProtocol": true }),
             );
             tauri::test::mock_builder()
                 .plugin(tauri_plugin_updater::Builder::new().build())
                 .build(context)
                 .unwrap_or_else(|e| panic!("{e}"))
         };
-        let fetch = |pubkey: &str, feed: &str| {
-            let app = app_with_key(pubkey);
+        let installed_dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let installed = installed_dir.path().join("synthetic-app");
+        std::fs::write(&installed, b"installed app").unwrap_or_else(|e| panic!("{e}"));
+        let check = |pubkey: &str, feed: &str, current: &str, strict: bool| {
+            let app = app_with_key(pubkey, current, strict);
             let url = format!("{base}/{feed}").parse().unwrap_or_else(|e| panic!("{e}"));
-            let updater = app
-                .updater_builder()
-                .header("User-Agent", user_agent(app.handle()))
+            let updater = updater_builder(app.handle())
                 .unwrap_or_else(|e| panic!("{e}"))
                 .endpoints(vec![url])
                 .unwrap_or_else(|e| panic!("{e}"))
                 // Each published entry names its package type, so a .deb or
                 // .rpm install is never offered the AppImage.
                 .target("linux-x86_64-appimage")
+                .executable_path(&installed)
                 .timeout(CHECK_TIMEOUT)
                 .no_proxy()
                 .build()
                 .unwrap_or_else(|e| panic!("{e}"));
-            tauri::async_runtime::block_on(async {
-                let update = updater
-                    .check()
-                    .await
-                    .unwrap_or_else(|e| panic!("{e}"))
-                    .unwrap_or_else(|| panic!("the newer synthetic version was not offered"));
-                assert_eq!(update.version, "9.9.9-nightly.209912312359");
-                assert_eq!(
-                    update.timeout, None,
-                    "manifest budget must not limit the package download"
-                );
-                assert!(offer_text("0.1.0", &update).contains("Synthetic notes."));
-                update.download(|_, _| {}, || {}).await
-            })
+            tauri::async_runtime::block_on(updater.check()).unwrap_or_else(|e| panic!("{e}"))
+        };
+        let fetch = |pubkey: &str, feed: &str| {
+            let update = check(pubkey, feed, "0.1.1-nightly.20261019223000", true)
+                .unwrap_or_else(|| panic!("the newer synthetic version was not offered"));
+            assert_eq!(
+                update.timeout, None,
+                "manifest budget must not limit the package download"
+            );
+            assert!(offer_text("0.1.0", &update).contains("Synthetic notes."));
+            tauri::async_runtime::block_on(update.download(|_, _| {}, || {}))
         };
 
         let downloaded = fetch(&key, "latest.json").unwrap_or_else(|e| panic!("{e}"));
@@ -526,9 +577,48 @@ mod tests {
             fetch(&other_key, "latest.json").is_err(),
             "a package signed with another key must be refused"
         );
+        assert_eq!(fetch(&key, "prefixed.json").unwrap_or_else(|e| panic!("{e}")), package);
+        assert!(matches!(
+            fetch(&key, "replay.json"),
+            Err(tauri_plugin_updater::Error::SignedVersionMismatch { .. })
+        ));
+        assert!(matches!(
+            fetch(&key, "unversioned.json"),
+            Err(tauri_plugin_updater::Error::MissingSignedVersion)
+        ));
+        assert!(
+            fetch(&key, "forged.json").is_err(),
+            "trusted comment must be authenticated"
+        );
+        assert!(
+            fetch(&key, "metadata.json").is_err(),
+            "build metadata is part of the signed version"
+        );
+        // Legacy 0.1.x clients accept the bound signature without the flag.
+        let legacy =
+            check(&key, "latest.json", "0.1.1-nightly.20261019223000", false).unwrap_or_else(|| panic!("legacy offer"));
+        assert!(legacy.verify(&package).is_ok());
+        // Both directions of channel substitution, and a genuine downgrade.
+        assert!(check(&key, "stable.json", "0.1.1-nightly.20261019223000", true).is_none());
+        assert!(check(&key, "latest.json", "0.1.1", true).is_none());
+        assert!(check(&key, "latest.json", "9.9.9-nightly.209912312400", true).is_none());
+        assert!(check(&key, "stable.json", "10.0.0", true).is_none());
+        let stable_update = check(&key, "stable.json", "0.1.1", true).unwrap_or_else(|| panic!("stable offer"));
+        assert!(stable_update.verify(&package).is_ok());
+        // A cut-off download must fail before any installer is reached; a
+        // later complete download succeeds. Cached partial bytes also fail.
+        let interrupted = check(&key, "interrupted.json", "0.1.1-nightly.20261019223000", true)
+            .unwrap_or_else(|| panic!("interrupted offer"));
+        assert!(tauri::async_runtime::block_on(interrupted.download_and_install(|_, _| {}, || {})).is_err());
+        assert!(interrupted.install(&package[..package.len() / 2]).is_err());
+        assert_eq!(
+            std::fs::read(&installed).unwrap_or_else(|e| panic!("{e}")),
+            b"installed app"
+        );
+        assert_eq!(fetch(&key, "latest.json").unwrap_or_else(|e| panic!("{e}")), package);
         // Every request, manifest and package alike, names Ibis and only Ibis.
         let agents = agents.lock().map(|a| a.clone()).unwrap_or_default();
-        assert_eq!(agents.len(), 6, "{agents:?}");
+        assert_eq!(agents.len(), 26, "{agents:?}");
         assert!(agents.iter().all(|agent| agent.starts_with("ibis/")), "{agents:?}");
     }
 }

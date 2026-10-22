@@ -92,6 +92,13 @@ export function manifest({ version, notes, date, base, signatures, publicKey }) 
     const signature = signatures[file];
     if (!signature) throw new Error(`no signature for ${file}`);
     if (keyId(signature) !== expected) throw new Error(`${file} was not signed with the Ibis update key`);
+    // Publication preflight only: the client cryptographically authenticates
+    // this trusted comment before using it. Require the exact build spelling.
+    const comment = Buffer.from(signature.trim(), "base64").toString("utf8").split("\n")[2] ?? "";
+    const signed = comment.startsWith("trusted comment: ")
+      ? comment.slice("trusted comment: ".length).split("\t").find((field) => field.startsWith("version:"))?.slice(8)
+      : undefined;
+    if (signed !== version) throw new Error(`${file} has no matching signed version`);
     platforms[target] = { signature: signature.trim(), url: `${base}/${file}` };
   }
   return { version, notes, pub_date: date, platforms };
