@@ -1,10 +1,13 @@
+console.error('MACOS HID CONTRACT start');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const context = {ObjC: {import() {}}};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(`${__dirname}/smoke-macos.js`, 'utf8'), context);
+console.error('MACOS HID CONTRACT source-ready');
 
+console.error('MACOS HID CONTRACT fullscreen-cases');
 const fullscreenRead = () => context.readEditorFullscreen(() => { throw Error('Synthetic transition AX getter failure'); });
 assert.equal(JSON.stringify(fullscreenRead()), '{"available":false,"fullscreen":null}');
 assert.equal(JSON.stringify(context.readEditorFullscreen(() => false)), '{"available":true,"fullscreen":false}');
@@ -143,6 +146,7 @@ for (const failure of [Object.assign(Error('Invalid index.'), {errorNumber: -172
     assert.equal(fatalFrame.elapsed, 0);
 }
 
+console.error('MACOS HID CONTRACT key-plan-cases');
 const events = [];
 context.sendPhysicalChord('ctrl+super+r', (...event) => events.push(event));
 assert.deepEqual(events, [
@@ -193,6 +197,7 @@ assert.deepEqual(text.map(event => [event[1], event[3], event[3].length]), [
 assert.ok(text.every(event => event[0] === 0 && event[2] === 0));
 assert.throws(() => context.sendPhysicalChord('ctrl+unknown', () => assert.fail('Invalid chord emitted an event')), /Unsupported/);
 
+console.error('MACOS HID CONTRACT permission-cases');
 context.Application = () => ({});
 context.$ = {AXIsProcessTrusted: () => true, CGPreflightPostEventAccess: () => false};
 assert.throws(() => context.run(['probe', '42', '0', '']), /TCC event posting is not granted/);
@@ -208,6 +213,7 @@ context.ObjC.bindFunction = (name, signature) => {
 assert.equal(context.run(['probe', '42', '0', '']), 'true');
 assert.equal(bound, true);
 
+console.error('MACOS HID CONTRACT click-cases');
 function nativeClick(controls, text = 'Typst') {
     const window = {entireContents: () => controls};
     const windows = _selector => [window];
@@ -282,6 +288,7 @@ assert.throws(() => context.run(['probe', '42', '0', '']), /Native event-posting
 context.$ = {CGPreflightPostEventAccess: () => true, CGEventSourceCreate: () => null};
 assert.throws(() => context.run(['key', '42', '0', 'escape']), /Native HID event source unavailable/);
 
+console.error('MACOS HID CONTRACT unicode-bridge-cases');
 const posted = [];
 let unicodeBindings = 0;
 context.ObjC.bindFunction = (name, signature) => {
@@ -310,6 +317,7 @@ assert.deepEqual(posted.map(event => [event.text, event.down, event.flags]), [
     ['汉', true, 0], ['汉', false, 0], ['😀', true, 0], ['😀', false, 0],
 ]);
 
+console.error('MACOS HID CONTRACT picker-key-cases');
 // Keyboard ownership is the picker window's own AXFocused (AppKit key window),
 // never the WebView's DOM focus on the search field (#454).
 function pickerKey(windows, {onScreen = true} = {}) {
@@ -343,6 +351,7 @@ assert.equal(pickerKey([window('Other', true)]), false);
 assert.equal(pickerKey([window('Ibis', true)], {onScreen: false}), false);
 assert.equal(pickerKey([]), false);
 
+console.error('MACOS HID CONTRACT snapshot-cases');
 // Snapshot aliases must share one observation of each element's state, while
 // separate elements and later polls still get fresh accessibility reads.
 function snapshotProbe(descriptions = [{}]) {
@@ -422,3 +431,4 @@ for (const focused of [undefined, null, 1, 'true']) {
 assert.throws(snapshotProbe(Array(4001).fill({})).invoke, /traversal bound/);
 
 console.log('Native HID event-plan contracts passed; no macOS execution claimed.');
+console.error('MACOS HID CONTRACT complete');
