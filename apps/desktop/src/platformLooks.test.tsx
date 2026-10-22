@@ -6,7 +6,7 @@ import { galleryProvider, galleryStates } from "./gallery-fixtures";
 import { platformOf, setPlatform } from "./nativeAppearance";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { readFileSync, readdirSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string; readdirSync: (path: URL, options: { recursive: true }) => string[] }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
@@ -327,8 +327,8 @@ test("the search box never shows a ring, except with contrast or forced colours"
   expect(windows).toMatch(/border-bottom-color:\s*var\(--accent\)/);
   for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
     const block = styles.slice(styles.indexOf(media), styles.indexOf("\n}\n", styles.indexOf(media)));
-    expect(rules(block, "#search:focus-visible"), media).toMatch(/outline:\s*var\(--focus-width\) solid/);
-    expect(rules(block, ":root[data-platform] #search:focus"), media).toMatch(/outline:\s*var\(--focus-width\) solid/);
+    expect(rules(block, "#search:focus-visible"), media).toMatch(/outline:\s*var\(--focus-ring-width\) solid/);
+    expect(rules(block, ":root[data-platform] #search:focus"), media).toMatch(/outline:\s*var\(--focus-ring-width\) solid/);
   }
 });
 
@@ -382,7 +382,7 @@ function probeColor(name: string): HTMLElement {
 }
 
 test("the search has a quiet clear glyph, and contrast restores its ring", () => {
-  expect(tokens).toMatch(/--focus-width:\s*2px/);
+  expect(tokens).toMatch(/--focus-ring-width:\s*2px/);
   const clear = rules(styles, "#search::-webkit-search-cancel-button");
   expect(clear).toMatch(/appearance:\s*none/);
   expect(clear).toMatch(/width:\s*var\(--control-min-size\)/);
@@ -394,7 +394,7 @@ test("the search has a quiet clear glyph, and contrast restores its ring", () =>
   expect(rules(forced, "#search::-webkit-search-cancel-button")).toMatch(/background:\s*FieldText/);
   // The gallery's contrast preview restores the ring as prefers-contrast does.
   expect(rules(gallery, ':root[data-gallery-theme="contrast"] #search:focus-visible'))
-    .toMatch(/outline:\s*var\(--focus-width\) solid var\(--focus\)/);
+    .toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
 });
 
 test("under forced colours the active row opts out of the backplate so HighlightText stays on Highlight", () => {
@@ -473,23 +473,26 @@ test("secondary text keeps 4.5:1 on each look's surface", () => {
   }
 });
 
-test("every spacing token sits on the 4 px grid", () => {
-  // Row heights, type, 1 px borders and hidden-element offsets, radii and the gallery's own frame are exempt.
-  const exempt = new Set<string>();
+test("spacing tokens, direct gaps/padding and resolved formulas keep the 4 px grid", () => {
   const off: string[] = [];
-  for (const [, name, value] of tokens.matchAll(/(--[\w-]*(?:padding|margin|gap|space|inset|-h|height|cap|compact|size)[\w-]*):\s*([^;]+);/g)) {
-    if (/^--(type|gallery|row-|heading-size|title-size|metadata-size|key-size|hint-size|footer-size|search-size|search-line|larger)/.test(name!) || exempt.has(name!)) continue;
-    for (const [, digits, unit] of value!.matchAll(/(-?[\d.]+)(rem|px)\b/g)) {
-      const number = Number(digits);
-      const px = unit === "rem" ? number * 16 : number;
-      if (Math.abs(px) !== 1 && px % 4 !== 0) off.push(`${name}: ${value}`);
+  for (const platform of ["macos", "windows", "linux"]) for (const mode of ["normal", "more", "forced", "gallery"]) for (const coarse of [false, true]) {
+    const blocks = tokenBlocks(appSheets, platform, mode, true, false, false, coarse), scopes = tokenScopes(blocks);
+    for (const block of blocks) for (const [name, value] of block.values) {
+      if (/^padding-(top|right|bottom|left)$/.test(name) && block.values.some(([key]) => key === "padding")) continue;
+      if (!/^(--[\w-]*(padding|gap|inset)|gap|row-gap|column-gap|padding[\w-]*)$/.test(name) || opticalSpacing(block, name, value)) continue;
+      const resolved = resolveToken(value, scopes.get(block.scope)!);
+      if (resolved === null) { off.push(`${name}: unresolved`); continue; }
+      for (const part of cssParts(resolved)) {
+        const px = gridPixels(part);
+        if (px !== null && Math.abs(px / 4 - Math.round(px / 4)) > 1e-8) off.push(`${platform}/${mode} ${block.selector} ${name}: ${value} = ${px}px`);
+      }
     }
   }
-  expect(off).toEqual([]);
+  expect([...new Set(off)]).toEqual([]);
 });
 
 test("unused tokens are gone and the spec's line heights apply", () => {
-  for (const name of ["--forced-selected-offset", "--key-padding", "--key-radius", "--space-6"]) expect(tokens, name).not.toContain(`${name}:`);
+  for (const name of ["--forced-selected-offset", "--key-padding", "--key-radius"]) expect(tokens, name).not.toContain(`${name}:`);
   expect(rules(styles, ".results-heading")).toMatch(/line-height:\s*var\(--type-label-line\)/);
   expect(rules(styles, "#search")).toMatch(/line-height:\s*var\(--search-line\)/);
 });
@@ -565,4 +568,195 @@ test("a wrapped footer keeps breathing room above and below its lines", () => {
 test("the thicker active-row edge in increased contrast does not move the row's text", () => {
   const contrast = styles.slice(styles.indexOf("@media (prefers-contrast: more)"));
   expect(rules(contrast, '[role="option"][data-active]')).toMatch(/padding-inline:\s*calc\(var\(--row-pad\) - var\(--contrast-border-width\)\)/);
+});
+
+test("the alias-only migration exposes the complete design-system role inventory", () => {
+  const roles = `surface-window surface-raised surface-overlay surface-field
+    fill-control fill-control-hover fill-control-pressed fill-subtle-hover fill-subtle-pressed fill-disabled
+    text-tertiary text-disabled text-on-accent accent-text row-inactive-background
+    stroke-control stroke-field stroke-overlay scrim status-info
+    shadow-card shadow-raised shadow-overlay shadow-dialog shadow-toast
+    ease-in ease-out motion-exit z-content z-chrome z-overlay z-tooltip z-modal z-toast overlay-margin
+    r-control r-key r-card r-dialog r-full`.split(/\s+/);
+  for (const role of roles) expect(tokens, role).toMatch(new RegExp(`--${role}:`));
+  // This is the unscaled 16 px/rem baseline, not Larger/system-scaled geometry.
+  for (const [step, px] of [[1, 4], [2, 8], [3, 12], [4, 16], [5, 20], [6, 24], [8, 32], [10, 40]]) {
+    expect(Number(tokens.match(new RegExp(`--space-${step}:\\s*([\\d.]+)rem;`))?.[1]) * 16).toBe(px);
+  }
+  for (const old of ["focus", "focus-width", "focus-offset", "key-radius", "key-padding"]) {
+    expect(tokens).not.toMatch(new RegExp(`--${old}:`));
+  }
+});
+
+// CSSOM audits the live root, menu, notice and shelf scopes. Synthetic local
+// fixtures also exercise inheritance and pointer modes without pooling declarations.
+// This bounded dependency audit is not a CSS cascade/specificity interpreter;
+// browser comparisons verify the actual winning values and rendered appearance.
+const appSheets = Object.fromEntries(readdirSync(new FileURL(".", import.meta.url), { recursive: true })
+  .filter((file) => file.endsWith(".css")).map((file) => [file.replaceAll("\\", "/"), readFileSync(new FileURL(file.replaceAll("\\", "/"), import.meta.url), "utf8")]));
+const parsedSheets = new Map<string, CSSRuleList>();
+type TokenBlock = { file: string; selector: string; values: [string, string][]; scope: string };
+function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = "normal", advanced = true, material = false, notice = false, coarse = false) {
+  const doc = document.implementation.createHTMLDocument();
+  doc.documentElement.dataset.platform = platform;
+  if (notice) doc.documentElement.classList.add("notice-window");
+  if (mode === "gallery") doc.documentElement.dataset.galleryTheme = "contrast";
+  if (material) doc.documentElement.dataset.nativeAppearance = "vibrancy";
+  const blocks: TokenBlock[] = [];
+  const media = (query: string) => query.split(",").some((part) => [...part.matchAll(/\((prefers-[\w-]+|forced-colors|pointer):\s*([\w-]+)\)/g)].every(([, feature, value]) =>
+    value === ({ "prefers-contrast": mode === "more" ? "more" : "no-preference", "forced-colors": mode === "forced" ? "active" : "none", "pointer": coarse ? "coarse" : "fine", "prefers-reduced-motion": mode === "reduced" ? "reduce" : "no-preference", "prefers-reduced-transparency": mode === "transparency" ? "reduce" : "no-preference" } as Record<string, string>)[feature!]));
+  for (const [file, css] of Object.entries(sheets)) {
+    if (!parsedSheets.has(css)) {
+      const sheet = document.createElement("style");
+      sheet.textContent = css.replace(/@import[^;]+;/g, ""); document.head.append(sheet);
+      parsedSheets.set(css, sheet.sheet!.cssRules); sheet.remove();
+    }
+    const visit = (rules: CSSRuleList) => { for (const rule of Array.from(rules)) {
+      if (rule.type === 4 && !media((rule as CSSMediaRule).conditionText)) continue;
+      if (rule.type === 12 && ((rule as CSSSupportsRule).conditionText.startsWith("not ") ? advanced : !advanced)) continue;
+      if ("cssRules" in rule) visit((rule as CSSGroupingRule).cssRules);
+      if (!("style" in rule)) continue;
+      const styled = rule as CSSStyleRule;
+      const selector = styled.selectorText ?? "@keyframe";
+      const active = selector.split(/,(?![^()]*\))/).some((part) => {
+        const prefix = part.trim().match(/^:root\S*/)?.[0];
+        const look = part.match(/data-platform="(\w+)"/)?.[1];
+        return (!prefix || doc.documentElement.matches(prefix)) && (!look || look === platform);
+      });
+      if (!active) continue;
+      const scope = /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
+      const values: [string, string][] = Array.from(styled.style).map((name) => [name, styled.style.getPropertyValue(name)]);
+      if (scope === "root" && values.some(([name]) => name.startsWith("--")) && !selector.split(/,(?![^()]*\))/).every((part) => /^:root\S*$/.test(part.trim()))) throw new Error(`Unmodeled token scope: ${selector}`);
+      blocks.push({ file, selector, scope, values });
+      if (scope === "menu" && selector.includes(".keys-dialog")) blocks.push({ file, selector, scope: "root", values });
+    } };
+    visit(parsedSheets.get(css)!);
+  }
+  return blocks;
+}
+
+function cssParts(value: string, comma = false) {
+  let depth = 0, start = 0; const parts: string[] = [];
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === "(") depth++; if (value[i] === ")") depth--;
+    if (!depth && (comma ? value[i] === "," : /\s/.test(value[i]!))) { if (i > start) parts.push(value.slice(start, i)); start = i + 1; }
+  }
+  if (start < value.length || comma) parts.push(value.slice(start)); return parts;
+}
+const references = (value: string) => [...value.matchAll(/var\(\s*(--[\w-]+)/g)].map((match) => match[1]!);
+function hasCycle(name: string, definitions: Map<string, string>, path: string[] = []): boolean {
+  return path.includes(name) || references(definitions.get(name) ?? "").some((next) => hasCycle(next, definitions, [...path, name]));
+}
+function resolveToken(value: string, definitions: Map<string, string>): string | null {
+  const start = value.indexOf("var("); if (start < 0) return value;
+  let end = start + 4, depth = 1;
+  while (end < value.length && depth) { if (value[end] === "(") depth++; if (value[end] === ")") depth--; end++; }
+  if (depth) return null;
+  const [name, ...fallback] = cssParts(value.slice(start + 4, end - 1), true).map((part) => part.trim());
+  const raw = definitions.get(name!);
+  const replacement = raw === undefined || hasCycle(name!, definitions) ? (fallback.length ? resolveToken(fallback.join(","), definitions) : null) : resolveToken(raw, definitions);
+  return replacement === null ? null : resolveToken(value.slice(0, start) + replacement + value.slice(end), definitions);
+}
+function tokenScopes(blocks: TokenBlock[]) {
+  const raw = (scope: string) => new Map(blocks.filter((block) => block.scope === scope).flatMap((block) => block.values.filter(([name]) => name.startsWith("--"))));
+  const root = raw("root");
+  // Inherited custom properties resolve on the parent, before child overrides.
+  const inherited = [...root].map(([name, value]) => [name, resolveToken(value, root) ?? value] as [string, string]);
+  return new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+}
+
+test.each(["macos", "windows", "linux"])("every application var resolves on %s in its active mode, without alias cycles", (platform) => {
+  expect(Object.keys(appSheets).length).toBeGreaterThanOrEqual(8);
+  expect(tokenBlocks(appSheets).flatMap((block) => block.values).length).toBeGreaterThan(500);
+  const errors: string[] = [];
+  for (const mode of ["normal", "more", "forced", "gallery", "reduced", "transparency"]) for (const advanced of [true, false]) for (const material of [false, true]) for (const notice of [false, true]) for (const coarse of [false, true]) {
+    const blocks = tokenBlocks(appSheets, platform, mode, advanced, material, notice, coarse), scopes = tokenScopes(blocks);
+    for (const block of blocks) for (const [name, value] of block.values) {
+      const definitions = scopes.get(block.scope)!;
+      if ((name.startsWith("--") && hasCycle(name, definitions)) || resolveToken(value, definitions) === null) errors.push(`${platform}/${mode}/${advanced}/${material}/${notice}/${coarse} ${block.file} ${block.selector} ${name}: ${value}`);
+    }
+  }
+  expect([...new Set(errors)]).toEqual([]);
+});
+
+test("the var audit distinguishes fallbacks, inactive definitions and cycles including fallbacks", () => {
+  const definitions = new Map([["--a", "var(--b)"], ["--b", "4px"]]);
+  expect(resolveToken("var(--missing)", definitions)).toBeNull();
+  expect(resolveToken("var(--missing,)", definitions)).toBe("");
+  expect(resolveToken("var(--missing, var(--also-missing, 8px))", definitions)).toBe("8px");
+  expect(resolveToken("var(--missing, var(--also-missing))", definitions)).toBeNull();
+  expect(resolveToken("var(--a, var(--missing))", definitions)).toBe("4px");
+  for (const value of ["var(--a)", "var(--missing, var(--a))", "var(--b, var(--a))"]) expect(hasCycle("--a", new Map([...definitions, ["--a", value]]))).toBe(true);
+  const inactive = tokenScopes(tokenBlocks({ fixture: ':root[data-platform="macos"] { --only-here: 4px; } @media (prefers-contrast: more) { :root { --contrast-only: 8px; } }' }, "windows")).get("root")!;
+  expect(resolveToken("var(--only-here)", inactive)).toBeNull();
+  expect(resolveToken("var(--contrast-only)", inactive)).toBeNull();
+  expect(() => tokenBlocks({ fixture: ".unmodeled { --local: 4px; }" })).toThrow("Unmodeled token scope");
+  const shelf = tokenScopes(tokenBlocks({ fixture: ":root { --value: 4px; } .shelf { --value: 8px; }" }));
+  expect(resolveToken("var(--value)", shelf.get("root")!)).toBe("4px");
+  expect(resolveToken("var(--value)", shelf.get("shelf")!)).toBe("8px");
+  const chips = tokenScopes(tokenBlocks({ fixture: ":root { --value: 4px; } .chip-group { --value: 12px; }" }));
+  expect(resolveToken("var(--value)", chips.get("root")!)).toBe("4px");
+  expect(resolveToken("var(--value)", chips.get("chip-group")!)).toBe("12px");
+  expect(() => tokenBlocks({ fixture: ":root .unmodeled { --local: 4px; }" })).toThrow("Unmodeled token scope");
+  const overrides = { fixture: ':root { --a: 4px; } :root[data-platform="windows"] { --a: var(--b); --b: var(--a); }' };
+  expect(hasCycle("--a", tokenScopes(tokenBlocks(overrides, "windows")).get("root")!)).toBe(true);
+  expect(resolveToken("var(--a)", tokenScopes(tokenBlocks(overrides, "macos")).get("root")!)).toBe("4px");
+  // No external variable contracts are currently needed. Optional browser/native
+  // values such as --vibrancy-tint and --notice-from must carry real fallbacks.
+});
+
+/** Only arithmetic used by spacing declarations; 16 px/rem is the unscaled grid. */
+function gridPixels(value: string): number | null {
+  if (value === "auto" || value.includes("%")) return null;
+  if (value.startsWith("max(") && value.endsWith(")")) {
+    const options = cssParts(value.slice(4, -1), true).map(gridPixels);
+    if (options.some((n) => n === null)) throw new Error("Non-length grid maximum");
+    return Math.max(...options as number[]);
+  }
+  if (/[^0-9.\s()+*/-]/.test(value.replace(/calc|rem|px/g, ""))) throw new Error(`Unsupported spacing expression: ${value}`);
+  const tokens = value.replaceAll("calc", "").match(/(?:\d*\.)?\d+(?:rem|px)?|[()+*/-]/g) ?? [];
+  let at = 0;
+  const atom = (): number => {
+    const token = tokens[at++];
+    if (token === "-") return -atom();
+    if (token === "(") { const value = sum(); if (tokens[at++] !== ")") throw new Error("Unbalanced grid expression"); return value; }
+    if (!token) throw new Error("Missing grid value");
+    return parseFloat(token) * (token.endsWith("rem") ? 16 : 1);
+  };
+  const product = (): number => { let n = atom(); while (["*", "/"].includes(tokens[at]!)) { const op = tokens[at++], right = atom(); n = op === "*" ? n * right : n / right; } return n; };
+  const sum = (): number => { let n = product(); while (["+", "-"].includes(tokens[at]!)) { const op = tokens[at++], right = product(); n = op === "+" ? n + right : n - right; } return n; };
+  const result = sum(); if (at !== tokens.length || !Number.isFinite(result)) throw new Error(`Unsupported grid expression: ${value}`);
+  return result;
+}
+
+// Native menus retain 6/10 px metrics and check-column alignment; the notice's
+// inset check and pill tail are optical. Each exception names its exact value.
+function opticalSpacing(block: TokenBlock, name: string, value: string) {
+  const normalized = (text: string) => text.replace(/(^|[^\d.])0(?:px|rem)(?=$|[^\w.])/g, (_, lead: string) => lead + "0").replace(/(?<![\d.])\.(\d+)/g, "0.$1").replace(/\s/g, "");
+  const same = (expected: string) => normalized(value) === normalized(expected);
+  if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
+  const borderCompensation = [".search-bar", '[role="option"]', '[role="option"][data-active]', ".key-caps kbd", ".library-bar", ".more > button"].includes(block.selector);
+  if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
+  if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
+  const native: Record<string, string[]> = {
+    ".menu-popover padding": ["var(--menu-padding)"], ".menu-popover --menu-padding": ["var(--menu-pad)"],
+    ".menu-item padding": ["0 10px 0 6px"], ".menu-item gap": ["6px"], ".menu-header padding-inline-start": ["22px"],
+    ".toolbar-menu-button padding": ["0 8px 0 10px"], ".toolbar-menu-heading padding": ["8px 8px 4px 30px"],
+    ".copied-notice-mark padding": [".2rem"],
+  };
+  return native[`${block.selector} ${name}`]?.some(same) || (block.file === "notice.css" && /^\.copied-notice\[data-platform="(?:macos|linux)"\]$/.test(block.selector) && name === "padding" && same("0 1.125rem 0 .5rem"));
+}
+
+test("spacing audits resolve aliases and calc without exempting arbitrary one-pixel padding", () => {
+  const definitions = new Map([["--space", "1rem"], ["--gap", "calc(var(--space) / 2)"]]);
+  expect(gridPixels(resolveToken("var(--gap)", definitions)!)).toBe(8);
+  expect(gridPixels(resolveToken("calc(var(--gap) + 1px)", definitions)!)).toBe(9);
+  expect(gridPixels("1px")).toBe(1);
+  const local = { fixture: ":root { --space-1: .25rem; --control-min-size: 2rem; --chip-height: 1.5rem; } .chip-group { --chip-group-target: var(--control-min-size); } @media (pointer: coarse) { .chip-group { --chip-group-target: 2.75rem; } }" };
+  for (const [coarse, target, gap] of [[false, 32, 8], [true, 44, 20]] as const) {
+    const scope = tokenScopes(tokenBlocks(local, "windows", "normal", true, false, false, coarse)).get("chip-group")!;
+    expect(gridPixels(resolveToken("var(--chip-group-target)", scope)!)).toBe(target);
+    expect(gridPixels(resolveToken("max(var(--space-1), calc(var(--chip-group-target) - var(--chip-height)))", scope)!)).toBe(gap);
+  }
+  expect(opticalSpacing({ file: "fixture", selector: ".other", scope: "root", values: [] }, "padding", "1px")).toBeFalsy();
 });

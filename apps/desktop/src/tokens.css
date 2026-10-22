@@ -14,6 +14,7 @@
 
   /* Space and size on a 4 px grid. */
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
   /* One geometry chain (docs/design.md, "Space and size" and "Corners"):
      the look layers below set only --r-win, --inset and --r-min; every inner
      radius and the search band follow from them. Radii are px (they follow the
@@ -86,7 +87,6 @@
   --separator: var(--line); /* dividers between regions; quieter per look below */
   --active-edge: CanvasText;
   --accent: Highlight;
-  --focus: CanvasText;
   --font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --button-background: color-mix(in srgb, var(--text) 4%, var(--surface));
   --button-hover-background: color-mix(in srgb, var(--text) 8%, var(--surface));
@@ -98,13 +98,12 @@
   --selected-text: HighlightText;
   --clear: transparent;
   --border-width: 1px;
-  --focus-width: 2px;
-  --focus-offset: 2px;
   /* The keyboard focus ring, drawn only on :focus-visible: 2 px with a 1 px
      gap. The accent on macOS (the default); Windows and Linux below. */
   --focus-ring-color: var(--accent);
   --focus-ring-width: 2px;
   --focus-ring-offset: 1px;
+  --focus-ring-search-offset: 2px; /* Search keeps its existing contrast gap. */
   --focus-ring-shadow: none;
   --alert-color: CanvasText;
   --alert-border-width: 3px;
@@ -203,7 +202,6 @@
     --muted: light-dark(#6b6b75, #a6a6af);
     --line: light-dark(#85858f, #8b8b95);
     --active-edge: light-dark(#83838d, #898993);
-    --focus: light-dark(#145ccc, #9bc4ff);
   }
   /* Each look's own neutrals (docs/design.md, "Per platform"). Increased
      contrast, forced colours and the contrast preview keep the system colours. */
@@ -317,14 +315,38 @@
 }
 
 @media (prefers-contrast: more) {
-  :root, :root[data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
-  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+  :root, :root[data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
+  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
 }
 @media (forced-colors: active) {
-  :root, :root[data-platform] { --separator: CanvasText; --button-edge: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
-  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; --focus: CanvasText; }
+  :root, :root[data-platform] { --separator: CanvasText; --button-edge: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
+  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
 }
 
 /* Explicit contrast preview in the development states gallery. */
-:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: var(--focus-width); --focus-ring-offset: var(--focus-offset); --focus-ring-shadow: none; }
-:root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; --focus: CanvasText; }
+:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; }
+:root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
+
+/* Role aliases over today's values (#761). Only focus consumers migrate here;
+   appearance changes and the remaining consumer migrations belong to #762.
+   Keep dependencies one-way: legacy values never read these new aliases. */
+:root {
+  --surface-window: var(--surface); --surface-raised: var(--surface);
+  --surface-overlay: var(--surface); --surface-field: var(--field-background);
+  --fill-control: var(--button-background); --fill-control-hover: var(--button-hover-background);
+  --fill-control-pressed: var(--button-hover-background); --fill-disabled: var(--button-background);
+  --fill-subtle-hover: var(--hover-background); --fill-subtle-pressed: var(--hover-background);
+  --text-tertiary: var(--muted); --text-disabled: var(--muted); --text-on-accent: var(--selected-text);
+  --accent-text: var(--accent); --status-info: var(--accent-text);
+  --row-inactive-background: var(--hover-background);
+  --stroke-control: var(--button-edge); --stroke-field: var(--field-edge); --stroke-overlay: var(--field-edge);
+  --scrim: color-mix(in srgb, var(--text) 30%, transparent);
+  --shadow-card: none; --shadow-raised: none;
+  --shadow-overlay: var(--menu-shadow); --shadow-dialog: var(--menu-shadow);
+  --shadow-toast: 0 .5rem 1rem rgb(0 0 0 / 18%);
+  --ease-out: var(--motion-ease); --ease-in: cubic-bezier(.4, 0, 1, 1); --motion-exit: 80ms;
+  --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-tooltip: 20; --z-modal: 30; --z-toast: 40;
+  --overlay-margin: var(--space-2);
+  --r-control: var(--button-radius); --r-key: var(--hint-radius);
+  --r-card: var(--r-win); --r-dialog: var(--button-radius); --r-full: 999px;
+}

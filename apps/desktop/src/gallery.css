@@ -10,5 +10,5 @@ main.gallery-catalog { height: auto; padding: var(--gallery-padding); gap: var(-
 :root[data-gallery-theme="contrast"] { color-scheme: light; }
 :root[data-gallery-theme="contrast"] [role="option"][data-active] { border-color: var(--active-edge); border-width: var(--contrast-border-width); }
 :root[data-gallery-theme="contrast"] [data-active][data-citation-selected] .result-tile { background: var(--row-active-text); color: var(--row-active-background); }
-:root[data-gallery-theme="contrast"] #search:focus-visible, :root[data-gallery-theme="contrast"][data-platform] #search:focus { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+:root[data-gallery-theme="contrast"] #search:focus-visible, :root[data-gallery-theme="contrast"][data-platform] #search:focus { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-search-offset); }
 :root[data-gallery-size="large"] { font-size: var(--gallery-large-text-size); }

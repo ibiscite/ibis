@@ -104,7 +104,7 @@ test("the window edge is a hairline, never a white rim or glow (prototype round 
   // One layer only: no second highlight anywhere.
   expect(tokens + native).not.toMatch(/--glass-highlight/);
   const edge = native.match(/body::after \{([^}]*)\}/)?.[1] ?? "";
-  expect(edge.match(/box-shadow:\s*([^;]+);/)?.[1]).toBe("inset 0 0 0 var(--border-width) var(--glass-edge)");
+  expect(edge.match(/box-shadow:\s*([^;]+);/)?.[1]).toBe("inset 0 0 0 var(--border-width) var(--glass-edge, transparent)");
 });
 
 test("every colour role keeps 4.5:1 over the veiled material", () => {

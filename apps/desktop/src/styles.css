@@ -218,7 +218,7 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   /* The tile carries the citation state as an inverted square with its check. */
   [data-active][data-citation-selected] .result-tile { background: var(--row-active-text); color: var(--row-active-background); }
   :root[data-platform] #search { border-color: var(--line); }
-  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-search-offset); }
 }
 @media (forced-colors: active) {
 
@@ -232,9 +232,9 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   [data-active] .result-tile { background: Highlight; color: HighlightText; }
   [role="option"][data-citation-selected] .result-tile { background: CanvasText; color: Canvas; }
   [role="option"][data-active][data-citation-selected] .result-tile { background: HighlightText; color: Highlight; }
-  .search-bar:focus-within { outline: var(--focus-width) solid var(--selected-background); outline-offset: var(--forced-search-offset); }
+  .search-bar:focus-within { outline: var(--focus-ring-width) solid var(--selected-background); outline-offset: var(--forced-search-offset); }
   #search::-webkit-search-cancel-button { forced-color-adjust: none; background: FieldText; }
-  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-width) solid CanvasText; outline-offset: var(--focus-offset); }
+  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-ring-width) solid CanvasText; outline-offset: var(--focus-ring-search-offset); }
   :root[data-platform="windows"] [role="option"][data-active]::before { background: HighlightText; }
 }
 @media (max-width: 460px) {
