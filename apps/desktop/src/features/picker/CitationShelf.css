@@ -1,0 +1,3 @@
+/* Keep overflow counts measurable without contributing to layout or focus. */
+.chip-fit-measure { position: absolute; visibility: hidden; pointer-events: none; width: 0; height: 0; overflow: hidden; }
+.chip-fit-measure > button { width: max-content; max-width: none; }

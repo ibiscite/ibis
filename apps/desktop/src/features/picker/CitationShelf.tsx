@@ -4,6 +4,7 @@ import { provisional, type FormattedCitation } from "../../format/formatted";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
+import "./CitationShelf.css";
 
 /** The shelf shows at most this many chips; the rest fold into "+N"
  * (docs/design/preview.md, "Chips before the count"). */
@@ -51,6 +52,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
   const [visibleChips, setVisibleChips] = useState(SHELF_CHIPS);
   const chips = useRef<HTMLUListElement>(null);
   const more = useRef<HTMLLIElement>(null);
+  const sizes = useRef<HTMLLIElement>(null);
   useLayoutEffect(() => {
     const list = chips.current;
     if (!list) return;
@@ -66,8 +68,10 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
       let next = SHELF_CHIPS;
       if (selected.size > SHELF_CHIPS || capacity * minimum + (capacity - 1) * gap > available) {
         const button = more.current?.querySelector("button");
-        // First create the overflow control, then reserve its actual text width.
-        next = button ? Math.max(0, Math.min(capacity, Math.floor((available - button.getBoundingClientRect().width) / (minimum + gap)))) : Math.max(0, capacity - 1);
+        // Reserve the widest possible label, independently of the preceding fit.
+        // At most seven labels cover zero through six visible chips.
+        const overflow = Math.max(0, ...[...(sizes.current?.children ?? [])].map((node) => node.getBoundingClientRect().width));
+        next = Math.max(0, Math.min(capacity, Math.floor((available - overflow) / (minimum + gap))));
         if (!expanded && [...list.querySelectorAll(".chip")].slice(next).some((chip) => chip.contains(document.activeElement))) button?.focus();
       }
       setVisibleChips(next);
@@ -75,7 +79,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
     fit();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
     observer?.observe(list);
-    if (more.current) observer?.observe(more.current);
+    for (const node of sizes.current?.children ?? []) observer?.observe(node);
     window.addEventListener("resize", fit);
     return () => { observer?.disconnect(); window.removeEventListener("resize", fit); };
   }, [selected, expanded, visibleChips]);
@@ -93,6 +97,11 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
         <div className="shelf">
           {records.length > 0 && (
             <ul ref={chips} className="shelf-chips" aria-label={pickerText.selectedReferences} data-expanded={(folded > 0 && expanded) || undefined}>
+              <li ref={sizes} className="chip-more chip-fit-measure" aria-hidden="true" inert>
+                {Array.from({ length: Math.min(records.length, SHELF_CHIPS + 1) }, (_, i) => (
+                  <button key={i} type="button" tabIndex={-1}>{pickerText.moreChosen(records.length - i)}</button>
+                ))}
+              </li>
               {shownChips.map((r, i) => (
                 <li key={keysOf[i]} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
                   <bdi className="chip-label">{labels[i]}</bdi>

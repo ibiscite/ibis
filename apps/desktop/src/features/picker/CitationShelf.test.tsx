@@ -144,6 +144,52 @@ test("the output is one line in text colours: keys in monospace, failures and pe
   expect(screen.getByText("Missing year")).toBeTruthy();
 });
 
+test("proportional overflow digits cannot cycle the fitted count, and growth restores chips", () => {
+  let width = 350;
+  const observers: (() => void)[] = [];
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: () => void) { observers.push(callback); }
+    observe = vi.fn();
+    disconnect = vi.fn();
+  });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.matches(".shelf-chips") ? width : 0;
+  });
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+    if (!element.matches(".chip, .shelf-chips")) return computed(element);
+    const style = document.createElement("div").style;
+    style.minWidth = "100px";
+    style.columnGap = "4px";
+    style.paddingInlineStart = style.paddingInlineEnd = "0px";
+    return style;
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    // With three chips, +20 is wider and only two fit. With two, +21 is
+    // narrower and three fit: measuring the current label never converges.
+    return new DOMRect(0, 0, this.textContent === "+20" ? 40 : this.textContent === "+21" ? 30 : 35, 24);
+  });
+  const records = Array.from({ length: 23 }, (_, i) => record(`k${i}`, `Author${i}`));
+  render(shelf({ selected: chosen(records) }));
+  const list = screen.getByRole("list", { name: "Selected references" });
+  const visible = () => within(list).getAllByRole("button", { name: /^Remove/ });
+  const more = () => within(list).getByRole("button", { name: "Show all 23 selected references" });
+  expect(visible()).toHaveLength(2);
+  expect(more().textContent).toBe("+21");
+  more().focus();
+  act(() => { for (const observer of [...observers]) observer(); });
+  expect(document.activeElement).toBe(more());
+  expect(visible()).toHaveLength(2);
+  width = 1000;
+  act(() => { for (const observer of [...observers]) observer(); });
+  expect(visible()).toHaveLength(6);
+  width = 350;
+  act(() => { for (const observer of [...observers]) observer(); });
+  expect(visible()).toHaveLength(2);
+  fireEvent.click(more());
+  expect(visible().map((button) => button.getAttribute("aria-label"))).toEqual(records.map((r) => `Remove ${r.key}`));
+});
+
 test("nothing chosen and nothing to show draws no shelf", () => {
   const { container } = render(shelf({}));
   expect(container.querySelector(".shelf")).toBeNull();
