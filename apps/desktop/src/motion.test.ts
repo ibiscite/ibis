@@ -127,7 +127,7 @@ test("no transition or animation is longer than 280 ms or moves with reduced mot
 test("the motion check catches long and moving transitions", () => {
   const tokenSheet = css("tokens.css");
   const check = (rule: string) => problems([["tokens.css", tokenSheet], ["test.css", rule]]);
-  expect(check(".a { transition: opacity var(--motion-feedback) var(--motion-ease); }")).toEqual([]);
+  expect(check(".a { transition: opacity var(--motion-feedback) var(--ease-out); }")).toEqual([]);
   expect(check(".a { transition: transform var(--motion-layout) ease; }")).toEqual([]);
   expect(check(".a { transition: opacity 300ms; }")).toHaveLength(1);
   expect(check(".a { transition: opacity 200ms 100ms; }")).toHaveLength(1);

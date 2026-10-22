@@ -319,8 +319,8 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 
 /* The keys overlay: one table of every key, above a dimmed picker. */
-.keys-backdrop { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; padding: var(--space-4); background: color-mix(in srgb, var(--text) 30%, transparent); }
-.keys-dialog { display: flex; flex-direction: column; width: min(36rem, 100%); max-height: 100%; min-height: 0; background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); box-shadow: var(--menu-shadow); }
+.keys-backdrop { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; padding: var(--space-4); background: var(--scrim); }
+.keys-dialog { display: flex; flex-direction: column; width: min(36rem, 100%); max-height: 100%; min-height: 0; background: var(--surface); color: var(--text); border: var(--border-width) solid var(--line); border-radius: var(--r-dialog); box-shadow: var(--shadow-dialog); }
 .keys-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--space-4) var(--space-2); border-bottom: var(--border-width) solid var(--line); }
 .keys-heading h2 { margin: 0; font-size: inherit; font-weight: var(--type-strong-weight); }
 .keys-heading button { min-height: var(--control-min-size); }
@@ -332,7 +332,6 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 .keys-scroll td:last-child { color: var(--muted); }
 .keys-scroll kbd { margin-inline-start: 0; }
 @media (forced-colors: active) {
-  .keys-backdrop { background: Canvas; }
   .keys-dialog { border-color: CanvasText; }
 }
 @media (max-width: 460px) {

@@ -10,7 +10,7 @@
   "icon": 20,
   "platforms": {
     "macos": { "inset": 8, "rWin": 28, "rMin": 6, "searchBand": 56 },
-    "windows": { "inset": 4, "rWin": 8, "rMin": 2, "searchBand": 48 },
-    "linux": { "inset": 8, "rWin": 14, "rMin": 4, "searchBand": 56 }
+    "windows": { "inset": 4, "rWin": 8, "rMin": 4, "searchBand": 48 },
+    "linux": { "inset": 8, "rWin": 15, "rMin": 6, "searchBand": 56 }
   }
 }

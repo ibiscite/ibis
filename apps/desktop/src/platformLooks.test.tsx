@@ -124,7 +124,7 @@ test("every inner radius follows one concentric chain per platform", () => {
     for (const platform of ["windows", "linux"]) expect(rules(tokens, `:root[data-platform="${platform}"]`), `${platform} ${name}`).not.toContain(`${name}:`);
   }
   // docs/design.md, Corners: macOS before 26 (the native 12 pt corner), Windows 11, GNOME.
-  const expected = { macos: [12, 8, 6, 6, 12, 6], windows: [8, 4, 4, 2, 8, 4], linux: [14, 8, 6, 4, 12, 6] };
+  const expected = { macos: [12, 8, 6, 6, 12, 6], windows: [8, 4, 4, 4, 8, 4], linux: [15, 8, 7, 6, 12, 6] };
   for (const [platform, [win, inset, row, tile, menu, item]] of Object.entries(expected)) {
     const g = geometry(platform === "macos" ? undefined : platform);
     const rRow = Math.max(g["--r-min"]!, g["--r-win"]! - g["--inset"]!);
@@ -163,7 +163,50 @@ test("window radius follows each platform and macOS matches the native corner", 
   expect(rules(tokens, ":root")).toMatch(new RegExp(`--r-win:\\s*${Number(native)}px`));
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-win:\s*8px/);
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--button-radius:\s*4px/);
-  expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-win:\s*14px/);
+  expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-win:\s*15px/);
+});
+
+test("per-OS overlay roles keep their shapes, easing, scrims and shadow-free contrast", () => {
+  for (const [platform, ease, dialog] of [["windows", "0, 0, 0, 1", "--r-win"], ["linux", ".33, 1, .68, 1", "--r-menu"]]) {
+    const look = rules(tokens, `:root[data-platform="${platform}"]`);
+    expect(look).toContain(`--ease-out: cubic-bezier(${ease});`);
+    expect(look).toContain(`--r-dialog: var(${dialog});`);
+  }
+  expect(rules(tokens, ':root[data-platform="windows"]')).toContain("--ease-in: cubic-bezier(1, 0, 1, 1);");
+  expect(tokens).not.toMatch(/--(?:menu-shadow|motion-ease)\s*:/);
+  expect(rules(tokens, ":root")).toContain("--scrim: rgb(0 0 0 / 30%);");
+  for (const [platform, alpha] of [["macos", "20%"], ["linux", "25%"]]) expect(rules(tokens, `:root[data-platform="${platform}"]`)).toContain(`--scrim: light-dark(rgb(0 0 0 / ${alpha})`);
+  const at = tokens.indexOf("@media (prefers-contrast: more), (forced-colors: active)");
+  expect(at).toBeGreaterThan(0);
+  for (const block of [rules(tokens.slice(at), ":root, :root[data-platform]"), rules(tokens, ':root[data-gallery-theme="contrast"]')]) {
+    for (const level of ["card", "raised", "overlay", "dialog", "toast"]) expect(block).toContain(`--shadow-${level}: none;`);
+    expect(block).toContain("--scrim: Canvas;");
+  }
+});
+
+test("the Windows notice keeps its nominal shadow within the reserved gutter", () => {
+  const notices = readFileSync(new FileURL("./notice.css", import.meta.url), "utf8");
+  const gutter = Number(rules(notices, '.copied-notice[data-platform="windows"]').match(/margin:\s*([\d.]+)rem/)?.[1]) * 16;
+  expect(gutter).toBeGreaterThan(0);
+  const shadows = [...rules(tokens, ':root[data-platform="windows"]').matchAll(/--shadow-toast:\s*([^;]+);/g)];
+  expect(shadows.length).toBeGreaterThan(0);
+  for (const [, shadow] of shadows) {
+    const layers = [...shadow!.matchAll(/0 (-?[\d.]+)(?:px)? ([\d.]+)px /g)];
+    expect(layers.length).toBeGreaterThan(0);
+    for (const [, offset, blur] of layers) expect(Math.abs(Number(offset)) + Number(blur) / 2).toBeLessThanOrEqual(gutter);
+  }
+});
+
+test("menus and dialogs consume their shared elevation and separate shape roles", () => {
+  const menus = readFileSync(new FileURL("./ui/Menu.css", import.meta.url), "utf8");
+  const native = readFileSync(new FileURL("./nativeAppearance.css", import.meta.url), "utf8");
+  expect(rules(menus, ".menu-popover")).toMatch(/box-shadow:\s*var\(--shadow-overlay\)/);
+  expect(menus).not.toMatch(/--menu-shadow\s*:/);
+  const dialog = rules(styles, ".keys-dialog");
+  expect(dialog).toMatch(/border-radius:\s*var\(--r-dialog\)/);
+  expect(dialog).toMatch(/box-shadow:\s*var\(--shadow-dialog\)/);
+  expect(rules(styles, ".keys-backdrop")).toMatch(/background:\s*var\(--scrim\)/);
+  expect(native).not.toMatch(/:is\(\.menu-popover,\s*\.keys-dialog\)\s*\{[^}]*border-radius:/);
 });
 
 test("scarlet marks only the citation: copied text and the shelf's quote mark", () => {

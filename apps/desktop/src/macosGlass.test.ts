@@ -112,6 +112,7 @@ test("every colour role keeps 4.5:1 over the veiled material", () => {
   const [light, dark] = rgba(body, "--vibrancy-tint");
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
   const roles = vibrancyRoles();
+  expect(luminance(hexes(roles, "--status-look")[1]!)).toBeGreaterThan(luminance(hexes(tokens, "--status-look")[1]!));
   for (const role of ["--citation", "--status-done", "--status-look", "--status-stop"]) {
     const [onLight, onDark] = hexes(roles, role);
     for (const under of [141, 255]) expect(contrast(onLight!, over(light!, under)), `${role} light over ${under}`).toBeGreaterThanOrEqual(4.5);

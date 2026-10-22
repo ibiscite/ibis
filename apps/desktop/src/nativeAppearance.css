@@ -21,7 +21,6 @@
     min-width: 1.25rem; border-color: var(--clear); background: var(--button-background);
     font-weight: var(--type-strong-weight); text-align: center;
   }
-  :root[data-platform="macos"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog) { border-radius: var(--menu-radius, 0); }
 
   /* With the native material: a hairline edge as on a native panel (no rim or
      glow), and menus of the same glass that blur the list beneath them. */

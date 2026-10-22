@@ -254,8 +254,9 @@ test("an empty filter keeps the menu open and Escape still contains the layer", 
 });
 
 test("menu shadows stay on the menu popover while the keys dialog keeps its own", () => {
-  expect(tokens).toContain("--menu-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 20%);");
-  for (const [, selector] of menuCss.matchAll(/([^{}]+)\{[^{}]*--menu-shadow:/g)) expect(selector).toContain(".menu-popover");
+  expect(tokens).toContain("--shadow-overlay: 0 12px 32px rgb(0 0 0 / 16%);");
+  expect(menuCss).toContain("box-shadow: var(--shadow-overlay);");
+  expect(tokens + menuCss).not.toMatch(/--menu-shadow\s*:/);
   expect(menuCss).toMatch(/windows"\] \.menu-popover\s*\{[^}]*--menu-item-height: 32px/);
   expect(menuCss).toMatch(/linux"\] \.menu-popover\s*\{[^}]*--menu-item-height: 32px/);
 });

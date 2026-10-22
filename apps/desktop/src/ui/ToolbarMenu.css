@@ -9,7 +9,7 @@
 .toolbar-menu-button::before {
   content: ""; position: absolute; z-index: -1; inset: 0; border: var(--border-width) solid var(--clear);
   border-radius: inherit; background: var(--clear); pointer-events: none;
-  transition: background-color var(--motion-feedback) var(--motion-ease);
+  transition: background-color var(--motion-feedback) var(--ease-out);
 }
 :root[data-platform="macos"] .toolbar-menu-button { border-radius: calc(var(--control-min-size) / 2); }
 :root[data-platform="macos"] .toolbar-menu-button::before {

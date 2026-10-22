@@ -26,6 +26,7 @@
   --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* 56, 48 on Windows */
   --footer-height: 2.5rem;
   --control-min-size: 2rem;
+  --touch-target: 2.75rem;
   --icon-glyph-size: 1.25rem;
   --icon-stroke: 1.5;
   --row-compact: 2.5rem;       /* one line */
@@ -44,13 +45,20 @@
   --r-mi: max(var(--r-min), calc(var(--r-menu) - var(--menu-pad)));  /* menu items */
   --status-dot-size: .5rem;
   --menu-min-width: 14rem;
-  --menu-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 20%);
+  --r-dialog: var(--r-win);
+  --scrim: rgb(0 0 0 / 30%);
+  --shadow-card: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 8%), 0 8px 20px -8px rgb(0 0 0 / 18%);
+  --shadow-raised: 0 1px 0 var(--separator), 0 8px 16px -12px rgb(0 0 0 / 22%);
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 16%);
+  --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
+  --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
 
   /* Motion: feedback, panels, layout. No bounce. */
   --motion-feedback: 120ms;
   --motion-panel: 200ms;
   --motion-layout: 280ms;
-  --motion-ease: cubic-bezier(.2, .8, .2, 1);
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1); --motion-exit: 80ms;
 
   /* Colour roles. The accent is the system's; scarlet marks only the citation. */
   --citation: CanvasText;
@@ -75,7 +83,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --motion-panel: 1ms; --motion-layout: 1ms; }
+  :root { --motion-feedback: 100ms; --motion-panel: 1ms; --motion-layout: 1ms; }
 }
 
 /* System colours follow light/dark mode, the accent and high contrast. */
@@ -151,6 +159,7 @@
      with a quieter fill than the card under them. */
   --shelf-line: 2.5rem;
   --shelf-fill: var(--tile-background);
+  --chip-count-only-width: 460px;
   --chip-height: 1.5rem;
   --chip-fill: color-mix(in srgb, var(--text) 8%, transparent);
   --chip-radius: calc(var(--chip-height) / 2);
@@ -245,7 +254,13 @@
 :root[data-platform="windows"] { --font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 :root[data-platform="linux"] { --font-family: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
 :root[data-platform="windows"] {
-  --r-win: 8px; --inset: var(--space-1); --r-min: 2px; --r-menu: 8px; --menu-pad: 4px;
+  --r-win: 8px; --inset: var(--space-1); --r-min: 4px; --r-menu: 8px; --menu-pad: 4px;
+  --r-dialog: var(--r-win); --ease-out: cubic-bezier(0, 0, 0, 1); --ease-in: cubic-bezier(1, 0, 1, 1);
+  --shadow-card: 0 0 2px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 14%);
+  --shadow-raised: none;
+  --shadow-overlay: 0 0 2px rgb(0 0 0 / 12%), 0 8px 16px rgb(0 0 0 / 14%);
+  --shadow-dialog: 0 0 8px rgb(0 0 0 / 12%), 0 32px 64px rgb(0 0 0 / 14%);
+  --shadow-toast: 0 4px 16px rgb(0 0 0 / 22%);
   --button-radius: 4px; --chip-radius: var(--button-radius);
   --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
   --tile-active-background: light-dark(#fff, rgb(255 255 255 / 10%));
@@ -254,10 +269,14 @@
   --focus-ring-color: var(--text); --focus-ring-shadow: 0 0 0 1px var(--surface);
 }
 :root[data-platform="linux"] {
-  /* Rows sit flat on the window, with the 6 px radius of Adwaita's sidebar
-     and popover rows: a boxed list cannot be concentric at an 8 px inset in a
-     14 px window. The chain gives 6 for rows and the entry, 4 for tiles. */
-  --r-win: 14px; --r-min: 4px;
+  /* libadwaita 1.8+: the 15 px window derives 7 px rows at the 8 px inset;
+     tiles and larger-text rows keep the 6 px floor. Popovers stay separate. */
+  --r-win: 15px; --r-min: 6px;
+  --r-dialog: var(--r-menu); --ease-out: cubic-bezier(.33, 1, .68, 1);
+  --shadow-card: 0 0 0 1px rgb(0 0 6 / 3%), 0 1px 3px 1px rgb(0 0 6 / 7%), 0 2px 6px 2px rgb(0 0 6 / 3%);
+  --shadow-raised: none;
+  --shadow-overlay: 0 1px 5px 1px rgb(0 0 0 / 9%), 0 2px 14px 3px rgb(0 0 0 / 5%);
+  --shadow-dialog: 0 4px 24px rgb(0 0 0 / 18%); --shadow-toast: none;
   /* The selected row is GTK's selection colour with its paired text: the
      system Highlight pair, which WebKitGTK takes from the GTK theme. A tint
      like libadwaita's 25% accent ($view_selected_color) reaches only about
@@ -282,8 +301,7 @@
       --button-background: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
       --button-hover-background: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
       --separator: var(--line);
-      --button-radius: 8px; --hint-radius: 5px; --menu-radius: 12px;
-      --menu-shadow: 0 1rem 2.5rem rgb(0 0 0 / 22%);
+      --button-radius: 8px; --hint-radius: 5px;
       --vibrancy-tint: light-dark(rgb(250 250 252 / 55%), rgb(30 30 34 / 55%));
       /* A hairline, as on a native panel: no white rim or glow (prototype round six). */
       --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
@@ -293,7 +311,7 @@
     :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
       --citation: light-dark(#982d16, #ff9d87);
       --status-done: light-dark(#135f29, #6fca81);
-      --status-look: light-dark(#734b00, #e3b341);
+      --status-look: light-dark(#734b00, #f0c25a);
       --status-stop: light-dark(#9b273b, #ff9c9c);
     }
   }
@@ -308,11 +326,28 @@
   :root[data-platform="linux"] { --focus-ring-color: color-mix(in srgb, var(--accent) 50%, var(--text)); }
 }
 
+/* Theme-aware scrims and the Ibis Windows dark-shadow adaptation (1.7x alpha).
+   Engines without light-dark() retain the black scrim and light-shadow fallbacks. */
+@supports (color: light-dark(white, black)) {
+  :root[data-platform="macos"] { --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%)); }
+  :root[data-platform="linux"] { --scrim: light-dark(rgb(0 0 0 / 25%), rgb(0 0 0 / 45%)); }
+  :root[data-platform="windows"] {
+    --shadow-card: 0 0 2px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 2px 4px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
+    --shadow-overlay: 0 0 2px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 8px 16px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
+    --shadow-dialog: 0 0 8px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 32px 64px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
+    --shadow-toast: 0 4px 16px light-dark(rgb(0 0 0 / 22%), rgb(0 0 0 / 37.4%));
+  }
+}
 /* Windows: Fluent's DividerStrokeColorDefault and ControlStrokeColorDefault.
    Before the contrast blocks, which must override it. */
 @supports (color: light-dark(white, black)) {
   :root[data-platform="windows"] { --separator: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 8%)); --button-edge: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 7%)); }
 }
+
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root, :root[data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --scrim: Canvas; }
+}
+:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --scrim: Canvas; }
 
 @media (prefers-contrast: more) {
   :root, :root[data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
@@ -327,9 +362,9 @@
 :root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; }
 :root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
 
-/* Role aliases over today's values (#761). Only focus consumers migrate here;
-   appearance changes and the remaining consumer migrations belong to #762.
-   Keep dependencies one-way: legacy values never read these new aliases. */
+/* Remaining aliases preserve current values as controls migrate.
+   Per-look shape, elevation and motion roles are defined above.
+   Keep dependencies one-way: legacy values never read these aliases. */
 :root {
   --surface-window: var(--surface); --surface-raised: var(--surface);
   --surface-overlay: var(--surface); --surface-field: var(--field-background);
@@ -340,13 +375,8 @@
   --accent-text: var(--accent); --status-info: var(--accent-text);
   --row-inactive-background: var(--hover-background);
   --stroke-control: var(--button-edge); --stroke-field: var(--field-edge); --stroke-overlay: var(--field-edge);
-  --scrim: color-mix(in srgb, var(--text) 30%, transparent);
-  --shadow-card: none; --shadow-raised: none;
-  --shadow-overlay: var(--menu-shadow); --shadow-dialog: var(--menu-shadow);
-  --shadow-toast: 0 .5rem 1rem rgb(0 0 0 / 18%);
-  --ease-out: var(--motion-ease); --ease-in: cubic-bezier(.4, 0, 1, 1); --motion-exit: 80ms;
   --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-tooltip: 20; --z-modal: 30; --z-toast: 40;
   --overlay-margin: var(--space-2);
   --r-control: var(--button-radius); --r-key: var(--hint-radius);
-  --r-card: var(--r-win); --r-dialog: var(--button-radius); --r-full: 999px;
+  --r-card: var(--r-win); --r-full: 999px;
 }

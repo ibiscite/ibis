@@ -36,7 +36,7 @@ test("the geometry spec's row heights, footer and search band are the ones docs/
   assert.match(design, /design-geometry\.json/, "docs/design.md names the spec file the check reads");
 });
 
-const onSpec = { rowHeight: 58, footer: 40, searchBand: 48, glyphCentre: 40, tileCentre: 40, textX: 60, titleX: 60, rWin: 8, rRow: 4, rField: 4, rTile: 2 };
+const onSpec = { rowHeight: 58, footer: 40, searchBand: 48, glyphCentre: 40, tileCentre: 40, textX: 60, titleX: 60, rWin: 8, rRow: 4, rField: 4, rTile: 4 };
 
 test("a frame on spec passes every check, within the tolerance", () => {
   const rows = compare(spec, "windows", "normal", "comfortable", { ...onSpec, textX: 60.4, titleX: 60 });
@@ -65,7 +65,7 @@ test("a Larger text frame with scaled insets passes without hiding radius drift"
 test("drift, a missing element and Larger text scaling are reported", () => {
   const rows = compare(spec, "windows", "normal", "comfortable", { ...onSpec, footer: 52, rTile: Number.NaN });
   assert.deepEqual(rows.filter((row) => !row.pass).map((row) => row.name), ["footer height", "tile radius"]);
-  assert.match(table(rows), /tile radius +windows +normal +2 +— +MISMATCH/);
+  assert.match(table(rows), /tile radius +windows +normal +4 +— +MISMATCH/);
   const large = compare(spec, "macos", "large", "compact", { rowHeight: 46 });
   assert.deepEqual(large.map((row) => [row.name, row.pass]), [["row height (compact)", true]]);
 });

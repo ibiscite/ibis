@@ -25,6 +25,7 @@
   font: var(--type-strong-weight) var(--type-body-size) / var(--type-body-line) var(--font-family);
   color: var(--notice-text);
   background: var(--notice-surface);
+  box-shadow: var(--shadow-toast);
   border: var(--border-width) solid color-mix(in srgb, var(--line) 45%, transparent);
   opacity: 0;
 }
@@ -61,7 +62,6 @@
   margin: 1rem auto;
   padding: 0 1.125rem 0 .5rem;
   border-radius: 1.375rem;
-  box-shadow: 0 .5rem 1rem rgb(0 0 0 / 18%);
 }
 
 /* Windows: a notification card at the bottom right. */
@@ -76,7 +76,6 @@
   margin: 1rem;
   padding: .75rem 1rem;
   border-radius: 8px;
-  box-shadow: 0 .25rem 1rem rgb(0 0 0 / 22%);
 }
 .copied-notice[data-platform="windows"] .copied-notice-source {
   display: block;
@@ -105,10 +104,10 @@
 :root { --notice-rise: var(--motion-feedback); }
 .copied-notice.showing {
   animation:
-    copied-notice-in 120ms var(--motion-ease) both,
-    copied-notice-rise var(--notice-rise) var(--motion-ease) both;
+    copied-notice-in var(--motion-feedback) var(--ease-out) both,
+    copied-notice-rise var(--notice-rise) var(--ease-out) both;
 }
-.copied-notice.showing.leaving { animation: copied-notice-out 200ms var(--motion-ease) both; }
+.copied-notice.showing.leaving { animation: copied-notice-out var(--motion-panel) var(--ease-in) both; }
 @keyframes copied-notice-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -126,7 +125,7 @@
 /* Reduced motion: fades only, nothing moves. */
 @media (prefers-reduced-motion: reduce) {
   :root { --notice-rise: 1ms; }
-  .copied-notice { --notice-from: 0 !important; }
+  .copied-notice[data-platform] { --notice-from: 0; }
 }
 
 /* High contrast and reduced transparency: the opaque system surface, a full border, no colour-only meaning. */
