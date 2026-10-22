@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -101,6 +101,56 @@ test("workflow retains web validation and gates native-only Windows bootstrap", 
   assert.match(workflow, /- name: Check Windows updater activation contracts\n        if: env.NATIVE == 'true' && runner.os == 'Windows'/);
   assert.match(workflow, /EXPECTED_REFS:.*pull_request.head.sha.*pull_request.base.sha/);
   assert.equal(workflow.match(/= "\$EXPECTED_REFS"/g)?.length, 2);
+});
+
+test("the required Web job renders the full browser gallery and keeps every failure", { skip: process.platform === "win32" }, (t) => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const web = workflow.match(/\n  web:\n([\s\S]*?)\n  desktop:/)[1];
+  const step = web.match(/- name: Render every browser gallery frame\n([\s\S]*?)\n      - name:/)?.[1];
+  assert.ok(step, "all gallery looks and states run inside the required Web job");
+  assert.match(step, /if: env.WEB == 'true'/);
+  assert.match(step, /shell: bash/);
+  assert.match(web, /container:\n      image: mcr\.microsoft\.com\/playwright\/python:v1\.62\.0-noble@sha256:[a-f0-9]{64}/);
+  assert.ok(web.indexOf("- name: Set up Node.js") < web.indexOf("- name: Set up pnpm"), "the image supplies Python; Node/npm must precede pnpm");
+  assert.match(web, /cache_dependency_path: apps\/desktop\/pnpm-lock\.yaml/);
+  assert.match(workflow, /needs: \[changes, test, web, desktop, fidelity, dependencies\]/);
+  const command = step.match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, "");
+  assert.doesNotMatch(command, /apt-get|install-deps|--with-deps/, "the preinstalled image needs no system-package installer");
+  const dir = mkdtempSync(join(tmpdir(), "ibis gallery-ci-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const calls = join(dir, "calls");
+  const stubs = 'npm() { printf "npm %s\\n" "$*" >> "$CALLS"; return "$INSTALL_STATUS"; }\nnode() { printf "node %s\\n" "$*" >> "$CALLS"; return "$FRAME_STATUS"; }';
+  for (const [install, frame, expected] of [[0, 0, 0], [17, 0, 17], [0, 1, 1], [0, 2, 2]]) {
+    writeFileSync(calls, "");
+    const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", stubs + "\n" + command], {
+      cwd: dir, encoding: "utf8", timeout: 5000,
+      env: { ...process.env, RUNNER_TEMP: dir, CALLS: calls, INSTALL_STATUS: String(install), FRAME_STATUS: String(frame) },
+    });
+    assert.equal(result.status, expected, result.stderr);
+    const log = readFileSync(calls, "utf8").trim().split("\n");
+    assert.match(log[0], /--ignore-scripts .*playwright@1\.62\.0$/);
+    assert.equal(log.length, install ? 1 : 2);
+    if (!install) assert.equal(log[1], "node scripts/gallery-contact-sheet.mjs --no-build", "no look, text or state filter can omit a frame");
+  }
+});
+
+test("container gallery Git trust covers only its checkout and changes no config file", { skip: process.platform === "win32" }, (t) => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const step = workflow.match(/- name: Render every browser gallery frame\n([\s\S]*?)\n      - name:/)[1];
+  const dir = mkdtempSync(join(tmpdir(), "ibis gallery-owner-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const checkout = join(dir, "checkout");
+  const other = join(dir, "other");
+  for (const path of [checkout, other]) assert.equal(spawnSync("git", ["init", "-q", path], { cwd: dir, timeout: 5000 }).status, 0);
+  const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(dir, "absent-config"), GIT_CONFIG_COUNT: "0", GIT_TEST_ASSUME_DIFFERENT_OWNER: "1" };
+  const probe = (cwd, config) => spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd, env: { ...env, ...config }, encoding: "utf8", timeout: 5000 });
+  assert.equal(probe(checkout, {}).status, 128, "a foreign-owned checkout starts untrusted");
+  const config = Object.fromEntries([...step.matchAll(/^          (GIT_CONFIG_(?:COUNT|KEY_0|VALUE_0)): (.+)$/gm)].map(([, key, value]) => [key, value.replace("${{ github.workspace }}", checkout)]));
+  const trusted = probe(checkout, config);
+  assert.equal(trusted.status, 0, trusted.stderr);
+  assert.equal(trusted.stdout.trim(), realpathSync(checkout));
+  assert.equal(probe(other, config).status, 128, "a different checkout remains untrusted");
+  assert.equal(existsSync(env.GIT_CONFIG_GLOBAL), false, "no global config was written");
 });
 
 test("the real workflow shell falls back on failed reads or changing refs", { skip: process.platform === "win32" }, (t) => {

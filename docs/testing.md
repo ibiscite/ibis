@@ -106,6 +106,8 @@ On Windows, memory sampling pins the root creation identity from the original la
 
 **Geometry check.** `node scripts/gallery-geometry.mjs` renders the same gallery for each look at normal and Larger text and prints a table of the picker's geometry against [`docs/design-geometry.json`](design-geometry.json): row height per density, footer, search band, the search glyph over the tile column, typed text at the row title's x, and the corner chain. For five states with and without chosen references it also checks that no region of the picker (search band, notices, tray, preview, list, footer) overlaps another, that no chip is cut by the tray's edge, and that the list scrolls in its own area. It takes about half a minute and needs Playwright's Chromium, so it is not part of `scripts/check.mjs`; `scripts/gallery-geometry.test.mjs` (which is) keeps the JSON in step with `docs/design.md`. It reports only (exit 0) until the geometry work in #576 lands; `--enforce` exits 1 on a mismatch. `--no-build --dist DIR` reuses a build. Exit 2 means Playwright or Chromium is unavailable.
 
+The required Web interface job runs the unfiltered browser contact sheet after its evidence build on interface changes, main and the merge queue. A pinned official Playwright image supplies the browsers and system libraries; the matching CI-only package installs without lifecycle scripts. The job checks every look × theme × text size × state and retains browser artifacts for 14 days. A failed frame or unavailable renderer fails the job and the required CI result; native screenshot publication remains separate.
+
 Before and after images for a visual pull request belong in that pull request or on the `evidence` branch, not in `docs/`.
 
 ## Manual-only checks
