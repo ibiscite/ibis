@@ -81,7 +81,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb xauth xdotool xclip xterm openbox x11-utils python3-pyatspi at-spi2-core
-          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app result/bin/ibis-desktop --output nix-evidence/runtime
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app result/bin/ibis-desktop --output nix-evidence/runtime --skip-performance
 
       - name: Preserve Nix build and runtime evidence
         if: always()

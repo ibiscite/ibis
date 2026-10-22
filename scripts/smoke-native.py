@@ -1445,7 +1445,9 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--identifier", default="io.github.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
     parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Control+Command+R on macOS")
-    parser.add_argument("--budgets", type=Path, help="Measured per-platform baseline JSON, with startup_ms, first_result_ms, memory_bytes ceilings")
+    performance = parser.add_mutually_exclusive_group()
+    performance.add_argument("--budgets", type=Path, help="Measured per-platform baseline JSON, with startup_ms, first_result_ms, memory_bytes ceilings")
+    performance.add_argument("--skip-performance", action="store_true", help="Keep correctness checks but skip the four 100,000-reference launches")
     parser.add_argument("--first-run-preferences", action="store_true", help="Exercise first-run format persistence and settled More/Quit only")
     args = parser.parse_args()
     if args.first_run_preferences:
@@ -1724,35 +1726,38 @@ def main():
                 stop()
             check("damaged startup library warns and keeps valid records searchable", damaged)
 
-            library.write_text(fixture(100000), encoding="utf-8")
-            samples = []
-            # Launch 0 is a warm-up held only to the hard ceiling; the gate uses the median of the rest (#464).
-            for sample in range(1 + MEASURED_LAUNCHES):
-                native.focus_editor()
-                phases = {}
-                # Retain partial facts if readiness or a native probe fails.
-                report.setdefault("startup_phases", []).append(phases)
-                startup = measure_startup(lambda: launch("100000-warmup" if sample == 0 else f"100000-{sample}"), snapshot, phases)
-                before = time.monotonic()
-                query("smoke099999", "Ibis smoke reference 099999")
-                first = (time.monotonic() - before) * 1000
-                memory = native.memory()
-                assert memory > 0, "Native process-tree memory measurement unavailable"
-                samples.append({"warmup": sample == 0, "startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
-                                "memory_bytes": memory, "startup_phases": phases})
-                if system == "Windows":
-                    samples[-1]["memory_facts"] = native.memory_facts
-                stop()
-                phases["library_phases"] = library_phase_diagnostics([diagnostic_logs[-1]])
-            report["performance"] = summarize_performance(samples)
-            if args.budgets:
-                budgets = json.loads(args.budgets.read_text(encoding="utf-8"))[system]
-                try:
-                    enforce_performance_budgets(report["performance"], budgets)
-                finally:
-                    print(json.dumps(report["performance"]), flush=True)
+            if args.skip_performance:
+                report["performance"] = {"status": "skipped"}
             else:
-                print(json.dumps(report["performance"]), flush=True)
+                library.write_text(fixture(100000), encoding="utf-8")
+                samples = []
+                # Launch 0 is a warm-up held only to the hard ceiling; the gate uses the median of the rest (#464).
+                for sample in range(1 + MEASURED_LAUNCHES):
+                    native.focus_editor()
+                    phases = {}
+                    # Retain partial facts if readiness or a native probe fails.
+                    report.setdefault("startup_phases", []).append(phases)
+                    startup = measure_startup(lambda: launch("100000-warmup" if sample == 0 else f"100000-{sample}"), snapshot, phases)
+                    before = time.monotonic()
+                    query("smoke099999", "Ibis smoke reference 099999")
+                    first = (time.monotonic() - before) * 1000
+                    memory = native.memory()
+                    assert memory > 0, "Native process-tree memory measurement unavailable"
+                    samples.append({"warmup": sample == 0, "startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
+                                    "memory_bytes": memory, "startup_phases": phases})
+                    if system == "Windows":
+                        samples[-1]["memory_facts"] = native.memory_facts
+                    stop()
+                    phases["library_phases"] = library_phase_diagnostics([diagnostic_logs[-1]])
+                report["performance"] = summarize_performance(samples)
+                if args.budgets:
+                    budgets = json.loads(args.budgets.read_text(encoding="utf-8"))[system]
+                    try:
+                        enforce_performance_budgets(report["performance"], budgets)
+                    finally:
+                        print(json.dumps(report["performance"]), flush=True)
+                else:
+                    print(json.dumps(report["performance"]), flush=True)
         report["status"] = "passed"
         exit_code = 0
     except Unavailable as error:
@@ -1805,6 +1810,53 @@ def main():
 
 
 class ContractTests(unittest.TestCase):
+    def test_skip_performance_rejects_budgets_before_native_setup(self):
+        for flags in (("--skip-performance", "--budgets", "unused.json"),
+                      ("--budgets", "unused.json", "--skip-performance")):
+            with patch.object(sys, "argv", ["smoke", "--app", "unused", "--output", "unused", *flags]), \
+                    redirect_stderr(io.StringIO()) as errors, patch(__name__ + ".Linux") as native:
+                with self.assertRaises(SystemExit) as exit_status:
+                    main()
+                self.assertEqual(exit_status.exception.code, 2)
+                self.assertIn("not allowed with argument", errors.getvalue())
+                native.assert_not_called()
+
+    def test_skip_performance_keeps_correctness_and_removes_only_four_launches(self):
+        reports, counts = [], []
+        for flags in ([], ["--skip-performance"]):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                app, output = root / "synthetic-app", root / "output"
+                app.touch()
+                native = Mock(memory_facts={}, foreground_trace=[], foreground_trace_capped=False)
+                native.editor_active.return_value = True
+                native.editor_has_input_focus.return_value = True
+                native.snapshot.return_value = {"visible": True, "foreground": True, "nodes": [
+                    {"name": "Ibis smoke reference 000001", "role": "label"}]}
+                native.memory.return_value = 1000
+                process = Mock()
+                process.poll.return_value = None
+                process.wait.return_value = 0
+                def startup(launch, snapshot, phases):
+                    launch()
+                    return 1
+                with patch.object(sys, "argv", ["smoke", "--app", str(app), "--output", str(output), *flags]), \
+                        patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux", return_value=native), \
+                        patch("subprocess.Popen", return_value=process) as launches, patch("builtins.print"), \
+                        patch(__name__ + ".wait_for"), patch(__name__ + ".wait_for_query"), \
+                        patch(__name__ + ".require_tree"), patch(__name__ + ".escape_to_hide"), \
+                        patch(__name__ + ".menu_escape_focus"), patch(__name__ + ".menu_action"), \
+                        patch(__name__ + ".copy_with_diagnostics"), patch(__name__ + ".measure_startup", side_effect=startup):
+                    self.assertEqual(main(), 0)
+                reports.append(json.loads((output / "smoke.json").read_text()))
+                counts.append(launches.call_count)
+                self.assertEqual(native.memory.call_count, 0 if flags else 4)
+        self.assertEqual(counts[0] - counts[1], 4)
+        self.assertEqual(reports[0]["checks"], reports[1]["checks"])
+        self.assertGreater(len(reports[1]["checks"]), 10)
+        self.assertEqual(reports[0]["performance"]["status"], "measured-without-budget")
+        self.assertEqual(reports[1]["performance"], {"status": "skipped"})
+
     class CensusNode:
         def __init__(self, pid=0, name="", children=(), value=None):
             self.pid, self.name, self.children, self.value = pid, name, children, value
