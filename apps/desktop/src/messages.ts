@@ -309,14 +309,15 @@ function times(status: LibraryStatus) {
   return { updated: status.updated_at ?? null, checked: status.checked_at ?? null };
 }
 
-/** "just now", "5 minutes ago", "yesterday"; a date after a week. Never in the future. */
+/** Short relative times, then a date with the year when different. Never in the future. */
 export function ago(at: number, now: number) {
   const seconds = Math.max(0, (now - at) / 1000);
   if (seconds < 45) return "just now";
   if (seconds < 90 * 60) return relative.format(-Math.max(1, Math.round(seconds / 60)), "minute");
   if (seconds < 36 * 3600) return relative.format(-Math.round(seconds / 3600), "hour");
   if (seconds < 7 * 86400) return relative.format(-Math.round(seconds / 86400), "day");
-  return `on ${new Intl.DateTimeFormat(appLocale, { month: "short", day: "numeric" }).format(at)}`;
+  const year = new Date(at).getFullYear() === new Date(now).getFullYear() ? undefined : "numeric";
+  return `on ${new Intl.DateTimeFormat(appLocale, { month: "short", day: "numeric", year }).format(at)}`;
 }
 
 /** Clock time today, otherwise date and time. */

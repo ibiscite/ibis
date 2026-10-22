@@ -7,7 +7,7 @@ import { ago, libraryMessages, recentUpdate } from "./messages";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const now = Date.UTC(2026, 9, 20, 12, 0);
+const now = new Date(2026, 9, 20, 12, 0).getTime();
 const hour = 3_600_000;
 const file = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
   revision: "1", state: "loaded", zotero: false, zotero_libraries: [], has_snapshot: true, name: "thesis.bib", snapshot_name: "thesis.bib",
@@ -58,6 +58,18 @@ test("relative times are short, never in the future, and turn into dates after a
   expect(ago(now - 2 * hour, now)).toBe("2 hours ago");
   expect(ago(now - 48 * hour, now)).toBe("2 days ago");
   expect(ago(now - 24 * 8 * hour, now)).toBe("on Oct 12");
+});
+
+test("older check dates distinguish the same month and day in different years", () => {
+  expect(ago(new Date(2025, 9, 12, 12).getTime(), now)).toBe("on Oct 12, 2025");
+  expect(ago(new Date(2026, 9, 12, 12).getTime(), now)).toBe("on Oct 12");
+});
+
+test("date years follow the local calendar across New Year without changing future times", () => {
+  const january = new Date(2026, 0, 9, 1, 30).getTime();
+  expect(ago(new Date(2026, 0, 1, 1, 30).getTime(), january)).toBe("on Jan 1");
+  expect(ago(new Date(2025, 11, 31, 23, 30).getTime(), january)).toBe("on Dec 31, 2025");
+  expect(ago(new Date(2027, 0, 1, 1, 30).getTime(), january)).toBe("just now");
 });
 
 test("the detail is a short line, then libraries, check time and any problem", () => {
