@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { isTauri } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
 import { App, type PickerApi } from "./App";
+import { SHELF_CHIPS } from "./features/picker/CitationShelf";
 import { libraryMessages, pickerText } from "./messages";
 import { hasRetainedFreshnessProblem } from "./LibraryStatusLine";
 import { setPlatform } from "./nativeAppearance";
@@ -87,7 +88,9 @@ function selectionContained(root: HTMLElement, state: GalleryState): boolean {
   const visibleBottom = Math.min(bottom, row.bottom);
   const hit = (node: Element, x: number, y: number) => typeof document.elementFromPoint !== "function"
     || node.contains(document.elementFromPoint(x, y));
-  const bands = [root.querySelector('[aria-label="Selected references"]'), root.querySelector(".format-preview"), root.querySelector(".results-area")]
+  // The scrolling content, then the shelf, then the footer: what you browse
+  // above what you get. Under pressure the results scroll inside the content.
+  const bands = [root.querySelector(".picker-content"), root.querySelector(".shelf"), root.querySelector("footer")]
     .filter((node) => node !== null).map((node) => node.getBoundingClientRect());
   return main.scrollTop === 0 && main.scrollHeight <= main.clientHeight + 1 && document.documentElement.scrollHeight <= innerHeight + 1
     && bottom - top >= 24 && visibleBottom - visibleTop >= Math.min(row.height, bottom - top) - 1
@@ -120,8 +123,8 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (document.querySelector(".toolbar-menu") !== null) === Boolean(state.formatMenu)
     && (typeof state.formatMenu !== "string" || filter?.value === state.formatMenu)
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
-    && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li`).length === (state.tray ?? 0)
-    && (!state.formatted || root.querySelector(".format-preview .preview-text") !== null)
+    && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li.chip`).length === Math.min(state.tray ?? 0, SHELF_CHIPS)
+    && (!state.formatted || root.querySelector(".shelf-output .preview-text") !== null)
     && selectionContained(root, state);
 }
 

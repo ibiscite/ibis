@@ -24,6 +24,7 @@ export const {
   copyFormat,
   cslItems,
   copyFormatted,
+  citationText,
   pickerPreferences,
   setPickerPreferences,
   loginItem,

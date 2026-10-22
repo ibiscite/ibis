@@ -13,7 +13,7 @@ import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice } from 
 import { composing, isKeysShortcut, isMenuShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
-import { FormatPreview, SelectionTray } from "./features/picker/SelectionTray";
+import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
 import { EmptyState } from "./features/picker/EmptyState";
 import { PickerFooter } from "./features/picker/PickerFooter";
@@ -41,14 +41,14 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
-    hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted,
+    hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries, zoteroGroups } = api;
   const { findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
@@ -341,7 +341,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const chosenKey = choiceKey(chosen);
   const chosenRevision = chosen[0]?.revision;
   const staleSelection = chosen.length > 0 && (!chosenRevision || chosen.some((record) => record.revision !== chosenRevision) || chosenRevision !== library?.revision);
-  const previewKey = `${style}\u0002${libraryVersion}\u0002${chosenKey}`;
+  // A key syntax is previewed by the backend without touching the clipboard.
+  const keyFormat = styleOf(format) === null && citationText ? (format as CopyFormat) : null;
+  const previewKey = `${style ?? keyFormat}\u0002${libraryVersion}\u0002${chosenKey}`;
   // What Enter would copy now; null while it is being formatted.
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
   const refreshSnapshot = () => {
@@ -356,12 +358,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
 
   // Format the preview again whenever the choice or the style changes.
   useEffect(() => {
-    if (!style || !cslItems || chosen.length === 0 || staleSelection || !chosenRevision) return;
+    if (chosen.length === 0 || staleSelection || !chosenRevision) return;
     let live = true;
     const key = previewKey;
     const replaced = new AbortController();
-    cslItems(chosen.map((r) => r.id), chosenRevision)
-      .then((csl) => formatCitation(csl, style, { signal: replaced.signal }))
+    const ids = chosen.map((r) => r.id);
+    let made: Promise<FormattedCitation>;
+    if (style && cslItems) made = cslItems(ids, chosenRevision).then((csl) => formatCitation(csl, style, { signal: replaced.signal }));
+    else if (keyFormat && citationText) made = citationText(ids, keyFormat, chosenRevision).then(({ text, warnings }) => ({ markup: [], text, html: "", warnings }));
+    else return;
+    made
       .then((result) => { if (live) setFormatted({ key, result }); })
       .catch((error) => { if (live) {
         const stale = nativeApi.isSnapshotChanged(error);
@@ -645,11 +651,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <div className="picker-content">
       <Notices library={library} busy={busy} loadingMessage={loadingMessage} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} onDismissCopied={() => setCopied(null)} />
-      <SelectionTray announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {
-        toggle(r);
-        input.current?.focus({ preventScroll: true });
-      }} />
-      {style && chosen.length > 0 && <FormatPreview style={style} shown={shown} focusable={selected.size > 0} />}
       <div className="results-area">
         <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><span>{results.length > 0 ? pickerText.resultCount(results.length) : ""}</span>
@@ -688,6 +689,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         )}
       </div>
       </div>
+      <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {
+        toggle(r);
+        input.current?.focus({ preventScroll: true });
+      }} style={style} keys={keyFormat !== null}
+        // A key syntax copies without its preview, so a failed preview is left out
+        // rather than saying the citation cannot be copied.
+        shown={chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined} focusable={selected.size > 0} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: () => { void copy(); }, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}

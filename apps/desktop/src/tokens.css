@@ -148,12 +148,15 @@
   --copy-padding: .5rem;
   --dismiss-margin: .5rem 0 .5rem .5rem;
   --alert-padding: var(--space-3);
-  --selection-gap: var(--space-2);
-  --selection-padding: var(--space-2) calc(var(--inset) + var(--row-pad));
-  --selection-label-padding: .5rem;
-  /* One-line chips of one height, so the tray shows whole rows (#746). */
-  --chip-height: 1.75rem;
-  --tray-rows: 2;
+  /* The citation shelf (docs/design/preview.md): two 40 px lines, 24 px chips
+     with a quieter fill than the card under them. */
+  --shelf-line: 2.5rem;
+  --shelf-fill: var(--tile-background);
+  --chip-height: 1.5rem;
+  --chip-fill: color-mix(in srgb, var(--text) 8%, transparent);
+  --chip-radius: calc(var(--chip-height) / 2);
+  --chip-max-width: 12rem;
+  --chip-min-width: 5rem;
   --footer-padding: calc(var(--inset) + var(--row-pad)) var(--inset); /* inline start, end */
   --footer-size: var(--type-label-size);
   --footer-gap: var(--space-2);
@@ -245,7 +248,7 @@
 :root[data-platform="linux"] { --font-family: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
 :root[data-platform="windows"] {
   --r-win: 8px; --inset: var(--space-1); --r-min: 2px; --r-menu: 8px; --menu-pad: 4px;
-  --button-radius: 4px;
+  --button-radius: 4px; --chip-radius: var(--button-radius);
   --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
   --tile-active-background: light-dark(#fff, rgb(255 255 255 / 10%));
   /* Fluent's focus visual: an outer stroke in the text colour (black in light

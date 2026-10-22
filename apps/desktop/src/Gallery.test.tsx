@@ -125,9 +125,9 @@ test.each(["overflow", "document-overflow", "clipped", "covered"])("selected-ref
     if (this.tagName === "FOOTER") return new DOMRect(0, 280, 720, 40);
     if (this.id === "search") return new DOMRect(40, 10, 400, 40);
     if (this.matches('footer button')) return new DOMRect(620, 284, 84, 32);
-    if (this.matches(".results-area, .picker-content")) return new DOMRect(0, 80, 720, 200);
+    if (this.matches(".results-area, .picker-content")) return new DOMRect(0, 80, 720, 160);
+    if (this.matches(".shelf")) return new DOMRect(0, 240, 720, 40);
     if (this.hasAttribute("data-active")) return new DOMRect(0, overflow && fault === "clipped" ? 500 : 100, 720, 60);
-    if (this.matches('[aria-label="Selected references"]')) return new DOMRect(0, 0, 720, 80);
     return new DOMRect(0, 0, 720, 80);
   });
   const state = galleryStates.find((candidate) => candidate.id === "tray")!;
@@ -257,9 +257,10 @@ async function expectRenderedFixture(id: string): Promise<void> {
       for (let i = 0; i < state.tray! * 2 + 32 && acknowledge.mock.calls.length === 0; i++) {
         await act(() => vi.advanceTimersByTimeAsync(16));
       }
-      expect(container.querySelectorAll('[aria-label="Selected references"] > li')).toHaveLength(state.tray!);
+      // Six chips, then "+N" for the rest (docs/design/preview.md).
+      expect(container.querySelectorAll('[aria-label="Selected references"] > li.chip')).toHaveLength(Math.min(state.tray!, 6));
       expect(container.querySelector("[data-active]")?.id).toBe(`result-${state.tray! - 1}`);
-      if (state.formatted) expect(container.querySelector(".format-preview .preview-text")?.textContent).toBe(text);
+      if (state.formatted) expect(container.querySelector(".shelf-output .preview-text")?.textContent).toBe(text);
     } else {
       await act(() => vi.advanceTimersByTimeAsync(1000));
       await act(() => vi.advanceTimersByTimeAsync(1000));
@@ -358,7 +359,7 @@ test.each([
   ["pinned", (root: HTMLElement) => root.querySelector('button[aria-label="Pin Ibis"]')?.getAttribute("aria-pressed") === "true"],
   ["menu-open", () => document.querySelector('[role="menu"]') !== null],
   ["keys", (root: HTMLElement) => root.querySelector('[role="dialog"]') !== null],
-  ["tray", (root: HTMLElement) => [...root.querySelectorAll('ul[aria-label="Selected references"] code')].map((key) => key.textContent).join() === "example2026,研究2026"],
+  ["tray", (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('ul[aria-label="Selected references"] .chip')].map((chip) => chip.title).join() === "example2026,研究2026"],
   ["compact", () => document.documentElement.dataset.density === "compact"],
   ["spacious", () => document.documentElement.dataset.density === "spacious"],
   ["larger-text", () => document.documentElement.dataset.textSize === "larger"],

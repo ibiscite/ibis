@@ -127,18 +127,51 @@ main {
 .notices:empty { display: none; }
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }
 .notices p { margin: var(--notice-margin); }
-.copy-notice code, .format-preview .preview-text, [aria-label="Selected references"] code { color: var(--citation); }
+.copy-notice code, .shelf-mark { color: var(--citation); }
 .copy-notice { border-bottom: var(--border-width) solid var(--separator); padding-bottom: var(--copy-padding); }
-.format-preview { border-bottom: var(--border-width) solid var(--separator); padding: var(--copy-padding); overflow-wrap: anywhere; }
-.format-preview .provisional { color: var(--muted); font-size: var(--metadata-size); margin: var(--metadata-gap) 0 0; }
 .dismiss { float: right; margin: var(--dismiss-margin); }
 [role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
-[aria-label="Selected references"] { display: flex; flex-wrap: wrap; gap: var(--selection-gap); list-style: none; padding: var(--selection-padding); margin: 0; border-bottom: var(--border-width) solid var(--separator); }
-/* One-line chips of one height, so the tray can show whole rows; the full key
-   is the chip's tooltip and in its Remove button's name. */
-[aria-label="Selected references"] li { display: flex; align-items: center; height: var(--chip-height); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); padding-inline-start: var(--selection-label-padding); max-width: 100%; scroll-snap-align: start; }
-[aria-label="Selected references"] code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[aria-label="Selected references"] button { flex: none; align-self: stretch; padding-block: 0; border: 0; background: var(--clear); font-size: var(--metadata-size); }
+/* The citation shelf (docs/design/preview.md): one quiet card above the
+   footer's Copy action, with the chosen references as chips, then the exact
+   output on one line. Its quote mark is centred over the tile column and the
+   output starts at the row titles, so the search glyph, the tiles and the mark
+   share one column. Windows draws a layer card with a stroke; GNOME a flat band. */
+.shelf { flex: 0 1 auto; min-height: 0; overflow: auto; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--shelf-fill); }
+main:has(> .shelf) > footer { border-top-color: var(--clear); }
+.shelf-chips { display: flex; align-items: center; gap: var(--space-1); height: var(--shelf-line); margin: 0; padding: 0 var(--row-pad); list-style: none; overflow: hidden; }
+.chip { flex: 0 1 auto; min-width: var(--chip-min-width); display: inline-flex; align-items: center; height: var(--chip-height); max-width: var(--chip-max-width); padding-inline-start: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: 500; }
+.chip[hidden] { display: none; }
+.chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A 16 px cross in the chip's last 24 px; the glyph is a mask on a pseudo-element
+   so the keyboard focus ring is never masked away. */
+.chip-remove { flex: none; position: relative; width: var(--chip-height); min-height: 0; height: var(--chip-height); padding: 0; border: 0; border-radius: var(--chip-radius); background: var(--clear); color: var(--muted); }
+.chip-remove::before { content: ""; position: absolute; inset: 0; background: currentColor; -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; }
+.chip-remove:hover { background: var(--clear); color: var(--text); }
+/* The 24 px cross and "+N" are hit across 32 px, and 44 px with touch (D12). */
+.chip-remove::after, .chip-more button::after { content: ""; position: absolute; inset: calc((var(--control-min-size) - var(--chip-height)) / -2); }
+.chip-more button { position: relative; }
+@media (pointer: coarse) {
+  .chip-remove::after, .chip-more button::after { inset: calc((2.75rem - var(--chip-height)) / -2); }
+}
+.chip-more { flex: none; }
+.chip-more button { min-height: var(--chip-height); padding: 0 var(--space-2); border: 0; border-radius: var(--chip-radius); background: var(--clear); color: var(--muted); font-size: var(--type-label-size); }
+.chip-more button:hover { background: var(--chip-fill); color: var(--text); }
+/* "+N" opened: every chip, wrapping onto at most three scrolling lines. */
+/* Chips shorten before "+N" is pushed out of sight. */
+.shelf-chips[data-expanded] .chip { flex: none; max-width: min(var(--chip-max-width), 100%); }
+.shelf-chips[data-expanded] { flex-wrap: wrap; align-content: flex-start; height: auto; max-height: calc(3 * (var(--chip-height) + var(--space-1)) + var(--space-2) * 2); padding-block: var(--space-2); overflow: auto; }
+.shelf-output { display: flex; align-items: center; gap: var(--row-gap); height: var(--shelf-line); padding-inline: var(--row-pad); font-size: var(--type-citation-size); }
+.shelf-mark { flex: none; width: var(--tile-size); text-align: center; font-size: var(--icon-size); font-weight: 700; line-height: 1; }
+.shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
+.shelf-output .preview-text, .shelf-output p { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf-output p { color: var(--muted); }
+.shelf-output[data-state="failed"] p, .shelf-output[data-state="stale"] p { color: var(--text); border: 0; padding: 0; }
+/* Monospace only for key syntaxes, where the syntax is the point. */
+.shelf-output[data-keys] .preview-text { font-family: var(--font-mono); }
+.shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); color: var(--muted); font-size: var(--metadata-size); line-height: var(--chip-height); white-space: nowrap; }
+:root[data-platform="windows"] .shelf { border: var(--border-width) solid var(--button-edge); }
+:root[data-platform="linux"] .shelf { margin: 0; border-radius: 0; background: var(--clear); border-top: var(--border-width) solid var(--separator); }
+:root[data-platform="linux"] main:has(> .shelf) > footer { border-top-color: var(--separator); }
 
 footer { display: flex; align-items: center; border-top: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
 /* The bar carries the footer's block padding: one line is the 32 px More
@@ -224,29 +257,20 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   /* Let the line break after the separator rather than inside a word. */
   .result-separator { white-space: pre-wrap; }
 }
-/* Selection keeps the outer controls fixed. At very short heights only the
-   central content can scroll; the tray and preview retain their own scrollports. */
+/* Selection keeps the header and footer fixed; under pressure the results and
+   shelf scroll in their own allocated areas. */
 .picker-content { display: contents; }
 main[data-selection] { height: var(--picker-height); min-height: 0; overflow: hidden; }
 main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; }
-main[data-selection] > .picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size; }
-main[data-selection] [aria-label="Selected references"], main[data-selection] .format-preview, main[data-selection] .notices { flex: none; max-height: 6rem; overflow: auto; }
+/* Keep a result reachable at large system text; the shelf uses its own scroll
+   area when the header, output and wrapped footer cannot all keep their height. */
+main[data-selection] > .picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 24px; overflow: auto; overscroll-behavior: contain; container-type: size; }
+main[data-selection] .notices { flex: none; max-height: 6rem; overflow: auto; }
 main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overflow: auto; }
-/* The tray ends on a whole row of chips, never half of one (#746): its bottom
-   padding is one gap, so the next row cannot peek in, it snaps to rows as it
-   scrolls, and it fades while more is below. The fade spares the separator and
-   lifts while focus is inside, so a focused chip is never dimmed. */
-main[data-selection] [aria-label="Selected references"] { padding-block: var(--selection-gap); max-height: calc(var(--tray-rows) * (var(--chip-height) + var(--selection-gap)) + var(--selection-gap) + var(--border-width)); scroll-snap-type: y mandatory; scroll-padding-block: var(--selection-gap); }
-main[data-selection] [aria-label="Selected references"][data-more]:not(:focus-within) {
-  --more-mask: linear-gradient(#000 0 0) bottom / 100% var(--border-width) no-repeat, linear-gradient(#000 calc(100% - var(--chip-height) - var(--selection-gap)), rgb(0 0 0 / 25%) calc(100% - var(--border-width)));
-  -webkit-mask: var(--more-mask); mask: var(--more-mask);
-}
-@media (prefers-contrast: more), (forced-colors: active) {
-  main[data-selection] [aria-label="Selected references"][data-more]:not(:focus-within) { -webkit-mask: none; mask: none; }
-}
 /* Use the available middle height, not a guessed header/footer size. Under
    pressure results join its scrollport, so wheel input has one vertical owner. */
-@container (max-height: 18rem) {
+/* The shelf sits outside this content, so only a very short window gets here. */
+@container (max-height: 10rem) {
   main[data-selection] .results-area { flex: none; overflow: visible; }
 }
 @container (max-height: 24rem) {
@@ -319,4 +343,8 @@ main[data-selection] [aria-label="Selected references"][data-more]:not(:focus-wi
 }
 @media (max-width: 460px) {
   .keys-scroll td:first-child { white-space: normal; }
+}
+/* The shelf and its chips keep an edge where fills are not drawn. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  .shelf, .chip { border: var(--border-width) solid CanvasText; }
 }

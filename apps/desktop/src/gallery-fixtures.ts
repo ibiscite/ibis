@@ -160,6 +160,8 @@ export const galleryStates: readonly GalleryState[] = [
     library: library({ references: 50 }), query: "selection", results: largeSelection, tray: count, pinned: true })),
   { id: "tray-preview", label: "50 selected with formatted preview", library: library({ references: 50 }), query: "selection",
     results: largeSelection, tray: 50, pinned: true, formatted: true },
+  { id: "tray-system-large", label: "50 selected at 200% system text", library: library({ references: 50 }), query: "selection",
+    results: largeSelection, tray: 50, pinned: true, largeText: true },
   { id: "tray", label: "Several references chosen", library: library(), query: "memory", results: examples, tray: 2 },
   { id: "keys", label: "All keys", library: library(), query: "memory", results: examples, keys: true },
   { id: "compact", label: "Compact rows", library: library(), query: "memory", results: many, density: "compact", tray: 2 },
@@ -173,6 +175,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
     api: {
       libraryStatus: async () => state.library,
       search: async () => ({ revision: state.library.revision, results: state.results ?? [] }),
+      citationText: async (ids) => ({ text: `[${ids.map((id) => `@${id.native_key}`).join("; ")}]`, warnings: [] }),
       copyCitation: async (ids) => ({ text: (state.tray ?? 0) >= 20 ? `[@${ids.map((id) => id.native_key).join("; @")}]` : "[@example2026]", warnings: [] }),
       ...((state.tray ?? 0) >= 20 ? {
         cslItems: async (ids: Parameters<NonNullable<PickerApi["cslItems"]>>[0]) => JSON.stringify(ids.map((id) => ({

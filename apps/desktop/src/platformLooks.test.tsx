@@ -166,11 +166,13 @@ test("window radius follows each platform and macOS matches the native corner", 
   expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-win:\s*14px/);
 });
 
-test("scarlet marks only the citation: copied text, preview and tray", () => {
+test("scarlet marks only the citation: copied text and the shelf's quote mark", () => {
   const scarlet = [...styles.matchAll(/([^{}]+)\{[^{}]*var\(--citation\)[^{}]*\}/g)].map(([, head]) => head!.trim()).join(",");
-  for (const target of [".copy-notice code", ".format-preview .preview-text", '[aria-label="Selected references"] code']) {
+  for (const target of [".copy-notice code", ".shelf-mark"]) {
     expect(scarlet, target).toContain(target);
   }
+  // The shelf's output and chips use text colours (docs/design/preview.md).
+  expect(scarlet).not.toMatch(/preview-text|\.chip/);
   // Selection, the pin and the main controls keep the system accent.
   expect(scarlet).not.toMatch(/button|\.search-bar|::before|\[role="option"\]\[data-active\]\s*(,|$)/);
   // Contrast and forced colours fall back to CanvasText.
@@ -499,7 +501,7 @@ test("every button is at least 32 px, with on-grid padding", () => {
 });
 
 test("dividers are quiet separators, distinct from 3:1 control edges", () => {
-  for (const selector of [".search-bar", "footer", ".copy-notice", ".format-preview", '[aria-label="Selected references"]']) {
+  for (const selector of [".search-bar", "footer", ".copy-notice"]) {
     expect(rules(styles, selector), selector).toMatch(/border-(top|bottom):\s*var\(--border-width\) solid var\(--separator\)/);
   }
   // Windows: Fluent's divider stroke; elsewhere Adwaita's text colour at 15%; macOS its 10% hairline.
@@ -531,16 +533,22 @@ test("buttons and key caps are fills without an outline except in contrast modes
   }
 });
 
-test("the tray ends on a whole row of chips, and its fade spares the separator and contrast modes (#746)", () => {
-  const tray = rules(styles, 'main[data-selection] [aria-label="Selected references"]');
-  expect(tray).toMatch(/max-height:\s*calc\(var\(--tray-rows\) \* \(var\(--chip-height\) \+ var\(--selection-gap\)\) \+ var\(--selection-gap\) \+ var\(--border-width\)\)/);
-  expect(tray).toMatch(/padding-block:\s*var\(--selection-gap\)/);
-  expect(tray).toMatch(/scroll-snap-type:\s*y mandatory/);
-  expect(rules(styles, '[aria-label="Selected references"] li')).toMatch(/height:\s*var\(--chip-height\)/);
-  const fade = 'main[data-selection] [aria-label="Selected references"][data-more]:not(:focus-within)';
-  expect(rules(styles, fade)).toMatch(/linear-gradient\(#000 0 0\) bottom \/ 100% var\(--border-width\) no-repeat/);
-  const contrast = styles.slice(styles.indexOf("@media (prefers-contrast: more), (forced-colors: active) {"));
-  expect(rules(contrast, fade)).toMatch(/-webkit-mask:\s*none;\s*mask:\s*none/);
+test("the shelf is two 40 px lines of 24 px chips and one output line above the footer", () => {
+  expect(rules(tokens, ":root")).toMatch(/--shelf-line:\s*2\.5rem/);
+  expect(rules(tokens, ":root")).toMatch(/--chip-height:\s*1\.5rem/);
+  expect(rules(styles, ".shelf-chips")).toMatch(/height:\s*var\(--shelf-line\)/);
+  expect(rules(styles, ".shelf-output")).toMatch(/height:\s*var\(--shelf-line\)/);
+  // The output is one line; the full text is its tooltip.
+  expect(rules(styles, ".shelf-output .preview-text, .shelf-output p")).toMatch(/white-space:\s*nowrap/);
+  // Chips are fills without an outline, except in contrast modes.
+  const edge = styles.lastIndexOf("@media (prefers-contrast: more), (forced-colors: active) {");
+  expect(rules(styles.slice(0, edge), ".chip")).toMatch(/background:\s*var\(--chip-fill\)/);
+  expect(rules(styles.slice(0, edge), ".chip")).not.toMatch(/border:/);
+  const contrast = styles.slice(edge);
+  expect(rules(contrast, ".shelf, .chip")).toMatch(/border:\s*var\(--border-width\) solid CanvasText/);
+  // Windows draws a layer card with a stroke; GNOME a flat band under one separator.
+  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/border:\s*var\(--border-width\) solid var\(--button-edge\)/);
+  expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:\s*var\(--border-width\) solid var\(--separator\)/);
 });
 
 test("a wrapped footer keeps breathing room above and below its lines", () => {
