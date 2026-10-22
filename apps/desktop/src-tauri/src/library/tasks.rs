@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, application_message, report};
-use crate::picker::{DialogOpen, show_picker};
+use crate::picker::{DialogKind, own_dialog, show_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
@@ -239,10 +239,10 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     // The dialog belongs to the picker: show the picker (the request may come
     // from the tray), attach the dialog to it, and keep the picker open while
     // the dialog has the focus.
+    let Some(owner) = own_dialog(app, DialogKind::Chooser) else {
+        return;
+    };
     show_picker(app);
-    if !app.state::<DialogOpen>().begin() {
-        return; // a dialog is already open on the picker
-    }
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(app);
     let mut dialog = app
@@ -255,8 +255,7 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     }
     let handle = app.clone();
     dialog.pick_file(move |picked| {
-        handle.state::<DialogOpen>().end();
-        match picked.map(|p| p.into_path()) {
+        owner.during(|| match picked.map(|p| p.into_path()) {
             None => {}
             Some(Ok(path)) => start_open(&handle, Source::File(path), true),
             Some(Err(_)) => {
@@ -265,7 +264,7 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
                 }
                 publish_current(&handle);
             }
-        }
+        })
     });
 }
 

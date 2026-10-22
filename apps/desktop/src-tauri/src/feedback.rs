@@ -7,6 +7,8 @@ use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
+use crate::picker::{DialogKind, own_dialog};
+
 const ISSUES: &str = "https://github.com/ibiscite/ibis/issues/new";
 
 /// The problem form, with the version and operating system filled in. Both
@@ -43,7 +45,13 @@ pub(crate) fn open_in_browser(app: &AppHandle, url: String) {
             } else {
                 format!("Ibis could not open your browser. Open this link to send feedback:\n{url}")
             };
-            app.dialog().message(text).title("Send feedback").show(|_| {});
+            let Some(owner) = own_dialog(&app, DialogKind::Message) else {
+                return;
+            };
+            app.dialog()
+                .message(text)
+                .title("Send feedback")
+                .show(move |_| drop(owner));
         }
     });
 }

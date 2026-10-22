@@ -10,6 +10,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut}
 use crate::diagnostics::{NativeIssue, checked, report};
 use crate::placement::place_on_active_display;
 
+mod dialogs;
 mod full_screen;
 #[cfg_attr(
     not(test),
@@ -19,7 +20,19 @@ mod shortcut_policy;
 #[cfg(target_os = "linux")]
 mod x11_focus;
 
+pub(crate) use dialogs::{DialogKind, DialogOpen};
 pub(crate) use full_screen::FullScreenGuard;
+
+pub(crate) fn own_dialog(app: &AppHandle, kind: DialogKind) -> Option<dialogs::DialogLease> {
+    match app.state::<DialogOpen>().begin(kind) {
+        Ok(lease) => Some(lease),
+        Err(dialogs::Refused::ChooserOpen) => None,
+        Err(dialogs::Refused::Unavailable) => {
+            crate::diagnostics::application_message("native dialog ownership is unavailable");
+            None
+        }
+    }
+}
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
@@ -254,25 +267,6 @@ pub(crate) fn shortcut_status(status: State<'_, Mutex<ShortcutStatus>>) -> Short
     status.lock().map(|s| s.clone()).unwrap_or_default()
 }
 
-/// Set while a system dialog that belongs to the picker (such as the file
-/// dialog) is open. Focus moves to the dialog, which must not hide the picker.
-#[derive(Default)]
-pub(crate) struct DialogOpen(pub(crate) AtomicBool);
-
-impl DialogOpen {
-    /// Claim the dialog slot. Returns false when a dialog is already open, so
-    /// only one is shown at a time and closing it cannot unprotect another.
-    pub(crate) fn begin(&self) -> bool {
-        self.0
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-    }
-
-    pub(crate) fn end(&self) {
-        self.0.store(false, Ordering::SeqCst);
-    }
-}
-
 /// Set while the user has pinned the picker: it then stays open beside the
 /// document and floats above it. Unpinned, it hides when focus moves away.
 #[derive(Default)]
@@ -334,7 +328,7 @@ pub(crate) fn dismiss_unless_refocused(app: &AppHandle, blur: u64) {
     let delayed = app.clone();
     let spawned = std::thread::Builder::new().name("ibis-blur".into()).spawn(move || {
         std::thread::sleep(REFOCUS_GRACE);
-        let dialog_open = delayed.state::<DialogOpen>().0.load(Ordering::SeqCst);
+        let dialog_open = delayed.state::<DialogOpen>().is_open();
         let pinned = delayed.state::<Pinned>().0.load(Ordering::SeqCst);
         if hides_on_blur(true, dialog_open, pinned) && delayed.state::<FocusChanges>().is_latest(blur) {
             dismiss_picker(&delayed);
@@ -552,14 +546,5 @@ mod tests {
             );
             assert_eq!(*operations.borrow(), ["window", "application"]);
         }
-    }
-
-    #[test]
-    fn only_one_dialog_is_open_at_a_time() {
-        let dialog = DialogOpen::default();
-        assert!(dialog.begin());
-        assert!(!dialog.begin());
-        dialog.end();
-        assert!(dialog.begin());
     }
 }

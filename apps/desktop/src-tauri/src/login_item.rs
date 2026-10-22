@@ -395,11 +395,14 @@ pub(crate) fn toggle_from_menu(app: &AppHandle) {
         let item = set(&app, wanted);
         if let Some(problem) = item.problem {
             use tauri_plugin_dialog::DialogExt;
+            let Some(owner) = crate::picker::own_dialog(&app, crate::picker::DialogKind::Message) else {
+                return;
+            };
             let name = app.package_info().name.clone();
             app.dialog()
                 .message(problem_message(problem, &name))
                 .title(menu_label())
-                .show(|_| {});
+                .show(move |_| drop(owner));
         }
     });
 }

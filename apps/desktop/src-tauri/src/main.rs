@@ -120,7 +120,7 @@ fn main() {
                 // Like other launchers, the picker hides when it loses focus, but
                 // not to its own file dialog.
                 WindowEvent::Focused(false) => {
-                    let dialog_open = window.state::<DialogOpen>().0.load(Ordering::SeqCst);
+                    let dialog_open = window.state::<DialogOpen>().is_open();
                     let pinned = window.state::<Pinned>().0.load(Ordering::SeqCst);
                     #[cfg(target_os = "macos")]
                     let startup_allows_blur = panel::allows_automatic_blur(window.app_handle());
