@@ -51,6 +51,28 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
+test("a hidden key preview is never fetched, and showing it fetches the current choice", async () => {
+  const calls = backend({
+    search: ({ query }) => [query === "again" ? result("b", "Second") : result("a", "First")],
+    citation_text: ({ ids }) => ({ text: `[@${(ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] }),
+  });
+  const previews = () => calls.filter((c) => c === "citation_text").length;
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@a]"));
+  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
+  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+  const fetched = previews();
+  fireEvent.change(box, { target: { value: "again" } });
+  await screen.findByText("Second");
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(previews()).toBe(fetched);
+  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@b]"));
+  expect(previews()).toBe(fetched + 1);
+});
+
 test("copy confirmation expires, but copy warnings remain until dismissed", async () => {
   let warnings: string[] = [];
   backend({

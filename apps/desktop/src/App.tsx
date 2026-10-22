@@ -396,7 +396,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const staleSelection = chosen.length > 0 && (!chosenRevision || chosen.some((record) => record.revision !== chosenRevision) || chosenRevision !== library?.revision);
   // A key syntax is previewed by the backend without touching the clipboard.
   const keyFormat = styleOf(format) === null && citationText ? (format as CopyFormat) : null;
-  const previewKey = `${style ?? keyFormat}\u0002${libraryVersion}\u0002${chosenKey}`;
+  // A hidden key preview is never fetched: key copying asks the backend itself.
+  const keyPreview = showPastePreview ? keyFormat : null;
+  const previewKey = `${style ?? keyPreview}\u0002${libraryVersion}\u0002${chosenKey}`;
   // What Enter would copy now; null while it is being formatted.
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
   // Visibility changes presentation only. Key copying also survives a failed preview.
@@ -420,7 +422,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const ids = chosen.map((r) => r.id);
     let made: Promise<FormattedCitation>;
     if (style && cslItems) made = cslItems(ids, chosenRevision).then((csl) => formatCitation(csl, style, { signal: replaced.signal }));
-    else if (keyFormat && citationText) made = citationText(ids, keyFormat, chosenRevision).then(({ text, warnings }) => ({ markup: [], text, html: "", warnings }));
+    else if (keyPreview && citationText) made = citationText(ids, keyPreview, chosenRevision).then(({ text, warnings }) => ({ markup: [], text, html: "", warnings }));
     else return;
     made
       .then((result) => { if (live) setFormatted({ key, result }); })
