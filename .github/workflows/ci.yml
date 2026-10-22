@@ -279,8 +279,25 @@ jobs:
         if: env.NATIVE == 'true' && (runner.os == 'Linux')
         working-directory: .
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
+          # Prefer the HTTPS archive already configured by runner-images (#857).
+          sudo python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("/etc/apt/apt-mirrors.txt")
+          archive = "https://archive.ubuntu.com/ubuntu/"
+          lines = path.read_text().splitlines(keepends=True)
+          matches = [i for i, line in enumerate(lines) if line.split()[:1] == [archive]]
+          if len(matches) != 1 or lines[matches[0]].split() not in (
+              [archive, "priority:2"], [archive, "priority:0"]
+          ):
+              raise SystemExit("expected runner archive mirror is missing or ambiguous")
+          lines[matches[0]] = f"{archive}\tpriority:0\n"
+          path.write_text("".join(lines))
+          PY
+          # Match runner-images' acquire bounds even on images with older defaults (#857).
+          ibis_apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15)
+          sudo apt-get "${ibis_apt_options[@]}" update
+          sudo apt-get "${ibis_apt_options[@]}" install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
 
       - name: Cache Rust build
         if: env.NATIVE == 'true'
@@ -323,12 +340,15 @@ jobs:
         run: |
           mkdir -p screenshots
           capture() {
+            # Complete Linux fd/socket attribution needs a privileged observer.
+            local observer=()
+            if [ "$RUNNER_OS" = Linux ]; then observer=(sudo -n); fi
             python3 scripts/check-offline.py --record-baseline screenshots/offline-$RUNNER_OS.json
             target/debug/ibis-desktop > screenshots/startup-$RUNNER_OS.log 2>&1 &
             app_pid=$!
             trap 'kill "$app_pid" 2>/dev/null || true' EXIT
             # Observe startup as well as the delayed background services.
-            python3 scripts/check-offline.py --pid "$app_pid" --baseline screenshots/offline-$RUNNER_OS.json --seconds 60
+            "${observer[@]}" python3 scripts/check-offline.py --pid "$app_pid" --baseline screenshots/offline-$RUNNER_OS.json --seconds 60
             if ! kill -0 "$app_pid" 2>/dev/null; then
               echo "::error::The picker exited during startup; see the startup log."
               exit 1
