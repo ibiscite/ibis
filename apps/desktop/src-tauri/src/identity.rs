@@ -49,11 +49,31 @@ fn present(path: &Path) -> bool {
 }
 
 fn copy_settings(old: &Path, directory: &Path) -> io::Result<()> {
+    let app = directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(io::ErrorKind::InvalidInput)?;
+    // Keep this inode: unlinking it after unlocking would let launches lock different files.
+    let lock_path = directory.with_file_name(format!("{app}.migration.lock"));
+    if present(&lock_path) && !fs::symlink_metadata(&lock_path)?.is_file() {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let lock = options.open(lock_path)?;
+    lock.lock()?;
+    // The lock covers cleanup, staging creation and publication across processes.
+    clean_staging(directory, &format!("{app}.migration-"))?;
     if directory.exists() && fs::read_dir(directory)?.next().is_some() {
         return Err(io::ErrorKind::AlreadyExists.into());
     }
-    let staging = directory.with_extension(format!(
-        "migration-{}-{}",
+    let staging = directory.with_file_name(format!(
+        "{app}.migration-{}-{}",
         std::process::id(),
         COPY.fetch_add(1, Ordering::Relaxed)
     ));
@@ -67,11 +87,15 @@ fn copy_settings(old: &Path, directory: &Path) -> io::Result<()> {
     let result = (|| {
         for name in ["settings.json", "settings.json.bak"] {
             let source = old.join(name);
-            let metadata = match fs::symlink_metadata(&source) {
-                Err(error) if error.kind() == io::ErrorKind::NotFound && name.ends_with(".bak") => continue,
+            let metadata = match fs::metadata(&source) {
+                Err(error)
+                    if error.kind() == io::ErrorKind::NotFound && name.ends_with(".bak") && !present(&source) =>
+                {
+                    continue;
+                }
                 other => other?,
             };
-            // Do not traverse links or open a special file during the copy.
+            // Follow ordinary file symlinks, matching settings::require_regular (ADR 0023).
             if !metadata.is_file() {
                 return Err(io::ErrorKind::InvalidData.into());
             }
@@ -102,6 +126,30 @@ fn copy_settings(old: &Path, directory: &Path) -> io::Result<()> {
     result
 }
 
+/// Only real directories with our exact app name and canonical pid/counter are owned.
+/// Truncated names from the dormant old implementation are ambiguous; leave them alone.
+fn clean_staging(directory: &Path, prefix: &str) -> io::Result<()> {
+    let parent = directory.parent().ok_or(io::ErrorKind::InvalidInput)?;
+    for entry in fs::read_dir(parent)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some((pid, count)) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(prefix))
+            .and_then(|tail| tail.split_once('-'))
+        else {
+            continue;
+        };
+        if pid.parse::<u32>().is_ok_and(|value| value.to_string() == pid)
+            && count.parse::<u64>().is_ok_and(|value| value.to_string() == count)
+            && entry.file_type()?.is_dir()
+        {
+            fs::remove_dir_all(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +157,184 @@ mod tests {
     fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
         std::fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("missing test parent")))?;
         std::fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ordinary_file_symlinks_migrate_but_broken_directory_and_loop_links_refuse() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+        for name in ["settings.json", "settings.json.bak"] {
+            for kind in ["file", "dangling", "directory", "loop"] {
+                let root = tempfile::tempdir()?;
+                let old = root.path().join("io.github.ibiscite.ibis");
+                let new = root.path().join("com.ibiscite.ibis");
+                write(&old.join("settings.json"), b"primary")?;
+                let source = old.join(name);
+                if source.exists() {
+                    fs::remove_file(&source)?;
+                }
+                let target = root.path().join("target");
+                match kind {
+                    "file" => write(&target, b"linked bytes")?,
+                    "directory" => fs::create_dir(&target)?,
+                    "loop" => symlink(&source, &target)?,
+                    _ => {}
+                }
+                symlink(&target, &source)?;
+                let location = settings_location(&new, "com.ibiscite.ibis");
+                assert_eq!(location.using_legacy, kind != "file", "{name}: {kind}");
+                if kind == "file" {
+                    assert_eq!(fs::read(new.join(name))?, b"linked bytes");
+                    assert!(fs::symlink_metadata(&source)?.is_symlink());
+                } else {
+                    assert_eq!(location.path, old.join("settings.json"));
+                    assert!(!new.exists());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn interrupted_staging_is_removed_without_touching_lookalikes() -> io::Result<()> {
+        for suffix in ["", ".nightly"] {
+            let root = tempfile::tempdir()?;
+            let identifier = format!("com.ibiscite.ibis{suffix}");
+            let new = root.path().join(&identifier);
+            let old = root
+                .path()
+                .join(format!("io.github.ibiscite.ibis{suffix}/settings.json"));
+            write(&old, b"complete")?;
+            let stale = root.path().join(format!("{identifier}.migration-42-7"));
+            write(&stale.join("settings.json"), b"partial")?;
+            let lookalikes = [
+                format!("{identifier}.migration-42"),
+                format!("{identifier}.migration-42-7-extra"),
+                format!("{identifier}.migration-abc-7"),
+                format!("{identifier}.migration--7"),
+                format!("{identifier}.migration-42-"),
+                format!("{identifier}.migration-042-7"),
+                format!("{identifier}.migration-4294967296-7"),
+                format!("{identifier}.other.migration-42-7"),
+                "com.ibiscite.migration-42-7".into(),
+            ];
+            for name in &lookalikes {
+                write(&root.path().join(name).join("keep"), b"unrelated")?;
+            }
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(root.path().join(&lookalikes[0]), stale.join("outside"))?;
+            // A matching file or symlink is not an owned staging directory.
+            let file = root.path().join(format!("{identifier}.migration-42-8"));
+            write(&file, b"keep file")?;
+            #[cfg(unix)]
+            let link = root.path().join(format!("{identifier}.migration-42-9"));
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&stale, &link)?;
+            assert!(!settings_location(&new, &identifier).using_legacy);
+            assert!(!stale.exists());
+            assert_eq!(fs::read(new.join("settings.json"))?, b"complete");
+            assert_eq!(fs::read(file)?, b"keep file");
+            for name in &lookalikes {
+                assert_eq!(fs::read(root.path().join(name).join("keep"))?, b"unrelated");
+            }
+            #[cfg(unix)]
+            assert!(fs::symlink_metadata(link)?.is_symlink());
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_sources_fail_without_publication() -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir()?;
+        let parent = root.path();
+        let old = parent.join("io.github.ibiscite.ibis/settings.json");
+        let new = parent.join("com.ibiscite.ibis");
+        write(&old, b"private")?;
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o000))?;
+        let location = settings_location(&new, "com.ibiscite.ibis");
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o600))?;
+        assert!(location.using_legacy);
+        assert!(!new.exists());
+        assert!(!settings_location(&new, "com.ibiscite.ibis").using_legacy);
+        assert_eq!(fs::read(new.join("settings.json"))?, b"private");
+        Ok(())
+    }
+
+    // APFS rejects invalid UTF-8 names itself; Linux permits this path case.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn non_utf8_parent_paths_migrate_without_conversion() -> io::Result<()> {
+        use std::os::unix::ffi::OsStringExt;
+        let root = tempfile::tempdir()?;
+        let parent = root.path().join(std::ffi::OsString::from_vec(b"config-\xff".to_vec()));
+        let new = parent.join("com.ibiscite.ibis");
+        write(&parent.join("io.github.ibiscite.ibis/settings.json"), b"legacy")?;
+        assert!(!settings_location(&new, "com.ibiscite.ibis").using_legacy);
+        assert_eq!(fs::read(new.join("settings.json"))?, b"legacy");
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_lock_is_preserved_and_refuses_cleanup() -> io::Result<()> {
+        let root = tempfile::tempdir()?;
+        let new = root.path().join("com.ibiscite.ibis");
+        write(&root.path().join("io.github.ibiscite.ibis/settings.json"), b"legacy")?;
+        let target = root.path().join("unrelated");
+        write(&target, b"keep")?;
+        let lock = root.path().join("com.ibiscite.ibis.migration.lock");
+        std::os::unix::fs::symlink(&target, &lock)?;
+        let stale = root.path().join("com.ibiscite.ibis.migration-42-7/settings.json");
+        write(&stale, b"partial")?;
+        assert!(settings_location(&new, "com.ibiscite.ibis").using_legacy);
+        assert_eq!(fs::read(target)?, b"keep");
+        assert_eq!(fs::read(stale)?, b"partial");
+        assert!(fs::symlink_metadata(lock)?.is_symlink());
+        assert!(!new.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn migration_child() -> io::Result<()> {
+        if let Some(root) = std::env::var_os("IBIS_TEST_MIGRATION_ROOT") {
+            let new = Path::new(&root).join("com.ibiscite.ibis");
+            assert!(!settings_location(&new, "com.ibiscite.ibis").using_legacy);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_launches_clean_interrupted_staging_and_publish_a_complete_pair() -> io::Result<()> {
+        let root = tempfile::Builder::new().prefix("ibis migration 漢字 ").tempdir()?;
+        let bytes = vec![b'x'; 256 * 1024];
+        write(&root.path().join("io.github.ibiscite.ibis/settings.json"), &bytes)?;
+        write(
+            &root.path().join("io.github.ibiscite.ibis/settings.json.bak"),
+            b"backup",
+        )?;
+        let stale = root.path().join("com.ibiscite.ibis.migration-42-7");
+        write(&stale.join("settings.json"), b"partial")?;
+        let mut children = Vec::new();
+        for _ in 0..4 {
+            children.push(
+                std::process::Command::new(std::env::current_exe()?)
+                    .args(["--exact", "identity::tests::migration_child"])
+                    .env("IBIS_TEST_MIGRATION_ROOT", root.path())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()?,
+            );
+        }
+        for child in children {
+            assert!(child.wait_with_output()?.status.success());
+        }
+        let new = root.path().join("com.ibiscite.ibis");
+        assert_eq!(fs::read(new.join("settings.json"))?, bytes);
+        assert_eq!(fs::read(new.join("settings.json.bak"))?, b"backup");
+        assert!(!stale.exists());
         Ok(())
     }
 
@@ -215,7 +441,7 @@ mod tests {
         assert!(fallback.using_legacy);
         assert!(!new.join("settings.json").exists());
         assert_eq!(std::fs::read(&fallback.path)?, b"legacy");
-        assert_eq!(std::fs::read_dir(root.path())?.count(), 1);
+        assert_eq!(std::fs::read_dir(root.path())?.count(), 2);
         Ok(())
     }
 
@@ -238,6 +464,10 @@ mod tests {
         let root = tempfile::tempdir()?;
         let old = root.path().join("io.github.ibiscite.ibis/settings.json");
         let new = root.path().join("com.ibiscite.ibis");
+        write(
+            &root.path().join("com.ibiscite.ibis.migration-42-7/settings.json"),
+            b"interrupted",
+        )?;
         let bytes = vec![b'x'; 256 * 1024];
         write(&old, &bytes)?;
         write(&old.with_extension("json.bak"), b"backup")?;
@@ -254,7 +484,7 @@ mod tests {
         });
         assert_eq!(std::fs::read(new.join("settings.json"))?, bytes);
         assert_eq!(std::fs::read(new.join("settings.json.bak"))?, b"backup");
-        assert_eq!(std::fs::read_dir(root.path())?.count(), 2);
+        assert_eq!(std::fs::read_dir(root.path())?.count(), 3);
         Ok(())
     }
 }
