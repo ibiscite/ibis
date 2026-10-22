@@ -51,6 +51,8 @@ export const commands = {
 	 *  are saved separately when selected, even if no citation is copied.
 	 */
 	copyCitation: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { ids, format, expectedRevision }),
+	/**  Preview a key citation without writing the clipboard or saving a choice. */
+	citationText: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("citation_text", { ids, format, expectedRevision }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**

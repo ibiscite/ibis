@@ -19,6 +19,15 @@ pub(crate) struct Copied {
     warnings: Vec<String>,
 }
 
+impl From<cite::Rendered> for Copied {
+    fn from(rendered: cite::Rendered) -> Self {
+        Self {
+            text: rendered.text,
+            warnings: rendered.warnings,
+        }
+    }
+}
+
 /// Render the selected records as one citation in `format`.
 pub(crate) fn render_citation(
     references: &[Reference],
@@ -60,6 +69,31 @@ pub(crate) fn prepare_snapshot<T>(
     Ok(prepare(&locked)?)
 }
 
+/// Prepare preview and copy through the same checked snapshot and formatter.
+fn prepare_citation(
+    library: &Mutex<Library>,
+    expected: &str,
+    ids: &[RecordId],
+    format: KeyFormat,
+) -> Result<Copied, CommandError> {
+    prepare_snapshot(library, expected, |locked| {
+        render_citation(locked.index.references(), ids, format)
+    })
+    .map(Copied::from)
+}
+
+/// Preview a key citation without writing the clipboard or saving a choice.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn citation_text(
+    ids: Vec<RecordId>,
+    format: KeyFormat,
+    expected_revision: String,
+    library: State<'_, Mutex<Library>>,
+) -> Result<Copied, CommandError> {
+    prepare_citation(&library, &expected_revision, &ids, format)
+}
+
 /// Copy the selected records as a citation to the clipboard. Format choices
 /// are saved separately when selected, even if no citation is copied.
 #[tauri::command]
@@ -71,18 +105,13 @@ pub(crate) fn copy_citation(
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
-    let rendered = prepare_snapshot(&library, &expected_revision, |locked| {
-        render_citation(locked.index.references(), &ids, format)
-    })?;
+    let rendered = prepare_citation(&library, &expected_revision, &ids, format)?;
     app.clipboard()
         .write_text(rendered.text.clone())
         .map_err(|e| format!("the clipboard could not be written ({e})"))?;
     // Choices are saved when selected. A copy that was already in flight must
     // not replace a newer format choice when the clipboard finishes writing.
-    Ok(Copied {
-        text: rendered.text,
-        warnings: rendered.warnings,
-    })
+    Ok(rendered)
 }
 
 /// The selected records as CSL-JSON, in the order given, for the citation
@@ -163,6 +192,172 @@ pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
 mod tests {
     use super::*;
     use ibis_core::bibtex;
+    use ibis_core::search::OwnedIndex;
+    use std::sync::Arc;
+
+    const FORMATS: [(KeyFormat, &str); 7] = [
+        (KeyFormat::Pandoc, "[@other; @same]"),
+        (KeyFormat::Autocite, "\\autocites{other}{same}"),
+        (KeyFormat::Parencite, "\\parencites{other}{same}"),
+        (KeyFormat::Textcite, "\\textcites{other}{same}"),
+        (KeyFormat::Cite, "\\cite{other,same}"),
+        (KeyFormat::Typst, "@other @same"),
+        (KeyFormat::Keys, "other, same"),
+    ];
+
+    fn preview_library() -> (Mutex<Library>, Vec<RecordId>) {
+        let mut loaded = bibtex::load_str(
+            "synthetic",
+            "@article{same, title={First}}\n@book{other, title={Second}}",
+        );
+        // Equal native keys across different sources must still resolve by full identity.
+        for (index, reference) in loaded.references.iter_mut().enumerate() {
+            reference.id = RecordId {
+                source: format!("synthetic-{index}"),
+                native_key: "shared".into(),
+            };
+        }
+        let ids = loaded
+            .references
+            .iter()
+            .rev()
+            .map(|reference| reference.id.clone())
+            .collect();
+        let mut library = Library::default();
+        library.source = Some(crate::library::Source::File("synthetic.bib".into()));
+        library.index = Arc::new(OwnedIndex::new(loaded.references));
+        (Mutex::new(library), ids)
+    }
+
+    #[test]
+    fn key_preview_matches_copy_syntax_warnings_order_and_identity_for_all_formats() {
+        let (library, ids) = preview_library();
+        let before = library.lock().unwrap_or_else(|_| panic!("synthetic lock"));
+        let index = Arc::clone(&before.index);
+        let source = before.source.clone();
+        drop(before);
+        for (format, expected) in FORMATS {
+            let preview = prepare_citation(&library, "0", &ids, format).unwrap_or_else(|error| panic!("{error}"));
+            let copied = render_citation(index.references(), &ids, format).unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(preview.text, expected);
+            assert_eq!(preview.text, copied.text);
+            assert_eq!(preview.warnings, copied.warnings);
+            assert!(preview.warnings.is_empty());
+        }
+        let many_ids = ids.iter().cloned().cycle().take(50).collect::<Vec<_>>();
+        let many =
+            prepare_citation(&library, "0", &many_ids, KeyFormat::Keys).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(many.text, ["other", "same"].repeat(25).join(", "));
+        assert!(library.try_lock().is_ok(), "preparation must release the snapshot lock");
+        let after = library.lock().unwrap_or_else(|_| panic!("synthetic lock"));
+        assert!(Arc::ptr_eq(&index, &after.index));
+        assert_eq!(after.source, source);
+        assert!(after.require_revision("0").is_ok());
+    }
+
+    #[test]
+    fn key_preview_rejects_stale_or_unavailable_snapshot_before_record_lookup() {
+        let (library, mut ids) = preview_library();
+        ids[0].source = "missing".into();
+        for (format, _) in FORMATS {
+            assert_eq!(
+                prepare_citation(&library, "retired", &ids, format).err(),
+                Some(CommandError::SnapshotChanged)
+            );
+            assert_eq!(
+                prepare_citation(&Mutex::new(Library::default()), "0", &ids, format).err(),
+                Some(CommandError::SnapshotChanged)
+            );
+        }
+    }
+
+    #[test]
+    fn key_preview_preserves_empty_missing_and_invalid_selection_errors() {
+        let (library, _) = preview_library();
+        let missing = RecordId {
+            source: "missing".into(),
+            native_key: "shared".into(),
+        };
+        for (format, _) in FORMATS {
+            assert_eq!(
+                prepare_citation(&library, "0", &[], format).err(),
+                Some(CommandError::from("no references selected"))
+            );
+            assert_eq!(
+                prepare_citation(&library, "0", std::slice::from_ref(&missing), format).err(),
+                Some(CommandError::from("a selected reference is no longer in the library"))
+            );
+        }
+        for key in [None, Some("invalid key"), Some("bad{key}")] {
+            let (library, ids) = preview_library();
+            let mut locked = library.lock().unwrap_or_else(|_| panic!("synthetic lock"));
+            let mut references = locked.index.references().to_vec();
+            references[0].citekey = key.map(str::to_string);
+            locked.index = Arc::new(OwnedIndex::new(references));
+            drop(locked);
+            for (format, _) in FORMATS {
+                assert!(prepare_citation(&library, "0", &ids, format).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn key_preview_payload_keeps_nonempty_formatter_warnings() {
+        let payload = Copied::from(cite::Rendered {
+            text: "synthetic citation".into(),
+            warnings: vec!["synthetic warning".into()],
+        });
+        let json = serde_json::to_value(payload).unwrap_or_else(|_| panic!("serializable citation"));
+        assert_eq!(
+            json,
+            serde_json::json!({"text": "synthetic citation", "warnings": ["synthetic warning"]})
+        );
+    }
+
+    #[test]
+    fn key_preview_keeps_unicode_and_format_specific_validation() {
+        for key in ["ключ", "a#key"] {
+            let (library, ids) = preview_library();
+            let index = {
+                let mut locked = library.lock().unwrap_or_else(|_| panic!("synthetic lock"));
+                let mut references = locked.index.references().to_vec();
+                references[0].citekey = Some(key.into());
+                locked.index = Arc::new(OwnedIndex::new(references));
+                Arc::clone(&locked.index)
+            };
+            for (format, _) in FORMATS {
+                let preview = prepare_citation(&library, "0", &ids, format);
+                let copied = render_citation(index.references(), &ids, format);
+                let latex = matches!(
+                    format,
+                    KeyFormat::Autocite | KeyFormat::Parencite | KeyFormat::Textcite | KeyFormat::Cite
+                );
+                assert_eq!(preview.is_ok(), key == "ключ" || !latex);
+                match (preview, copied) {
+                    (Ok(preview), Ok(copied)) => {
+                        assert_eq!(preview.text, copied.text);
+                        assert_eq!(preview.warnings, copied.warnings);
+                    }
+                    (Err(preview), Err(copied)) => assert_eq!(preview, CommandError::from(copied)),
+                    _ => panic!("preview and copy validation diverged"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn key_preview_reports_unavailable_lock_without_panicking() {
+        let (library, ids) = preview_library();
+        let poisoned = std::panic::catch_unwind(|| {
+            let _guard = library.lock().unwrap_or_else(|_| panic!("synthetic lock"));
+            panic!("synthetic poison");
+        });
+        assert!(poisoned.is_err());
+        assert_eq!(
+            prepare_citation(&library, "0", &ids, KeyFormat::Pandoc).err(),
+            Some(CommandError::from("library state is unavailable"))
+        );
+    }
 
     #[test]
     fn citations_are_rendered_by_record_identity_not_by_key() {

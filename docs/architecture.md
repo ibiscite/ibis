@@ -76,9 +76,10 @@ cancellation preserve it even for empty replies. Per-source status counts still
 describe the retained snapshot, including chosen empty Zotero libraries.
 A replacement retires that revision; loading,
 failed reloads retaining the index, and unchanged Zotero checks keep it. Selected
-references and formatted previews retain the revision they came from. Key copy,
-CSL retrieval and formatted copy validate it under that same mutex before
-preparing output; clipboard I/O follows after unlocking. Stale or mixed choices
+references and formatted previews retain the revision they came from. Key preview
+and copy, CSL retrieval and formatted copy validate it under that same mutex
+before preparing output. Key preview performs no clipboard or settings I/O;
+clipboard writes follow after unlocking. Stale or mixed choices
 are refused with a fixed refresh/reselection explanation, rather than resolving
 old visible identities against new metadata. This does not change core/CLI
 search types or persisted settings.

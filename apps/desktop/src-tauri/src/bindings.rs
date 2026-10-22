@@ -13,6 +13,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::library::commands::library_status,
             crate::library::commands::search,
             crate::copy::copy_citation,
+            crate::copy::citation_text,
             crate::copy::copy_format,
             crate::copy::csl_items,
             crate::copy::copy_formatted,
