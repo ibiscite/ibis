@@ -1,14 +1,14 @@
 # Ibis
 
-**Cite anything, anywhere.** Press a shortcut in any app, find a reference from your libraries in any language, and get a correct citation into whatever you are writing. If Ibis cannot insert it safely, it copies it and tells you why. It never fails silently.
+**Find a reference. Copy a citation.** Search your libraries, copy a citation, and paste it where you write.
 
-Ibis is free, open source and private by design: everything works offline, nothing is tracked, and your libraries are never changed.
+Ibis is free and open source. Searching and copying work offline after setup. Ibis adds no analytics and never changes your libraries. See [privacy and local storage](PRIVACY.md) for runtime data and optional update checks.
 
 ## What it does today
 
 Ibis is an early preview.
 
-- Press a shortcut in any app to open the picker: **Ctrl+Shift+Y** on Windows and Linux, **Control+Command+R** on macOS.
+- Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Control+Command+R** on macOS, if the shortcut is available. On Wayland, use the application launcher; XWayland shortcut registration does not guarantee activation from native Wayland apps. Native Wayland shortcuts are being added in [#782](https://github.com/ibiscite/ibis/issues/782) and have not shipped.
 - Search a `.bib` file or, while Zotero is open, your Zotero library and any group libraries you choose.
 - Copy a citation key for Pandoc, BibLaTeX, LaTeX or Typst, or a formatted citation in APA, Chicago, Harvard, IEEE or MLA, then paste it where you write.
 - Works offline and never changes your library.
@@ -20,18 +20,20 @@ Ibis copies the citation for you to paste; inserting it directly is planned. See
 
 There are two builds. Both are free, run on Windows, macOS and Linux, and install as separate apps, so you can keep both.
 
-- **Ibis** is the tested release: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage) ([all releases](https://github.com/ibiscite/ibis/releases)).
-- **Ibis Nightly** has the newest work and is rebuilt after every change, so it may be unfinished: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage) ([release page](https://github.com/ibiscite/ibis/releases/tag/nightly)).
+- **Ibis** is the numbered preview release: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage) ([all releases](https://github.com/ibiscite/ibis/releases)).
+- **Ibis Nightly** has the newest work and is rebuilt regularly from main, so it may be unfinished: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage) ([release page](https://github.com/ibiscite/ibis/releases/tag/nightly)).
 
-On Linux you can also [install Ibis with Nix](docs/nix.md).
+On Linux you can also use the `.deb` on either release page or [install Ibis with Nix](docs/nix.md). See [compatibility](docs/compatibility.md) for tested systems, runtime requirements and AppImage FUSE help.
 
 **The first time you open it.** The apps are not signed by Apple or Microsoft yet, so your system warns before opening them:
 
 - **macOS:** open the `.dmg`, drag Ibis to Applications and open it. If macOS says it cannot check the app, open **System Settings > Privacy & Security**, scroll down and choose **Open Anyway**.
-- **Windows:** run the installer. If SmartScreen warns, choose **More info**, then **Run anyway**.
+- **Windows:** run the installer. For a SmartScreen warning, check that the file came from the release page above; if you trust it and **More info > Run anyway** is available, you can continue. Smart App Control and work or school policies may block it without that option. For Smart App Control, [tell us](https://github.com/ibiscite/ibis/issues/new/choose) and wait for a trusted, signed build; there is no per-app exception. For a managed device, ask IT to review and approve Ibis. Keep protection enabled. If WebView2 Runtime is missing, the installer downloads it once, which needs an internet connection.
 - **Linux:** make the AppImage executable (`chmod +x Ibis-Linux.AppImage`, or tick "Allow executing" in its file properties) and open it.
 
 On first start, Ibis asks whether to check for updates. If you say yes, it can update itself; updates are signed and checked before they install. The menu bar or tray menu shows which build and version you are running.
+
+Some Linux desktops, including GNOME without a tray extension, show no tray icon. Use the launcher to reopen Ibis and the picker's **More** menu for library choices and Quit. Nightly also has its start-at-login switch there. Update controls still need the tray menu.
 
 ## First use
 
