@@ -62,6 +62,7 @@ Follow the [architecture principles](docs/architecture.md#principles), including
 ## Version control safety
 
 - Run `git status` before editing; never reset, restore, delete or reformat work you did not make.
+- Copy evidence links from GitHub's returned job or artifact URLs and verify their source commit; never invent run/job pairs.
 - Before proposing a main-recovery revert, inspect all checks on current `origin/main` and the failure issue's latest lead reviews; an older intermittent failure is not evidence that the newest merge caused it.
 - After creating a worktree, set every later command's working directory explicitly; `git worktree add` does not change it. Run repository-relative diff pathspecs from the repository root and confirm they match files before treating an empty diff as equality.
 - Never push to `main` or a `claude/*` branch. One branch per pull request.
