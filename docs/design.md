@@ -397,10 +397,16 @@ baseline, each key cap 20 px high and centred on it.
 - **Screen readers** hear the actions in one group named "Keys". Buttons stay
   visible and reachable when focus leaves Search; Enter then presses the
   focused button. Copy is offered only when its current output is ready.
-- **Narrow windows.** The library status shortens first (its own rules).
-  Under 520 px, or with Larger text, the Shortcuts hint is dropped (More
-  still lists it). If the rest still does not fit, the hints wrap onto a
-  second line, which keeps 8 px above and below.
+- **Fit before wrapping.** Measure the actual controls and key caps, including
+  the pin and the current Copy label. When they do not fit, drop Shortcuts first
+  (More still lists it), then shorten the library status using its existing
+  ellipses and full tooltip. Only then wrap, keeping 8 px above and below.
+  Restore the hint and status space when the contents fit again; width, text
+  size, platform and format labels all affect this decision. A folded focused
+  Shortcuts action returns focus to More; Search and unrelated controls keep it.
+  If the footer still changes height, the local results scroller keeps the
+  highlighted row visible only while Search owns keyboard navigation. Pointer
+  choices and another focused control do not make the list move.
 - **Library status** keeps its rules (see **Library status**): the dot is
   6 px, centred on the text's x-height, and starts on the leading edge.
 - **Key caps.** A 20 px fill (`--key-cap` on the control fill), radius

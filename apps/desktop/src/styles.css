@@ -314,8 +314,6 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 @media (pointer: coarse) {
   .footer-action, .more > button { min-width: 2.75rem; min-height: 2.75rem; }
 }
-:root[data-text-size="larger"] .shortcuts-hint { display: none; }
-@media (width < 520px) { .shortcuts-hint { display: none; } }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 
 /* The keys overlay: one table of every key, above a dimmed picker. */

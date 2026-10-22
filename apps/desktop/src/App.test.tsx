@@ -3630,3 +3630,52 @@ test.each([{ repeat: true }, { isComposing: true }, { keyCode: 229 }, { altKey: 
     expect(calls).not.toContain("quit");
   },
 );
+
+test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("footer reflow follows only the Search keyboard owner (%s)", async (mode) => {
+  const observations: { callback: () => void; nodes: Set<Element> }[] = [];
+  vi.stubGlobal("ResizeObserver", mode === "fallback" ? undefined : class {
+    nodes = new Set<Element>(); constructor(callback: () => void) { observations.push({ callback, nodes: this.nodes }); }
+    observe(node: Element) { this.nodes.add(node); } unobserve(node: Element) { this.nodes.delete(node); } disconnect() { this.nodes.clear(); }
+  });
+  let height = 303;
+  const rowTop = mode === "oversized" ? 56 : 301, rowHeight = mode === "oversized" ? 116 : 58;
+  const originalScroll = HTMLElement.prototype.scrollIntoView;
+  const globalScroll = vi.fn(); HTMLElement.prototype.scrollIntoView = globalScroll;
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) { return this.matches(".results-area, .picker-content") ? height : 0; });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.matches(".results-area, .picker-content")) return new DOMRect(0, 56, 720, height);
+    if (this.id === "result-19") return new DOMRect(0, rowTop - (document.querySelector(".results-area")?.scrollTop ?? 0), 704, rowHeight);
+    return rect.call(this);
+  });
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    if (!node.matches(".results-area, .picker-content")) return computed(node);
+    const style = document.createElement("div").style; style.overflowY = node.matches(".results-area") ? "auto" : "visible"; return style;
+  });
+  try {
+    backend({ search: () => Array.from({ length: 20 }, (_, i) => result(`k${i}`, `Reflow reference ${i}`)) });
+    render(<App />); await screen.findByText("Reflow reference 0");
+    const search = screen.getByLabelText("Search references");
+    if (mode !== "pointer") for (let i = 0; i < 19; i++) fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); toggleKeepOpen();
+    await screen.findByRole("button", { name: "Kept open; click to stop" });
+    if (mode === "pointer") {
+      fireEvent.mouseMove(document.getElementById("result-0")!, { screenX: 1, screenY: 1 });
+      fireEvent.mouseMove(document.getElementById("result-19")!, { screenX: 2, screenY: 2 });
+    }
+    const owner = mode === "other focus" ? screen.getByRole("button", { name: /^More/ }) : search;
+    act(() => owner.focus()); globalScroll.mockClear();
+    const viewport = document.querySelector<HTMLElement>(".results-area")!;
+    height = mode === "oversized" ? 24 : 263;
+    act(() => {
+      if (mode === "fallback") fireEvent.resize(window);
+      else for (const observation of observations) if (observation.nodes.has(viewport)) observation.callback();
+    });
+    expect(viewport.scrollTop).toBe(mode === "keyboard" || mode === "fallback" ? 40 : 0);
+    expect(document.activeElement).toBe(owner);
+    expect(globalScroll).not.toHaveBeenCalled();
+  } finally {
+    HTMLElement.prototype.scrollIntoView = originalScroll; vi.restoreAllMocks(); vi.unstubAllGlobals();
+  }
+});

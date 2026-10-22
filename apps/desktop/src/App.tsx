@@ -326,17 +326,48 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A row chosen by the pointer is already under it; scrolling would move it away.
   // Selection/preview reflow follows the highlight only while Search has focus.
   const previousActive = useRef(active);
+  const followKeyboard = useRef(true);
+  const resultArea = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const moved = previousActive.current !== active;
     previousActive.current = active;
     if (pointer.fromPointer.current) {
+      followKeyboard.current = false;
       pointer.fromPointer.current = false;
       return;
     }
+    if (moved) followKeyboard.current = true;
     if (!moved && (selected.size === 0 || document.activeElement !== input.current)) return;
     document.getElementById(`result-${active}`)?.scrollIntoView?.({ block: "nearest" });
   }, [active, pointer.fromPointer, selected.size,
     selected.size > 0 ? formatted : null, selected.size > 0 ? format : null, selected.size > 0 ? searchFocused : null]);
+
+  // Changes below the list can resize its viewport without moving the index.
+  // Preserve only Search's keyboard highlight, using the local scroll owners.
+  useEffect(() => {
+    const area = resultArea.current;
+    if (!area) return;
+    const scrollers = [area, area.parentElement].filter((node): node is HTMLElement => node !== null);
+    const reveal = () => {
+      if (!followKeyboard.current || document.activeElement !== input.current) return;
+      const row = document.getElementById(`result-${active}`);
+      if (!row) return;
+      for (const scroller of scrollers) {
+        if (scroller.clientHeight <= 0 || !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) continue;
+        const top = scroller.getBoundingClientRect().top + scroller.clientTop;
+        const bottom = top + scroller.clientHeight;
+        const item = row.getBoundingClientRect();
+        // A tall row already filling the scrollport cannot be shown any fuller.
+        if (item.top <= top && item.bottom >= bottom) continue;
+        if (item.bottom > bottom) scroller.scrollTop += Math.ceil(item.bottom - bottom);
+        else if (item.top < top) scroller.scrollTop += Math.floor(item.top - top);
+      }
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
+    for (const scroller of scrollers) observer?.observe(scroller);
+    window.addEventListener("resize", reveal);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", reveal); };
+  }, [active]);
 
   // Success is brief; warnings stay available until explicitly dismissed.
   useEffect(() => {
@@ -659,6 +690,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           }
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
+            followKeyboard.current = true;
             const step = e.key === "ArrowDown" ? 1 : -1;
             setActive((i) => Math.min(Math.max(i + step, 0), Math.max(results.length - 1, 0)));
           } else if (e.key === "Enter" && e.shiftKey) {
@@ -694,7 +726,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         error={error} copyError={copyError} copied={copied}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => setCopied(null)} />
-      <div className="results-area">
+      <div className="results-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><span>{pickerText.resultCount(results.length)}</span>
         </div>}

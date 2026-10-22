@@ -8,3 +8,11 @@
 @media (pointer: coarse) {
   .pin-button { min-width: calc(var(--control-min-size) + var(--row-pad)); min-height: calc(var(--control-min-size) + var(--row-pad)); }
 }
+
+/* Measure the existing role and live hints even while the optional hint folds. */
+.library-bar { position: relative; }
+.footer-fit-measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; max-width: 100%; height: 0; overflow: hidden; }
+.footer-status-size { flex: none; width: var(--library-min-width); }
+.library-bar[data-shortcuts-folded] .shortcuts-hint { position: absolute; visibility: hidden; pointer-events: none; }
+.library-bar[data-shortcuts-folded] .enter-hints[data-optional-only] { position: absolute; }
+.library-bar[data-status-compact] .library-status { min-width: var(--control-min-size); }
