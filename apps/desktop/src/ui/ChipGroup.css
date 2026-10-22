@@ -1,0 +1,15 @@
+.chip-group { --chip-group-target: var(--control-min-size); min-width: 0; max-width: 100%; }
+.chip-group-list { display: flex; flex-wrap: wrap; gap: max(var(--space-1), calc(var(--chip-group-target) - var(--chip-height))) var(--space-1); }
+.chip-group-item { display: inline-flex; align-items: center; max-width: 100%; height: var(--chip-height); padding-inline-start: var(--space-2); border: var(--border-width) solid var(--button-edge); border-radius: var(--button-radius); background: var(--button-background); color: var(--text); font-size: var(--type-label-size); }
+.chip-group-item bdi { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-group-remove { position: relative; flex: none; width: var(--chip-group-target); height: var(--chip-height); min-height: 0; padding: 0; border: 0; background: var(--clear); color: var(--muted); }
+.chip-group-remove:hover { background: var(--clear); color: var(--text); }
+.chip-group-remove::after { content: ""; position: absolute; inset: calc((var(--chip-group-target) - var(--chip-height)) / -2) 0; }
+.chip-group-item[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+@media (pointer: coarse) {
+  .chip-group { --chip-group-target: 2.75rem; }
+}
+@media (forced-colors: active), (prefers-contrast: more) {
+  .chip-group-item { border-color: ButtonText; }
+  .chip-group-remove { color: ButtonText; }
+}

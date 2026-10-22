@@ -114,6 +114,11 @@ otherwise use a plain quote mark and keep the beak glyph for larger brand uses
 
 ## Engineering notes
 
+- **Chip keyboard foundation:** `ui/ChipGroup` owns navigation and removal,
+  with controlled opaque identities/order, locale-matched direction and a
+  caller-supplied empty-removal focus destination. The browser-only `chips`
+  and `chips-rtl` gallery states exercise it separately; production shelf
+  fitting, disclosure and reordering integrate in later leaves.
 - **Key formats need a pure preview.** `copyCitation` formats keys in Rust and
   writes the clipboard in one step. Add a side-effect-free command (for example
   `citation_text(ids, format, revision)`) or reuse the Rust formatter without
