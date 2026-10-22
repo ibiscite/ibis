@@ -76,6 +76,10 @@ test("every row has a leading check column; toggles are checkbox items and the s
   const rows = [...menu.querySelectorAll("[role^=menuitem]")];
   expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-check", "menu-check", "menu-check"]);
   expect(screen.getByRole("menuitem", { name: "Open" }).textContent).toBe("OpenCtrl+O");
+  // Menu shortcuts are trailing text, so global kbd cap styles cannot apply.
+  const shortcut = screen.getByRole("menuitem", { name: "Open" }).querySelector(".menu-keys")!;
+  expect(shortcut.tagName).toBe("SPAN");
+  expect(shortcut.getAttribute("aria-hidden")).toBe("true");
   const group = screen.getByRole("group", { name: "Sources" });
   expect(within(group).getAllByRole("menuitemcheckbox").map((row) => [row.textContent, row.getAttribute("aria-checked")]))
     .toEqual([["First", "true"], ["Second", "false"]]);
@@ -225,4 +229,20 @@ test("menus highlight with a fill, never a ring, and the picker sheet has no men
   expect(menuCss).toMatch(/\.menu-item \{[^}]*outline: none/);
   expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*outline: none/);
   expect(styles).not.toMatch(/role="menu|menuitem/);
+});
+
+test("an open menu bounds placement below the return field and removes the boundary on close", async () => {
+  const { trigger, search } = mount();
+  vi.spyOn(search, "getBoundingClientRect").mockReturnValue(new DOMRect(8, 8, 240, 40));
+  fireEvent.click(trigger);
+  await screen.findByRole("menu");
+  const boundary = document.querySelector<HTMLElement>("[data-menu-boundary]");
+  expect(boundary?.style.position).toBe("fixed");
+  expect(boundary?.style.top).toBe("48px");
+  expect(boundary?.getAttribute("aria-hidden")).toBe("true");
+  vi.mocked(search.getBoundingClientRect).mockReturnValue(new DOMRect(8, 8, 240, 56));
+  fireEvent(window, new Event("resize"));
+  expect(boundary?.style.top).toBe("64px");
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await waitFor(() => expect(boundary?.isConnected).toBe(false));
 });

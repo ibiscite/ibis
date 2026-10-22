@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject, type ComponentPropsWithRef } from "react";
 import { Autocomplete, Button, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
-import { MenuCheck } from "./Menu";
+import { MenuCheck, useMenuBoundary } from "./Menu";
 import { currentPlatform } from "../platform";
 import "./ToolbarMenu.css";
 
@@ -18,6 +18,7 @@ type Props = {
 export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange, onKeyCommand }: Props) {
   const [internalOpen, setOpen] = useState(false);
   const open = isOpen ?? internalOpen;
+  const boundary = useMenuBoundary(open, returnFocusRef);
   const list = useRef<HTMLDivElement | null>(null);
   const closingList = useRef<HTMLDivElement | null>(null);
   const [opening, setOpening] = useState(0);
@@ -108,7 +109,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
       <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<PopupIndicator /></Button>
-      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6}>
+      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6} containerPadding={8} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>

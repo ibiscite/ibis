@@ -25,7 +25,8 @@
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
 .toolbar-menu-button .popup-indicator-windows { width: var(--space-3); height: var(--space-3); stroke-width: var(--border-width); }
 .toolbar-menu-button[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
-.toolbar-menu-popover { width: 264px; max-height: 440px; }
+.toolbar-menu-popover { width: 264px; }
+.toolbar-menu-filter { flex: none; }
 .toolbar-menu-heading { color: var(--muted); font-size: var(--hint-size); font-weight: 600; padding: 8px 8px 4px 30px; }
 .toolbar-menu .menu-section + .menu-section { border-top: 1px solid var(--separator); margin-top: 4px; padding-top: 4px; }
 .toolbar-menu-sample { margin-inline-start: auto; color: var(--muted); font: var(--hint-size) var(--font-mono); white-space: nowrap; }
