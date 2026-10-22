@@ -129,6 +129,64 @@ def helper_timeout_stages(stderr):
     return [line for line in (stderr or "").splitlines() if line in allowed]
 
 
+def foreground_diagnostics(stderr):
+    if isinstance(stderr, bytes):
+        stderr = stderr[:32768].decode("utf-8", errors="replace")
+    facts = []
+    for line in (stderr or "")[:32768].splitlines():
+        if not line.startswith("NATIVE FOREGROUND STATE ") or len(line) > 512:
+            continue
+        try:
+            value = json.loads(line.removeprefix("NATIVE FOREGROUND STATE "))
+        except (ValueError, RecursionError):
+            continue
+        if (not isinstance(value, dict) or set(value) != {"action", "stage", "owner", "foreground_observed",
+                "foreground_available", "picker_owned", "picker_visible", "elapsed_ms"}
+                or value["action"] not in ("more", "reload", "snapshot")
+                or value["stage"] not in (("snapshot",) if value["action"] == "snapshot" else ("ready", "before", "after"))
+                or value["owner"] not in ("app", "editor", "owned_helper", "unknown")
+                or any(type(value[key]) is not bool for key in ("foreground_observed", "foreground_available"))
+                or any(type(value[key]) not in (bool, type(None)) for key in ("picker_owned", "picker_visible"))
+                or type(value["elapsed_ms"]) is not int or not 0 <= value["elapsed_ms"] <= 30000
+                or (not value["foreground_observed"] and value["foreground_available"])
+                or (not value["foreground_available"] and value["owner"] != "unknown")
+                or (value["picker_owned"] is not True and value["picker_visible"] is not None)
+                or (value["owner"] == "app" and value["picker_owned"] is not True)):
+            continue
+        facts.append(value)
+        if len(facts) == 64:
+            break
+    return facts
+
+
+def fixed_windows_failure(stderr, action):
+    if isinstance(stderr, bytes):
+        stderr = stderr[:32768].decode("utf-8", errors="replace")
+    stderr = (stderr or "")[:32768]
+    lines = helper_timeout_stages(stderr)
+    kinds = ("ElementNotAvailableException", "COMException", "InvalidOperationException", "TimeoutException",
+             "UnauthorizedAccessException", "ArgumentException", "RuntimeException", "other")
+    phases = ("discovery", "provider", "handle-parse", "ownership", "window-bound", "search-bound", "tree-bound", "text-bound", "unknown")
+    operations = ("from-handle", "window-handle", "descendant-list", "node-current", "value-pattern", "value-read",
+                  "text-pattern", "text-read", "node-type", "node-name", "node-focus", "unknown")
+    for line in stderr.splitlines():
+        if line == f"Windows native smoke action unavailable: {action}" or (
+                line.startswith("NATIVE HELPER ERROR ") and line.removeprefix("NATIVE HELPER ERROR ") in kinds):
+            lines.append(line)
+        elif len(line) <= 512:
+            try:
+                if line.startswith("NATIVE CONTROL STATE "):
+                    lines.append("NATIVE CONTROL STATE " + json.dumps(control_activation_facts(json.loads(line[21:]))))
+                elif line.startswith("NATIVE SNAPSHOT FAILURE "):
+                    value = json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
+                    if (isinstance(value, dict) and set(value) == {"phase", "kind", "operation"}
+                            and value["phase"] in phases and value["kind"] in kinds and value["operation"] in operations):
+                        lines.append("NATIVE SNAPSHOT FAILURE " + json.dumps(value))
+            except (ValueError, RuntimeError, RecursionError):
+                pass
+    return lines
+
+
 def editor_focus_facts(native, stage):
     state = native.call("editor-focus-state")
     keys = ("system_events_editor_frontmost", "workspace_editor_frontmost", "workspace_ibis_frontmost",
@@ -1042,19 +1100,39 @@ class Scripted:
                     or type(handle) is not int or handle == 0):
                 raise RuntimeError("Verified native picker window identity unavailable")
             arguments.append(str(handle))
+        tracing = self.system == "Windows" and (
+            (action == "click" and getattr(self, "foreground_controls", False))
+            or (action == "snapshot" and getattr(self, "foreground_remaining", 0) > 0))
+        if tracing:
+            if action == "snapshot":
+                self.foreground_remaining -= 1
+            arguments += ["-TraceForeground", "-EditorStarted", str(getattr(self, "editor_started", 0))]
         try:
             result = subprocess.run(self.command + arguments, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         except subprocess.TimeoutExpired as error:
+            if tracing:
+                self.record_foreground(error.stderr)
             # Never print TimeoutExpired itself: its command contains paths and
             # synthetic clipboard/query arguments. The fixed action is enough.
             for stage in helper_timeout_stages(error.stderr):
                 print(stage, file=sys.stderr)
             raise AssertionError(f"Native helper timed out during {action} after {timeout:g}s") from None
+        if tracing:
+            self.record_foreground(result.stderr)
         if result.returncode:
             # Helpers emit fixed diagnostics only, never tree or clipboard text.
-            print(result.stderr, file=sys.stderr)
+            print("\n".join(fixed_windows_failure(result.stderr, action)) if tracing else result.stderr, file=sys.stderr)
             raise subprocess.CalledProcessError(result.returncode, self.command, stderr=result.stderr)
         return json.loads(result.stdout)
+
+    def record_foreground(self, stderr):
+        previous = getattr(self, "foreground_trace", [])
+        facts = foreground_diagnostics(stderr)
+        self.foreground_trace = (previous + facts)[:64]
+        self.foreground_trace_capped = (getattr(self, "foreground_trace_capped", False)
+                                       or len(previous) + len(facts) >= 64 or len(stderr or "") > 32768)
+        for fact in facts[:max(0, 64 - len(previous))]:
+            print("NATIVE FOREGROUND STATE " + json.dumps(fact), file=sys.stderr)
 
     def snapshot(self, *, timeout=None):
         if self.system != "Windows":
@@ -1609,7 +1687,14 @@ def main():
 
             def missing():
                 library.unlink()
-                menu_action(native, "Reload")
+                if system == "Windows":
+                    native.foreground_controls = True
+                try:
+                    menu_action(native, "Reload")
+                finally:
+                    if system == "Windows":
+                        native.foreground_controls = False
+                        native.foreground_remaining = 8
                 def explained():
                     report["missing_library_evidence"] = missing_library_evidence(snapshot(), library.name)
                     return all(report["missing_library_evidence"].values())
@@ -1708,6 +1793,9 @@ def main():
             print("Native toggle diagnostics unavailable", file=sys.stderr)
         exit_code = 1
     finally:
+        if native and hasattr(native, "foreground_trace"):
+            report["foreground_trace"] = native.foreground_trace
+            report["foreground_trace_capped"] = native.foreground_trace_capped
         if app and app.poll() is None:
             app.terminate()
             try:
@@ -2612,6 +2700,75 @@ class ContractTests(unittest.TestCase):
             state["editor_window_visible"] = "true"
             with self.assertRaisesRegex(RuntimeError, "metadata unavailable"):
                 editor_focus_facts(native, "copy-restoration-timeout")
+
+    def test_recovery_observations_keep_hidden_and_unavailable_distinct_and_redact(self):
+        fact = {"action": "reload", "stage": "after", "owner": "editor", "foreground_observed": True,
+                "foreground_available": True, "picker_owned": True, "picker_visible": False, "elapsed_ms": 1}
+        unavailable = dict(fact, owner="unknown", foreground_observed=False, foreground_available=False,
+                           picker_owned=None, picker_visible=None)
+        encode = lambda value: "NATIVE FOREGROUND STATE " + json.dumps(value)
+        self.assertEqual(foreground_diagnostics(encode(fact) + "\n" + encode(unavailable)), [fact, unavailable])
+        for changes in ({"private": "private-payload"}, {"owner": "private-payload"}, {"elapsed_ms": True},
+                        {"elapsed_ms": -1}, {"picker_owned": None}, {"foreground_observed": False},
+                        {"picker_visible": "false"}, {"stage": "private-payload"}):
+            self.assertEqual(foreground_diagnostics(encode(dict(fact, **changes))), [])
+        self.assertEqual(foreground_diagnostics("NATIVE FOREGROUND STATE " + "x" * 1000), [])
+        self.assertEqual(len(foreground_diagnostics((encode(fact) + "\n") * 100)), 64)
+
+    def test_recovery_observations_follow_existing_calls_without_retry(self):
+        native = Scripted.__new__(Scripted)
+        native.system, native.command = "Windows", ["synthetic-helper"]
+        native.app = type("App", (), {"pid": 123})()
+        native.picker_app_pid, native.picker_handle, native.editor_started = 123, 456, 7
+        native.foreground_controls, native.foreground_remaining = True, 8
+        fact = {"action": "reload", "stage": "before", "owner": "unknown", "foreground_observed": True,
+                "foreground_available": True, "picker_owned": True, "picker_visible": True, "elapsed_ms": 0}
+        trace = "NATIVE FOREGROUND STATE " + json.dumps(fact)
+        for outcome in (subprocess.CompletedProcess([], 0, "true", trace),
+                        subprocess.CompletedProcess([], 1, "", trace + '\nNATIVE FOREGROUND STATE {"private":"payload"}'),
+                        subprocess.TimeoutExpired(["private-command"], 30, stderr=trace.encode())):
+            native.foreground_trace = []
+            with patch("subprocess.run", side_effect=[outcome] if isinstance(outcome, Exception) else None,
+                       return_value=outcome) as helper, patch("builtins.print") as output:
+                if isinstance(outcome, subprocess.TimeoutExpired):
+                    with self.assertRaisesRegex(AssertionError, "timed out"):
+                        native.call("click", "Reload")
+                elif outcome.returncode:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        native.call("click", "Reload")
+                else:
+                    self.assertIs(native.call("click", "Reload"), True)
+                self.assertEqual(native.foreground_trace, [fact])
+                self.assertEqual(helper.call_count, 1)
+                self.assertIn("-TraceForeground", helper.call_args.args[0])
+                self.assertNotIn("payload", str(output.call_args_list))
+
+    def test_recovery_observations_stop_after_eight_existing_snapshots_and_cap_output(self):
+        native = Scripted.__new__(Scripted)
+        native.system, native.command, native.foreground_remaining = "Windows", ["synthetic-helper"], 8
+        fact = {"action": "snapshot", "stage": "snapshot", "owner": "unknown", "foreground_observed": True,
+                "foreground_available": False, "picker_owned": True, "picker_visible": False, "elapsed_ms": 1}
+        trace = "NATIVE FOREGROUND STATE " + json.dumps(fact)
+        with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, '{}', trace)) as helper, patch("builtins.print"):
+            for _ in range(9):
+                native.call("snapshot", "456")
+            self.assertEqual(helper.call_count, 9)
+            self.assertTrue(all("-TraceForeground" in entry.args[0] for entry in helper.call_args_list[:8]))
+            self.assertNotIn("-TraceForeground", helper.call_args_list[8].args[0])
+            self.assertEqual(native.foreground_trace, [fact] * 8)
+        native.foreground_trace = []
+        with patch("builtins.print") as output:
+            for _ in range(100):
+                native.record_foreground(trace)
+            self.assertEqual(len(native.foreground_trace), 64)
+            self.assertTrue(native.foreground_trace_capped)
+            self.assertEqual(output.call_count, 64)
+        failure = ('NATIVE HELPER ERROR COMException\nNATIVE CONTROL STATE {"pressed":false}\n'
+                   'NATIVE SNAPSHOT FAILURE {"phase":"ownership","kind":"COMException","operation":"from-handle"}\n'
+                   'NATIVE FOREGROUND STATE {"private":"payload"}')
+        lines = fixed_windows_failure(failure, "snapshot")
+        self.assertEqual(len(lines), 3)
+        self.assertNotIn("payload", str(lines))
 
     def test_menu_actions_open_more_first(self):
         native = Mock()
@@ -3635,11 +3792,13 @@ $operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
 Add-Type @'
 using System;
 public static class IbisSmoke {
- public static bool Valid=true, Visible=true; public static uint Owner=42;
+ public static bool Valid=true, Visible=true, ReadFails=false, VisibilityFails=false;
+ public static uint Owner=42, ForegroundOwner=42;
  public static long Handle=7;
  public static bool IsWindow(IntPtr handle) { return Valid && handle.ToInt64()==Handle; }
- public static bool IsWindowVisible(IntPtr handle) { return Visible; }
- public static uint OwnerPid(IntPtr handle) { return Owner; }
+ public static bool IsWindowVisible(IntPtr handle) { if(VisibilityFails) throw new Exception("private"); return Visible; }
+ public static IntPtr GetForegroundWindow() { if(ReadFails) throw new Exception("private"); return new IntPtr(9); }
+ public static uint OwnerPid(IntPtr handle) { return handle.ToInt64()==9 ? ForegroundOwner : Owner; }
 }
 namespace IbisClickContract {
  public enum TreeScope { Descendants }
@@ -3653,9 +3812,9 @@ namespace IbisClickContract {
  public class ExpandCollapsePattern { public static int Pattern=2; }
  public class TogglePattern { public static int Pattern=3; }
 public class ClickPattern {
- public int Activations; public bool Fail;
+ public int Activations; public bool Fail, Hide;
  public void Invoke() { Activate(); } public void Expand() { Activate(); } public void Toggle() { Activate(); }
- private void Activate() { Activations++; if(Fail) throw new Exception("uncertain activation"); }
+ private void Activate() { Activations++; if(Hide) IbisSmoke.Visible=false; if(Fail) throw new Exception("uncertain activation"); }
 }
 public class ClickElement {
  public string Name="Typst"; public ClickElement Current { get { return this; } }
@@ -3716,6 +3875,45 @@ foreach ($failure in @('missing','wrong-label','text-toggle','menu-toggle','dupl
 [IbisClickContract.AutomationElement]::Window=$null
 $rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
 if(!$rejected) {throw 'Missing owned window accepted'}
+$traceFunction=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-ForegroundTrace'},$true)
+. ([scriptblock]::Create($traceFunction.Extent.Text))
+$script:ForegroundClock=[Diagnostics.Stopwatch]::StartNew()
+$Action='snapshot'; $AppId=$PID+2; $EditorId=$PID+1; $EditorStarted=100; $script:EditorTicks=100
+function Get-Process { [CmdletBinding()] param([int] $Id) [pscustomobject]@{StartTime=[DateTime]::new($script:EditorTicks,[DateTimeKind]::Utc)} }
+$originalError=[Console]::Error; $traceLog=[IO.StringWriter]::new(); [Console]::SetError($traceLog)
+try {
+ [IbisSmoke]::Valid=$true; [IbisSmoke]::Visible=$false; [IbisSmoke]::Owner=$AppId
+ foreach ($case in @(@($AppId,'app',$true),@($EditorId,'editor',$true),@($PID,'owned_helper',$true),@(($PID+3),'unknown',$true),@(0,'unknown',$false))) {
+  [void]$traceLog.GetStringBuilder().Clear(); [IbisSmoke]::ForegroundOwner=$case[0]
+  Write-ForegroundTrace 'snapshot' ([IntPtr]7)
+  $fact=$traceLog.ToString().Trim().Substring(24) | ConvertFrom-Json
+  if($fact.owner -ne $case[1] -or !$fact.foreground_observed -or $fact.foreground_available -ne $case[2] -or
+     !$fact.picker_owned -or $fact.picker_visible -ne $false) {throw 'Hidden foreground observation changed'}
+ }
+ foreach ($mode in @('reused-editor','unavailable','picker-unavailable')) {
+  [void]$traceLog.GetStringBuilder().Clear(); [IbisSmoke]::ForegroundOwner=$EditorId
+  $script:EditorTicks=101; [IbisSmoke]::ReadFails=$mode -eq 'unavailable'
+  [IbisSmoke]::VisibilityFails=$mode -eq 'picker-unavailable'
+  Write-ForegroundTrace 'snapshot' ([IntPtr]7)
+  $fact=$traceLog.ToString().Trim().Substring(24) | ConvertFrom-Json
+  if($fact.owner -ne 'unknown' -or $fact.foreground_observed -ne ($mode -ne 'unavailable') -or
+     ($mode -eq 'picker-unavailable' -and ($null -ne $fact.picker_owned -or $null -ne $fact.picker_visible))) {throw 'Unavailable observation guessed a state'}
+ }
+ [IbisSmoke]::ReadFails=$false; [IbisSmoke]::VisibilityFails=$false; [IbisSmoke]::Visible=$true
+ [IbisSmoke]::ForegroundOwner=$AppId; $TraceForeground=$true; $Action='click'; $Text='Reload'; $PickerHandle=7
+ [IbisClickContract.AutomationElement]::Window=$script:window
+ foreach ($uncertain in @($false,$true)) {
+  [void]$traceLog.GetStringBuilder().Clear()
+  [IbisSmoke]::Visible=$true
+  $element=[IbisClickContract.ClickElement]::new(); $element.Name='Reload'; $element.Supported=1
+  $element.Action.Fail=$uncertain; $element.Action.Hide=$true
+  $script:window.Elements=@($element); $failed=$false
+  try {& $operation | Out-Null} catch {$failed=$true}
+  $records=@($traceLog.ToString() -split "\r?\n" | Where-Object { $_.StartsWith('NATIVE FOREGROUND STATE ') } | ForEach-Object { $_.Substring(24) | ConvertFrom-Json })
+  if(($records.stage -join ',') -ne 'ready,before,after' -or $failed -ne $uncertain -or $element.Action.Activations -ne 1 -or
+     !$records[1].picker_visible -or $records[2].picker_visible -ne $false) {throw 'Trace changed activation or phase order'}
+ }
+} finally { [Console]::SetError($originalError) }
 [Console]::Error.WriteLine('WINDOWS CLICK CONTRACT complete')
 '''
         with tempfile.TemporaryDirectory() as temporary:

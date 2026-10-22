@@ -1,6 +1,7 @@
 # UI Automation reads/invokes controls; SendInput exercises the actual shortcut
 # and typing path. Called by smoke-native.py, not a test-mode application API.
-param([string] $Action, [int] $AppId, [int] $EditorId, [string] $Text, [long] $PickerHandle)
+param([string] $Action, [int] $AppId, [int] $EditorId, [string] $Text, [long] $PickerHandle,
+      [switch] $TraceForeground, [long] $EditorStarted)
 $ErrorActionPreference = 'Stop'
 [Console]::Error.WriteLine('NATIVE HELPER STAGE windows-encoding-start')
 # JSON crosses a pipe to Python; neither end may inherit an OEM/ANSI code page.
@@ -46,6 +47,31 @@ public static class IbisSmoke {
 }
 '@
 [Console]::Error.WriteLine('NATIVE HELPER STAGE windows-input-compile-ready')
+$script:ForegroundClock = [Diagnostics.Stopwatch]::StartNew()
+function Write-ForegroundTrace([string] $Stage, [IntPtr] $Handle) {
+  $owned=$null; $visible=$null; $observed=$false; $available=$false; $owner='unknown'
+  try {
+    $owned = $Handle -ne [IntPtr]::Zero -and [IbisSmoke]::IsWindow($Handle) -and [IbisSmoke]::OwnerPid($Handle) -eq $AppId
+    if ($owned) { $visible = [IbisSmoke]::IsWindowVisible($Handle) }
+  } catch { $owned=$null; $visible=$null }
+  try {
+    $foreground = [IbisSmoke]::GetForegroundWindow()
+    $foregroundOwner = if ($foreground -ne [IntPtr]::Zero) { [IbisSmoke]::OwnerPid($foreground) } else { 0 }
+    $observed=$true; $available=$foregroundOwner -ne 0
+    if ($available -and $foregroundOwner -eq $PID) { $owner='owned_helper' }
+    elseif ($available -and $owned -eq $true -and $foregroundOwner -eq $AppId) { $owner='app' }
+    elseif ($available -and $EditorStarted -gt 0 -and $foregroundOwner -eq $EditorId) {
+      try {
+        $editor = Get-Process -Id $EditorId -ErrorAction Stop
+        if ($editor.StartTime.ToUniversalTime().Ticks -eq $EditorStarted) { $owner='editor' }
+      } catch {}
+    }
+  } catch { $observed=$false; $available=$false; $owner='unknown' }
+  $operation = if ($Action -eq 'snapshot') {'snapshot'} elseif ($Text -ceq 'More') {'more'} else {'reload'}
+  $facts = @{action=$operation;stage=$Stage;owner=$owner;foreground_observed=$observed;foreground_available=$available;
+    picker_owned=$owned;picker_visible=$visible;elapsed_ms=[long] $script:ForegroundClock.ElapsedMilliseconds}
+  try { [Console]::Error.WriteLine('NATIVE FOREGROUND STATE ' + (ConvertTo-Json -InputObject $facts -Compress)) } catch {}
+}
 function Get-AppWindow([int] $Id) {
   $script:SnapshotPhase = 'discovery'
   $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $Id)
@@ -80,6 +106,7 @@ function Get-Tree {
       $script:SnapshotPhase = 'ownership'
       throw 'Verified picker window identity was lost'
     }
+    if ($TraceForeground) { Write-ForegroundTrace 'snapshot' $handle }
     if (![IbisSmoke]::IsWindowVisible($handle)) { return @{nodes=@();visible=$false;foreground=$false;picker_handle=$handle.ToInt64()} }
     $script:SnapshotOperation = 'from-handle'
     $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
@@ -291,6 +318,7 @@ try {
       # Modal popovers intentionally hide Search from UIA. Reuse the picker
       # identity established by snapshot, rechecking its OS ownership each time.
       $handle = [IntPtr] $PickerHandle
+      if ($TraceForeground) { Write-ForegroundTrace 'ready' $handle }
       # UIA exposes HWND as signed Int32; zero, not the sign, means absent.
       if ($PickerHandle -eq 0 -or ![IbisSmoke]::IsWindow($handle) -or [IbisSmoke]::OwnerPid($handle) -ne $AppId) {
         throw 'Verified picker window identity was lost'
@@ -320,10 +348,13 @@ try {
       }
       # Fixed booleans survive an uncertain activation; no accessible text.
       [Console]::Error.WriteLine('NATIVE CONTROL STATE ' + (ConvertTo-Json -InputObject $facts -Compress))
-      if ($facts.invoke_pattern) { $invoke.Invoke() }
-      elseif ($facts.expand_collapse_pattern) { $expand.Expand() }
-      elseif ($facts.button_role -and $facts.toggle_pattern) { $toggle.Toggle() }
-      else { throw 'Named accessibility control cannot be pressed' }
+      if ($TraceForeground) { Write-ForegroundTrace 'before' $handle }
+      try {
+        if ($facts.invoke_pattern) { $invoke.Invoke() }
+        elseif ($facts.expand_collapse_pattern) { $expand.Expand() }
+        elseif ($facts.button_role -and $facts.toggle_pattern) { $toggle.Toggle() }
+        else { throw 'Named accessibility control cannot be pressed' }
+      } finally { if ($TraceForeground) { Write-ForegroundTrace 'after' $handle } }
       $facts.pressed=$true
       $facts
     }
