@@ -21,11 +21,11 @@ mod state;
 mod status;
 mod tasks;
 
-pub(crate) use error::CommandError;
+pub(crate) use error::{CommandError, LoadError};
 pub(crate) use search::SearchRequests;
 pub(crate) use source::Source;
 pub(crate) use state::{Library, LoadRequests};
-pub(crate) use status::{KEPT, LibraryState, LibraryStatus};
+pub(crate) use status::{LibraryState, LibraryStatus};
 pub(crate) use tasks::{
     LibraryWatch, choose_library_file, current_status, refresh_zotero, reload_library_file, retry_zotero_on_focus,
     start_open, use_zotero_library,

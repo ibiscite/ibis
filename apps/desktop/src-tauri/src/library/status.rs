@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ibis_core::settings::ZoteroLibrary;
 use serde::Serialize;
 
-use super::error::LoadError;
+use super::LoadError;
 use super::source::{Source, zotero_library};
 use super::state::Library;
 
@@ -30,6 +30,13 @@ pub(crate) struct LibraryStatus {
     pub(crate) source_counts: BTreeMap<String, usize>,
     pub(crate) warnings: usize,
     pub(crate) error: Option<String>,
+    // Native presentation facts do not alter the serialized picker contract.
+    #[serde(skip)]
+    pub(crate) error_reason: Option<LoadError>,
+    #[serde(skip)]
+    pub(crate) kept_references: bool,
+    #[serde(skip)]
+    pub(crate) choice_not_saved: bool,
     /// Something to tell the user that is not a failure to open.
     pub(crate) note: Option<String>,
     /// Startup settings recovery, separate from transient library status.
@@ -102,16 +109,25 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             let zotero = matches!(library.source, Some(Source::Zotero(_)));
             error_with_snapshot_context(error, !library.index.references().is_empty(), zotero)
         }),
+        error_reason: library.error,
+        kept_references: library.error.is_some_and(|error| {
+            retains(
+                error,
+                !library.index.references().is_empty(),
+                matches!(library.source, Some(Source::Zotero(_))),
+            )
+        }),
+        choice_not_saved: library.choice_save_warning.is_some(),
         note: match &library.retained_error {
             Some(error) => {
                 let name = library.source.as_ref().and_then(Source::name).unwrap_or_default();
                 let update = format!("the retained library {name} could not be updated: {error}");
-                Some(match &library.note {
+                Some(match &library.choice_save_warning {
                     Some(note) => format!("{note}\n{update}"),
                     None => update,
                 })
             }
-            None => library.note.clone(),
+            None => library.choice_save_warning.clone(),
         },
         settings_notice: library.settings_notice.clone(),
         snapshot_zotero: matches!(library.source, Some(Source::Zotero(_))),
@@ -143,7 +159,7 @@ pub(super) fn epoch_millis(time: SystemTime) -> Option<f64> {
 }
 
 /// Added to a failure while the last good references stay searchable.
-pub(crate) const KEPT: &str = "; keeping the last loaded references";
+const KEPT: &str = "; keeping the last loaded references";
 
 /// Retention belongs to the installed desktop snapshot, not the source error.
 /// Any failure to refresh Zotero keeps the references already read.
@@ -174,6 +190,47 @@ mod tests {
     use crate::tray::library_line;
 
     #[test]
+    fn native_presentation_facts_do_not_change_the_picker_payload() {
+        let mut library = candidate(
+            PathBuf::from("synthetic/retained.bib"),
+            ibis_core::bibtex::load_str("synthetic", "@misc{kept}"),
+        );
+        library.error = Some(SourceError::Unavailable.into());
+        library.choice_save_warning = Some("the choice could not be saved".into());
+        let current = status(&library);
+        assert!(current.error_reason.is_some());
+        assert!(current.kept_references && current.choice_not_saved);
+        let payload = serde_json::to_value(&current).unwrap_or_else(|e| panic!("{e}"));
+        let expected = [
+            "state",
+            "revision",
+            "zotero",
+            "zotero_libraries",
+            "has_snapshot",
+            "name",
+            "snapshot_name",
+            "references",
+            "source_counts",
+            "warnings",
+            "error",
+            "note",
+            "settings_notice",
+            "snapshot_zotero",
+            "stale",
+            "updated_at",
+            "checked_at",
+        ];
+        let keys = payload.as_object().unwrap_or_else(|| panic!("status object"));
+        assert_eq!(keys.len(), expected.len());
+        assert!(expected.iter().all(|key| keys.contains_key(*key)));
+        assert_eq!(
+            payload["error"],
+            "the library file is unavailable; keeping the last loaded references"
+        );
+        assert_eq!(payload["note"], "the choice could not be saved");
+    }
+
+    #[test]
     fn only_populated_snapshots_claim_that_references_were_retained() {
         let failures = [
             (SourceError::Unavailable, "the library file is unavailable"),
@@ -195,6 +252,8 @@ mod tests {
                 .unwrap_or_else(|| panic!("expected the current library request"));
             assert_eq!(empty.error.as_deref(), Some(*message));
             assert_eq!(empty.references, 0);
+            assert!(!empty.kept_references);
+            assert_eq!(empty.error_reason, Some((*error).into()));
         }
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = dir.path().join("populated.bib");
@@ -208,6 +267,8 @@ mod tests {
                 Some(format!("{message}; keeping the last loaded references"))
             );
             assert_eq!(retained.references, 1);
+            assert!(retained.kept_references);
+            assert_eq!(retained.error_reason, Some((*error).into()));
         }
     }
 

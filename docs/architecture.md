@@ -69,6 +69,11 @@ it. Both blur guards read the same atomic state. Independent update, feedback
 and login messages do not acquire a lease, so an unanswered message cannot keep
 the unpinned picker visible.
 
+Library status carries the failure reason, retained-reference flag and unsaved
+choice provenance separately for native presentation. The tray derives its
+wording from these facts rather than parsing the picker's error or note text.
+These native-only facts are excluded from the serialized picker payload.
+
 Shared interactive web controls live in `apps/desktop/src/ui/` (ADR 0021).
 Only that directory imports React Aria; `scripts/ui-imports.mjs` checks static
 imports, re-exports and literal dynamic imports/require calls. It reuses Vite's

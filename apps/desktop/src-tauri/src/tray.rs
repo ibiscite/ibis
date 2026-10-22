@@ -6,7 +6,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::feedback::{idea_url, open_in_browser, problem_url};
 use crate::library::{
-    KEPT, LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
+    LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
 };
 use crate::login_item::{self, LoginItems, LoginMenuItem};
 use crate::picker::show_picker;
@@ -18,8 +18,11 @@ pub(crate) fn library_line(status: &LibraryStatus) -> String {
         (LibraryState::Loading, _, Some(name)) => format!("Opening {name}…"),
         (LibraryState::Reloading, _, Some(name)) => format!("Reloading {name}…"),
         // The last loaded references are still searched: say "not updated", not "could not be opened".
-        (_, Some(error), _) if status.stale => {
-            let reason = error.trim_end_matches(KEPT);
+        (_, Some(error), _) if status.stale && status.kept_references => {
+            let reason = status
+                .error_reason
+                .map(|reason| reason.to_string())
+                .unwrap_or_else(|| error.clone());
             let name = status.snapshot_name.as_deref().unwrap_or("Library");
             format!("{name}: {} references, not updated: {reason}", status.references)
         }
@@ -34,9 +37,10 @@ pub(crate) fn library_line(status: &LibraryStatus) -> String {
         }
         (_, None, None) => "No library chosen".to_string(),
     };
-    let line = match status.note {
-        Some(_) => format!("{line} (not saved for next time)"),
-        None => line,
+    let line = if status.choice_not_saved {
+        format!("{line} (not saved for next time)")
+    } else {
+        line
     };
     // Menus do not wrap; keep long errors readable.
     if line.chars().count() > 90 {
@@ -182,6 +186,9 @@ mod tests {
             source_counts: Default::default(),
             warnings,
             error: error.map(String::from),
+            error_reason: None,
+            kept_references: false,
+            choice_not_saved: false,
             note: None,
             settings_notice: None,
             snapshot_zotero: false,
@@ -212,6 +219,7 @@ mod tests {
         );
         let unsaved = LibraryStatus {
             note: Some("could not be saved".into()),
+            choice_not_saved: true,
             ..status(Some("refs.bib"), 0, None)
         };
         assert_eq!(
@@ -220,18 +228,18 @@ mod tests {
         );
         let kept = LibraryStatus {
             state: LibraryState::Error,
-            name: Some("Zotero library".into()),
-            snapshot_name: Some("Zotero library".into()),
+            name: Some("refs.bib".into()),
+            snapshot_name: Some("refs.bib".into()),
             stale: true,
-            ..status(
-                Some("refs.bib"),
-                0,
-                Some("Zotero is not running; keeping the last loaded references"),
-            )
+            kept_references: true,
+            error_reason: Some(crate::library::LoadError::Source(
+                ibis_core::source::SourceError::Unavailable,
+            )),
+            ..status(Some("refs.bib"), 0, Some("presentation wording is not a status code"))
         };
         assert_eq!(
             library_line(&kept),
-            "Zotero library: 12 references, not updated: Zotero is not running"
+            "refs.bib: 12 references, not updated: the library file is unavailable"
         );
         let long = "x".repeat(200);
         let line = library_line(&status(Some("refs.bib"), 0, Some(&long)));

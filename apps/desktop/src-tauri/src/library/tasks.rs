@@ -63,7 +63,7 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
     if let Ok(library) = library.lock() {
         // The interface note names the retained source. Log only the original
         // allowlisted messages, never the filename added for that interface.
-        if let Some(note) = &library.note {
+        if let Some(note) = &library.choice_save_warning {
             application_message(note);
         }
         if let Some(error) = library.retained_error {
@@ -203,7 +203,8 @@ pub(super) fn run_open(app: &AppHandle, request: u64, source: Source, reload: bo
                 if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request && library.error.is_none() {
                     let saved = app.state::<SettingsFile>().update(|s| s.library = Some(chosen));
                     if let Err(e) = saved {
-                        library.note = Some(format!("the library opened but could not be saved for next time: {e}"));
+                        library.choice_save_warning =
+                            Some(format!("the library opened but could not be saved for next time: {e}"));
                         show_note = true;
                     }
                 }
@@ -333,6 +334,9 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             source_counts: BTreeMap::new(),
             warnings: 0,
             error: Some("library state is unavailable".to_string()),
+            error_reason: None,
+            kept_references: false,
+            choice_not_saved: false,
             note: None,
             settings_notice: None,
             snapshot_zotero: false,

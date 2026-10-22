@@ -39,8 +39,8 @@ pub(crate) struct Library {
     pub(crate) error: Option<LoadError>,
     /// An automatic update problem while a different failed choice is retained.
     pub(super) retained_error: Option<LoadError>,
-    /// A problem that is not a failure to open, such as an unsaved choice.
-    pub(crate) note: Option<String>,
+    /// A failed choice save, separate from a retained-source refresh problem.
+    pub(crate) choice_save_warning: Option<String>,
     /// Persistent startup recovery notice; includes a path for the interface only.
     pub(crate) settings_notice: Option<String>,
     /// When a reread of the same source last brought different references
@@ -75,7 +75,7 @@ pub(super) fn candidate(source: impl Into<Source>, loaded: ibis_core::model::Loa
         warnings: loaded.warnings,
         snapshot: None,
         error: None,
-        note: None,
+        choice_save_warning: None,
         ..Library::default()
     }
 }
@@ -174,7 +174,7 @@ pub(super) fn install_result(
             if failed_choice {
                 new.requested = library.requested.take();
                 new.error = library.error.take();
-                new.note = library.note.take();
+                new.choice_save_warning = library.choice_save_warning.take();
             }
             *library = new;
         }
@@ -397,11 +397,29 @@ mod tests {
     }
 
     #[test]
+    fn a_retained_refresh_failure_does_not_claim_an_unsaved_choice() {
+        let library = Mutex::new(candidate(
+            PathBuf::from("synthetic/retained.bib"),
+            ibis_core::bibtex::load_str("synthetic", ""),
+        ));
+        let requests = LoadRequests::default();
+        let (request, _, _) =
+            begin_open(&library, &requests, PathBuf::from("other/attempted.bib")).unwrap_or_else(|| panic!("open"));
+        let rejected = install(&library, &requests, request, Err(SourceError::Unavailable.into()))
+            .unwrap_or_else(|| panic!("rejected choice"));
+        assert!(rejected.note.is_none());
+        let failed = install_automatic(&library, &requests, request, Err(SourceError::WatchUnavailable.into()))
+            .unwrap_or_else(|| panic!("retained refresh"));
+        assert!(failed.note.as_deref().is_some_and(|note| note.contains("retained.bib")));
+        assert_eq!(library_line(&failed), library_line(&rejected));
+    }
+
+    #[test]
     fn retained_source_failures_and_empty_recovery_preserve_the_choice_and_existing_note() {
         let retained = PathBuf::from("synthetic/retained.bib");
         let original_note = "the library choice could not be saved";
         let library = Mutex::new(Library {
-            note: Some(original_note.to_string()),
+            choice_save_warning: Some(original_note.to_string()),
             settings_notice: Some("settings recovered".to_string()),
             ..candidate(
                 retained.clone(),
@@ -417,6 +435,7 @@ mod tests {
         let unavailable = install_automatic(&library, &requests, request, Err(SourceError::WatchUnavailable.into()))
             .unwrap_or_else(|| panic!("automatic install"));
         assert_eq!(unavailable.error, rejected.error);
+        assert!(unavailable.choice_not_saved);
         let note = unavailable.note.unwrap_or_else(|| panic!("retained source note"));
         assert!(note.starts_with(original_note));
         assert!(note.contains("retained.bib could not be updated"));
@@ -436,6 +455,7 @@ mod tests {
         .unwrap_or_else(|| panic!("empty update"));
         assert_eq!(empty.references, 0);
         assert!(empty.has_snapshot);
+        assert!(empty.choice_not_saved);
         assert_eq!(
             empty.error.as_deref(),
             Some("the library file is not UTF-8 text; save it as UTF-8")
@@ -485,6 +505,7 @@ mod tests {
         assert_eq!(loaded.references, 0);
         assert!(loaded.error.is_none());
         assert!(loaded.note.is_none());
+        assert!(!loaded.choice_not_saved);
         assert_eq!(loaded.settings_notice.as_deref(), Some("settings recovered"));
     }
 
@@ -600,7 +621,7 @@ mod tests {
             PathBuf::from("synthetic.bib"),
             ibis_core::bibtex::load_str("synthetic", "@misc{k}\n@misc{bad,"),
         );
-        library.note = Some("the library choice was not saved".to_string());
+        library.choice_save_warning = Some("the library choice was not saved".to_string());
         let before = status(&library);
         dialog_path_error(&mut library);
         let failed = status(&library);
@@ -720,7 +741,7 @@ mod tests {
 
         let saved = "the library opened but could not be saved for next time: synthetic";
         if let Ok(mut library) = library.lock() {
-            library.note = Some(saved.to_string());
+            library.choice_save_warning = Some(saved.to_string());
         }
         let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::Group(7).into()))
             .unwrap_or_else(|| panic!("the refresh should start"));
