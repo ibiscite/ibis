@@ -549,6 +549,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const shiftEnterAction = highlighted
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
+  const escapeStep = () => {
+    setClickCopy(null);
+    // Escape steps back one layer, retaining the chosen references.
+    if (menuOpen) closeMenu(true);
+    else if (query) {
+      escapedQuery.current = query;
+      setQuery("");
+      input.current?.focus();
+    } else hide();
+  };
+  const toggleHighlighted = () => {
+    if (highlighted) toggle(highlighted);
+    input.current?.focus();
+  };
 
   return (
     <main
@@ -562,15 +576,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           openKeys();
         } else if (e.key === "Escape") {
           e.preventDefault();
-          setClickCopy(null);
-          // Escape steps back one layer: the menu, then the search, then the
-          // picker. Chosen references stay; hiding keeps them for a minute.
-          if (menuOpen) closeMenu(true);
-          else if (query) {
-            escapedQuery.current = query;
-            setQuery("");
-            input.current?.focus();
-          } else hide();
+          escapeStep();
         } else if (isMenuShortcut(e)) {
           e.preventDefault();
           if (menuOpen) closeMenu(true);
@@ -606,8 +612,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             setActive((i) => Math.min(Math.max(i + step, 0), Math.max(results.length - 1, 0)));
           } else if (e.key === "Enter" && e.shiftKey) {
             e.preventDefault();
-            const result = current[active];
-            if (result) toggle(result);
+            toggleHighlighted();
           } else if (e.key === "Enter") {
             e.preventDefault();
             void copy();
@@ -669,7 +674,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
-        altHeld={altHeld} searchFocused={searchFocused}
+        altHeld={altHeld} actions={{ copy: () => { void copy(); }, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
         more={
           <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? setMenuOpen(true) : closeMenu(false))}
             buttonRef={moreButton} searchRef={input} library={library} libraryDetail={libraryDetail}

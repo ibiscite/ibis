@@ -1,6 +1,6 @@
 import type { Ref, RefObject } from "react";
 import type { Density, LibraryStatus, LoginItem, ZoteroLibrary } from "../../api";
-import { ariaKeys, keyLabel, keysFor } from "../../keys";
+import { keyLabel, keysFor } from "../../keys";
 import { LibraryDetail } from "../../LibraryStatusLine";
 import { densityNames, keyText, loginItemText, pickerText } from "../../messages";
 import { currentPlatform, isMac } from "../../platform";
@@ -26,7 +26,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
-      keys={label(keysFor("more"))} ariaKeys={ariaKeys(keysFor("more"), isMac)}>
+      keys={keysFor("more")}>
       {/* Where the references come from and how fresh they are, read
           as the group's name when the menu is reached by keyboard. */}
       <MenuSection id="library" label={libraryDetail?.filter(Boolean).join(". ")}

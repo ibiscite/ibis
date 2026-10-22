@@ -377,20 +377,22 @@ baseline, each key cap 20 px high and centred on it.
   hint that comes and goes is first, so the cluster's trailing end never moves.
   With Alt held: "Add to citation ⇧↵", then the Escape step ("Clear search
   Esc" or "Hide Esc"), then More.
-- **More** looks like the other hints but is a button: a quiet fill on hover
-  and while open, drawn 28 px high and centred in the 40 px footer, with a
-  32 px target, radius `--r-tile`. Its name is "More", with
+- **Actions** are quiet buttons, including Copy, the alternate Add/Remove and
+  Escape step, Shortcuts and More. Their labels match their accessible names;
+  decorative caps are hidden from screen readers and `aria-keyshortcuts`
+  names the keys. They invoke the same guarded actions as the keyboard.
+  The quiet fill is drawn 28 px high in the 40 px footer, with a
+  32 px target (44 px under `pointer: coarse`), radius `--r-tile`.
+  Targets wrap without overlap; the footer grows when needed. More has
   `aria-haspopup="menu"`, `aria-expanded` and `aria-keyshortcuts`; its caps
   are hidden from screen readers.
-- **Shortcuts** is a hint, not a button: it names the key that opens the
-  keyboard shortcuts list. The name matches each system's own term (macOS and
+- **Shortcuts** opens the keyboard shortcuts list. The name matches each system's own term (macOS and
   Windows both say "Keyboard shortcuts"); the footer shortens it to one word,
   and More and the list's title say it in full. Changing shortcuts belongs to
   the settings design, not to this list.
-- **Screen readers** hear the hints as one group named "Keys", each as its
-  label then its keys ("Copy as Pandoc, Enter"). The Enter hint is hidden
-  from them while focus is outside the search box, where Enter does
-  something else.
+- **Screen readers** hear the actions in one group named "Keys". Buttons stay
+  visible and reachable when focus leaves Search; Enter then presses the
+  focused button. Copy is offered only when its current output is ready.
 - **Narrow windows.** The library status shortens first (its own rules).
   Under 520 px, or with Larger text, the Shortcuts hint is dropped (More
   still lists it). If the rest still does not fit, the hints wrap onto a

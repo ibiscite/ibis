@@ -618,7 +618,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   fireEvent.change(box, { target: { value: "pending" } });
   await waitFor(() => expect(pending.pending).toBeDefined());
   fireEvent.keyDown(box, { key: "Alt", altKey: true });
-  expect(footerKeys()).toBe("Esc Clear search");
+  expect(footerKeys()).toBe("Clear search Esc");
   fireEvent.keyUp(box, { key: "Alt" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   // Neither Shift+click (add) nor a plain click (copy) acts on a stale row.
@@ -2108,31 +2108,88 @@ test.each(["Escape", "hidden"])("a click waiting for its preview never copies af
   expect(calls).not.toContain("show_copied_notice");
 });
 
+// Each visible hint as "label keys"; the label always comes first (docs/design.md, Footer).
 const footerKeys = () => [...screen.getByRole("group", { name: "Keys" }).children]
-  .filter((hint) => hint.getAttribute("aria-hidden") !== "true").map((hint) => hint.textContent).join("");
+  .filter((hint) => hint.getAttribute("aria-hidden") !== "true")
+  .map((hint) => `${hint.querySelector(".key-hint-label")?.textContent} ${hint.querySelector(".key-caps")?.textContent}`).join(" · ");
 
 test("the footer says what Enter will copy, and holding Alt shows the other keys", async () => {
   backend({ search: ({ query }) => (query ? [result("a", "First"), result("b", "Second")] : []) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   // Nothing to copy yet, so Enter is not advertised.
-  await waitFor(() => expect(footerKeys()).toBe("Ctrl+/ All keys"));
+  await waitFor(() => expect(footerKeys()).toBe("Shortcuts Ctrl+/"));
   fireEvent.change(box, { target: { value: "x" } });
   await screen.findByText("First");
-  expect(footerKeys()).toBe("Enter Copy as PandocCtrl+/ All keys");
+  expect(footerKeys()).toBe("Copy as Pandoc Enter · Shortcuts Ctrl+/");
   fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "typst" } });
-  expect(footerKeys()).toContain("Enter Copy as Typst");
+  expect(footerKeys()).toContain("Copy as Typst Enter");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  expect(footerKeys()).toContain("Enter Copy 2 as Typst");
+  expect(footerKeys()).toContain("Copy 2 as Typst Enter");
   fireEvent.keyDown(box, { key: "Alt", altKey: true });
-  expect(footerKeys()).toBe("Shift+Enter Remove from citationEsc Clear search");
+  expect(footerKeys()).toBe("Remove from citation Shift+Enter · Clear search Esc");
   fireEvent.keyUp(box, { key: "Alt" });
   expect(footerKeys()).toContain("Copy 2 as Typst");
   fireEvent.keyDown(box, { key: "Alt", altKey: true });
   fireEvent.blur(window);
   expect(footerKeys()).not.toContain("Esc");
+});
+
+test("More reads like the hints beside it: its name first, then its keys", async () => {
+  backend({ search: () => [result("a", "First")] });
+  render(<App />);
+  await screen.findByText("First");
+  const more = screen.getByRole("button", { name: /^More/ });
+  expect(more.querySelector(".key-hint-label")?.textContent).toBe("More");
+  expect(more.querySelector(".key-caps")?.textContent).toBe("Ctrl+K");
+  expect(more.querySelector(".key-caps")?.getAttribute("aria-hidden")).toBe("true");
+  // The hint that comes and goes is first, so More never moves.
+  const hints = [...screen.getByRole("group", { name: "Keys" }).children];
+  expect(hints[0]?.textContent).toContain("Copy as Pandoc");
+  expect(hints.at(-1)?.textContent).toContain("Shortcuts");
+});
+
+test("footer actions copy and open shortcuts without using a keyboard shortcut", async () => {
+  let copied: unknown;
+  backend({ search: () => [result("a", "First")], copy_citation: (args) => { copied = args.ids; return { text: "@a", warnings: [] }; } });
+  render(<App />);
+  await screen.findByText("First");
+  const copy = screen.getByRole("button", { name: "Copy as Pandoc" });
+  fireEvent.pointerDown(copy, { button: 0, pointerType: "mouse" });
+  act(() => copy.focus());
+  // Search blurs before pointer-up; the same action must survive to click.
+  expect(screen.getByRole("button", { name: "Copy as Pandoc" })).toBe(copy);
+  expect(copy.getAttribute("aria-keyshortcuts")).toBe("Enter");
+  expect(copy.querySelector(".key-caps")?.getAttribute("aria-hidden")).toBe("true");
+  fireEvent.pointerUp(copy, { button: 0, pointerType: "mouse" });
+  fireEvent.click(copy);
+  await waitFor(() => expect(copied).toEqual([{ source: "refs.bib", native_key: "a" }]));
+  const shortcuts = screen.getByRole("button", { name: "Shortcuts" });
+  act(() => shortcuts.focus());
+  fireEvent.click(shortcuts);
+  expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(document.activeElement).toBe(shortcuts);
+});
+
+test("alternate footer buttons use the current add, remove, clear and hide actions", async () => {
+  const calls = backend({ search: () => [result("a", "First")] });
+  render(<App />);
+  await screen.findByText("First");
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  fireEvent.click(await screen.findByRole("button", { name: "Add to citation" }));
+  expect(await screen.findByRole("list", { name: "Selected references" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Remove from citation" }));
+  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  expect((box as HTMLInputElement).value).toBe("");
+  expect(document.activeElement).toBe(box);
+  fireEvent.click(screen.getByRole("button", { name: "Hide Ibis" }));
+  await waitFor(() => expect(calls).toContain("hide_picker"));
 });
 
 test.each([false, true])("Search hint layout survives pointer focus moving to More (Alt=%s)", async (alt) => {
@@ -2151,14 +2208,14 @@ test.each([false, true])("Search hint layout survives pointer focus moving to Mo
   expect(await screen.findByRole("menu")).toBeTruthy();
   expect(searchHint.isConnected).toBe(true);
   expect(searchHint.textContent).toBe(text);
-  expect(searchHint.getAttribute("aria-hidden")).toBe("true");
+  expect(searchHint.hasAttribute("aria-hidden")).toBe(false);
   fireEvent.pointerUp(more, { button: 0, pointerType: "mouse" });
   fireEvent.click(more, { detail: 1 });
   expect(screen.getByRole("menu")).toBeTruthy();
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   expect(document.activeElement).toBe(more);
   act(() => box.focus());
-  expect(searchHint.getAttribute("aria-hidden")).toBe("false");
+  expect(searchHint.hasAttribute("aria-hidden")).toBe(false);
 });
 
 test("the footer names the source and count, the age only when it matters, and the detail in More", async () => {
@@ -2279,7 +2336,7 @@ test("when nothing matches in some Zotero libraries, the picker offers to search
   expect(screen.queryByRole("button", { name: "Search all Zotero libraries" })).toBeNull();
 });
 
-test("the footer offers Enter only when Enter in the search box would copy", async () => {
+test("the footer offers Copy only when its current output is ready, even outside Search", async () => {
   const { InlineWorker } = await import("./format/inline-worker");
   vi.stubGlobal("Worker", InlineWorker);
   let release: () => void = () => undefined;
@@ -2298,19 +2355,19 @@ test("the footer offers Enter only when Enter in the search box would copy", asy
     render(<App />);
     await screen.findByText("First");
     const box = screen.getByLabelText("Search references");
-    expect(footerKeys()).toContain("Enter Copy as Pandoc");
-    // Another control has focus, so Enter would press it instead.
+    expect(footerKeys()).toContain("Copy as Pandoc Enter");
+    // Copy remains a reachable button when another control takes focus.
     const more = screen.getByRole("button", { name: /^More/ });
     act(() => more.focus());
-    expect(footerKeys()).not.toContain("Enter");
+    expect(screen.getByRole("button", { name: "Copy as Pandoc" })).toBeTruthy();
     act(() => box.focus());
-    expect(footerKeys()).toContain("Enter Copy as Pandoc");
+    expect(footerKeys()).toContain("Copy as Pandoc Enter");
     // A formatted citation still being made is not offered.
     fireEvent.change(screen.getByLabelText("Copy as"), { target: { value: "style:apa" } });
     await screen.findByText("Formatting…");
     expect(footerKeys()).not.toContain("Enter");
     await act(async () => release());
-    await waitFor(() => expect(footerKeys()).toContain("Enter Copy as APA"));
+    await waitFor(() => expect(footerKeys()).toContain("Copy as APA Enter"));
     // Nor is one that failed.
     fail = true;
     fireEvent.keyDown(box, { key: "ArrowDown" });
