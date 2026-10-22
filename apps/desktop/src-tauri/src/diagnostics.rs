@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Clone, Copy)]
 pub(crate) enum NativeIssue {
     Startup,
+    LoginRegistrationRefresh,
     TrayCreation,
     Shortcut,
     Window,
@@ -37,6 +38,7 @@ impl NativeIssue {
     fn message(self) -> &'static str {
         match self {
             Self::Startup => "the app could not start",
+            Self::LoginRegistrationRefresh => "the login registration could not be refreshed",
             Self::TrayCreation => "the menu bar item could not be created",
             Self::Shortcut => "the shortcut needs attention; check the picker for details",
             Self::Window => "the picker window is unavailable",
@@ -138,6 +140,7 @@ mod tests {
     fn native_failures_report_only_the_allowlisted_operation() {
         for issue in [
             NativeIssue::Startup,
+            NativeIssue::LoginRegistrationRefresh,
             NativeIssue::TrayCreation,
             NativeIssue::Shortcut,
             NativeIssue::Window,
@@ -210,6 +213,18 @@ mod tests {
     }
 
     #[test]
+    fn login_registration_refresh_failure_uses_only_the_fixed_message() {
+        let mut output = Vec::new();
+        let value = checked_with(
+            Err::<(), _>(PrivateError),
+            NativeIssue::LoginRegistrationRefresh,
+            |message| write_diagnostic(&mut output, message),
+        );
+        assert_eq!(value, None);
+        assert_eq!(output, b"ibis: the login registration could not be refreshed\n");
+    }
+
+    #[test]
     fn successful_native_values_are_preserved_without_a_diagnostic() {
         let mut messages = Vec::new();
         let value = checked_with(Ok::<_, PrivateError>(false), NativeIssue::Visibility, |message| {
@@ -234,6 +249,7 @@ mod tests {
         }
         for issue in [
             NativeIssue::Show,
+            NativeIssue::LoginRegistrationRefresh,
             NativeIssue::Startup,
             NativeIssue::TrayCreation,
             NativeIssue::Shortcut,
