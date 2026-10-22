@@ -38,6 +38,41 @@ def run(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.PIPE, timeout=20).strip()
 
 
+def windows_creation_identity(app):
+    # Query the original Popen handle, never a new handle to a possibly reused PID.
+    import ctypes
+    from ctypes import wintypes
+    get_times = ctypes.WinDLL("kernel32", use_last_error=True).GetProcessTimes
+    get_times.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    get_times.restype = wintypes.BOOL
+    times = [wintypes.FILETIME() for _ in range(4)]
+    if app.poll() is not None or not get_times(int(app._handle), *(ctypes.byref(value) for value in times)):
+        raise RuntimeError("Native app creation identity unavailable")
+    ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+    if ticks <= 0:
+        raise RuntimeError("Native app creation identity unavailable")
+    # FILETIME starts in 1601; DateTime starts in year 1. CIM keeps microseconds.
+    return (ticks + 504911232000000000) // 10
+
+
+def memory_facts(value):
+    failure = "Native process-tree memory facts unavailable"
+    if (not isinstance(value, dict) or set(value) != {"memory_bytes", "components", "excluded_older"}
+            or type(value["excluded_older"]) is not int or not 0 <= value["excluded_older"] <= 65536
+            or not isinstance(value["components"], list) or not 1 <= len(value["components"]) <= 64):
+        raise RuntimeError(failure)
+    for index, row in enumerate(value["components"]):
+        if (not isinstance(row, dict) or set(row) != {"index", "parent_index", "depth", "age_us", "memory_bytes"}
+                or any(type(number) is not int or not 0 <= number < 2**63 for number in row.values())
+                or row["index"] != index or row["memory_bytes"] == 0
+                or (index == 0 and (row["parent_index"], row["depth"], row["age_us"]) != (0, 0, 0))
+                or (index > 0 and (row["parent_index"] >= index or row["depth"] != value["components"][row["parent_index"]]["depth"] + 1))):
+            raise RuntimeError(failure)
+    if type(value["memory_bytes"]) is not int or value["memory_bytes"] != sum(row["memory_bytes"] for row in value["components"]):
+        raise RuntimeError(failure)
+    return value
+
+
 def fixture(count=3):
     return "\n".join(
         f"@article{{smoke{i:06d}, title={{Ibis smoke reference {i:06d}}}, "
@@ -1118,7 +1153,10 @@ class Scripted:
         self.call("write-clipboard", text)
 
     def memory(self):
-        return self.call("memory")
+        if self.system != "Windows":
+            return self.call("memory")
+        self.memory_facts = memory_facts(self.call("memory", str(windows_creation_identity(self.app))))
+        return self.memory_facts["memory_bytes"]
 
     def close(self):
         if self.system == "Darwin":
@@ -1638,6 +1676,8 @@ def main():
                 assert memory > 0, "Native process-tree memory measurement unavailable"
                 samples.append({"warmup": sample == 0, "startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
                                 "memory_bytes": memory, "startup_phases": phases})
+                if system == "Windows":
+                    samples[-1]["memory_facts"] = native.memory_facts
                 stop()
                 phases["library_phases"] = library_phase_diagnostics([diagnostic_logs[-1]])
             report["performance"] = summarize_performance(samples)
@@ -2812,6 +2852,131 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 
     BUDGETS = {"startup_ms": 100, "first_result_ms": 10, "memory_bytes": 2000}
+
+    def test_windows_creation_identity_uses_original_handle_and_integer_microseconds(self):
+        import ctypes
+        app = Mock(_handle=987)
+        app.poll.return_value = None
+        ticks = 134369280000000019
+        def get_times(handle, created, *_rest):
+            self.assertEqual(handle, 987)
+            created._obj.dwHighDateTime, created._obj.dwLowDateTime = ticks >> 32, ticks & 0xffffffff
+            return True
+        api = Mock(GetProcessTimes=Mock(side_effect=get_times))
+        with patch.object(ctypes, "WinDLL", return_value=api, create=True):
+            self.assertEqual(windows_creation_identity(app), (ticks + 504911232000000000) // 10)
+            api.GetProcessTimes.return_value = False
+            api.GetProcessTimes.side_effect = None
+            with self.assertRaises(RuntimeError):
+                windows_creation_identity(app)
+            app.poll.return_value = 0
+            api.GetProcessTimes.reset_mock()
+            with self.assertRaises(RuntimeError):
+                windows_creation_identity(app)
+            api.GetProcessTimes.assert_not_called()
+
+    def test_windows_memory_requires_pinned_identity_and_bounded_numeric_components(self):
+        native = Scripted.__new__(Scripted)
+        native.system, native.app = "Windows", Mock()
+        facts = {"memory_bytes": 300, "excluded_older": 1, "components": [
+            {"index": 0, "parent_index": 0, "depth": 0, "age_us": 0, "memory_bytes": 100},
+            {"index": 1, "parent_index": 0, "depth": 1, "age_us": 20, "memory_bytes": 200}]}
+        with patch(__name__ + ".windows_creation_identity", return_value=123), patch.object(native, "call", return_value=facts) as helper:
+            self.assertEqual(native.memory(), 300)
+            helper.assert_called_once_with("memory", "123")
+            self.assertEqual(native.memory_facts, facts)
+        for invalid in (300, {**facts, "private": "text"}, {**facts, "memory_bytes": 301},
+                        {**facts, "excluded_older": True}, {**facts, "components": []},
+                        {**facts, "components": facts["components"] * 33},
+                        {**facts, "components": [{**facts["components"][0], "age_us": -1}]}):
+            with patch(__name__ + ".windows_creation_identity", return_value=123), patch.object(native, "call", return_value=invalid):
+                with self.assertRaises(RuntimeError):
+                    native.memory()
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows memory identity contract")
+    def test_windows_memory_tree_excludes_orphans_and_rejects_identity_races(self):
+        script = r'''
+param([string] $Source)
+$ErrorActionPreference='Stop'
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
+if ($errors.Count) { throw 'Helper syntax is invalid' }
+foreach ($name in @('Get-MemoryIdentity','Get-Memory')) {
+ $function=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
+ if ($function) { Invoke-Expression $function.Extent.Text }
+}
+$switch=$ast.Find({param($node) $node -is [System.Management.Automation.Language.SwitchStatementAst] -and $node.Condition.Extent.Text -eq '$Action'},$true)
+$clause=@($switch.Clauses | Where-Object {$_.Item1.Value -eq 'memory'})[0].Item2.Extent.Text
+$operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
+$created=[DateTime]::new(2026,10,19,0,0,0,[DateTimeKind]::Utc)
+$AppId=10; $Text='63927964800000000'
+function Row($Id,$Parent,$Date) { [pscustomobject]@{ProcessId=$Id;ParentProcessId=$Parent;CreationDate=$Date} }
+function Get-CimInstance {
+ [CmdletBinding()] param($ClassName)
+ $script:enumerations++
+ if ($script:replaceAfter -and $script:enumerations -gt 1) { return @((Row 10 1 $created.AddSeconds(1))) }
+ $script:rows
+}
+function Get-Process {
+ [CmdletBinding()] param($Id)
+ foreach ($number in $Id) {
+  $row=$script:rows | Where-Object {$_.ProcessId -eq $number} | Select-Object -First 1
+  $date=$row.CreationDate
+  $script:reads++
+  if ($script:race -eq $number -and (!$script:afterRead -or $script:reads -gt 1)) { $date=$created.AddSeconds(10) }
+  [pscustomobject]@{Id=$number;StartTime=$date;WorkingSet64=100L}
+ }
+}
+$initial=@((Row 10 1 $created),(Row 11 10 $created.AddSeconds(-1)),
+ (Row 12 10 $created.AddSeconds(1)),(Row 13 12 $created.AddSeconds(2)),
+ (Row 14 12 $created),(Row 15 11 $created.AddSeconds(3)),(Row 16 10 $created),(Row 99 98 $null))
+$script:rows=@($initial[7..0]); $script:race=0
+$result=& $operation
+if ($result.memory_bytes -ne 400 -or $result.components.Count -ne 4 -or $result.excluded_older -ne 2) {
+ throw 'Memory attributed an older orphan or lost a genuine descendant'
+}
+if (($result.components | Measure-Object memory_bytes -Sum).Sum -ne 400 -or
+    @($result.components | Where-Object {$_.depth -eq 2}).Count -ne 1) { throw 'Component facts do not explain the sum' }
+function Reject {
+ $rejected=$false
+ try { & $operation | Out-Null } catch { $rejected=$true }
+ if (!$rejected) { throw 'Unverified identity produced a memory verdict' }
+}
+foreach ($invalid in @($null,'2026-10-19',[DateTime]::MinValue)) {
+ $script:rows=@((Row 10 1 $invalid)); Reject
+ $script:rows=@((Row 10 1 $created),(Row 12 10 $invalid)); Reject
+}
+$script:rows=@((Row 10 1 $created.AddSeconds(1))); Reject
+$script:rows=@(); Reject
+$script:rows=@((Row 10 1 $created),(Row 10 1 $created)); Reject
+foreach ($number in @(10,12)) { $script:rows=$initial; $script:race=$number; Reject }
+$script:rows=$initial; $script:race=10; $script:afterRead=$true; $script:reads=0; Reject
+$script:afterRead=$false; $script:race=0
+$script:replaceAfter=$true; $script:enumerations=0; Reject
+$script:replaceAfter=$false
+$script:race=0
+# Identity truncation must match CIM's microsecond precision without floating point.
+$precise=$created.AddTicks(19); $script:rows=@((Row 10 1 $created.AddTicks(10)))
+$Text=(Get-MemoryIdentity $precise).ToString()
+$result=& $operation
+if ($result.memory_bytes -ne 100) { throw 'Creation timestamp precision mismatch' }
+# Huge trees refuse a result rather than returning the first 64 components.
+$Text='63927964800000000'; $script:rows=@((Row 10 1 $created))
+foreach ($number in 100..163) { $script:rows += Row $number 10 $created }
+Reject
+# A failed/missing working-set read cannot silently subtract a process.
+$script:rows=@((Row 10 1 $created))
+function Get-Process { [CmdletBinding()] param($Id) @() }
+Reject
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "memory-contract.ps1"
+            test.write_text(script, encoding="utf-8")
+            result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
+                                     "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
+                                    capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
     @staticmethod
     def perf_samples(warmup, *startups, first=5, memory=1000):

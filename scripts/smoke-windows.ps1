@@ -166,6 +166,74 @@ function Send-Chord([string] $Chord) {
   [array]::Reverse($keys)
   foreach ($key in $keys) { [IbisSmoke]::Key($key, 0, 2) }
 }
+function Get-MemoryIdentity($Date) {
+  if ($Date -isnot [DateTime] -or $Date.Ticks -le 0 -or $Date.ToUniversalTime().Ticks -le 0) {
+    throw 'Memory creation identity unavailable'
+  }
+  # CIM CreationDate has microsecond precision; never divide large ticks as double.
+  $remainder = 0L
+  [Math]::DivRem($Date.ToUniversalTime().Ticks, 10L, [ref] $remainder)
+}
+function Get-Memory([int] $Root, [long] $Expected) {
+  if ($Expected -le 0) { throw 'Memory root identity unavailable' }
+  $all = @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId, ParentProcessId, CreationDate)
+  if ($all.Count -gt 65536) { throw 'Memory process enumeration exceeded bound' }
+  $byId = @{}
+  foreach ($p in $all) {
+    if ($byId.ContainsKey([int] $p.ProcessId)) { throw 'Memory process enumeration returned duplicate identities' }
+    $byId[[int] $p.ProcessId] = $p
+  }
+  if (-not $byId.ContainsKey($Root) -or (Get-MemoryIdentity $byId[$Root].CreationDate) -ne $Expected) {
+    throw 'Memory root identity changed'
+  }
+  $tree = [System.Collections.Generic.List[int]]::new()
+  $tree.Add($Root)
+  $created = @{}; $created[$Root] = $Expected
+  $indexes = @{}; $indexes[$Root] = 0
+  $depths = @{}; $depths[$Root] = 0
+  $excluded = [System.Collections.Generic.HashSet[int]]::new()
+  for ($index = 0; $index -lt $tree.Count; $index++) {
+    $parent = $tree[$index]
+    foreach ($p in $all) {
+      $id = [int] $p.ProcessId
+      if ([int] $p.ParentProcessId -ne $parent -or $created.ContainsKey($id)) { continue }
+      $identity = Get-MemoryIdentity $p.CreationDate
+      # Parent numbers outlive exited parents. An older orphan belongs to neither
+      # the current parent nor this root, even if the orphan has newer children.
+      if ($identity -lt $created[$parent]) { [void] $excluded.Add($id); continue }
+      if ($tree.Count -ge 64) { throw 'Memory process tree exceeded bound' }
+      $created[$id] = $identity; $indexes[$id] = $tree.Count; $depths[$id] = $depths[$parent] + 1
+      $tree.Add($id)
+    }
+  }
+  $components = @(); $total = 0L
+  foreach ($id in $tree) {
+    $process = @(Get-Process -Id $id -ErrorAction Stop)
+    if ($process.Count -ne 1 -or $process[0].Id -ne $id -or
+        (Get-MemoryIdentity $process[0].StartTime) -ne $created[$id]) { throw 'Memory process identity changed' }
+    $bytes = $process[0].WorkingSet64
+    $fresh = @(Get-Process -Id $id -ErrorAction Stop)
+    if ($fresh.Count -ne 1 -or $fresh[0].Id -ne $id -or
+        (Get-MemoryIdentity $fresh[0].StartTime) -ne $created[$id]) { throw 'Memory process identity changed' }
+    if ($bytes -isnot [long] -or $bytes -le 0 -or $total -gt [long]::MaxValue - $bytes) { throw 'Memory working set unavailable' }
+    $total += $bytes
+    $components += @{index=$indexes[$id];parent_index=$(if ($id -eq $Root) {0} else {$indexes[[int] $byId[$id].ParentProcessId]});
+      depth=$depths[$id];age_us=($created[$id] - $Expected);memory_bytes=$bytes}
+  }
+  $confirmed = @{}
+  foreach ($p in @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId, CreationDate)) {
+    if ($confirmed.ContainsKey([int] $p.ProcessId)) { throw 'Memory process enumeration returned duplicate identities' }
+    $confirmed[[int] $p.ProcessId] = $p
+  }
+  foreach ($id in $tree) {
+    if (-not $confirmed.ContainsKey($id) -or (Get-MemoryIdentity $confirmed[$id].CreationDate) -ne $created[$id]) {
+      throw 'Memory process identity changed'
+    }
+  }
+  # Component numbers and root-relative ages explain the sum without recording
+  # observed PIDs, absolute creation times, names, command lines or paths.
+  @{memory_bytes=$total;components=$components;excluded_older=$excluded.Count}
+}
 function Get-OwnedEditor {
   $editor = Get-Process -Id $EditorId -ErrorAction SilentlyContinue
   if (!$editor) { return $null }
@@ -296,16 +364,7 @@ try {
     'clipboard' { Get-Clipboard -Raw }
     'write-clipboard' { Set-Clipboard -Value $Text; $true }
     'memory' {
-      $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
-      $ids = [System.Collections.Generic.HashSet[int]]::new()
-      [void] $ids.Add($AppId)
-      do {
-        $added = $false
-        foreach ($process in $all) {
-          if ($ids.Contains([int] $process.ParentProcessId) -and $ids.Add([int] $process.ProcessId)) { $added = $true }
-        }
-      } while ($added)
-      [long] (@(Get-Process -Id @($ids) -ErrorAction Stop) | Measure-Object WorkingSet64 -Sum).Sum
+      Get-Memory $AppId ([long]::Parse($Text, [System.Globalization.CultureInfo]::InvariantCulture))
     }
     'close-editor' {
       $editor = Get-OwnedEditor
