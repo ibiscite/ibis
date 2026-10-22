@@ -13,7 +13,7 @@ ObjC.import('CoreFoundation');
 function sendPhysicalChord(chord, post) {
     const modifiers = {ctrl: [59, 1 << 18], shift: [56, 1 << 17],
         super: [55, 1 << 20], alt: [58, 1 << 19]};
-    const codes = {a: 0, g: 5, r: 15, v: 9, escape: 53, return: 36, space: 49};
+    const codes = {a: 0, g: 5, k: 40, r: 15, v: 9, escape: 53, return: 36, space: 49, tab: 48};
     const keys = chord.toLowerCase().split('+');
     const last = keys.pop();
     if (!Object.hasOwn(codes, last) || keys.some(key => !Object.hasOwn(modifiers, key)) || new Set(keys).size !== keys.length) {

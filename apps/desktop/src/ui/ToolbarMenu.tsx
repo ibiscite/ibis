@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject, type ComponentPropsWithRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject, type ComponentPropsWithRef } from "react";
 import { Autocomplete, Button, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { MenuCheck } from "./Menu";
 import "./ToolbarMenu.css";
@@ -14,6 +14,22 @@ type Props = {
 export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange }: Props) {
   const [internalOpen, setOpen] = useState(false);
   const open = isOpen ?? internalOpen;
+  const list = useRef<HTMLDivElement | null>(null);
+  const closingList = useRef<HTMLDivElement | null>(null);
+  const [opening, setOpening] = useState(0);
+  const listRef = useCallback((node: HTMLDivElement | null) => {
+    list.current = node;
+    if (!node) closingList.current = null;
+  }, []);
+  useLayoutEffect(() => {
+    if (!open) closingList.current = list.current;
+    else {
+      // Restart reused content after an overlapping reopen, so the collection
+      // and optional filter run their normal autofocus again.
+      if (closingList.current && closingList.current === list.current) setOpening((value) => value + 1);
+      closingList.current = null;
+    }
+  }, [open]);
   const composing = useRef(false);
   const focusFrame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(focusFrame.current), []);
@@ -27,7 +43,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   }
   // aria-disabled keeps unavailable choices in the arrow-key order (ADR 0021).
   // Controlled selection and the action guard prevent picking them.
-  const menu = <Menu className="toolbar-menu" aria-label={label} selectionMode="single" selectedKeys={[selectedKey]}
+  const menu = <Menu key={opening} ref={listRef} className="toolbar-menu" aria-label={label} selectionMode="single" selectedKeys={[selectedKey]}
     onAction={(key) => { if (!sections.flatMap((section) => section.items).find((item) => item.id === key)?.disabled) onAction(String(key)); }}>
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       <Header className="toolbar-menu-heading">{section.label}</Header>
@@ -47,7 +63,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
       <Button className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m3 4.5 3 3 3-3" /></svg></Button>
       <Popover className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6}>
-        {filtered ? <Autocomplete filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
+        {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>
   </span>;

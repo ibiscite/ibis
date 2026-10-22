@@ -131,6 +131,13 @@ const pastePath = [];
 context.sendPhysicalChord('super+v', (...event) => pastePath.push(event));
 assert.deepEqual(pastePath, [[55, true, 1 << 20], [9, true, 1 << 20], [9, false, 1 << 20], [55, false, 0]]);
 
+const openMore = [];
+context.sendPhysicalChord('super+k', (...event) => openMore.push(event));
+assert.deepEqual(openMore, [[55, true, 1 << 20], [40, true, 1 << 20], [40, false, 1 << 20], [55, false, 0]]);
+const tab = [];
+context.sendPhysicalChord('tab', (...event) => tab.push(event));
+assert.deepEqual(tab, [[48, true, 0], [48, false, 0]]);
+
 const failed = [];
 assert.throws(() => context.sendPhysicalChord('ctrl+shift+space', (code, down, flags) => {
     failed.push([code, down, flags]);

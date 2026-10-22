@@ -9,7 +9,13 @@ const sections: ToolbarMenuSection[] = [{ id: "keys", label: "Key formats", item
   { id: "latex", label: "LaTeX", sample: "\\cite{key}" },
   { id: "typst", label: "Typst", sample: "@key", disabled: true },
 ] }];
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); delete document.documentElement.dataset.platform; });
+afterEach(async () => {
+  cleanup();
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  delete document.documentElement.dataset.platform;
+});
 
 function mount(items = sections) {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -164,4 +170,50 @@ test("Escape on a closed trigger reaches the picker, except during composition",
   fireEvent.keyDown(trigger, { key: "Escape" });
   expect(parentKeys).not.toHaveBeenCalled();
   fireEvent.compositionEnd(trigger);
+});
+
+test.each([[false, "action"], [false, "Escape"], [true, "action"], [true, "Escape"]] as const)("rapid toolbar reopening (filtered=%s, close=%s) restores its keyboard focus", async (filtered, close) => {
+  const items = filtered ? [{ ...sections[0]!, items: [...sections[0]!.items,
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `f${i}`, label: `Format ${i}` }))] }] : sections;
+  const { trigger, onAction } = mount(items);
+  fireEvent.click(trigger);
+  const menu = await screen.findByRole("menu");
+  const popover = menu.closest(".toolbar-menu-popover")!;
+  let finishExit!: () => void;
+  const finished = new Promise<void>((resolve) => { finishExit = resolve; });
+  Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
+    ? [{ playState: "running", finished }] : [] });
+  if (close === "action") fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc" }));
+  else fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(popover.hasAttribute("data-exiting")).toBe(true);
+  onAction.mockClear();
+  // Model the browser blurring the trigger as reopening makes the page inert.
+  act(() => (document.activeElement as HTMLElement).blur());
+  const focus = vi.spyOn(trigger, "focus").mockImplementation(() => {});
+  try {
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse", pointerId: 1 });
+    fireEvent.pointerUp(trigger, { button: 0, pointerType: "mouse", pointerId: 1 });
+    fireEvent.click(trigger);
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(screen.getByRole("menu").closest(".toolbar-menu-popover")).toBe(popover);
+    expect(screen.getByRole("menuitemradio", { name: "Pandoc" }).getAttribute("aria-checked")).toBe("true");
+    if (filtered) {
+      const filter = screen.getByRole("searchbox", { name: "Filter formats" });
+      expect(document.activeElement).toBe(filter);
+      fireEvent.change(filter, { target: { value: "LaTeX" } });
+      await waitFor(() => expect(screen.getAllByRole("menuitemradio")).toHaveLength(1));
+      fireEvent.keyDown(filter, { key: "ArrowDown" });
+      fireEvent.keyDown(filter, { key: "Enter" });
+      fireEvent.keyUp(filter, { key: "Enter" });
+      await waitFor(() => expect(onAction).toHaveBeenCalledWith("latex"));
+    } else {
+      expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "Pandoc" }));
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "LaTeX" }));
+    }
+  } finally {
+    focus.mockRestore();
+    await act(async () => { finishExit(); });
+    await act(async () => { await new Promise(requestAnimationFrame); });
+  }
 });

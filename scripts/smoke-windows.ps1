@@ -156,7 +156,7 @@ function Get-ErrorKind($Failure) {
   if ($known -contains $exception.GetType().Name) { $exception.GetType().Name } else { 'other' }
 }
 function Send-Chord([string] $Chord) {
-  $map = @{ctrl=0x11;shift=0x10;alt=0x12;super=0x5b;space=0x20;escape=0x1b;return=0x0d}
+  $map = @{ctrl=0x11;shift=0x10;alt=0x12;super=0x5b;space=0x20;escape=0x1b;return=0x0d;tab=0x09}
   $keys = @($Chord.ToLowerInvariant().Split('+') | ForEach-Object {
     if ($map.ContainsKey($_)) { [ushort] $map[$_] }
     elseif ($_.Length -eq 1 -and $_ -cmatch '[a-z]') { [ushort][char] $_.ToUpperInvariant() }

@@ -1100,6 +1100,43 @@ test("resizing More keeps its focused action visible without undoing manual scro
   }
 });
 
+test("Search shortcut opening gives Escape an invoker through the animated exit", async () => {
+  backend();
+  render(<App />);
+  const search = screen.getByLabelText("Search references");
+  const more = screen.getByRole("button", { name: /^More/ });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  act(() => search.focus());
+  let popover: Element | undefined;
+  const focusMore = more.focus.bind(more);
+  // A real modal popover makes its invoker inert. JSDOM needs that refusal
+  // modelled so a close-time focus call cannot hide the restoration race.
+  const focus = vi.spyOn(more, "focus").mockImplementation(() => {
+    if (!popover?.isConnected) focusMore();
+  });
+  let finishExit!: () => void;
+  try {
+    fireEvent.keyDown(search, { key: "k", ctrlKey: true });
+    const menu = await screen.findByRole("menu");
+    popover = menu.closest(".menu-popover")!;
+    const finished = new Promise<void>((resolve) => { finishExit = resolve; });
+    Object.defineProperty(popover, "getAnimations", { value: () => popover?.hasAttribute("data-exiting")
+      ? [{ playState: "running", finished }] : [] });
+    expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(popover.hasAttribute("data-exiting")).toBe(true);
+    await act(async () => { finishExit(); });
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(document.activeElement).toBe(more);
+    fireEvent.keyDown(document.activeElement!, { key: " " });
+    fireEvent.keyUp(document.activeElement!, { key: " " });
+    expect(await screen.findByRole("menu")).toBeTruthy();
+  } finally {
+    finishExit?.();
+    focus.mockRestore();
+  }
+});
+
 test("Ctrl+K opens More with every action, Escape closes it before hiding the picker", async () => {
   const calls = backend({ hide_picker: () => null, reload_library: () => null });
   render(<App />);

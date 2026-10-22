@@ -180,6 +180,42 @@ test.each(["focus", "pointer", "keyboard"])("later %s intent supersedes the acti
   if (intent !== "keyboard") target.remove();
 });
 
+test.each(["action", "Escape"])("rapid pointer reopening after %s keeps the menu usable through its exit", async (close) => {
+  const { trigger } = mount();
+  fireEvent.click(trigger);
+  const menu = await screen.findByRole("menu");
+  const item = screen.getByRole("menuitem", { name: "Open" });
+  act(() => item.focus());
+  const popover = menu.closest(".menu-popover")!;
+  let finishExit!: () => void;
+  const finished = new Promise<void>((resolve) => { finishExit = resolve; });
+  Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
+    ? [{ playState: "running", finished }] : [] });
+  if (close === "action") fireEvent.click(item);
+  else fireEvent.keyDown(item, { key: "Escape" });
+  expect(popover.hasAttribute("data-exiting")).toBe(true);
+  // The browser blurs the trigger when reopening makes the page inert again.
+  // JSDOM has no inert focus behavior; model that loss before the open commit.
+  act(() => (document.activeElement as HTMLElement).blur());
+  const focus = vi.spyOn(trigger, "focus").mockImplementation(() => {});
+  try {
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse", pointerId: 1 });
+    fireEvent.pointerUp(trigger, { button: 0, pointerType: "mouse", pointerId: 1 });
+    fireEvent.click(trigger);
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    const reopened = screen.getByRole("menu");
+    expect(reopened.closest(".menu-popover")).toBe(popover);
+    expect(document.activeElement).toBe(reopened);
+    expect(reopened.querySelector("[data-focused]")).toBeNull();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(within(reopened).getByRole("menuitem", { name: "Open" }));
+  } finally {
+    focus.mockRestore();
+    await act(async () => { finishExit(); });
+    await act(async () => { await new Promise(requestAnimationFrame); });
+  }
+});
+
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");

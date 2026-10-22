@@ -1,4 +1,4 @@
-import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { Button, Header, Keyboard, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
 import "./Menu.css";
 
@@ -86,7 +86,23 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const popover = useRef<HTMLElement | null>(null);
   const pendingFocus = useRef<HTMLElement | null>(null);
   const focusFrame = useRef(0);
+  const closingList = useRef<HTMLDivElement | null>(null);
+  const [opening, setOpening] = useState(0);
+  const listRef = useCallback((node: HTMLDivElement | null) => {
+    list.current = node;
+    if (!node) closingList.current = null;
+  }, []);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
+  useLayoutEffect(() => {
+    if (!isOpen) closingList.current = list.current;
+    else {
+      // An overlapping reopen retains the popover, but its collection has
+      // already autofocused. Restart that collection so React Aria applies
+      // the new pointer/keyboard focus strategy, including clearing old rows.
+      if (closingList.current && closingList.current === list.current) setOpening((value) => value + 1);
+      closingList.current = null;
+    }
+  }, [isOpen]);
   useEffect(() => {
     if (!isOpen) return;
     // A smaller window shrinks the menu; keep the highlighted row in view.
@@ -153,7 +169,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
         event.stopPropagation();
         leave(to);
       }}>
-        <AriaMenu ref={list} id={id} className="menu" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
+        <AriaMenu key={opening} ref={listRef} id={id} className="menu" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
           <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
             {children}
           </ActionFocusContext.Provider>
