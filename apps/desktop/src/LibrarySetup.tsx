@@ -68,10 +68,11 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
     <div className="library-setup">
       <p>{pickerText.firstRun}</p>
       <div className="setup-choices">
-        <button type="button" aria-label={pickerText.firstRunChoose} onClick={() => void perform("choose", chooseLibrary)}>
+        <button type="button" className={zotero === "available" ? undefined : "suggested-action"}
+          aria-label={pickerText.firstRunChoose} onClick={() => void perform("choose", chooseLibrary)}>
           {pickerText.chooseLibrary}
         </button>
-        <button type="button" title={pickerText.useZoteroTitle}
+        <button type="button" className={zotero === "available" ? "suggested-action" : undefined} title={pickerText.useZoteroTitle}
           onClick={() => void perform("zotero", useZotero)}>
           {pickerText.useZotero}
         </button>
@@ -110,7 +111,7 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
           <p className="empty-hint" id={`${heading}-writing`}>{setupText.whereYouWrite}</p>
           <div className="setup-choices">
             {WRITING_PLACES.filter((place) => !place.formatted || writing.formatted).map((place) => (
-              <button type="button" key={place.name} aria-pressed={writing.format === place.choice}
+              <button type="button" className="writing-choice" key={place.name} aria-pressed={writing.format === place.choice}
                 onClick={() => writing.choose(place.choice)}>
                 {place.name}
               </button>

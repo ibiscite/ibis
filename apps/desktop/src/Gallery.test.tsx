@@ -59,6 +59,15 @@ test("the gallery keeps a seeded copy confirmation available for evidence captur
 
 const { applyPlatformSwitch, galleryProvider, galleryStates, gallerySwitches, withSwitches } = await import("./gallery-fixtures");
 
+test("first-run-found offers Zotero and two synthetic files without a chosen library", async () => {
+  const found = galleryStates.find((state) => state.id === "first-run-found");
+  expect(found).toBeTruthy();
+  expect(found?.library.state).toBe("none");
+  const offered = await galleryProvider(found!).api.findSources?.();
+  expect(offered?.zotero).toBe("available");
+  expect(offered?.files).toHaveLength(2);
+});
+
 test.each([
   ["first-run", "Choose a library to get started"],
   ["loading", "Opening example.bib…"],

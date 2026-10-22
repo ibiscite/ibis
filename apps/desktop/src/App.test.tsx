@@ -200,6 +200,22 @@ test("first launch waits for library status and offers a chooser without a searc
   expect(calls).not.toContain("search");
 });
 
+test("first-run setup has no result section heading", async () => {
+  backend({ library_status: () => ({ state: "none", name: null, snapshot_name: null, has_snapshot: false,
+    zotero: false, references: 0, warnings: 0, error: null, note: null }) });
+  render(<App />);
+  await screen.findByText("Choose a library to get started");
+  expect(document.querySelector(".results-heading")).toBeNull();
+});
+
+test("first-run setup keeps the copy-format question out of the header", async () => {
+  backend({ library_status: () => ({ state: "none", name: null, snapshot_name: null, has_snapshot: false,
+    zotero: false, references: 0, warnings: 0, error: null, note: null }) });
+  render(<App />);
+  await screen.findByText("Choose a library to get started");
+  expect(within(screen.getByLabelText("Search references").closest("header")!).queryByRole("button", { name: /^Copy as / })).toBeNull();
+});
+
 test("typing after a library load failure keeps its single explanation visible", async () => {
   backend({
     library_status: () => ({ state: "error", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: "the synthetic library is unreadable", note: null }),
@@ -1540,6 +1556,7 @@ test.each(["menu", "shortcut"])("%s Quit waits for the initial read, then saves 
     quit: () => { atQuit = { copy_format: rememberedKey, citation_style: rememberedStyle }; return null; },
   });
   render(<App />);
+  await waitFor(() => formatButton());
   chooseFormat("cite");
   try {
     if (route === "menu") await chooseFromMore("Quit Ibis");
@@ -1618,6 +1635,7 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
     set_picker_preferences: ({ preferences, copyFormat }) => { saved.push(preferences); keys.push(copyFormat); return null; },
   });
   render(<App />);
+  await waitFor(() => formatButton());
   chooseFormat("cite");
   await act(async () => { finish(); await loaded; });
   await waitFor(() => expect(saved).toEqual([{ citation_style: null, density: "compact", larger_text: false }]));
@@ -1945,15 +1963,17 @@ test("setup asks where you write, sets Copy as to match, and shows the shortcut"
   render(<App />);
   const places = await screen.findByRole("region", { name: "Where do you write?" });
   fireEvent.click(within(places).getByRole("button", { name: "LaTeX" }));
-  await waitFor(() => expect(formatValue()).toBe("cite"));
-  expect(within(places).getByRole("button", { name: "LaTeX" }).getAttribute("aria-pressed")).toBe("true");
+  await waitFor(() => expect(within(places).getByRole("button", { name: "LaTeX" }).getAttribute("aria-pressed")).toBe("true"));
+  expect(within(screen.getByLabelText("Search references").closest("header")!).queryByRole("button", { name: /^Copy as / })).toBeNull();
   fireEvent.click(within(places).getByRole("button", { name: "Word or Google Docs" }));
-  await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  expect(screen.getByText("Citations copy as APA. Pick another style under Copy as.")).toBeTruthy();
+  await waitFor(() => expect(within(places).getByRole("button", { name: "Word or Google Docs" }).getAttribute("aria-pressed")).toBe("true"));
+  expect(screen.getByText("Citations copy as APA.")).toBeTruthy();
   expect(screen.getByText(/^Open Ibis from any app with /)).toBeTruthy();
+  await act(async () => { await emit("library:changed", { ...NO_LIBRARY, revision: "1", state: "loaded", has_snapshot: true,
+    name: "refs.bib", snapshot_name: "refs.bib", references: 1 }); });
+  await waitFor(() => expect(formatValue()).toBe("style:apa"));
   chooseFormat("style:ieee");
-  expect(await screen.findByText("Citations copy as IEEE. Pick another style under Copy as.")).toBeTruthy();
-  expect(within(places).getByRole("button", { name: "Word or Google Docs" }).getAttribute("aria-pressed")).toBe("false");
+  await waitFor(() => expect(formatValue()).toBe("style:ieee"));
 });
 
 test("shortcuts read as people type them on each system", async () => {
@@ -1980,7 +2000,7 @@ test("first-run writing choices save the key and style together before copying",
   fireEvent.click(within(places).getByRole("button", { name: "Typst" }));
   await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }]));
   fireEvent.click(within(places).getByRole("button", { name: "Word or Google Docs" }));
-  await waitFor(() => expect(formatValue()).toBe("style:apa"));
+  await waitFor(() => expect(within(places).getByRole("button", { name: "Word or Google Docs" }).getAttribute("aria-pressed")).toBe("true"));
   await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }, { style: "apa", key: null }]));
   expect(calls).not.toContain("copy_citation");
 });

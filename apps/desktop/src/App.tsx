@@ -632,6 +632,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         expanded={results.length > 0}
         activeDescendant={results[active] ? `result-${active}` : undefined}
         format={format}
+        showFormat={library === null || Boolean(library?.has_snapshot)}
         styles={Boolean(cslItems && copyFormatted)}
         onFormatChange={chooseFormat}
         onFormatCommand={(command) => {
@@ -652,9 +653,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <Notices library={library} busy={busy} loadingMessage={loadingMessage} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} onDismissCopied={() => setCopied(null)} />
       <div className="results-area">
-        <div className="results-heading" aria-hidden="true">
+        {library?.has_snapshot && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><span>{results.length > 0 ? pickerText.resultCount(results.length) : ""}</span>
-        </div>
+        </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {announcement}
         </p>
