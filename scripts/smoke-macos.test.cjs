@@ -22,19 +22,34 @@ for (const malformed of [null, undefined, 0, 'false']) {
     assert.throws(() => context.readEditorFullscreen(() => malformed), /Editor fullscreen accessibility state unavailable/);
 }
 
-const staleWindow = () => { throw Error('Error: Error: Invalid index. (-1719)'); };
+const staleWindow = () => {
+    const error = Error('Invalid index.');
+    error.errorNumber = -1719;
+    throw error;
+};
 assert.equal(JSON.stringify(context.readEditorWindowState(staleWindow)), '{"available":false,"fullscreen":null,"visible":false}');
 assert.equal(JSON.stringify(context.readEditorWindowState(() => ({available: true, fullscreen: false, visible: true}))),
     '{"available":true,"fullscreen":false,"visible":true}');
-for (const fatal of ['osascript is not allowed assistive access. (-1719)', 'A single synthetic editor window is required (found 0)',
-    'On-screen window bounds unavailable']) {
-    assert.throws(() => context.readEditorWindowState(() => { throw Error(fatal); }), error => error.message === fatal);
+for (const [message, code] of [
+    ['Invalid index.', undefined], ['Invalid index.', -1728], ['Invalid index.', '-1719'],
+    ['Error: Error: Invalid index. (-1719)', undefined],
+    ['osascript is not allowed assistive access.', -1719],
+    ['A single synthetic editor window is required (found 0)', -1719],
+    ['On-screen window bounds unavailable', -1719], ['Window ownership metadata unavailable', -1719],
+]) {
+    const failure = Error(message);
+    failure.errorNumber = code;
+    assert.throws(() => context.readEditorWindowState(() => { throw failure; }), error => error === failure);
 }
 
-function fullscreenTransition(states, {desired = true, owner = 7, visible = true, windowCounts = [1]} = {}) {
-    let elapsed = 0, reads = 0, observations = 0, windowLists = 0;
+function fullscreenTransition(states, {desired = true, owner = 7, visible = true, windowCounts = [1], frameFailures = []} = {}) {
+    let elapsed = 0, reads = 0, observations = 0, windowLists = 0, frameReads = 0;
     const writes = [];
-    const window = {position: () => [10, 20], size: () => [100, 200], attributes: {byName: name => {
+    const window = {position: () => {
+        const failure = frameFailures[Math.min(frameReads++, frameFailures.length - 1)];
+        if (failure) throw failure;
+        return [10, 20];
+    }, size: () => [100, 200], attributes: {byName: name => {
         assert.equal(name, 'AXFullScreen');
         return {
             get value() { return () => {
@@ -110,6 +125,23 @@ for (const windowCount of [0, 2]) {
 }
 assert.throws(fullscreenTransition([false, null]).invoke, /Editor fullscreen accessibility state unavailable/);
 assert.throws(fullscreenTransition([false, true], {owner: '7'}).invoke, /Window ownership metadata unavailable/);
+
+// The AX boolean can be valid before a stale frame getter raises the real
+// JXA error. Unknown must consume another bounded observation, never mean false.
+const staleFrame = () => Object.assign(Error('Invalid index.'), {errorNumber: -1719});
+const settlingFrame = fullscreenTransition([true, false], {desired: false, frameFailures: [staleFrame(), undefined]});
+assert.deepEqual(settlingFrame.invoke(), {fullscreen: false, visible: true});
+assert.equal(settlingFrame.elapsed, 100);
+assert.equal(settlingFrame.observations, 2);
+const missingFrame = fullscreenTransition([true, false], {desired: false, frameFailures: [staleFrame()]});
+assert.throws(missingFrame.invoke, /Editor fullscreen transition did not complete on screen/);
+assert.equal(missingFrame.elapsed, 20000);
+for (const failure of [Object.assign(Error('Invalid index.'), {errorNumber: -1728}),
+    Object.assign(Error('osascript is not allowed assistive access.'), {errorNumber: -1719})]) {
+    const fatalFrame = fullscreenTransition([true, false], {desired: false, frameFailures: [failure]});
+    assert.throws(fatalFrame.invoke, error => error === failure);
+    assert.equal(fatalFrame.elapsed, 0);
+}
 
 const events = [];
 context.sendPhysicalChord('ctrl+super+r', (...event) => events.push(event));

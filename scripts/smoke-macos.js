@@ -83,8 +83,9 @@ function readEditorWindowState(read) {
     // unknown state to wait out; permission and window-count errors still fail.
     try { return read(); }
     catch (error) {
-        const details = String(error);
-        if (!/Invalid index\. \(-1719\)/.test(details) || /assistive access/i.test(details)) throw error;
+        // The status is a JXA property; only osascript's outer formatter
+        // appends it to the message printed for an uncaught error.
+        if (!error || error.errorNumber !== -1719 || error.message !== 'Invalid index.') throw error;
         return {available: false, fullscreen: null, visible: false};
     }
 }
