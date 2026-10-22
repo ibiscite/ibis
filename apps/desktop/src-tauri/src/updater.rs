@@ -15,7 +15,6 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::{Update, Updater, UpdaterExt};
 
 use crate::diagnostics::{NativeIssue, application_message, report};
-use crate::picker::{DialogKind, own_dialog};
 use crate::preferences::SettingsFile;
 
 /// Automatic checks wait a little after start, then repeat this often.
@@ -84,9 +83,6 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
 }
 
 fn ask(app: &AppHandle) {
-    let Some(owner) = own_dialog(app, DialogKind::Message) else {
-        return;
-    };
     let handle = app.clone();
     app.dialog()
         .message(QUESTION)
@@ -95,7 +91,7 @@ fn ask(app: &AppHandle) {
             "Check Automatically".into(),
             "Not Now".into(),
         ))
-        .show(move |yes| owner.during(|| save_automatic(&handle, yes)));
+        .show(move |yes| save_automatic(&handle, yes));
 }
 
 /// The menu item was clicked: flip the saved choice.
@@ -205,10 +201,6 @@ fn automatic_outcome(found: &Result<Option<Update>, &'static str>) -> String {
 }
 
 fn offer(app: &AppHandle, update: Update) {
-    let Some(owner) = own_dialog(app, DialogKind::Message) else {
-        app.state::<Updates>().busy.store(false, Ordering::SeqCst);
-        return;
-    };
     let handle = app.clone();
     app.dialog()
         .message(offer_text(&app.package_info().version.to_string(), &update))
@@ -218,17 +210,15 @@ fn offer(app: &AppHandle, update: Update) {
             "Later".into(),
         ))
         .show(move |install| {
-            owner.during(|| {
-                if install {
-                    tauri::async_runtime::spawn(async move { install_update(&handle, update).await });
-                } else {
-                    let updates = handle.state::<Updates>();
-                    if let Ok(mut declined) = updates.declined.lock() {
-                        *declined = Some(update.version.clone());
-                    }
-                    updates.busy.store(false, Ordering::SeqCst);
+            if install {
+                tauri::async_runtime::spawn(async move { install_update(&handle, update).await });
+            } else {
+                let updates = handle.state::<Updates>();
+                if let Ok(mut declined) = updates.declined.lock() {
+                    *declined = Some(update.version.clone());
                 }
-            })
+                updates.busy.store(false, Ordering::SeqCst);
+            }
         });
 }
 
@@ -268,10 +258,7 @@ async fn install_update(app: &AppHandle, update: Update) {
 }
 
 fn tell(app: &AppHandle, text: &str) {
-    let Some(owner) = own_dialog(app, DialogKind::Message) else {
-        return;
-    };
-    app.dialog().message(text).title("Updates").show(move |_| drop(owner));
+    app.dialog().message(text).title("Updates").show(|_| {});
 }
 
 #[cfg(test)]

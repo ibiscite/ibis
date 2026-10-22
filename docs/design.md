@@ -539,8 +539,9 @@ screen. If a remembered display is gone, it opens centred.
 
 **Clicking outside.** Ibis hides and the click reaches what was clicked. The
 search and selection wait a minute. When pinned, Ibis stays. It never hides while
-a page number is being typed, a dialog or file chooser is open, a drag is in
-progress or a sign-in is under way.
+a page number is being typed, a dialog attached to the picker or its file
+chooser is open, a drag is in progress or a sign-in is under way. Independent
+messages, such as an update offer, do not keep an unpinned picker visible.
 
 **Hover.** Moving the mouse selects the row under it; a row sliding under a
 still pointer (while typing or scrolling) does not. Hover only tints: no new

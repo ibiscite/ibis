@@ -20,19 +20,8 @@ mod shortcut_policy;
 #[cfg(target_os = "linux")]
 mod x11_focus;
 
-pub(crate) use dialogs::{DialogKind, DialogOpen};
+pub(crate) use dialogs::ChooserOpen;
 pub(crate) use full_screen::FullScreenGuard;
-
-pub(crate) fn own_dialog(app: &AppHandle, kind: DialogKind) -> Option<dialogs::DialogLease> {
-    match app.state::<DialogOpen>().begin(kind) {
-        Ok(lease) => Some(lease),
-        Err(dialogs::Refused::ChooserOpen) => None,
-        Err(dialogs::Refused::Unavailable) => {
-            crate::diagnostics::application_message("native dialog ownership is unavailable");
-            None
-        }
-    }
-}
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
@@ -288,10 +277,10 @@ pub(crate) fn set_pinned(app: AppHandle, pinned: State<'_, Pinned>, on: bool) {
 }
 
 /// Whether the picker hides when it loses focus. Release builds hide it, like
-/// other launchers, except while one of its own dialogs has the focus or it is
+/// other launchers, except while its file chooser has the focus or it is
 /// pinned; development builds never do, so the developer tools stay usable.
-pub(crate) fn hides_on_blur(release_build: bool, dialog_open: bool, pinned: bool) -> bool {
-    release_build && !dialog_open && !pinned
+pub(crate) fn hides_on_blur(release_build: bool, chooser_open: bool, pinned: bool) -> bool {
+    release_build && !chooser_open && !pinned
 }
 
 /// When Narrator or another UI Automation client presses a control, WebView2
@@ -328,9 +317,9 @@ pub(crate) fn dismiss_unless_refocused(app: &AppHandle, blur: u64) {
     let delayed = app.clone();
     let spawned = std::thread::Builder::new().name("ibis-blur".into()).spawn(move || {
         std::thread::sleep(REFOCUS_GRACE);
-        let dialog_open = delayed.state::<DialogOpen>().is_open();
+        let chooser_open = delayed.state::<ChooserOpen>().is_open();
         let pinned = delayed.state::<Pinned>().0.load(Ordering::SeqCst);
-        if hides_on_blur(true, dialog_open, pinned) && delayed.state::<FocusChanges>().is_latest(blur) {
+        if hides_on_blur(true, chooser_open, pinned) && delayed.state::<FocusChanges>().is_latest(blur) {
             dismiss_picker(&delayed);
         }
     });
@@ -501,7 +490,7 @@ mod tests {
     /// The file dialog takes the focus from the picker; hiding the picker then
     /// made the dialog disappear before it could be used.
     #[test]
-    fn the_picker_stays_open_while_its_own_dialog_has_the_focus() {
+    fn the_picker_stays_open_while_its_chooser_has_the_focus() {
         assert!(hides_on_blur(true, false, false));
         assert!(!hides_on_blur(true, true, false));
         assert!(!hides_on_blur(false, false, false));

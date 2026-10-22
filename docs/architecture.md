@@ -62,11 +62,12 @@ The desktop app (`apps/desktop`) is a Tauri 2 shell: a React and TypeScript inte
 
 Until measurements justify more, the app is a single process that keeps the library index in memory and hides its window between uses (ADR 0012). The original plan of a small background engine plus an on-demand picker process (ADR 0004) remains the option if idle memory or wakeups exceed the budgets in `scripts/smoke-budgets.json`.
 
-Native dialogs share an owned registry in `picker/dialogs.rs`. Each callback
-holds its lease through completion, including source changes or nested error
-dialogs; only its own lease is released. The file chooser is exclusive, while
-message dialogs can overlap. Both blur guards use this registry, which refuses
-new owners and keeps blur hiding blocked if its lock or owner counter is unavailable.
+Only the picker-owned file chooser prevents native blur hiding. An exclusive
+RAII lease in `picker/dialogs.rs` stays alive through the chooser callback,
+including its source-open handoff; dropping or unwinding the callback releases
+it. Both blur guards read the same atomic state. Independent update, feedback
+and login messages do not acquire a lease, so an unanswered message cannot keep
+the unpinned picker visible.
 
 Shared interactive web controls live in `apps/desktop/src/ui/` (ADR 0021).
 Only that directory imports React Aria; `scripts/ui-imports.mjs` checks static

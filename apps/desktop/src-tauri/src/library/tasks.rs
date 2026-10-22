@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, application_message, report};
-use crate::picker::{DialogKind, own_dialog, show_picker};
+use crate::picker::{ChooserOpen, show_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
@@ -239,7 +239,7 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     // The dialog belongs to the picker: show the picker (the request may come
     // from the tray), attach the dialog to it, and keep the picker open while
     // the dialog has the focus.
-    let Some(owner) = own_dialog(app, DialogKind::Chooser) else {
+    let Some(owner) = app.state::<ChooserOpen>().begin() else {
         return;
     };
     show_picker(app);
