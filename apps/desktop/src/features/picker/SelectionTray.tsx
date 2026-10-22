@@ -1,8 +1,25 @@
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { SearchResult } from "../../api";
 import { provisional, type FormattedCitation } from "../../format/formatted";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
+
+/** Marks the tray with data-more while chips are below its edge, for the fade
+ * that says it continues (#746). */
+function useMoreBelow<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const update = useCallback(() => {
+    const area = ref.current;
+    area?.toggleAttribute("data-more", area.scrollHeight - area.scrollTop - area.clientHeight > 1);
+  }, []);
+  useLayoutEffect(update);
+  useEffect(() => {
+    addEventListener("resize", update);
+    return () => removeEventListener("resize", update);
+  }, [update]);
+  return [ref, update] as const;
+}
 
 /** The references chosen for one citation, each with its Remove button,
  * after a live region that says how many there are. */
@@ -13,16 +30,17 @@ export function SelectionTray({ announce, selected, removeLabel, onRemove }: {
   removeLabel: (r: SearchResult) => string;
   onRemove: (r: SearchResult) => void;
 }) {
+  const [tray, onScroll] = useMoreBelow<HTMLUListElement>();
   return (
     <>
       <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
         {announce ? pickerText.selectionCount(selected.size) : ""}
       </p>
       {selected.size > 0 && (
-        <ul aria-label={pickerText.selectedReferences}>
+        <ul ref={tray} onScroll={onScroll} aria-label={pickerText.selectedReferences}>
           {[...selected.entries()].map(([key, r]) => (
             <li key={key}>
-              <code>{r.key}</code>{" "}
+              <code title={r.key}>{r.key}</code>{" "}
               <button type="button" onClick={() => onRemove(r)} aria-label={removeLabel(r)}>
                 {pickerText.remove}
               </button>

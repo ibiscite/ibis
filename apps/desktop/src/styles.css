@@ -134,8 +134,11 @@ main {
 .dismiss { float: right; margin: var(--dismiss-margin); }
 [role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
 [aria-label="Selected references"] { display: flex; flex-wrap: wrap; gap: var(--selection-gap); list-style: none; padding: var(--selection-padding); margin: 0; border-bottom: var(--border-width) solid var(--separator); }
-[aria-label="Selected references"] li { border: var(--border-width) solid var(--line); border-radius: var(--button-radius); padding-inline-start: var(--selection-label-padding); overflow-wrap: anywhere; max-width: 100%; }
-[aria-label="Selected references"] button { border: 0; background: var(--clear); font-size: var(--metadata-size); }
+/* One-line chips of one height, so the tray can show whole rows; the full key
+   is the chip's tooltip and in its Remove button's name. */
+[aria-label="Selected references"] li { display: flex; align-items: center; height: var(--chip-height); border: var(--border-width) solid var(--line); border-radius: var(--button-radius); padding-inline-start: var(--selection-label-padding); max-width: 100%; scroll-snap-align: start; }
+[aria-label="Selected references"] code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[aria-label="Selected references"] button { flex: none; align-self: stretch; padding-block: 0; border: 0; background: var(--clear); font-size: var(--metadata-size); }
 
 footer { display: flex; align-items: center; border-top: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
 /* The bar carries the footer's block padding: one line is the 32 px More
@@ -240,6 +243,18 @@ main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; 
 main[data-selection] > .picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size; }
 main[data-selection] [aria-label="Selected references"], main[data-selection] .format-preview, main[data-selection] .notices { flex: none; max-height: 6rem; overflow: auto; }
 main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overflow: auto; }
+/* The tray ends on a whole row of chips, never half of one (#746): its bottom
+   padding is one gap, so the next row cannot peek in, it snaps to rows as it
+   scrolls, and it fades while more is below. The fade spares the separator and
+   lifts while focus is inside, so a focused chip is never dimmed. */
+main[data-selection] [aria-label="Selected references"] { padding-block: var(--selection-gap); max-height: calc(var(--tray-rows) * (var(--chip-height) + var(--selection-gap)) + var(--selection-gap) + var(--border-width)); scroll-snap-type: y mandatory; scroll-padding-block: var(--selection-gap); }
+main[data-selection] [aria-label="Selected references"][data-more]:not(:focus-within) {
+  --more-mask: linear-gradient(#000 0 0) bottom / 100% var(--border-width) no-repeat, linear-gradient(#000 calc(100% - var(--chip-height) - var(--selection-gap)), rgb(0 0 0 / 25%) calc(100% - var(--border-width)));
+  -webkit-mask: var(--more-mask); mask: var(--more-mask);
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  main[data-selection] [aria-label="Selected references"][data-more]:not(:focus-within) { -webkit-mask: none; mask: none; }
+}
 /* Use the available middle height, not a guessed header/footer size. Under
    pressure results join its scrollport, so wheel input has one vertical owner. */
 @container (max-height: 18rem) {
