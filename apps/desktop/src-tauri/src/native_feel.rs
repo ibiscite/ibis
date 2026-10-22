@@ -1,11 +1,15 @@
 //! Native materials are opt-in after explicit accessibility and API success.
 //! An opaque web surface remains the fallback, including on Linux.
+//! Unavailable diagnostic output must not interrupt fallback or event delivery.
+
+#![deny(clippy::print_stderr)]
 
 mod platform;
 mod policy;
 
 use std::sync::Mutex;
 
+use crate::diagnostics::application_message;
 use policy::Appearance;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
@@ -17,7 +21,7 @@ struct Cache {
 
 fn warning() {
     // Native errors may contain handles or paths. Never print their payloads.
-    eprintln!("ibis: native appearance is unavailable; using opaque surface");
+    application_message("native appearance is unavailable; using opaque surface");
 }
 
 /// Configure native and WebView transparency together before creating windows.
@@ -114,11 +118,11 @@ fn refresh(app: &AppHandle) -> Appearance {
     // Initial state and policy changes produce one fixed, allowlisted line in
     // the existing native startup artifact. Success is an API observation,
     // not proof of a visible material or accessibility-toggle acceptance.
-    eprintln!(
-        "ibis: native appearance mode={} reason={}",
+    application_message(&format!(
+        "native appearance mode={} reason={}",
         next.name(),
         policy::evidence_reason(material, preferences, transparent, next)
-    );
+    ));
     if cache.applied != next {
         cache.applied = next;
         if window.emit("appearance:changed", next.name()).is_err() {
@@ -126,4 +130,87 @@ fn refresh(app: &AppHandle) -> Appearance {
         }
     }
     next
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Read, Write};
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn appearance_warning_survives_closed_stderr() {
+        const CHILD: &str = "IBIS_TEST_APPEARANCE_STDERR";
+        if std::env::var_os(CHILD).as_deref() == Some(std::ffi::OsStr::new("1")) {
+            let mut gate = [0];
+            std::io::stdin()
+                .read_exact(&mut gate)
+                .unwrap_or_else(|_| panic!("missing diagnostic test gate"));
+            assert_eq!(gate, [b'g']);
+            super::warning();
+            return;
+        }
+
+        for closed in [false, true] {
+            let mut child =
+                Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("test executable unavailable")))
+                    .args([
+                        "--exact",
+                        "native_feel::tests::appearance_warning_survives_closed_stderr",
+                        "--nocapture",
+                    ])
+                    .env(CHILD, "1")
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap_or_else(|_| panic!("cannot start diagnostic test child"));
+            let mut stderr = child.stderr.take();
+            if closed {
+                drop(stderr.take());
+            }
+            // For the failure case, close the reader before releasing the actual warning.
+            let released = child
+                .stdin
+                .take()
+                .ok_or_else(|| std::io::Error::other("diagnostic test input unavailable"))
+                .and_then(|mut input| input.write_all(b"g"));
+            if released.is_err() {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("cannot release diagnostic test child");
+            }
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        child
+                            .wait()
+                            .unwrap_or_else(|_| panic!("cannot reap diagnostic test child"));
+                        assert!(
+                            status.success(),
+                            "appearance warning interrupted recovery (closed stderr: {closed}, status: {status})"
+                        );
+                        break;
+                    }
+                    Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+                    _ => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("diagnostic test child did not finish within five seconds");
+                    }
+                }
+            }
+            if let Some(mut stderr) = stderr {
+                let mut output = Vec::new();
+                stderr
+                    .read_to_end(&mut output)
+                    .unwrap_or_else(|_| panic!("cannot read diagnostic test output"));
+                assert_eq!(
+                    output,
+                    b"ibis: native appearance is unavailable; using opaque surface\n"
+                );
+            }
+        }
+    }
 }
