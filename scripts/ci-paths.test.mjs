@@ -26,13 +26,25 @@ test("interface-only changes retain web checks without native jobs", () => {
   }
 });
 
+test("the gallery geometry fixture keeps web checks without native jobs", () => {
+  const fixture = "docs/design-geometry.json";
+  for (const files of [[row(fixture)], [row(fixture), row("apps/desktop/src/tokens.css"), row("docs/design.md")]]) {
+    assert.deepEqual(pr(files), { native: false, web: true, nix: false });
+  }
+  assert.deepEqual(pr([row("docs/old.md", fixture)]), { native: false, web: true, nix: false });
+  assert.equal(pr([row(fixture, "apps/desktop/src-tauri/tauri.conf.json")]).native, true);
+  for (const event of ["push", "merge_group"]) {
+    assert.deepEqual(classify(event, 1, [row(fixture)]), { native: true, web: true, nix: false });
+  }
+});
+
 test("documentation keeps its existing fast path, except synthetic fixtures", () => {
   assert.deepEqual(pr([row("README.md"), row("docs/design/menu.md"), row("LICENSE"), row(".github/ISSUE_TEMPLATE/task.yml")]), { native: false, web: false, nix: false });
   assert.equal(pr([row("fixtures/README.md")]).native, true);
 });
 
 test("native, tooling and unknown changes stay conservative", () => {
-  for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "apps/desktop/vite.config.ts", "apps/desktop/src/unknown.rs", "apps/desktop/src-tauri/tauri.conf.json", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", "unknown/file", "docs/design-geometry.json"]) {
+  for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "apps/desktop/vite.config.ts", "apps/desktop/src/unknown.rs", "apps/desktop/src-tauri/tauri.conf.json", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", "unknown/file", "docs/design-settings.json", "docs/design-geometry.json.bak"]) {
     assert.deepEqual(pr([row("apps/desktop/src/App.tsx"), row(path)]), { native: true, web: true, nix: false }, path);
   }
 });

@@ -96,7 +96,7 @@ Version numbers, release and nightly titles, tags and download links follow [REL
 
 `node scripts/check.mjs` must pass locally. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform. It does not run the web builds that CI's Web interface job checks (`pnpm build`, and `pnpm exec vite build --mode evidence` for the screenshot gallery); run those in `apps/desktop` when you change the build setup.
 
-Interface-only pull requests run script tests, TypeScript, interface tests and both web builds, without native app builds or GUI checks. `scripts/ci-paths.mjs` lists those browser inputs; native, build and unknown paths retain native validation. Both names of a rename count. Missing, incomplete or changed API metadata enables every check. Documentation keeps its existing fast path; main and the merge queue always validate the complete app.
+Interface-only pull requests run script tests, TypeScript, interface tests and both web builds, without native app builds or GUI checks. `scripts/ci-paths.mjs` lists those browser inputs, including the gallery geometry JSON fixture; native, build and unknown paths retain native validation. Both names of a rename count. Missing, incomplete or changed API metadata enables every check. Documentation keeps its existing fast path; main and the merge queue always validate the complete app.
 
 ## Working quickly and safely
 
