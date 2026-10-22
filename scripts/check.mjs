@@ -5,6 +5,7 @@
 // Runs formatting, lints, tests and the dependency policy. Never edits files.
 // Exit codes: 0 all passed, 1 a check failed, 2 incomplete (a tool is missing).
 import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 
 const args = process.argv.slice(2);
 if (args.length > 0) {
@@ -16,23 +17,21 @@ if (args.length > 0) {
 }
 
 const desktop = { cwd: "apps/desktop" };
+// Every script test, found by name as CI's `node --test scripts/*.test.mjs`
+// does, so a new one never runs in only one place. They run after the
+// desktop install because the UI import boundary test needs its packages.
+const scriptTests = readdirSync(new URL(".", import.meta.url))
+  .filter((name) => name.endsWith(".test.mjs"))
+  .sort()
+  .map((name) => `scripts/${name}`);
 const steps = [
   ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
-  ["Source verification tests", "node", ["--test", "scripts/check.test.mjs"]],
-  ["Fuzz reporter tests", "node", ["--test", "scripts/fuzz.test.mjs"]],
-  ["Evidence publication tests", "node", ["--test", "scripts/evidence.test.mjs"]],
-  ["Update feed tests", "node", ["--test", "scripts/update-feed.test.mjs"]],
-  ["Hygiene tests", "node", ["--test", "scripts/hygiene.test.mjs"]],
-  ["CI path tests", "node", ["--test", "scripts/ci-paths.test.mjs"]],
-  ["Pull request convention tests", "node", ["--test", "scripts/pr-lint.test.mjs"]],
-  ["Release notes tests", "node", ["--test", "scripts/release-notes.test.mjs"]],
-  ["Geometry spec tests", "node", ["--test", "scripts/gallery-geometry.test.mjs"]],
   ["Format", "cargo", ["fmt", "--all", "--check"]],
   ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
   ["Test", "cargo", ["test", "--locked"]],
   ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
-  ["Desktop: UI import boundary tests", "node", ["--test", "scripts/ui-imports.test.mjs"]],
+  ["Script tests", "node", ["--test", ...scriptTests]],
   ["Desktop: UI import boundary", "node", ["scripts/ui-imports.mjs"]],
   // All desktop unit tests, including the generated-contract freshness check.
   ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"]],
