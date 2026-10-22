@@ -822,6 +822,26 @@ test("counts use singular and plural and announce only settled current searches"
   expect(announcement.textContent).toBe("0 results");
 });
 
+test.each([1, 20])("the %i-result heading keeps its English word order on an RTL page", async (count) => {
+  backend({ search: () => Array.from({ length: count }, (_, i) => result(`key${i}`, `Reference ${i}`)) });
+  const { container } = render(<div dir="rtl"><App /></div>);
+  await screen.findByText("Reference 0");
+  const heading = container.querySelector(".results-heading")!;
+  const label = heading.lastElementChild!;
+  expect(label.textContent).toBe(`${count} ${count === 1 ? "result" : "results"}`);
+  expect(label.tagName).toBe("BDI");
+  expect(heading.getAttribute("aria-hidden")).toBe("true");
+  const announcement = screen.getByRole("status", { name: "Search results" });
+  await waitFor(() => expect(announcement.textContent).toBe(label.textContent));
+  expect(announcement.getAttribute("aria-live")).toBe("polite");
+  // Isolation adds no stop and leaves listbox keyboard navigation in Search.
+  const box = screen.getByLabelText("Search references");
+  act(() => box.focus());
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(box);
+  expect(box.getAttribute("aria-activedescendant")).toBe(count === 1 ? "result-0" : "result-1");
+});
+
 test("the Windows focus ring contrasts with both themes independent of the system accent", () => {
   // macOS and Linux draw the ring in the system accent, as their own controls do
   // (docs/design.md); increased contrast and forced colours make it CanvasText.

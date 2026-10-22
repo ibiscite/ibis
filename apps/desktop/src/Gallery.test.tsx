@@ -101,6 +101,25 @@ test("the many-results fixture exercises a scrollable real result list", async (
   expect(within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option")).toHaveLength(20);
 });
 
+test.each([
+  ["rtl-count", "مراجع.bib", "20 results", "updated"],
+  ["rtl-hebrew", "מקורות.bib", "1 result", "checked"],
+])("the %s fixture exercises the actual count, mixed source and non-live age", async (id, name, count, age) => {
+  const state = galleryStates.find((candidate) => candidate.id === id)!;
+  expect(state.direction).toBe("rtl");
+  const { container } = render(<div dir={state.direction}><App {...galleryProvider(state)} /></div>);
+  await screen.findByRole("option", { name: new RegExp(state.results![0]!.title) });
+  expect(container.querySelector(".results-heading bdi")?.textContent).toBe(count);
+  const status = screen.getByRole("status", { name: "Library status" });
+  expect(status.querySelector(".library-source")?.textContent).toBe(name);
+  expect(status.closest(".library-words")?.getAttribute("dir")).toBe("ltr");
+  const clock = container.querySelector(".library-age")!;
+  expect(clock.textContent).toContain(age);
+  expect(clock.getAttribute("aria-hidden")).toBe("true");
+  expect(status.contains(clock)).toBe(false);
+  expect(container.querySelector(".library-detail")?.textContent).toContain(age);
+});
+
 test("the scope-menu fixture shows the existing multi-library choices in More", async () => {
   const state = galleryStates.find((candidate) => candidate.id === "scope-menu");
   expect(state).toBeTruthy();

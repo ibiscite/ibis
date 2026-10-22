@@ -96,6 +96,27 @@ test("names are isolated so right-to-left names keep their place", () => {
   expect(status.textContent).toBe("مراجع.bib · 1,204 references");
 });
 
+test.each(["مراجع.bib", "מקורות.bib", "研究.bib", "example.bib"])("the English status phrase keeps source, state and age order around %s", (name) => {
+  const { container } = render(createElement("div", { dir: "rtl" }, createElement(LibraryStatusLine, {
+    library: file({ name, snapshot_name: name, updated_at: Date.now() }), groupName: String,
+  })));
+  const words = container.querySelector(".library-words")!;
+  expect(words.tagName).toBe("BDI");
+  expect(words.getAttribute("dir")).toBe("ltr");
+  const phrase = screen.getByRole("status", { name: "Library status" });
+  expect(phrase.getAttribute("dir")).toBe("ltr");
+  expect(phrase.textContent).toBe(`${name} · 1,204 references`);
+  expect(phrase.querySelector(".library-source")?.tagName).toBe("BDI");
+  const age = words.querySelector(".library-age")!;
+  expect(age.tagName).toBe("BDI");
+  expect(age.getAttribute("dir")).toBe("auto");
+  expect(age.textContent).toBe(" · updated just now");
+  expect(age.getAttribute("aria-hidden")).toBe("true");
+  // The clock remains outside the live announcement and has a non-live full detail.
+  expect(phrase.contains(age)).toBe(false);
+  expect(container.querySelector(".library-detail")?.textContent).toContain("updated just now");
+});
+
 test("screen readers can read the detail, including the count kept after a failed update", () => {
   const { container } = render(createElement(LibraryStatusLine, {
     library: file({ state: "error", stale: true, error: "The library file is unavailable; keeping the last loaded references", references: 4 }),

@@ -270,7 +270,9 @@ hours ago, 3:19 PM · Zotero could not be reached"). "Updated" always means the
 references changed; "checked" means Ibis last read them or found them unchanged.
 The footer always names the library that is searched, even after a switch to
 another one failed. A long name is shortened before the state words, and names
-are isolated so right-to-left names keep their place. Times
+are isolated so right-to-left names keep their place. The English summary keeps
+source, state and age in that order inside an isolated phrase; the age and result
+count are isolated too, so an RTL page cannot reorder their words. Times
 use `Intl.RelativeTimeFormat` in the app's language ("just now" under 45 seconds,
 a date after a week) and tick every 30 seconds without redrawing the picker. The
 live region holds only the words before the age, so a ticking clock is never

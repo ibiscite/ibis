@@ -53,9 +53,9 @@ export function LibraryStatusLine({ library, groupName }: {
   const now = Date.now();
   const health = libraryHealth(library);
   const [source, summaryState] = libraryMessages.summaryParts(library);
-  // The separator is its own item, so it stays between the name and the state
-  // when a right-to-left page reverses them; inside the state's <bdi> it would
-  // be isolated with the English words and end up on their far side.
+  // The English phrase keeps source, separator, state and age in that order,
+  // even on an RTL page or when the source starts in Arabic/Hebrew. The source
+  // still chooses its own direction inside the phrase's isolation boundary.
   const separated = source !== null && summaryState.startsWith(" · ");
   const state = separated ? summaryState.slice(" · ".length) : summaryState;
   const age = libraryMessages.age(library, now);
@@ -68,14 +68,14 @@ export function LibraryStatusLine({ library, groupName }: {
     <>
       <span className="library-status" data-health={health} title={detail}>
         <span className="status-dot" data-health={health} aria-hidden="true" />
-        <span className="library-words">
-          <span className="library-name" role="status" aria-label={pickerText.libraryStatus} aria-live="polite" aria-atomic="true">
+        <bdi className="library-words" dir="ltr">
+          <span className="library-name" dir="ltr" role="status" aria-label={pickerText.libraryStatus} aria-live="polite" aria-atomic="true">
             {source !== null && <bdi className="library-source">{source}</bdi>}
             {separated && state && <bdi className="library-separator">{" · "}</bdi>}
             {state && <bdi className="library-state">{state}</bdi>}
           </span>
-          {age && <span className="library-age" aria-hidden="true"> · {age}</span>}
-        </span>
+          {age && <bdi className="library-age" dir="auto" aria-hidden="true"> · {age}</bdi>}
+        </bdi>
       </span>
       {/* The visible age and the hover detail, read once by screen readers; not live.
           A <p>, like the state's <bdi>: WebKitGTK drops the text of a plain span
