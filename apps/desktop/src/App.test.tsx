@@ -1399,7 +1399,8 @@ test("rows with the same first author and year are told apart by their container
   expect(styles).toMatch(/\.result-separator \{ white-space: pre-wrap; \}/);
   // Each clipping part takes its own direction, so a right-to-left row cuts
   // Latin text at its end rather than its start.
-  for (const part of [".result-authors", ".result-container", ".result-key"]) expect(rows[0]?.querySelector(part)?.getAttribute("dir")).toBe("auto");
+  for (const part of [".result-authors", ".result-container"]) expect(rows[0]?.querySelector(part)?.getAttribute("dir")).toBe("auto");
+  expect(rows[0]?.querySelector(".result-key")?.getAttribute("dir")).toBe("ltr");
   expect(styles).toMatch(/\.result-separator \{ flex: none; white-space: pre; \}/);
   const bylineRules = [...styles.matchAll(/([^{}]*\.result-(?:byline|authors|separator|container)\b[^{}]*)\{([^}]*)\}/g)];
   expect(bylineRules.length).toBeGreaterThan(0);
@@ -1436,7 +1437,8 @@ test("rows with the same first author and year are told apart by their container
   expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--key-max-width\);[^}]*text-overflow: ellipsis/);
   // A very narrow Compact row gives the title its own line instead.
   expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ flex-wrap: wrap; row-gap: 0; \}\s*:root\[data-density="compact"\] \.result-title \{ flex-basis: 100%; \}/);
-  expect(line?.textContent).toBe("Sleep spindlesGarcía et al.2021");
+  expect(line?.textContent).toBe("Sleep spindlesGarcía et al.");
+  expect(rows[0]?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
   expect(rows[0]?.querySelector(".result-container, .result-type")).toBeNull();
   // The container is out of sight in Compact, so a match there is named.
@@ -1467,8 +1469,8 @@ test("rows shorten the authors and keep the journal, key and library label visib
   // row gap). Chromium probe numbers for the crowded cases are in PR #502.
   expect(styles).not.toMatch(/line-clamp/);
   expect(styles).toMatch(/\.result-meta \{[^}]*flex-wrap: wrap; row-gap: 0;/);
-  // Rows at least 25em wide (461px or more at normal text) never wrap.
-  expect(styles).toMatch(/\[role="option"\] \{ container-type: inline-size; \}/);
+  // The body measures the space left after the tile and year columns.
+  expect(styles).toMatch(/\.result-body \{[^}]*container-type: inline-size; \}/);
   expect(styles).toMatch(/@container \(min-width: 25em\) \{ \.result-meta \{ flex-wrap: nowrap; \} \}/);
   expect(styles).toMatch(/\.result-byline \{[^}]*flex: 1 1 auto; min-width: min\(12em, 60%\)/);
   expect(styles).toMatch(/\.result-authors \{ flex: none; max-width: 60%;[^}]*text-overflow: ellipsis/);

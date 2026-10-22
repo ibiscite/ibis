@@ -109,7 +109,6 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
         <span className="result-line">
           <strong className="result-title">{r.title}</strong>
           {compact && r.first_author && <span className="result-first-author" dir="auto">{r.first_author}{r.author_count > 1 && <> {etAl}</>}</span>}
-          <span className="result-year">{r.year ?? pickerText.noDate}</span>
         </span>
         <span className="result-meta">
           {/* Each clipping part takes its own text direction, so Latin text in a
@@ -122,14 +121,16 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
             {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
           </span>
           {itemType && <span className="result-type">{itemType}</span>}
-          <code className="result-key" dir="auto">{r.key}</code>
+          <code className="result-key" dir="ltr" title={r.key}>{r.key}</code>
           {library && <span className="result-library">{library}</span>}
         </span>
         {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
         {/* The type in words where the row does not show it; the tile's icon is decorative. */}
         {!itemType && rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
         {added && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
+        {compact && <span className="visually-hidden">{r.key}</span>}
       </span>
+      <span className="result-year">{r.year ?? pickerText.noDate}</span>
     </li>
   );
 });

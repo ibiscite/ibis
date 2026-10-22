@@ -62,7 +62,7 @@ main {
 /* Rows are exactly --row-height and touch; the clear border (an edge only in
    increased contrast) is taken from the side padding so titles stay aligned. */
 [role="option"] { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid var(--clear); }
-.result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
 /* The leading tile (docs/design.md, row anatomy): the type icon on a quiet
    fill. On hover and on the active row the icon gives way to the add control in
    the same place, so the row never reflows; a row in the citation keeps a
@@ -78,17 +78,16 @@ main {
 [role="option"]:hover .result-tile, [data-active] .result-tile { color: inherit; }
 [data-active] .result-tile { background: var(--tile-active-background); }
 [role="option"][data-citation-selected] .result-tile { background: var(--citation-tile); color: var(--on-citation); }
-/* Title and year share the first line; the year sits at the same edge on every row. */
+/* Only the year occupies the trailing column, centred across the whole row. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--title-size); font-weight: var(--title-weight); line-height: var(--title-line-height); letter-spacing: var(--title-tracking); }
 .result-year, .result-meta, .result-why { color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
-.result-year { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.result-year { flex-shrink: 0; align-self: center; font-variant-numeric: tabular-nums; }
 /* The meta line wraps only when the byline, type, key and badge cannot all
-   fit at their sizes; then they move under the byline. A row at least 25em
-   wide (any window of 461px or more at normal text) keeps one line, and its
+   fit at their sizes; then they move under the byline. A body at least 25em
+   wide (after reserving the tile and year columns) keeps one line, and its
    key and badge shorten towards their minimums instead. */
 .result-meta { margin-top: var(--metadata-gap); flex-wrap: wrap; row-gap: 0; }
-[role="option"] { container-type: inline-size; }
 @container (min-width: 25em) { .result-meta { flex-wrap: nowrap; } }
 /* The byline (authors · container) fills the line; the key and library badge
    give way first, down to a few letters (their shrink factor is far larger),
@@ -293,9 +292,8 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 .result-first-author { flex: none; max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
 [data-active] .result-first-author { color: var(--row-active-muted); }
 :root[data-density="compact"] .result-title { flex: 0 1 auto; }
-:root[data-density="compact"] .result-year { margin-inline-start: auto; }
 /* In a very narrow Compact row (large text in a small window) the title takes
-   its own line, with the first author and year below it, rather than being
+   its own line, with the first author below it, rather than being
    squeezed beside them. */
 @container (max-width: 16em) {
   :root[data-density="compact"] .result-line { flex-wrap: wrap; row-gap: 0; }

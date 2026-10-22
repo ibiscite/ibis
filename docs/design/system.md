@@ -473,7 +473,7 @@ state.
 | Switch | track 38 × 22 mac, 40 × 20 Windows, 46 × 26 GNOME | | Space | `NSSwitch` | `ToggleSwitch` | `GtkSwitch` | `Switch` |
 | Checkbox | 16 box + label, mixed state | 16 (20 GNOME) | Space | checkbox | `CheckBox` | `GtkCheckButton` | `Checkbox` |
 | Text / search field | [icon] text [clear]; label above in Settings | 32 (search 40) | standard editing; Esc clears search | `NSTextField`, `NSSearchField` | `TextBox` | `GtkEntry`, `GtkSearchEntry` | `TextField`, `SearchField` |
-| List row | [tile 32] title / meta [trailing year] | 40 / 58 / 76 | via the listbox | table row | `ListView` item | `GtkListBox` row | result list stays a combobox (#485) |
+| List row | [tile 32] title / meta (monospace key and library shorten first) [year only, vertically centred] | 40 / 58 / 76 | via the listbox | table row | `ListView` item | `GtkListBox` row | result list stays a combobox (#485) |
 | Chip | [label] [× 16 in 24]; fill, no outline | 24 | ←→ moves; Backspace, Delete remove | token | `TokenizingTextBox` token | pill tag | `TagGroup` |
 | Key cap | UI-font label, 20 high, min 20 wide, 4 inline pad | 20 (16 in menus) | | menu key text | PowerToys caps | `GtkShortcutLabel` | plain `kbd` |
 | Tooltip | one line, ≤ 40 ch, label + key cap | 24–28 | shows on focus; Esc hides | native tooltip | `ToolTip` | `GtkTooltip` | `Tooltip` |
