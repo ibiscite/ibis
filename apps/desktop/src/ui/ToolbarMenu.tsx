@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject, type ComponentPropsWithRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject, type ComponentPropsWithRef } from "react";
 import { Autocomplete, Button, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { MenuCheck } from "./Menu";
 import "./ToolbarMenu.css";
 
 export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean }[] };
+export type ToolbarMenuCommand = { run: () => void; isCurrent: () => boolean };
 type Props = {
   label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
   isOpen?: boolean; onOpenChange?: (open: boolean) => void;
   filterLabel: string; onAction: (key: string) => void; returnFocusRef?: RefObject<HTMLElement | null>;
+  /** Close and return focus before running an application command. */
+  onKeyCommand?: (event: KeyboardEvent) => ToolbarMenuCommand | undefined;
 };
 
 /** A reference-independent menu. React Aria owns selection, navigation and virtual focus. */
-export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange }: Props) {
+export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange, onKeyCommand }: Props) {
   const [internalOpen, setOpen] = useState(false);
   const open = isOpen ?? internalOpen;
   const list = useRef<HTMLDivElement | null>(null);
@@ -31,15 +34,54 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     }
   }, [open]);
   const composing = useRef(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const popover = useRef<HTMLElement | null>(null);
+  const generation = useRef(0);
+  const pending = useRef<{ target: HTMLElement; closing: HTMLElement | null; token: number; command?: ToolbarMenuCommand } | null>(null);
   const focusFrame = useRef(0);
-  useEffect(() => () => cancelAnimationFrame(focusFrame.current), []);
+  const cancel = useCallback(() => {
+    generation.current += 1;
+    pending.current = null;
+    cancelAnimationFrame(focusFrame.current);
+  }, []);
+  const restoreFocus = useCallback(() => {
+    const request = pending.current;
+    if (!request || popover.current || request.closing?.isConnected) return;
+    pending.current = null;
+    const current = () => request.token === generation.current && request.command?.isCurrent() !== false;
+    const active = document.activeElement;
+    if (!current() || !request.target.isConnected || (active !== document.body && active !== button.current && active !== request.target && !request.closing?.contains(active))) return;
+    request.target.focus();
+    if (current() && document.activeElement === request.target) request.command?.run();
+  }, []);
+  const popoverRef = useCallback((node: HTMLElement | null) => {
+    popover.current = node;
+    if (!node && pending.current) focusFrame.current = requestAnimationFrame(restoreFocus);
+  }, [restoreFocus]);
+  useLayoutEffect(() => { if (open) cancel(); }, [open, cancel]);
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) cancel(); };
+    document.addEventListener("keydown", cancel, true);
+    document.addEventListener("pointerdown", cancel, true);
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("blur", cancel);
+    return () => {
+      cancel();
+      document.removeEventListener("keydown", cancel, true);
+      document.removeEventListener("pointerdown", cancel, true);
+      document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("blur", cancel);
+    };
+  }, [cancel]);
   const { contains } = useFilter({ sensitivity: "base" });
   const filtered = sections.reduce((sum, section) => sum + section.items.length, 0) > 7;
-  function changeOpen(next: boolean) {
-    cancelAnimationFrame(focusFrame.current);
+  function changeOpen(next: boolean, command?: ToolbarMenuCommand) {
+    cancel();
+    if (!next && returnFocusRef?.current) pending.current = {
+      target: returnFocusRef.current, closing: popover.current, token: generation.current, command,
+    };
     setOpen(next);
     onOpenChange?.(next);
-    if (!next && returnFocusRef) focusFrame.current = requestAnimationFrame(() => returnFocusRef.current?.focus());
   }
   // aria-disabled keeps unavailable choices in the arrow-key order (ADR 0021).
   // Controlled selection and the action guard prevent picking them.
@@ -57,12 +99,15 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   return <span className="toolbar-menu-control" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
     onKeyDownCapture={(event) => {
       if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) event.stopPropagation();
-      else if (open && (event.key === "Escape" || event.key === "Tab")) { event.preventDefault(); event.stopPropagation(); changeOpen(false); }
+      else if (open || popover.current) {
+        const command = onKeyCommand?.(event);
+        if (command || event.key === "Escape" || event.key === "Tab") { event.preventDefault(); event.stopPropagation(); changeOpen(false, command); }
+      }
     }}
-    onKeyDown={(event) => { if (open && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
+    onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
-      <Button className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m3 4.5 3 3 3-3" /></svg></Button>
-      <Popover className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6}>
+      <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m3 4.5 3 3 3-3" /></svg></Button>
+      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>
