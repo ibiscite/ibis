@@ -44,6 +44,24 @@ test("a frame on spec passes every check, within the tolerance", () => {
   assert.ok(rows.every((row) => row.pass), table(rows));
 });
 
+test("Larger text scales nested insets but keeps window corners and radius floors fixed", () => {
+  const scaled = derive(spec, "macos", 1.15);
+  assert.equal(scaled.rWin, 28);
+  assert.ok(Math.abs(scaled.rRow - 18.8) < 1e-9);
+  assert.equal(scaled.rTile, 6);
+  assert.ok(Math.abs(scaled.textX - 73.6) < 1e-9);
+});
+
+test("a Larger text frame with scaled insets passes without hiding radius drift", () => {
+  const fixture = { ...spec, platforms: { ...spec.platforms, windows: { inset: 4, rWin: 8, rMin: 2, searchBand: 48 } } };
+  const measured = { ...onSpec, rowHeight: 66.7, footer: 46, searchBand: 55.2,
+    glyphCentre: 46, tileCentre: 46, textX: 69, titleX: 69, rRow: 3.4, rField: 3.4, rTile: 2 };
+  const rows = compare(fixture, "windows", "large", "comfortable", measured);
+  assert.ok(rows.every((row) => row.pass), table(rows));
+  const drifted = compare(fixture, "windows", "large", "comfortable", { ...measured, rRow: 4.1 });
+  assert.deepEqual(drifted.filter((row) => !row.pass).map((row) => row.name), ["row radius"]);
+});
+
 test("drift, a missing element and Larger text scaling are reported", () => {
   const rows = compare(spec, "windows", "normal", "comfortable", { ...onSpec, footer: 52, rTile: Number.NaN });
   assert.deepEqual(rows.filter((row) => !row.pass).map((row) => row.name), ["footer height", "tile radius"]);

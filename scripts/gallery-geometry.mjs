@@ -28,33 +28,33 @@ const LARGER_TEXT = 1.15;
 const LAYOUT_STATES = ["tray-preview", "tray-20", "tray", "compact", "many-results"];
 
 /** The per-platform values docs/design.md derives from its tokens. */
-export function derive(spec, platform) {
+export function derive(spec, platform, scale = 1) {
   const look = spec.platforms[platform];
-  const rRow = Math.max(look.rMin, look.rWin - look.inset);
+  const rRow = Math.max(look.rMin, look.rWin - look.inset * scale);
   return {
-    searchBand: look.searchBand,
-    textX: look.inset + spec.rowPad + spec.tile + spec.rowGap,
+    searchBand: look.searchBand * scale,
+    textX: (look.inset + spec.rowPad + spec.tile + spec.rowGap) * scale,
     rWin: look.rWin,
     rRow,
-    rTile: Math.max(look.rMin, rRow - spec.rowPad),
+    rTile: Math.max(look.rMin, rRow - spec.rowPad * scale),
   };
 }
 
 /** One row per check: what the spec says, what the frame measured, and whether they agree. */
 export function compare(spec, platform, text, density, measured) {
-  const expected = derive(spec, platform);
   const scale = text === "large" ? LARGER_TEXT : 1;
+  const expected = derive(spec, platform, scale);
   const rows = [];
   const check = (name, want, got) => rows.push({ name, platform, text, density, expected: want, measured: got,
     pass: Number.isFinite(got) && Math.abs(got - want) <= spec.tolerance });
-  // Sizes are in rem, so Larger text scales them; radii are px and do not scale.
+  // Larger text scales rem sizes and insets; window corners and radius floors stay fixed.
   check(`row height (${density})`, spec.rowHeight[density] * scale, measured.rowHeight);
   if (density !== "comfortable") return rows;
   check("footer height", spec.footer * scale, measured.footer);
-  check("search band height", expected.searchBand * scale, measured.searchBand);
+  check("search band height", expected.searchBand, measured.searchBand);
   check("search glyph centre x = tile centre x", measured.tileCentre, measured.glyphCentre);
   check("typed text x = row title x", measured.titleX, measured.textX);
-  check("typed text x", expected.textX * scale, measured.textX);
+  check("typed text x", expected.textX, measured.textX);
   check("window radius", expected.rWin, measured.rWin);
   check("row radius", expected.rRow, measured.rRow);
   check("search field radius", expected.rRow, measured.rField);
