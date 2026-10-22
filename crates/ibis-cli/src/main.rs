@@ -142,10 +142,12 @@ fn report_problems(loaded: &[Loaded]) {
     }
 }
 
-fn all_references(loaded: &[Loaded]) -> Vec<Reference> {
+/// Move every file's references out instead of copying them; warnings and
+/// names stay with each file for reporting.
+fn take_references(loaded: &mut [Loaded]) -> Vec<Reference> {
     loaded
-        .iter()
-        .flat_map(|f| f.result.references.iter().cloned())
+        .iter_mut()
+        .flat_map(|f| std::mem::take(&mut f.result.references))
         .collect()
 }
 
@@ -202,8 +204,8 @@ fn run(cli: Cli) -> Result<ExitCode> {
             limit,
             json,
         } => {
-            let loaded = load(&bib)?;
-            let references = all_references(&loaded);
+            let mut loaded = load(&bib)?;
+            let references = take_references(&mut loaded);
             let hits = Index::new(&references).search(&query, limit);
             if !json {
                 report_problems(&loaded);
@@ -255,12 +257,12 @@ fn run(cli: Cli) -> Result<ExitCode> {
         } => {
             let mut load_warnings = Vec::new();
             if !bib.is_empty() {
-                let loaded = load(&bib)?;
+                let mut loaded = load(&bib)?;
                 if !json {
                     report_problems(&loaded);
                 }
                 load_warnings = all_warnings(&loaded);
-                let references = all_references(&loaded);
+                let references = take_references(&mut loaded);
                 for key in &keys {
                     resolve(key, &references)?;
                 }
@@ -331,9 +333,9 @@ fn run(cli: Cli) -> Result<ExitCode> {
             })
         }
         Command::Csl { keys, all, bib } => {
-            let loaded = load(&bib)?;
+            let mut loaded = load(&bib)?;
             report_problems(&loaded);
-            let references = all_references(&loaded);
+            let references = take_references(&mut loaded);
             let selected: Vec<&Reference> = if all {
                 references.iter().collect()
             } else {
