@@ -310,3 +310,9 @@ test.each([[false, "action"], [false, "Escape"], [true, "action"], [true, "Escap
     await act(async () => { await new Promise(requestAnimationFrame); });
   }
 });
+
+test("the filter field shows its caret and no ring, except with contrast or forced colours", () => {
+  expect(toolbarCss).not.toMatch(/caret-color/);
+  expect(toolbarCss).toMatch(/\.toolbar-menu-filter input:focus-visible \{ outline: 0; box-shadow: none; \}/);
+  expect(toolbarCss).toMatch(/prefers-contrast: more\), \(forced-colors: active\) \{\s*\.toolbar-menu-filter input:focus-visible \{ outline: var\(--focus-ring-width\)/);
+});

@@ -224,7 +224,7 @@ list, preview and tray) from a control layer (search, format, pin).
 | Element | Visible | Why |
 |---|---|---|
 | Search box | Always | The largest element, focused on open. Its placeholder lists what can be searched. |
-| Format (for example "Pandoc ⌃⌄" on macOS) | Once a library is chosen | What is pasted depends on it. One word, no icon; each platform's pop-up button (see **Header**). |
+| Format (for example "Pandoc ⌃⌄" on macOS) | Once a library is chosen | What is pasted depends on it. One word, no icon; each platform's pop-up button (see **Header**). "Key formats" and "Citation styles" show real samples and a leading check; unavailable styles stay focusable; typing filters. |
 | More (Ctrl/⌘ K) | Always | The one door to every other action; each shows its shortcut, so the menu is also the cheat sheet. In the footer it reads "More ⌘K", like the hints beside it (see **Footer**). |
 | Pin | Always, faint at rest | Tertiary colour at rest, full strength on hover or while on, so it never moves or appears from nowhere. Its tooltip names the action ("Pin: keep Ibis open beside your document") and, once the key table assigns one, its key. The first time a click outside hides Ibis, a one-time footer tip explains the pin. |
 | Filter chips | Once added | `#tag`, `y:2019-2022` or `a:name` followed by a space becomes a removable chip. Backspace in an empty box removes the last one. |

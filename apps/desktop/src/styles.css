@@ -165,20 +165,6 @@ footer { display: flex; align-items: center; border-top: var(--border-width) sol
 .status-dot[data-health="look"] { background: var(--status-look); }
 .status-dot[data-health="stop"] { background: var(--status-stop); }
 
-/* The format control shows one word; the native list keeps every label and key. */
-/* Contain the invisible native select: older WebKit otherwise propagates its
-   long option labels into the page's scrollable area. The focus ring belongs
-   to this wrapper and the full option labels stay in the native popup. */
-.format-picker { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--control-min-size); padding: 0 var(--space-2); border-radius: var(--button-radius); color: var(--muted); font-size: var(--metadata-size); cursor: default; overflow: hidden; }
-.format-picker::after { content: "▾"; }
-.format-picker:hover { background: var(--hover-background); color: var(--text); }
-/* Keyboard focus only: a click that opens the menu draws no ring. Chromium
-   counts a clicked <select> as focus-visible, so the last input decides. */
-:root:not([data-input="pointer"]) .format-picker:has(select:focus-visible) { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
-@supports not selector(:has(*)) {
-  :root:not([data-input="pointer"]) .format-picker:focus-within { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
-}
-.format-picker select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: default; }
 
 /* The pin appears with the pointer or while on, without moving anything. */
 .pin-button { display: inline-grid; place-items: center; min-width: var(--control-min-size); min-height: var(--control-min-size); padding: 0; background: var(--clear); border-color: var(--clear); color: var(--muted); opacity: 0; transition: opacity var(--motion-feedback) var(--motion-ease); }

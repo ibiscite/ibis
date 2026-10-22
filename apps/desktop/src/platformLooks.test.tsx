@@ -297,7 +297,7 @@ test("focus rings are keyboard-only, 2 px with a gap, in each platform's colour"
   expect(rules(styles, ":focus-visible")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
   // No ring is drawn on plain :focus or :focus-within, which a click also triggers.
   for (const [, head, body] of styles.slice(0, styles.indexOf("@media (prefers-contrast: more)")).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (/:focus(-within)?\b(?!-visible)/.test(head!) && !/\[data-input="pointer"\]/.test(head!)) expect(body, head).not.toMatch(/outline:\s*var/);
+    if (/:focus(-within)?\b(?!-visible)/.test(head!)) expect(body, head).not.toMatch(/outline:\s*var/);
   }
   const base = rules(tokens, ":root");
   expect(base).toMatch(/--focus-ring-color:\s*var\(--accent\)/); // macOS
@@ -314,12 +314,6 @@ test("focus rings are keyboard-only, 2 px with a gap, in each platform's colour"
   for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
     expect(rules(tokens.slice(tokens.indexOf(media)), ":root[data-platform]"), media).toMatch(/--focus-ring-color:\s*CanvasText/);
   }
-});
-
-test("the format control shows its ring after Tab but not after a click", () => {
-  const ring = rules(styles, ':root:not([data-input="pointer"]) .format-picker:has(select:focus-visible)');
-  expect(ring).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
-  expect(styles).not.toMatch(/(^|[},]\s*)\.format-picker:focus-within/m);
 });
 
 test("the search box never shows a ring, except with contrast or forced colours", () => {

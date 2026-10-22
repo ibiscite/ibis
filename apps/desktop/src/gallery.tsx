@@ -8,7 +8,6 @@ import { App, type PickerApi } from "./App";
 import { libraryMessages, pickerText } from "./messages";
 import { hasRetainedFreshnessProblem } from "./LibraryStatusLine";
 import { setPlatform } from "./nativeAppearance";
-import { trackInputModality } from "./inputModality";
 import "./styles.css";
 import "./gallery.css";
 import "./notice.css";
@@ -62,6 +61,14 @@ function seedSteps(root: HTMLElement, state: GalleryState): (() => void)[] {
   if (state.pinned) steps.push(() => pinButton(root)?.click());
   if (state.keys) steps.push(() => press(root.querySelector("main"), "?"));
   if (state.menuOpen) steps.push(() => root.querySelector<HTMLButtonElement>('footer button[aria-haspopup]')?.click());
+  if (state.formatMenu) steps.push(() => root.querySelector<HTMLButtonElement>(".toolbar-menu-button")?.click());
+  const filter = state.formatMenu;
+  if (typeof filter === "string") steps.push(() => {
+    const input = document.querySelector<HTMLInputElement>(".toolbar-menu-filter input");
+    if (!input) return;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, filter);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   return steps;
 }
 
@@ -101,6 +108,7 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
   const html = document.documentElement;
   // Menus open in a popover outside the picker's root.
   const menu = document.querySelector<HTMLElement>('[role="menu"]');
+  const filter = document.querySelector<HTMLInputElement>(".toolbar-menu-filter input");
   const box = menu?.getBoundingClientRect();
   // Real browser captures require a safe viewport inset; zero-size jsdom is no proof.
   const menuFits = !box || box.width === 0 || (box.top >= 8 && box.left >= 8 && box.bottom <= innerHeight - 8 && box.right <= innerWidth - 8);
@@ -108,7 +116,9 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
   return menuFits && !document.querySelector("[data-entering]") && html.dataset.density === (state.density ?? "comfortable")
     && html.dataset.textSize === (state.largerTextSetting ? "larger" : "normal")
     && (pinButton(root)?.getAttribute("aria-pressed") === "true") === Boolean(state.pinned)
-    && (menu !== null) === Boolean(state.menuOpen)
+    && (document.getElementById("more-menu") !== null) === Boolean(state.menuOpen)
+    && (document.querySelector(".toolbar-menu") !== null) === Boolean(state.formatMenu)
+    && (typeof state.formatMenu !== "string" || filter?.value === state.formatMenu)
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
     && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li`).length === (state.tray ?? 0)
     && (!state.formatted || root.querySelector(".format-preview .preview-text") !== null)
@@ -277,7 +287,6 @@ function Gallery({ switches }: { switches: GallerySwitches }) {
 }
 
 setPlatform();
-trackInputModality();
 const root = document.getElementById("root");
 if (root && (import.meta.env.DEV || import.meta.env.MODE === "evidence")) {
   const switches = gallerySwitches(window.location.search);

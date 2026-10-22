@@ -93,8 +93,9 @@ export const pickerText = {
   copyError: "Nothing was copied. Try again, or use Reload.",
   snapshotChanged: "The library changed. Search again and reselect the references before copying.",
   copied: "Copied",
-  keyFormats: "Citation keys",
-  formattedStyles: "Formatted citation",
+  keyFormats: "Key formats",
+  formattedStyles: "Citation styles",
+  filterFormats: "Filter formats",
   preview: "Preview",
   previewPending: "Formatting…",
   previewNotReady: "Nothing was copied yet: the citation is still being formatted. Press Enter again in a moment.",
@@ -381,4 +382,15 @@ export const copiedNoticeText = {
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",
   noticeFailed: "The Copied notice could not be shown.",
+};
+
+// The format menu: each key format's name and what it pastes.
+export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }> = {
+  pandoc: { label: "Pandoc", sample: "[@key]" },
+  autocite: { label: "\\autocite", sample: "\\autocite{key}" },
+  parencite: { label: "\\parencite", sample: "\\parencite{key}" },
+  textcite: { label: "\\textcite", sample: "\\textcite{key}" },
+  cite: { label: "\\cite", sample: "\\cite{key}" },
+  typst: { label: "Typst", sample: "@key" },
+  keys: { label: "Keys only", sample: "key" },
 };

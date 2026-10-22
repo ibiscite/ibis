@@ -24,6 +24,8 @@ export type GalleryState = {
   /** Seeded once the picker has rendered: pin it, open More, choose this many results, open All keys. */
   pinned?: boolean;
   menuOpen?: boolean;
+  /** Opens the header format menu; a string is typed into its filter. */
+  formatMenu?: true | string;
   tray?: number;
   formatted?: boolean;
   keys?: boolean;
@@ -152,6 +154,8 @@ export const galleryStates: readonly GalleryState[] = [
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
+  { id: "format-menu", label: "Format menu open", library: library(), query: "memory", results: examples, formatMenu: true },
+  { id: "format-menu-filtered", label: "Format menu filtered", library: library(), query: "memory", results: examples, formatMenu: "APA" },
   ...[20, 40, 50].map((count) => ({ id: `tray-${count}`, label: `${count} long keys selected`,
     library: library({ references: 50 }), query: "selection", results: largeSelection, tray: count, pinned: true })),
   { id: "tray-preview", label: "50 selected with formatted preview", library: library({ references: 50 }), query: "selection",

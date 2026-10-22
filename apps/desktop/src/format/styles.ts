@@ -25,3 +25,12 @@ export const STYLE_NAMES: Record<StyleId, string> = {
   ieee: "IEEE",
   "modern-language-association": "MLA",
 };
+
+// Real in-text output for the synthetic one-author 2021 menu example.
+export const STYLE_SAMPLES: Record<StyleId, string> = {
+  apa: "(García, 2021)",
+  "chicago-author-date": "(García 2021)",
+  "harvard-cite-them-right": "(García, 2021)",
+  ieee: "[1]",
+  "modern-language-association": "(García)",
+};
