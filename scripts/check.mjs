@@ -23,6 +23,7 @@ const steps = [
   ["Evidence publication tests", "node", ["--test", "scripts/evidence.test.mjs"]],
   ["Update feed tests", "node", ["--test", "scripts/update-feed.test.mjs"]],
   ["Hygiene tests", "node", ["--test", "scripts/hygiene.test.mjs"]],
+  ["CI path tests", "node", ["--test", "scripts/ci-paths.test.mjs"]],
   ["Pull request convention tests", "node", ["--test", "scripts/pr-lint.test.mjs"]],
   ["Release notes tests", "node", ["--test", "scripts/release-notes.test.mjs"]],
   ["Geometry spec tests", "node", ["--test", "scripts/gallery-geometry.test.mjs"]],

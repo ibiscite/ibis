@@ -97,54 +97,45 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
+      contents: read
       pull-requests: read
     outputs:
       native: ${{ steps.classify.outputs.native }}
+      web: ${{ steps.classify.outputs.web }}
       nix: ${{ steps.classify.outputs.nix }}
     steps:
-      # A pull request that changes only documentation (Markdown, licence
-      # files, issue templates) skips the native app build. The Desktop jobs still run and pass in seconds, so the required
-      # checks report. Pushes to main, merge queue runs and anything unclear
-      # build in full.
+      # Interface-only pull requests keep web validation without native jobs.
+      # Desktop jobs still report success, preserving required check names.
+      # Main, the merge queue and unclear file lists build the complete app.
       # The Nix package is rebuilt only when its inputs change (a stale
       # nix/pnpm-deps-hash fails on the pull request that causes it), weekly
       # and on manual runs. The weekly run skips the native app build.
-      - name: Decide whether the native app must be built
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Decide which app checks must run
         id: classify
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           EXPECTED: ${{ github.event.pull_request.changed_files }}
+          EXPECTED_REFS: ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.base.sha }}
         run: |
-          native=true
-          nix=false
-          case "$EVENT" in
-            schedule) native=false nix=true ;;
-            workflow_dispatch) nix=true ;;
-            pull_request) nix=true ;;
-          esac
+          # Pin the API list to this event's head and base across pagination.
+          # Failed reads, changed refs or a partial list enable every check.
+          unset FILES
           if [ "$EVENT" = pull_request ] &&
-            files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)') &&
-            listed=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename' | wc -l) &&
-            [ "$listed" -eq "$EXPECTED" ] && [ "$listed" -gt 0 ]; then
-            native=false
-            nix=false
-            while IFS= read -r file; do
-              case "$file" in
-                fixtures/*) native=true ;;
-                *.md | LICENSE* | .github/ISSUE_TEMPLATE/*) ;;
-                *) native=true ;;
-              esac
-              case "$file" in
-                flake.nix | flake.lock | nix/* | Cargo.lock | apps/desktop/package.json | apps/desktop/pnpm-lock.yaml) nix=true ;;
-              esac
-            done <<< "$files"
+            before=$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha + ":" + .base.sha') && [ "$before" = "$EXPECTED_REFS" ] &&
+            gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | {filename, previous_filename, status} | @json' > "$RUNNER_TEMP/changed-files.ndjson" &&
+            after=$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha + ":" + .base.sha') && [ "$after" = "$EXPECTED_REFS" ]; then
+            export FILES="$RUNNER_TEMP/changed-files.ndjson"
           fi
-          echo "native=$native" >> "$GITHUB_OUTPUT"
-          echo "nix=$nix" >> "$GITHUB_OUTPUT"
-          echo "Build the native app: $native; build the Nix package: $nix"
+          node scripts/ci-paths.mjs | tee -a "$GITHUB_OUTPUT"
 
   test:
     name: Test (${{ matrix.os }})
@@ -196,6 +187,7 @@ jobs:
     timeout-minutes: 10
     env:
       NATIVE: ${{ needs.changes.outputs.native }}
+      WEB: ${{ needs.changes.outputs.web }}
     defaults:
       run:
         working-directory: apps/desktop
@@ -232,7 +224,7 @@ jobs:
           node scripts/ui-imports.mjs
 
       - name: Type check and test the interface
-        if: env.NATIVE == 'true'
+        if: env.WEB == 'true'
         run: |
           pnpm typecheck
           pnpm test
@@ -267,18 +259,18 @@ jobs:
         # Windows would continue and report only the last command's result.
         shell: bash
     steps:
-      - name: Note a documentation-only change
+      - name: Note a change without native checks
         if: env.NATIVE != 'true'
-        run: echo "::notice::Only documentation changed, so the native app was not built or exercised."
+        run: echo "::notice::No native inputs changed; native checks run on main and in the merge queue."
 
       - name: Checkout
-        if: env.NATIVE == 'true' || runner.os == 'Windows'
+        if: env.NATIVE == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Check Windows updater activation contracts
-        if: runner.os == 'Windows'
+        if: env.NATIVE == 'true' && runner.os == 'Windows'
         run: |
           command -v pwsh
           python -B scripts/update-e2e.py --self-test
