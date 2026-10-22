@@ -10,7 +10,7 @@ const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** The More button and menu: the library and its Zotero scope, view settings,
  * starting at login, the keys overlay and Quit. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, zotero, density, largerText, startAtLogin, actions }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, zotero, density, largerText, pinned, startAtLogin, actions }: {
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
   library: LibraryStatus | null | undefined;
@@ -20,9 +20,10 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   zotero: { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number; name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void } | null;
   density: Density;
   largerText: boolean;
+  pinned: boolean;
   /** Offered when the system supports it. */
   startAtLogin: { item: LoginItem; toggle: () => void } | null;
-  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; keys: () => void; quit: () => void };
+  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; pin: () => void; keys: () => void; quit: () => void };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -58,6 +59,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         <MenuItem id="density" label={pickerText.density(densityNames[density])} title={pickerText.densityTitle} onAction={actions.density} />
       </MenuSection>
       <MenuSection id="view-toggles">
+        <MenuItem id="keep-open" label={pickerText.keepOpen} checked={pinned} keys={label(keysFor("pin"))} onAction={actions.pin} />
         <MenuItem id="larger-text" label={pickerText.largerText} checked={largerText} onAction={actions.largerText} />
         {startAtLogin && (
           <MenuItem id="start-at-login" label={loginItemText.label(currentPlatform())} title={loginItemText.title(currentPlatform())} checked={startAtLogin.item.enabled} onAction={startAtLogin.toggle} />

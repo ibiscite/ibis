@@ -102,6 +102,8 @@ async function chooseFromMore(name: string, role: "menuitem" | "menuitemcheckbox
   fireEvent.click(item);
 }
 
+const toggleKeepOpen = () => fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
+
 function result(key: string, title: string, source = "refs.bib") {
   return {
     revision: "1", id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"],
@@ -1404,6 +1406,40 @@ test("Escape clears the search before it hides the picker, keeping chosen refere
   expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
 });
 
+test("pinning lives in More and only a kept-open picker offers a footer unpin", async () => {
+  const pins: unknown[] = [];
+  backend({ set_pinned: ({ on }) => { pins.push(on); return null; } });
+  render(<App />);
+  expect(document.querySelector(".search-bar .pin-button")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Kept open; click to stop" })).toBeNull();
+  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
+  await waitFor(() => expect(pins).toEqual([true]));
+  expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  const unpin = screen.getByRole("button", { name: "Kept open; click to stop" });
+  expect(unpin.closest("footer")).toBeTruthy();
+  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
+  await waitFor(() => expect(pins).toEqual([true, false]));
+  expect(screen.queryByRole("button", { name: "Kept open; click to stop" })).toBeNull();
+});
+
+test("the keep-open shortcut ignores repeats, composition and extra modifiers", async () => {
+  const pins: unknown[] = [];
+  backend({ set_pinned: ({ on }) => { pins.push(on); return null; } });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  for (const extra of [{ repeat: true }, { isComposing: true }, { altKey: true }, { metaKey: true }, { shiftKey: false }]) {
+    fireEvent.keyDown(box, { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true, ...extra });
+  }
+  expect(pins).toEqual([]);
+  fireEvent.keyDown(box, { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
+  await waitFor(() => expect(pins).toEqual([true]));
+  fireEvent.click(screen.getByRole("button", { name: "Kept open; click to stop" }));
+  await waitFor(() => expect(pins).toEqual([true, false]));
+  expect(document.activeElement).toBe(box);
+});
+
 test("a pinned picker stays open after copying, and Escape never unpins it", async () => {
   const pins: unknown[] = [];
   const calls = backend({
@@ -1412,10 +1448,8 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
     set_pinned: ({ on }) => { pins.push(on); return null; },
   });
   render(<App />);
-  const pin = screen.getByRole("button", { name: "Pin Ibis" });
-  expect(pin.getAttribute("aria-pressed")).toBe("false");
-  fireEvent.click(pin);
-  expect(pin.getAttribute("aria-pressed")).toBe("true");
+  toggleKeepOpen();
+  expect(screen.getByRole("button", { name: "Kept open; click to stop" })).toBeTruthy();
   await waitFor(() => expect(pins).toEqual([true]));
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
@@ -1423,9 +1457,9 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByText("@a", { selector: ".copy-notice code" });
   fireEvent.keyDown(box, { key: "Escape" });
-  expect(pin.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("button", { name: "Kept open; click to stop" })).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
-  fireEvent.click(pin);
+  fireEvent.click(screen.getByRole("button", { name: "Kept open; click to stop" }));
   await waitFor(() => expect(pins).toEqual([true, false]));
   fireEvent.change(box, { target: { value: "first" } });
   await screen.findByText("First");
@@ -1436,10 +1470,36 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
 test("a failed pin is reported", async () => {
   backend({ set_pinned: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
-  const pin = screen.getByRole("button", { name: "Pin Ibis" });
-  fireEvent.click(pin);
+  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
   expect((await screen.findByText("Ibis could not change the pin. Try again.")).getAttribute("role")).toBe("alert");
-  expect(pin.getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false");
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+});
+
+test.each([false, true])("rapid keep-open changes retain the last confirmed state after failures (first succeeds: %s)", async (firstSucceeds) => {
+  const requests: { on: unknown; resolve: () => void; reject: () => void }[] = [];
+  backend({ set_pinned: ({ on }) => new Promise<void>((resolve, reject) => {
+    requests.push({ on, resolve, reject: () => reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")) });
+  }) });
+  render(<App />);
+  toggleKeepOpen();
+  await waitFor(() => expect(requests).toHaveLength(1));
+  toggleKeepOpen();
+  if (firstSucceeds) toggleKeepOpen();
+  // Native changes must complete in order, even when the shortcut and footer
+  // can both request a new state before the previous call answers.
+  expect(requests.map(({ on }) => on)).toEqual([true]);
+  await act(async () => { if (firstSucceeds) requests[0]!.resolve(); else requests[0]!.reject(); });
+  await waitFor(() => expect(requests).toHaveLength(2));
+  expect(requests[1]!.on).toBe(false);
+  await act(async () => { requests[1]!.reject(); });
+  if (firstSucceeds) {
+    await waitFor(() => expect(requests).toHaveLength(3));
+    expect(requests[2]!.on).toBe(true);
+    await act(async () => { requests[2]!.reject(); });
+  }
+  await screen.findByText("Ibis could not change the pin. Try again.");
+  expect(Boolean(screen.queryByRole("button", { name: "Kept open; click to stop" }))).toBe(firstSucceeds);
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
 
@@ -2053,11 +2113,11 @@ test("copies with warnings, pinned copies and failed hides show no Copied notice
   await screen.findByText("First");
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByLabelText("Copy warnings");
-  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  toggleKeepOpen();
   warnings = [];
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(calls.filter((c) => c === "copy_citation")).toHaveLength(2));
-  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  toggleKeepOpen();
   hideFails = true;
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByText("Ibis could not hide this window. Try again.");
@@ -2888,7 +2948,7 @@ test.each([false, true])("copy completion preserves selections changed while pen
     copy_citation: () => new Promise((resolve) => { release = resolve; }),
   });
   render(<App />);
-  if (pinned) fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  if (pinned) toggleKeepOpen();
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(calls).toContain("copy_citation"));
@@ -2937,7 +2997,7 @@ test.each(["success", "failure"])("an older copy cannot overwrite a newer copy's
     copy_citation: () => new Promise((done, fail) => { resolve.push(done); reject.push(fail); }),
   });
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  toggleKeepOpen();
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
@@ -2959,12 +3019,11 @@ test.each([false, true])("copy completion uses the current pin choice (initially
   let release: (value: unknown) => void = () => undefined;
   const calls = backend({ search: () => [result("a", "First")], copy_citation: () => new Promise((resolve) => { release = resolve; }) });
   render(<App />);
-  const pin = screen.getByRole("button", { name: "Pin Ibis" });
-  if (initiallyPinned) fireEvent.click(pin);
+  if (initiallyPinned) toggleKeepOpen();
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(calls).toContain("copy_citation"));
-  fireEvent.click(pin);
+  toggleKeepOpen();
   await act(async () => { release({ text: "@a", warnings: [] }); });
   expect(screen.queryByRole("button", { name: "Remove a from the selection" })).toBeNull();
   expect(calls.includes("hide_picker")).toBe(initiallyPinned);
@@ -3019,7 +3078,7 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  if (change === "copy feedback") fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  if (change === "copy feedback") toggleKeepOpen();
   fireEvent.click(await screen.findByText("First revision 1"), { shiftKey: true });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(attempts).toHaveLength(1));
@@ -3073,7 +3132,7 @@ test.each([
     },
   });
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  toggleKeepOpen();
   fireEvent.click(await screen.findByText("Pending 1 a"), { shiftKey: true });
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
@@ -3111,7 +3170,7 @@ test.each(["warning", "notice"])("a search started before a selected copy preser
     show_copied_notice: ({ text }) => { notices.push(text); return null; },
   });
   render(<App />);
-  if (feedback === "warning") fireEvent.click(screen.getByRole("button", { name: "Pin Ibis" }));
+  if (feedback === "warning") toggleKeepOpen();
   fireEvent.click(await screen.findByText("Selected before search"), { shiftKey: true });
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "pending" } });
@@ -3203,6 +3262,35 @@ test("replacing a format preview cancels its queued formatter request", async ()
   }
 });
 
+test.each(["p", "З"])("Format hands the keep-open shortcut to the picker after exit (%s)", async (key) => {
+  const calls = backend();
+  render(<App />);
+  const search = screen.getByLabelText("Search references");
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  const filter = screen.getByRole("searchbox");
+  fireEvent.keyDown(filter, { key, code: "KeyP", ctrlKey: true, shiftKey: true });
+  await screen.findByRole("button", { name: "Kept open; click to stop" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(search));
+  expect(calls.filter((call) => call === "set_pinned")).toHaveLength(1);
+  expect(calls).not.toContain("quit");
+});
+
+test.each([
+  ["p", { repeat: true }], ["З", { repeat: true }],
+  ["p", { isComposing: true }], ["З", { isComposing: true }],
+])("Format ignores an isolated invalid keep-open key (%s, %j)", async (key, invalid) => {
+  const calls = backend();
+  render(<App />);
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key, code: "KeyP", ctrlKey: true, shiftKey: true, ...invalid });
+  // Let a wrongly queued command finish; another key must not cancel the probe.
+  await act(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
+  expect(calls).not.toContain("set_pinned");
+  expect(calls).not.toContain("quit");
+  expect(screen.getByRole("menu")).toBeTruthy();
+});
+
 test("format toolbar menu exposes both sections and saves a choice without copying", async () => {
   const saved: unknown[] = [];
   const calls = backend({ set_picker_preferences: (args) => { saved.push(args.copyFormat); return null; } });
@@ -3279,16 +3367,17 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   expect(search.value).toBe("sleep");
 });
 
-test.each(["k", "/", "q"])("hiding the picker cancels Format's pending Ctrl+%s command", async (key) => {
+test.each(["k", "/", "q", "p"])("hiding the picker cancels Format's pending Ctrl+%s command", async (key) => {
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
-  fireEvent.keyDown(screen.getByRole("searchbox"), { key, ctrlKey: true });
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key, ctrlKey: true, shiftKey: key === "p" });
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await new Promise(requestAnimationFrame); });
   expect(screen.queryByRole("menu")).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(calls).not.toContain("quit");
+  expect(calls).not.toContain("set_pinned");
 });
 
 

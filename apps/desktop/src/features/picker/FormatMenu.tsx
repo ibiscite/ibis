@@ -5,9 +5,9 @@ import { STYLE_NAMES, STYLE_SAMPLES } from "../../format/styles";
 import { copyFormatMenu, pickerText } from "../../messages";
 import { ToolbarMenu, type ToolbarMenuCommand, type ToolbarMenuSection } from "../../ui/ToolbarMenu";
 import { choiceName, type Choice } from "./choice";
-import { isKeysShortcut, isMenuShortcut, isQuitShortcut } from "./shortcuts";
+import { isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./shortcuts";
 
-export type FormatCommand = "more" | "keys" | "quit";
+export type FormatCommand = "more" | "keys" | "pin" | "quit";
 
 /** The copy format menu: key syntaxes and citation styles, each with a real
  * sample. Styles stay listed but unavailable while the engine is not offered.
@@ -27,7 +27,7 @@ export function FormatMenu({ format, styles, onChange, searchRef, onCommand }: {
   ];
   return <ToolbarMenu label={pickerText.copyAs} value={choiceName(format)} sections={sections} selectedKey={format}
     filterLabel={pickerText.filterFormats} onKeyCommand={(event) => {
-      const command = isMenuShortcut(event) ? "more" : isKeysShortcut(event) ? "keys" : isQuitShortcut(event) ? "quit" : null;
+      const command = isMenuShortcut(event) ? "more" : isPinShortcut(event) && !event.repeat ? "pin" : isKeysShortcut(event) ? "keys" : isQuitShortcut(event) ? "quit" : null;
       return command ? onCommand(command) : undefined;
     }} onAction={(key) => onChange(key as Choice)} returnFocusRef={searchRef} />;
 }

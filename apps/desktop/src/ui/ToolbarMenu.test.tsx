@@ -30,6 +30,26 @@ function mount(items = sections) {
   return { onAction, parentKeys, trigger: screen.getByRole("button", { name: "Copy as Pandoc" }), search: screen.getByRole("textbox") };
 }
 
+test.each([
+  ["macos", "0 0 8 12"],
+  ["windows", "0 0 12 12"],
+  ["linux", "0 0 16 16"],
+])("%s popup uses its bundled decorative indicator without changing the button name", async (platform, viewBox) => {
+  document.documentElement.dataset.platform = platform;
+  const { trigger } = mount();
+  const indicator = trigger.querySelector("svg")!;
+  expect(indicator.getAttribute("viewBox")).toBe(viewBox);
+  expect(indicator.getAttribute("aria-hidden")).toBe("true");
+  expect(indicator.getAttribute("focusable")).toBe("false");
+  const drawing = indicator.outerHTML;
+  fireEvent.click(trigger);
+  await screen.findByRole("menu", { name: "Copy as Pandoc" });
+  // React Aria hides the page outside its modal menu from accessibility.
+  expect(trigger.getAttribute("aria-label")).toBe("Copy as Pandoc");
+  expect(trigger.isConnected).toBe(true);
+  expect(indicator.outerHTML).toBe(drawing);
+});
+
 test.each(["macos", "windows", "linux"])("%s menu has named sections, radio items, keyboard navigation and no axe violations", async (platform) => {
   document.documentElement.dataset.platform = platform;
   const { trigger, search, onAction } = mount();
@@ -199,7 +219,8 @@ const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8
 test("menu role tokens exist, forced colours frame the button, and reduced motion removes movement", () => {
   const definitions = new Set([...(tokens + menuCss + toolbarCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
   expect([...(menuCss + toolbarCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
-  expect(toolbarCss).toMatch(/forced-colors: active[\s\S]*border: 1px solid ButtonText/);
+  expect(toolbarCss).toMatch(/border: var\(--border-width\) solid var\(--clear\)/);
+  expect(toolbarCss).toMatch(/forced-colors: active[\s\S]*border-color: ButtonText/);
   expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
   expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
   expect(toolbarCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*transition: none/);

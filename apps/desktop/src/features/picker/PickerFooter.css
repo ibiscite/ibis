@@ -1,0 +1,10 @@
+/* Only a kept-open picker offers this footer control, visible at rest. */
+.pin-button, .pin-button:hover {
+  display: inline-grid; place-items: center; flex-shrink: 0;
+  min-width: var(--control-min-size); min-height: var(--control-min-size); padding: 0;
+  background: var(--clear); border-color: var(--clear); color: var(--accent);
+}
+.pin-button svg { width: var(--icon-glyph-size); stroke-width: var(--icon-stroke); }
+@media (pointer: coarse) {
+  .pin-button { min-width: calc(var(--control-min-size) + var(--row-pad)); min-height: calc(var(--control-min-size) + var(--row-pad)); }
+}

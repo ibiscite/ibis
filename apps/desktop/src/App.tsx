@@ -10,7 +10,7 @@ import { afterCopy } from "./copyFeedback";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice } from "./features/picker/choice";
-import { composing, isKeysShortcut, isMenuShortcut, isQuitShortcut } from "./features/picker/shortcuts";
+import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
@@ -115,6 +115,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const pickerShows = useRef(0);
   const currentPin = useRef(pinned);
   currentPin.current = pinned;
+  const confirmedPin = useRef(false);
+  const pinRequest = useRef(0);
+  const pinWork = useRef(Promise.resolve());
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
@@ -185,10 +188,22 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const loginItemOffered = Boolean(setLoginItem) && startAtLogin !== null && startAtLogin.problem !== "unsupported";
 
   const togglePin = () => {
-    const on = !pinned;
+    const on = !currentPin.current;
+    currentPin.current = on;
     setPinnedState(on);
-    // Show the pin as it really is if the window could not change.
-    void perform("pin", () => setPinned(on).catch((error: unknown) => { setPinnedState(!on); throw error; }));
+    const request = ++pinRequest.current;
+    // Preserve native request order, and roll back only the latest request to
+    // the last confirmed state. An older failure cannot undo a newer choice.
+    pinWork.current = pinWork.current.then(() => perform("pin", async () => {
+      try { await setPinned(on); confirmedPin.current = on; }
+      catch (error: unknown) {
+        if (request === pinRequest.current) {
+          currentPin.current = confirmedPin.current;
+          setPinnedState(confirmedPin.current);
+        }
+        throw error;
+      }
+    }));
   };
 
   // When the picker is shown, put the cursor in the search box with the
@@ -592,7 +607,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       onBlur={() => setSearchFocused(false)}
       onKeyDown={(e) => {
         if (composing(e)) return;
-        if (isKeysShortcut(e)) {
+        if (isPinShortcut(e)) {
+          e.preventDefault();
+          if (!e.repeat) togglePin();
+        } else if (isKeysShortcut(e)) {
           e.preventDefault();
           openKeys();
         } else if (e.key === "Escape") {
@@ -652,12 +670,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             run: () => {
               if (command === "more") openMore();
               else if (command === "keys") openKeys();
-              else void perform("quit", quitAfterSaving);
+              else if (command === "pin") togglePin();
+              else if (command === "quit") void perform("quit", quitAfterSaving);
             },
           };
         }}
-        pinned={pinned}
-        onTogglePin={togglePin}
       />
       <div className="picker-content">
       <Notices library={library} failures={failures} startAtLogin={startAtLogin}
@@ -698,6 +715,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         // rather than saying the citation cannot be copied.
         shown={chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined} focusable={selected.size > 0} />
       <PickerFooter library={library} groupName={groupName}
+        pinned={pinned} onUnpin={() => { togglePin(); input.current?.focus(); }}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: () => { void copy(); }, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
         more={
@@ -709,7 +727,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               name: (choice) => (typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary),
               toggle: toggleLibrary,
             } : null}
-            density={density} largerText={largerText}
+            density={density} largerText={largerText} pinned={pinned}
             startAtLogin={loginItemOffered && startAtLogin ? { item: startAtLogin, toggle: toggleStartAtLogin } : null}
             actions={{
               choose: () => runFromMenu("choose", chooseLibrary),
@@ -717,6 +735,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               reload: () => runFromMenu("reload", reloadLibrary),
               density: changeDensity,
               largerText: toggleLargerText,
+              pin: togglePin,
               keys: openKeys,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />

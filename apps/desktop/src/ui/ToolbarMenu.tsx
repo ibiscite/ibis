@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject, type ComponentPropsWithRef } from "react";
 import { Autocomplete, Button, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { MenuCheck } from "./Menu";
+import { currentPlatform } from "../platform";
 import "./ToolbarMenu.css";
 
 export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean }[] };
@@ -106,10 +107,19 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     }}
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
-      <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m3 4.5 3 3 3-3" /></svg></Button>
+      <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<PopupIndicator /></Button>
       <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>
   </span>;
+}
+
+/** Bundled masters for each system's popup indicator; opening never turns it. */
+function PopupIndicator() {
+  const platform = currentPlatform();
+  const [viewBox, path] = platform === "macos" ? ["0 0 8 12", "m1 4 3-3 3 3m-6 4 3 3 3-3"]
+    : platform === "windows" ? ["0 0 12 12", "m3 4.5 3 3 3-3"] : ["0 0 16 16", "m4 6 4 4 4-4"];
+  return <svg className={`popup-indicator popup-indicator-${platform}`} aria-hidden="true" focusable="false"
+    viewBox={viewBox} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d={path} /></svg>;
 }

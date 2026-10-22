@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ariaKeys, KEY_TABLE, keyLabel, matchesAccelerator, shortcutLabel } from "./keys";
+import { ariaKeys, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
 import { keyText } from "./messages";
 
 test("key labels follow the platform", () => {
@@ -73,6 +73,21 @@ test("every letter accelerator in the table can be matched", () => {
       expect(matchesAccelerator(press(letter.toLowerCase(), { ctrlKey: true }), keys, false), keys).toBe(true);
       expect(matchesAccelerator(press(letter, { metaKey: true }), keys, true), keys).toBe(true);
     }
+  }
+});
+
+test("keep-open uses its own shifted command on both platform key models", () => {
+  const keys = keysFor("pin");
+  expect(keys).toBe("CmdOrCtrl+Shift+P");
+  expect(KEY_TABLE.filter((binding) => binding.keys.includes(keys))).toHaveLength(1);
+  expect(keyLabel(keys, true)).toBe("⌘⇧P");
+  expect(keyLabel(keys, false)).toBe("Ctrl+Shift+P");
+  for (const mac of [false, true]) {
+    const modifier = mac ? { metaKey: true } : { ctrlKey: true };
+    expect(matchesAccelerator(press("P", { ...modifier, shiftKey: true }), keys, mac)).toBe(true);
+    expect(matchesAccelerator(press("з", { code: "KeyP", ...modifier, shiftKey: true }), keys, mac)).toBe(true);
+    expect(matchesAccelerator(press("p", modifier), keys, mac)).toBe(false);
+    expect(matchesAccelerator(press("P", { ...modifier, shiftKey: true, altKey: true }), keys, mac)).toBe(false);
   }
 });
 

@@ -101,6 +101,16 @@ test("the many-results fixture exercises a scrollable real result list", async (
   expect(within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option")).toHaveLength(20);
 });
 
+test("the scope-menu fixture shows the existing multi-library choices in More", async () => {
+  const state = galleryStates.find((candidate) => candidate.id === "scope-menu");
+  expect(state).toBeTruthy();
+  render(<App {...galleryProvider(state!)} />);
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  const personal = await screen.findByRole("menuitemcheckbox", { name: "My Library" });
+  expect(personal.getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByRole("menuitemcheckbox", { name: "Group 41" }).getAttribute("aria-checked")).toBe("true");
+});
+
 test("a gallery state with horizontal overflow is not accepted as rendered", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
@@ -398,7 +408,7 @@ async function renderUntilAcknowledged(id: string, provider = galleryProvider(ga
 }
 
 test.each([
-  ["pinned", (root: HTMLElement) => root.querySelector('button[aria-label="Pin Ibis"]')?.getAttribute("aria-pressed") === "true"],
+  ["pinned", (root: HTMLElement) => root.querySelector('footer button[aria-label="Kept open; click to stop"]') !== null],
   ["menu-open", () => document.querySelector('[role="menu"]') !== null],
   ["keys", (root: HTMLElement) => root.querySelector('[role="dialog"]') !== null],
   ["tray", (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('ul[aria-label="Selected references"] .chip')].map((chip) => chip.title).join() === "example2026,研究2026"],
@@ -421,7 +431,7 @@ test("a seeded interaction that does not take is never acknowledged", async () =
   provider.api = { ...provider.api, setPinned: async () => { throw new Error("synthetic pin failure"); } };
   const run = await renderUntilAcknowledged("pinned", provider);
   try {
-    expect(run.container.querySelector('button[aria-label="Pin Ibis"]')?.getAttribute("aria-pressed")).toBe("false");
+    expect(run.container.querySelector('button[aria-label="Kept open; click to stop"]')).toBeNull();
     expect(run.acknowledge).not.toHaveBeenCalled();
   } finally {
     await run.stop();

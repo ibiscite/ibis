@@ -282,6 +282,7 @@ test("the framed-box icon overlap moves only the search glyph, never the pin ico
   render(<App {...galleryProvider(state)} />);
   await screen.findAllByRole("option");
   const searchIcon = document.querySelector(".search-bar")!.firstElementChild;
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
   const pinIcon = document.querySelector(".pin-button svg");
   expect(searchIcon?.tagName.toLowerCase()).toBe("svg");
   expect(pinIcon).toBeTruthy();

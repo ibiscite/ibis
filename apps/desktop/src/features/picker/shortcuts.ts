@@ -19,7 +19,7 @@ export function typesText(target: EventTarget | null): boolean {
 /** `?` outside a text field, or Ctrl/⌘ with / (or ?) anywhere. Hebrew types /
  * on the Q key, so a press that is a letter shortcut is not this one. */
 export function isKeysShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
-  if (e.altKey || isQuitShortcut(e, mac) || isMenuShortcut(e, mac)) return false;
+  if (e.altKey || isQuitShortcut(e, mac) || isMenuShortcut(e, mac) || isPinShortcut(e, mac)) return false;
   if ((e.key === "/" || e.key === "?") && commandKey(e, mac)) return true;
   return e.key === "?" && !e.ctrlKey && !e.metaKey && !typesText(e.target);
 }
@@ -32,4 +32,9 @@ export function isMenuShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
 /** The quit shortcut from the key table: ⌘Q on macOS, Ctrl+Q elsewhere. */
 export function isQuitShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
   return matchesAccelerator(e, keysFor("quit"), mac);
+}
+
+/** Keep-open is an in-picker command; no system shortcut is registered. */
+export function isPinShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
+  return matchesAccelerator(e, keysFor("pin"), mac);
 }

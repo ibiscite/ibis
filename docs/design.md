@@ -174,7 +174,7 @@ symbolic masters. How the assets are regenerated is in the
 | Corners | See **Corners** above | | |
 | Selected row | Filled accent, white text | Soft grey with an accent pill on the left | GTK's selection colour (filled accent) with its paired text |
 | Keyboard focus ring | 2 px accent, 1 px gap | 2 px in the text colour around a 1 px surface-coloured stroke (Fluent's focus visual) | 2 px, the accent mixed half toward the text colour, 1 px gap |
-| Search box | Frameless, large; with Liquid Glass, a 40 px capsule that also holds format and pin | Text box with an underline that turns accent on focus | Framed entry |
+| Search box | Frameless, large; with Liquid Glass, a 40 px capsule that also holds format | Text box with an underline that turns accent on focus | Framed entry |
 | Shortcut labels | ⌘ ⌥ ⇧ ⌃, joined in one key cap (⌘K) | Ctrl Alt Shift, one cap per key (Ctrl K) | Ctrl Super Shift, one cap per key with "+" between (Ctrl + K) |
 | Header menus | Borderless pop-up button with ⌃⌄ | ComboBox with a chevron | Flat drop-down with `pan-down-symbolic` |
 | Switch | 38 × 22, the regular `NSSwitch` size | 40 × 20, outlined when off | 46 × 26 |
@@ -203,7 +203,7 @@ and key caps are translucent so the material shows through, and the window edge
 is a 1 px hairline (black 10% in light, white 10% in dark), never a white rim.
 
 **Materials by layer.** Every platform separates a content layer (the result
-list, preview and tray) from a control layer (search, format, pin).
+list, preview and tray) from a control layer (search and format).
 
 - **macOS.** Content stays on the standard material described above. Liquid
   Glass (`NSGlassEffectView`, macOS 26) is a later step (Rollout 9) and then
@@ -226,7 +226,7 @@ list, preview and tray) from a control layer (search, format, pin).
 | Search box | Always | The largest element, focused on open. Its placeholder lists what can be searched. |
 | Format (for example "Pandoc ⌃⌄" on macOS) | Once a library is chosen | What is pasted depends on it. One word, no icon; each platform's pop-up button (see **Header**). "Key formats" and "Citation styles" show real samples and a leading check; unavailable styles stay focusable; typing filters. |
 | More (Ctrl/⌘ K) | Always | The one door to every other action; each shows its shortcut, so the menu is also the cheat sheet. In the footer it reads "More ⌘K", like the hints beside it (see **Footer**). |
-| Pin | Always, faint at rest | Tertiary colour at rest, full strength on hover or while on, so it never moves or appears from nowhere. Its tooltip names the action ("Pin: keep Ibis open beside your document") and, once the key table assigns one, its key. The first time a click outside hides Ibis, a one-time footer tip explains the pin. |
+| Keep Window Open | In More | Checkable, with ⌘⇧P on macOS and Ctrl+Shift+P elsewhere. Only while kept open, a visible footer pin offers “Kept open; click to stop”. The first outside-click tip is planned for 0.3 (#571/#572), naming the action and shortcut. |
 | Filter chips | Once added | `#tag`, `y:2019-2022` or `a:name` followed by a space becomes a removable chip. Backspace in an empty box removes the last one. |
 | Recently cited, Recently added, With PDF | While browsing | Shown when the search is empty or one is selected; hidden while typing so rows get the room. Tab reaches the current browsing tab; ← and → choose another (see **Keyboard focus order**). |
 | Tag and author suggestions | While typing `#` or `a:` | Take the place of the tabs. Enter, or Tab while the suggestions are open, picks the first. |
@@ -284,20 +284,20 @@ new, from the design-system foundations, and are defined here:
 | `--r-control` | Buttons, fields, pop-up buttons | 6 (a capsule in the header on macOS 26) | 4 | 6 |
 | `--r-key` | Key caps | 4 (5 on macOS 26) | 4 | 4 |
 | `--surface-raised` | Cards and grouped forms, one step above `--surface` | `#fff` / `#2c2c2f` | white 70 % / white 5 % | `#fff` / `#2e2e32` |
-| `--text-tertiary` | Glyphs at rest (pin, indicators), at least 3:1; never sentences | black 45 % / white 45 % (`tertiaryLabelColor`) | black 45 % / white 54 % (`TextFillColorTertiary`) | `currentColor` at 45 % |
+| `--text-tertiary` | Glyphs at rest (indicators, empty-state icons), at least 3:1; never sentences | black 45 % / white 45 % (`tertiaryLabelColor`) | black 45 % / white 54 % (`TextFillColorTertiary`) | `currentColor` at 45 % |
 
 `--key-cap` (20 px) is the existing key-cap height.
 
 **Edges.** Visible edges line up with the content; hit targets may overhang
 them. The leading edge is the tile column (`inset + row-pad`), the text column
 starts at `text x`, and the trailing edge is where row text ends
-(`W − inset − row-pad`). The pin's glyph, the last key cap in the footer and
+(`W − inset − row-pad`). The last header selector, the last key cap in the footer and
 the year column all end on that trailing edge; a 32 px target around a 20 px
 glyph overhangs it by 6 px. Controls in one bar share a centre line, and text
 in one bar shares a baseline.
 
 **Header.** In order: search glyph, query, clear button, the header menus
-(format, then library scope when there is one), pin.
+(format, then library scope when there is one). No pin or empty slot follows them.
 
 - **Clear (×).** Inside the field at its trailing end, only while there is a
   query: a 16 px glyph in a 32 px target, secondary colour. Its name is
@@ -332,9 +332,9 @@ in one bar shares a baseline.
   `aria-expanded`; items are `menuitemradio` with `aria-checked`. While no
   library is chosen the header menus are hidden, because first-run setup asks
   the same question in its own words.
-- **Pin.** Always visible: `--text-tertiary` at rest, full strength on hover
-  or while on, so the header never shows a hole where it appears. A toggle
-  button named "Pin" with `aria-pressed`.
+- **Keep Window Open.** A checkable action in More, with ⌘⇧P on macOS and
+  Ctrl+Shift+P elsewhere. While on, a pin in the footer status area is a
+  button named “Kept open; click to stop”; it unpins and returns focus to search.
 - **Targets.** Every header control keeps a 32 px target (44 px under
   `pointer: coarse`), even where it draws 28 px.
 
@@ -347,7 +347,7 @@ nothing holds focus:
    Escape closes suggestions without clearing the query; Tab then leaves the
    box. Suggestions stay closed until the query changes.
 2. The header toolbar (`role="toolbar"`, named "Search options"): one stop;
-   ← and → move between the format menu, the scope menu and the pin (WAI-ARIA
+   ← and → move between the format menu and the scope menu (WAI-ARIA
    toolbar pattern).
 3. The browsing tabs, only while visible: one stop on the current tab in a
    `tablist` named "Browse references". Each `tab` has `aria-selected` and
@@ -355,11 +355,12 @@ nothing holds focus:
    ← and → focus and choose the previous or next tab, wrapping at the ends;
    Home and End choose the first or last. These keys apply only while a tab
    has focus, leaving text editing and attachment preview in the search box
-   unchanged. Tab leaves for More; Shift+Tab returns to the header toolbar.
+   unchanged. Tab leaves for the footer pin when present, then More;
+   Shift+Tab returns to the header toolbar.
    Clicking or tapping a tab chooses the same view. There is no required
    Ctrl+Tab shortcut: ordinary Tab followed by arrow keys is the keyboard
    route on every platform, including when browser accelerators are consumed.
-4. More.
+4. The footer unpin button, only while kept open, then More.
 
 The result list is not a stop: ↑ and ↓ in the search box move through it
 (`aria-activedescendant`). Inside an open menu, Tab closes the menu and moves

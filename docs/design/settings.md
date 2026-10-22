@@ -51,12 +51,12 @@ grouping everywhere. Only the native rendering differs.
 | **Not a setting** | The system owns it, or a good default makes it unnecessary | Accent colour, contrast, reduced motion and transparency, system text scale, watching `.bib` files, the Copied notice position |
 
 **Keep Window Open** (decided in #757): pinning leaves the header. It is a
-checkable item in the More menu with ⌘⇧P (Ctrl+Shift+P elsewhere; confirm it is
-free in `keys.ts`). While pinned, the footer's status area shows a small pin
+checkable item in the More menu with ⌘⇧P (Ctrl+Shift+P elsewhere), defined in
+`keys.ts`. While pinned, the footer's status area shows a small pin
 glyph with the tooltip "Kept open; click to stop", and clicking it unpins. When
 not pinned, nothing shows. The header ends with the format selector, aligned to
-the content edge. The one-time "an outside click hides Ibis" tip names the menu
-item and its shortcut.
+the content edge. In 0.3, #571/#572 add the one-time "an outside click hides
+Ibis" tip, naming the menu item and its shortcut.
 
 Once the Settings window exists, **Density, Larger text and Start at login leave
 the More menu.** Start at login stays in the menu bar or tray menu, where
