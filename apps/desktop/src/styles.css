@@ -186,6 +186,7 @@ footer { display: flex; align-items: center; border-top: var(--border-width) sol
 .library-source { min-width: 3ch; flex-shrink: 100000; overflow: hidden; text-overflow: ellipsis; }
 /* Shrinks only once the name is as short as it gets, then ends with an ellipsis. */
 .library-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.library-separator { flex: none; }
 /* Takes only the room the name and state leave, so it is cut before them. */
 .library-age { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .library-status[data-health="stop"] .library-name, .library-status[data-health="look"] .library-name { color: var(--text); }

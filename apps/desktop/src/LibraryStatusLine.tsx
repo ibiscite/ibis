@@ -52,7 +52,12 @@ export function LibraryStatusLine({ library, groupName }: {
   useMinuteTick();
   const now = Date.now();
   const health = libraryHealth(library);
-  const [source, state] = libraryMessages.summaryParts(library);
+  const [source, summaryState] = libraryMessages.summaryParts(library);
+  // The separator is its own item, so it stays between the name and the state
+  // when a right-to-left page reverses them; inside the state's <bdi> it would
+  // be isolated with the English words and end up on their far side.
+  const separated = source !== null && summaryState.startsWith(" · ");
+  const state = separated ? summaryState.slice(" · ".length) : summaryState;
   const age = libraryMessages.age(library, now);
   const lines = libraryMessages.detail(library, now, (status) => zoteroLibraryNames(status, groupName));
   const detail = lines.filter(Boolean).join("\n");
@@ -66,6 +71,7 @@ export function LibraryStatusLine({ library, groupName }: {
         <span className="library-words">
           <span className="library-name" role="status" aria-label={pickerText.libraryStatus} aria-live="polite" aria-atomic="true">
             {source !== null && <bdi className="library-source">{source}</bdi>}
+            {separated && state && <bdi className="library-separator">{" · "}</bdi>}
             {state && <bdi className="library-state">{state}</bdi>}
           </span>
           {age && <span className="library-age" aria-hidden="true"> · {age}</span>}

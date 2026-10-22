@@ -3,5 +3,8 @@
 .key-hint { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .key-hint[data-primary] { color: var(--text); }
 .key-caps, .key-cap { display: inline-flex; align-items: center; gap: var(--space-1); }
+/* Keys read left to right in every language, as the systems print them: in a
+   right-to-left page "⌘K" would otherwise show as "K⌘" and "Ctrl K" as "K Ctrl". */
+.key-caps { direction: ltr; unicode-bidi: isolate; }
 .key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); }
 .key-plus { color: var(--muted); }

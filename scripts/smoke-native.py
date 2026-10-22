@@ -70,13 +70,16 @@ def shows_count(snapshot, count):
 
 def missing_library_evidence(snapshot, name):
     text = strings(snapshot)
+    # Bidi isolates can expose the separator and state as separate native
+    # text nodes. Their boundaries are whitespace, not missing status words.
+    summary_text = " ".join(text.split())
     return {key: fragment if type(fragment) is bool else fragment in text for key, fragment in {
         "failed_source_named": f"The library could not be opened: {name}",
         "retention_explained": "the library file is unavailable; keeping the last loaded references",
         "recovery_action": "Choose it again or reconnect the drive.",
         # The footer says the library was not updated; its detail, read by
         # screen readers, keeps the retained count. Names are isolated (U+2068/9).
-        "retained_snapshot": " · not updated" in text and " · 4 references" in text,
+        "retained_snapshot": " · not updated" in summary_text and " · 4 references" in summary_text,
     }.items()}
 
 
@@ -2789,6 +2792,22 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(evidence["retained_snapshot"])
         self.assertTrue(evidence["recovery_action"])
         self.assertTrue(all(type(value) is bool for value in evidence.values()))
+        current["nodes"][0]["name"] = message[:100]
+        self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
+
+    def test_missing_library_accepts_isolated_separator_nodes_without_losing_requirements(self):
+        name = "synthetic 引用.bib"
+        message = (f"The library could not be opened: {name}. "
+                   "the library file is unavailable; keeping the last loaded references. "
+                   "Choose it again or reconnect the drive.")
+        current = {"nodes": [{"name": message}, {"value": name}, {"value": " · "},
+                             {"value": "not updated"}, {"value": f"{name} · 4 references"}]}
+        self.assertTrue(all(missing_library_evidence(current, name).values()))
+        current["nodes"][3]["value"] = "no references"
+        self.assertFalse(missing_library_evidence(current, name)["retained_snapshot"])
+        current["nodes"][3]["value"] = "not updated"
+        current["nodes"][-1]["value"] = f"{name} · 3 references"
+        self.assertFalse(missing_library_evidence(current, name)["retained_snapshot"])
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 

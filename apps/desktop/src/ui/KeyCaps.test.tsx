@@ -4,6 +4,9 @@ import { KeyCaps, KeyHint } from "./KeyCaps";
 import { PickerFooter } from "../features/picker/PickerFooter";
 import { MoreMenu } from "../features/picker/MoreMenu";
 
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+
 const caps = (container: HTMLElement) => [...container.querySelectorAll("kbd")].map((cap) => cap.textContent);
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); delete document.documentElement.dataset.platform; });
@@ -76,4 +79,9 @@ test("a hint names the action first and its keys after", () => {
   expect(hint.lastElementChild?.className).toBe("key-caps");
   expect(hint.textContent).toBe("Copy as Pandoc Enter");
   expect(hint.getAttribute("data-primary")).toBe("true");
+});
+
+test("keys read left to right in a right-to-left page, as the systems print them", () => {
+  const css = readFileSync(new FileURL("./KeyCaps.css", import.meta.url), "utf8");
+  expect(css).toMatch(/\.key-caps \{ direction: ltr; unicode-bidi: isolate; \}/);
 });

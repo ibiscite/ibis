@@ -98,8 +98,10 @@ test("every footer text sits in an element WebKitGTK exposes, not a plain span b
   // Linux screen readers lost the count and the detail when they were plain spans (#531).
   const { container } = render(createElement(LibraryStatusLine, { library: file({ updated_at: now }), groupName: String }));
   const words = container.querySelector(".library-name");
-  expect([...(words?.children ?? [])].map((child) => child.tagName)).toEqual(["BDI", "BDI"]);
-  expect(container.querySelector(".library-state")?.textContent).toBe(" · 1,204 references");
+  expect([...(words?.children ?? [])].map((child) => child.tagName)).toEqual(["BDI", "BDI", "BDI"]);
+  // The separator is its own item between name and state, so a right-to-left
+  // page keeps it between them instead of isolating it with the state's words.
+  expect([...(words?.children ?? [])].map((child) => child.textContent)).toEqual(["thesis.bib", " · ", "1,204 references"]);
   expect(container.querySelector(".library-detail")?.tagName).toBe("P");
 });
 
