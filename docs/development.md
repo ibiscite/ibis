@@ -43,6 +43,7 @@ Each active milestone has one, labelled `tracking` and titled `<milestone>: plan
 - one line per open pull request: what it does, what it waits on
 
 ## Queue
+**Lane name** (the files it owns)
 1. #N short title
 
 ## Waiting on the maintainer

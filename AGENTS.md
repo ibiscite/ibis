@@ -30,14 +30,14 @@ Any agent (Claude, Codex or another tool) or human can do any part of the work u
 
 ## The loop
 
-1. **Pick.** Take the first untaken item in the current tracking issue's Queue and say in its issue that you took it. A red `main` comes first, always: revert the merge that broke it, including when the red job is not required but was green before, then fix it in a new pull request.
+1. **Pick.** Take the first untaken item in your lane of the current tracking issue's Queue and say in its issue that you took it. A red `main` comes first: when the required "CI result" check fails on `main`, revert the merge whose own run first turned it red, then fix it in a new pull request. A failing job that is not required never triggers a revert or a queue hold by itself; record it in the issue CI opened for it, and if it fails twice on `main` for the same reason, treat it as a P2 bug.
 2. **Branch** `<type>/<issue>-<short-name>` from `origin/main` in your own worktree; never share a checkout. Start with a failing test or a fixture in `fixtures/`.
-3. **Build** in small steps, under about 300 changed lines. Use an explicit working directory or absolute paths, and inspect the diff before testing. Update docs and snapshots in the same change; review snapshot diffs like code.
+3. **Build** in small steps, under about 300 changed lines including tests. Use an explicit working directory or absolute paths, and inspect the diff before testing. Update docs and snapshots in the same change; review snapshot diffs like code.
 4. **Check** with the fast commands while editing, then `node scripts/check.mjs` on the exact final commit. Report each step as passed, failed or blocked, never "passed" for something that did not run.
 5. **Attack your own change once:** hostile, huge or empty input, other scripts and locales, concurrency, each platform, silent failure. P1 = crash, hang, data loss, security; P2 = wrong or silently changed output. Fix P1, P2 and regressions with a test; file P3s as one follow-up issue.
 6. **Open** the pull request with the template. Push unfinished work early as a draft so nothing lives on one machine, and mark it ready once the check passes.
 7. **Review and merge.** Code needs an independent review of the exact head commit by another session, preferably another model, with every P1 and P2 fixed (filing them as issues does not count). Documentation-only, or tests and synthetic fixtures only, need only your recorded step 5 (ADR 0017). Squash-merge when all required checks pass on that commit. Never use `--admin` or another bypass. When the merge queue is enabled, the release pull request merges like any other; until then, nobody merges to `main` while a release hold is announced on the tracking issue.
-8. **Close the loop.** Check `main` is green and keep the tracking issue body current (Now and Queue). Comment on the tracking issue only for decisions and handoffs.
+8. **Close the loop.** Check "CI result" is green on `main` and keep the tracking issue body current (Now and Queue). Comment on the tracking issue only for decisions and handoffs. Keep other issue and pull request comments under about 150 words; reviews and evidence may be longer. State results plainly, including what did not run.
 
 ## Pausing and resuming
 
@@ -49,7 +49,10 @@ All state lives on GitHub, so any agent can stop at any point and any other can 
 
 ## Limits
 
-- Finish or close your pull request before starting another; at most one open pull request per agent unless it is waiting only on review.
+- Work in lanes listed in the tracking issue's Queue; lanes never edit the same files, and each lane has one writer.
+- At most two draft pull requests at a time across all agents; a pull request waiting only on review or checks does not count. Finish drafts rather than closing and rebuilding them.
+- A check that fails twice for the same reason: stop retrying, record the diagnosis in the pull request's issue and take the next item; a red `main` is still fixed first.
+- Native flakes get one issue and at most one open pull request at a time. A pull request must not grow `scripts/smoke-native.py` unless its issue asks for a new check.
 - No stacking: every branch starts from `main`, because stacked squash merges have silently reverted changes on `main`. After merging `main` into a branch, check `git diff origin/main` shows only your change.
 - No new workflows, harnesses, ADRs or dependencies unless the issue asks for them. Prefer maintained libraries to new code and fewer dependencies to more. Dependencies must pass `cargo deny check`; before adding one, confirm on its registry page and repository that the exact name exists and is maintained (AI tools suggest look-alike names).
 - Hard-to-reverse decisions (license, persisted data formats, public CLI or API contracts, network use, security boundaries) need an ADR.
@@ -62,8 +65,6 @@ Follow the [architecture principles](docs/architecture.md#principles), including
 ## Version control safety
 
 - Run `git status` before editing; never reset, restore, delete or reformat work you did not make.
-- Copy evidence links from GitHub's returned job or artifact URLs and verify their source commit; never invent run/job pairs.
-- Before proposing a main-recovery revert, inspect all checks on current `origin/main` and the failure issue's latest lead reviews; an older intermittent failure is not evidence that the newest merge caused it.
-- After creating a worktree, set every later command's working directory explicitly; `git worktree add` does not change it. Run repository-relative diff pathspecs from the repository root and confirm they match files before treating an empty diff as equality.
+- Link evidence only from URLs GitHub returned for that commit. Before treating an empty diff as equality, confirm the pathspec matches files.
 - Never push to `main` or a `claude/*` branch. One branch per pull request.
 - Commits follow the [standard](docs/development.md#commits): Conventional Commits in the imperative mood, `!` or a `BREAKING CHANGE:` footer for breaking changes, signed off (`git commit -s`), and, when an AI tool helped, an `Assisted-by: <tool and model>` trailer or the tool's co-author line (ADR 0011). Never put conversation history, pause notes or private context in commits, pull requests or issues.
