@@ -148,6 +148,8 @@ mod tests {
                 .unwrap_or_else(|_| panic!("missing diagnostic test gate"));
             assert_eq!(gate, [b'g']);
             super::warning();
+            #[cfg(target_os = "macos")]
+            crate::native_corners::test_warning();
             return;
         }
 
@@ -206,10 +208,14 @@ mod tests {
                 stderr
                     .read_to_end(&mut output)
                     .unwrap_or_else(|_| panic!("cannot read diagnostic test output"));
-                assert_eq!(
-                    output,
-                    b"ibis: native appearance is unavailable; using opaque surface\n"
-                );
+                let expected = b"ibis: native appearance is unavailable; using opaque surface\n".as_slice();
+                #[cfg(target_os = "macos")]
+                let expected = [
+                    expected,
+                    b"ibis: native picker corners unavailable: the picker content layer is unavailable; using rectangular window\n",
+                ]
+                .concat();
+                assert_eq!(output, expected);
             }
         }
     }

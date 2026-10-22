@@ -5,6 +5,8 @@
 //! clips the WebView and effect-view descendants; the WindowServer shadow is
 //! separate and must remain enabled on the window.
 
+#![deny(clippy::print_stderr)]
+
 use tauri_nspanel::{NSPanel, objc2::MainThreadMarker};
 
 // AppKit exposes no system radius for a borderless launcher. Use twelve logical
@@ -15,9 +17,20 @@ const CORNER_RADIUS_POINTS: f64 = 12.0;
 /// picker usable rather than turning an appearance failure into startup failure.
 pub(crate) fn configure(panel: &NSPanel) {
     if let Err(reason) = apply(panel) {
-        // Every reason below is fixed text; never log a native error payload.
-        eprintln!("ibis: native picker corners unavailable: {reason}; using rectangular window");
+        warning(reason);
     }
+}
+
+fn warning(reason: &'static str) {
+    // Every reason below is fixed text; never log a native error payload.
+    crate::diagnostics::application_message(&format!(
+        "native picker corners unavailable: {reason}; using rectangular window"
+    ));
+}
+
+#[cfg(test)]
+pub(super) fn test_warning() {
+    warning("the picker content layer is unavailable");
 }
 
 fn apply(panel: &NSPanel) -> Result<(), &'static str> {
