@@ -30,7 +30,7 @@ function backend(search: (query: string) => ReturnType<typeof result>[]) {
       hide_picker: () => null,
       set_pinned: () => null,
       copy_format: () => "pandoc",
-      picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false }),
+      picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
       set_picker_preferences: () => null,
       library_status: () => ({ revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 0, error: null, note: null }),
     };

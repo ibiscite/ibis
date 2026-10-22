@@ -27,3 +27,19 @@ Display choice and remembered window position are not part of this decision. The
 - An older build ignores these fields, and a save from it drops them, as ADR 0016 allows.
 - Adding a bundled style adds a value, which older builds then report as invalid. That is acceptable before 1.0. Later, an added style may need format 3.
 - Style IDs are CSL file names, so later styles can follow the same rule.
+
+## Agreed extension: citation output visibility (2026-10-22)
+
+The maintainer chose the default-on, saved "Show what will be pasted" toggle
+and Cmd/Ctrl+I in #787. It joins the existing picker-preference read and locked
+read/change/save commands as an optional field in settings format 2:
+
+| Field | Value | Absent or `null` means |
+| --- | --- | --- |
+| `show_paste_preview` | `true` or `false` | `true` |
+
+Hiding the preview writes `show_paste_preview: false`; showing it removes that
+field. The choice controls the output line and wide pane only: citation chips,
+the chosen format and copy readiness stay unchanged. Other known and unknown
+settings remain preserved under ADR 0022; invalid types and newer settings
+files retain the existing rejection and recovery rules.

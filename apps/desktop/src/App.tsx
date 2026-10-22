@@ -1,7 +1,7 @@
 import * as nativeApi from "./api";
 import { copiedNoticeText, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { KEY_TABLE, shortcutLabel, type KeyBinding } from "./keys";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LibrarySetup } from "./LibrarySetup";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
@@ -10,7 +10,7 @@ import { afterCopy } from "./copyFeedback";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice } from "./features/picker/choice";
-import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./features/picker/shortcuts";
+import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
@@ -65,7 +65,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
   const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
-  const { format, density, largerText, changeDensity, toggleLargerText, quitAfterSaving } = preferences;
+  const { format, density, largerText, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   // The formatted preview, tagged with the style, choice and library it was
   // made for, so Enter never copies a preview of an earlier choice.
@@ -80,6 +80,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
   const input = useRef<HTMLInputElement>(null);
+  const output = useRef<HTMLElement | null>(null);
+  const outputRef = useCallback((node: HTMLElement | null) => {
+    // Saved choices can hide output too. Hand off before removing its focus,
+    // without taking focus from More, chips or another control.
+    if (!node && output.current?.contains(document.activeElement) && input.current?.isConnected) input.current.focus({ preventScroll: true });
+    output.current = node;
+  }, []);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -361,6 +368,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const previewKey = `${style ?? keyFormat}\u0002${libraryVersion}\u0002${chosenKey}`;
   // What Enter would copy now; null while it is being formatted.
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
+  // Visibility changes presentation only. Key copying also survives a failed preview.
+  const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined;
   const refreshSnapshot = () => {
     const request = ++statusReads.current;
     void libraryStatus().then((status) => {
@@ -610,6 +619,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         if (isPinShortcut(e)) {
           e.preventDefault();
           if (!e.repeat) togglePin();
+        } else if (isPreviewShortcut(e)) {
+          e.preventDefault();
+          if (!e.repeat) togglePastePreview();
         } else if (isKeysShortcut(e)) {
           e.preventDefault();
           openKeys();
@@ -671,6 +683,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               if (command === "more") openMore();
               else if (command === "keys") openKeys();
               else if (command === "pin") togglePin();
+              else if (command === "preview") togglePastePreview();
               else if (command === "quit") void perform("quit", quitAfterSaving);
             },
           };
@@ -678,7 +691,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       />
       <div className="picker-content">
       <Notices library={library} failures={failures} startAtLogin={startAtLogin}
-        error={error} copyError={copyError} copied={copied} onDismissCopied={() => setCopied(null)} />
+        error={error} copyError={copyError} copied={copied}
+        showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
+        onDismissCopied={() => setCopied(null)} />
       <div className="results-area">
         {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><span>{pickerText.resultCount(results.length)}</span>
@@ -711,9 +726,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         toggle(r);
         input.current?.focus({ preventScroll: true });
       }} style={style} keys={keyFormat !== null}
-        // A key syntax copies without its preview, so a failed preview is left out
-        // rather than saying the citation cannot be copied.
-        shown={chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined} focusable={selected.size > 0} />
+        shown={displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         pinned={pinned} onUnpin={() => { togglePin(); input.current?.focus(); }}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
@@ -727,7 +740,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               name: (choice) => (typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary),
               toggle: toggleLibrary,
             } : null}
-            density={density} largerText={largerText} pinned={pinned}
+            density={density} largerText={largerText} pinned={pinned} showPastePreview={showPastePreview}
             startAtLogin={loginItemOffered && startAtLogin ? { item: startAtLogin, toggle: toggleStartAtLogin } : null}
             actions={{
               choose: () => runFromMenu("choose", chooseLibrary),
@@ -736,6 +749,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               density: changeDensity,
               largerText: toggleLargerText,
               pin: togglePin,
+              preview: togglePastePreview,
               keys: openKeys,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />

@@ -107,7 +107,7 @@ The group footer says "Ibis only reads your libraries. It never changes them."
 |---|---|---|---|
 | When you press Enter, copy | one grouped pop-up: *Citation keys* (Pandoc, \autocite, \parencite, \textcite, \cite, Typst, bare keys) and *Styles* (the five bundled; any CSL style from 0.3) | **Pandoc** | exists (`copy_format` + `citation_style`) |
 | Preview | a synthetic reference in the chosen format, drawn as the citation shelf draws it ([preview.md](preview.md)) | | new UI |
-| Show what will be pasted | switch (also ⌘I / Ctrl+I in the picker; in More until Settings exists) | **on** | new ([preview.md](preview.md)) |
+| Show what will be pasted | switch (also ⌘I / Ctrl+I in the picker; in More until Settings exists) | **on** | exists (`show_paste_preview`, ADR 0020) |
 | Format menu | tick and drag: which formats and styles the format menu shows, in order | the seven key formats + five styles | new (`format_menu`), needed once 0.3 adds about 2,600 styles |
 | After you choose a reference | pop-up: **Paste into the app** / Copy only | Copy only until 0.4 insertion ships, then Paste | planned 0.4 |
 | Put the clipboard back afterwards | switch | **on** | planned 0.4 |
@@ -409,6 +409,9 @@ kept, saves flushed, `.bak` recovery, newer files refused. Writes go through one
 locked read-change-save in Rust. Both windows listen for one `settings-changed`
 event. The login item stays with the system and never goes into the file.
 
+`show_paste_preview` is the default-on picker preference for "Show what will be
+pasted" (ADR 0020). Only `false` is written; hiding output keeps citation chips.
+
 ### 5.2 New fields (each needs an ADR first)
 
 | Field (proposed) | Shape | Notes |
@@ -416,7 +419,6 @@ event. The login item stays with the system and never goes into the file.
 | `shortcut` (existing) | add `""` meaning "no global shortcut" | ADR #783; an absent field still means the default |
 | `keys` | sparse map, action ID → accelerator | 0.4 (ADR #783). Unknown action IDs are kept and ignored, so a Nightly action does not invalidate the file for Stable |
 | `format_menu` | ordered list of format and style IDs | 0.3; unknown IDs tolerated per entry |
-| (name chosen in the settings ADR, #783) | bool | "Show what will be pasted" ([preview.md](preview.md)); a picker-preferences field under ADR 0020 |
 | `keep_search` | seconds: 0, 60 or 180 | only the duration is stored |
 | `paste` | `{ "after_choose": "paste" \| "copy", "restore_clipboard": bool }` | 0.4, with the insertion ADR |
 | `history` | bool | PRIVACY.md must list it |

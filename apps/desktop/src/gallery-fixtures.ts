@@ -30,6 +30,7 @@ export type GalleryState = {
   formatMenu?: true | string;
   tray?: number;
   formatted?: boolean;
+  showPastePreview?: boolean;
   keys?: boolean;
 };
 
@@ -163,6 +164,11 @@ export const galleryStates: readonly GalleryState[] = [
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
+  ...[false, true].flatMap((formatted) => [true, false].map((showPastePreview) => ({
+    id: `preview-${formatted ? "apa" : "keys"}-${showPastePreview ? "on" : "off"}`,
+    label: `${formatted ? "APA" : "Key"} output ${showPastePreview ? "shown" : "hidden"}`,
+    library: library(), query: "memory", results: examples, tray: 2, pinned: true, formatted, showPastePreview,
+  }))),
   { id: "scope-menu", label: "Zotero scope in More", library: library({ name: "2 Zotero libraries", snapshot_name: "2 Zotero libraries", zotero: true,
     snapshot_zotero: true, zotero_libraries: ["user", { group: 41 }] }), query: "memory", results: examples, menuOpen: true },
   { id: "format-menu", label: "Format menu open", library: library(), query: "memory", results: examples, formatMenu: true },
@@ -190,14 +196,14 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       search: async () => ({ revision: state.library.revision, results: state.results ?? [] }),
       citationText: async (ids) => ({ text: `[${ids.map((id) => `@${id.native_key}`).join("; ")}]`, warnings: [] }),
       copyCitation: async (ids) => ({ text: (state.tray ?? 0) >= 20 ? `[@${ids.map((id) => id.native_key).join("; @")}]` : "[@example2026]", warnings: [] }),
-      ...((state.tray ?? 0) >= 20 ? {
+      ...((state.tray ?? 0) >= 20 || state.formatted ? {
         cslItems: async (ids: Parameters<NonNullable<PickerApi["cslItems"]>>[0]) => JSON.stringify(ids.map((id) => ({
           id: id.native_key, type: "book", title: "Synthetic preview pressure", author: [{ family: id.native_key }], issued: { "date-parts": [[2026]] },
         }))),
         copyFormatted: async () => null,
       } : {}),
       copyFormat: async () => "pandoc",
-      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false }),
+      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true }),
       setPickerPreferences: async () => null,
       shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       chooseLibrary: async () => undefined,

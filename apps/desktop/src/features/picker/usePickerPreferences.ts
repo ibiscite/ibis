@@ -1,4 +1,4 @@
-// The picker's saved preferences: format choice, density and larger text.
+// The picker's saved formatting and view preferences.
 import { useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { CopyFormat, Density, PickerPreferences } from "../../api";
@@ -25,6 +25,8 @@ export function usePickerPreferences(
   // file to defaults.
   const [density, setDensity] = useState<Density>("comfortable");
   const [largerText, setLargerText] = useState(false);
+  const [showPastePreview, setShowPastePreview] = useState(true);
+  const previewVisibility = useRef(true);
   const savedPreferences = useRef<PickerPreferences | null>(null);
   const pending = useRef<Partial<PickerPreferences>>({});
   const pendingKeyFormat = useRef<{ format: CopyFormat; saved: boolean } | null>(null);
@@ -74,6 +76,12 @@ export function usePickerPreferences(
     setLargerText(!largerText);
     savePreferences({ larger_text: !largerText });
   };
+  const togglePastePreview = () => {
+    const next = !previewVisibility.current;
+    previewVisibility.current = next;
+    setShowPastePreview(next);
+    savePreferences({ show_paste_preview: next });
+  };
   useEffect(() => {
     document.documentElement.dataset.density = density;
     document.documentElement.dataset.textSize = largerText ? "larger" : "normal";
@@ -100,6 +108,8 @@ export function usePickerPreferences(
       savedPreferences.current = saved.value;
       setDensity(loaded.density);
       setLargerText(loaded.larger_text);
+      previewVisibility.current = loaded.show_paste_preview;
+      setShowPastePreview(loaded.show_paste_preview);
       const chosen = pending.current.citation_style !== undefined;
       if (Object.keys(pending.current).length > 0) savePreferences({});
       if (chosen) return;
@@ -108,5 +118,5 @@ export function usePickerPreferences(
       else if (key.status === "fulfilled") setFormat(key.value);
     });
   };
-  return { format, density, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
+  return { format, density, largerText, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
 }

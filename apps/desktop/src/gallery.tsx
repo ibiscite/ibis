@@ -41,7 +41,9 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
     && JSON.stringify(actualAlerts) === JSON.stringify(alerts)
     && (root.querySelector('.empty-loading[role="progressbar"]')?.getAttribute("aria-label") ?? null) === busy
     && (root.querySelector('[aria-label="Choose library to get started"]') !== null) === (library.state === "none")
-    && (root.querySelector(".copy-notice code")?.textContent ?? null) === (state.copied?.text ?? null)
+    && (state.copied ? root.querySelector(".copy-notice") !== null
+      && (root.querySelector(".copy-notice code")?.textContent ?? root.querySelector(".shelf-output .preview-text")?.textContent) === state.copied.text
+      : root.querySelector(".copy-notice") === null)
     && (root.querySelector('.library-bar p[role="status"]')?.textContent ?? null) === library.note
     && (document.querySelector(".gallery-notice .copied-notice code")?.textContent ?? null) === (state.notice ?? null);
 }
@@ -125,7 +127,9 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (typeof state.formatMenu !== "string" || filter?.value === state.formatMenu)
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
     && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li.chip`).length === Math.min(state.tray ?? 0, SHELF_CHIPS)
-    && (!state.formatted || root.querySelector(".shelf-output .preview-text") !== null)
+    && (state.showPastePreview === false ? root.querySelector(".shelf-output") === null
+      && root.querySelector('footer [aria-keyshortcuts="Enter"]') !== null
+      : !(state.formatted || state.showPastePreview) || root.querySelector(".shelf-output .preview-text") !== null)
     && selectionContained(root, state);
 }
 

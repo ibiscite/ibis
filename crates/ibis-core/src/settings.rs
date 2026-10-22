@@ -144,6 +144,9 @@ pub struct Settings {
     /// Larger text in the picker. `None` means the normal size.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub larger_text: Option<bool>,
+    /// Whether to show the citation output. `None` means shown (ADR 0020).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_paste_preview: Option<bool>,
     /// Fields this build does not know, written by another version of Ibis
     /// or by hand. Kept as they are and written back on save.
     #[serde(flatten)]
@@ -161,6 +164,7 @@ impl Default for Settings {
             citation_style: None,
             density: None,
             larger_text: None,
+            show_paste_preview: None,
             unknown: serde_json::Map::new(),
         }
     }
@@ -471,17 +475,21 @@ mod tests {
 
     #[test]
     fn picker_preferences_round_trip_and_stay_optional() {
+        for text in ["{}", r#"{"show_paste_preview":null}"#] {
+            assert_eq!(parse(text).map(|settings| settings.show_paste_preview).ok(), Some(None));
+        }
         let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
-        for field in ["citation_style", "density", "larger_text"] {
+        for field in ["citation_style", "density", "larger_text", "show_paste_preview"] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(
-            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true}"#,
+            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false}"#,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
         assert_eq!(settings.density, Some(Density::Compact));
         assert_eq!(settings.larger_text, Some(true));
+        assert_eq!(settings.show_paste_preview, Some(false));
         let directory = dir("preferences");
         let path = directory.path().join("settings.json");
         save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
@@ -489,11 +497,13 @@ mod tests {
     }
 
     #[test]
-    fn unknown_style_or_density_is_invalid_not_guessed() {
+    fn unknown_picker_preference_values_are_invalid_not_guessed() {
         for text in [
             r#"{"citation_style": "vancouver"}"#,
             r#"{"density": "tiny"}"#,
             r#"{"larger_text": "yes"}"#,
+            r#"{"show_paste_preview": "yes"}"#,
+            r#"{"show_paste_preview": 0}"#,
         ] {
             assert!(matches!(parse(text), Err(SettingsError::Invalid(_))), "{text}");
         }

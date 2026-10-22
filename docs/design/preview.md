@@ -40,7 +40,8 @@ layer from `design/depth-prototype` (variant B). The footer pattern
   with the output block pinned at its bottom.
 - **It can be hidden, and is on by default.** One setting, "Show what will be
   pasted" (Settings › Citations, see [settings.md](settings.md); in More until
-  Settings exists), plus ⌘I / Ctrl+I in the picker. Both are saved.
+  Settings exists), plus ⌘I / Ctrl+I in the picker. Both are saved. The shortcut
+  follows the logical I key; punctuation on its physical key does not toggle.
   - On by default: the output is the last check before an action that is hard to
     undo once it lands in a document, and it teaches what each format produces.
     It costs 40 px.
@@ -48,6 +49,9 @@ layer from `design/depth-prototype` (variant B). The footer pattern
     the output line hides. The footer still says "Copy 3 as APA ↵".
   - When off in a wide window, the pane closes and the list takes the full
     width.
+  - Hiding output preserves the citation order, formatting and copy readiness.
+    If that output owns focus, Search receives it before removal; other controls
+    keep focus. This also applies when a saved off choice finishes loading.
 
 ### Chips before the count
 
@@ -71,7 +75,7 @@ layer from `design/depth-prototype` (variant B). The footer pattern
 | Failed | A Stop icon replaces the mark, then "Couldn't format in APA. Choose another style, or copy keys." The Enter hint disappears. |
 | Stale | A Look icon, then "The library changed. Reading it again…". |
 | Warnings, provisional (IEEE) | A trailing secondary pill, "1 warning" or "Numbers may change"; detail in its tooltip and in the pane. |
-| Copied while kept open | The mark becomes a Done check and the line reads "Copied" for 1.2 s. Otherwise the window hides and the Copied notice shows. |
+| Copied while kept open | The notice says "Copied" without repeating text only when the visible output is exactly the copied string. Hidden or different output keeps the copied text and warnings available. Otherwise the window hides and the Copied notice shows. |
 | Selection | Selectable in the pane, where it wraps. In the shelf it is one read-only line, so selection never fights row clicks. |
 | Larger text, RTL | Chips and lines scale; fewer chips fit before "+N". In RTL the mark sits at the start (right) and chips flow from the right. |
 | Small window (under 460 px) | The chip row shows only "3 references ›", which opens the list; the output line stays. |

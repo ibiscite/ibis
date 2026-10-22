@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type Ref } from "react";
 import type { SearchResult } from "../../api";
 import { provisional, type FormattedCitation } from "../../format/formatted";
 import { render } from "../../format/markup";
@@ -26,7 +26,7 @@ export function chipLabels(records: SearchResult[]): string[] {
 /** What Enter pastes, above the footer's Copy action (docs/design/preview.md):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, removeLabel, onRemove, style, keys, shown, focusable }: {
+export function CitationShelf({ announce, selected, removeLabel, onRemove, style, keys, shown, focusable, outputRef }: {
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
   selected: Map<string, SearchResult>;
@@ -40,6 +40,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
   /** A built citation can be focused, to read it whole. */
   focusable: boolean;
+  outputRef?: Ref<HTMLElement>;
 }) {
   const records = [...selected.values()];
   const keysOf = [...selected.keys()];
@@ -109,7 +110,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
             </ul>
           )}
           {shown !== undefined && (
-            <section aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
+            <section ref={outputRef} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
               data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
               tabIndex={focusable && shown && typeof shown === "object" ? 0 : undefined}>
               <span className="shelf-mark" aria-hidden="true">{"“"}</span>

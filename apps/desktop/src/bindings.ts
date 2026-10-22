@@ -248,6 +248,7 @@ export type PickerPreferences = {
 	citation_style: CitationStyle | null,
 	density: Density,
 	larger_text: boolean,
+	show_paste_preview: boolean,
 };
 
 /**  Stable identity of a record: which source it came from and its key there. */

@@ -8,13 +8,14 @@ export type Operation = keyof typeof operationFailures;
 
 /** Problems and confirmations above the results: library and settings
  * problems, failed actions, search and copy errors, and what was copied. */
-export function Notices({ library, failures, startAtLogin, error, copyError, copied, onDismissCopied }: {
+export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied }: {
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
   startAtLogin: LoginItem | null;
   error: string | null;
   copyError: string | null;
   copied: Copied | null;
+  showCopiedText: boolean;
   onDismissCopied: () => void;
 }) {
   return (
@@ -32,7 +33,7 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
       {copied && (
         <div role="status" className="copy-notice">
           <p>
-            {pickerText.copied} <code>{copied.text}</code>
+            {pickerText.copied}{showCopiedText && <> <code>{copied.text}</code></>}
           </p>
           {copied.warnings.length > 0 && (
             <>

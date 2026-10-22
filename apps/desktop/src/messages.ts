@@ -133,6 +133,7 @@ export const pickerText = {
   matchedIn: (field: string) => `Matched in ${matchFieldNames[field] ?? field}`,
   more: "More",
   keepOpen: "Keep Window Open",
+  showPastePreview: "Show what will be pasted",
   unpinTitle: "Kept open; click to stop",
   moreTitle: (keys: string) => `More actions (${keys})`,
   firstRun: "Choose a library to get started",
@@ -181,6 +182,7 @@ export const keyText = {
     system: "Any app",
   },
   actions: {
+    preview: "Show what will be pasted",
     copy: "Copy the highlighted reference, or the ones added to the citation, in the Copy as format",
     add: "Add the highlighted reference to the citation, or remove it",
     move: "Move through the results",

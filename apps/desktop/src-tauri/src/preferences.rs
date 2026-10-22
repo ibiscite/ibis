@@ -74,6 +74,7 @@ pub(crate) struct PickerPreferences {
     pub(crate) citation_style: Option<CitationStyle>,
     pub(crate) density: Density,
     pub(crate) larger_text: bool,
+    pub(crate) show_paste_preview: bool,
 }
 
 impl PickerPreferences {
@@ -82,6 +83,7 @@ impl PickerPreferences {
             citation_style: settings.citation_style,
             density: settings.density.unwrap_or(Density::Comfortable),
             larger_text: settings.larger_text.unwrap_or(false),
+            show_paste_preview: settings.show_paste_preview.unwrap_or(true),
         }
     }
 }
@@ -118,6 +120,7 @@ impl SettingsFile {
             // Defaults stay unwritten, so the file only names real choices.
             s.density = Some(preferences.density).filter(|d| *d != Density::Comfortable);
             s.larger_text = Some(preferences.larger_text).filter(|larger| *larger);
+            s.show_paste_preview = Some(preferences.show_paste_preview).filter(|shown| !shown);
         })
     }
 }
@@ -230,6 +233,7 @@ mod tests {
             citation_style: Some(CitationStyle::Apa),
             density: Density::Spacious,
             larger_text: true,
+            show_paste_preview: false,
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.copy_format, Some(KeyFormat::Typst));
@@ -238,13 +242,53 @@ mod tests {
             citation_style: None,
             density: Density::Comfortable,
             larger_text: false,
+            show_paste_preview: true,
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(PickerPreferences::from_settings(&saved), defaults);
         let text = std::fs::read_to_string(&file.path).unwrap_or_default();
-        for field in ["citation_style", "density", "larger_text"] {
+        for field in ["citation_style", "density", "larger_text", "show_paste_preview"] {
             assert!(!text.contains(field), "{field} is not written for the default");
         }
+    }
+
+    #[test]
+    fn paste_preview_defaults_on_and_off_survives_restart_without_losing_settings() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        assert!(PickerPreferences::from_settings(&settings::Settings::default()).show_paste_preview);
+
+        let original = serde_json::json!({
+            "schema_version": 2, "shortcut": "Alt+Space", "library": { "bibtex": "refs.bib" },
+            "copy_format": "typst", "update_checks": false, "citation_style": "ieee",
+            "density": "compact", "larger_text": true, "future_choice": { "kept": [true, null] },
+        });
+        std::fs::write(&file.path, original.to_string()).unwrap_or_else(|e| panic!("{e}"));
+        let mut chosen = PickerPreferences::from_settings(&settings::load(&file.path).settings);
+        chosen.show_paste_preview = false;
+        file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
+        let restarted = SettingsFile::new(file.path.clone());
+        let loaded = settings::load(&restarted.path);
+        assert!(loaded.problem.is_none());
+        assert_eq!(PickerPreferences::from_settings(&loaded.settings), chosen);
+        let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file.path).unwrap_or_default())
+            .unwrap_or_else(|e| panic!("{e}"));
+        for (field, value) in original.as_object().unwrap_or_else(|| panic!("expected an object")) {
+            assert_eq!(&saved[field], value, "{field} survives the preview choice");
+        }
+        assert_eq!(saved["show_paste_preview"], false);
+
+        chosen.show_paste_preview = true;
+        restarted
+            .save_preferences(chosen, None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file.path).unwrap_or_default())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(
+            saved.get("show_paste_preview").is_none(),
+            "the on default stays unwritten"
+        );
+        assert_eq!(saved["future_choice"], original["future_choice"]);
     }
 
     #[test]
@@ -255,6 +299,7 @@ mod tests {
             citation_style: Some(CitationStyle::Apa),
             density: Density::Compact,
             larger_text: true,
+            show_paste_preview: false,
         };
         for format in [
             KeyFormat::Pandoc,
@@ -292,10 +337,12 @@ mod tests {
             citation_style: None,
             density: Density::Comfortable,
             larger_text: false,
+            show_paste_preview: false,
         };
         for text in [
             r#"{"copy_format":"synthetic-private-value"}"#,
-            r#"{"schema_version":3}"#,
+            r#"{"show_paste_preview":"synthetic-private-value"}"#,
+            r#"{"schema_version":3,"show_paste_preview":false,"future_choice":{"kept":true}}"#,
         ] {
             std::fs::write(&file.path, text).unwrap_or_else(|e| panic!("{e}"));
             let failed = file.save_preferences(chosen, Some(KeyFormat::Cite));
