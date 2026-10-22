@@ -3,10 +3,14 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { galleryStates } from "../../gallery-fixtures";
 import { PickerFooter } from "./PickerFooter";
 
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+const footerStyles = readFileSync(new FileURL("./PickerFooter.css", import.meta.url), "utf8");
+
 const library = galleryStates.find((state) => state.id === "tray-20")!.library;
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-function geometry(initial = 692, trailingMargin = 0) {
+function geometry(initial = 692, trailingMargin = 0, constrainHiddenHint = false) {
   let width = initial; let scale = 1; let copy = 162; let shortcuts = 133.8125; let more = 129.75;
   const observers: { callback: () => void; nodes: Set<Element> }[] = [];
   vi.stubGlobal("ResizeObserver", class {
@@ -15,9 +19,15 @@ function geometry(initial = 692, trailingMargin = 0) {
   });
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.matches(".library-bar") ? width : 0; });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    const size = this.matches(".footer-status-size") ? 224 : this.matches(".pin-button") ? 32
+    let size = this.matches(".footer-status-size") ? 224 : this.matches(".pin-button") ? 32
       : this.matches(".shortcuts-hint") ? shortcuts
       : this.getAttribute("aria-label")?.startsWith("Copy") ? copy : this.getAttribute("aria-label") === "More" ? more : 0;
+    if (constrainHiddenHint && this.matches(".shortcuts-hint") && this.closest("[data-shortcuts-folded]")) {
+      // An absolute optional-only row has no in-flow width. Its child needs
+      // intrinsic sizing to escape that constraint when measured while hidden.
+      const style = getComputedStyle(this);
+      if (style.width !== "max-content" || style.maxWidth !== "none") size = 32;
+    }
     return new DOMRect(0, 0, this.hidden || this.style.display === "none" ? 0 : size * scale, 32 * scale);
   });
   const computed = window.getComputedStyle;
@@ -101,4 +111,27 @@ test("platform key-cap changes restore optional content using the new live width
 test("the live hint margin restores Shortcuts at the actual fit boundary", () => {
   geometry(718, -4); render(footer());
   expect(screen.getByRole("button", { name: "Shortcuts" })).toBeTruthy();
+});
+
+test("an optional-only hint keeps its intrinsic width while folded and restores on growth", () => {
+  const style = document.createElement("style");
+  style.textContent = ".footer-action { max-width: 100%; }\n" + footerStyles;
+  document.head.append(style);
+  try {
+    const fit = geometry(388, 0, true);
+    render(<main><PickerFooter library={null} groupName={String} hints={{ enter: null, shiftEnter: null, escape: "Hide" }}
+      altHeld={false} pinned={false} onUnpin={() => undefined} more={<button aria-label="More">More</button>}
+      actions={{ copy: () => undefined, add: () => undefined, escape: () => undefined, keys: () => undefined }} /></main>);
+    const states = [];
+    for (let i = 0; i < 10; i++) {
+      fit.resize(388, { shortcuts: 92.078125, more: 85 });
+      states.push(document.querySelector(".library-bar")!.hasAttribute("data-shortcuts-folded"));
+    }
+    expect(states).toEqual(Array(10).fill(true));
+    fit.resize(900);
+    const shortcuts = screen.getByRole("button", { name: "Shortcuts" });
+    act(() => shortcuts.focus());
+    fit.resize(388);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "More" }));
+  } finally { style.remove(); }
 });
