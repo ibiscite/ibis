@@ -3597,11 +3597,30 @@ try {
                 self.assertEqual(result.stdout, "")
                 self.assertNotIn("injected-private-clipboard", result.stderr)
 
+    def test_windows_click_contract_timeout_preserves_only_bounded_fixed_phases(self):
+        method = ContractTests.test_windows_click_activates_one_exact_owned_button_with_its_native_pattern
+        method = getattr(method, "__wrapped__", method)
+        phases = ["WINDOWS CLICK CONTRACT parse-start", "WINDOWS CLICK CONTRACT compile-start"]
+        dirty = "\n".join([phases[0], "private-output", phases[1], phases[0], "WINDOWS CLICK CONTRACT private-command"])
+        for stderr, expected in [(dirty, phases), (dirty.encode() + b'\n\xffprivate', phases), (None, []),
+                                 (phases[0] + '\n' + 'private' * 100000 + '\nWINDOWS CLICK CONTRACT complete', phases[:1])]:
+            error = subprocess.TimeoutExpired(["private-command"], 20, stderr=stderr)
+            with patch("shutil.which", return_value="synthetic-pwsh"), patch("subprocess.run", side_effect=error) as helper, patch("builtins.print") as output:
+                with self.assertRaises(subprocess.TimeoutExpired) as caught:
+                    method(self)
+                self.assertIs(caught.exception, error)
+                self.assertIs(error.stderr, stderr)
+                self.assertEqual(helper.call_count, 1)
+                self.assertEqual(helper.call_args.kwargs["timeout"], 20)
+                self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
+                self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
+
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows click helper contract")
     def test_windows_click_activates_one_exact_owned_button_with_its_native_pattern(self):
         script = r'''
 param([string] $Source)
 $ErrorActionPreference='Stop'
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT parse-start')
 $tokens=$null; $errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Helper syntax is invalid' }
@@ -3611,6 +3630,8 @@ $clause=@($switch.Clauses | Where-Object {$_.Item1.Value -eq 'click'})[0].Item2.
 # fake provider types must share this isolated namespace, including enums.
 $clause=$clause.Replace('[System.Windows.Automation.', '[IbisClickContract.')
 $operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT parse-ready')
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT compile-start')
 Add-Type @'
 using System;
 public static class IbisSmoke {
@@ -3649,9 +3670,11 @@ public class ClickWindow {
 }
 }
 '@
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT compile-ready')
 $AppId=42; $PickerHandle=7; $Text='Typst'; $script:window=[IbisClickContract.ClickWindow]::new()
 [IbisClickContract.AutomationElement]::Window=$script:window
 # This window has no Search control: only the opened modal menu's target.
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT pattern-cases')
 foreach ($nativeHandle in @(7,-2147483647)) {
  [IbisSmoke]::Handle=$nativeHandle; $PickerHandle=$nativeHandle
  foreach ($pattern in @(1,2,3)) {
@@ -3663,6 +3686,7 @@ foreach ($nativeHandle in @(7,-2147483647)) {
  }
 }
 [IbisSmoke]::Handle=7; $PickerHandle=7
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT ownership-cases')
 foreach ($failure in @('stale','foreign','hidden','missing-handle')) {
  $element=[IbisClickContract.ClickElement]::new(); $script:window.Elements=@($element)
  [IbisSmoke]::Valid=$failure -ne 'stale'; [IbisSmoke]::Visible=$failure -ne 'hidden'
@@ -3672,6 +3696,7 @@ foreach ($failure in @('stale','foreign','hidden','missing-handle')) {
  if(!$rejected -or $element.Action.Activations -ne 0) {throw 'Unverified picker reached activation'}
 }
 [IbisSmoke]::Valid=$true; [IbisSmoke]::Visible=$true; [IbisSmoke]::Owner=42; $PickerHandle=7
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT rejection-cases')
 foreach ($failure in @('missing','wrong-label','text-toggle','menu-toggle','duplicate','unsupported','uncertain','bound')) {
  $element=[IbisClickContract.ClickElement]::new(); $script:window.Elements=@($element)
  switch($failure) {
@@ -3691,13 +3716,28 @@ foreach ($failure in @('missing','wrong-label','text-toggle','menu-toggle','dupl
 [IbisClickContract.AutomationElement]::Window=$null
 $rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
 if(!$rejected) {throw 'Missing owned window accepted'}
+[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT complete')
 '''
         with tempfile.TemporaryDirectory() as temporary:
             test = Path(temporary) / "click-contract.ps1"
             test.write_text(script, encoding="utf-8")
-            result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
-                                     "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                    capture_output=True, text=True, timeout=20)
+            try:
+                result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
+                                         "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
+                                        capture_output=True, text=True, timeout=20)
+            except subprocess.TimeoutExpired as error:
+                allowed = {f"WINDOWS CLICK CONTRACT {phase}" for phase in (
+                    "parse-start", "parse-ready", "compile-start", "compile-ready", "pattern-cases",
+                    "ownership-cases", "rejection-cases", "complete",
+                )}
+                captured = error.stderr or ""
+                captured = captured[:4096].decode("utf-8", errors="replace") if isinstance(captured, bytes) else captured[:4096]
+                seen = set()
+                for line in captured.splitlines():
+                    if line in allowed and line not in seen:
+                        print(line, file=sys.stderr)
+                        seen.add(line)
+                raise
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_windows_editor_preflight_rejects_a_pid_without_creation_identity(self):
