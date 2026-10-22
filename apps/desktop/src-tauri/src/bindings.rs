@@ -38,7 +38,10 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
+
+    include!("../app_commands.rs");
 
     fn destination() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")
@@ -65,6 +68,139 @@ mod tests {
             generated().replace("\r\n", "\n"),
             "stale desktop contract; run cargo test -p ibis-desktop bindings::tests::export_contract -- --ignored"
         );
+    }
+
+    #[test]
+    fn command_manifest_matches_the_runtime_registry() {
+        struct Registry;
+        impl tauri_specta::LanguageExt for Registry {
+            type Error = std::io::Error;
+
+            fn export(
+                self,
+                config: &tauri_specta::BuilderConfiguration,
+                _: &std::path::Path,
+            ) -> Result<(), Self::Error> {
+                let registered = config
+                    .commands
+                    .iter()
+                    .map(|command| command.name())
+                    .collect::<BTreeSet<_>>();
+                assert_eq!(registered.len(), config.commands.len(), "duplicate runtime command");
+                assert_eq!(
+                    APP_COMMANDS.len(),
+                    registered.len(),
+                    "duplicate or missing manifest command"
+                );
+                assert_eq!(registered, APP_COMMANDS.iter().copied().collect());
+                Ok(())
+            }
+        }
+        super::commands()
+            .export(Registry, "unused")
+            .unwrap_or_else(|e| panic!("cannot inspect command registry: {e}"));
+    }
+
+    #[test]
+    fn capabilities_grant_only_their_window_commands() {
+        let picker: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json"))
+            .unwrap_or_else(|e| panic!("invalid picker capability: {e}"));
+        let notice: serde_json::Value = serde_json::from_str(include_str!("../capabilities/notice.json"))
+            .unwrap_or_else(|e| panic!("invalid notice capability: {e}"));
+        for (capability, label) in [(&picker, "main"), (&notice, "notice")] {
+            assert_eq!(capability["windows"], serde_json::json!([label]));
+            assert!(capability.get("webviews").is_none());
+            assert!(capability.get("remote").is_none());
+            assert!(capability.get("local").is_none_or(|value| value == true));
+        }
+        assert_eq!(
+            notice["permissions"],
+            serde_json::json!([
+                "core:event:allow-listen",
+                "core:event:allow-unlisten",
+                "allow-copied-notice"
+            ])
+        );
+        let mut expected = [
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
+            "core:window:allow-internal-toggle-maximize",
+            "core:window:allow-start-dragging",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        expected.extend(
+            APP_COMMANDS
+                .iter()
+                .filter(|command| **command != "copied_notice")
+                .map(|command| format!("allow-{}", command.replace('_', "-"))),
+        );
+        assert_eq!(picker["permissions"], serde_json::json!(expected));
+    }
+
+    #[test]
+    fn window_commands_are_rejected_before_the_handler() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&calls);
+        let app = tauri::test::mock_builder()
+            .invoke_handler(move |invoke| {
+                observed.fetch_add(1, Ordering::SeqCst);
+                invoke.resolver.resolve(true);
+                true
+            })
+            .build(tauri::generate_context!(test = true))
+            .unwrap_or_else(|e| panic!("cannot build ACL fixture: {e}"));
+        let local = if cfg!(windows) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        for label in ["notice", "main", "unlisted", "notice-extra", "main-extra"] {
+            let window = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
+                .build()
+                .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
+            for origin in [
+                local,
+                "https://example.invalid",
+                "http://tauri.localhost.example.invalid",
+            ] {
+                for command in APP_COMMANDS
+                    .iter()
+                    .copied()
+                    .chain(["", "unregistered_command", "copied_notice_extra"])
+                {
+                    let before = calls.load(Ordering::SeqCst);
+                    let response = tauri::test::get_ipc_response(
+                        &window,
+                        tauri::webview::InvokeRequest {
+                            cmd: command.into(),
+                            callback: tauri::ipc::CallbackFn(0),
+                            error: tauri::ipc::CallbackFn(1),
+                            url: origin.parse().unwrap_or_else(|e| panic!("invalid fixture URL: {e}")),
+                            body: Default::default(),
+                            headers: Default::default(),
+                            invoke_key: tauri::test::INVOKE_KEY.into(),
+                        },
+                    );
+                    let allowed = origin == local
+                        && APP_COMMANDS.contains(&command)
+                        && match label {
+                            "main" => command != "copied_notice",
+                            "notice" => command == "copied_notice",
+                            _ => false,
+                        };
+                    assert_eq!(response.is_ok(), allowed, "{label}: {command} from {origin}");
+                    assert_eq!(
+                        calls.load(Ordering::SeqCst),
+                        before + usize::from(allowed),
+                        "denied calls must not reach handlers"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

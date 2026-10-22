@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for picker event subscriptions and drag-region bootstrap only. No file system, shell, network, menu or tray access is granted to the web interface.",
+  "description": "Picker commands, event subscriptions and drag-region bootstrap for the main window, including the debug gallery. No file system, shell, network, menu or tray plugin access is granted.",
   "windows": [
     "main"
   ],
@@ -9,6 +9,30 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-internal-toggle-maximize",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "allow-choose-library",
+    "allow-reload-library",
+    "allow-use-zotero",
+    "allow-find-sources",
+    "allow-open-found-library",
+    "allow-use-zotero-libraries",
+    "allow-zotero-groups",
+    "allow-library-status",
+    "allow-search",
+    "allow-copy-citation",
+    "allow-citation-text",
+    "allow-copy-format",
+    "allow-csl-items",
+    "allow-copy-formatted",
+    "allow-picker-preferences",
+    "allow-set-picker-preferences",
+    "allow-login-item",
+    "allow-set-login-item",
+    "allow-hide-picker",
+    "allow-set-pinned",
+    "allow-quit",
+    "allow-shortcut-status",
+    "allow-show-copied-notice",
+    "allow-native-appearance"
   ]
 }

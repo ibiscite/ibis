@@ -67,7 +67,7 @@ test("the app's timer fades the notice out, and showing it again brings it back"
   expect(notice.classList.contains("showing")).toBe(true);
 });
 
-test("the notice window is granted no core permission beyond event listening", () => {
+test("the notice window grants only copied text reading and event subscriptions", () => {
   expect(noticeCapability.windows).toEqual(["notice"]);
-  expect([...noticeCapability.permissions].sort()).toEqual(["core:event:allow-listen", "core:event:allow-unlisten"]);
+  expect([...noticeCapability.permissions].sort()).toEqual(["allow-copied-notice", "core:event:allow-listen", "core:event:allow-unlisten"]);
 });

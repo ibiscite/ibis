@@ -926,8 +926,8 @@ test("event subscription and cleanup failures are handled with safe messages", a
   } finally { focus.mockRestore(); library.mockRestore(); log.mockRestore(); }
 });
 
-test("web permissions grant only event subscriptions and drag-region bootstrap", () => {
-  expect([...capability.permissions].sort()).toEqual([
+test("web plugin permissions grant only event subscriptions and drag-region bootstrap", () => {
+  expect(capability.permissions.filter((permission) => permission.includes(":")).sort()).toEqual([
     "core:event:allow-listen", "core:event:allow-unlisten",
     "core:window:allow-internal-toggle-maximize", "core:window:allow-start-dragging",
   ]);
