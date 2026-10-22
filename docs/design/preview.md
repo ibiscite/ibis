@@ -23,7 +23,7 @@ layer from `design/depth-prototype` (variant B). The footer pattern
   - Output: the exact text Enter pastes, on one line with an ellipsis; the full
     text is in the tooltip and the wide pane.
 - **The citation uses the normal text colour with a small scarlet accent.** One
-  16 px scarlet quote mark in the tile column is the single "this is your
+  20 px scarlet beak quote mark at the tile column’s end is the single "this is your
   citation" sign. Output text, chips and counts use text colours. Rows keep
   their scarlet added tile.
 - **Monospace for key formats only.** Formatted styles use the system font:
@@ -70,7 +70,7 @@ layer from `design/depth-prototype` (variant B). The footer pattern
 |---|---|
 | Card | `--surface-raised`, inset `--inset`, radius `--r-row`, card shadow. Windows: layer card with stroke. GNOME: no card, a flat band under one separator. The footer drops its top rule under the card. |
 | Chip row | 40 px. Chips are a filled `--fill-control` with no outline, label 13/18 at 500, a 16 px × in a 24 px chip with a 32 px hit area. Capsule on macOS and GNOME; 4 px radius with Fluent stroke on Windows. |
-| Output row | 40 px. The quote mark is centred over the tile column; text starts at the row-title edge (64 px; 60 on Windows), so search glyph, tiles and quote mark share one column. 13/18. |
+| Output row | 40 px. The decorative beak SVG is vertically centred on this line at the tile column’s end, with `--row-gap` to the citation; text starts at the row-title edge (64 px; 60 on Windows), so search glyph, tiles and quote mark share one column. 13/18. |
 | Pending | Under 300 ms the previous text stays, dimmed. After that, "Formatting…" in secondary text with the mark at 45 %. Enter waits. |
 | Failed | A Stop icon replaces the mark, then "Couldn't format in APA. Choose another style, or copy keys." The Enter hint disappears. |
 | Stale | A Look icon, then "The library changed. Reading it again…". |
@@ -95,13 +95,16 @@ scrolling the shelf.
 | Fonts | SF Pro 13; SF Mono for keys | Segoe UI Variable; Cascadia Mono | Adwaita Sans; Adwaita Mono |
 | Pane at ≥ 960 px | on the content sheet | transparent over Mica, the list as a card | flat, separator |
 
-## Variant to try: the beak quote mark
+## Beak quote mark (#888, final decision)
 
-From #787: draw the quote mark as two curved ibis beaks, so it doubles as a
-small brand glyph. Try it as an SVG at 12, 16 and 20 px on every platform, light
-and dark. Keep it only if it still reads as a quotation mark at 12 px;
-otherwise use a plain quote mark and keep the beak glyph for larger brand uses
-(app icon details, About).
+Use the supplied two-head SVG, `viewBox="23 25 58 51"`, in `currentColor`
+from `--citation`, 20 px tall (`--space-5`). It is decorative (`aria-hidden`,
+not focusable). Keep the tile column’s full width and align the drawing to
+its end, close to the citation; chips keep their position. Mirror the whole
+column in RTL so the beaks open toward the text. Scale with Larger text,
+without clipping in either a one-line or two-line shelf. Pending opacity is
+45 %; increased contrast and forced colours use `CanvasText`. This replaces
+the earlier serif quote option and the proposed size trial.
 
 ## Options not chosen
 

@@ -4,6 +4,9 @@ import { useState } from "react";
 import type { SearchResult } from "../../api";
 import { chipLabels, CitationShelf } from "./CitationShelf";
 
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function record(key: string, first_author = "García", year: number | null = 2021): SearchResult {
@@ -193,4 +196,37 @@ test("proportional overflow digits cannot cycle the fitted count, and growth res
 test("nothing chosen and nothing to show draws no shelf", () => {
   const { container } = render(shelf({}));
   expect(container.querySelector(".shelf")).toBeNull();
+});
+
+test("the beak quote is decorative, unfocusable and confined to the output line", () => {
+  const output = { markup: [], text: "Synthetic citation", html: "", warnings: [] };
+  const { container, rerender } = render(shelf({ selected: chosen([record("a")]), shown: output, focusable: true }));
+  const preview = screen.getByRole("region", { name: "Preview" });
+  const mark = preview.querySelector("svg.shelf-mark");
+  expect(mark?.getAttribute("viewBox")).toBe("23 25 58 51");
+  expect(mark?.getAttribute("aria-hidden")).toBe("true");
+  expect(mark?.getAttribute("focusable")).toBe("false");
+  expect(mark?.querySelectorAll("circle")).toHaveLength(2);
+  expect(mark?.textContent).toBe("");
+  expect(preview.textContent).toBe(output.text);
+  preview.focus();
+  expect(document.activeElement).toBe(preview);
+  rerender(shelf({ selected: chosen([record("a")]), shown: null }));
+  expect(screen.getByRole("status", { name: "" }).textContent).toBe("Formatting…");
+  expect(container.querySelectorAll("svg.shelf-mark")).toHaveLength(1);
+  rerender(shelf({ selected: chosen([record("a")]) }));
+  expect(container.querySelector(".shelf-mark")).toBeNull();
+});
+
+test("RTL mirrors the beak through its HTML shelf direction", () => {
+  const sheet = document.createElement("style");
+  sheet.textContent = readFileSync(new FileURL("./CitationShelf.css", import.meta.url), "utf8");
+  // The build lowers :dir(rtl) to :lang(...), which misses explicit RTL
+  // in an English UI. Keep the direction attribute in the built selector.
+  expect(sheet.textContent).toContain('[dir="rtl"] .shelf-mark');
+  document.head.append(sheet);
+  try {
+    const { container } = render(<div dir="rtl">{shelf({ shown: { markup: [], text: "Synthetic citation", html: "", warnings: [] } })}</div>);
+    expect(getComputedStyle(container.querySelector("svg.shelf-mark")!).transform).toBe("scaleX(-1)");
+  } finally { sheet.remove(); }
 });

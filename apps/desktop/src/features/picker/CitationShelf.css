@@ -1,3 +1,9 @@
 /* Keep overflow counts measurable without contributing to layout or focus. */
 .chip-fit-measure { position: absolute; visibility: hidden; pointer-events: none; width: 0; height: 0; overflow: hidden; }
 .chip-fit-measure > button { width: max-content; max-width: none; }
+
+/* #888: the beak opens toward the citation, at the tile column's end.
+   Keep the full column width so the text stays on the result-title edge.
+   The 20 px glyph scales with text inside the existing 40 px output line. */
+.shelf .shelf-mark { height: var(--space-5); }
+[dir="rtl"] .shelf-mark { transform: scaleX(-1); }
