@@ -14,7 +14,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::{Update, Updater, UpdaterExt};
 
-use crate::diagnostics::application_message;
+use crate::diagnostics::{NativeIssue, application_message, report};
 use crate::picker::{DialogKind, own_dialog};
 use crate::preferences::SettingsFile;
 
@@ -117,7 +117,7 @@ fn save_automatic(app: &AppHandle, on: bool) {
 fn set_automatic(app: &AppHandle, on: bool) {
     app.state::<Updates>().automatic.store(on, Ordering::SeqCst);
     if let Some(item) = app.try_state::<AutomaticMenuItem>() {
-        let _ = item.0.set_checked(on);
+        report(item.0.set_checked(on), NativeIssue::AutomaticMenuUpdate);
     }
 }
 

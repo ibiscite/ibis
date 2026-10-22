@@ -22,6 +22,8 @@ use serde::Serialize;
 use tauri::menu::CheckMenuItem;
 use tauri::{AppHandle, Manager};
 
+use crate::diagnostics::{NativeIssue, checked, report};
+
 /// Passed by the login entry (Windows and Linux), so Ibis starts without
 /// showing the picker. macOS reports a login launch in its open event instead.
 pub(crate) const AT_LOGIN_ARG: &str = "--at-login";
@@ -347,7 +349,7 @@ fn unsupported(app: &AppHandle) -> LoginItem {
 
 fn show_in_menu(app: &AppHandle, item: &LoginItem) {
     if let Some(menu) = app.try_state::<LoginMenuItem>() {
-        let _ = menu.0.set_checked(item.enabled);
+        report(menu.0.set_checked(item.enabled), NativeIssue::LoginMenuUpdate);
     }
 }
 
@@ -390,7 +392,7 @@ pub(crate) fn toggle_from_menu(app: &AppHandle) {
         // state again and change nothing.
         let Some(wanted) = app
             .try_state::<LoginMenuItem>()
-            .and_then(|menu| menu.0.is_checked().ok())
+            .and_then(|menu| checked(menu.0.is_checked(), NativeIssue::LoginMenuRead))
         else {
             current(&app);
             return;
