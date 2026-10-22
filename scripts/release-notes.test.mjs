@@ -54,6 +54,12 @@ test("leaves notes that already have a download table unchanged", () => {
   assert.equal(releaseNotes("v0.1.1", once), once);
 });
 
+test("macOS first launch uses Privacy & Security rather than the obsolete context-menu override", () => {
+  const notes = releaseNotes("v0.2.0", generated);
+  assert.match(notes, /On macOS,.*System Settings → Privacy & Security and choose Open Anyway\./);
+  assert.doesNotMatch(notes, /right-click Ibis in Applications and choose Open/);
+});
+
 test("still cleans notes that only mention a download heading inside an item", () => {
   const notes = releaseNotes("v0.1.1", generated.replace("in the picker (", "in the picker, see ## Download ("));
   assert.match(notes, /^## Download$/m);

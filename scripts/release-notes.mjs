@@ -51,7 +51,7 @@ export function releaseNotes(tag, generated, repo = "ibiscite/ibis") {
 |---|---|
 ${rows.join("\n")}
 
-**Preview build. Not signed.** Ibis is not signed by Apple or Microsoft yet. On macOS, if it says the app cannot be checked, right-click Ibis in Applications and choose Open. On Windows, if SmartScreen warns, choose More info, then Run anyway. In-app updates are opt-in and signed, and Ibis checks the signature before installing one.
+**Preview build. Not signed.** Ibis is not signed by Apple or Microsoft yet. On macOS, if it says the app cannot be checked, open System Settings → Privacy & Security and choose Open Anyway. On Windows, if SmartScreen warns, choose More info, then Run anyway. In-app updates are opt-in and signed, and Ibis checks the signature before installing one.
 
 **Windows installation:** if Microsoft WebView2 Runtime is missing, the installer downloads it once, which needs an internet connection. Ibis works offline after that.
 
