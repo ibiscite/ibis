@@ -132,6 +132,7 @@ export const galleryStates: readonly GalleryState[] = [
     sources: { zotero: "available", list: 1, files: [{ name: "research.bib", folder: "Documents" }, { name: "reading.bib", folder: "Desktop" }], cut_short: false } },
   { id: "loading", label: "Opening a library", library: library({ state: "loading", has_snapshot: false, zotero: false, snapshot_name: null, references: 0 }) },
   { id: "empty", label: "Empty library", library: library({ name: "empty.bib", snapshot_name: "empty.bib", references: 0 }) },
+  { id: "idle", label: "Nothing typed", library: library(), query: "" },
   { id: "no-results", label: "No matching references", library: library(), query: "unmatched phrase" },
   { id: "many-results", label: "Many results", library: library(), query: "memory", results: many },
   { id: "long-titles", label: "Long and non-Latin titles", library: library(), query: "research", results: [
@@ -154,6 +155,10 @@ export const galleryStates: readonly GalleryState[] = [
     error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" }), query: "memory", results: examples },
   { id: "copied-notice", label: "Copied notice after hiding", library: library(), query: "memory", results: examples, notice: "[@example2026]" },
   // Browser-only review states (board M); the native evidence app captures the fifteen above.
+  { id: "empty-zotero", label: "Empty Zotero library", library: library({ name: "My Library", snapshot_name: "My Library", zotero: true, snapshot_zotero: true, references: 0 }) },
+  { id: "reloading", label: "Reloading with retained references", library: library({ state: "reloading", references: 2 }), query: "memory", results: examples.slice(0, 2) },
+  { id: "zotero-unavailable", label: "Zotero unavailable without a snapshot", library: library({ state: "error", name: "Zotero library", snapshot_name: null, has_snapshot: false, zotero: true, references: 0,
+    error: "Zotero is not running, or it is not accepting connections." }) },
   { id: "file-kept-menu", label: "Retained file details in More", library: library({ state: "error", name: "example.bib", snapshot_name: "example.bib", stale: true,
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },

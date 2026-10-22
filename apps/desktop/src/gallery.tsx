@@ -38,7 +38,7 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
     && rows.every((row, index) => row.querySelector("strong")?.textContent === results[index]?.title
       && row.querySelector(".result-key")?.textContent === results[index]?.key)
     && JSON.stringify(actualAlerts) === JSON.stringify(alerts)
-    && (root.querySelector('.notices > p[role="status"]')?.textContent ?? null) === busy
+    && (root.querySelector('.empty-loading[role="progressbar"]')?.getAttribute("aria-label") ?? null) === busy
     && (root.querySelector('[aria-label="Choose library to get started"]') !== null) === (library.state === "none")
     && (root.querySelector(".copy-notice code")?.textContent ?? null) === (state.copied?.text ?? null)
     && (root.querySelector('.library-bar p[role="status"]')?.textContent ?? null) === library.note

@@ -125,7 +125,7 @@ export const pickerText = {
   removeNamed: (name: string) => `Remove ${name} from citation`,
   bestMatches: "Best matches",
   noMatches: "No matching references",
-  noMatchesHint: "Check the spelling, or try fewer words, an author's surname or a year.",
+  noMatchesHint: "Try a surname, year or fewer words.",
   clearSearch: "Clear search",
   searchAllLibraries: "Search all Zotero libraries",
   typeToFind: "Type to find a reference",
@@ -197,6 +197,7 @@ export const keyText = {
   },
   allKeys: "Shortcuts",
   footer: "Keys",
+  copy: "Copy",
   copyAs: (format: string) => `Copy as ${format}`,
   copySeveralAs: (count: number, format: string) => `Copy ${count} as ${format}`,
   addToCitation: "Add to citation",
@@ -214,9 +215,10 @@ export const libraryMessages = {
     if (zotero) return `${name ?? "Zotero"} could not be read. ${sentence} Open Zotero, then reload.`;
     return `The library could not be opened: ${name ?? "the chosen file"}. ${sentence} Choose it again or reconnect the drive.`;
   },
-  empty: (name: string | null, zotero = false) => zotero
-    ? `No references found in ${name ?? "your Zotero library"}. Add items in Zotero, then reload.`
-    : `No references found in ${name ?? "this library"}. Choose a BibTeX or BibLaTeX export with references, then try again.`,
+  emptyTitle: (name: string | null) => `No references in ${name ?? "this library"}`,
+  emptyHint: (zotero = false) => zotero
+    ? "Add items in Zotero, then reload."
+    : "Choose a file with references.",
   /** The footer words: the source, then its state. A ticking age is kept
    * out of this text, so the live region never repeats a clock. The source is
    * separate so the footer can isolate its direction and shorten it first. */

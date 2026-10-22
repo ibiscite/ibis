@@ -411,7 +411,9 @@ baseline, each key cap 20 px high and centred on it.
 `ContentUnavailableView`, `AdwStatusPage` and Fluent's empty state: a 48 px
 symbolic icon in `--text-tertiary`, a title (15/20, semibold), a line of
 at most 40 characters per row, wrapping to at most three rows (13/18,
-secondary), then at most two actions, or key hints, 16 px below. A file name
+secondary), then one filled suggested action, or key hints, 16 px below.
+Necessary alternative recovery actions use quieter text controls. Descriptions
+are one short sentence, fitting one line at the normal picker size. A file name
 in a title is shortened in the middle, keeping its extension
 ("my-very-long…library.bib"). The title and line are plain text after the
 list, so screen readers reach them by reading on; the existing polite live
@@ -422,11 +424,12 @@ no rows there is nothing to name.
 
 | Case | Title | Line | Below |
 |---|---|---|---|
-| Nothing typed, library loaded | Type to find a reference | Search by title, author, year, citation key or DOI. | Two key hints: "Copy ↵" and "Add to citation ⇧↵" |
+| Nothing typed, library loaded | Type to find a reference | Search by title, author, year, citation key or DOI. | Decorative Copy/Add key hints; no action |
 | Nothing typed, with history (Rollout 6) | | | No template: "Recently cited" rows, ready for ↓ and Enter |
-| No matches | No matching references | Check the spelling, or try fewer words, an author's surname or a year. | Clear search; Search all libraries when some are left out |
-| Empty `.bib` library | No references in thesis.bib | Choose a BibTeX or BibLaTeX export with references. | Choose library… |
-| Empty Zotero library | No references in My Library | Add items in Zotero, then reload. | Reload; Choose library… |
+| No matches | No matching references | Try a surname, year or fewer words. | Suggested: Clear search; quieter Search all libraries when some are left out |
+| Empty `.bib` library | No references in thesis.bib | Choose a file with references. | Suggested: Choose library… |
+| Empty Zotero library | No references in My Library | Add items in Zotero, then reload. | Suggested: Reload; quieter Choose library… |
+| Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then a spinner and the title 48 px below Search; no actions; retained rows remain below |
 
 Spotlight, Alfred and GNOME's search show nothing until something is typed;
 Raycast and the Windows 11 Start menu show recent items. Ibis does the second

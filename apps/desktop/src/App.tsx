@@ -449,9 +449,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [clickCopy, chosenKey, shown]);
 
   const busy = library?.state === "loading" || library?.state === "reloading";
-  const loadingMessage = library?.state === "reloading"
-    ? libraryMessages.reloading(library.name)
-    : libraryMessages.opening(library?.name ?? null);
 
   // Zotero libraries: the ones chosen, and the groups Zotero offers, listed
   // when the menu opens or when results come from several libraries.
@@ -574,6 +571,19 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (highlighted) toggle(highlighted);
     input.current?.focus();
   };
+  const emptyState = library !== undefined && (busy || results.length === 0 && !error && !library?.error) ? (
+    <EmptyState library={library} query={query} narrowed={narrowed}
+      onChooseLibrary={() => void perform("choose", chooseLibrary)}
+      onClearSearch={() => { setQuery(""); input.current?.focus(); }}
+      onSearchAll={searchAllLibraries}
+      onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
+      setup={
+        <LibrarySetup api={setupApi} perform={perform}
+          writing={{ format, formatted: Boolean(cslItems && copyFormatted), choose: chooseFormat }}
+          shortcut={shortcut?.registered ? shortcutLabel(shortcut.shortcut, isMac) : null}
+          startAtLogin={loginItemOffered && startAtLogin ? { name: startAtLogin.name, enabled: startAtLogin.enabled, toggle: toggleStartAtLogin } : undefined} />
+      } />
+  ) : null;
 
   return (
     <main
@@ -650,15 +660,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         onTogglePin={togglePin}
       />
       <div className="picker-content">
-      <Notices library={library} busy={busy} loadingMessage={loadingMessage} failures={failures} startAtLogin={startAtLogin}
+      <Notices library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} onDismissCopied={() => setCopied(null)} />
       <div className="results-area">
-        {library?.has_snapshot && <div className="results-heading" aria-hidden="true">
-          <span>{query ? pickerText.bestMatches : pickerText.references}</span><span>{results.length > 0 ? pickerText.resultCount(results.length) : ""}</span>
+        {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
+          <span>{query ? pickerText.bestMatches : pickerText.references}</span><span>{pickerText.resultCount(results.length)}</span>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {announcement}
         </p>
+        {busy && emptyState}
         <ResultList results={results} active={active} selected={selected} density={density}
           libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
           onChoose={(i, r, action) => {
@@ -676,18 +687,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             toggle(r);
             input.current?.focus();
           }} />
-        {results.length === 0 && !error && library !== undefined && !busy && !library?.error && (
-          <EmptyState library={library} query={query} narrowed={narrowed}
-            onChooseLibrary={() => void perform("choose", chooseLibrary)}
-            onClearSearch={() => { setQuery(""); input.current?.focus(); }}
-            onSearchAll={searchAllLibraries}
-            setup={
-              <LibrarySetup api={setupApi} perform={perform}
-                writing={{ format, formatted: Boolean(cslItems && copyFormatted), choose: chooseFormat }}
-                shortcut={shortcut?.registered ? shortcutLabel(shortcut.shortcut, isMac) : null}
-                startAtLogin={loginItemOffered && startAtLogin ? { name: startAtLogin.name, enabled: startAtLogin.enabled, toggle: toggleStartAtLogin } : undefined} />
-            } />
-        )}
+        {!busy && emptyState}
       </div>
       </div>
       <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {

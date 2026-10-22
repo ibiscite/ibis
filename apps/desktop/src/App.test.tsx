@@ -172,6 +172,20 @@ test("typing a query shows results from the search command", async () => {
   expect(screen.getByText("smith2020")).toBeTruthy();
 });
 
+test.each(["", "unmatched"])("result headings only name actual rows, preserving empty announcements (query=%s)", async (query) => {
+  backend();
+  render(<App />);
+  if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
+  const title = await screen.findByText(query ? "No matching references" : "Type to find a reference");
+  expect(screen.getByRole("listbox").compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  if (!query) {
+    expect(screen.queryByRole("button", { name: "Search references" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
+  }
+  expect(document.querySelector(".results-heading")).toBeNull();
+  await waitFor(() => expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe("0 results"));
+});
+
 test("errors from the backend are shown, not swallowed", async () => {
   backend({
     search: () => {
@@ -958,6 +972,7 @@ test("opening a chosen library shows its name and searches only when ready", asy
   });
   render(<App />);
   await screen.findByText("Opening 研究 refs.bib…");
+  expect(document.querySelector(".results-heading")).toBeNull();
   expect(screen.queryByText("Choose a library to get started")).toBeNull();
   expect(document.body.textContent).not.toContain("No library chosen");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
@@ -974,8 +989,10 @@ test("a reload keeps the previous library searchable and announces the reload", 
     search: () => [result("kept", "Kept reference")],
   });
   render(<App />);
-  await screen.findByText("Reloading refs.bib…");
+  const progress = await screen.findByRole("progressbar", { name: "Reloading refs.bib…" });
   await screen.findByText("Kept reference");
+  expect(progress.compareDocumentPosition(screen.getByRole("listbox")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(document.querySelector(".results-heading")).toBeNull();
 });
 
 
@@ -999,6 +1016,7 @@ test("an unavailable initial library is named once without a duplicate search er
   });
   render(<App />);
   const notice = await screen.findByRole("alert");
+  expect(document.querySelector(".results-heading")).toBeNull();
   expect(notice.textContent).toContain("研究 refs.bib");
   expect(notice.textContent).toContain("Choose it again");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
@@ -1038,7 +1056,10 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("empty 研究.bib · no references"));
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
-  await screen.findByText("No references found in empty 研究.bib. Choose a BibTeX or BibLaTeX export with references, then try again.");
+  const title = await screen.findByText("No references in empty 研究.bib");
+  expect(screen.getByRole("listbox").compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(screen.getByText("Choose a file with references.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
   expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
@@ -2420,7 +2441,7 @@ test("when nothing matches, the picker offers to clear the search", async () => 
   const box = screen.getByLabelText("Search references") as HTMLInputElement;
   fireEvent.change(box, { target: { value: "nothing here" } });
   expect(await screen.findByText("No matching references")).toBeTruthy();
-  expect(screen.getByText("Check the spelling, or try fewer words, an author's surname or a year.")).toBeTruthy();
+  expect(screen.getByText("Try a surname, year or fewer words.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Search all Zotero libraries" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
   expect(box.value).toBe("");

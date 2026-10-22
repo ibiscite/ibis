@@ -59,6 +59,15 @@ test("the gallery keeps a seeded copy confirmation available for evidence captur
 
 const { applyPlatformSwitch, galleryProvider, galleryStates, gallerySwitches, withSwitches } = await import("./gallery-fixtures");
 
+test("the idle gallery is an explicitly empty query with a loaded nonempty library", () => {
+  const idle = galleryStates.find((state) => state.id === "idle");
+  expect(idle).toBeTruthy();
+  expect(idle?.query).toBe("");
+  expect(idle?.library.state).toBe("loaded");
+  expect(idle?.library.references).toBeGreaterThan(0);
+  expect(idle?.results ?? []).toEqual([]);
+});
+
 test("first-run-found offers Zotero and two synthetic files without a chosen library", async () => {
   const found = galleryStates.find((state) => state.id === "first-run-found");
   expect(found).toBeTruthy();
@@ -71,7 +80,7 @@ test("first-run-found offers Zotero and two synthetic files without a chosen lib
 test.each([
   ["first-run", "Choose a library to get started"],
   ["loading", "Opening example.bib…"],
-  ["empty", "No references found in empty.bib. Choose a BibTeX or BibLaTeX export with references, then try again."],
+  ["empty", "No references in empty.bib"],
   ["no-results", "No matching references"],
   ["invalid-settings", "settings.json could not be read. Ibis is using the backup. Changes are not being saved. Repair the synthetic settings file and restart Ibis."],
   ["damaged-library", "Some references could not be read. Export the library again to restore them."],
@@ -238,6 +247,30 @@ test("render acknowledgment waits for startup effects even after the first-run U
     await act(async () => resolveFormat());
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(acknowledge).toHaveBeenCalledExactlyOnceWith("first-run");
+  } finally {
+    await act(async () => stop());
+    container.remove();
+  }
+});
+
+test("loading evidence waits for the delayed spinner instead of capturing a blank result area", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => window.clearTimeout(id));
+  const state = galleryStates.find((candidate) => candidate.id === "loading")!;
+  const acknowledge = vi.fn(async () => undefined);
+  const container = document.createElement("div");
+  document.body.append(container);
+  let stop: () => void = () => undefined;
+  try {
+    await act(async () => { stop = renderGalleryState(container, state, acknowledge); });
+    await act(() => vi.advanceTimersByTimeAsync(399));
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(acknowledge).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute("aria-label")).toBe("Opening example.bib…");
+    await act(() => vi.advanceTimersByTimeAsync(32));
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith("loading");
   } finally {
     await act(async () => stop());
     container.remove();

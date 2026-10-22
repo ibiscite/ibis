@@ -1,0 +1,36 @@
+.empty-state { color: var(--muted); text-align: center; padding: var(--empty-padding); }
+.empty-state p:first-child { color: var(--text); font-weight: var(--type-strong-weight); }
+.empty-template { padding-block-start: calc(3 * var(--space-4) - var(--inset)); }
+.empty-icon { display: block; width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin: 0 auto var(--space-3); color: var(--text-tertiary, var(--muted)); }
+.empty-title { margin: 0; color: var(--text); font-size: var(--title-size); line-height: var(--title-line-height); font-weight: var(--type-strong-weight); overflow-wrap: anywhere; }
+.empty-description { max-width: 40ch; margin: var(--space-2) auto 0; font-size: var(--metadata-size); line-height: var(--metadata-line-height); overflow-wrap: anywhere; }
+.empty-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--hint-size); line-height: var(--type-label-line); }
+.empty-keys > .key-hint { flex-wrap: wrap; justify-content: center; max-width: 100%; white-space: normal; }
+.empty-template .empty-actions { margin-top: var(--space-4); }
+.empty-template .empty-actions > button { max-width: 100%; overflow-wrap: anywhere; }
+.empty-alternative, .empty-alternative:hover { background: var(--clear); color: var(--text); text-decoration: underline; }
+@media (pointer: coarse) {
+  .empty-template .empty-actions > button { min-width: calc(11 * var(--space-1)); min-height: calc(11 * var(--space-1)); }
+}
+
+.empty-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: calc(3 * var(--space-4) - var(--inset)) 0 var(--space-4);
+  color: var(--muted);
+  font-size: var(--metadata-size);
+  line-height: var(--metadata-line-height);
+  text-align: center;
+}
+.empty-loading > span { min-width: 0; overflow-wrap: anywhere; }
+.empty-spinner {
+  flex: none;
+  width: var(--icon-glyph-size);
+  height: var(--icon-glyph-size);
+  color: var(--text-tertiary, var(--muted));
+  animation: empty-spin calc(5 * var(--motion-panel)) linear infinite;
+}
+@keyframes empty-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .empty-spinner { animation: none; } }
