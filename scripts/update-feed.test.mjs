@@ -73,6 +73,12 @@ test("Ibis Nightly is a separate app that reads only the nightly feed", () => {
   assert.ok(!("pubkey" in config.plugins.updater), "both apps trust the same built-in key");
 });
 
+test("Windows startup fixtures use the shipped channel names and identifiers", () => {
+  const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+  const identities = JSON.parse(readFileSync(new URL("../fixtures/startup/windows-identities.json", import.meta.url), "utf8"));
+  assert.deepEqual([stable, nightlyConfig("0.1.1-nightly.20261019223000")].map(({ productName, identifier }) => ({ productName, identifier })), identities);
+});
+
 test("Windows installers keep the historical install-location key across the planned identity change", () => {
   const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
   const overrides = nightlyConfig("0.1.1-nightly.20261019223000");

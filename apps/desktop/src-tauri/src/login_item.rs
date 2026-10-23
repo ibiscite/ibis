@@ -238,30 +238,37 @@ fn platform_entry(app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
     }))
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn platform_entry(_app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
     let mut builder = auto_launch::AutoLaunchBuilder::new();
     builder.set_app_name(name);
-    #[cfg(target_os = "macos")]
     // Registers the running app bundle; fails to build before macOS 13.
     builder.set_macos_launch_mode(auto_launch::MacOSLaunchMode::SMAppService);
-    #[cfg(target_os = "windows")]
-    {
-        let program = std::env::current_exe().ok()?;
-        // Quoted: the install folder of Ibis Nightly, like many home
-        // folders, has a space in its name.
-        builder
-            .set_app_path(&format!("\"{}\"", program.to_str()?))
-            .set_args(&[AT_LOGIN_ARG])
-            // Writes only the current user's key, even when Ibis runs as
-            // administrator. Reading and removing also look at the all-users
-            // key, as auto-launch does.
-            .set_windows_enable_mode(auto_launch::WindowsEnableMode::CurrentUser);
-    }
     builder
         .build()
         .ok()
         .map(|entry| Box::new(SystemEntry(entry)) as Box<dyn Entry>)
+}
+
+#[cfg(target_os = "windows")]
+fn platform_entry(_app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
+    windows_entry(name, &std::env::current_exe().ok()?).map(|entry| Box::new(SystemEntry(entry)) as Box<dyn Entry>)
+}
+
+/// Building only describes the product-named entry; it never registers it.
+#[cfg(target_os = "windows")]
+fn windows_entry(name: &str, program: &std::path::Path) -> Option<auto_launch::AutoLaunch> {
+    let mut builder = auto_launch::AutoLaunchBuilder::new();
+    // Keep the product name: both Run and StartupApproved use it, not the app ID.
+    builder
+        .set_app_name(name)
+        // Quoted: install and home folders can contain spaces.
+        .set_app_path(&format!("\"{}\"", program.to_str()?))
+        .set_args(&[AT_LOGIN_ARG])
+        // Writes only the current user's key, even when running as administrator.
+        // Reading and removing also look at the all-users key, as auto-launch does.
+        .set_windows_enable_mode(auto_launch::WindowsEnableMode::CurrentUser);
+    builder.build().ok()
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -477,6 +484,8 @@ mod tests {
         /// Registrations made but not allowed yet.
         pending: std::sync::atomic::AtomicBool,
         refreshed: std::sync::atomic::AtomicUsize,
+        enabled: std::sync::atomic::AtomicUsize,
+        disabled: std::sync::atomic::AtomicUsize,
     }
 
     impl FakeEntry {
@@ -490,6 +499,8 @@ mod tests {
                 unreadable: false,
                 pending: false.into(),
                 refreshed: 0.into(),
+                enabled: 0.into(),
+                disabled: 0.into(),
             }
         }
         fn set(&self, on: bool) -> Result<(), Failed> {
@@ -511,10 +522,12 @@ mod tests {
             self.on.lock().map(|on| *on).map_err(|_| Failed)
         }
         fn enable(&self) -> Result<(), Failed> {
+            self.enabled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             self.set(true)?;
             if self.registration_error { Err(Failed) } else { Ok(()) }
         }
         fn disable(&self) -> Result<(), Failed> {
+            self.disabled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             self.set(false)
         }
         fn awaiting_approval(&self) -> bool {
@@ -671,9 +684,13 @@ mod tests {
         let items = LoginItems::new("Ibis", Some(Box::new(Shared(entry.clone()))));
         items.refresh();
         assert_eq!(entry.refreshed.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(entry.enabled.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(entry.disabled.load(std::sync::atomic::Ordering::SeqCst), 0);
         let _ = items.change(true);
         items.refresh();
         assert_eq!(entry.refreshed.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(entry.enabled.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(entry.disabled.load(std::sync::atomic::Ordering::SeqCst), 0);
 
         for unreadable in [false, true] {
             let entry = std::sync::Arc::new(FakeEntry {
@@ -683,6 +700,8 @@ mod tests {
             });
             let items = LoginItems::new("Ibis", Some(Box::new(Shared(entry.clone()))));
             items.refresh();
+            assert_eq!(entry.enabled.load(std::sync::atomic::Ordering::SeqCst), 0);
+            assert_eq!(entry.disabled.load(std::sync::atomic::Ordering::SeqCst), 0);
             assert_eq!(
                 entry.refreshed.load(std::sync::atomic::Ordering::SeqCst),
                 usize::from(!unreadable)
@@ -740,6 +759,30 @@ mod tests {
         let name = entry_name("Ibis");
         assert_eq!(name == "Ibis", !cfg!(debug_assertions));
         assert_ne!(entry_name("Ibis"), entry_name("Ibis Nightly"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_entry_keeps_product_names_and_quoted_login_command() -> Result<(), Box<dyn std::error::Error>> {
+        let configs: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../../../fixtures/startup/windows-identities.json"))?;
+        let program = std::path::Path::new(r"C:\Synthetic Apps\Ibis\ibis.exe");
+        for config in configs {
+            let identifier = config["identifier"].as_str().ok_or("fixture identifier")?;
+            let product = config["productName"].as_str().ok_or("fixture product name")?;
+            for name in [product.to_string(), entry_name(product)] {
+                let entry = windows_entry(&name, program).ok_or("build without registry access")?;
+                assert_eq!(entry.get_app_name(), name);
+                assert_ne!(entry.get_app_name(), identifier);
+                assert_ne!(
+                    entry.get_app_name(),
+                    identifier.replacen("io.github.ibiscite", "com.ibiscite", 1)
+                );
+                assert_eq!(entry.get_app_path(), r#""C:\Synthetic Apps\Ibis\ibis.exe""#);
+                assert_eq!(entry.get_args(), &[AT_LOGIN_ARG]);
+            }
+        }
+        Ok(())
     }
 
     #[test]
