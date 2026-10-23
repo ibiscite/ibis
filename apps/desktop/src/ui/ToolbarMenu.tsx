@@ -4,6 +4,7 @@ import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, 
 import { Button } from "./Button";
 import { MenuCheck, useMenuBoundary } from "./Menu";
 import { currentPlatform } from "../platform";
+import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
 export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean }[] };
@@ -22,33 +23,17 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   const [skipExit, setSkipExit] = useState(false);
   const open = isOpen ?? internalOpen;
   const boundary = useMenuBoundary(open, returnFocusRef);
-  const list = useRef<HTMLDivElement | null>(null);
-  const closingList = useRef<HTMLDivElement | null>(null);
-  const [opening, setOpening] = useState(0);
-  const listRef = useCallback((node: HTMLDivElement | null) => {
-    list.current = node;
-    if (!node) closingList.current = null;
-  }, []);
-  useLayoutEffect(() => {
-    if (!open) closingList.current = list.current;
-    else {
-      // Restart reused content after an overlapping reopen, so the collection
-      // and optional filter run their normal autofocus again.
-      if (closingList.current && closingList.current === list.current) setOpening((value) => value + 1);
-      closingList.current = null;
-    }
-  }, [open]);
+  const { listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(open);
   const composing = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
   const pending = useRef<{ target: HTMLElement; closing: HTMLElement | null; token: number; command?: ToolbarMenuCommand } | null>(null);
-  const focusFrame = useRef(0);
   const cancel = useCallback(() => {
     generation.current += 1;
     pending.current = null;
-    cancelAnimationFrame(focusFrame.current);
-  }, []);
+    cancelFocusRetry();
+  }, [cancelFocusRetry]);
   const restoreFocus = useCallback(() => {
     const request = pending.current;
     if (!request || popover.current || request.closing?.isConnected) return;
@@ -61,8 +46,8 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   }, []);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
-    if (!node && pending.current) focusFrame.current = requestAnimationFrame(restoreFocus);
-  }, [restoreFocus]);
+    if (!node && pending.current) retryFocus(restoreFocus);
+  }, [restoreFocus, retryFocus]);
   useLayoutEffect(() => { if (open) { setSkipExit(false); cancel(); } }, [open, cancel]);
   useEffect(() => {
     const hidden = () => { if (document.hidden) cancel(); };

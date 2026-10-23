@@ -2,6 +2,7 @@ import { Children, createContext, isValidElement, useCallback, useContext, useEf
 import { flushSync } from "react-dom";
 import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Button } from "./Button";
+import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
 
 /** Keep React Aria's placement boundary inside the viewport and below the
@@ -127,28 +128,11 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const boundary = useMenuBoundary(isOpen, tabFocusRef);
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
-  const list = useRef<HTMLDivElement>(null);
+  const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(isOpen);
   const popover = useRef<HTMLElement | null>(null);
   const pendingFocus = useRef<HTMLElement | null>(null);
-  const focusFrame = useRef(0);
-  const closingList = useRef<HTMLDivElement | null>(null);
-  const [opening, setOpening] = useState(0);
   const [skipExit, setSkipExit] = useState(false);
-  const listRef = useCallback((node: HTMLDivElement | null) => {
-    list.current = node;
-    if (!node) closingList.current = null;
-  }, []);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
-  useLayoutEffect(() => {
-    if (!isOpen) closingList.current = list.current;
-    else {
-      // An overlapping reopen retains the popover, but its collection has
-      // already autofocused. Restart that collection so React Aria applies
-      // the new pointer/keyboard focus strategy, including clearing old rows.
-      if (closingList.current && closingList.current === list.current) setOpening((value) => value + 1);
-      closingList.current = null;
-    }
-  }, [isOpen]);
   useEffect(() => {
     if (!isOpen) return;
     // A smaller window shrinks the menu; keep the highlighted row in view.
@@ -175,13 +159,12 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   }, []);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
-    if (!node && pendingFocus.current) focusFrame.current = requestAnimationFrame(restoreFocus);
-  }, [restoreFocus]);
+    if (!node && pendingFocus.current) retryFocus(restoreFocus);
+  }, [restoreFocus, retryFocus]);
   useLayoutEffect(() => {
     if (isOpen) {
       setSkipExit(false);
       pendingFocus.current = null;
-      cancelAnimationFrame(focusFrame.current);
     } else restoreFocus();
   }, [isOpen, restoreFocus]);
   useEffect(() => {
@@ -191,7 +174,6 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     document.addEventListener("keydown", cancel, true);
     return () => {
       cancel();
-      cancelAnimationFrame(focusFrame.current);
       document.removeEventListener("pointerdown", cancel, true);
       document.removeEventListener("keydown", cancel, true);
     };
@@ -202,7 +184,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       // reject focus, losing any typing before its animation finishes.
       const previous = document.activeElement;
       pendingFocus.current = null;
-      cancelAnimationFrame(focusFrame.current);
+      cancelFocusRetry();
       flushSync(() => { setSkipExit(true); onOpenChange(false); });
       const active = document.activeElement;
       if (to?.isConnected && (active === previous || active === document.body || active === button.current || active === to)) to.focus();

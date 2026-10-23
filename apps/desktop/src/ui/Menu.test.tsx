@@ -1,8 +1,21 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { useRef, useState } from "react";
 import { Menu, MenuItem, MenuSection, MenuSeparator } from "./Menu";
+import { useMenuLifecycle } from "./useMenuLifecycle";
+
+test.each(["frame", "cancel", "reopen", "unmount"])("a deferred menu focus request respects %s", async (action) => {
+  render(<input aria-label="Retry target" />);
+  const target = screen.getByRole("textbox");
+  const hook = renderHook(({ open }) => useMenuLifecycle(open), { initialProps: { open: false } });
+  act(() => hook.result.current.retryFocus(() => target.focus()));
+  if (action === "cancel") act(() => hook.result.current.cancelFocusRetry());
+  else if (action === "reopen") hook.rerender({ open: true });
+  else if (action === "unmount") hook.unmount();
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  expect(document.activeElement).toBe(action === "frame" ? target : document.body);
+});
 
 afterEach(async () => {
   cleanup();
