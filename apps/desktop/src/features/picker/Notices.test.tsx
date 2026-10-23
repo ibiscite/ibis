@@ -35,8 +35,10 @@ test("update progress keeps known, unknown, checking and failed phases honest", 
   const progress = { attempt: 1, revision: 1, received: 25, total: 100, phase: "downloading" as const };
   const { rerender } = render(<Notices {...props} copied={null} {...{ updateProgress: progress }} />);
   expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+  expect(screen.getByRole("progressbar").textContent).toContain("25%");
   rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, total: null } }} />);
   expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
+  expect(screen.getByRole("progressbar").textContent).not.toContain("%");
   rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, phase: "installing" } }} />);
   expect(screen.getByRole("progressbar").textContent).toContain("Checking and installing");
   expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
