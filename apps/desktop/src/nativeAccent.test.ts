@@ -77,7 +77,17 @@ test("both subscriptions precede the replay query and accent survives a failed r
 });
 
 test("an added tile on the native accent uses its paired text fill, keeping scarlet off the row fill", () => {
-  expect(css).toMatch(/:root\[data-native-accent="true"\]\[data-platform="macos"\][^{}]*\[data-citation-selected\][^{}]*\.result-tile\s*\{[^}]*background:\s*var\(--text-on-accent\)[^}]*color:\s*var\(--citation-tile\)/);
+  expect(css).toMatch(/:root\[data-native-accent="true"\]\[data-platform="macos"\][^{}]*\[data-citation-selected\][^{}]*\.result-tile\s*\{[^}]*background:\s*var\(--row-active-text\)[^}]*color:\s*var\(--citation-tile\)/);
+});
+
+test("selected rows and menu highlights keep WebKit's white selected text on the native accent", () => {
+  // The contrast pick is black on the default blues; selection keeps the native pair (docs/design.md, Selected row).
+  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-platform="macos"\]:not\(\[data-gallery-theme\]\):not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
+  const bridge = css.indexOf("--selected-text: var(--text-on-accent)");
+  expect(bridge).toBeGreaterThan(-1);
+  expect(css.indexOf("--selected-text: -apple-system-alternate-selected-text")).toBeGreaterThan(bridge);
+  setNativeAccent([0, 122 / 255, 1]);
+  expect(root.style.getPropertyValue("--native-accent-on")).toBe("#000");
 });
 
 test("native primary foregrounds stay readable through hover and press in both themes", () => {
