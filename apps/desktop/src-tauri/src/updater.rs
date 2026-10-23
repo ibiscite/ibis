@@ -362,12 +362,15 @@ async fn install_update(app: &AppHandle, update: Update) {
     // Only this operation refreshes retained state for late listeners. Chunk
     // callbacks update bytes; they do not send IPC, focus or acquire an owner.
     let handle = app.clone();
-    let refresh = ProgressRefresh(tauri::async_runtime::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
+    let (refresh, stopped) = std::sync::mpsc::channel::<()>();
+    let _publisher = std::thread::spawn(move || {
+        while matches!(
+            stopped.recv_timeout(Duration::from_secs(1)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ) {
             publish_progress(&handle);
         }
-    }));
+    });
     let result = update
         .download_and_install(
             |bytes, total| change_progress(app, attempt, Some((bytes, total)), "downloading"),
@@ -386,13 +389,6 @@ async fn install_update(app: &AppHandle, update: Update) {
             app.state::<Updates>().busy.store(false, Ordering::SeqCst);
             installation_failed(app);
         }
-    }
-}
-
-struct ProgressRefresh(tauri::async_runtime::JoinHandle<()>);
-impl Drop for ProgressRefresh {
-    fn drop(&mut self) {
-        self.0.abort();
     }
 }
 
