@@ -2,9 +2,21 @@
    On macOS a light veil (--vibrancy-tint, tokens.css; the surface at 55% in
    webviews without light-dark()) keeps text legible over the material. Webviews
    with neither light-dark() nor color-mix() show the material bare, as before.
-   Windows Mica already supplies its own tint. */
-:root[data-native-appearance="mica"] { background: transparent; }
+   Windows Acrylic has a guarded veil and text roles over any backdrop. */
+:root[data-native-appearance="acrylic"] { background: var(--acrylic-tint, var(--surface)); }
 :root[data-native-appearance="vibrancy"] { background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 55%, transparent)); }
+
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) and (prefers-contrast: no-preference) {
+    :root[data-platform="windows"][data-native-appearance="acrylic"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+      --acrylic-tint: light-dark(rgb(249 249 249 / 92%), rgb(40 40 40 / 92%));
+      --citation: light-dark(#982d16, #ff9d87);
+      --status-done: light-dark(#135f29, #6fca81);
+      --status-look: light-dark(#734b00, #f0c25a);
+      --status-stop: light-dark(#9b273b, #ff9c9c);
+    }
+  }
+}
 
 /* Defensive overrides also cover preferences changed before native refresh. */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {

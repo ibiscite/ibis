@@ -58,7 +58,7 @@ test("macOS fills and hairlines are translucent so the native material shows thr
 test("only native success shows the material, under a veil; reduced transparency stays opaque", () => {
   // Webviews without light-dark() fall back to the surface at 55%.
   expect(native).toMatch(/:root\[data-native-appearance="vibrancy"\] \{ background: var\(--vibrancy-tint, color-mix\(in srgb, var\(--surface\) 55%, transparent\)\); \}/);
-  expect(native).toMatch(/:root\[data-native-appearance="mica"\] \{ background: transparent; \}/);
+  expect(native).toMatch(/:root\[data-native-appearance="acrylic"\] \{ background: var\(--acrylic-tint, var\(--surface\)\); \}/);
   // The defensive override comes after, with the same specificity, so it wins.
   const veil = native.indexOf('[data-native-appearance="vibrancy"] { background');
   const fallback = native.indexOf("@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active)");
@@ -67,6 +67,27 @@ test("only native success shows the material, under a veil; reduced transparency
   // The panel edge and glass menus exist only while the material is applied.
   expect(native).toMatch(/\[data-native-appearance="vibrancy"\][^{]*body::after/);
   expect(native).toMatch(/\[data-native-appearance="vibrancy"\][^{]*\.menu-popover[^{]*\{[^}]*backdrop-filter/);
+});
+
+test("Acrylic text roles keep contrast over black and white backdrops in both themes", () => {
+  const selector = ':root[data-platform="windows"][data-native-appearance="acrylic"]:not(.notice-window):not([data-gallery-theme="contrast"])';
+  const roles = native.slice(native.indexOf(selector)).match(/^[^{]+\{([^{}]*)\}/)?.[1] ?? "";
+  const windows = tokens.match(/:root\[data-platform="windows"\]:not\(\[data-gallery-theme="contrast"\]\) \{([^{}]*)\}/)?.[1] ?? "";
+  const tints = rgba(roles, "--acrylic-tint");
+  expect(tints).toHaveLength(2);
+  for (const [theme, tint] of tints.entries()) {
+    for (const under of [0, 255]) {
+      const background = tint.slice(0, 3).map((c) => c * tint[3]! + under * (1 - tint[3]!));
+      // Fluent's actual winning subtle hover is black 4% / white 6%.
+      const hover = background.map((c) => theme ? c * .94 + 255 * .06 : c * .96);
+      for (const role of ["--text", "--muted", "--citation", "--status-done", "--status-look", "--status-stop"]) {
+        const foreground = hexes(role === "--text" || role === "--muted" ? windows : roles, role)[theme]!;
+        for (const fill of [background, hover]) expect(contrast(foreground, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  }
+  // Accessibility overrides follow the material rule, never exposing its tint.
+  expect(native.indexOf("@media (prefers-reduced-transparency: reduce)")).toBeGreaterThan(native.indexOf(selector));
 });
 
 test("secondary text keeps 4.5:1 over the veiled material, on the brightest and darkest backdrops", () => {

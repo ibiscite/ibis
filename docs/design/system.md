@@ -414,6 +414,18 @@ Never glass on glass, never CSS blur pretending to be the desktop. All materials
 turn opaque under reduced transparency, increased contrast, forced colours and
 battery saver.
 
+The Windows picker uses the checked Desktop Acrylic path
+(`DWMSBT_TRANSIENTWINDOW`) on Windows 11 build 22621 or newer. Older, unknown
+or malformed native versions stay opaque; the legacy composition path and
+Mica are not fallbacks for the picker. Read the version and energy-saver
+status through the existing Windows APIs, and own/remove the energy observer
+with the accessibility observers. Unknown or active energy saving is opaque.
+The web surface opts in only after native success, with 92 % light/dark veils
+and material-scoped text roles tested over black and white, including hover;
+accessibility preferences retain solid surfaces. API success does not prove
+visible material or native toggle acceptance. See Microsoft's
+[supported Acrylic backdrop](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type).
+
 ### 6.2 Layers
 
 | Level | What | macOS | Windows 11 | GNOME |
