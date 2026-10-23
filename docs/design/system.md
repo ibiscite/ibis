@@ -8,6 +8,36 @@ an accepted ADR, the ADR wins. The Settings window and shortcut recorder are in
 [settings.md](settings.md); the citation shelf is in [preview.md](preview.md).
 Work is tracked in #761–#775.
 
+## Canvas decisions C1–C18 (2026-10-23)
+
+The maintainer's design canvas is the visual source for the picker, first run,
+Settings and the preview; this table is its written form. These decisions
+supersede any older text on this page, in [design.md](../design.md),
+[preview.md](preview.md) and [settings.md](settings.md) that disagrees. The PR
+that implements one deletes or rewrites the text it supersedes. Work is
+sequenced in #940 and on the tracking issue (Lane UI).
+
+| # | Decision |
+|---|---|
+| C1 | **One spacing rule.** S = `--inset` = 8 px on every OS (Windows moves from 4 to 8). Every fill (search field, row, shelf, icon-button hover, footer action, menu) keeps S from the window edge and S from any divider on each side that touches one. So the header is its tallest control + 2S, the footer is its 24 px actions + 2S, and the list starts S below the header divider and ends S above the shelf. |
+| C2 | **Header.** Heights: macOS 52 (36 px pin button), Windows 48 (32 px field and buttons), GNOME 50 (34 px field and buttons). A 1 px divider under the header on every OS, always. Order: search glyph, query, clear ×, format pop-up (filled, no divider), pin. The trailing button keeps S to the edge, top and bottom. |
+| C3 | **Two columns.** Icons, the search glyph, the status dot and type tiles are centred on the 32 px tile column (`inset + row-pad + 16`); text starts on the title column (`inset + row-pad + tile + row-gap` = 64 px): row titles, the search query, the status text and the shelf citation. The search glyph sits 6 px inside the tile column on each side. |
+| C4 | **Rows.** 58 px, 2 px apart everywhere (results, Recently added, choices). The citation key is hidden in rows; the year is trailing and centred vertically. Selection: accent fill on macOS and GNOME; subtle fill plus a 3 × 16 px accent pill on Windows. |
+| C5 | **Pointer.** Click selects (the shelf shows its citation); double-click or the footer Copy does what Enter does. ⌘-click or Ctrl-click, or the + on a hovered tile, adds to the citation. Right-click opens More for that row. Only copying closes the window. |
+| C6 | **Pin.** A neutral icon button at the header's end, always visible. On: filled glyph on the pressed fill, never the accent. ⌘⇧P / Ctrl+Shift+P; also in More as "Keep window open" / "Stop keeping open". Escape never unpins. |
+| C7 | **Shelf.** One 40 px line with the beak quote mark hanging before the citation (mark at the tile column's end, text on the title column). Shown while there are results; hidden on empty, error and choice screens. With several references the citation itself holds them as segments (no chips line): each segment reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6) with a 16 px round remove button inside its end over a 6 px fade of the text, so nothing moves and neighbours are never covered (this holds for zero-width separators such as BibLaTeX's). Pointing at the × darkens its circle. From the keyboard ← → select a segment as an accent-filled token and Delete removes it. On copy the shelf shows a closing beak after the citation and "Copied" at the line end. |
+| C8 | **Footer.** Status dot and text, then "Copy N as <format> ↵", "Shortcuts ⌘/", "More ⌘K". Actions are 24 px fills. Key caps only in the footer and lists, never inside buttons; buttons use quiet trailing text ("Cite this page ⌘↩"). The macOS Return cap is the return-arrow glyph. |
+| C9 | **Menus.** Items padded 10 px on both sides; a leading check column only when an item in that menu can be checked (the format menu), never in More. Separators inset 10 px with 4 px above and below. The format menu's filter text aligns with the item labels, and the menu opens 4 px below the pop-up, aligned to its trailing edge. macOS shortcut text uses native modifier order (⇧⌘C). |
+| C10 | **Size follows content.** Every state is as tall as its content: search and footer alone (nothing to suggest), one hint line, Recently added, or a list of choices. Results grow it in 220 ms with the top edge fixed, to the remembered height; it never shrinks while open and starts compact next time. Reduced motion: no animation. |
+| C11 | **Compact start.** Recently added (3 compact rows) when the library has dates; otherwise one rotating tip ("1 of 6"); otherwise nothing, just search and footer. The placeholder carries the hint: "Search by title, author, year or key". |
+| C12 | **Choices screens.** Empty library, missing file and first run use one pattern: a title and one line on the tile column's edge, then result-style rows (tile, title, one line of help, optional trailing tag, chevron). Empty library: Zotero ("Found on this Mac/PC/computer") and BibTeX or BibLaTeX file; a CSL JSON or YAML row joins them only when those sources ship (0.5, ROADMAP); "You can drop a file here too." Missing file: "Find example.bib" (accent tile) and "Use another library". First run is two steps of the same pattern: where your references live, then what you write in (Markdown (Pandoc), LaTeX, Typst); the open shortcut and start-at-login live in Settings and the footer tip. No mark in first run. |
+| C13 | **Depth per OS.** macOS: one glass sheet for the whole panel (Liquid Glass, vibrancy fallback); the shelf is a tint on it, menus on glass. Windows: Desktop Acrylic; the shelf is a card (tint, 1 px stroke); the footer is a band with a top divider. GNOME: opaque, no blur; footer band with a divider; shelf full-bleed between dividers. Reduce transparency and contrast modes make every layer solid. |
+| C14 | **Accent.** The system accent with fallbacks: macOS #007AFF / #0A84FF, Windows #005FB8 / #60CDFF, GNOME #3584E4 / #78AEED (light / dark). Scarlet only for the citation mark, the added tile and the brand. |
+| C15 | **Radii.** macOS window 16, row 8, tile 6, control 8, menu 12 (item 6, padding 6). Windows window 8, row/tile/control/item 4, menu 8 (padding 4). GNOME window 15, row 7, tile/control/item 6, menu 12 (padding 6). Citation segment pill 6. |
+| C16 | **Mark.** One continuous silhouette with soft depth: a top-to-bottom tone, a soft light along the top rim, a soft shade along the bottom rim and a short shadow, computed from the whole shape (one SVG filter), never per piece. The beak quote matches; below 24 px it drops the shadow. App icon glyph about 73 % of the tile. |
+| C17 | **Preview (wide window).** At 960 px or wider the list keeps 400 px and the pane takes the rest; below that the preview replaces the list. Pane toolbar and bottom row are 48 px with S padding; the page area keeps S from the divider and the edge; the content area ends S above the shelf. Page field shows the printed label with "PDF n of m"; "Cite this page ⌘↩"; Shift extends to a range. |
+| C18 | **Settings.** Its own window with a searchable sidebar list of pages (General, Shortcuts, Libraries, Citations, Preview, Advanced, About), each a stack of titled groups of the same rows; 720 × 560, down to 560 wide where the sidebar collapses. |
+
 ## Decisions D1–D17
 
 Token names are the target names. The first migration (#761) exposes aliases of

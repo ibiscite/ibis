@@ -303,7 +303,8 @@ glyph overhangs it by 6 px. Controls in one bar share a centre line, and text
 in one bar shares a baseline.
 
 **Header.** In order: search glyph, query, clear button, the header menus
-(format, then library scope when there is one). No pin or empty slot follows them.
+(format, then library scope when there is one), then the pin (C6 in
+[system.md](design/system.md#canvas-decisions-c1c18-2026-10-23)).
 
 - **Clear (×).** Inside the field at its trailing end, only while there is a
   query: a 16 px glyph in a 32 px target, secondary colour. Its name is
@@ -338,9 +339,8 @@ in one bar shares a baseline.
   `aria-expanded`; items are `menuitemradio` with `aria-checked`. While no
   library is chosen the header menus are hidden, because first-run setup asks
   the same question in its own words.
-- **Keep Window Open.** A checkable action in More, with ⌘⇧P on macOS and
-  Ctrl+Shift+P elsewhere. While on, a pin in the footer status area is a
-  button named “Kept open; click to stop”; it unpins and returns focus to search.
+- **Keep Window Open.** The header pin (C6), also in More as "Keep window
+  open" / "Stop keeping open", with ⇧⌘P on macOS and Ctrl+Shift+P elsewhere.
 - **Targets.** Every header control keeps a 32 px target (44 px under
   `pointer: coarse`), even where it draws 28 px.
 
@@ -420,7 +420,8 @@ baseline, each key cap 20 px high and centred on it.
   shortcut labels do (Ctrl + K). In menus a shortcut is plain trailing text,
   as in each system's own menus, never a cap.
 
-**Empty states.** One template on every platform, centred like
+**Empty states.** The empty library and the missing file use C12's choice
+rows instead (#949). Otherwise one template on every platform, centred like
 `ContentUnavailableView`, `AdwStatusPage` and Fluent's empty state: a 48 px
 symbolic icon in `--text-tertiary`, a title (15/20, semibold), a line of
 at most 40 characters per row, wrapping to at most three rows (13/18,
@@ -450,7 +451,8 @@ once it keeps a local history (Rollout 6, which can be turned off and cleared),
 and until then the first, with the two keys that make the first minute work.
 No illustration and no tips beyond those keys.
 
-**First run.** A grouped form, as macOS System Settings, Windows Settings
+**First run.** Superseded by C12 (two steps of choice rows, #950); the
+grouped form below is replaced when #950 lands. A grouped form, as macOS System Settings, Windows Settings
 cards and libadwaita preference groups are: a title ("Choose a library to get
 started") and one secondary line saying what was found, then one group of
 labelled rows on `--surface-raised`, each at least 48 px high (56 px with a
@@ -503,7 +505,8 @@ menu items keep their check; the pressed pop-up button keeps a 1 px
 
 Three layers, each reached from the one before by something on screen:
 
-- **First minute:** type, press Enter, paste. Clicking a row copies it.
+- **First minute:** type, press Enter, paste. Clicking a row selects it;
+  double-clicking copies it (C5).
 - **First week:** → in the search box previews the attachment and "Cite page"
   fills in the page; Shift+Enter builds a citation with several sources;
   Tab reaches the browsing tabs, where ← and → choose recent items or PDFs.
