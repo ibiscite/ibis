@@ -6,6 +6,7 @@ import type { Platform } from "./platform";
  * arrive as English strings from Rust; translating those needs structured codes.
  */
 export const operationFailures = {
+  rowContext: "The reference menu could not open. Use Enter to copy or Shift+Enter to add.",
   status: "Ibis could not check your library. Choose the file again.",
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
   shortcut: "Ibis could not check the shortcut. Open Ibis from the menu bar or tray.",

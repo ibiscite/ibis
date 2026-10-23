@@ -57,7 +57,7 @@ test.each(["", "研究_memory_".repeat(1_000)])("unusual keys stay literal and d
   window.getSelection()?.removeAllRanges();
   onChoose.mockClear();
   fireEvent.click(container.querySelector(".result-year")!);
-  expect(onChoose).toHaveBeenCalledWith(0, record, "copy");
+  expect(onChoose).toHaveBeenCalledWith(0, record, "select");
   expect(getByRole("option").getAttribute("aria-selected")).toBe("true");
 });
 
@@ -80,7 +80,7 @@ test("memoised rows call the newest handlers", () => {
   rerender(list(0, newest));
   fireEvent.click(container.querySelector("#result-3")!);
   expect(first).not.toHaveBeenCalled();
-  expect(newest).toHaveBeenCalledWith(3, rows[3], "copy");
+  expect(newest).toHaveBeenCalledWith(3, rows[3], "select");
   const toggle = vi.fn();
   rerender(list(0, newest, toggle));
   const tile = container.querySelector("#result-2 .tile-button")!;
@@ -102,4 +102,10 @@ test.each([2, 60])("a cancelled tile drag cannot fall through to copying its row
   fireEvent.click(row, { clientX: 20 + distance, clientY: 20 });
   expect(toggle).not.toHaveBeenCalled();
   expect(choose).not.toHaveBeenCalled();
+});
+
+test("the second mouse press prevents native word selection before double-click copy", () => {
+  const { getAllByRole } = render(list(0));
+  expect(fireEvent.mouseDown(getAllByRole("option")[0]!, { detail: 2, button: 0 })).toBe(false);
+  expect(fireEvent.mouseDown(getAllByRole("option")[0]!, { detail: 1, button: 0 })).toBe(true);
 });

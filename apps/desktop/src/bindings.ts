@@ -115,6 +115,8 @@ export const commands = {
 	copiedNotice: () => __TAURI_INVOKE<string | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
+	/**  Show only native Copy and Add/Remove actions. Cancellation returns no action. */
+	rowContext: (added: boolean) => __TAURI_INVOKE<"copy" | "toggle" | null>("row_context", { added }),
 };
 
 /* Types */
@@ -258,6 +260,8 @@ export type RecordId = {
 	/**  Key of the record inside that source (BibTeX key, Zotero item key, ...). */
 	native_key: string,
 };
+
+export type RowAction = "copy" | "toggle";
 
 /**  A search keeps its snapshot identity even when no references match. */
 export type SearchReply = {

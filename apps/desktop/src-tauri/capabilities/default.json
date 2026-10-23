@@ -33,6 +33,7 @@
     "allow-quit",
     "allow-shortcut-status",
     "allow-show-copied-notice",
-    "allow-native-appearance"
+    "allow-native-appearance",
+    "allow-row-context"
   ]
 }

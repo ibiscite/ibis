@@ -672,7 +672,7 @@ before it adds a `settings.json` field.
    (#492); all done.
 3. Window behaviour that needs no settings: outside-click hiding, the Escape
    ladder, the kept search and pinning (#314, done); "Copied" after hiding and
-   copy on row click (#496, done); staying out of the taskbar and Alt+Tab, and
+   row selection on click and copy on double-click (C5); staying out of the taskbar and Alt+Tab, and
    the full-screen guard (#495, #509, #510).
 4. Density and Larger text (ADR 0020, done); then an ADR for display choice and
    remembered per-display position, and opening on the focused window's display.

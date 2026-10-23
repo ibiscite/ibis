@@ -193,6 +193,58 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
   return calls;
 }
 
+test("C5 click selects without copying and double-click copies the highlighted citation", async () => {
+  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], copy_citation: copied });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Second"), { detail: 1 });
+  expect(screen.getByRole("option", { name: /Second/ }).getAttribute("aria-selected")).toBe("true");
+  await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain("@b"));
+  expect(copied).not.toHaveBeenCalled();
+  expect(calls).not.toContain("hide_picker");
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
+  fireEvent.click(screen.getByText("Second"), { detail: 2 });
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+});
+
+test.each([null, "toggle", "copy"])("C5 native context completion %s uses the current row without a browser menu", async (action) => {
+  const context = vi.fn(() => action);
+  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], row_context: context, copy_citation: copied });
+  render(<App />);
+  const row = await screen.findByText("Second");
+  fireEvent.contextMenu(row);
+  await waitFor(() => expect(context).toHaveBeenCalledOnce());
+  expect(context).toHaveBeenCalledWith({ added: false });
+  if (action === "copy") await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  else expect(copied).not.toHaveBeenCalled();
+  if (action === "toggle") await waitFor(() => expect(chipKeys()).toEqual(["b"]));
+  else expect(chipKeys()).toEqual([]);
+  if (action !== "copy") expect(calls).not.toContain("hide_picker");
+});
+
+test.each(["query", "hide", "selection", "revision", "highlight", "failure"])("C5 context result cannot outlive its %s owner", async (change) => {
+  let finish: (value: string | null) => void = () => undefined;
+  const pending = new Promise<string | null>((resolve) => { finish = resolve; });
+  const copied = vi.fn(() => ({ text: "unexpected", warnings: [] }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")],
+    row_context: () => change === "failure" ? Promise.reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")) : pending, copy_citation: copied });
+  render(<App />);
+  fireEvent.contextMenu(await screen.findByText("Second"));
+  if (change === "query") fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "new" } });
+  if (change === "hide") await act(async () => { await emit("picker:hidden"); });
+  if (change === "highlight") fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowUp" });
+  if (change === "revision") await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, revision: "2", references: 2 }); });
+  if (change === "selection") fireEvent.click(screen.getByText("First"), { shiftKey: true });
+  if (change === "failure") {
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The reference menu could not open. Use Enter to copy or Shift+Enter to add.");
+    expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+  } else await act(async () => { finish(change === "highlight" ? "toggle" : "copy"); await pending; });
+  expect(copied).not.toHaveBeenCalled();
+  if (change === "highlight") expect(chipKeys()).toEqual([]);
+  expect(calls).not.toContain("hide_picker");
+});
+
 test("typing a query shows results from the search command", async () => {
   backend({
     search: ({ query }) =>
@@ -2282,7 +2334,7 @@ test("a failed Copied notice never undoes the copy or the hide", async () => {
   } finally { log.mockRestore(); }
 });
 
-test("clicking a row copies it like Enter, and Shift+click adds it like Shift+Enter", async () => {
+test("double-clicking a row copies it like Enter, and Shift+click adds it like Shift+Enter", async () => {
   const copies: unknown[] = [];
   const calls = backend({
     search: () => [result("a", "First"), result("b", "Second")],
@@ -2296,13 +2348,13 @@ test("clicking a row copies it like Enter, and Shift+click adds it like Shift+En
   fireEvent.click(second, { shiftKey: true });
   expect(second.hasAttribute("data-citation-selected")).toBe(false);
   expect(copies).toEqual([]);
-  fireEvent.click(second);
+  fireEvent.click(second, { detail: 2 });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   expect(copies).toEqual([{ ids: [{ source: "refs.bib", native_key: "b" }], format: "pandoc", expectedRevision: "1" }]);
   expect(second.getAttribute("aria-selected")).toBe("true");
 });
 
-test("with sources in the citation, a click copies the citation like Enter", async () => {
+test("with sources in the citation, a double-click copies the citation like Enter", async () => {
   const copies: unknown[] = [];
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
@@ -2310,12 +2362,12 @@ test("with sources in the citation, a click copies the citation like Enter", asy
   });
   render(<App />);
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
-  fireEvent.click(screen.getByText("Second"));
+  fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(copies[0]).toEqual({ ids: [{ source: "refs.bib", native_key: "a" }], format: "pandoc", expectedRevision: "1" });
 });
 
-test("a drag, a double click's second click or a modified click on a row copies nothing", async () => {
+test("a drag, a third click or an unsupported modified row click copies nothing", async () => {
   const calls = backend({
     search: () => [result("a", "First")],
     copy_citation: () => ({ text: "@a", warnings: [] }),
@@ -2324,18 +2376,18 @@ test("a drag, a double click's second click or a modified click on a row copies 
   const row = (await screen.findByText("First")).closest('[role="option"]')!;
   fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
   fireEvent.click(row, { clientX: 60, clientY: 12 });
-  fireEvent.click(row, { detail: 2 });
-  fireEvent.click(row, { ctrlKey: true });
+  fireEvent.click(row, { detail: 3 });
+  fireEvent.click(row, { metaKey: true });
   fireEvent.click(row, { altKey: true });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(calls).not.toContain("copy_citation");
   expect(row.hasAttribute("data-citation-selected")).toBe(false);
   fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
-  fireEvent.click(row, { clientX: 12, clientY: 11 });
+  fireEvent.click(row, { clientX: 12, clientY: 11, detail: 2 });
   await waitFor(() => expect(calls).toContain("copy_citation"));
 });
 
-test("a click on a row waits for its formatted preview before copying it", async () => {
+test("a double-click on a row waits for its formatted preview before copying it", async () => {
   const { InlineWorker } = await import("./format/inline-worker");
   vi.stubGlobal("Worker", InlineWorker);
   const copies: unknown[] = [];
@@ -2350,7 +2402,7 @@ test("a click on a row waits for its formatted preview before copying it", async
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  fireEvent.click(await screen.findByText("Second"));
+  fireEvent.click(await screen.findByText("Second"), { detail: 2 });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(String((copies[0] as { text: string }).text)).toContain("Smith");
   expect(screen.queryByText("The preview is still being made. Try again in a moment.")).toBeNull();
@@ -2442,7 +2494,7 @@ test.each(["Escape", "hidden"])("a click waiting for its preview never copies af
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  fireEvent.click(await screen.findByText("Second"));
+  fireEvent.click(await screen.findByText("Second"), { detail: 2 });
   if (leave === "Escape") {
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Escape" });
     await waitFor(() => expect(calls).toContain("hide_picker"));
@@ -2882,7 +2934,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  fireEvent.click(await screen.findByText("Second"));
+  fireEvent.click(await screen.findByText("Second"), { detail: 2 });
   // Returning to APA must not revive the earlier click either.
   if (next === "style:apa") chooseFormat("style:ieee");
   chooseFormat(next);
@@ -2891,7 +2943,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   expect(output).toEqual([]);
   expect(calls).not.toContain("hide_picker");
   expect(calls).not.toContain("show_copied_notice");
-  fireEvent.click(screen.getByText("Second"));
+  fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(output).toHaveLength(1));
   expect(output[0]).toMatchObject(next === "pandoc"
     ? { format: "pandoc", ids: [{ source: "refs.bib", native_key: "b" }] }
@@ -2915,14 +2967,14 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   await screen.findByText("Old title and key");
   replacement = true;
   await act(async () => { await emit("library:changed", status("snapshot-2")); });
-  if (action === "click") fireEvent.click(screen.getByText("Old title and key"));
+  if (action === "click") fireEvent.click(screen.getByText("Old title and key"), { detail: 2 });
   else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter", shiftKey: action === "Shift+Enter" });
   await act(async () => { await Promise.resolve(); });
   expect(copied).toEqual([]);
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
   expect(calls).not.toContain("hide_picker");
   await act(async () => { release([fresh]); });
-  fireEvent.click(await screen.findByText("Replacement title and key"));
+  fireEvent.click(await screen.findByText("Replacement title and key"), { detail: 2 });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(copied[0]).toMatchObject({ expectedRevision: "snapshot-2" });
 });
@@ -2938,7 +2990,7 @@ test("a newer search revision refreshes status even before its event arrives", a
   render(<App />);
   await screen.findByText("Fresh before event");
   await waitFor(() => expect(reads).toBeGreaterThan(1));
-  fireEvent.click(screen.getByText("Fresh before event"));
+  fireEvent.click(screen.getByText("Fresh before event"), { detail: 2 });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(copied[0]).toMatchObject({ expectedRevision: "2" });
 });
@@ -2974,13 +3026,13 @@ test("a pre-event copy rejection recovers without copying or hiding until a fres
   render(<App />);
   await screen.findByText("Snapshot 1");
   revision = "2";
-  fireEvent.click(screen.getByText("Snapshot 1"));
+  fireEvent.click(screen.getByText("Snapshot 1"), { detail: 2 });
   await screen.findByText("The library changed. Search again and reselect the references before copying.");
   await screen.findByText("Snapshot 2");
   expect(attempts).toEqual(["1"]);
   expect(writes).toEqual([]);
   expect(calls).not.toContain("hide_picker");
-  fireEvent.click(screen.getByText("Snapshot 2"));
+  fireEvent.click(screen.getByText("Snapshot 2"), { detail: 2 });
   await waitFor(() => expect(writes).toEqual(["2"]));
   expect(attempts).toEqual(["1", "2"]);
 });
@@ -3015,7 +3067,7 @@ test.each(["resolve", "reject"])("an older recovery status cannot override a new
     copy_citation: () => { throw { code: "snapshot_changed" }; },
   });
   render(<App />);
-  fireEvent.click(await screen.findByText("Recovery 1"));
+  fireEvent.click(await screen.findByText("Recovery 1"), { detail: 2 });
   await waitFor(() => expect(reads).toBe(2));
   revision = "3";
   await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
@@ -3097,7 +3149,7 @@ test("a late search reply cannot replace rows from the newer snapshot", async ()
   await screen.findByText("Late 3");
   await act(async () => { pending["2"]!({ revision: "2", results: [{ ...result("a", "Late 2"), revision: "2" }] }); });
   expect(screen.queryByText("Late 2")).toBeNull();
-  fireEvent.click(screen.getByText("Late 3"));
+  fireEvent.click(screen.getByText("Late 3"), { detail: 2 });
   await waitFor(() => expect(copied).toEqual(["3"]));
 });
 
@@ -3198,7 +3250,7 @@ test("a delayed hide cannot show an old copy notice after reopening", async () =
     hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
   });
   render(<App />);
-  fireEvent.click(await screen.findByText("First"));
+  fireEvent.click(await screen.findByText("First"), { detail: 2 });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   await act(async () => { await emit("picker:shown"); releaseHide(); });
   expect(calls).not.toContain("show_copied_notice");
@@ -3212,7 +3264,7 @@ test("a delayed hide cannot show an old notice over a newer selection", async ()
     hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
   });
   render(<App />);
-  fireEvent.click(await screen.findByText("First"));
+  fireEvent.click(await screen.findByText("First"), { detail: 2 });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   fireEvent.click(screen.getByText("Second"), { shiftKey: true });
   await act(async () => { releaseHide(); });
@@ -3260,7 +3312,7 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
     expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remove a from the selection" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove b from the selection" }));
-    fireEvent.click(screen.getByText("Second revision 2"));
+    fireEvent.click(screen.getByText("Second revision 2"), { detail: 2 });
     await waitFor(() => expect(attempts).toEqual(["1", "2"]));
   } else {
     expect(screen.queryByText("Keep the newer warning")).not.toBeNull();
@@ -3302,7 +3354,7 @@ test.each([
   await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
   await screen.findByText("Pending 2 b");
   fireEvent.click(screen.getByRole("button", { name: "Remove a from the selection" }));
-  fireEvent.click(screen.getByText("Pending 2 b"), { shiftKey: selectedCopy });
+  fireEvent.click(screen.getByText("Pending 2 b"), { shiftKey: selectedCopy, detail: selectedCopy ? 1 : 2 });
   if (selectedCopy) fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(attempts).toEqual(["1", "2"]));
   revision = refreshedRevision;
@@ -3384,7 +3436,7 @@ test("retained stale freshness does not hide settings or copy failures", async (
   await screen.findByText("Retained reference with errors");
   expect(screen.getAllByRole("alert")).toHaveLength(1);
   expect(screen.getByRole("alert").textContent).toContain(notice);
-  fireEvent.click(screen.getByText("Retained reference with errors"));
+  fireEvent.click(screen.getByText("Retained reference with errors"), { detail: 2 });
   await screen.findByText("Nothing was copied. Try again, or use Reload.");
   expect(screen.getAllByRole("alert")).toHaveLength(2);
 });

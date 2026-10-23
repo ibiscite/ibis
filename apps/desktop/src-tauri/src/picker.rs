@@ -1,7 +1,7 @@
 //! Showing, hiding and quitting, and the global shortcut.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -103,6 +103,7 @@ fn register_with<E>(
 
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
+    app.state::<PickerGeneration>().advance();
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
         report(window.unminimize(), NativeIssue::Unminimize);
         place_on_active_display(app, &window, false);
@@ -223,6 +224,7 @@ pub(crate) fn hide_picker(app: AppHandle) {
 /// A window hide alone leaves Ibis active on macOS, swallowing the next paste.
 /// Every dismissal path must also release application focus.
 pub(crate) fn dismiss_picker(app: &AppHandle) {
+    app.state::<PickerGeneration>().advance();
     #[cfg(target_os = "macos")]
     crate::panel::cancel_initial_presentation(app);
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
@@ -288,6 +290,54 @@ pub(crate) fn hides_on_blur(release_build: bool, chooser_open: bool, pinned: boo
     release_build && !chooser_open && !pinned
 }
 
+/// A show/dismiss attempt invalidates work owned by an earlier presentation,
+/// even when the native operation fails; it never revives the old owner.
+#[derive(Default)]
+pub(crate) struct PickerGeneration(AtomicU64);
+
+impl PickerGeneration {
+    pub(crate) fn current(&self) -> u64 {
+        self.0.load(Ordering::SeqCst)
+    }
+    fn advance(&self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+    fn still_owns_after(&self, generation: u64, query: impl FnOnce() -> bool) -> bool {
+        query() && self.owns(generation)
+    }
+    fn owns(&self, generation: u64) -> bool {
+        self.current() == generation
+    }
+}
+
+/// The blur suppressed by a native menu may be the last focus event received.
+/// Call on the main thread after releasing its lease; reconcile only cancellation
+/// against live state.
+pub(crate) fn reconcile_cancelled_menu(window: &tauri::WebviewWindow, generation: u64) {
+    let app = window.app_handle();
+    let outside = app.state::<PickerGeneration>().still_owns_after(generation, || {
+        window.is_visible().ok() == Some(true) && focused_for_shortcut(window) == Some(false)
+    });
+    if !outside
+        || !hides_on_blur(
+            !cfg!(debug_assertions),
+            app.state::<ChooserOpen>().is_open(),
+            app.state::<Pinned>().0.load(Ordering::SeqCst),
+        )
+    {
+        return;
+    }
+
+    #[cfg(target_os = "macos")]
+    if !crate::panel::allows_automatic_blur(app) {
+        return;
+    }
+    #[cfg(target_os = "windows")]
+    dismiss_unless_refocused(app, app.state::<FocusChanges>().record(), generation);
+    #[cfg(not(target_os = "windows"))]
+    dismiss_picker(app);
+}
+
 /// When Narrator or another UI Automation client presses a control, WebView2
 /// can hand focus to its own browser process and back within tens of
 /// milliseconds (#341). The picker hides only if focus has not come back
@@ -308,6 +358,10 @@ impl FocusChanges {
         self.0.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
     }
 
+    fn permits_dismissal(&self, blur: u64, visits: &PickerGeneration, generation: u64) -> bool {
+        self.is_latest(blur) && visits.owns(generation)
+    }
+
     /// Whether `change` is still the most recent focus change.
     fn is_latest(&self, change: u64) -> bool {
         self.0.load(Ordering::SeqCst) == change
@@ -318,17 +372,30 @@ impl FocusChanges {
 /// its own dialogs opened or the user pinned it. Without a timer thread,
 /// hide at once as before.
 #[cfg(target_os = "windows")]
-pub(crate) fn dismiss_unless_refocused(app: &AppHandle, blur: u64) {
+pub(crate) fn dismiss_unless_refocused(app: &AppHandle, blur: u64, generation: u64) {
     let delayed = app.clone();
     let spawned = std::thread::Builder::new().name("ibis-blur".into()).spawn(move || {
         std::thread::sleep(REFOCUS_GRACE);
-        let chooser_open = delayed.state::<ChooserOpen>().is_open();
-        let pinned = delayed.state::<Pinned>().0.load(Ordering::SeqCst);
-        if hides_on_blur(true, chooser_open, pinned) && delayed.state::<FocusChanges>().is_latest(blur) {
-            dismiss_picker(&delayed);
-        }
+        let owner = delayed.clone();
+        report(
+            delayed.run_on_main_thread(move || finish_blur(&owner, blur, generation)),
+            NativeIssue::Hide,
+        );
     });
     if spawned.is_err() {
+        finish_blur(app, blur, generation);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
+    let chooser_open = app.state::<ChooserOpen>().is_open();
+    let pinned = app.state::<Pinned>().0.load(Ordering::SeqCst);
+    if hides_on_blur(true, chooser_open, pinned)
+        && app
+            .state::<FocusChanges>()
+            .permits_dismissal(blur, &app.state::<PickerGeneration>(), generation)
+    {
         dismiss_picker(app);
     }
 }
@@ -506,20 +573,54 @@ mod tests {
         assert!(!hides_on_blur(true, false, true));
     }
 
+    #[test]
+    fn a_later_show_or_hide_cannot_be_dismissed_by_old_menu_or_deferred_blur() {
+        let generation = PickerGeneration::default();
+        let menu = generation.current();
+        assert!(generation.owns(menu));
+        assert!(
+            !generation.still_owns_after(menu, || false),
+            "Escape returns focus to the picker"
+        );
+        assert!(
+            !generation.still_owns_after(menu, || {
+                generation.advance();
+                true
+            }),
+            "a show during a native query supersedes cancellation"
+        );
+        let menu = generation.current();
+        generation.advance(); // hide, including a failed native hide
+        assert!(!generation.owns(menu));
+        let hidden = generation.current();
+        generation.advance(); // reopen, including a failed show
+        assert!(!generation.owns(menu));
+        assert!(!generation.owns(hidden));
+    }
+
     /// #341: pressing More through UI Automation on Windows blurs the picker
     /// and refocuses it within tens of milliseconds; that must not hide it.
     #[test]
     fn a_blur_followed_by_refocus_does_not_hide_the_picker() {
         let changes = FocusChanges::default();
+        let visits = PickerGeneration::default();
         let blur = changes.record();
-        assert!(changes.is_latest(blur), "a real blur still hides");
+        assert!(changes.permits_dismissal(blur, &visits, 0), "a real blur still hides");
         changes.record();
         assert!(
-            !changes.is_latest(blur),
+            !changes.permits_dismissal(blur, &visits, 0),
             "focus came back before the grace period ended"
         );
         let second_blur = changes.record();
-        assert!(changes.is_latest(second_blur), "a later real blur still hides");
+        assert!(
+            changes.permits_dismissal(second_blur, &visits, 0),
+            "a later real blur still hides"
+        );
+        visits.advance();
+        assert!(
+            !changes.permits_dismissal(second_blur, &visits, 0),
+            "a new show supersedes deferred blur even without a focus event"
+        );
     }
 
     #[test]

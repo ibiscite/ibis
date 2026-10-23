@@ -25,4 +25,5 @@ pub const APP_COMMANDS: &[&str] = &[
     "show_copied_notice",
     "copied_notice",
     "native_appearance",
+    "row_context",
 ];

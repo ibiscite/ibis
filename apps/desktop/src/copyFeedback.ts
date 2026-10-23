@@ -31,16 +31,15 @@ export type RowClick = {
 /** Beyond this distance a press and release is a drag, not a click. */
 export const DRAG_DISTANCE = 4;
 
-/**
- * A click copies the row, like Enter; Shift+click adds it to the citation or
- * removes it, like Shift+Enter. Drags, text selection, controls inside the
- * row, repeated clicks and other modifiers do nothing.
- */
-export function rowClickAction(click: RowClick): "copy" | "toggle" | "none" {
-  if (click.onControl || click.selectedText || click.moved > DRAG_DISTANCE) return "none";
-  if (click.ctrlKey || click.metaKey || click.altKey) return "none";
-  if (click.detail > 1) return "none";
-  return click.shiftKey ? "toggle" : "copy";
+/** A single click selects; double-click copies. The platform command modifier
+ * (or the existing Shift shortcut) toggles a citation. Controls and drags never act. */
+export function rowClickAction(click: RowClick, mac = false): "select" | "copy" | "toggle" | "none" {
+  if (click.onControl || click.selectedText || click.moved > DRAG_DISTANCE || click.altKey) return "none";
+  const command = mac ? click.metaKey && !click.ctrlKey : click.ctrlKey && !click.metaKey;
+  if ((click.ctrlKey || click.metaKey) && !command) return "none";
+  if (click.detail > 2) return "none";
+  if (command || click.shiftKey) return click.detail > 1 ? "none" : "toggle";
+  return click.detail === 2 ? "copy" : "select";
 }
 
 export type NoticePlatform = Platform;

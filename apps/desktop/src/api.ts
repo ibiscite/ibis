@@ -32,6 +32,7 @@ export const {
   findSources,
   openFoundLibrary,
   showCopiedNotice,
+  rowContext,
 } = commands;
 
 // The limit default, page and request number are not part of the UI's API:

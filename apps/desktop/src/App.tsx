@@ -41,7 +41,7 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -50,7 +50,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries, zoteroGroups } = api;
-  const { findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -393,6 +393,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // pending, the rows still on screen are not acted on or offered by any key,
   // click or footer hint; only these current results are.
   const current = resultsQuery === query && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
+  const rowScope = useMemo(() => ({ api, current, selected, query, format, snapshotRevision }), [api, current, selected, query, format, snapshotRevision]);
+  const latestRowScope = useRef(rowScope);
+  latestRowScope.current = rowScope;
+  const contextRequest = useRef(0);
   // The selection, or the highlighted result when nothing is selected.
   const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1);
   const chosenKey = choiceKey(chosen);
@@ -752,8 +756,22 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             if (current !== results) return;
             setActive(i);
             if (action === "toggle") toggle(r);
-            else setClickCopy(selected.size > 0 ? chosenKey : choiceKey([r]));
+            else if (action === "copy") setClickCopy(selected.size > 0 ? chosenKey : choiceKey([r]));
             input.current?.focus();
+          }}
+          onContext={(i, r) => {
+            if (current !== results || !rowContext) return;
+            resetPointer();
+            setActive(i);
+            const scope = rowScope, visibility = copyVisibility.current, request = ++contextRequest.current;
+            const owns = () => scope === latestRowScope.current && visibility === copyVisibility.current && request === contextRequest.current && latestHighlight.current === choiceKey([r]);
+            void rowContext(selected.has(idKey(r.id))).then((action) => {
+              if (!owns()) return;
+              report("rowContext", false);
+              if (action === "toggle") toggle(r);
+              else if (action === "copy") setClickCopy(selected.size > 0 ? chosenKey : choiceKey([r]));
+              if (action !== null || document.hasFocus()) input.current?.focus({ preventScroll: true });
+            }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) input.current?.focus({ preventScroll: true }); } });
           }}
           onToggle={(i, r) => {
             if (current !== results) return;
