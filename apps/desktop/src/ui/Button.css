@@ -1,0 +1,29 @@
+/* One state table for buttons (system.md §8–§9), independent of the feature. */
+.ui-button[data-variant] {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--space-2); min-height: var(--control-min-size);
+  padding: 0 var(--space-3); border: var(--border-width) solid var(--stroke-control);
+  border-radius: var(--r-control); background: var(--fill-control); color: var(--text);
+  cursor: default; touch-action: manipulation;
+}
+.ui-button[data-size="small"] { position: relative; min-height: 1.5rem; padding-inline: var(--space-2); }
+/* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
+.ui-button[data-size="small"]::after { content: ""; position: absolute; inset: calc(-1 * var(--space-1)) 0; }
+.ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: var(--clear); border-color: var(--clear); color: var(--muted); }
+.ui-button[data-variant="icon"] { min-width: var(--control-min-size); padding: 0; }
+.ui-button[data-variant="primary"] { background: var(--accent); color: var(--text-on-accent); border-color: var(--clear); }
+@media (hover: hover) {
+  .ui-button[data-hovered]:not([data-disabled]) { background: var(--fill-control-hover); }
+  .ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-hovered]:not([data-disabled]) { background: var(--fill-subtle-hover); color: var(--text); }
+  .ui-button[data-variant="primary"][data-hovered]:not([data-disabled]) { background: var(--fill-primary-hover); }
+}
+.ui-button:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled]) { background: var(--fill-control-pressed); }
+.ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled]) { background: var(--fill-subtle-pressed); }
+.ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled]) { background: var(--fill-primary-pressed); }
+.ui-button[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
+.ui-button[data-disabled] { background: var(--fill-disabled); color: var(--text-disabled); }
+.ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-disabled] { background: var(--clear); }
+@media (pointer: coarse) {
+  .ui-button[data-variant] { min-width: 2.75rem; min-height: 2.75rem; }
+  .ui-button[data-size="small"]::after { inset: 0; }
+}

@@ -846,7 +846,7 @@ test("the Windows focus ring contrasts with both themes independent of the syste
   // macOS and Linux draw the ring in the system accent, as their own controls do
   // (docs/design.md); increased contrast and forced colours make it CanvasText.
   // Windows uses Fluent's ink ring, which must reach 3:1 on every row fill.
-  expect(styles).toMatch(/:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
+  expect(styles).toMatch(/:focus-visible:not\(\.ui-button\)\s*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
   const focusToken = tokens.match(/:root\[data-platform="windows"\]\s*\{[^}]*--focus-ring-color:\s*var\((--[\w-]+)\)/)?.[1];
   expect(focusToken).toBe("--text");
   const theme = (token: string) => {

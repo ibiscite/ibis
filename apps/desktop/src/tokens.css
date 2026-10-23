@@ -369,8 +369,10 @@
   --surface-window: var(--surface); --surface-raised: var(--surface);
   --surface-overlay: var(--surface); --surface-field: var(--field-background);
   --fill-control: var(--button-background); --fill-control-hover: var(--button-hover-background);
-  --fill-control-pressed: var(--button-hover-background); --fill-disabled: var(--button-background);
-  --fill-subtle-hover: var(--hover-background); --fill-subtle-pressed: var(--hover-background);
+  --fill-primary-hover: color-mix(in srgb, var(--accent) 92%, var(--text));
+  --fill-primary-pressed: color-mix(in srgb, var(--accent) 84%, var(--text));
+  --fill-control-pressed: light-dark(rgb(0 0 0 / 13%), rgb(255 255 255 / 18%)); --fill-disabled: var(--button-background);
+  --fill-subtle-hover: var(--hover-background); --fill-subtle-pressed: color-mix(in srgb, var(--text) 12%, var(--surface));
   --text-tertiary: var(--muted); --text-disabled: var(--muted); --text-on-accent: var(--selected-text);
   --accent-text: var(--accent); --status-info: var(--accent-text);
   --row-inactive-background: var(--hover-background);
@@ -380,3 +382,8 @@
   --r-control: var(--button-radius); --r-key: var(--hint-radius);
   --r-card: var(--r-win); --r-full: 999px;
 }
+:root[data-platform="windows"] {
+  --fill-control-pressed: light-dark(rgb(249 249 249 / 30%), rgb(255 255 255 / 3%));
+  --fill-subtle-pressed: light-dark(rgb(0 0 0 / 3%), rgb(255 255 255 / 3%));
+}
+:root[data-platform="linux"] { --fill-control-pressed: color-mix(in srgb, var(--text) 30%, transparent); }

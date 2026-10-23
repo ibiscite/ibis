@@ -340,7 +340,7 @@ test("the framed-box icon overlap moves only the search glyph, never the pin ico
 });
 
 test("focus rings are keyboard-only, 2 px with a gap, in each platform's colour", () => {
-  expect(rules(styles, ":focus-visible")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
+  expect(rules(styles, ":focus-visible:not(.ui-button)")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
   // No ring is drawn on plain :focus or :focus-within, which a click also triggers.
   for (const [, head, body] of styles.slice(0, styles.indexOf("@media (prefers-contrast: more)")).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (/:focus(-within)?\b(?!-visible)/.test(head!)) expect(body, head).not.toMatch(/outline:\s*var/);
@@ -603,7 +603,8 @@ test("a wrapped footer keeps breathing room above and below its lines", () => {
   // the library bar carries it: 1 px divider + 3 + 32 px More + 4 = 40 px, and
   // wrapped lines never touch the divider or the window's bottom corners.
   expect(rules(styles, ".library-bar")).toMatch(/padding-block:\s*calc\(var\(--space-1\) - var\(--border-width\)\) var\(--space-1\)/);
-  expect(rules(styles, ".more > button")).toMatch(/min-height:\s*var\(--control-min-size\);\s*padding-block:\s*0/);
+  const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
+  expect(rules(buttons, '.ui-button[data-size="small"]')).toMatch(/min-height:\s*1\.5rem/);
   expect(rules(tokens, ":root")).toMatch(/--control-min-size:\s*2rem/);
   expect(rules(tokens, ":root")).toMatch(/--footer-height:\s*2\.5rem/);
 });

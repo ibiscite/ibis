@@ -1,6 +1,7 @@
 import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { flushSync } from "react-dom";
-import { Button, Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { Button } from "./Button";
 import "./Menu.css";
 
 /** Keep React Aria's placement boundary inside the viewport and below the
@@ -211,7 +212,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     onOpenChange(false);
   };
   return <MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
-    <Button ref={(node) => {
+    <Button variant="quiet" size="small" ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;

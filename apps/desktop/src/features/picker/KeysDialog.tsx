@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { keyText } from "../../messages";
 import { ariaKeys, keyLabel, shortcutLabel, type KeyBinding } from "../../keys";
+import { Button } from "../../ui/Button";
 
 /** Every key in one table, as a modal dialog: Escape or Close returns focus. */
 export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly KeyBinding[]; isMac: boolean; onClose: () => void }) {
@@ -32,7 +33,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
       >
         <div className="keys-heading">
           <h2 id="keys-title">{keyText.title}</h2>
-          <button type="button" className="quiet-button" onClick={onClose}>{keyText.close}</button>
+          <Button variant="quiet" onPress={onClose}>{keyText.close}</Button>
         </div>
         <div className="keys-scroll" tabIndex={0} role="group" aria-labelledby="keys-title">
           <table>

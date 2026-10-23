@@ -7,6 +7,7 @@ import "./PickerFooter.css";
 import { keyText, pickerText } from "../../messages";
 import { currentPlatform } from "../../platform";
 import { KeyHint } from "../../ui/KeyCaps";
+import { Button } from "../../ui/Button";
 
 /** What the keys do now; null where a key does nothing. */
 export type KeyHints = { enter: string | null; shiftEnter: string | null; escape: string };
@@ -103,8 +104,8 @@ function FooterAction({ label, keys, primary, className = "", folded, controlRef
   label: string; keys: string; primary?: boolean; className?: string; folded?: boolean; controlRef?: React.Ref<HTMLButtonElement>; onAction: () => void;
 }) {
   const platform = currentPlatform();
-  return <button ref={controlRef} type="button" className={`quiet-button footer-action ${className}`} aria-label={label} aria-hidden={folded || undefined} inert={folded || undefined} tabIndex={folded ? -1 : undefined}
-    aria-keyshortcuts={ariaKeys(keys, platform === "macos")} onClick={onAction}>
+  return <Button ref={controlRef} variant="quiet" size="small" className={`footer-action ${className}`} aria-label={label} aria-hidden={folded || undefined} inert={folded || undefined} excludeFromTabOrder={folded}
+    aria-keyshortcuts={ariaKeys(keys, platform === "macos")} onPress={onAction}>
     <KeyHint label={label} keys={keys} primary={primary} platform={platform} hidden />
-  </button>;
+  </Button>;
 }
