@@ -57,6 +57,7 @@ All state lives on GitHub, so any agent can stop at any point and any other can 
 - No new workflows, harnesses, ADRs or dependencies unless the issue asks for them. Prefer maintained libraries to new code and fewer dependencies to more. Dependencies must pass `cargo deny check`; before adding one, confirm on its registry page and repository that the exact name exists and is maintained (AI tools suggest look-alike names).
 - Hard-to-reverse decisions (license, persisted data formats, public CLI or API contracts, network use, security boundaries) need an ADR.
 - When an agent repeats a mistake, add a check to `scripts/check.mjs` or `scripts/pr-lint.mjs` (preferred) or one line here; remove lines that no longer matter.
+- Before reading or invoking an unfamiliar repository file, locate it with `rg --files`; do not guess its path.
 
 ## Code, privacy and security
 
