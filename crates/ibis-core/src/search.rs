@@ -153,7 +153,7 @@ impl OwnedIndex {
 
     /// Like [`OwnedIndex::search`], but gives up and returns `None` as soon as
     /// `stop` returns true, so a search for an outdated query does not keep
-    /// the caller waiting. `stop` is checked every few thousand records.
+    /// the caller waiting. `stop` is checked during record and term processing.
     pub fn search_until(&self, query: &str, limit: usize, stop: &dyn Fn() -> bool) -> Option<Vec<Hit<'_>>> {
         self.search_scoped_until(query, limit, None, stop)
     }
@@ -249,6 +249,7 @@ fn by_identifier<'r, 'i>(
 }
 
 const STOP_CHECK_INTERVAL: usize = 4096;
+const TERM_CHECK_INTERVAL: usize = 64;
 
 fn in_scope(reference: &Reference, scope: Option<&[String]>) -> bool {
     scope.is_none_or(|sources| sources.contains(&reference.id.source))
@@ -262,7 +263,14 @@ fn rank<'r, 'f>(
     stop: &dyn Fn() -> bool,
 ) -> Option<Vec<Hit<'r>>> {
     let normalized = normalize(query);
-    let terms: Vec<&str> = normalized.split_whitespace().collect();
+    let mut terms = BTreeMap::<&str, u32>::new();
+    for (n, term) in normalized.split_whitespace().enumerate() {
+        if n % TERM_CHECK_INTERVAL == 0 && stop() {
+            return None;
+        }
+        let count = terms.entry(term).or_default();
+        *count = count.wrapping_add(1);
+    }
     if terms.is_empty() || limit == 0 {
         return Some(Vec::new());
     }
@@ -274,6 +282,7 @@ fn rank<'r, 'f>(
     // Score every record without allocating; matched fields are a bit set and
     // become a list only for the records that are returned.
     let mut candidates: Vec<(u32, u8, &'r Reference)> = Vec::new();
+    let mut term_work = 0;
     for (n, (reference, fields)) in docs.enumerate() {
         if n % STOP_CHECK_INTERVAL == 0 && stop() {
             return None;
@@ -284,24 +293,33 @@ fn rank<'r, 'f>(
         let mut score = 0;
         let mut matched = 0u8;
         let mut all_terms = true;
-        for term in &terms {
-            let best = MatchField::ALL
-                .iter()
-                .zip(fields.iter())
-                .enumerate()
-                .filter_map(|(bit, (field, text))| {
-                    let at_word_start = match field {
-                        MatchField::Year => (text.as_str() == *term).then_some(true)?,
-                        _ => find_term(text, term)?,
-                    };
-                    Some((bit, field.weight() * if at_word_start { 2 } else { 1 }))
-                })
-                .max_by_key(|(_, w)| *w);
+        for (&term, &count) in &terms {
+            term_work += 1;
+            if term_work == TERM_CHECK_INTERVAL {
+                term_work = 0;
+                if stop() {
+                    return None;
+                }
+            }
+            let mut best = None;
+            for (bit, (field, text)) in MatchField::ALL.iter().zip(fields).enumerate() {
+                let at_word_start = match field {
+                    MatchField::Year => (text.as_str() == term).then_some(true),
+                    _ => find_term(text, term, stop)?,
+                };
+                if let Some(at_word_start) = at_word_start {
+                    let weight = field.weight() * if at_word_start { 2 } else { 1 };
+                    // Keep max_by_key's last-field tie preference.
+                    if best.is_none_or(|(_, previous)| weight >= previous) {
+                        best = Some((bit, weight));
+                    }
+                }
+            }
             let Some((bit, weight)) = best else {
                 all_terms = false;
                 break;
             };
-            score += weight;
+            score = weighted_score(score, weight, count);
             matched |= 1 << bit;
         }
         if !all_terms {
@@ -312,11 +330,11 @@ fn rank<'r, 'f>(
             .as_deref()
             .is_some_and(|k| k.chars().flat_map(lower).eq(exact_query.chars()));
         if exact_key {
-            score += 2000;
+            score = weighted_score(score, 2000, 1);
         } else if fields[0] == normalized {
-            score += 1000;
+            score = weighted_score(score, 1000, 1);
         } else if fields[1] == normalized {
-            score += 500;
+            score = weighted_score(score, 500, 1);
         }
         candidates.push((score, matched, reference));
     }
@@ -345,6 +363,12 @@ fn rank<'r, 'f>(
             })
             .collect(),
     )
+}
+
+// Preserve the original release arithmetic even for enormous queries. Grouped
+// or reordered terms must not introduce an overflow panic in checked builds.
+fn weighted_score(score: u32, weight: u32, count: u32) -> u32 {
+    score.wrapping_add(weight.wrapping_mul(count))
 }
 
 /// Lowercase, strip accents, fold letter variants and turn punctuation into spaces.
@@ -429,19 +453,22 @@ fn is_optional_mark(c: char) -> bool {
 }
 
 /// Whether `term` occurs in `text`, and if so whether any occurrence starts a word.
-fn find_term(text: &str, term: &str) -> Option<bool> {
+fn find_term(text: &str, term: &str, stop: &dyn Fn() -> bool) -> Option<Option<bool>> {
     // `contains` has a vectorized fast path; most fields do not match at all.
     if !text.contains(term) {
-        return None;
+        return Some(None);
     }
     let mut found = false;
-    for (at, _) in text.match_indices(term) {
+    for (n, (at, _)) in text.match_indices(term).enumerate() {
+        if (n + 1) % STOP_CHECK_INTERVAL == 0 && stop() {
+            return None;
+        }
         if at == 0 || text.as_bytes()[at - 1] == b' ' {
-            return Some(true);
+            return Some(Some(true));
         }
         found = true;
     }
-    found.then_some(false)
+    Some(found.then_some(false))
 }
 
 #[cfg(test)]
@@ -672,6 +699,97 @@ mod tests {
         let hits = index.search("sleep memory", 10);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].reference.id.native_key, "a");
+    }
+
+    #[test]
+    fn long_queries_can_cancel_before_finishing_the_first_record() {
+        use std::cell::Cell;
+        let many_terms = (0..512).map(|n| format!("term{n}")).collect::<Vec<_>>().join(" ");
+        for (query, title) in [
+            (many_terms.as_str(), many_terms.clone()),
+            ("a", format!("b{}", "a".repeat(65_535))),
+        ] {
+            let r = reference("k", &title, "Example", 2024);
+            let fields = prepare(&r);
+            let entered_record = Cell::new(false);
+            let checks_in_record = Cell::new(0);
+            let docs = std::iter::once((&r, &fields)).inspect(|_| entered_record.set(true));
+            // Cancellation becomes visible only after query preparation, while
+            // processing one matching record, without relying on elapsed time.
+            assert!(
+                rank(docs, query, 10, None, &|| {
+                    if entered_record.get() {
+                        checks_in_record.set(checks_in_record.get() + 1);
+                    }
+                    checks_in_record.get() > 1
+                })
+                .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn repeated_folded_terms_keep_scores_explanations_and_order() {
+        let mut red = reference("r", "Red", "Example", 2000);
+        red.abstract_text = Some("Blue".into());
+        let mut blue = reference("b", "Blue", "Example", 2025);
+        blue.abstract_text = Some("Red".into());
+        let refs = [blue, red];
+        let index = Index::new(&refs);
+        let owned = OwnedIndex::new(refs.to_vec());
+        for hits in [index.search("RÉD red blue", 10), owned.search("RÉD red blue", 10)] {
+            assert_eq!(
+                hits.iter()
+                    .map(|h| (&*h.reference.id.native_key, h.score, h.matched.clone()))
+                    .collect::<Vec<_>>(),
+                [
+                    ("r", 42, vec![MatchField::Title, MatchField::Abstract]),
+                    ("b", 24, vec![MatchField::Title, MatchField::Abstract]),
+                ]
+            );
+        }
+        let hits = owned.search_scoped("red red blue", 1, Some(&["t".into()]));
+        assert_eq!(hits[0].reference.id.native_key, "r");
+        assert!(owned.search_scoped("red red blue", 1, Some(&[])).is_empty());
+        // Coalescing terms must not turn a repeated query into an exact match.
+        assert_eq!(owned.search("red red", 1)[0].score, 40);
+        let exact = OwnedIndex::new(vec![reference("red red", "red red", "Example", 2024)]);
+        assert_eq!(exact.search("red red", 1)[0].score, 2048);
+    }
+
+    #[test]
+    fn huge_multiplicities_preserve_release_scores_without_allocating_the_query() {
+        // This count would require a 341 MiB query. It must not panic before
+        // a later missing term can reject the record.
+        assert_eq!(weighted_score(0, 24, 178_956_971), 8);
+        assert_eq!(weighted_score(u32::MAX - 1, 2, 1), 0);
+        assert_eq!(weighted_score(8, 2000, 1), 2008);
+    }
+
+    #[test]
+    #[ignore = "manual synthetic repetitive-query measurement; no timing assertion"]
+    fn repetitive_query_measurement() {
+        use std::time::{Duration, Instant};
+        let index = OwnedIndex::new(
+            (0..5_000)
+                .map(|n| reference(&format!("key{n}"), "Synthetic research", "Example", 2024))
+                .collect(),
+        );
+        for query in ["research".to_owned(), "research ".repeat(1_000)] {
+            let mut elapsed = Duration::ZERO;
+            for _ in 0..10 {
+                let started = Instant::now();
+                let hits = index.search(&query, 20);
+                elapsed += started.elapsed();
+                assert_eq!(hits.len(), 20);
+                assert_eq!(hits[0].score, 20 * query.split_whitespace().count() as u32);
+            }
+            eprintln!(
+                "records=5000 query_bytes={} samples=10 mean_us={}",
+                query.len(),
+                elapsed.as_micros() / 10
+            );
+        }
     }
 
     #[test]
