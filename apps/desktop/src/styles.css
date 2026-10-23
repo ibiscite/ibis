@@ -9,8 +9,9 @@ button, input, select { font: inherit; color: inherit; }
 /* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
    focus (:focus-visible), 2 px with a 1 px gap, in the platform's colour:
    accent on macOS, ink on Windows, half-accent on Linux. Contrast and forced
-   colours make it a solid CanvasText ring. */
-:focus-visible:not(.ui-button) { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
+   colours make it a solid CanvasText ring. Menu rows show a fill instead
+   (Menu.css): a ring there is clipped by the list and covers its neighbours. */
+:focus-visible:not(.ui-button, .menu-item) { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
 main {
   height: var(--picker-height);
   display: flex;

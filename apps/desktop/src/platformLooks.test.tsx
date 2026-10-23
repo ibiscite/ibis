@@ -375,8 +375,17 @@ test("the framed-box icon overlap moves only the search glyph, never the pin ico
 });
 
 
+test("menu items show their highlight fill without the global focus ring", () => {
+  // A ring around a menu row is clipped by the scrolling list and crosses the rows beside it (#1024).
+  const menuCss = readFileSync(new FileURL("./ui/Menu.css", import.meta.url), "utf8");
+  expect(styles).toMatch(/^:focus-visible:not\(\.ui-button, \.menu-item\) \{/m);
+  expect(styles).not.toMatch(/^:focus-visible:not\(\.ui-button\) \{/m);
+  // Increased contrast keeps a 1 px ring drawn inside the row.
+  expect(menuCss).toMatch(/@media \(prefers-contrast: more\) \{ \.menu-item\[data-focused\] \{ outline: 1px solid currentColor; outline-offset: -1px; \} \}/);
+});
+
 test("focus rings are keyboard-only, 2 px with a gap, in each platform's colour", () => {
-  expect(rules(styles, ":focus-visible:not(.ui-button)")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
+  expect(rules(styles, ":focus-visible:not(.ui-button, .menu-item)")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
   // No ring is drawn on plain :focus or :focus-within, which a click also triggers.
   for (const [, head, body] of styles.slice(0, styles.indexOf("@media (prefers-contrast: more)")).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (/:focus(-within)?\b(?!-visible)/.test(head!)) expect(body, head).not.toMatch(/outline:\s*var/);
