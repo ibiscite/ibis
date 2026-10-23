@@ -18,7 +18,7 @@ main {
   overflow: auto;
 }
 
-.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: var(--search-bar-height); padding: var(--inset); padding-block-end: calc(var(--inset) - var(--border-width)); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
+.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar > svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Edges line up"). */
@@ -27,7 +27,8 @@ main {
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }
 /* Reserve readable query space before wrapping controls, at every text size. */
 .search-field { --search-clear-size: var(--control-min-size); position: relative; display: flex; flex: 1; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); }
-#search { width: 100%; min-width: 0; height: max(var(--field-h), calc(var(--search-clear-size) + var(--space-1))); font-size: var(--search-size); line-height: var(--search-line); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
+#search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--search-size); line-height: var(--search-line); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
+.search-bar .pin-button { min-width: var(--field-h); min-height: var(--field-h); margin-inline-start: auto; }
 #search::placeholder { color: var(--muted); }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue (Windows adds its accent underline). Contrast and forced colours restore
@@ -38,7 +39,10 @@ main {
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
 .search-clear.ui-button { --focus-ring-offset: calc(-1 * var(--focus-ring-width)); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); width: var(--search-clear-size); height: var(--search-clear-size); }
 .search-clear::before { content: ""; width: var(--icon-size); height: var(--icon-size); background: currentColor; mask: var(--clear-glyph) center / contain no-repeat; }
-@media (pointer: coarse) { .search-field { --search-clear-size: 2.75rem; } }
+@media (pointer: coarse) {
+  :root, :root[data-platform] { --field-h: var(--touch-target); }
+  .search-field { --search-clear-size: var(--touch-target); }
+}
 /* Windows and Linux search in a framed 16 px text box with the icon inside it.
    The icon overlaps the box's start padding, so the flex row never changes;
    the box starts at the inset and its text still starts at the row titles. */
@@ -54,7 +58,7 @@ main {
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
-.results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; padding: var(--inset); scrollbar-width: thin; }
+.results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; margin-block: var(--inset); padding-inline: var(--inset); scrollbar-width: thin; }
 .results-heading { display: flex; justify-content: space-between; padding: var(--heading-padding); color: var(--muted); font-size: var(--heading-size); line-height: var(--type-label-line); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
 #results { list-style: none; padding: 0; margin: 0; }
 /* Rows are exactly --row-height and touch; the clear border (an edge only in
@@ -161,11 +165,11 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 :root[data-platform="linux"] .shelf { margin: 0; border-radius: 0; background: var(--clear); border-top: var(--border-width) solid var(--separator); }
 :root[data-platform="linux"] main:has(> .shelf) > footer { border-top-color: var(--separator); }
 
-footer { display: flex; align-items: center; border-top: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
-/* The bar carries the footer's block padding: one line is the 32 px More
-   button with 4 px above (counting the divider) and below, so the footer stays
-   40 px, and wrapped lines never touch the divider or the window's corners. */
-.library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); padding-block: calc(var(--space-1) - var(--border-width)) var(--space-1); }
+footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
+:root[data-platform="windows"] footer, :root[data-platform="linux"] footer { border-top: var(--border-width) solid var(--separator); min-height: calc(var(--footer-height) + var(--border-width)); }
+/* The divider is outside the 24 px actions and their two 8 px gaps.
+   Coarse targets and wrapped actions grow the band instead of clipping. */
+.library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); padding-block: var(--inset); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
 .library-status { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--footer-gap); color: var(--muted); }

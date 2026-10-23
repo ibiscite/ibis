@@ -3,14 +3,15 @@
   "tolerance": 0.5,
   "rowHeight": { "compact": 40, "comfortable": 58, "spacious": 76 },
   "footer": 40,
-  "fieldHeight": 40,
+  "headerDivider": 1,
+  "footerAction": 24,
   "rowPad": 12,
   "rowGap": 12,
   "tile": 32,
   "icon": 20,
   "platforms": {
-    "macos": { "inset": 8, "rWin": 28, "rMin": 6, "searchBand": 56 },
-    "windows": { "inset": 4, "rWin": 8, "rMin": 4, "searchBand": 48 },
-    "linux": { "inset": 8, "rWin": 15, "rMin": 6, "searchBand": 56 }
+    "macos": { "inset": 8, "rWin": 28, "rMin": 6, "headerControl": 36, "popup": 28, "searchBand": 52, "footerDivider": 0 },
+    "windows": { "inset": 8, "rWin": 8, "rMin": 4, "headerControl": 32, "popup": 32, "searchBand": 48, "footerDivider": 1 },
+    "linux": { "inset": 8, "rWin": 15, "rMin": 6, "headerControl": 34, "popup": 34, "searchBand": 50, "footerDivider": 1 }
   }
 }

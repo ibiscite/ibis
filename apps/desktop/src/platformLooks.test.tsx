@@ -40,11 +40,12 @@ test("the platform comes from the same signal as the shortcut labels", () => {
 
 test("the search header is the 48–56 px search bar, not an 80 px block", () => {
   const bar = rules(styles, ".search-bar");
-  expect(bar).toMatch(/min-height:\s*var\(--search-bar-height\)/);
+  expect(bar).toMatch(/min-height:\s*calc\(var\(--search-bar-height\) \+ var\(--border-width\)\)/);
   expect(bar).toMatch(/padding:\s*var\(--inset\)/);
-  // The 40 px field plus the inset above and below: 56 px, 48 px on Windows.
+  // The nominal control band excludes its one-pixel divider.
   expect(tokens).toMatch(/--search-bar-height:\s*calc\(var\(--field-h\) \+ 2 \* var\(--inset\)\)/);
-  expect(tokens).toMatch(/--field-h:\s*2\.5rem/);
+  expect(tokens).toMatch(/--field-h:\s*2\.25rem/);
+  expect(rules(styles, ".search-bar .pin-button")).toMatch(/margin-inline-start:\s*auto/);
 });
 
 test("Windows and Linux search in a 16 px framed box; macOS stays frameless and large", () => {
@@ -125,7 +126,7 @@ test("every inner radius follows one concentric chain per platform", () => {
     for (const platform of ["windows", "linux"]) expect(rules(tokens, `:root[data-platform="${platform}"]`), `${platform} ${name}`).not.toContain(`${name}:`);
   }
   // docs/design.md, Corners: macOS before 26 (the native 12 pt corner), Windows 11, GNOME.
-  const expected = { macos: [12, 8, 6, 6, 12, 6], windows: [8, 4, 4, 4, 8, 4], linux: [15, 8, 7, 6, 12, 6] };
+  const expected = { macos: [12, 8, 6, 6, 12, 6], windows: [8, 8, 4, 4, 8, 4], linux: [15, 8, 7, 6, 12, 6] };
   for (const [platform, [win, inset, row, tile, menu, item]] of Object.entries(expected)) {
     const g = geometry(platform === "macos" ? undefined : platform);
     const rRow = Math.max(g["--r-min"]!, g["--r-win"]! - g["--inset"]!);
@@ -145,13 +146,13 @@ test("the search text starts where row titles start, with the glyph over the til
     const leadGap = (g["--tile-size"]! - g["--icon-glyph-size"]!) / 2 + g["--row-gap"]!;
     const textX = g["--inset"]! + lead + g["--icon-glyph-size"]! + leadGap;
     expect(textX, platform).toBe(g["--inset"]! + g["--row-pad"]! + g["--tile-size"]! + g["--row-gap"]!);
-    expect(textX, platform).toBe(platform === "windows" ? 60 : 64);
+    expect(textX, platform).toBe(64);
     expect(g["--inset"]! + lead + g["--icon-glyph-size"]! / 2, platform).toBe(g["--inset"]! + g["--row-pad"]! + g["--tile-size"]! / 2);
   }
   expect(rules(styles, ".search-bar > svg")).toMatch(/margin-inline:\s*var\(--lead\) calc\(var\(--lead-gap\) - var\(--search-gap\)\)/);
   expect(rules(styles, '[role="option"]')).toMatch(/padding:\s*0 calc\(var\(--row-pad\) - var\(--border-width\)\)/);
   expect(rules(styles, '[role="option"]')).toMatch(/gap:\s*var\(--row-gap\)/);
-  expect(rules(styles, ".results-area")).toMatch(/padding:\s*var\(--inset\)/);
+  expect(rules(styles, ".results-area")).toMatch(/margin-block:\s*var\(--inset\);\s*padding-inline:\s*var\(--inset\)/);
   // The framed box's text start pays for its 1 px border.
   expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\) - var\(--border-width\)\)/);
   // Logical sides only, so a right-to-left picker mirrors.
@@ -577,7 +578,7 @@ test("shared default buttons are at least 32 px, with on-grid padding", () => {
 });
 
 test("dividers are quiet separators, distinct from 3:1 control edges", () => {
-  for (const selector of [".search-bar", "footer", ".copy-notice"]) {
+  for (const selector of [".search-bar", ':root[data-platform="windows"] footer', ':root[data-platform="linux"] footer', ".copy-notice"]) {
     expect(rules(styles, selector), selector).toMatch(/border-(top|bottom):\s*var\(--border-width\) solid var\(--separator\)/);
   }
   // Windows: Fluent's divider stroke; elsewhere Adwaita's text colour at 15%; macOS its 10% hairline.
@@ -635,7 +636,7 @@ test("a wrapped footer keeps breathing room above and below its lines", () => {
   // The footer has no block padding of its own (its 40 px is a min-height), so
   // the library bar carries it: 1 px divider + 3 + 32 px More + 4 = 40 px, and
   // wrapped lines never touch the divider or the window's bottom corners.
-  expect(rules(styles, ".library-bar")).toMatch(/padding-block:\s*calc\(var\(--space-1\) - var\(--border-width\)\) var\(--space-1\)/);
+  expect(rules(styles, ".library-bar")).toMatch(/padding-block:\s*var\(--inset\)/);
   const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
   expect(rules(buttons, '.ui-button[data-size="small"]')).toMatch(/min-height:\s*1\.5rem/);
   expect(rules(tokens, ":root")).toMatch(/--control-min-size:\s*2rem/);
