@@ -27,7 +27,7 @@ test("implicit key caps follow the rendered look when it differs from the host a
 
 test("footer and More pair visible keys with their accessible shortcut after a look change", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-  const footer = () => <PickerFooter library={null} groupName={() => ""} hints={{ enter: "Copy", shiftEnter: "Add", escape: "Hide" }} altHeld={false} pinned={false} onUnpin={vi.fn()}
+  const footer = () => <PickerFooter library={null} groupName={() => ""} hints={{ enter: "Copy", shiftEnter: "Add", escape: "Hide" }} altHeld={false}
     actions={{ copy: vi.fn(), add: vi.fn(), escape: vi.fn(), keys: vi.fn() }}
     more={<MoreMenu isOpen={false} onOpenChange={vi.fn()} buttonRef={{ current: null }} searchRef={{ current: null }} keys="CmdOrCtrl+K">{null}</MoreMenu>} />;
   document.documentElement.dataset.platform = "windows";

@@ -31,7 +31,7 @@ export const PLATFORM_NAMES = { macos: "MacIntel", windows: "Win32", linux: "Lin
 export const VIEWPORT = { width: 720, height: 480 }; // the picker window (tauri.conf.json)
 // Frames the catalog cannot describe: they need the browser's pointer or media emulation.
 const VARIANTS = [
-  { id: "pin-hover", state: "pinned", label: "Pointer on the footer unpin", hover: ".pin-button" },
+  { id: "pin-hover", state: "pinned", label: "Pointer on the header pin", hover: ".pin-button" },
   { id: "forced-colors", state: "high-contrast", label: "Forced colours (emulated)", media: { forcedColors: "active" } },
 ];
 const MEDIA = { "high-contrast": { contrast: "more" } };

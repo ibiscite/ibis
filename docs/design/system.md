@@ -475,7 +475,7 @@ loops except a busy indicator.
 | Button, primary | `--accent` + `--text-on-accent` | accent 92 % mixed to text | accent 84 % | | ring | `--fill-disabled`, `--text-disabled` |
 | Button, secondary | `--fill-control` (+ Windows stroke) | `-hover` | `-pressed` | `aria-pressed`: `--fill-control-pressed` | ring | as above |
 | Button, quiet | none, `--muted` | `--fill-subtle-hover`, `--text` | `--fill-subtle-pressed` | accent glyph | ring | `--text-disabled` |
-| Icon button | as quiet, 32 × 32 | | | filled glyph | ring | |
+| Icon button | as quiet, 32 × 32 | | | filled glyph on `--fill-control-pressed`, neutral `--text` | ring | `--text-disabled`, `--fill-disabled` |
 | Pop-up | quiet in the header, secondary in Settings | | open: pressed fill | | ring | |
 | Menu item | none | `--menu-highlight` (pointer and arrows alike) | same | leading ✓ | the highlight is the focus | `--text-disabled`, reachable |
 | Segmented control | track `--fill-control` | segment `--fill-subtle-hover` | | thumb `--surface-raised` + `--shadow-card` (mac, Windows), `--fill-control-pressed` (GNOME) | ring on the group | |

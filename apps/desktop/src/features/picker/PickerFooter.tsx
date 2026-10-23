@@ -14,7 +14,7 @@ export type KeyHints = { enter: string | null; shiftEnter: string | null; escape
 
 /** The footer: library status, what Enter (or, with Alt held, the other keys)
  * does now, and the More button with its menu. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more, pinned, onUnpin }: {
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more }: {
   library: LibraryStatus | null | undefined;
   groupName: (id: number) => string;
   hints: KeyHints;
@@ -23,13 +23,10 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   actions: { copy: () => void; add: () => void; escape: () => void; keys: () => void };
   /** The More button and its menu. */
   more: React.ReactNode;
-  pinned: boolean;
-  onUnpin: () => void;
 }) {
   const bar = useRef<HTMLElement>(null);
   const hintsRow = useRef<HTMLElement>(null);
   const shortcut = useRef<HTMLButtonElement>(null);
-  const pin = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLSpanElement>(null);
   const statusSize = useRef<HTMLSpanElement>(null);
   const foldedFocus = useRef(false);
@@ -50,11 +47,11 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       const actions = [...(hintsRow.current?.children ?? [])].filter((child) => child !== shortcut.current);
       const optional = width(shortcut.current);
       const actionWidth = actions.reduce((sum, child) => sum + width(child), 0);
-      const pinWidth = width(pin.current), menuWidth = width(menu.current?.querySelector("button") ?? null);
+      const menuWidth = width(menu.current?.querySelector("button") ?? null);
       const needed = (showShortcut: boolean) => {
         const count = actions.length + (showShortcut && optional > 0 ? 1 : 0);
-        const bands = 1 + (pinWidth > 0 ? 1 : 0) + (menuWidth > 0 ? 1 : 0) + (count > 0 ? 1 : 0);
-        return pinWidth + menuWidth + actionWidth + (showShortcut ? optional : 0) + Math.max(0, count - 1) * innerGap + (bands - 1) * gap + (count > 0 ? hintMargin : 0);
+        const bands = 1 + (menuWidth > 0 ? 1 : 0) + (count > 0 ? 1 : 0);
+        return menuWidth + actionWidth + (showShortcut ? optional : 0) + Math.max(0, count - 1) * innerGap + (bands - 1) * gap + (count > 0 ? hintMargin : 0);
       };
       const shortcuts = preferred + needed(true) > available;
       const status = preferred + needed(!shortcuts) > available;
@@ -63,10 +60,10 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    for (const node of [element, statusSize.current, pin.current, ...(hintsRow.current?.children ?? []), menu.current]) if (node) observer?.observe(node);
+    for (const node of [element, statusSize.current, ...(hintsRow.current?.children ?? []), menu.current]) if (node) observer?.observe(node);
     window.addEventListener("resize", measure);
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
-  }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, pinned, platform]);
+  }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, platform]);
   useLayoutEffect(() => {
     if (!foldedFocus.current || !fit.shortcuts) return;
     foldedFocus.current = false;
@@ -77,11 +74,6 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       <section ref={bar} aria-label={pickerText.libraryRegion} className="library-bar" data-shortcuts-folded={fit.shortcuts || undefined} data-status-compact={fit.status || undefined}>
         <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /></span>
         <LibraryStatusLine library={library} groupName={groupName} />
-        {pinned && <Button ref={pin} variant="icon" className="pin-button" aria-label={pickerText.unpinTitle} title={pickerText.unpinTitle} onPress={onUnpin}>
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor">
-            <path d="M9 4h6l-1 5 4 4H6l4-4z" /><path d="M12 13v7" />
-          </svg>
-        </Button>}
         <small ref={hintsRow} data-optional-only={!altHeld && !hints.enter || undefined} className="enter-hints" aria-label={keyText.footer} role="group">
           {altHeld ? <>
             {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}

@@ -10,7 +10,7 @@ const footerStyles = readFileSync(new FileURL("./PickerFooter.css", import.meta.
 const library = galleryStates.find((state) => state.id === "tray-20")!.library;
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-function geometry(initial = 692, trailingMargin = 0, constrainHiddenHint = false) {
+function geometry(initial = 660, trailingMargin = 0, constrainHiddenHint = false) {
   let width = initial; let scale = 1; let copy = 162; let shortcuts = 133.8125; let more = 129.75;
   const observers: { callback: () => void; nodes: Set<Element> }[] = [];
   vi.stubGlobal("ResizeObserver", class {
@@ -19,7 +19,7 @@ function geometry(initial = 692, trailingMargin = 0, constrainHiddenHint = false
   });
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.matches(".library-bar") ? width : 0; });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    let size = this.matches(".footer-status-size") ? 224 : this.matches(".pin-button") ? 32
+    let size = this.matches(".footer-status-size") ? 224
       : this.matches(".shortcuts-hint") ? shortcuts
       : this.getAttribute("aria-label")?.startsWith("Copy") ? copy : this.getAttribute("aria-label") === "More" ? more : 0;
     if (constrainHiddenHint && this.matches(".shortcuts-hint") && this.closest("[data-shortcuts-folded]")) {
@@ -43,43 +43,16 @@ function geometry(initial = 692, trailingMargin = 0, constrainHiddenHint = false
 
 function footer(label = "Copy 20 as Pandoc") {
   return <main><input aria-label="Search" /><button>Pointer destination</button><PickerFooter library={library} groupName={String}
-    hints={{ enter: label, shiftEnter: "Add to citation", escape: "Hide" }} altHeld={false} pinned onUnpin={() => undefined}
+    hints={{ enter: label, shiftEnter: "Add to citation", escape: "Hide" }} altHeld={false}
     actions={{ copy: () => undefined, add: () => undefined, escape: () => undefined, keys: () => undefined }}
     more={<button aria-label="More">More</button>} /></main>;
 }
 
-test.each(["pointer", "Enter", "Space"])("footer unpin uses shared icon states and acts once with %s", (activation) => {
-  const unpin = vi.fn();
-  const view = (pinned: boolean) => <PickerFooter library={library} groupName={String}
-    hints={{ enter: null, shiftEnter: null, escape: "Hide" }} altHeld={false} pinned={pinned} onUnpin={unpin}
-    actions={{ copy: () => undefined, add: () => undefined, escape: () => undefined, keys: () => undefined }}
-    more={<button>More</button>} />;
-  const rendered = render(view(false));
-  expect(screen.queryByRole("button", { name: "Kept open; click to stop" })).toBeNull();
-  rendered.rerender(view(true));
-  const button = screen.getByRole("button", { name: "Kept open; click to stop" });
-  expect(button.getAttribute("data-variant")).toBe("icon");
-  expect(button.getAttribute("title")).toBe("Kept open; click to stop");
-  expect(button.closest("footer")).toBeTruthy();
-  button.focus();
-  if (activation === "pointer") fireEvent.click(button);
-  else {
-    const key = activation === "Space" ? " " : "Enter";
-    const code = activation === "Space" ? "Space" : "Enter";
-    fireEvent.keyDown(button, { key, code });
-    fireEvent.keyDown(button, { key, code, repeat: true });
-    fireEvent.keyUp(button, { key, code });
-  }
-  expect(unpin).toHaveBeenCalledOnce();
-  rendered.rerender(view(false));
-  expect(screen.queryByRole("button", { name: "Kept open; click to stop" })).toBeNull();
-});
-
-test("pinned GNOME controls at 720px drop Shortcuts before shortening status, then restore on growth", () => {
+test("crowded GNOME controls drop Shortcuts before shortening status, then restore on growth", () => {
   const fit = geometry(); render(footer());
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   expect(document.querySelector(".library-bar")?.hasAttribute("data-status-compact")).toBe(false);
-  for (let i = 0; i < 3; i++) fit.resize(692);
+  for (let i = 0; i < 3; i++) fit.resize(660);
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   fit.resize(900);
   expect(screen.getByRole("button", { name: "Shortcuts" })).toBeTruthy();
@@ -93,7 +66,7 @@ test("pinned GNOME controls at 720px drop Shortcuts before shortening status, th
 test("changing count, format and key-cap widths recomputes fit without losing full status or actions", () => {
   const fit = geometry(900); const view = render(footer());
   const detail = document.querySelector(".library-status")?.getAttribute("title");
-  fit.resize(692, { copy: 300, shortcuts: 150, more: 150 });
+  fit.resize(650, { copy: 300, shortcuts: 150, more: 150 });
   view.rerender(footer("Copy 1000 as Chicago"));
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   expect(document.querySelector(".library-bar")?.hasAttribute("data-status-compact")).toBe(true);
@@ -107,7 +80,7 @@ test("changing count, format and key-cap widths recomputes fit without losing fu
 test.each(["Shortcuts", "Search", "Pointer destination"])("folding hands off only owned Shortcuts focus (%s)", (owner) => {
   const fit = geometry(900); render(footer());
   const focused = owner === "Search" ? screen.getByRole("textbox", { name: owner }) : screen.getByRole("button", { name: owner });
-  act(() => focused.focus()); fit.resize(692);
+  act(() => focused.focus()); fit.resize(660);
   expect(document.activeElement).toBe(owner === "Shortcuts" ? screen.getByRole("button", { name: "More" }) : focused);
   fit.resize(900);
   expect(document.activeElement).toBe(owner === "Shortcuts" ? screen.getByRole("button", { name: "More" }) : focused);
@@ -136,7 +109,7 @@ test("platform key-cap changes restore optional content using the new live width
 
 
 test("the live hint margin restores Shortcuts at the actual fit boundary", () => {
-  geometry(718, -4); render(footer());
+  geometry(678, -4); render(footer());
   expect(screen.getByRole("button", { name: "Shortcuts" })).toBeTruthy();
 });
 
@@ -147,7 +120,7 @@ test("an optional-only hint keeps its intrinsic width while folded and restores 
   try {
     const fit = geometry(388, 0, true);
     render(<main><PickerFooter library={null} groupName={String} hints={{ enter: null, shiftEnter: null, escape: "Hide" }}
-      altHeld={false} pinned={false} onUnpin={() => undefined} more={<button aria-label="More">More</button>}
+      altHeld={false} more={<button aria-label="More">More</button>}
       actions={{ copy: () => undefined, add: () => undefined, escape: () => undefined, keys: () => undefined }} /></main>);
     const states = [];
     for (let i = 0; i < 10; i++) {

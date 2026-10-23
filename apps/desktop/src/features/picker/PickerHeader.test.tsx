@@ -5,11 +5,13 @@ import { PickerHeader } from "./PickerHeader";
 
 afterEach(cleanup);
 
-function Header({ changed }: { changed: (query: string) => void }) {
+function Header({ changed, pinChanged = () => undefined }: { changed: (query: string) => void; pinChanged?: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
+  const [pinned, setPinned] = useState(false);
   return <PickerHeader inputRef={input} query={query} onQueryChange={(next) => { changed(next); setQuery(next); }}
     onSearchKeyDown={() => undefined} expanded activeDescendant="result-0" format="pandoc" showFormat={false}
+    pinned={pinned} onTogglePin={() => { setPinned((value) => !value); pinChanged(); input.current?.focus(); }}
     styles={false} onFormatChange={() => undefined} onFormatCommand={() => ({ run: () => undefined, isCurrent: () => true })} />;
 }
 
@@ -54,4 +56,24 @@ test.each([{ isComposing: true }, { keyCode: 229 }])("composition confirmation c
   fireEvent.keyUp(clear, { key: "Enter", code: "Enter", ...composition });
   expect(changed).not.toHaveBeenCalled();
   expect((input as HTMLInputElement).value).toBe("研究");
+});
+
+
+test.each(["pointer", "Enter", "Space"])("header pin uses the shared icon toggle once with %s", (activation) => {
+  const changed = vi.fn();
+  render(<Header changed={vi.fn()} pinChanged={changed} />);
+  const pin = screen.getByRole("button", { name: "Keep Window Open" });
+  expect(pin.closest("header")).not.toBeNull();
+  expect(pin.getAttribute("data-variant")).toBe("icon");
+  expect(pin.getAttribute("aria-pressed")).toBe("false");
+  pin.focus();
+  if (activation === "pointer") fireEvent.click(pin);
+  else {
+    const key = activation === "Space" ? " " : "Enter", code = activation === "Space" ? "Space" : "Enter";
+    fireEvent.keyDown(pin, { key, code }); fireEvent.keyDown(pin, { key, code, repeat: true }); fireEvent.keyUp(pin, { key, code });
+  }
+  expect(changed).toHaveBeenCalledOnce();
+  expect(pin.getAttribute("aria-pressed")).toBe("true");
+  expect(pin.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+  expect(document.activeElement).toBe(screen.getByRole("combobox"));
 });

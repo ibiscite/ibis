@@ -49,7 +49,7 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
     && (document.querySelector(".gallery-notice .copied-notice code")?.textContent ?? null) === (state.notice ?? null);
 }
 
-const pinButton = (root: HTMLElement) => root.querySelector<HTMLButtonElement>(`footer button[aria-label="${pickerText.unpinTitle}"]`);
+const pinButton = (root: HTMLElement) => root.querySelector<HTMLButtonElement>('header .pin-button[aria-pressed="true"]');
 
 function press(target: Element | null, key: string, init: KeyboardEventInit = {}): void {
   target?.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));

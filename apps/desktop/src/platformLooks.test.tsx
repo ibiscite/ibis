@@ -345,6 +345,27 @@ test("the framed-box icon overlap moves only the search glyph, never the pin ico
   }
 });
 
+test("the framed-box icon overlap moves only the search glyph, never the pin icon", async () => {
+  mockIPC(() => { throw new Error("Native commands must not run here"); }, { shouldMockEvents: true });
+  const state = galleryStates.find((candidate) => candidate.id === "many-results")!;
+  render(<App {...galleryProvider(state)} />);
+  await screen.findAllByRole("option");
+  const searchIcon = document.querySelector(".search-bar")!.firstElementChild;
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
+  const pinIcon = document.querySelector(".pin-button svg");
+  expect(searchIcon?.tagName.toLowerCase()).toBe("svg");
+  expect(pinIcon).toBeTruthy();
+  const overlap = [...styles.matchAll(/([^{}]+)\{[^{}]*margin-inline:[^{}]*search-icon-width[^{}]*\}/g)];
+  expect(overlap).toHaveLength(1);
+  const selector = overlap[0]![1]!.replace(/\/\*[^]*?\*\//g, "").trim();
+  for (const platform of ["windows", "linux"]) {
+    setPlatform(platform === "windows" ? "Win32" : "Linux x86_64");
+    expect([...document.querySelectorAll(selector)], platform).toEqual([searchIcon]);
+    expect(pinIcon!.matches(selector), platform).toBe(false);
+  }
+});
+
+
 test("focus rings are keyboard-only, 2 px with a gap, in each platform's colour", () => {
   expect(rules(styles, ":focus-visible:not(.ui-button)")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
   // No ring is drawn on plain :focus or :focus-within, which a click also triggers.

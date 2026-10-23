@@ -19,9 +19,11 @@ main {
 }
 
 .search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: var(--search-bar-height); padding: var(--inset); padding-block-end: calc(var(--inset) - var(--border-width)); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
-.search-bar svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
+.search-bar > svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Edges line up"). */
+.pin-button { flex: none; }
+.pin-button svg { width: var(--icon-glyph-size); height: var(--icon-glyph-size); stroke-width: var(--icon-stroke); }
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }
 /* Reserve readable query space before wrapping controls, at every text size. */
 .search-field { --search-clear-size: var(--control-min-size); position: relative; display: flex; flex: 1; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); }

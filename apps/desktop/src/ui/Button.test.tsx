@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Button, ToggleButton } from "./Button";
+import { createRef } from "react";
+import { ToggleButtonContext } from "react-aria-components";
 
 afterEach(cleanup);
 
@@ -43,4 +45,25 @@ test("folded actions keep their hidden state and leave the tab order", () => {
   expect(button.tabIndex).toBe(-1);
   rerender(<Button>Shortcuts</Button>);
   expect(screen.getByRole("button", { name: "Shortcuts" }).tabIndex).toBe(0);
+});
+
+
+test("shortcut updates preserve consumer and context refs on the shared toggle", () => {
+  const consumer = createRef<HTMLButtonElement>(), context = createRef<HTMLButtonElement>();
+  const change = vi.fn();
+  const control = (shortcut?: string) => <ToggleButtonContext.Provider value={{ ref: context }}>
+    <ToggleButton variant="icon" ref={consumer} aria-label="Keep Window Open" aria-keyshortcuts={shortcut} isSelected onChange={change}>Pin</ToggleButton>
+  </ToggleButtonContext.Provider>;
+  const view = render(control("Control+Shift+P"));
+  const button = screen.getByRole("button", { name: "Keep Window Open" });
+  view.rerender(control("Meta+Shift+P"));
+  expect(button.getAttribute("aria-keyshortcuts")).toBe("Meta+Shift+P");
+  view.rerender(control());
+  expect(button.hasAttribute("aria-keyshortcuts")).toBe(false);
+  expect(consumer.current).toBe(button); expect(context.current).toBe(button);
+  fireEvent.click(button);
+  expect(change).toHaveBeenCalledWith(false);
+  expect(button.getAttribute("aria-pressed")).toBe("true");
+  view.unmount();
+  expect(consumer.current).toBeNull(); expect(context.current).toBeNull();
 });

@@ -20,6 +20,7 @@
 .ui-button:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-pressed); }
 .ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-subtle-pressed); }
 .ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-primary-pressed); }
+.ui-button[data-variant="icon"][data-selected]:not([data-pressed], [data-disabled], [aria-disabled="true"]) { background: var(--fill-control-pressed); color: var(--text); }
 .ui-button[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
 .ui-button:is([data-disabled], [aria-disabled="true"]) { background: var(--fill-disabled); color: var(--text-disabled); }
 .ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-disabled], [aria-disabled="true"]) { background: var(--clear); }

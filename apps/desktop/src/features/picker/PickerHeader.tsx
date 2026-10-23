@@ -1,15 +1,19 @@
 import type React from "react";
-import { Button } from "../../ui/Button";
+import { Button, ToggleButton } from "../../ui/Button";
 import { composing } from "./shortcuts";
 import { pickerText } from "../../messages";
+import { ariaKeys, keysFor } from "../../keys";
+import { currentPlatform } from "../../platform";
 import type { Choice } from "./choice";
 import { FormatMenu, type FormatCommand } from "./FormatMenu";
 import type { ToolbarMenuCommand } from "../../ui/ToolbarMenu";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, showFormat, styles, onFormatChange, onFormatCommand }: {
+export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin }: {
   inputRef: React.RefObject<HTMLInputElement | null>;
+  pinned: boolean;
+  onTogglePin: () => void;
   query: string;
   onQueryChange: (query: string) => void;
   onSearchKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -55,6 +59,12 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
           onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
       </div>
       {showFormat && <FormatMenu format={format} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
+      <ToggleButton variant="icon" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
+        isSelected={pinned} onChange={onTogglePin}>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor">
+          <path d="M9 4h6l-1 5 4 4H6l4-4z" /><path d="M12 13v7" />
+        </svg>
+      </ToggleButton>
     </header>
   );
 }

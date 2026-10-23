@@ -1,7 +1,3 @@
-/* Only a kept-open picker offers this footer control, visible at rest. */
-.pin-button { flex-shrink: 0; }
-.pin-button svg { width: var(--icon-glyph-size); stroke-width: var(--icon-stroke); }
-
 /* Measure the existing role and live hints even while the optional hint folds. */
 .library-bar { position: relative; }
 .footer-fit-measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; max-width: 100%; height: 0; overflow: hidden; }

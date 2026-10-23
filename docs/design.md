@@ -229,7 +229,7 @@ list, preview and tray) from a control layer (search and format).
 | Search box | Always | The largest element, focused on open. Its placeholder lists what can be searched. |
 | Format (for example "Pandoc ⌃⌄" on macOS) | Once a library is chosen | What is pasted depends on it. One word, no icon; each platform's pop-up button (see **Header**). "Key formats" and "Citation styles" show real samples and a leading check; unavailable styles stay focusable; typing filters. |
 | More (Ctrl/⌘ K) | Always | The one door to every other action; each shows its shortcut, so the menu is also the cheat sheet. In the footer it reads "More ⌘K", like the hints beside it (see **Footer**). |
-| Keep Window Open | In More | Checkable, with ⌘⇧P on macOS and Ctrl+Shift+P elsewhere. Only while kept open, a visible footer pin offers “Kept open; click to stop”. The first outside-click tip is planned for 0.3 (#571/#572), naming the action and shortcut. |
+| Keep Window Open | Always in the header and in More | Neutral pin toggle; More reads "Keep window open" / "Stop keeping open", with ⌘⇧P on macOS and Ctrl+Shift+P elsewhere. The filled glyph and neutral selected fill show that it is kept open. The first outside-click tip is planned for 0.3 (#571/#572), naming the action and shortcut. |
 | Filter chips | Once added | `#tag`, `y:2019-2022` or `a:name` followed by a space becomes a removable chip. Backspace in an empty box removes the last one. |
 | Recently cited, Recently added, With PDF | While browsing | Shown when the search is empty or one is selected; hidden while typing so rows get the room. Tab reaches the current browsing tab; ← and → choose another (see **Keyboard focus order**). |
 | Tag and author suggestions | While typing `#` or `a:` | Take the place of the tabs. Enter, or Tab while the suggestions are open, picks the first. |
@@ -352,21 +352,20 @@ nothing holds focus:
    open, when Tab picks the first (as a combo box's autocomplete does).
    Escape closes suggestions without clearing the query; Tab then leaves the
    box. Suggestions stay closed until the query changes.
-2. The header toolbar (`role="toolbar"`, named "Search options"): one stop;
-   ← and → move between the format menu and the scope menu (WAI-ARIA
-   toolbar pattern).
+2. The header format menu, then Keep Window Open. A future library-scope
+   menu precedes Keep Window Open.
 3. The browsing tabs, only while visible: one stop on the current tab in a
    `tablist` named "Browse references". Each `tab` has `aria-selected` and
    names its result `tabpanel`; only the current tab has `tabindex="0"`.
    ← and → focus and choose the previous or next tab, wrapping at the ends;
    Home and End choose the first or last. These keys apply only while a tab
    has focus, leaving text editing and attachment preview in the search box
-   unchanged. Tab leaves for the footer pin when present, then More;
-   Shift+Tab returns to the header toolbar.
+   unchanged. Tab leaves for the footer actions;
+   Shift+Tab returns to Keep Window Open.
    Clicking or tapping a tab chooses the same view. There is no required
    Ctrl+Tab shortcut: ordinary Tab followed by arrow keys is the keyboard
    route on every platform, including when browser accelerators are consumed.
-4. The footer unpin button, only while kept open, then More.
+4. The footer actions, then More.
 
 The result list is not a stop: ↑ and ↓ in the search box move through it
 (`aria-activedescendant`). Inside an open menu, Tab closes the menu and moves
@@ -401,7 +400,7 @@ baseline, each key cap 20 px high and centred on it.
   visible and reachable when focus leaves Search; Enter then presses the
   focused button. Copy is offered only when its current output is ready.
 - **Fit before wrapping.** Measure the actual controls and key caps, including
-  the pin and the current Copy label. When they do not fit, drop Shortcuts first
+  the current Copy label. When they do not fit, drop Shortcuts first
   (More still lists it), then shorten the library status using its existing
   ellipses and full tooltip. Only then wrap, keeping 8 px above and below.
   Restore the hint and status space when the contents fit again; width, text

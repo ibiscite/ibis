@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App } from "./App";
 
@@ -9,8 +9,10 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 
 const originalScroll = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+let moveTime = 1000;
 
 afterEach(async () => {
+  moveTime = 1000;
   if (originalScroll) Object.defineProperty(Element.prototype, "scrollIntoView", originalScroll);
   else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   cleanup();
@@ -45,16 +47,17 @@ const three = [result("a", "Alpha"), result("b", "Beta"), result("c", "Gamma")];
 const row = (title: string) => screen.getByText(title).closest('[role="option"]') as HTMLElement;
 const activeTitle = () => within(screen.getByRole("listbox", { name: "Results" })).getByRole("option", { selected: true }).querySelector(".result-title")?.textContent;
 
-/** A mouse move at a screen position, optionally at a given event time. */
+/** A continuous synthetic mouse move, or an explicit time for inactivity checks. */
 function move(target: Element, x: number, y: number, at?: number) {
   const event = createEvent.mouseMove(target, { screenX: x, screenY: y, bubbles: true });
-  if (at !== undefined) Object.defineProperty(event, "timeStamp", { value: at });
+  moveTime = at ?? moveTime + 16;
+  Object.defineProperty(event, "timeStamp", { value: moveTime });
   fireEvent(target, event);
 }
 
 test("moving the mouse over a row makes it the active row", async () => {
   backend(() => three);
-  render(<App />);
+  await act(async () => { render(<App />); });
   await screen.findByText("Gamma");
   expect(activeTitle()).toBe("Alpha");
   move(row("Alpha"), 10, 10);
