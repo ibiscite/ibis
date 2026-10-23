@@ -30,8 +30,9 @@ M is the height of the bird.
 - **Space.** Every file already keeps 0.135 M free on each side for the soft shadow. On a page, keep at least 0.25 M clear around the logo.
 - **Logo.** The wordmark's capital height is 0.55 M, centred on the bird, with 0.34 M between the beak tip and "Ibis". Show it about 240 px wide in a README. When the bird would be under 24 px tall, use the bird alone.
 - **In a container.** The bird is 62% of the height of an app icon, avatar or maskable icon. Favicons use the largest bird that fits.
-- **Optical centre.** The bird's weight is in its head, so its outline's centre looks too far left. Square files and containers move it sideways halfway toward its centre of mass (which `build.py` measures from the master) and, vertically, keep the outline's centre lifted 1.5% of the container, a little above the middle.
-- **Depth.** The soft depth is for 48 px and up; smaller uses the flat bird. Favicons use a slightly thicker neck so the bird still reads at 16 px.
+- **Optical centre.** The bird's weight is in its head, so its outline's centre looks too far left. Square files and containers move it sideways halfway toward its centre of mass (which `build.py` measures from the master) and, vertically, keep the outline's centre lifted 0.75% of the container, just above the middle.
+- **Eye.** The bird has an eye, cut out so the background shows through it. It is cut crisply after the depth, and `eye_depth` in `settings.json` (0 for flat, 1 for full) sets how much soft shading shows inside it. Favicons leave it out, because it would be under a pixel.
+- **Depth.** A soft light along the top edge, a shade along the bottom, a tight contact shadow and a wide, faint ambient shadow, all set in `settings.json`. The soft depth is for 48 px and up; smaller uses the flat bird. Favicons use a slightly thicker neck so the bird still reads at 16 px.
 - **Colour.** Scarlet 600 `#C23A1C` on light backgrounds and Scarlet 400 `#FF7A5C` on dark. Text is Ink `#16181D` or Slate `#4C5260` on light, and near-white on dark. The full Scarlet scale (50 to 900) is for websites and videos: tints for backgrounds, 600 to 800 for text and links on light. Never stretch, outline or recolour the bird in other hues, or add effects.
 - **Themes.** Websites use `colors.css`: light by default, dark when the system is dark, and an optional dim theme (`data-theme="dim"`) for a softer charcoal. Each theme names the same roles: `bg`, `surface`, `line`, `text`, `muted`, `accent`, `accent-soft`.
 - **Motion.** The logo animation draws the neck, grows the head and beak out together as one shape, then fades in the wordmark, in about 1.5 s. People who ask their system for reduced motion see the finished logo. Use it once per page or video, never on a loop.
@@ -42,7 +43,7 @@ M is the height of the bird.
 Two files hold everything you might want to change:
 
 - `settings.json`: every colour, size, spacing, depth (rim light, shade and shadow), animation timing and line of text, with plain names. Small adjustments happen here.
-- `master.svg`: the three shapes as exact outlines with no padding: the bird (`mark`), the wordmark (`wordmark`, Inter Display SemiBold, outlined) and the quote mark (`beak`). Edit it only to change a shape.
+- `master.svg`: the shapes as exact outlines with no padding: the bird (`mark`), its eye (`eye`), the wordmark (`wordmark`, Inter Display SemiBold, outlined) and the quote mark (`beak`). Edit it only to change a shape.
 
 After editing either, rebuild every export from the repository root:
 
