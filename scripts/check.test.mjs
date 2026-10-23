@@ -9,6 +9,43 @@ import { fileURLToPath } from "node:url";
 const checker = fileURLToPath(new URL("./check.mjs", import.meta.url));
 const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
 
+test("script-only discovery covers Node and Python names without starting build tools", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "ibis-script-discovery-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const scripts = join(root, "scripts"), bin = join(root, "bin");
+  mkdirSync(scripts); mkdirSync(bin);
+  writeFileSync(join(scripts, "check.mjs"), readFileSync(checker));
+  for (const name of ["new.test.mjs", "new.test.cjs"]) {
+    writeFileSync(join(scripts, name), `console.log(${JSON.stringify(name)});`);
+  }
+  for (const name of ["test_new.py", "new.test.py", "unrelated.py"]) writeFileSync(join(scripts, name), "");
+  const python = process.platform === "win32" ? "python.cmd" : "python3";
+  const wrapper = process.platform === "win32"
+    ? '@echo off\r\nif "%~1"=="--version" exit /b 0\r\necho PYTHON_TEST %*\r\nexit /b 0\r\n'
+    : '#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\nprintf "PYTHON_TEST %s %s\\n" "$1" "$2"\n';
+  writeFileSync(join(bin, python), wrapper, { mode: 0o755 });
+  const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}` };
+  delete env.NODE_TEST_CONTEXT; // The synthetic child runs its own Node test runner.
+  const run = (flag) => spawnSync(process.execPath, [join(scripts, "check.mjs"), flag], { cwd: root, env, encoding: "utf8", timeout: 15_000 });
+  for (const flag of ["--script-tests", "--platform-script-tests"]) {
+    const result = run(flag);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    for (const name of ["new.test.mjs", "new.test.cjs", "test_new.py", "new.test.py"]) assert.match(result.stdout, new RegExp(name));
+    assert.doesNotMatch(result.stdout, /unrelated\.py|== Format:|== Lint:|== Desktop:|== Workflow/);
+  }
+  // Only the package-dependent boundary suite is omitted on native runners.
+  writeFileSync(join(scripts, "ui-imports.test.mjs"), 'throw Error("synthetic UI dependency missing");');
+  assert.equal(run("--platform-script-tests").status, 0);
+  const failedUi = run("--script-tests"); assert.equal(failedUi.status, 1, failedUi.stdout + failedUi.stderr);
+  writeFileSync(join(scripts, "new.test.cjs"), 'throw Error("synthetic script failure");');
+  assert.equal(run("--platform-script-tests").status, 1);
+  writeFileSync(join(scripts, "new.test.cjs"), "");
+  writeFileSync(join(bin, python), process.platform === "win32" ? wrapper.replace(/exit \/b 0\r\n$/, 'exit /b 7\r\n') : wrapper + 'exit 7\n', { mode: 0o755 });
+  assert.equal(run("--platform-script-tests").status, 1);
+  writeFileSync(join(bin, python), process.platform === "win32" ? '@exit /b 7\r\n' : '#!/bin/sh\nexit 7\n', { mode: 0o755 });
+  assert.equal(run("--platform-script-tests").status, 2, "unavailable Python must report incomplete");
+});
+
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "ibis-check-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));

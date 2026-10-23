@@ -41,6 +41,12 @@ cargo insta review                             # review changed snapshots
 
 `node scripts/check.mjs` runs the default workspace and every desktop crate test. CI also tests the core and command line with the Rust 1.90 minimum and the core in release mode. Pandoc comparisons are skipped when Pandoc is missing; `IBIS_REQUIRE_PANDOC=1` makes them required. Review changed snapshots like code.
 
+Script discovery includes `*.test.mjs`, `*.test.cjs`, `test_*.py` and `*.test.py`.
+`node scripts/check.mjs --script-tests` runs only those suites after UI dependencies
+are installed. Native CI uses `--platform-script-tests`, omitting only the UI
+import-boundary suite that needs those packages; Web CI and local full checks
+retain it. Existing embedded native self-tests and runtime checks still run.
+
 ## Focused harnesses
 
 **Settings migration.** `cargo test -p ibis-desktop identity::tests` covers file symlinks, interrupted staging, concurrent processes and look-alike preservation. Cleanup owns only real `<app>.migration-<pid>-<counter>` directories with canonical numeric suffixes, under a persistent per-app file lock. Truncated old names remain untouched because ownership is ambiguous. Unix tests cover dangling/directory/loop links and permissions; Linux also covers non-UTF-8 parents.

@@ -224,7 +224,7 @@ jobs:
       - name: Script tests and UI import boundary
         working-directory: .
         run: |
-          node --test scripts/*.test.mjs
+          node scripts/check.mjs --script-tests
           node scripts/ui-imports.mjs
 
       - name: Type check and test the interface
@@ -341,13 +341,12 @@ jobs:
           name: desktop-web
           path: apps/desktop/dist
 
-      - name: Format, lint and test the core (macOS and Windows)
+      - name: Lint and test the core and scripts (macOS and Windows)
         if: env.NATIVE == 'true' && runner.os != 'Linux'
         run: |
-          cargo fmt --all --check
           cargo clippy --all-targets --locked
           cargo test --locked
-          node --test scripts/check.test.mjs scripts/fuzz.test.mjs scripts/evidence.test.mjs scripts/hygiene.test.mjs scripts/release-notes.test.mjs
+          node scripts/check.mjs --platform-script-tests
 
       - name: Lint, test and build the app
         if: env.NATIVE == 'true'
