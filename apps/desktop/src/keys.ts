@@ -34,15 +34,25 @@ const NAMED: Record<string, [mac: string, other: string]> = {
   home: ["Home", "Home"], end: ["End", "End"], tab: ["Tab", "Tab"], space: ["Space", "Space"],
 };
 
+/** Display order only; accelerator matching retains the original binding. */
+function joinKeyLabels(keys: string[], mac: boolean): string {
+  if (!mac) return keys.join("+");
+  const order = (key: string) => {
+    const index = key.length === 1 ? "⌃⌥⇧⌘".indexOf(key) : -1;
+    return index < 0 ? 4 : index;
+  };
+  return keys.sort((a, b) => order(a) - order(b)).join("");
+}
+
 /** A key label in the platform's own words: ⌘ ⌥ ⇧ on macOS, Ctrl Alt Shift elsewhere. */
 export function keyLabel(accelerator: string, mac: boolean): string {
   // "+" separates keys, so a lone "+" or a trailing one is the key itself.
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
-  return parts.map((part) => {
+  return joinKeyLabels(parts.map((part) => {
     const named = NAMED[part.toLowerCase()];
     if (named) return mac ? named[0] : named[1];
     return part.length === 1 ? part.toUpperCase() : shortcutLabel(part, mac);
-  }).join(mac ? "" : "+");
+  }), mac);
 }
 
 /** The aria-keyshortcuts value for an accelerator. */
@@ -69,7 +79,7 @@ export function shortcutLabel(shortcut: string, mac: boolean): string {
     const plain = /^(?:Key|Digit)(.)$/i.exec(key)?.[1] ?? key;
     return plain.length === 1 ? plain.toUpperCase() : plain;
   });
-  return keys.join(mac ? "" : "+");
+  return joinKeyLabels(keys, mac);
 }
 
 /** The parts of a key press a shortcut depends on. */

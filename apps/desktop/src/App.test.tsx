@@ -2253,7 +2253,7 @@ test("shortcuts read as people type them on each system", async () => {
   const { shortcutLabel } = await import("./LibrarySetup");
   expect(shortcutLabel("Control+Command+R", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Control+Shift+Y", false)).toBe("Ctrl+Shift+Y");
-  expect(shortcutLabel("CmdOrCtrl+Shift+KeyR", true)).toBe("⌘⇧R");
+  expect(shortcutLabel("CmdOrCtrl+Shift+KeyR", true)).toBe("⇧⌘R");
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
   expect(shortcutLabel("control+command+r", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Alt+Space", false)).toBe("Alt+Space");

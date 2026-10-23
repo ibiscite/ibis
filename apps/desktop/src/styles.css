@@ -313,7 +313,7 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 .keys-scroll th, .keys-scroll td { padding: var(--space-1) var(--space-2); vertical-align: top; overflow-wrap: anywhere; border-bottom: var(--border-width) solid var(--line); }
 .keys-scroll td:first-child { white-space: nowrap; }
 .keys-scroll td:last-child { color: var(--muted); }
-.keys-scroll kbd { margin-inline-start: 0; }
+.keys-scroll kbd { margin-inline-start: 0; white-space: nowrap; }
 @media (forced-colors: active) {
   .keys-dialog { border-color: CanvasText; }
 }

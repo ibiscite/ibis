@@ -24,7 +24,7 @@ sequenced in #940 and on the tracking issue (Lane UI).
 | C3 | **Two columns.** Icons, the search glyph, the status dot and type tiles are centred on the 32 px tile column (`inset + row-pad + 16`); text starts on the title column (`inset + row-pad + tile + row-gap` = 64 px): row titles, the search query, the status text and the shelf citation. The search glyph sits 6 px inside the tile column on each side. |
 | C4 | **Rows.** 58 px, 2 px apart everywhere (results, Recently added, choices). The citation key is hidden in rows; the year is trailing and centred vertically. Selection: accent fill on macOS and GNOME; subtle fill plus a 3 × 16 px accent pill on Windows. |
 | C5 | **Pointer.** Click selects (the shelf shows its citation); double-click or the footer Copy does what Enter does. ⌘-click or Ctrl-click, or the + on a hovered tile, adds to the citation. Right-click opens More for that row. Only copying closes the window. |
-| C6 | **Pin.** A neutral icon button at the header's end, always visible. On: filled glyph on the pressed fill, never the accent. ⌘⇧P / Ctrl+Shift+P; also in More as "Keep window open" / "Stop keeping open". Escape never unpins. |
+| C6 | **Pin.** A neutral icon button at the header's end, always visible. On: filled glyph on the pressed fill, never the accent. ⇧⌘P / Ctrl+Shift+P; also in More as "Keep window open" / "Stop keeping open". Escape never unpins. |
 | C7 | **Shelf.** One 40 px line with the beak quote mark hanging before the citation (mark at the tile column's end, text on the title column). Shown while there are results; hidden on empty, error and choice screens. With several references the citation itself holds them as segments (no chips line): each segment reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6) with a 16 px round remove button inside its end over a 6 px fade of the text, so nothing moves and neighbours are never covered (this holds for zero-width separators such as BibLaTeX's). Pointing at the × darkens its circle. From the keyboard ← → select a segment as an accent-filled token and Delete removes it. On copy the shelf shows a closing beak after the citation and "Copied" at the line end. |
 | C8 | **Footer.** Status dot and text, then "Copy N as <format> ↵", "Shortcuts ⌘/", "More ⌘K". Actions are 24 px fills. Key caps only in the footer and lists, never inside buttons; buttons use quiet trailing text ("Cite this page ⌘↩"). The macOS Return cap is the return-arrow glyph. |
 | C9 | **Menus.** Items padded 10 px on both sides; a leading check column only when an item in that menu can be checked (the format menu), never in More. Separators inset 10 px with 4 px above and below. The format menu's filter text aligns with the item labels, and the menu opens 4 px below the pop-up, aligned to its trailing edge. macOS shortcut text uses native modifier order (⇧⌘C). |
@@ -576,8 +576,9 @@ state.
   filters, then hide. Escape never turns off Keep Window Open and never closes
   Settings.
 - **Positioning:** React Aria placement with `containerPadding` 8, flip then
-  shift, offset 6, max height window − 16. Header menus prefer `bottom end`,
-  footer menus `top end`.
+  shift, max height window − 16. Format opens 4 px below its pop-up at
+  `bottom end`; other menus retain offset 6, with header menus at `bottom end`
+  and footer menus at `top end`.
 - **Small windows** (< 420 × 360): popovers take the window width − 16; dialogs
   become full-window sheets with a back button; tooltips truncate to one line.
 - Overlays close when the picker hides and do not reopen.
@@ -637,7 +638,7 @@ one scroller.
 
 - Logical properties only; the pill, tile, year and chevron mirror. Search,
   clock and media glyphs do not; back and forward arrows do.
-- Key caps keep platform order (⌘⇧K) in RTL.
+- Key caps keep platform order (⇧⌘K) in RTL.
 - `:lang(ar, he, fa, ur, zh, ja, ko)` gets `letter-spacing: 0`.
 - Mixed-direction strings are isolated (`unicode-bidi: isolate`). The citation
   output is `dir="auto"`, so a right-to-left formatted citation reads correctly;
@@ -709,7 +710,7 @@ searchable, say "not updated · checked 2 h ago" (Stop dot), retry quietly.
 | Layer | What they see | How it retires |
 |---|---|---|
 | First minute | one placeholder ("Search title, author, year…"), the Enter hint, the shelf showing what Enter pastes | the Enter hint stays while a row is active |
-| First week | one footer tip at a time, tied to what they just did (after 3 copies: "Shift+Enter adds several"; after an outside-click hide: "Keep Window Open (⌘⇧P) keeps Ibis open") | retires after the action is done twice or the tip is closed; a local "seen" flag (needs an ADR first) |
+| First week | one footer tip at a time, tied to what they just did (after 3 copies: "Shift+Enter adds several"; after an outside-click hide: "Keep Window Open (⇧⌘P) keeps Ibis open") | retires after the action is done twice or the tip is closed; a local "seen" flag (needs an ADR first) |
 | Power | More lists every action with its key; `?` lists every key; filters suggested when typed; density; custom shortcut; ⌘I hides the output line | always reachable, never shown unasked |
 
 Tooltips name the action and its key ("More · ⌘K"). No tour, coach marks,

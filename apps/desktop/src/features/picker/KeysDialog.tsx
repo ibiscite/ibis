@@ -44,7 +44,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
               {bindings.map((binding) => (
                 <tr key={`${binding.region}:${binding.action}`}>
                   <td>{binding.keys.map((keys, i) => (
-                    <span key={keys}>{i > 0 && ` ${keyText.or} `}<kbd aria-keyshortcuts={ariaKeys(keys, isMac)}>{binding.action === "open" ? shortcutLabel(keys, isMac) : keyLabel(keys, isMac)}</kbd></span>
+                    <span key={keys}>{i > 0 && ` ${keyText.or} `}<kbd dir="ltr" aria-keyshortcuts={ariaKeys(keys, isMac)}>{binding.action === "open" ? shortcutLabel(keys, isMac) : keyLabel(keys, isMac)}</kbd></span>
                   ))}</td>
                   <td>{keyText.actions[binding.action]}</td>
                   <td>{keyText.regions[binding.region]}</td>

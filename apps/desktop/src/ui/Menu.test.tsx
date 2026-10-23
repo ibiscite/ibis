@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { useRef, useState } from "react";
-import { Menu, MenuItem, MenuSection, MenuSeparator } from "./Menu";
+import { Menu, MenuItem, MenuSection, MenuSeparator, useMenuBoundary, useMenuPlacement } from "./Menu";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 
 test.each(["frame", "cancel", "reopen", "unmount"])("a deferred menu focus request respects %s", async (action) => {
@@ -82,17 +82,22 @@ test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highl
   expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Open" }));
 });
 
-test("every row has a leading check column; toggles are checkbox items and the shortcut is not in the name", async () => {
+test("action rows start with labels; toggles keep trailing checks and shortcuts stay out of names", async () => {
   const { trigger } = mount();
   fireEvent.click(trigger);
   const menu = await screen.findByRole("menu");
   const rows = [...menu.querySelectorAll("[role^=menuitem]")];
-  expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-check", "menu-check", "menu-check"]);
+  expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-label", "menu-label"]);
+  expect(rows[0]!.querySelector(".menu-check")).toBeNull();
+  expect(rows.slice(1).map((row) => row.lastElementChild?.className)).toEqual(["menu-check", "menu-check"]);
   expect(screen.getByRole("menuitem", { name: "Open" }).textContent).toBe("OpenCtrl+O");
   // Menu shortcuts are trailing text, so global kbd cap styles cannot apply.
   const shortcut = screen.getByRole("menuitem", { name: "Open" }).querySelector(".menu-keys")!;
   expect(shortcut.tagName).toBe("SPAN");
   expect(shortcut.getAttribute("aria-hidden")).toBe("true");
+  // The outer logical margin follows the menu; only the shortcut text is LTR.
+  expect(shortcut.getAttribute("dir")).toBeNull();
+  expect(shortcut.querySelector("bdi")?.getAttribute("dir")).toBe("ltr");
   const group = screen.getByRole("group", { name: "Sources" });
   expect(within(group).getAllByRole("menuitemcheckbox").map((row) => [row.textContent, row.getAttribute("aria-checked")]))
     .toEqual([["First", "true"], ["Second", "false"]]);
@@ -308,4 +313,38 @@ test("an open menu bounds placement below the return field and removes the bound
   expect(boundary?.style.top).toBe("64px");
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   await waitFor(() => expect(boundary?.isConnected).toBe(false));
+});
+
+test("placement preserves a visible header anchor while bounding an off-window footer", () => {
+  const search = document.createElement("input");
+  vi.spyOn(search, "getBoundingClientRect").mockReturnValue(new DOMRect(8, 8, 240, 36));
+  const ref = { current: search };
+  const hook = renderHook(() => useMenuBoundary(true, ref));
+  vi.spyOn(hook.result.current.boundaryElement!, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 44, 720, 596));
+  const button = document.createElement("button");
+  const rect = vi.spyOn(button, "getBoundingClientRect").mockReturnValue(new DOMRect(590, 12, 82, 28));
+  expect(hook.result.current.getTargetRect(button).top).toBe(12);
+  rect.mockReturnValue(new DOMRect(590, 680, 82, 24));
+  const bounded = hook.result.current.getTargetRect(button);
+  expect(bounded.top).toBeGreaterThanOrEqual(44);
+  expect(bounded.top).toBeLessThan(640);
+  hook.unmount();
+});
+
+test.each(["ltr", "rtl"])("menu alignment follows rendered %s on opening and keeps its closing edge", (direction) => {
+  const button = document.createElement("button");
+  button.dir = direction === "rtl" ? "ltr" : "rtl";
+  button.style.direction = direction;
+  document.body.append(button);
+  const trigger = { current: button };
+  const hook = renderHook(({ open, placement }: { open: boolean; placement: "top end" | "bottom end" }) => useMenuPlacement(open, trigger, placement),
+    { initialProps: { open: true, placement: "bottom end" } });
+  expect(hook.result.current).toBe(direction === "rtl" ? "bottom left" : "bottom right");
+  button.style.direction = direction === "rtl" ? "ltr" : "rtl";
+  hook.rerender({ open: false, placement: "top end" });
+  expect(hook.result.current).toBe(direction === "rtl" ? "top left" : "top right");
+  hook.rerender({ open: true, placement: "top end" });
+  expect(hook.result.current).toBe(direction === "rtl" ? "top right" : "top left");
+  hook.unmount();
+  button.remove();
 });

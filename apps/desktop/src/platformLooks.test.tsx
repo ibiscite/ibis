@@ -815,7 +815,7 @@ function gridPixels(value: string): number | null {
   return result;
 }
 
-// Native menus retain 6/10 px metrics and check-column alignment; the notice's
+// Canvas menus retain 10 px metrics and check-column alignment; the notice's
 // inset check and pill tail are optical. Each exception names its exact value.
 function opticalSpacing(block: TokenBlock, name: string, value: string) {
   const normalized = (text: string) => text.replace(/(^|[^\d.])0(?:px|rem)(?=$|[^\w.])/g, (_, lead: string) => lead + "0").replace(/(?<![\d.])\.(\d+)/g, "0.$1").replace(/\s/g, "");
@@ -828,8 +828,9 @@ function opticalSpacing(block: TokenBlock, name: string, value: string) {
   if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
   const native: Record<string, string[]> = {
     ".menu-popover padding": ["var(--menu-padding)"], ".menu-popover --menu-padding": ["var(--menu-pad)"],
-    ".menu-item padding": ["0 10px 0 6px"], ".menu-item gap": ["6px"], ".menu-header padding-inline-start": ["22px"],
-    ".toolbar-menu-button padding": ["0 8px 0 10px"], ".toolbar-menu-heading padding": ["8px 8px 4px 30px"],
+    ".menu-item padding-inline": ["10px"], ".menu-item gap": ["6px"], ".menu-header padding-inline": ["10px"],
+    ".toolbar-menu-button padding": ["0 8px 0 10px"], ".toolbar-menu-heading padding-inline": ["34px 10px"],
+    ".toolbar-menu-filter input padding-inline": ["34px 10px"],
     ".copied-notice-mark padding": [".2rem"],
   };
   return native[`${block.selector} ${name}`]?.some(same) || (block.file === "notice.css" && /^\.copied-notice\[data-platform="(?:macos|linux)"\]$/.test(block.selector) && name === "padding" && same("0 1.125rem 0 .5rem"));

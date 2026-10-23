@@ -6,6 +6,15 @@ import { Button } from "./Button";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
 
+/** Align to the rendered trailing edge even when the browser locale differs. */
+export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement | null>, placement: "top end" | "bottom end") {
+  const [rtl, setRtl] = useState(false);
+  useLayoutEffect(() => {
+    if (open && trigger.current) setRtl(getComputedStyle(trigger.current).direction === "rtl");
+  }, [open, trigger]);
+  return `${placement === "top end" ? "top" : "bottom"} ${rtl ? "left" : "right"}` as const;
+}
+
 /** Keep React Aria's placement boundary inside the viewport and below the
  * return field. A wrapped picker can put its footer trigger below the window. */
 export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>) {
@@ -42,6 +51,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     const bounds = boundary.getBoundingClientRect();
     // Preserve the real anchor when visible; shift an off-window trigger into
     // the boundary so placement can still flip and cap against usable space.
+    if (rect.top >= 8 && rect.bottom <= bounds.bottom - 8) return rect;
     const top = Math.max(clearBottom + 8 - 6 - rect.height, Math.min(rect.top, bounds.bottom - 8));
     return new DOMRect(rect.x, top, rect.width, rect.height);
   }, [boundary, clearBottom]);
@@ -52,21 +62,21 @@ const ActionFocusContext = createContext<(() => void) | null>(null);
 
 type ItemProps = {
   id: string; label: string; title?: string; keys?: string;
-  /** A toggle: shows a check in the leading column and is a menuitemcheckbox. */
+  /** A toggle: shows a trailing check and is a menuitemcheckbox. */
   checked?: boolean;
   /** Stays focusable and is announced as unavailable, but does nothing (ADR 0021). */
   disabled?: boolean;
   onAction: () => void;
 };
 
-/** The leading check column; a drawn check, so it adds no text to the row. */
+/** A drawn check, so it adds no text to the row. Format reserves its leading column. */
 export function MenuCheck({ checked }: { checked: boolean }) {
   return <span className="menu-check" aria-hidden="true">
     {checked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m2.5 6.5 2.5 2.5 4.5-6" /></svg>}
   </span>;
 }
 
-/** One row: a leading check column, the label, and an optional shortcut. */
+/** An action row: label, optional shortcut and a trailing check for toggles. */
 export function MenuItem({ id, label, title, keys, checked, disabled, onAction }: ItemProps) {
   const requestActionFocus = useContext(ActionFocusContext);
   return <AriaMenuItem id={id} className="menu-item" textValue={label}
@@ -79,9 +89,9 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
     }}
     render={(props) => <div {...props as ComponentPropsWithRef<"div">} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
-      <MenuCheck checked={isSelected} />
       <span className="menu-label">{label}</span>
-      {keys && <span className="menu-keys" aria-hidden="true">{keys}</span>}
+      {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
+      {checked !== undefined && <MenuCheck checked={isSelected} />}
     </>}
   </AriaMenuItem>;
 }
@@ -129,6 +139,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const boundary = useMenuBoundary(isOpen, tabFocusRef);
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
+  const renderedPlacement = useMenuPlacement(isOpen, button, placement);
   const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(isOpen);
   const popover = useRef<HTMLElement | null>(null);
   const pendingFocus = useRef<HTMLElement | null>(null);
@@ -201,7 +212,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
-    <Popover ref={popoverRef} className="menu-popover" placement={placement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+    <Popover ref={popoverRef} className="menu-popover" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }
         const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;

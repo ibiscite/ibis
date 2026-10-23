@@ -147,8 +147,12 @@ future consumer; current chips are not citation segments.
 them: the menu bar, the tray menu and right-click context menus ([ADR 0021](adr/0021-ui-foundation.md)).
 In-window menus (format, library scope, More) are Ibis's, but match that
 platform's native menu metrics: radius and padding from the table above, the
-native item padding (items stay at least 32 px high, rule 4), separators, and
-open and close motion. Check them side by side with a real
+C9 item padding (10 px on both sides), separators inset 10 px with 4 px
+above and below, and native open and close motion. Format reserves a leading
+check column; More starts at its labels and shows toggle checks at the end.
+Format filter text aligns with labels; the menu opens 4 px below its pop-up,
+aligned to the trailing edge. Items stay at least 32 px high (rule 4).
+Check them side by side with a real
 menu on each platform before calling them done.
 
 **Motion.** 120 ms for feedback, 200 ms for panels, 280 ms for layout. Each
@@ -242,7 +246,7 @@ list, preview and tray) from a control layer (search and format).
 | Search box | Always | The largest element, focused on open. Its placeholder lists what can be searched. |
 | Format (for example "Pandoc ⌃⌄" on macOS) | Once a library is chosen | What is pasted depends on it. One word, no icon; each platform's pop-up button (see **Header**). "Key formats" and "Citation styles" show real samples and a leading check; unavailable styles stay focusable; typing filters. |
 | More (Ctrl/⌘ K) | Always | The one door to every other action; each shows its shortcut, so the menu is also the cheat sheet. In the footer it reads "More ⌘K", like the hints beside it (see **Footer**). |
-| Keep Window Open | Always in the header and in More | Neutral pin toggle; More reads "Keep window open" / "Stop keeping open", with ⌘⇧P on macOS and Ctrl+Shift+P elsewhere. The filled glyph and neutral selected fill show that it is kept open. The first outside-click tip is planned for 0.3 (#571/#572), naming the action and shortcut. |
+| Keep Window Open | Always in the header and in More | Neutral pin toggle; More reads "Keep window open" / "Stop keeping open", with ⇧⌘P on macOS and Ctrl+Shift+P elsewhere. The filled glyph and neutral selected fill show that it is kept open. The first outside-click tip is planned for 0.3 (#571/#572), naming the action and shortcut. |
 | Filter chips | Once added | `#tag`, `y:2019-2022` or `a:name` followed by a space becomes a removable chip. Backspace in an empty box removes the last one. |
 | Recently cited, Recently added, With PDF | While browsing | Shown when the search is empty or one is selected; hidden while typing so rows get the room. Tab reaches the current browsing tab; ← and → choose another (see **Keyboard focus order**). |
 | Tag and author suggestions | While typing `#` or `a:` | Take the place of the tabs. Enter, or Tab while the suggestions are open, picks the first. |

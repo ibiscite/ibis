@@ -45,13 +45,13 @@ grouping everywhere. Only the native rendering differs.
 | Lives in… | When | Examples |
 |---|---|---|
 | **Inline in the picker** | Changed while writing, possibly several times a day | Format and style menu, filters, page number |
-| **More menu (⌘K / Ctrl+K)** | An occasional action tied to the moment | Keep Window Open (⌘⇧P / Ctrl+Shift+P), switch library, narrow Zotero libraries, Reload, Keyboard shortcuts, **Settings… ⌘,**, Quit |
+| **More menu (⌘K / Ctrl+K)** | An occasional action tied to the moment | Keep Window Open (⇧⌘P / Ctrl+Shift+P), switch library, narrow Zotero libraries, Reload, Keyboard shortcuts, **Settings… ⌘,**, Quit |
 | **Menu bar or tray menu** | Things the OS expects there, or that must work without the picker | Open Ibis, library line, Reload, Check for Updates, Start at Login, **Settings…**, Report a Problem, Quit |
 | **Settings window** | Set once or rarely; needs explanation; or destructive | Everything in 1.2 |
 | **Not a setting** | The system owns it, or a good default makes it unnecessary | Accent colour, contrast, reduced motion and transparency, system text scale, watching `.bib` files, the Copied notice position |
 
 **Keep Window Open** (decided in #757): pinning leaves the header. It is a
-checkable item in the More menu with ⌘⇧P (Ctrl+Shift+P elsewhere), defined in
+checkable item in the More menu with ⇧⌘P (Ctrl+Shift+P elsewhere), defined in
 `keys.ts`. While pinned, the footer's status area shows a small pin
 glyph with the tooltip "Kept open; click to stop", and clicking it unpins. When
 not pinned, nothing shows. The header ends with the format selector, aligned to
@@ -218,7 +218,7 @@ Per OS:
 
 | Source | macOS | Windows 11 | GNOME / Linux |
 |---|---|---|---|
-| OS-reserved, static list (hard) | ⌘Space, ⌃Space, ⌘Tab, ⌘`, ⌘⇧3/4/5, ⌃↑/↓/←/→, ⌘⌥Esc, ⌃⌘Q, ⌃⌘F, Globe+key | Win+L, D, E, R, I, V, period, Space, Tab, number keys, Win+Shift+S, Ctrl+Alt+Del, Ctrl+Shift+Esc, Alt+Tab, Alt+F4, Ctrl+Esc, F12 | Super alone, Super+A, Super+V, Super+L, Super+Space, Alt+Tab, Alt+F2, Ctrl+Alt+T (Ubuntu), Print |
+| OS-reserved, static list (hard) | ⌘Space, ⌃Space, ⌘Tab, ⌘`, ⇧⌘3/4/5, ⌃↑/↓/←/→, ⌘⌥Esc, ⌃⌘Q, ⌃⌘F, Globe+key | Win+L, D, E, R, I, V, period, Space, Tab, number keys, Win+Shift+S, Ctrl+Alt+Del, Ctrl+Shift+Esc, Alt+Tab, Alt+F4, Ctrl+Esc, F12 | Super alone, Super+A, Super+V, Super+L, Super+Space, Alt+Tab, Alt+F2, Ctrl+Alt+T (Ubuntu), Print |
 | Live system bindings (hard) | read `com.apple.symbolichotkeys` (read-only) | `RegisterHotKey` failure ("another app") | gsettings `org.gnome.desktop.wm.keybindings`, `org.gnome.shell.keybindings`, `org.gnome.settings-daemon.plugins.media-keys`; name the action |
 | Other apps | not detectable → "It works" test | registration failure | X11 grab failure |
 | Keys editors type with (soft, Use Anyway) | ⌥+letter or ⌥⇧+letter alone; ⌥Space | Ctrl+Alt+letter (AltGr); Ctrl+Shift+Space | as Windows; Ctrl+Space (input method) |

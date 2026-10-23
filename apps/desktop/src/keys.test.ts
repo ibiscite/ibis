@@ -80,7 +80,7 @@ test("keep-open uses its own shifted command on both platform key models", () =>
   const keys = keysFor("pin");
   expect(keys).toBe("CmdOrCtrl+Shift+P");
   expect(KEY_TABLE.filter((binding) => binding.keys.includes(keys))).toHaveLength(1);
-  expect(keyLabel(keys, true)).toBe("⌘⇧P");
+  expect(keyLabel(keys, true)).toBe("⇧⌘P");
   expect(keyLabel(keys, false)).toBe("Ctrl+Shift+P");
   for (const mac of [false, true]) {
     const modifier = mac ? { metaKey: true } : { ctrlKey: true };
@@ -94,4 +94,12 @@ test("keep-open uses its own shifted command on both platform key models", () =>
 test("shortcut labels read settings in any case and alias", () => {
   expect(shortcutLabel("Control+Command+R", true)).toBe("⌃⌘R");
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
+});
+
+test("macOS displays modifiers in native order without changing other platforms", () => {
+  expect(keyLabel("CmdOrCtrl+Shift+Alt+C", true)).toBe("⌥⇧⌘C");
+  expect(shortcutLabel("super+shift+ctrl+option+KeyC", true)).toBe("⌃⌥⇧⌘C");
+  expect(shortcutLabel("super+shift+ctrl+option+KeyC", false)).toBe("Super+Shift+Ctrl+Alt+C");
+  expect(keyLabel("CmdOrCtrl++", true)).toBe("⌘+");
+  expect(ariaKeys("CmdOrCtrl+Shift+P", true)).toBe("Meta+Shift+P");
 });

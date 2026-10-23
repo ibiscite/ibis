@@ -3,7 +3,7 @@ import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { Button } from "./Button";
-import { MenuCheck, useMenuBoundary } from "./Menu";
+import { MenuCheck, useMenuBoundary, useMenuPlacement } from "./Menu";
 import { currentPlatform } from "../platform";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
@@ -27,6 +27,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   const { listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(open);
   const composing = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
+  const renderedPlacement = useMenuPlacement(open, button, "bottom end");
   const popover = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
   const pending = useRef<{ target: HTMLElement; closing: HTMLElement | null; token: number; command?: ToolbarMenuCommand } | null>(null);
@@ -112,7 +113,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
       <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<PopupIndicator /></Button>
-      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>
