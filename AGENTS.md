@@ -39,6 +39,10 @@ Any agent (Claude, Codex or another tool) or human can do any part of the work u
 7. **Review and merge.** Code needs an independent review of the exact head commit by another session, preferably another model, with every P1 and P2 fixed (filing them as issues does not count). The independent code review comment starts `Independent review of <full SHA> by <tool and model>` and states its verdict and P1/P2 findings. Documentation-only, or tests and synthetic fixtures only, need only your recorded step 5 (ADR 0017). Squash-merge when all required checks pass on that commit. Never use `--admin` or another bypass. When the merge queue is enabled, the release pull request merges like any other; until then, nobody merges to `main` while a release hold is announced on the tracking issue.
 8. **Close the loop.** Check "CI result" is green on `main` and keep the tracking issue body current (Now and Queue). Comment on the tracking issue only for decisions and handoffs. Keep other issue and pull request comments under about 150 words; reviews and evidence may be longer. State results plainly, including what did not run.
 
+## Review tools
+
+Follow the [free-first review procedure](docs/development.md#free-first-review-tools) on every change: use free CodeRabbit selectively, keep Codex code/security reviews on demand, and retain the independent exact-head P1/P2 review and required CI. The CodeRabbit trial ends **2026-11-06**; the free-only policy continues afterward. Do not enable paid plans, credits, overages or automatic bot fixes/reviews to retain trial features or bypass a limit. Agents triage findings and report real issues, fixes, verification and uncertainty without waiting for maintainer reminders.
+
 ## Pausing and resuming
 
 All state lives on GitHub, so any agent can stop at any point and any other can continue.
