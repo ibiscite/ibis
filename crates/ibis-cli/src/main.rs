@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ibis_core::cite::{self, CiteItem, KeyFormat, Locator, LocatorLabel};
 use ibis_core::library::{self, SelectError};
 use ibis_core::model::{LoadResult, Reference};
-use ibis_core::search::Index;
+use ibis_core::search::OwnedIndex;
 use ibis_core::source::load_library_file;
 
 #[derive(Parser)]
@@ -205,8 +205,8 @@ fn run(cli: Cli) -> Result<ExitCode> {
             json,
         } => {
             let mut loaded = load(&bib)?;
-            let references = take_references(&mut loaded);
-            let hits = Index::new(&references).search(&query, limit);
+            let index = OwnedIndex::new(take_references(&mut loaded));
+            let hits = index.search(&query, limit);
             if !json {
                 report_problems(&loaded);
             }

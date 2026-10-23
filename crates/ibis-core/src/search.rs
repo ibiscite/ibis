@@ -511,14 +511,14 @@ mod tests {
         let mut r = reference("k", "Title", "Smith", 2020);
         r.container_title = Some("<i>Q</i> &amp; A".into());
         let refs = [r];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         for query in ["q & a", "Q A", "q&a"] {
             let hits = index.search(query, 10);
             assert_eq!(hits.len(), 1, "{query}");
             assert!(hits[0].matched.contains(&MatchField::Container), "{query}");
         }
         assert!(index.search("amp", 10).is_empty());
-        assert_eq!(prepare(&refs[0])[6], "q a");
+        assert_eq!(prepare(&index.references()[0])[6], "q a");
     }
 
     #[test]
@@ -683,7 +683,7 @@ mod tests {
     #[test]
     fn accents_and_case_are_ignored() {
         let refs = [reference("garcia2022", "Sueño y memoria", "García", 2022)];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         let hits = index.search("GARCIA sueno", 10);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].matched, [MatchField::Citekey, MatchField::Title]);
@@ -695,7 +695,7 @@ mod tests {
             reference("a", "Sleep and memory", "Smith", 2020),
             reference("b", "Sleep and diet", "Jones", 2021),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         let hits = index.search("sleep memory", 10);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].reference.id.native_key, "a");
@@ -798,7 +798,7 @@ mod tests {
             reference("smith2020", "On smith2020 data", "Other", 2019),
             reference("smith2020x", "Unrelated", "Smith", 2020),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("smith2020", 10)[0].reference.id.native_key, "smith2020");
         assert!(
             index
@@ -814,7 +814,7 @@ mod tests {
             reference("gr", "Οδός προς την ΓΝΩΣΙΣ", "Παπαδόπουλος", 2020),
             reference("de", "Die Straße der Erinnerung", "Weiß", 2021),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("γνωσις", 10)[0].reference.id.native_key, "gr");
         assert_eq!(index.search("ΓΝΏΣΙΣ", 10)[0].reference.id.native_key, "gr");
         assert_eq!(index.search("strasse weiss", 10)[0].reference.id.native_key, "de");
@@ -826,7 +826,7 @@ mod tests {
             reference("a:b", "Newer", "X", 2024),
             reference("a-b", "Older", "Y", 2001),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("a-b", 10)[0].reference.id.native_key, "a-b");
         assert_eq!(index.search("a:b", 10)[0].reference.id.native_key, "a:b");
     }
@@ -838,7 +838,7 @@ mod tests {
             "@book{translation,title={Synthetic},translator={Translator, Taylor},year={2024}}\n@book{compilation,title={Another},editor={Compiler, Casey},editortype={compiler},year={2024}}",
         )
         .references;
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs);
         assert_eq!(index.search("Translator", 10).len(), 1);
         assert_eq!(index.search("Compiler", 10).len(), 1);
     }
@@ -849,7 +849,7 @@ mod tests {
             reference("zh", "睡眠与记忆", "示例", 2025),
             reference("ar", "النوم والذاكرة", "مثال", 2021),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("记忆", 10)[0].reference.id.native_key, "zh");
         assert_eq!(index.search("الذاكرة", 10)[0].reference.id.native_key, "ar");
     }
@@ -862,7 +862,7 @@ mod tests {
             reference("fr", "Œuvres et Cæsar", "Đorđević", 2022),
             reference("tr", "Uykunun ışığı", "Yılmaz", 2023),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("lodzi", 10)[0].reference.id.native_key, "pl");
         assert_eq!(index.search("sovn odegard", 10)[0].reference.id.native_key, "no");
         assert_eq!(
@@ -879,7 +879,7 @@ mod tests {
             reference("fa", "كتاب الذكي", "علي", 2020),
             reference("tw", "العـــلم", "مثال", 2021),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("کتاب", 10)[0].reference.id.native_key, "fa");
         assert_eq!(index.search("علی", 10)[0].reference.id.native_key, "fa");
         assert_eq!(index.search("العلم", 10)[0].reference.id.native_key, "tw");
@@ -888,7 +888,7 @@ mod tests {
     #[test]
     fn hiragana_and_katakana_match_each_other() {
         let refs = [reference("ja", "ヤマダの研究", "ヤマダ", 2020)];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("やまだ", 10).len(), 1);
         assert_eq!(index.search("ﾔﾏﾀﾞ", 10).len(), 1);
     }
@@ -900,7 +900,7 @@ mod tests {
             reference("ka", "かっこう", "例", 2021),
             reference("hi", "किताब", "उदाहरण", 2022),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         let keys = |q| {
             index
                 .search(q, 10)
@@ -918,7 +918,7 @@ mod tests {
             reference("vs", "葛\u{E0100}城の研究", "例", 2020),
             reference("he", "בית־ספר", "דוגמה", 2021),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("葛城", 10)[0].reference.id.native_key, "vs");
         assert_eq!(index.search("ספר", 10)[0].reference.id.native_key, "he");
         assert_eq!(normalize("❤\u{FE0F}x"), "x");
@@ -926,7 +926,7 @@ mod tests {
         assert_eq!(normalize("בית־ספר"), "בית ספר");
 
         let refs = [reference("ko", "한국어 연구", "김", 2020)];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         assert_eq!(index.search("한국", 10).len(), 1);
         assert!(index.search("하국", 10).is_empty());
     }
@@ -953,7 +953,7 @@ mod tests {
             reference("ΜΑΣ", "Other", "X", 2020),
             reference("μας13", "Other", "Y", 2021),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         for (query, key) in [("μας", "ΜΑΣ"), ("Μας", "ΜΑΣ"), ("ΜΑΣ13", "μας13")] {
             let hits = index.search(query, 10);
             assert_eq!(hits[0].reference.id.native_key, key, "{query}");
@@ -967,7 +967,7 @@ mod tests {
             reference("a", "Insomnia", "X", 2020),
             reference("b", "The somnia", "Y", 2020),
         ];
-        let index = Index::new(&refs);
+        let index = OwnedIndex::new(refs.into());
         let hits = index.search("somnia", 10);
         assert_eq!(hits[0].reference.id.native_key, "b");
         assert_eq!(hits[0].score, 2 * hits[1].score);
