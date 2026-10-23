@@ -88,8 +88,8 @@ security sandbox for computed module names. During
 incremental migration, toolbar-menu role overrides in `tokens.css` apply locally
 to its popover, preserving the existing More menu and keys dialog roles.
 The shared Button family owns footer action, More and toolbar-menu triggers,
-shelf removal and folding, and dialog Close states; React Aria supplies pointer,
-press and keyboard-focus attributes.
+shelf removal and folding, empty-state recovery actions, and dialog Close
+states; React Aria supplies pointer, press and keyboard-focus attributes.
 Folded footer actions preserve their hidden accessibility state and tab order.
 Small-button gallery readiness checks actual hit targets beyond the visible fill.
 Shelf spacing reserves each full hit target, including three complete expanded

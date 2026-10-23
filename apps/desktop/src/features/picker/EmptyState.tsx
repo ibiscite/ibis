@@ -4,6 +4,7 @@ import { keysFor } from "../../keys";
 import { keyText, libraryMessages, pickerText } from "../../messages";
 import { KeyHint } from "../../ui/KeyCaps";
 import { IndeterminateProgress } from "../../ui/Progress";
+import { Button } from "../../ui/Button";
 import "./EmptyState.css";
 
 // The empty-state contract keeps fast library opens free of transient content.
@@ -71,11 +72,11 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
       </> : title}</p>
       <p className="empty-description">{description}</p>
       {empty ? <div className="empty-actions">
-        {library.zotero && <button type="button" className="suggested-action" onClick={onReload}>{pickerText.reload}</button>}
-        <button type="button" className={library.zotero ? "empty-alternative" : "suggested-action"} onClick={onChooseLibrary}>{pickerText.chooseLibrary}</button>
+        {library.zotero && <Button variant="primary" className="empty-primary" onPress={onReload}>{pickerText.reload}</Button>}
+        <Button variant={library.zotero ? "quiet" : "primary"} className={library.zotero ? "empty-alternative" : "empty-primary"} onPress={onChooseLibrary}>{pickerText.chooseLibrary}</Button>
       </div> : query ? <div className="empty-actions">
-        <button type="button" className="suggested-action" onClick={onClearSearch}>{pickerText.clearSearch}</button>
-        {narrowed && <button type="button" className="empty-alternative" onClick={onSearchAll}>{pickerText.searchAllLibraries}</button>}
+        <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{pickerText.clearSearch}</Button>
+        {narrowed && <Button variant="quiet" className="empty-alternative" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>}
       </div> : null}
       {!empty && !query && <div className="empty-keys" aria-hidden="true">
         <KeyHint label={keyText.copy} keys={keysFor("copy")} />

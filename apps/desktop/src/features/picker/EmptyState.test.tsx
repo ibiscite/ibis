@@ -122,12 +122,38 @@ test.each(["file", "zotero", "no-results"])("%s has exactly one enabled suggeste
   const { container } = render(<EmptyState library={{ ...loaded, references: empty ? 0 : 24, zotero: state === "zotero" }}
     query={empty ? "" : "unmatched"} narrowed onChooseLibrary={vi.fn()} onClearSearch={vi.fn()}
     onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
-  const actions = container.querySelectorAll<HTMLButtonElement>(".empty-actions .suggested-action");
+  const actions = container.querySelectorAll<HTMLButtonElement>('.empty-actions .ui-button[data-variant="primary"]');
   expect(actions).toHaveLength(1);
   expect(actions.item(0).disabled).toBe(false);
   expect(actions.item(0).textContent).toBe(state === "file" ? "Choose library…" : state === "zotero" ? "Reload" : "Clear search");
   const alternative = container.querySelector(".empty-alternative");
   expect(alternative?.textContent ?? null).toBe(state === "file" ? null : state === "zotero" ? "Choose library…" : "Search all Zotero libraries");
+  if (alternative) expect(alternative.getAttribute("data-variant")).toBe("quiet");
+  expect(container.querySelector(".suggested-action")).toBeNull();
+  expect([...container.querySelectorAll(".empty-actions button")].every((button) => button.classList.contains("ui-button"))).toBe(true);
+});
+
+test.each([
+  ["file", "Choose library…", "choose"],
+  ["zotero", "Reload", "reload"],
+  ["zotero", "Choose library…", "choose"],
+  ["no-results", "Clear search", "clear"],
+  ["no-results", "Search all Zotero libraries", "searchAll"],
+] as const)("%s: Enter and Space each invoke only %s once", (state, label, action) => {
+  const handlers = { choose: vi.fn(), reload: vi.fn(), clear: vi.fn(), searchAll: vi.fn() };
+  render(<EmptyState library={{ ...loaded, references: state === "no-results" ? 24 : 0, zotero: state === "zotero" }}
+    query={state === "no-results" ? "unmatched" : ""} narrowed onChooseLibrary={handlers.choose} onClearSearch={handlers.clear}
+    onSearchAll={handlers.searchAll} onReload={handlers.reload} setup={null} />);
+  const button = screen.getByRole("button", { name: label });
+  button.focus();
+  for (const key of ["Enter", " "]) {
+    const before = handlers[action].mock.calls.length;
+    fireEvent.keyDown(button, { key });
+    fireEvent.keyDown(button, { key, repeat: true });
+    fireEvent.keyUp(button, { key });
+    expect(handlers[action]).toHaveBeenCalledTimes(before + 1);
+  }
+  for (const [name, handler] of Object.entries(handlers)) if (name !== action) expect(handler).not.toHaveBeenCalled();
 });
 
 test.each(["🧑🏽‍🔬", "e\u0301"])("a long empty-library name keeps its extension, full accessible text and graphemes (%s)", (unit) => {

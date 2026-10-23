@@ -8,10 +8,8 @@
 .empty-keys > .key-hint { flex-wrap: wrap; justify-content: center; max-width: 100%; white-space: normal; }
 .empty-template .empty-actions { margin-top: var(--space-4); }
 .empty-template .empty-actions > button { max-width: 100%; overflow-wrap: anywhere; }
-.empty-alternative, .empty-alternative:hover { background: var(--clear); color: var(--text); text-decoration: underline; }
-@media (pointer: coarse) {
-  .empty-template .empty-actions > button { min-width: calc(11 * var(--space-1)); min-height: calc(11 * var(--space-1)); }
-}
+.empty-primary { font-weight: var(--type-strong-weight); }
+.empty-alternative { text-decoration: underline; }
 
 .empty-loading {
   display: flex;
