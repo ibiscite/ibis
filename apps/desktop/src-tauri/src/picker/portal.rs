@@ -117,10 +117,21 @@ async fn request(
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub(super) enum Event {
     Trigger(Option<String>),
-    Activated,
+    Activated(Option<String>),
+}
+
+// Tokens are opaque, native-only focus authorization: never serialize, persist
+// or expose them to diagnostics/WebView events. A future adapter consumes them.
+impl std::fmt::Debug for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Trigger(label) => f.debug_tuple("Trigger").field(label).finish(),
+            Self::Activated(_) => f.write_str("Activated([redacted])"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -143,8 +154,14 @@ fn signal(message: &Message, session: &OwnedObjectPath) -> Option<Signal> {
     }
     match header.member()?.as_str() {
         "Activated" => {
-            let (handle, id, _, _): (OwnedObjectPath, String, u64, Dict) = message.body().deserialize().ok()?;
-            (handle == *session && id == ID).then_some(Signal::Event(Event::Activated))
+            let (handle, id, _, mut options): (OwnedObjectPath, String, u64, Dict) =
+                message.body().deserialize().ok()?;
+            (handle == *session && id == ID).then(|| {
+                let token = options
+                    .remove("activation_token")
+                    .and_then(|value| String::try_from(value).ok());
+                Signal::Event(Event::Activated(token))
+            })
         }
         "ShortcutsChanged" => {
             let (handle, shortcuts): (OwnedObjectPath, Shortcuts) = message.body().deserialize().ok()?;
@@ -224,7 +241,7 @@ impl Portal {
         let mut ready = false;
         let mut completed = None;
         let mut remaining = 0usize;
-        let mut activation = false;
+        let mut activation = None;
         let mut changed = None;
         loop {
             enum Next {
@@ -263,14 +280,16 @@ impl Portal {
                     ready = true;
                     let newer = changed.take().filter(|(_, sequence)| *sequence > position);
                     emit(Event::Trigger(newer.map(|(label, _)| label).unwrap_or(initial)));
-                    if activation {
-                        emit(Event::Activated);
+                    if let Some(event) = activation.take() {
+                        emit(event);
                     }
                 }
                 Next::Signal(Some(Ok(message))) => match signal(&message, &session) {
                     Some(Signal::Closed) => return Err(Failure::Unavailable),
                     Some(Signal::Event(event)) if ready => emit(event),
-                    Some(Signal::Event(Event::Activated)) => activation = true,
+                    // Keep the latest event, even when its optional token is absent
+                    // or malformed: retaining an older authorization would reuse it.
+                    Some(Signal::Event(event @ Event::Activated(_))) => activation = Some(event),
                     Some(Signal::Event(Event::Trigger(label))) => changed = Some((label, message.recv_position())),
                     None => {}
                 },
@@ -354,7 +373,7 @@ mod tests {
         };
         assert_eq!(
             signal(&activated(ROOT, INTERFACE, &session, ID)?, &session),
-            Some(Signal::Event(Event::Activated))
+            Some(Signal::Event(Event::Activated(None)))
         );
         for message in [
             activated(ROOT, INTERFACE, &other, ID)?,
@@ -384,6 +403,29 @@ mod tests {
         };
         assert_eq!(signal(&closed(session.as_str())?, &session), Some(Signal::Closed));
         assert_eq!(signal(&closed(other.as_str())?, &session), None);
+        Ok(())
+    }
+
+    #[test]
+    fn activation_tokens_stay_native_and_debug_is_redacted() -> Result<(), Box<dyn std::error::Error>> {
+        let session = OwnedObjectPath::try_from(format!("{ROOT}/session/one"))?;
+        let token = "synthetic-token-研究-<opaque>";
+        for (options, expected) in [
+            (dict("activation_token", token), Some(token.to_string())),
+            (dict("activation_token", ""), Some(String::new())),
+            (Dict::new(), None),
+            (HashMap::from([("activation_token".into(), 4u32.into())]), None),
+        ] {
+            let message = Message::signal(ROOT, INTERFACE, "Activated")?.build(&(&session, ID, 0u64, options))?;
+            assert_eq!(
+                signal(&message, &session),
+                Some(Signal::Event(Event::Activated(expected)))
+            );
+        }
+        let event = Event::Activated(Some(token.to_string()));
+        let debug = format!("{event:?}");
+        assert_eq!(debug, "Activated([redacted])");
+        assert!(!debug.contains(token));
         Ok(())
     }
 
@@ -480,8 +522,29 @@ mod tests {
                 for _ in 0..128 {
                     emit(connection, "Activated", &(&other, ID, 0u64, Dict::new())).await?;
                 }
+                let code = self.0.load(Ordering::Relaxed);
                 for id in ["other-action", ID] {
-                    emit(connection, "Activated", &(&session, id, 0u64, Dict::new())).await?;
+                    let options = if matches!(code, 1..=3 | 10..=12) {
+                        dict("activation_token", "synthetic-old-token")
+                    } else {
+                        Dict::new()
+                    };
+                    emit(connection, "Activated", &(&session, id, 0u64, options)).await?;
+                }
+                if code >= 10 {
+                    let latest = match code {
+                        10 => dict("activation_token", "synthetic-latest-token"),
+                        11 => Dict::new(),
+                        _ => HashMap::from([("activation_token".into(), 4u32.into())]),
+                    };
+                    emit(connection, "Activated", &(&session, ID, 0u64, latest)).await?;
+                    // A wrong action must not replace our latest token.
+                    emit(
+                        connection,
+                        "Activated",
+                        &(&session, "other-action", 0u64, dict("activation_token", "wrong-token")),
+                    )
+                    .await?;
                 }
                 emit(connection, "Activated", &("malformed",)).await?;
                 for (handle, label) in [(&session, "Alt+Y"), (&other, "wrong")] {
@@ -604,7 +667,7 @@ mod tests {
                         .await?;
                     let portal = Portal::connect().await.map_err(|_| "session failed")?;
                     assert_eq!(portal.session.as_str(), format!("{ROOT}/session/fake"));
-                    for response in [0, 1, 2, 3, 4, 5] {
+                    for response in [0, 1, 2, 3, 4, 5, 10, 11, 12] {
                         code.store(0, Ordering::Relaxed);
                         let portal = Portal::connect().await.map_err(|_| "session failed")?;
                         code.store(response, Ordering::Relaxed);
@@ -614,7 +677,7 @@ mod tests {
                         let result = tokio::time::timeout(Duration::from_secs(3), async {
                             let result = portal
                                 .run(|event| {
-                                    if event == Event::Activated {
+                                    if matches!(event, Event::Activated(_)) {
                                         code.store(0, Ordering::Relaxed);
                                         let server = server.clone();
                                         let session = session.clone();
@@ -640,9 +703,10 @@ mod tests {
                         })
                         .await
                         .map_err(|_| "signal draining must not hang")??;
-                        if matches!(response, 0 | 4 | 5) {
+                        if matches!(response, 0 | 4 | 5 | 10..=12) {
                             let label = if response == 4 { "Alt+Y" } else { "Ctrl+Shift+Y" };
-                            assert_eq!(events, [Event::Trigger(Some(label.into())), Event::Activated]);
+                            let token = (response == 10).then(|| "synthetic-latest-token".to_string());
+                            assert_eq!(events, [Event::Trigger(Some(label.into())), Event::Activated(token)]);
                         } else {
                             assert!(events.is_empty(), "consent failure must not activate");
                         }
@@ -728,7 +792,10 @@ mod tests {
                 if phase <= 7 {
                     assert!(events.is_empty(), "setup ownership loss must precede binding/events");
                 } else {
-                    assert_eq!(events, [Event::Trigger(Some("Ctrl+Shift+Y".into())), Event::Activated]);
+                    assert_eq!(
+                        events,
+                        [Event::Trigger(Some("Ctrl+Shift+Y".into())), Event::Activated(None)]
+                    );
                 }
                 replacement.release_name(SERVICE).await?;
             }
