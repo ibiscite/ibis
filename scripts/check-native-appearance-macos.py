@@ -166,7 +166,14 @@ def saved_preferences(read, write, restored=lambda: None, observe=lambda value: 
 
 
 def mode_facts(log):
-    return re.findall(r"^ibis: native appearance mode=(opaque|vibrancy|mica) reason=(unsupported|not-transparent|unknown-preferences|accessibility|native-failure|applied)$", log, re.MULTILINE)
+    return re.findall(r"^ibis: native appearance mode=(opaque|vibrancy|mica|liquid-glass) reason=(unsupported|not-transparent|unknown-preferences|accessibility|native-failure|applied|unsupported-glass)$", log, re.MULTILINE)
+
+
+def material_fact(log):
+    if len(log) > 1024 * 1024:
+        raise RuntimeError("Native appearance log exceeded bound")
+    valid = {("liquid-glass", "applied"), ("vibrancy", "unsupported-glass")}
+    return next((fact for fact in mode_facts(log) if fact in valid), None)
 
 
 class NativeUI:
@@ -342,7 +349,8 @@ def main():
                         print(f"PASS native appearance {name}", flush=True)
 
                     both_off = {"contrast": False, "transparency": False}
-                    observe("material", ("vibrancy", "applied"), 0, both_off)
+                    material = wait_for(lambda: material_fact(log_path.read_text(encoding="utf-8")), "native material selection")
+                    observe("material", material, 0, both_off)
                     for name, key in (("reduce-transparency", "transparency"), ("increase-contrast", "contrast")):
                         offset = len(log_path.read_text(encoding="utf-8"))
                         ui.write(key, True)
@@ -356,7 +364,7 @@ def main():
                         offset = len(log_path.read_text(encoding="utf-8"))
                         ui.write("contrast", False)
                         ui.write("transparency", False)
-                        observe(f"material-after-{name}", ("vibrancy", "applied"), offset, both_off)
+                        observe(f"material-after-{name}", material, offset, both_off)
         report["status"] = "observed"
         report["visual_review"] = "required: inspect all ten normal/resized images for material, outer clipping, content and native shadow; accessibility may change shadow"
     except Unavailable as error:

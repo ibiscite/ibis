@@ -410,7 +410,7 @@ Ibis draws its own set; platform icons only where the platform owns the meaning.
 
 | Window | macOS | Windows 11 | GNOME |
 |---|---|---|---|
-| Picker | `NSVisualEffectView` popover material + 55 % veil; macOS 26: Liquid Glass on the search capsule only | Desktop Acrylic | flat `window_bg_color` |
+| Picker | one Liquid Glass sheet where supported, popover vibrancy fallback; 55 % veil | Desktop Acrylic | flat `window_bg_color` |
 | Settings | standard window background, toolbar of icon tabs, grouped form rows | Mica, cards on `LayerFillColorDefault` | flat, boxed-list cards |
 | Copied notice | HUD-style pill | notification card | dark toast |
 | Menus, popovers | in-window, `--surface-overlay` with blur | in-window, opaque | opaque `popover_bg_color` |
@@ -418,6 +418,14 @@ Ibis draws its own set; platform icons only where the platform owns the meaning.
 Never glass on glass, never CSS blur pretending to be the desktop. All materials
 turn opaque under reduced transparency, increased contrast, forced colours and
 battery saver.
+
+The Mac picker uses the existing native Liquid Glass API for the whole panel,
+with C15's shared radius. Only an unsupported OS permits popover vibrancy;
+other API failures stay opaque. Report and clear the material actually applied,
+and skip unchanged requests. Both modes retain the existing veil and readable
+colour roles. Unknown accessibility preferences keep solid output. API success
+alone does not certify visible material, live accessibility transitions or the
+remaining C13 layer composition.
 
 The Windows picker uses the checked Desktop Acrylic path
 (`DWMSBT_TRANSIENTWINDOW`) on Windows 11 build 22621 or newer. Older, unknown

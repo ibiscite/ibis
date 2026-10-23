@@ -19,7 +19,7 @@ pub(super) fn accent() -> Option<[f64; 3]> {
 
 pub(super) fn material() -> Appearance {
     #[cfg(target_os = "macos")]
-    return Appearance::Vibrancy;
+    return Appearance::LiquidGlass;
     #[cfg(target_os = "windows")]
     {
         let version = windows::System::Profile::AnalyticsInfo::VersionInfo()
@@ -31,17 +31,31 @@ pub(super) fn material() -> Appearance {
     Appearance::Opaque
 }
 
-pub(super) fn apply(window: &WebviewWindow) -> Result<(), ()> {
+pub(super) fn apply(window: &WebviewWindow) -> Result<Appearance, ()> {
     #[cfg(target_os = "macos")]
-    return window_vibrancy::apply_vibrancy(
-        window,
-        window_vibrancy::NSVisualEffectMaterial::Popover,
-        Some(window_vibrancy::NSVisualEffectState::Active),
-        None,
-    )
-    .map_err(|_| ());
+    return super::policy::macos_material(
+        window_vibrancy::apply_liquid_glass(
+            window,
+            window_vibrancy::LiquidGlassOptions::default().radius(crate::native_corners::CORNER_RADIUS_POINTS),
+        )
+        .map_err(|error| match error {
+            window_vibrancy::Error::UnsupportedPlatformVersion(_) => super::policy::GlassFailure::Unsupported,
+            _ => super::policy::GlassFailure::Failed,
+        }),
+        || {
+            window_vibrancy::apply_vibrancy(
+                window,
+                window_vibrancy::NSVisualEffectMaterial::Popover,
+                Some(window_vibrancy::NSVisualEffectState::Active),
+                None,
+            )
+            .map_err(|_| ())
+        },
+    );
     #[cfg(target_os = "windows")]
-    return window_vibrancy::apply_acrylic(window, None).map_err(|_| ());
+    return window_vibrancy::apply_acrylic(window, None)
+        .map(|()| Appearance::Acrylic)
+        .map_err(|_| ());
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = window;
@@ -49,14 +63,20 @@ pub(super) fn apply(window: &WebviewWindow) -> Result<(), ()> {
     }
 }
 
-pub(super) fn clear(window: &WebviewWindow) -> Result<(), ()> {
+pub(super) fn clear(window: &WebviewWindow, applied: Appearance) -> Result<(), ()> {
     #[cfg(target_os = "macos")]
-    return window_vibrancy::clear_vibrancy(window).map(|_| ()).map_err(|_| ());
+    return match applied {
+        Appearance::LiquidGlass => window_vibrancy::clear_liquid_glass(window).map(|_| ()).map_err(|_| ()),
+        _ => window_vibrancy::clear_vibrancy(window).map(|_| ()).map_err(|_| ()),
+    };
     #[cfg(target_os = "windows")]
-    return window_vibrancy::clear_acrylic(window).map_err(|_| ());
+    {
+        let _ = applied;
+        window_vibrancy::clear_acrylic(window).map_err(|_| ())
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        let _ = window;
+        let _ = (window, applied);
         Ok(())
     }
 }

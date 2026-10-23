@@ -13,7 +13,7 @@ export function setPlatform(name = typeof navigator === "undefined" ? "" : navig
 type Subscribe = (changed: (value: unknown) => void) => Promise<Dispose>;
 
 export function setNativeAppearance(value: unknown): void {
-  document.documentElement.dataset.nativeAppearance = value === "acrylic" || value === "vibrancy" ? value : "opaque";
+  document.documentElement.dataset.nativeAppearance = value === "acrylic" || value === "vibrancy" || value === "liquid-glass" ? value : "opaque";
 }
 
 /** Subscribe before reading initial state; a newer preference event wins. */

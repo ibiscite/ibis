@@ -16,11 +16,48 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 #[derive(Default)]
 struct Cache {
     requested: Option<Appearance>,
+    // Actual native layer survives failed cleanup; the web surface stays opaque.
     applied: Appearance,
+    surface: Appearance,
     accent: Option<Option<[f64; 3]>>,
 }
 
 impl Cache {
+    fn material(
+        &mut self,
+        requested: Appearance,
+        apply: impl FnOnce() -> Result<Appearance, ()>,
+        clear: impl FnOnce(Appearance) -> Result<(), ()>,
+    ) -> Option<Result<Appearance, ()>> {
+        if self.requested == Some(requested) {
+            return None;
+        }
+        let result = if requested == Appearance::Opaque {
+            if self.applied == Appearance::Opaque {
+                Ok(())
+            } else {
+                clear(self.applied)
+            }
+            .map(|()| Appearance::Opaque)
+        } else {
+            // A failed clear may have left a layer behind. Never stack another.
+            if self.applied == Appearance::Opaque {
+                apply()
+            } else {
+                clear(self.applied).and_then(|()| {
+                    self.applied = Appearance::Opaque;
+                    apply()
+                })
+            }
+        };
+        self.requested = result.as_ref().ok().map(|_| requested);
+        if let Ok(actual) = result {
+            self.applied = actual;
+        }
+        self.surface = result.unwrap_or(Appearance::Opaque);
+        Some(result)
+    }
+
     fn accent_changed(&mut self, accent: Option<[f64; 3]>, replay: bool) -> bool {
         let changed = replay || self.accent != Some(accent);
         self.accent = Some(accent);
@@ -114,22 +151,18 @@ fn refresh(app: &AppHandle, replay: bool) -> Appearance {
     if cache.accent_changed(accent, replay) && window.emit("accent:changed", accent).is_err() {
         warning();
     }
-    if cache.requested == Some(requested) {
-        return cache.applied;
-    }
-    cache.requested = Some(requested);
-    let next = if requested == Appearance::Opaque {
-        if cache.applied != Appearance::Opaque && platform::clear(&window).is_err() {
-            warning();
-        }
-        Appearance::Opaque
-    } else {
-        let success = platform::apply(&window).is_ok();
-        if !success {
-            warning();
-        }
-        policy::applied(requested, success)
+    let previous = cache.surface;
+    let Some(applied) = cache.material(
+        requested,
+        || platform::apply(&window),
+        |mode| platform::clear(&window, mode),
+    ) else {
+        return cache.surface;
     };
+    let next = applied.unwrap_or_else(|()| {
+        warning();
+        Appearance::Opaque
+    });
     // Initial state and policy changes produce one fixed, allowlisted line in
     // the existing native startup artifact. Success is an API observation,
     // not proof of a visible material or accessibility-toggle acceptance.
@@ -138,20 +171,146 @@ fn refresh(app: &AppHandle, replay: bool) -> Appearance {
         next.name(),
         policy::evidence_reason(material, preferences, transparent, next)
     ));
-    if cache.applied != next {
-        cache.applied = next;
-        if window.emit("appearance:changed", next.name()).is_err() {
-            warning();
-        }
+    if previous != next && window.emit("appearance:changed", next.name()).is_err() {
+        warning();
     }
     next
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        Appearance::{Acrylic, LiquidGlass, Opaque, Vibrancy},
+        Cache,
+    };
     use std::io::{Read, Write};
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn failed_clear_preserves_actual_material_and_retries_the_same_request() {
+        for actual in [LiquidGlass, Vibrancy, Acrylic] {
+            let mut cache = Cache {
+                applied: actual,
+                ..Default::default()
+            };
+            assert_eq!(
+                cache.material(Opaque, || panic!("must clear"), |_| Err(())),
+                Some(Err(()))
+            );
+            assert_eq!(cache.applied, actual);
+            assert_eq!(cache.requested, None);
+            assert_eq!(
+                cache.material(
+                    Opaque,
+                    || panic!("must clear"),
+                    |mode| {
+                        assert_eq!(mode, actual);
+                        Ok(())
+                    }
+                ),
+                Some(Ok(Opaque))
+            );
+            assert_eq!(cache.applied, Opaque);
+        }
+    }
+
+    #[test]
+    fn failed_apply_retries_on_the_next_refresh() {
+        let mut cache = Cache::default();
+        assert_eq!(
+            cache.material(LiquidGlass, || Err(()), |_| panic!("no layer")),
+            Some(Err(()))
+        );
+        assert_eq!(cache.requested, None);
+        assert_eq!(
+            cache.material(LiquidGlass, || Ok(Vibrancy), |_| panic!("no layer")),
+            Some(Ok(Vibrancy))
+        );
+        assert_eq!(cache.applied, Vibrancy);
+    }
+
+    #[test]
+    fn reenabled_material_cannot_stack_over_a_failed_clear() {
+        for actual in [LiquidGlass, Vibrancy] {
+            let mut cache = Cache {
+                applied: actual,
+                surface: actual,
+                ..Default::default()
+            };
+            for requested in [Opaque, Opaque, LiquidGlass] {
+                assert_eq!(
+                    cache.material(
+                        requested,
+                        || panic!("retained layer"),
+                        |mode| {
+                            assert_eq!(mode, actual);
+                            Err(())
+                        }
+                    ),
+                    Some(Err(()))
+                );
+                assert_eq!(cache.applied, actual);
+                assert_eq!(cache.surface, Opaque);
+                assert_eq!(cache.requested, None);
+            }
+            assert_eq!(
+                cache.material(
+                    LiquidGlass,
+                    || Ok(actual),
+                    |mode| {
+                        assert_eq!(mode, actual);
+                        Ok(())
+                    }
+                ),
+                Some(Ok(actual))
+            );
+            assert_eq!(cache.applied, actual);
+            assert_eq!(cache.surface, actual);
+            assert_eq!(
+                cache.material(LiquidGlass, || panic!("already applied"), |_| panic!("already applied")),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn material_cache_clears_actual_layer_and_skips_unchanged_requests() {
+        for actual in [super::Appearance::LiquidGlass, super::Appearance::Vibrancy] {
+            let mut cache = super::Cache {
+                requested: Some(super::Appearance::LiquidGlass),
+                applied: actual,
+                ..Default::default()
+            };
+            assert_eq!(
+                cache.material(
+                    super::Appearance::LiquidGlass,
+                    || panic!("unchanged request"),
+                    |_| panic!("unchanged request")
+                ),
+                None
+            );
+            assert_eq!(
+                cache.material(
+                    super::Appearance::Opaque,
+                    || panic!("opacity must not apply"),
+                    |mode| {
+                        assert_eq!(mode, actual);
+                        Ok(())
+                    }
+                ),
+                Some(Ok(super::Appearance::Opaque))
+            );
+            assert_eq!(
+                cache.material(
+                    super::Appearance::Opaque,
+                    || panic!("duplicate request"),
+                    |_| panic!("duplicate clear")
+                ),
+                None
+            );
+        }
+    }
 
     #[test]
     fn accent_changes_and_query_replays_ignore_unchanged_opaque_material() {

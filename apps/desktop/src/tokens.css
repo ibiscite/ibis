@@ -306,7 +306,8 @@
     }
     /* Over the veiled material, colour roles one step deeper (lighter in dark
        mode) keep 4.5:1; the opaque surface keeps Ibis scarlet as it is. */
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window):not([data-gallery-theme="contrast"]),
+    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
       --citation: light-dark(#982d16, #ff9d87);
       --status-done: light-dark(#135f29, #6fca81);
       --status-look: light-dark(#734b00, #f0c25a);

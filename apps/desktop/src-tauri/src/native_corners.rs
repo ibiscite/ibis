@@ -11,7 +11,7 @@ use tauri_nspanel::{NSPanel, objc2::MainThreadMarker};
 
 // Canvas C15 uses sixteen logical points on every macOS version, independent
 // of text and display scale. Keep the CSS window role and native mask aligned.
-const CORNER_RADIUS_POINTS: f64 = 16.0;
+pub(crate) const CORNER_RADIUS_POINTS: f64 = 16.0;
 
 /// Corners are cosmetic. A missing prerequisite keeps the existing rectangular
 /// picker usable rather than turning an appearance failure into startup failure.

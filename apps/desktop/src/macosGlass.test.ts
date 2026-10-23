@@ -57,10 +57,13 @@ test("macOS fills and hairlines are translucent so the native material shows thr
 
 test("only native success shows the material, under a veil; reduced transparency stays opaque", () => {
   // Webviews without light-dark() fall back to the surface at 55%.
-  expect(native).toMatch(/:root\[data-native-appearance="vibrancy"\] \{ background: var\(--vibrancy-tint, color-mix\(in srgb, var\(--surface\) 55%, transparent\)\); \}/);
+  for (const mode of ["vibrancy", "liquid-glass"]) {
+    const rule = native.match(new RegExp(String.raw`:root\[data-native-appearance="${mode}"\][^{]*\{([^{}]*)\}`))?.[1];
+    expect(rule).toContain("background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 55%, transparent))");
+  }
   expect(native).toMatch(/:root\[data-native-appearance="acrylic"\] \{ background: var\(--acrylic-tint, var\(--surface\)\); \}/);
   // The defensive override comes after, with the same specificity, so it wins.
-  const veil = native.indexOf('[data-native-appearance="vibrancy"] { background');
+  const veil = native.indexOf('[data-native-appearance="vibrancy"]');
   const fallback = native.indexOf("@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active)");
   expect(fallback).toBeGreaterThan(veil);
   expect(native.slice(fallback)).toMatch(/:root\[data-native-appearance\] \{ background: var\(--surface\); \}/);
@@ -108,9 +111,9 @@ test("secondary text keeps 4.5:1 over the veiled material, on the brightest and 
   }
 });
 
-/** The vibrancy-only colour roles, inside the same guard. */
-function vibrancyRoles(): string {
-  const body = tokens.match(/:root\[data-platform="macos"\]\[data-native-appearance="vibrancy"\]:not\(\.notice-window\):not\(\[data-gallery-theme="contrast"\]\) \{([^{}]*)\}/)?.[1];
+/** Native macOS colour roles, inside the same guard. */
+function materialRoles(mode: string): string {
+  const body = tokens.match(new RegExp(String.raw`:root\[data-platform="macos"\]\[data-native-appearance="${mode}"\]:not\(\.notice-window\):not\(\[data-gallery-theme="contrast"\]\)[^{]*\{([^{}]*)\}`))?.[1];
   expect(body, "vibrancy colour roles").toBeTruthy();
   return body!;
 }
@@ -128,11 +131,11 @@ test("the window edge is a hairline, never a white rim or glow (prototype round 
   expect(edge.match(/box-shadow:\s*([^;]+);/)?.[1]).toBe("inset 0 0 0 var(--border-width) var(--glass-edge, transparent)");
 });
 
-test("every colour role keeps 4.5:1 over the veiled material", () => {
+test.each(["vibrancy", "liquid-glass"])("every colour role keeps 4.5:1 over the qualified veiled %s backdrops", (mode) => {
   const { body } = macBlock();
   const [light, dark] = rgba(body, "--vibrancy-tint");
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
-  const roles = vibrancyRoles();
+  const roles = materialRoles(mode);
   expect(luminance(hexes(roles, "--status-look")[1]!)).toBeGreaterThan(luminance(hexes(tokens, "--status-look")[1]!));
   for (const role of ["--citation", "--status-done", "--status-look", "--status-stop"]) {
     const [onLight, onDark] = hexes(roles, role);
