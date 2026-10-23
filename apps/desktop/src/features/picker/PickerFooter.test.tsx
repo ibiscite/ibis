@@ -48,6 +48,33 @@ function footer(label = "Copy 20 as Pandoc") {
     more={<button aria-label="More">More</button>} /></main>;
 }
 
+test.each(["pointer", "Enter", "Space"])("footer unpin uses shared icon states and acts once with %s", (activation) => {
+  const unpin = vi.fn();
+  const view = (pinned: boolean) => <PickerFooter library={library} groupName={String}
+    hints={{ enter: null, shiftEnter: null, escape: "Hide" }} altHeld={false} pinned={pinned} onUnpin={unpin}
+    actions={{ copy: () => undefined, add: () => undefined, escape: () => undefined, keys: () => undefined }}
+    more={<button>More</button>} />;
+  const rendered = render(view(false));
+  expect(screen.queryByRole("button", { name: "Kept open; click to stop" })).toBeNull();
+  rendered.rerender(view(true));
+  const button = screen.getByRole("button", { name: "Kept open; click to stop" });
+  expect(button.getAttribute("data-variant")).toBe("icon");
+  expect(button.getAttribute("title")).toBe("Kept open; click to stop");
+  expect(button.closest("footer")).toBeTruthy();
+  button.focus();
+  if (activation === "pointer") fireEvent.click(button);
+  else {
+    const key = activation === "Space" ? " " : "Enter";
+    const code = activation === "Space" ? "Space" : "Enter";
+    fireEvent.keyDown(button, { key, code });
+    fireEvent.keyDown(button, { key, code, repeat: true });
+    fireEvent.keyUp(button, { key, code });
+  }
+  expect(unpin).toHaveBeenCalledOnce();
+  rendered.rerender(view(false));
+  expect(screen.queryByRole("button", { name: "Kept open; click to stop" })).toBeNull();
+});
+
 test("pinned GNOME controls at 720px drop Shortcuts before shortening status, then restore on growth", () => {
   const fit = geometry(); render(footer());
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();

@@ -77,11 +77,11 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       <section ref={bar} aria-label={pickerText.libraryRegion} className="library-bar" data-shortcuts-folded={fit.shortcuts || undefined} data-status-compact={fit.status || undefined}>
         <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /></span>
         <LibraryStatusLine library={library} groupName={groupName} />
-        {pinned && <button ref={pin} type="button" className="pin-button" aria-label={pickerText.unpinTitle} title={pickerText.unpinTitle} onClick={onUnpin}>
+        {pinned && <Button ref={pin} variant="icon" className="pin-button" aria-label={pickerText.unpinTitle} title={pickerText.unpinTitle} onPress={onUnpin}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor">
             <path d="M9 4h6l-1 5 4 4H6l4-4z" /><path d="M12 13v7" />
           </svg>
-        </button>}
+        </Button>}
         <small ref={hintsRow} data-optional-only={!altHeld && !hints.enter || undefined} className="enter-hints" aria-label={keyText.footer} role="group">
           {altHeld ? <>
             {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
