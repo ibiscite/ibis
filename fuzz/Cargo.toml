@@ -21,13 +21,6 @@ doc = false
 bench = false
 
 [[bin]]
-name = "load_str"
-path = "fuzz_targets/load_str.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "csl_export"
 path = "fuzz_targets/csl_export.rs"
 test = false

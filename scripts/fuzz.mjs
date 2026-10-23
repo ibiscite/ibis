@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const targets = ["split_parse", "load_str", "csl_export", "cite_render"];
+const targets = ["split_parse", "csl_export", "cite_render"];
 const limits = ["-timeout=5", "-rss_limit_mb=1024", "-max_len=16384"];
 
 export function failure(target, log) {
@@ -49,17 +49,40 @@ export async function report(repository, target, input, problem, runUrl, request
   return true;
 }
 
+export function seedCorpus(target) {
+  const corpus = `fuzz/corpus/${target}`;
+  mkdirSync(corpus, { recursive: true });
+  for (const file of readdirSync("fixtures/bibtex").filter((file) => file.endsWith(".bib"))) {
+    copyFileSync(`fixtures/bibtex/${file}`, `${corpus}/seed-${file}`);
+  }
+  const seeds = `fuzz/seeds/${target}`;
+  for (const file of existsSync(seeds) ? readdirSync(seeds) : []) copyFileSync(`${seeds}/${file}`, `${corpus}/seed-${file}`);
+  // Keep both corpora even when the same filename holds different bytes.
+  if (target === "csl_export" && existsSync("fuzz/corpus/load_str")) {
+    for (const file of readdirSync("fuzz/corpus/load_str")) {
+      const input = readFileSync(`fuzz/corpus/load_str/${file}`);
+      const name = createHash("sha256").update(input).digest("hex");
+      for (let suffix = 0; ; suffix++) {
+        const destination = `${corpus}/${name}${suffix ? `-${suffix}` : ""}`;
+        try {
+          writeFileSync(destination, input, { flag: "wx" });
+          break;
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+          if (readFileSync(destination).equals(input)) break;
+        }
+      }
+    }
+  }
+}
+
 async function run(target) {
   if (!targets.includes(target)) throw new Error("Unknown fuzz target");
   const corpus = `fuzz/corpus/${target}`;
   const artifacts = `fuzz/artifacts/${target}`;
   const results = `fuzz/results/${target}`;
   for (const dir of [corpus, artifacts, results]) mkdirSync(dir, { recursive: true });
-  for (const file of readdirSync("fixtures/bibtex").filter((file) => file.endsWith(".bib"))) {
-    copyFileSync(`fixtures/bibtex/${file}`, `${corpus}/seed-${file}`);
-  }
-  const seeds = `fuzz/seeds/${target}`;
-  for (const file of existsSync(seeds) ? readdirSync(seeds) : []) copyFileSync(`${seeds}/${file}`, `${corpus}/seed-${file}`);
+  seedCorpus(target);
   const command = (args, timeout) => spawnSync("cargo", ["+nightly", "fuzz", ...args], {
     encoding: "utf8", timeout, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024,
   });

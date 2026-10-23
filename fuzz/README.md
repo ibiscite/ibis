@@ -1,8 +1,8 @@
 # Nightly BibTeX fuzzing
 
 This cargo-fuzz workspace member instruments the private lexer (`split_parse`),
-the complete resolver/converter (`load_str`) and loaded-reference CSL-JSON
-serialization (`csl_export`). `cite_render` renders arbitrary keys and notes in
+the complete resolver/converter plus loaded-reference CSL-JSON serialization
+(`csl_export`). `cite_render` renders arbitrary keys and notes in
 every `cite::render` syntax and checks that each output escapes user text and keeps
 keys exact; its synthetic seeds are in `seeds/cite_render/`. All accept arbitrary
 bytes through UTF-8 replacement, as file loading does. It shares the root Cargo.lock and is excluded from default
@@ -12,7 +12,7 @@ nightly; the app's pinned stable toolchain is unchanged.
 ```sh
 rustup toolchain install nightly --profile minimal
 cargo install --locked cargo-fuzz --version 0.13.1
-cargo +nightly fuzz run load_str -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024 -max_len=16384
+cargo +nightly fuzz run csl_export -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024 -max_len=16384
 node --test scripts/fuzz.test.mjs
 cargo deny --locked check
 ```
@@ -22,6 +22,8 @@ timeout, a 1 GiB RSS limit and a 16 KiB mutation limit. It restores each target'
 corpus from the previous run and adds the synthetic `fixtures/bibtex/*.bib` seeds
 every time, plus any `fuzz/seeds/TARGET/` files. Cache eviction starts from these fixtures again. Cache keys are unique
 per run so newly discovered coverage survives subsequent runs, including failures.
+`csl_export` retains every former `load_str` assertion and merges that retired
+target's cached or local corpus by content hash, preserving filename collisions.
 
 `node scripts/fuzz.mjs TARGET` runs this sequence locally too (five minutes).
 Crashes, timeouts and OOMs are reproduced with the same resource limits, then
@@ -100,5 +102,5 @@ cp fuzz/seeds/output_escaping/* "$corpus_dir/"
 cargo +nightly fuzz run output_escaping "$corpus_dir" -- -max_total_time=300 -timeout=5 -rss_limit_mb=1024 -max_len=16384
 ```
 
-This target is local only. The existing nightly reporter accepts only its four
+This target is local only. The existing nightly reporter accepts only its three
 registered targets, so CI owners must wire this target in separately.

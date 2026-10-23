@@ -130,7 +130,7 @@ Install `cargo-fuzz` with `cargo install --locked cargo-fuzz --version 0.13.1`
 and nightly with `rustup toolchain install nightly --profile minimal`, then run:
 
 ```sh
-cargo +nightly fuzz run load_str -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024 -max_len=16384
+cargo +nightly fuzz run csl_export -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024 -max_len=16384
 ```
 
-The nightly run gives `split_parse`, `load_str`, `csl_export` and `cite_render` 300 seconds each with a corpus seeded from synthetic fixtures, and opens an issue for each new failure. Fixed inputs become regression fixtures. See [fuzz/README.md](../fuzz/README.md).
+The nightly run gives `split_parse`, `csl_export` and `cite_render` 300 seconds each with a corpus seeded from synthetic fixtures, and opens an issue for each new failure. Fixed inputs become regression fixtures. See [fuzz/README.md](../fuzz/README.md).
