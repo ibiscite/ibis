@@ -3773,3 +3773,22 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
     HTMLElement.prototype.scrollIntoView = originalScroll; vi.restoreAllMocks(); vi.unstubAllGlobals();
   }
 });
+
+test("update progress never takes focus, toggles the pin or accepts a stale operation", async () => {
+  const calls = backend();
+  render(<App />);
+  await screen.findByText("Type to find a reference");
+  const pin = screen.getByRole("button", { name: "Keep Window Open" });
+  pin.focus();
+  const progress = { attempt: 2, revision: 2, received: 25, total: 100, phase: "downloading" };
+  await act(async () => { await emit("update:progress", progress); });
+  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+  await act(async () => { await emit("update:progress", { ...progress, attempt: 1, phase: "failed" }); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(document.activeElement).toBe(pin);
+  expect(pin.getAttribute("aria-pressed")).toBe("false");
+  expect(calls).not.toContain("set_pinned");
+  await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
+  expect(screen.queryByRole("progressbar")).toBeNull();
+  expect(screen.getByRole("alert").textContent).toContain("Check for Updates");
+});

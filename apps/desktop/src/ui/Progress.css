@@ -1,0 +1,5 @@
+.update-progress { margin-block: var(--space-2); }
+.update-track { height: var(--space-1); background: var(--separator); border-radius: var(--r-control); overflow: hidden; margin-block-start: var(--space-1); }
+.update-track > div { height: 100%; background: var(--accent); }
+.update-progress[data-indeterminate] .update-track > div { width: 100% !important; opacity: .5; }
+@media (forced-colors: active) { .update-track { border: 1px solid CanvasText; } .update-track > div { background: Highlight; } }

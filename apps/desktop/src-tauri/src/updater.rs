@@ -10,7 +10,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tauri::menu::CheckMenuItem;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+mod progress;
 #[cfg(any(target_os = "macos", test))]
 use tauri_plugin_dialog::MessageDialogResult;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
@@ -37,6 +39,7 @@ pub(crate) struct Updates {
     busy: AtomicBool,
     /// A version the person chose not to install; automatic checks don't offer it again.
     declined: Mutex<Option<String>>,
+    progress: Mutex<progress::Progress>,
     #[cfg(any(target_os = "macos", test))]
     installation_failure: InstallationFailure,
 }
@@ -286,10 +289,26 @@ fn present_offer(app: &AppHandle, text: String, answer: impl FnOnce(bool) + Send
         crate::panel::activate_for_dialog(app);
         (dialog.parent(&parent), owner)
     };
+    let handle = app.clone();
     dialog.show(move |accepted| {
-        #[cfg(target_os = "macos")]
-        let _owner = owner;
-        answer(accepted);
+        let callback = handle.clone();
+        let result = handle.run_on_main_thread(move || {
+            #[cfg(target_os = "macos")]
+            let owner = owner;
+            if accepted {
+                crate::picker::show_picker(&callback);
+            }
+            // Pinned Wry executes nested main-thread tasks inline, so the
+            // actual panel-show hook still sees this owner. Never hold it
+            // for the download.
+            #[cfg(target_os = "macos")]
+            drop(owner);
+            answer(accepted);
+        });
+        if result.is_err() {
+            handle.state::<Updates>().busy.store(false, Ordering::SeqCst);
+        }
+        report(result, NativeIssue::Window);
     });
 }
 
@@ -333,12 +352,68 @@ fn shorten(text: &str, limit: usize) -> String {
 const INSTALL_FAILURE_MESSAGE: &str = "The update could not be installed. Try again later. If Ibis no longer opens, download and reinstall the newest version from GitHub.";
 
 async fn install_update(app: &AppHandle, update: Update) {
-    match update.download_and_install(|_, _| {}, || {}).await {
+    let attempt = app.state::<Updates>().progress.lock().ok().and_then(|mut p| p.begin());
+    let Some(attempt) = attempt else {
+        app.state::<Updates>().busy.store(false, Ordering::SeqCst);
+        installation_failed(app);
+        return;
+    };
+    publish_progress(app);
+    // Only this operation refreshes retained state for late listeners. Chunk
+    // callbacks update bytes; they do not send IPC, focus or acquire an owner.
+    let handle = app.clone();
+    let refresh = ProgressRefresh(tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            publish_progress(&handle);
+        }
+    }));
+    let result = update
+        .download_and_install(
+            |bytes, total| change_progress(app, attempt, Some((bytes, total)), "downloading"),
+            || {
+                change_progress(app, attempt, None, "installing");
+                publish_progress(app);
+            },
+        )
+        .await;
+    drop(refresh);
+    match result {
         Ok(()) => app.restart(),
         Err(_) => {
+            change_progress(app, attempt, None, "failed");
+            publish_progress(app);
             app.state::<Updates>().busy.store(false, Ordering::SeqCst);
             installation_failed(app);
         }
+    }
+}
+
+struct ProgressRefresh(tauri::async_runtime::JoinHandle<()>);
+impl Drop for ProgressRefresh {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+fn change_progress(app: &AppHandle, attempt: u32, chunk: Option<(usize, Option<u64>)>, phase: &'static str) {
+    if let Ok(mut progress) = app.state::<Updates>().progress.lock() {
+        progress.change(attempt, chunk, phase);
+    }
+}
+
+fn publish_progress(app: &AppHandle) {
+    let snapshot = app
+        .state::<Updates>()
+        .progress
+        .lock()
+        .ok()
+        .and_then(|mut p| p.snapshot());
+    if let Some(snapshot) = snapshot {
+        report(
+            app.emit_to("main", "update:progress", snapshot),
+            NativeIssue::PickerEvent,
+        );
     }
 }
 
@@ -356,8 +431,9 @@ fn installation_failed(app: &AppHandle) {
 }
 
 /// Called after an actual native panel show, never from a timer or at login.
-#[cfg(target_os = "macos")]
 pub(crate) fn picker_presented(app: &AppHandle) {
+    publish_progress(app);
+    #[cfg(target_os = "macos")]
     present_installation_failure(app, false);
 }
 
@@ -367,6 +443,14 @@ fn present_installation_failure(app: &AppHandle, show: bool) {
     report(
         app.run_on_main_thread(move || {
             let updates = handle.state::<Updates>();
+            // An older pending recovery must not interrupt a new download.
+            if updates
+                .progress
+                .lock()
+                .is_ok_and(|p| p.0.as_ref().is_some_and(|s| s.phase != "failed"))
+            {
+                return;
+            }
             let Some(owner) = updates
                 .installation_failure
                 .begin(&handle.state::<crate::picker::ChooserOpen>())
@@ -822,6 +906,17 @@ mod tests {
         let legacy =
             check(&key, "latest.json", "0.1.1-nightly.20261019223000", false).unwrap_or_else(|| panic!("legacy offer"));
         assert!(legacy.verify(&package).is_ok());
+        let invalid = check(&key, "tampered.json", "0.1.1-nightly.20261019223000", true)
+            .unwrap_or_else(|| panic!("tampered offer"));
+        let finished = AtomicBool::new(false);
+        assert!(
+            tauri::async_runtime::block_on(invalid.download(|_, _| {}, || finished.store(true, Ordering::SeqCst)))
+                .is_err()
+        );
+        assert!(
+            finished.load(Ordering::SeqCst),
+            "download finish precedes signature refusal"
+        );
         // Both directions of channel substitution, and a genuine downgrade.
         assert!(check(&key, "stable.json", "0.1.1-nightly.20261019223000", true).is_none());
         assert!(check(&key, "latest.json", "0.1.1", true).is_none());
@@ -842,7 +937,7 @@ mod tests {
         assert_eq!(fetch(&key, "latest.json").unwrap_or_else(|e| panic!("{e}")), package);
         // Every request, manifest and package alike, names Ibis and only Ibis.
         let agents = agents.lock().map(|a| a.clone()).unwrap_or_default();
-        assert_eq!(agents.len(), 26, "{agents:?}");
+        assert_eq!(agents.len(), 28, "{agents:?}");
         assert!(agents.iter().all(|agent| agent.starts_with("ibis/")), "{agents:?}");
     }
 }

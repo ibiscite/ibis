@@ -29,3 +29,18 @@ test("clean confirmations have no dismissal action or warning list", () => {
   expect(screen.queryByRole("button")).toBeNull();
   expect(screen.queryByLabelText("Copy warnings")).toBeNull();
 });
+
+// Download completion is not installation success: verification still follows.
+test("update progress keeps known, unknown, checking and failed phases honest", () => {
+  const progress = { attempt: 1, revision: 1, received: 25, total: 100, phase: "downloading" as const };
+  const { rerender } = render(<Notices {...props} copied={null} {...{ updateProgress: progress }} />);
+  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+  rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, total: null } }} />);
+  expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
+  rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, phase: "installing" } }} />);
+  expect(screen.getByRole("progressbar").textContent).toContain("Checking and installing");
+  expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
+  rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, phase: "failed" } }} />);
+  expect(screen.queryByRole("progressbar")).toBeNull();
+  expect(screen.getByRole("alert").textContent).toContain("Check for Updates");
+});

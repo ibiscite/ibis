@@ -409,3 +409,9 @@ export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }
   typst: { label: "Typst", sample: "@key" },
   keys: { label: "Keys only", sample: "key" },
 };
+
+export const updateText = {
+  downloading: "Downloading the update…",
+  installing: "Checking and installing the update…",
+  failed: "The update could not be installed. Use Check for Updates in the Ibis menu to try again later.",
+};

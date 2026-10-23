@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { expect, it, vi } from "vitest";
-import { isSnapshotChanged, search } from "./api";
+import { isSnapshotChanged, newerUpdate, search } from "./api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 
@@ -29,4 +29,15 @@ it("recognizes a changed library by its error code, not its wording", () => {
   expect(isSnapshotChanged("library snapshot changed")).toBe(false);
   expect(isSnapshotChanged(null)).toBe(false);
   expect(isSnapshotChanged(undefined)).toBe(false);
+});
+
+it("retains only newer update attempts and serial revisions, including rollover", () => {
+  const old = { attempt: 2, revision: 0xffffffff, received: 1, total: null, phase: "downloading" as const };
+  expect(newerUpdate(null, old)).toBe(old);
+  expect(newerUpdate(old, { ...old, attempt: 1, revision: 100 })).toBe(old);
+  expect(newerUpdate(old, { ...old })).toBe(old);
+  const wrapped = { ...old, revision: 0 };
+  expect(newerUpdate(old, wrapped)).toBe(wrapped);
+  expect(newerUpdate(wrapped, old)).toBe(wrapped);
+  expect(newerUpdate(old, { ...old, attempt: 3, revision: 1 }).attempt).toBe(3);
 });

@@ -41,7 +41,7 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -51,6 +51,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries, zoteroGroups } = api;
   const { findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem } = api;
+  const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    const subscription = api.onUpdateProgress?.((next) => {
+      if (mounted) setUpdateProgress((old) => nativeApi.newerUpdate(old, next));
+    }).catch(() => { console.error("Update progress is unavailable."); return null; });
+    return () => {
+      mounted = false;
+      void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
+    };
+  }, [api]);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -732,7 +743,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         }}
       />
       <div className="picker-content">
-      <Notices library={library} failures={failures} startAtLogin={startAtLogin}
+      <Notices updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => setCopied(null)} />

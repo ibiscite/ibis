@@ -69,3 +69,15 @@ export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]
 export function isSnapshotChanged(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
 }
+
+export type UpdateProgress = { attempt: number; revision: number; received: number; total: number | null; phase: "downloading" | "installing" | "failed" };
+
+export function newerUpdate(old: UpdateProgress | null, next: UpdateProgress): UpdateProgress {
+  const distance = old ? (next.revision - old.revision) >>> 0 : 1;
+  return !old || next.attempt > old.attempt ||
+    (next.attempt === old.attempt && distance > 0 && distance < 0x80000000) ? next : old;
+}
+
+export function onUpdateProgress(handler: (progress: UpdateProgress) => void): Promise<UnlistenFn> {
+  return listen<UpdateProgress>("update:progress", (event) => handler(event.payload));
+}

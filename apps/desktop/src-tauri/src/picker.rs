@@ -115,6 +115,7 @@ pub(crate) fn show_picker(app: &AppHandle) {
             // hidden window can bring its taskbar button back on Windows.
             report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
             report(window.set_focus(), NativeIssue::Focus);
+            crate::updater::picker_presented(app);
         }
         report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
     }

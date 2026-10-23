@@ -77,7 +77,11 @@ installation recovery notice pending until a later actual picker show; only OK
 clears it, and failed presentation or a dropped callback keeps it pending.
 Other update information, feedback and login messages do not acquire a lease.
 Update checks and downloads also leave
-ordinary blur hiding unchanged.
+ordinary blur hiding unchanged. After update consent, one owned main-thread handoff
+may show the picker, then releases consent ownership before downloading. Retained
+byte snapshots refresh only during that operation and replay on presentation;
+progress never focuses the picker. Download completion precedes signature
+verification, so it displays checking/installing rather than success (#48).
 
 Library status carries the failure reason, retained-reference flag and unsaved
 choice provenance separately for native presentation. The tray derives its
