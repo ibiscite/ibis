@@ -37,6 +37,8 @@ test.each([
 ])("%s popup uses its bundled decorative indicator without changing the button name", async (platform, viewBox) => {
   document.documentElement.dataset.platform = platform;
   const { trigger } = mount();
+  expect(trigger.classList.contains("ui-button")).toBe(true);
+  expect(trigger.getAttribute("data-variant")).toBe("secondary");
   const indicator = trigger.querySelector("svg")!;
   expect(indicator.getAttribute("viewBox")).toBe(viewBox);
   expect(indicator.getAttribute("aria-hidden")).toBe("true");
@@ -215,15 +217,15 @@ const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encod
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const toolbarCss = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
 const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
+const buttonCss = readFileSync(new FileURL("./Button.css", import.meta.url), "utf8");
 const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8");
 test("menu role tokens exist, forced colours frame the button, and reduced motion removes movement", () => {
-  const definitions = new Set([...(tokens + menuCss + toolbarCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
-  expect([...(menuCss + toolbarCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
-  expect(toolbarCss).toMatch(/border: var\(--border-width\) solid var\(--clear\)/);
-  expect(toolbarCss).toMatch(/forced-colors: active[\s\S]*border-color: ButtonText/);
+  const definitions = new Set([...(tokens + menuCss + toolbarCss + buttonCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
+  expect([...(menuCss + toolbarCss + buttonCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
+  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke-control\)/);
+  expect(tokens).toMatch(/forced-colors: active[\s\S]*--button-edge: ButtonText/);
   expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
   expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
-  expect(toolbarCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*transition: none/);
 });
 
 test("Space on an unavailable choice neither selects nor closes", async () => {

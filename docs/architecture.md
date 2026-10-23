@@ -86,9 +86,10 @@ pinned JavaScript/TypeScript parser; it is a contributor boundary check, not a
 security sandbox for computed module names. During
 incremental migration, toolbar-menu role overrides in `tokens.css` apply locally
 to its popover, preserving the existing More menu and keys dialog roles.
-The shared Button family owns footer action, More trigger and dialog Close
+The shared Button family owns footer action, More and toolbar-menu triggers, and dialog Close
 states; React Aria supplies pointer, press and keyboard-focus attributes.
 Folded footer actions preserve their hidden accessibility state and tab order.
+Small-button gallery readiness checks actual hit targets beyond the visible fill.
 Tab dismisses More's modal popover synchronously before returning focus to
 Search, so typing never waits for its exit animation. Other dismissals retain
 their existing animation and focus destinations.

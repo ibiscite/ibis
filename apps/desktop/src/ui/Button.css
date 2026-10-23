@@ -8,7 +8,7 @@
 }
 .ui-button[data-size="small"] { position: relative; min-height: 1.5rem; padding-inline: var(--space-2); }
 /* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
-.ui-button[data-size="small"]::after { content: ""; position: absolute; inset: calc(-1 * var(--space-1)) 0; }
+.ui-button[data-size="small"]::after { content: ""; position: absolute; inset: calc(-1 * (var(--space-1) + var(--border-width))) calc(-1 * var(--border-width)); }
 .ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: var(--clear); border-color: var(--clear); color: var(--muted); }
 .ui-button[data-variant="icon"] { min-width: var(--control-min-size); padding: 0; }
 .ui-button[data-variant="primary"] { background: var(--accent); color: var(--text-on-accent); border-color: var(--clear); }

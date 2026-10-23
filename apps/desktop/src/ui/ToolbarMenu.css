@@ -1,30 +1,20 @@
 /* The toolbar menu's button; its popover and rows are the shared menu (Menu.css). */
 .toolbar-menu-control { display: inline-flex; align-items: center; min-height: var(--control-min-size); }
-.toolbar-menu-button, .toolbar-menu-button:hover {
-  position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: var(--space-1);
-  min-height: var(--control-min-size); padding: 0 var(--row-pad);
-  border: 0; border-radius: var(--button-radius); background: var(--clear); color: var(--text);
+.toolbar-menu-control .toolbar-menu-button {
+  position: relative; gap: var(--space-1);
   font: var(--metadata-size)/var(--metadata-line-height) var(--font-family);
 }
-.toolbar-menu-button::before {
-  content: ""; position: absolute; z-index: -1; inset: 0; border: var(--border-width) solid var(--clear);
-  border-radius: inherit; background: var(--clear); pointer-events: none;
-  transition: background-color var(--motion-feedback) var(--ease-out);
+:root[data-platform="macos"] .toolbar-menu-button {
+  min-height: calc(var(--control-min-size) - var(--space-1)); border-radius: calc(var(--control-min-size) / 2);
 }
-:root[data-platform="macos"] .toolbar-menu-button { border-radius: calc(var(--control-min-size) / 2); }
-:root[data-platform="macos"] .toolbar-menu-button::before {
-  inset-block: auto; top: 50%; height: calc(var(--control-min-size) - var(--space-1)); transform: translateY(-50%);
+/* The 28 px macOS fill retains its 32 px target inside the toolbar. */
+:root[data-platform="macos"] .toolbar-menu-button::after {
+  content: ""; position: absolute; inset: calc(-1 * (var(--space-1) / 2 + var(--border-width))) calc(-1 * var(--border-width));
 }
-:root[data-platform="windows"] .toolbar-menu-button::before { background: var(--button-background); border-color: var(--button-edge); border-bottom-color: var(--line); }
 :root[data-platform="linux"] .toolbar-menu-button { font-weight: bold; }
-.toolbar-menu-button[data-hovered]::before { background: var(--button-hover-background); }
-.toolbar-menu-button[data-pressed]::before, .toolbar-menu-button[aria-expanded="true"]::before { background: var(--button-hover-background); }
-:root[data-platform="windows"] .toolbar-menu-button[data-pressed]::before,
-:root[data-platform="windows"] .toolbar-menu-button[aria-expanded="true"]::before { background: var(--field-active-background); }
 .toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-size); height: var(--icon-size); color: var(--muted); stroke-width: var(--icon-stroke); }
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
 .toolbar-menu-button .popup-indicator-windows { width: var(--space-3); height: var(--space-3); stroke-width: var(--border-width); }
-.toolbar-menu-button[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
 .toolbar-menu-popover { width: 264px; }
 .toolbar-menu-filter { flex: none; }
 .toolbar-menu-heading { color: var(--muted); font-size: var(--hint-size); font-weight: 600; padding: 8px 8px 4px 30px; }
@@ -41,12 +31,8 @@
 @media (prefers-contrast: more), (forced-colors: active) {
   .toolbar-menu-filter input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
 }
-@media (forced-colors: active) {
-  .toolbar-menu-button::before { border-color: ButtonText; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .toolbar-menu-button::before { transition: none; }
-}
 @media (pointer: coarse) {
-  .toolbar-menu-control, .toolbar-menu-button { min-width: calc(var(--control-min-size) + var(--row-pad)); min-height: calc(var(--control-min-size) + var(--row-pad)); }
+  .toolbar-menu-control, .toolbar-menu-control .toolbar-menu-button,
+  :root[data-platform="macos"] .toolbar-menu-button { min-width: 2.75rem; min-height: 2.75rem; }
+  :root[data-platform="macos"] .toolbar-menu-button::after { inset: 0; }
 }

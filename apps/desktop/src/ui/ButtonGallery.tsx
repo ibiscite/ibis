@@ -14,13 +14,25 @@ function Preview() {
       <Button variant={variant} isDisabled aria-label={`${variant} unavailable`}>{variant === "icon" ? "×" : "Unavailable"}</Button>
       <ToggleButton variant={variant} isSelected={selected} onChange={setSelected} aria-label={`${variant} toggle`}>{variant === "icon" ? "×" : "Toggle"}</ToggleButton>
     </section>)}
+    <section style={{ display: "flex", gap: 16, alignItems: "center" }}>
+      <Button size="small" variant="quiet" aria-label="Small action">Small action</Button>
+      <ToggleButton size="small" variant="icon" aria-label="Small toggle">×</ToggleButton>
+    </section>
   </main>;
 }
 
 export function renderButtonGallery(root: HTMLElement) {
   createRoot(root).render(<Preview />);
   const ready = () => {
-    if (root.querySelectorAll("button").length === 12 && document.fonts.status !== "loading") document.documentElement.dataset.galleryRendered = "buttons";
+    const small = [...root.querySelectorAll<HTMLButtonElement>('button[data-size="small"]')];
+    const target = matchMedia("(pointer: coarse)").matches ? 44 : 32;
+    const hittable = small.every((button) => {
+      const box = button.getBoundingClientRect();
+      const x = box.x + box.width / 2, y = box.y + box.height / 2;
+      return [-1, 1].every((direction) => document.elementFromPoint(x, y + direction * (target / 2 - 0.5)) === button
+        && document.elementFromPoint(x + direction * (target / 2 - 0.5), y) === button);
+    });
+    if (root.querySelectorAll("button").length === 14 && hittable && document.fonts.status !== "loading") document.documentElement.dataset.galleryRendered = "buttons";
     else requestAnimationFrame(ready);
   };
   requestAnimationFrame(ready);
