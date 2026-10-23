@@ -87,7 +87,7 @@ letters.
 | Header control band | 52 px macOS, 48 px Windows, 50 px GNOME | Tallest control (36 / 32 / 34 px) plus 8 px above and below. The always-visible 1 px divider is outside: 53 / 49 / 51 px total. |
 | `--row-pad` / `--row-gap` | 12 px / 12 px | Row side padding; tile to text. |
 | `--tile` / `--icon` | 32 px / 20 px | Type tile and its icon. Compact draws a 24 px tile with no fill, centred in the 32 px column, so titles stay aligned with the search text. |
-| Footer | 40 px | 24 px actions with 8 px above and below. Windows/GNOME add an outside 1 px top divider (41 px total). Text starts at `--inset + --row-pad`. |
+| Footer | 40 px | 24 px actions with 8 px above and below. Windows/GNOME add an outside 1 px top divider (41 px total). Status text starts on the title column. |
 | Smallest target | 32 px, 44 px on touch | |
 
 Edges line up: the search icon is centred over the tile column and the
@@ -96,8 +96,16 @@ placeholder starts where row titles start:
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
 --lead-gap = (tile − icon) / 2 + row-gap       icon to placeholder
+tile centre = inset + row-pad + tile / 2       36 px on every OS
 text x     = inset + row-pad + tile + row-gap  64 px on every OS
 ```
+
+These are distances from the logical start edge, including in RTL. The status
+dot shares the tile centre; status text and the shelf citation share the title
+column. Windows field/card strokes are inset shadows, so they consume no column
+space. GNOME's full-bleed shelf adds the window inset inside its citation line.
+Recently added will reuse the compact result columns when C11 introduces it;
+there is no separate current consumer to verify.
 
 These numbers are also in [`design-geometry.json`](design-geometry.json), which
 `node scripts/gallery-geometry.mjs` measures the evidence gallery against;

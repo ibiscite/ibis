@@ -5,6 +5,7 @@
   "footer": 40,
   "headerDivider": 1,
   "footerAction": 24,
+  "columns": { "tileCentre": 36, "titleStart": 64 },
   "rowPad": 12,
   "rowGap": 12,
   "tile": 32,

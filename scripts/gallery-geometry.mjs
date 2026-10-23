@@ -33,6 +33,7 @@ export function derive(spec, platform, scale = 1) {
   const rRow = Math.max(look.rMin, look.rWin - look.inset * scale);
   return {
     searchBand: look.searchBand * scale,
+    tileCentre: (look.inset + spec.rowPad + spec.tile / 2) * scale,
     textX: (look.inset + spec.rowPad + spec.tile + spec.rowGap) * scale,
     rWin: look.rWin,
     rRow,
@@ -45,10 +46,17 @@ export function compare(spec, platform, text, density, measured) {
   const scale = text === "large" ? LARGER_TEXT : 1;
   const expected = derive(spec, platform, scale);
   const rows = [];
-  const check = (name, want, got) => rows.push({ name, platform, text, density, expected: want, measured: got,
+  const check = (name, want, got) => rows.push({ name: measured.direction === "rtl" ? `${name} (RTL)` : name, platform, text, density, expected: want, measured: got,
     pass: Number.isFinite(got) && Math.abs(got - want) <= spec.tolerance });
   // Larger text scales rem sizes and insets; window corners and radius floors stay fixed.
   check(`row height (${density})`, spec.rowHeight[density] * scale, measured.rowHeight);
+  // Coordinates are logical-start distances from the picker, not physical left edges.
+  for (const [name, value] of [["tile centre x", "tileCentre"], ["search glyph centre x", "glyphCentre"], ["status dot centre x", "statusDotCentre"]])
+    check(name, expected.tileCentre, measured[value]);
+  for (const [name, value] of [["row title x", "titleX"], ["typed text x", "textX"], ["status text x", "statusTextX"], ["shelf citation x", "shelfTextX"]])
+    check(name, expected.textX, measured[value]);
+  check("search glyph centre x = tile centre x", measured.tileCentre, measured.glyphCentre);
+  check("typed text x = row title x", measured.titleX, measured.textX);
   if (density !== "comfortable") return rows;
   const look = spec.platforms[platform];
   check("footer height", spec.footer * scale + look.footerDivider, measured.footer);
@@ -59,9 +67,6 @@ export function compare(spec, platform, text, density, measured) {
   check("footer action height", spec.footerAction * scale, measured.footerAction);
   check("footer divider", look.footerDivider, measured.footerDivider);
   for (const name of ["pinTopGap", "pinBottomGap", "pinEndGap", "footerTopGap", "footerBottomGap"]) check(name, look.inset * scale, measured[name]);
-  check("search glyph centre x = tile centre x", measured.tileCentre, measured.glyphCentre);
-  check("typed text x = row title x", measured.titleX, measured.textX);
-  check("typed text x", expected.textX, measured.textX);
   check("window radius", expected.rWin, measured.rWin);
   check("row radius", expected.rRow, measured.rRow);
   check("search field radius", expected.rRow, measured.rField);
@@ -123,9 +128,13 @@ function measureLayout() {
 }
 
 /** Runs in the page: boxes and radii of the first row, the search band and the footer. */
-function measure() {
+export function measure() {
   const box = (selector) => document.querySelector(selector)?.getBoundingClientRect();
   const px = (element, property) => element ? parseFloat(getComputedStyle(element)[property]) : NaN;
+  const picker = document.querySelector("main").getBoundingClientRect();
+  const rtl = getComputedStyle(document.querySelector("main")).direction === "rtl";
+  const start = b => b ? (rtl ? picker.right - b.right : b.left - picker.left) : NaN;
+  const centre = b => b ? start(b) + b.width / 2 : NaN;
   const row = document.querySelector('#results [role="option"]');
   const tile = row?.querySelector(".result-tile")?.getBoundingClientRect();
   const glyph = box(".search-bar > svg");
@@ -149,10 +158,12 @@ function measure() {
     pinEndGap: pin ? (document.documentElement.dir === "rtl" ? pin.left - headerBox.left : headerBox.right - pin.right) : NaN,
     footerTopGap: action ? action.top - footerBox.top - footerDivider : NaN,
     footerBottomGap: action ? footerBox.bottom - action.bottom : NaN,
-    glyphCentre: glyph ? glyph.left + glyph.width / 2 : NaN,
-    tileCentre: tile ? tile.left + tile.width / 2 : NaN,
-    textX: inputBox ? inputBox.left + px(input, "borderLeftWidth") + px(input, "paddingLeft") : NaN,
-    titleX: row?.querySelector("strong")?.getBoundingClientRect().left ?? NaN,
+    direction: rtl ? "rtl" : "ltr",
+    glyphCentre: centre(glyph), tileCentre: centre(tile),
+    textX: start(inputBox) + px(input, "borderInlineStartWidth") + px(input, "paddingInlineStart"),
+    titleX: start(row?.querySelector("strong")?.getBoundingClientRect()),
+    statusDotCentre: centre(box(".status-dot")), statusTextX: start(box(".library-words")),
+    shelfTextX: start(box(".shelf-output .preview-text, .shelf-output > p")),
     rWin,
     rRow: px(row, "borderTopLeftRadius"),
     rField: px(input, "borderTopLeftRadius"),
@@ -190,7 +201,7 @@ async function main() {
   try {
     const context = await browser.newContext({ viewport: VIEWPORT, colorScheme: "light", reducedMotion: "reduce" });
     const jobs = Object.keys(spec.platforms).flatMap((platform) => ["normal", "large"].flatMap((text) => [
-      ...Object.entries(DENSITY_STATES).map(([density, state]) => ({ platform, text, density, state })),
+      ...Object.entries(DENSITY_STATES).flatMap(([density, state]) => ["ltr", "rtl"].map(direction => ({ platform, text, density, state, direction }))),
       ...LAYOUT_STATES.map((state) => ({ platform, text, state, layout: true }))]));
     let next = 0;
     const worker = async () => {
@@ -205,6 +216,7 @@ async function main() {
           const query = new URLSearchParams({ state: job.state, platform: job.platform, theme: "light", text: job.text });
           await page.goto(`${base}/gallery.html?${query}`);
           await page.waitForFunction((id) => document.documentElement.dataset.galleryRendered === id, job.state, { timeout: 60_000 });
+          if (job.direction) await page.evaluate(direction => { document.documentElement.dir = direction; }, job.direction);
           rows.push(...(job.layout ? layout(job.platform, job.text, job.state, await page.evaluate(measureLayout))
             : compare(spec, job.platform, job.text, job.density, await page.evaluate(measure))));
           if (job.layout) {

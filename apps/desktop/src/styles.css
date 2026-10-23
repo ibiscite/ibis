@@ -48,13 +48,13 @@ main {
    the box starts at the inset and its text still starts at the row titles. */
 /* Only the search glyph (the header's direct child), never the pin icon inside its button. */
 :root[data-platform="windows"] .search-bar > svg, :root[data-platform="linux"] .search-bar > svg { position: relative; z-index: 1; margin-inline: var(--lead) calc(-1 * (var(--lead) + var(--search-icon-width) + var(--search-gap))); }
-:root[data-platform="windows"] #search, :root[data-platform="linux"] #search { padding: 0 var(--space-1); padding-inline-start: calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width)); border-radius: var(--r-row); background: var(--field-background); }
+:root[data-platform="windows"] #search, :root[data-platform="linux"] #search { padding: 0 var(--space-1); padding-inline-start: calc(var(--lead) + var(--search-icon-width) + var(--lead-gap)); border-radius: var(--r-row); background: var(--field-background); }
 /* Windows: like a Fluent TextBox, focus turns the field solid with a 2 px accent
    underline and no ring (TextBox does not use the system focus visual). */
-:root[data-platform="windows"] #search { border: var(--border-width) solid var(--field-edge); border-bottom-color: var(--line); }
-:root[data-platform="windows"] #search:focus { outline: none; background: var(--field-active-background); border-bottom-color: var(--accent); box-shadow: inset 0 calc(-1 * var(--border-width)) var(--accent); }
+:root[data-platform="windows"] #search { box-shadow: inset 0 calc(-1 * var(--border-width)) var(--line), inset 0 0 0 var(--border-width) var(--field-edge); }
+:root[data-platform="windows"] #search:focus { outline: none; background: var(--field-active-background); box-shadow: inset 0 calc(-2 * var(--border-width)) var(--accent), inset 0 0 0 var(--border-width) var(--field-edge); }
 /* Linux: a framed entry. */
-:root[data-platform="linux"] #search { border: var(--border-width) solid var(--clear); }
+:root[data-platform="linux"] #search { padding-inline-start: calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width)); border: var(--border-width) solid var(--clear); }
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
@@ -161,8 +161,9 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 /* Monospace only for key syntaxes, where the syntax is the point. */
 .shelf-output[data-keys] .preview-text { font-family: var(--font-mono); }
 .shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); color: var(--muted); font-size: var(--metadata-size); line-height: var(--chip-height); white-space: nowrap; }
-:root[data-platform="windows"] .shelf { border: var(--border-width) solid var(--stroke-control); }
+:root[data-platform="windows"] .shelf { box-shadow: inset 0 0 0 var(--border-width) var(--stroke-control); }
 :root[data-platform="linux"] .shelf { margin: 0; border-radius: 0; background: var(--clear); border-top: var(--border-width) solid var(--separator); }
+:root[data-platform="linux"] .shelf-output { padding-inline: calc(var(--inset) + var(--row-pad)); }
 :root[data-platform="linux"] main:has(> .shelf) > footer { border-top-color: var(--separator); }
 
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
@@ -172,7 +173,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: v
 .library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); padding-block: var(--inset); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
-.library-status { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--footer-gap); color: var(--muted); }
+.library-status { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--row-gap); color: var(--muted); }
 .library-words, .library-name { display: flex; min-width: 0; overflow: hidden; white-space: pre; }
 /* A long name is shortened before the state words; the age goes first of all. */
 .library-source { min-width: 3ch; flex-shrink: 100000; overflow: hidden; text-overflow: ellipsis; }
@@ -186,7 +187,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: v
    its 1 px .visually-hidden box or the page grows wider than the window. */
 .library-bar > p[role="status"] { width: 100%; margin: var(--library-notice-margin); }
 /* The dot repeats what the words say, so colour is never the only signal. */
-.status-dot { width: var(--status-dot-size); height: var(--status-dot-size); border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+.status-dot { margin-inline: calc((var(--tile-size) - var(--status-dot-size)) / 2); width: var(--status-dot-size); height: var(--status-dot-size); border-radius: 50%; flex-shrink: 0; background: var(--muted); }
 .status-dot[data-health="done"] { background: var(--status-done); }
 .status-dot[data-health="look"] { background: var(--status-look); }
 .status-dot[data-health="stop"] { background: var(--status-stop); }
@@ -322,4 +323,6 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 /* The shelf and its chips keep an edge where fills are not drawn. */
 @media (prefers-contrast: more), (forced-colors: active) {
   .shelf, .chip { border: var(--border-width) solid CanvasText; }
+  .shelf { border-inline: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
+  :root[data-platform="windows"] .shelf, :root[data-platform="windows"] #search { border: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
 }

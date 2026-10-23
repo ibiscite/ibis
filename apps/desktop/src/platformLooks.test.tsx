@@ -51,7 +51,7 @@ test("the search header is the 48–56 px search bar, not an 80 px block", () =>
 test("Windows and Linux search in a 16 px framed box; macOS stays frameless and large", () => {
   const framed = rules(tokens, ':root[data-platform="windows"], :root[data-platform="linux"]');
   expect(framed).toMatch(/--search-size:\s*1rem/);
-  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/border:/);
+  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/box-shadow:\s*inset/);
   expect(rules(styles, ':root[data-platform="windows"] #search:focus')).toMatch(/var\(--accent\)/);
   expect(rules(styles, ':root[data-platform="linux"] #search')).toMatch(/border-radius:/);
   expect(tokens).toMatch(/--search-size:\s*var\(--type-search-size\)/);
@@ -153,8 +153,9 @@ test("the search text starts where row titles start, with the glyph over the til
   expect(rules(styles, '[role="option"]')).toMatch(/padding:\s*0 calc\(var\(--row-pad\) - var\(--border-width\)\)/);
   expect(rules(styles, '[role="option"]')).toMatch(/gap:\s*var\(--row-gap\)/);
   expect(rules(styles, ".results-area")).toMatch(/margin-block:\s*var\(--inset\);\s*padding-inline:\s*var\(--inset\)/);
-  // The framed box's text start pays for its 1 px border.
-  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\) - var\(--border-width\)\)/);
+  // Windows draws its edge inside the field; Linux compensates its entry border.
+  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\)\)/);
+  expect(rules(styles, ':root[data-platform="linux"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\) - var\(--border-width\)\)/);
   // Logical sides only, so a right-to-left picker mirrors.
   expect(rules(styles, "footer")).toMatch(/padding-inline:\s*var\(--footer-padding\)/);
 });
@@ -395,7 +396,7 @@ test("the search box never shows a ring, except with contrast or forced colours"
   expect(rules(outside, "#search:focus-visible")).toMatch(/outline:\s*none/);
   const windows = rules(outside, ':root[data-platform="windows"] #search:focus');
   expect(windows).toMatch(/outline:\s*none/);
-  expect(windows).toMatch(/border-bottom-color:\s*var\(--accent\)/);
+  expect(windows).toMatch(/box-shadow:\s*inset 0 calc\(-2 \* var\(--border-width\)\) var\(--accent\)/);
   for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
     const block = styles.slice(styles.indexOf(media), styles.indexOf("\n}\n", styles.indexOf(media)));
     expect(rules(block, "#search:focus-visible"), media).toMatch(/outline:\s*var\(--focus-ring-width\) solid/);
@@ -624,7 +625,7 @@ test("the shelf is two 40 px lines of 24 px chips and one output line above the 
   const contrast = styles.slice(edge);
   expect(rules(contrast, ".shelf, .chip")).toMatch(/border:\s*var\(--border-width\) solid CanvasText/);
   // Windows draws a layer card with a stroke; GNOME a flat band under one separator.
-  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/border:\s*var\(--border-width\) solid var\(--stroke-control\)/);
+  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/box-shadow:\s*inset 0 0 0 var\(--border-width\) var\(--stroke-control\)/);
   expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:\s*var\(--border-width\) solid var\(--separator\)/);
   const shelf = readFileSync(new FileURL("./features/picker/CitationShelf.css", import.meta.url), "utf8");
   const forced = shelf.slice(shelf.indexOf("@media (forced-colors: active)"));

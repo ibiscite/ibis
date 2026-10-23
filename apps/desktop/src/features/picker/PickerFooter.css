@@ -4,4 +4,4 @@
 .footer-status-size { flex: none; width: var(--library-min-width); }
 .library-bar[data-shortcuts-folded] .shortcuts-hint { position: absolute; visibility: hidden; pointer-events: none; width: max-content; max-width: none; }
 .library-bar[data-shortcuts-folded] .enter-hints[data-optional-only] { position: absolute; }
-.library-bar[data-status-compact] .library-status { min-width: var(--control-min-size); }
+.library-bar[data-status-compact] .library-status { min-width: calc(var(--tile-size) + var(--row-gap)); }
