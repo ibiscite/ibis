@@ -23,6 +23,8 @@ mod shortcut_policy;
 #[cfg(target_os = "linux")]
 mod x11_focus;
 
+#[cfg(any(target_os = "macos", test))]
+pub(crate) use dialogs::ChooserLease;
 pub(crate) use dialogs::ChooserOpen;
 pub(crate) use full_screen::FullScreenGuard;
 

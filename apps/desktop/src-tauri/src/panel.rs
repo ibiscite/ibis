@@ -243,6 +243,7 @@ pub(crate) fn show(app: &AppHandle) {
                     } else {
                         report(Err::<(), ()>(()), NativeIssue::Window);
                     }
+                    crate::updater::picker_presented(&handle);
                     crate::macos_reapproval::presented(&handle);
                     // Observe actual AppKit keyboard ownership independently
                     // of the WebView's accessible/DOM focused search field.

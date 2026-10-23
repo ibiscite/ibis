@@ -11,6 +11,8 @@ use std::time::Duration;
 
 use tauri::menu::CheckMenuItem;
 use tauri::{AppHandle, Manager};
+#[cfg(any(target_os = "macos", test))]
+use tauri_plugin_dialog::MessageDialogResult;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::{Update, Updater, UpdaterExt};
 
@@ -35,6 +37,31 @@ pub(crate) struct Updates {
     busy: AtomicBool,
     /// A version the person chose not to install; automatic checks don't offer it again.
     declined: Mutex<Option<String>>,
+    #[cfg(any(target_os = "macos", test))]
+    installation_failure: InstallationFailure,
+}
+
+/// One fixed recovery notice, retained until positively dismissed. No timer:
+/// a busy native owner defers it until another actual picker presentation.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Default)]
+struct InstallationFailure(AtomicBool);
+
+#[cfg(any(target_os = "macos", test))]
+impl InstallationFailure {
+    fn begin(&self, dialogs: &crate::picker::ChooserOpen) -> Option<crate::picker::ChooserLease> {
+        if !self.0.load(Ordering::SeqCst) {
+            return None;
+        }
+        let owner = dialogs.begin()?;
+        self.0.load(Ordering::SeqCst).then_some(owner)
+    }
+
+    fn answered(&self, result: MessageDialogResult) {
+        if matches!(result, MessageDialogResult::Ok) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
 }
 
 /// The menu item that turns automatic checks on and off.
@@ -310,9 +337,73 @@ async fn install_update(app: &AppHandle, update: Update) {
         Ok(()) => app.restart(),
         Err(_) => {
             app.state::<Updates>().busy.store(false, Ordering::SeqCst);
-            tell(app, INSTALL_FAILURE_MESSAGE);
+            installation_failed(app);
         }
     }
+}
+
+fn installation_failed(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        app.state::<Updates>()
+            .installation_failure
+            .0
+            .store(true, Ordering::SeqCst);
+        present_installation_failure(app, true);
+    }
+    #[cfg(not(target_os = "macos"))]
+    tell(app, INSTALL_FAILURE_MESSAGE);
+}
+
+/// Called after an actual native panel show, never from a timer or at login.
+#[cfg(target_os = "macos")]
+pub(crate) fn picker_presented(app: &AppHandle) {
+    present_installation_failure(app, false);
+}
+
+#[cfg(target_os = "macos")]
+fn present_installation_failure(app: &AppHandle, show: bool) {
+    let handle = app.clone();
+    report(
+        app.run_on_main_thread(move || {
+            let updates = handle.state::<Updates>();
+            let Some(owner) = updates
+                .installation_failure
+                .begin(&handle.state::<crate::picker::ChooserOpen>())
+            else {
+                return;
+            };
+            let Some(window) = crate::diagnostics::checked(offer_parent(&handle).ok_or(()), NativeIssue::Window) else {
+                return;
+            };
+            if show {
+                // The lease also covers showing the parent; its actual-show
+                // hook sees the owner and cannot recursively present a sheet.
+                crate::picker::show_picker(&handle);
+            }
+            if crate::diagnostics::checked(window.is_visible(), NativeIssue::Visibility) != Some(true) {
+                return;
+            }
+            // Same fallible AppKit handle path as parent(); Tao's display
+            // handle is infallible. Preflight on the main thread only.
+            if crate::diagnostics::checked(window.ns_view(), NativeIssue::Window).is_none() {
+                return;
+            }
+            crate::panel::activate_for_dialog(&handle);
+            let callback = handle.clone();
+            handle
+                .dialog()
+                .message(INSTALL_FAILURE_MESSAGE)
+                .title("Updates")
+                .buttons(MessageDialogButtons::Ok)
+                .parent(&window)
+                .show_with_result(move |result| {
+                    let _owner = owner;
+                    callback.state::<Updates>().installation_failure.answered(result);
+                });
+        }),
+        NativeIssue::Window,
+    );
 }
 
 fn tell(app: &AppHandle, text: &str) {
@@ -323,6 +414,57 @@ fn tell(app: &AppHandle, text: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn installation_recovery_waits_for_an_exclusive_owner() {
+        let updates = Updates::default();
+        let failure = &updates.installation_failure;
+        let dialogs = crate::picker::ChooserOpen::default();
+        assert!(failure.begin(&dialogs).is_none());
+        failure.0.store(true, Ordering::SeqCst);
+        let chooser = dialogs.begin().unwrap_or_else(|| panic!("chooser owner"));
+        assert!(failure.begin(&dialogs).is_none());
+        drop(chooser);
+        let owner = failure.begin(&dialogs).unwrap_or_else(|| panic!("later actual show"));
+        // An actual-show callback during initial presentation cannot recurse.
+        assert!(failure.begin(&dialogs).is_none());
+        drop(owner); // missing/hidden/unavailable parent leaves recovery pending
+        assert!(failure.begin(&dialogs).is_some());
+    }
+
+    #[test]
+    fn only_ok_dismisses_installation_recovery_and_drop_releases_blur() {
+        let updates = Updates::default();
+        let failure = &updates.installation_failure;
+        let dialogs = crate::picker::ChooserOpen::default();
+        failure.0.store(true, Ordering::SeqCst);
+        for result in [
+            MessageDialogResult::Cancel,
+            MessageDialogResult::Yes,
+            MessageDialogResult::No,
+            MessageDialogResult::Custom("OK".into()),
+        ] {
+            let owner = failure.begin(&dialogs).unwrap_or_else(|| panic!("pending owner"));
+            let callback = || {
+                let _owner = owner;
+                failure.answered(result);
+            };
+            callback();
+            assert!(!dialogs.is_open());
+            assert!(failure.0.load(Ordering::SeqCst));
+        }
+        let owner = failure.begin(&dialogs).unwrap_or_else(|| panic!("pending owner"));
+        drop(move || {
+            let _owner = owner;
+            failure.answered(MessageDialogResult::Ok);
+        });
+        assert!(!dialogs.is_open());
+        // A dropped native callback must not acknowledge an unseen message.
+        let owner = failure.begin(&dialogs).unwrap_or_else(|| panic!("still pending"));
+        owner.during(|| failure.answered(MessageDialogResult::Ok));
+        assert!(!dialogs.is_open());
+        assert!(failure.begin(&dialogs).is_none());
+    }
 
     #[test]
     fn installation_failure_offers_recovery_without_claiming_rollback() {
