@@ -216,11 +216,10 @@ fn automatic_outcome(found: &Result<Option<Update>, &'static str>) -> String {
 
 fn offer(app: &AppHandle, update: Update) {
     let handle = app.clone();
-    app.dialog()
-        .message(offer_text(&app.package_info().version.to_string(), &update))
-        .title("An update is available")
-        .buttons(offer_buttons())
-        .show(move |install| {
+    present_offer(
+        app,
+        offer_text(&app.package_info().version.to_string(), &update),
+        move |install| {
             if install {
                 tauri::async_runtime::spawn(async move { install_update(&handle, update).await });
             } else {
@@ -230,7 +229,41 @@ fn offer(app: &AppHandle, update: Update) {
                 }
                 updates.busy.store(false, Ordering::SeqCst);
             }
-        });
+        },
+    );
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn offer_parent<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<tauri::WebviewWindow<R>> {
+    app.get_webview_window("main")
+}
+
+fn present_offer(app: &AppHandle, text: String, answer: impl FnOnce(bool) + Send + 'static) {
+    let dialog = app
+        .dialog()
+        .message(text)
+        .title("An update is available")
+        .buttons(offer_buttons());
+    #[cfg(target_os = "macos")]
+    let (dialog, owner) = {
+        let Some(owner) = app.state::<crate::picker::ChooserOpen>().begin() else {
+            app.state::<Updates>().busy.store(false, Ordering::SeqCst);
+            return;
+        };
+        let Some(parent) = offer_parent(app) else {
+            app.state::<Updates>().busy.store(false, Ordering::SeqCst);
+            report(Err::<(), ()>(()), NativeIssue::Window);
+            return;
+        };
+        crate::picker::show_picker(app);
+        crate::panel::activate_for_dialog(app);
+        (dialog.parent(&parent), owner)
+    };
+    dialog.show(move |accepted| {
+        #[cfg(target_os = "macos")]
+        let _owner = owner;
+        answer(accepted);
+    });
 }
 
 fn offer_buttons() -> MessageDialogButtons {
@@ -296,6 +329,20 @@ mod tests {
         assert!(!INSTALL_FAILURE_MESSAGE.contains("unchanged"));
         assert!(INSTALL_FAILURE_MESSAGE.contains("Try again"));
         assert!(INSTALL_FAILURE_MESSAGE.contains("download"));
+    }
+
+    #[test]
+    fn update_offer_requires_the_picker_instead_of_another_owned_window() -> Result<(), Box<dyn std::error::Error>> {
+        let app = tauri::test::mock_builder().build(tauri::test::mock_context(tauri::test::noop_assets()))?;
+        assert!(offer_parent(app.handle()).is_none());
+        let _notice = tauri::WebviewWindowBuilder::new(&app, "notice", Default::default()).build()?;
+        assert!(offer_parent(app.handle()).is_none());
+        let _picker = tauri::WebviewWindowBuilder::new(&app, "main", Default::default()).build()?;
+        assert_eq!(
+            offer_parent(app.handle()).map(|window| window.label().to_owned()),
+            Some("main".into())
+        );
+        Ok(())
     }
 
     #[test]

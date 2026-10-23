@@ -1,4 +1,4 @@
-//! Only the picker-owned file chooser prevents hiding on blur.
+//! Picker-owned file choosers and macOS update consent prevent hiding on blur.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,7 +41,7 @@ mod tests {
     use crate::picker::hides_on_blur;
 
     #[test]
-    fn only_the_owned_chooser_blocks_automatic_blur() {
+    fn only_the_owned_dialog_blocks_automatic_blur() {
         let chooser = ChooserOpen::default();
         assert!(hides_on_blur(true, chooser.is_open(), false));
         let lease = chooser.begin().unwrap_or_else(|| panic!("first chooser"));
