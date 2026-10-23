@@ -136,7 +136,7 @@ test("the Copied notice window keeps its own pill border and colours", () => {
   }
 });
 
-test("the frameless macOS buttons show the writing selection with a fill", () => {
+test("the frameless macOS writing toggles use the shared pressed fill", () => {
   // jsdom evaluates no media queries: apply the macOS rules, then the picker's
   // own rules, in the order styles.css imports them.
   const styles = read("styles.css").replace(/@import[^;]+;/g, "");
@@ -144,20 +144,20 @@ test("the frameless macOS buttons show the writing selection with a fill", () =>
   const mac = native.slice(start + native.slice(start).indexOf("{") + 1, native.lastIndexOf("}"));
   const sheet = document.createElement("style");
   // jsdom does not resolve custom properties in border colours: substitute them.
-  const values: Record<string, string> = { "--clear": "transparent", "--button-edge": "transparent", "--selected-background": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px" };
-  sheet.textContent = (mac.replace(/@supports[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, "") + styles)
+  const values: Record<string, string> = { "--clear": "transparent", "--button-edge": "transparent", "--selected-background": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-control": "transparent", "--fill-control": "rgb(240, 240, 240)", "--fill-control-pressed": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
+  sheet.textContent = (mac.replace(/@supports[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, "") + styles + read("ui/Button.css"))
     .replace(/var\((--[\w-]+)\)/g, (whole, name: string) => values[name] ?? whole);
   document.head.append(sheet);
   document.documentElement.dataset.platform = "macos";
-  document.body.innerHTML = '<section class="setup-writing"><button type="button" class="writing-choice" aria-pressed="true">Markdown</button><button type="button" class="writing-choice" aria-pressed="false">Word</button></section>';
+  document.body.innerHTML = '<section class="setup-writing"><button type="button" class="ui-button" data-variant="secondary" data-selected aria-pressed="true">Markdown</button><button type="button" class="ui-button" data-variant="secondary" aria-pressed="false">Word</button></section>';
   try {
     const [pressed, plain] = [...document.querySelectorAll("button")];
     const border = (element: Element) => getComputedStyle(element).getPropertyValue("border-top-color") || getComputedStyle(element).borderColor;
     expect(border(plain!)).toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/);
     expect(border(pressed!)).toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/);
-    expect(getComputedStyle(pressed!).backgroundColor).toBe("rgb(10, 122, 255)");
-    expect(getComputedStyle(pressed!).color).toBe("rgb(255, 255, 255)");
-    expect(getComputedStyle(plain!).backgroundColor).not.toBe("rgb(10, 122, 255)");
+    expect(getComputedStyle(pressed!).backgroundColor).toBe("rgb(220, 220, 220)");
+    expect(getComputedStyle(pressed!).color).toBe("rgb(20, 20, 20)");
+    expect(getComputedStyle(plain!).backgroundColor).not.toBe("rgb(220, 220, 220)");
   } finally {
     sheet.remove();
     document.body.innerHTML = "";

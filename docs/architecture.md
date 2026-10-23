@@ -91,6 +91,9 @@ The shared Button family owns footer action, More and toolbar-menu triggers,
 shelf removal and folding, empty-state recovery actions, and dialog Close
 states; React Aria supplies pointer, press and keyboard-focus attributes.
 Folded footer actions preserve their hidden accessibility state and tab order.
+First-run setup keeps its rescan Button focusable with `aria-disabled` and a press
+guard while finding sources. Its existing status announces progress; writing-format
+toggles remain controlled.
 Small-button gallery readiness checks actual hit targets beyond the visible fill.
 Shelf spacing reserves each full hit target, including three complete expanded
 rows and the larger touch targets; its gallery rejects clipped or covered edges.

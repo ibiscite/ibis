@@ -3,6 +3,7 @@ import type { Choice } from "./features/picker/choice";
 import type { Sources } from "./bindings";
 import { loginItemText, pickerText, setupText } from "./messages";
 import { currentPlatform } from "./platform";
+import { Button, ToggleButton } from "./ui/Button";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
 
 type SetupApi = {
@@ -68,14 +69,14 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
     <div className="library-setup">
       <p>{pickerText.firstRun}</p>
       <div className="setup-choices">
-        <button type="button" className={zotero === "available" ? undefined : "suggested-action"}
-          aria-label={pickerText.firstRunChoose} onClick={() => void perform("choose", chooseLibrary)}>
+        <Button variant={zotero === "available" ? "secondary" : "primary"}
+          aria-label={pickerText.firstRunChoose} onPress={() => void perform("choose", chooseLibrary)}>
           {pickerText.chooseLibrary}
-        </button>
-        <button type="button" className={zotero === "available" ? "suggested-action" : undefined} title={pickerText.useZoteroTitle}
-          onClick={() => void perform("zotero", useZotero)}>
+        </Button>
+        <Button variant={zotero === "available" ? "primary" : "secondary"} title={pickerText.useZoteroTitle}
+          onPress={() => void perform("zotero", useZotero)}>
           {pickerText.useZotero}
-        </button>
+        </Button>
       </div>
       {findSources && <p className="empty-hint" role="status">{outcome}</p>}
       {zotero === "access_off" && <p className="empty-hint">{setupText.zoteroAccessOff}</p>}
@@ -85,15 +86,15 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
           <ul>
             {files.map((file, index) => (
               <li key={`${sources.list}-${index}`}>
-                <button type="button" title={setupText.openFound(file.name, file.folder)}
-                  onClick={() => void perform("openFound", () => openFoundLibrary!(sources.list, index).catch((error: unknown) => {
+                <Button title={setupText.openFound(file.name, file.folder)}
+                  onPress={() => void perform("openFound", () => openFoundLibrary!(sources.list, index).catch((error: unknown) => {
                     // The list was replaced since it was shown: show the new one.
                     lookAgain();
                     throw error;
                   }))}>
                   <bdi className="found-name">{file.name}</bdi>
                   {file.folder && <>{" "}<span className="found-folder">{setupText.inFolder}{" "}<bdi>{file.folder}</bdi></span></>}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -101,20 +102,20 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
       )}
       {sources?.cut_short && <p className="empty-hint">{setupText.cutShort}</p>}
       {findSources && (
-        // Stays in place while looking, so focus is not lost.
-        <button type="button" aria-disabled={looking || undefined} onClick={() => { if (!looking) lookAgain(); }}>
+        // Stays focusable while looking; the outcome status announces progress.
+        <Button aria-disabled={looking || undefined} onPress={() => { if (!looking) lookAgain(); }}>
           {setupText.lookAgain}
-        </button>
+        </Button>
       )}
       {writing && (
         <section aria-labelledby={`${heading}-writing`} className="setup-writing">
           <p className="empty-hint" id={`${heading}-writing`}>{setupText.whereYouWrite}</p>
           <div className="setup-choices">
             {WRITING_PLACES.filter((place) => !place.formatted || writing.formatted).map((place) => (
-              <button type="button" className="writing-choice" key={place.name} aria-pressed={writing.format === place.choice}
-                onClick={() => writing.choose(place.choice)}>
+              <ToggleButton key={place.name} isSelected={writing.format === place.choice}
+                onChange={() => writing.choose(place.choice)}>
                 {place.name}
-              </button>
+              </ToggleButton>
             ))}
           </div>
           {writing.format.startsWith("style:") && (
