@@ -73,9 +73,9 @@ test("a hidden key preview is never fetched, and showing it fetches the current 
   expect(previews()).toBe(fetched + 1);
 });
 
-test("copy confirmation expires, but copy warnings remain until dismissed", async () => {
+test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain until dismissed with %s", async (key) => {
   let warnings: string[] = [];
-  backend({
+  const calls = backend({
     search: () => [result("a", "First")],
     copy_citation: () => ({ text: "@a", warnings }),
   });
@@ -94,8 +94,16 @@ test("copy confirmation expires, but copy warnings remain until dismissed", asyn
   vi.useFakeTimers();
   await act(() => vi.advanceTimersByTimeAsync(3000));
   expect(screen.getByText("A warning to read")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Dismiss copy warnings" }));
+  const dismiss = screen.getByRole("button", { name: "Dismiss copy warnings" });
+  const actions = () => calls.filter((command) => command === "copy_citation" || command === "hide_picker");
+  const previousActions = actions();
+  dismiss.focus();
+  const code = key === " " ? "Space" : "Enter";
+  fireEvent.keyDown(dismiss, { key, code });
+  fireEvent.keyDown(dismiss, { key, code, repeat: true });
+  fireEvent.keyUp(dismiss, { key, code });
   expect(screen.queryByLabelText("Copy warnings")).toBeNull();
+  expect(actions()).toEqual(previousActions);
 });
 
 const formatButton = (name: string | RegExp = /^Copy as /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });

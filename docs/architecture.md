@@ -98,6 +98,8 @@ Tab dismisses More's modal popover synchronously before returning focus to
 Search. Choosing a toolbar format also removes its modal synchronously, so the
 next typed character reaches Search without waiting for an exit animation.
 Other dismissals retain their existing animation and focus destinations.
+Copy-warning dismissal uses the shared Button states without changing notice
+lifetime; warnings remain until dismissed and clean confirmations expire.
 
 Desktop search replies and each result carry an opaque in-memory index revision,
 captured with the index under the library mutex. Scope filtering and request

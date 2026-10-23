@@ -487,3 +487,25 @@ test("outside the native app a rendered state is marked on the page for browser 
     container.remove();
   }
 });
+
+test("warning captures wait until the whole dismissal target fits above the notice divider", async () => {
+  let noticeHeight = 60;
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+  const size = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.matches(".copy-notice")) return new DOMRect(0, 0, 300, noticeHeight);
+    if (this.matches(".dismiss")) return new DOMRect(200, 40, 80, 44);
+    return new DOMRect();
+  });
+  document.documentElement.style.fontSize = "16px";
+  const run = await renderUntilAcknowledged("copy-warnings");
+  try {
+    expect(run.acknowledge).not.toHaveBeenCalled();
+    noticeHeight = 100;
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(run.acknowledge).toHaveBeenCalledExactlyOnceWith("copy-warnings");
+  } finally {
+    await run.stop();
+    size.mockRestore();
+    document.documentElement.style.removeProperty("font-size");
+  }
+});

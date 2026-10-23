@@ -136,6 +136,23 @@ function shelfTargetsContained(root: HTMLElement): boolean {
   return tested > 0 && contained;
 }
 
+/** The complete warning action stays above its divider, including touch targets. */
+function warningTargetContained(root: HTMLElement): boolean {
+  const button = root.querySelector<HTMLElement>(".copy-notice .dismiss");
+  const notice = button?.closest(".copy-notice")?.getBoundingClientRect();
+  // Zero-size JSDOM geometry does not establish rendered containment.
+  if (!button || !notice?.width) return true;
+  const box = button.getBoundingClientRect();
+  const minimum = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16)
+    * (matchMedia("(pointer: coarse)").matches ? 2.75 : 2);
+  return box.width >= minimum - 0.1 && box.height >= minimum - 0.1
+    && box.left >= notice.left - 0.1 && box.right <= notice.right + 0.1
+    && box.top >= notice.top - 0.1 && box.bottom <= notice.bottom + 0.1
+    && (typeof document.elementFromPoint !== "function" || [[box.left + 1, box.y + box.height / 2],
+      [box.right - 1, box.y + box.height / 2], [box.x + box.width / 2, box.top + 1], [box.x + box.width / 2, box.bottom - 1]]
+      .every(([x, y]) => button.contains(document.elementFromPoint(x!, y!))));
+}
+
 /** The seeded settings and interactions are on screen, and nothing else is. */
 function seeded(root: HTMLElement, state: GalleryState): boolean {
   const html = document.documentElement;
@@ -158,7 +175,7 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (state.showPastePreview === false ? root.querySelector(".shelf-output") === null
       && root.querySelector('footer [aria-keyshortcuts="Enter"]') !== null
       : !(state.formatted || state.showPastePreview) || root.querySelector(".shelf-output .preview-text") !== null)
-    && selectionContained(root, state) && shelfTargetsContained(root);
+    && selectionContained(root, state) && shelfTargetsContained(root) && warningTargetContained(root);
 }
 
 /**

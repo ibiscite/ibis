@@ -1,4 +1,5 @@
 import type { Copied, LibraryStatus, LoginItem } from "../../api";
+import { Button } from "../../ui/Button";
 import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
 import { libraryMessages, loginItemText, operationFailures, pickerText } from "../../messages";
 import { currentPlatform } from "../../platform";
@@ -37,9 +38,9 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
           </p>
           {copied.warnings.length > 0 && (
             <>
-              <button type="button" className="dismiss" aria-label={pickerText.dismissWarnings} onClick={onDismissCopied}>
+              <Button className="dismiss" aria-label={pickerText.dismissWarnings} onPress={onDismissCopied}>
                 {pickerText.dismiss}
-              </button>
+              </Button>
               <ul aria-label={pickerText.copyWarnings}>
                 {copied.warnings.map((w, i) => (
                   <li key={i}>{w}</li>

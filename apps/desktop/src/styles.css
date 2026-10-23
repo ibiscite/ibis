@@ -126,7 +126,7 @@ main {
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }
 .notices p { margin: var(--notice-margin); }
 .copy-notice code, .shelf-mark { color: var(--citation); }
-.copy-notice { border-bottom: var(--border-width) solid var(--separator); padding-bottom: var(--copy-padding); }
+.copy-notice { display: flow-root; border-bottom: var(--border-width) solid var(--separator); padding-bottom: var(--copy-padding); }
 .dismiss { float: right; margin: var(--dismiss-margin); }
 [role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
 /* The citation shelf (docs/design/preview.md): one quiet card above the

@@ -163,6 +163,8 @@ export const galleryStates: readonly GalleryState[] = [
     error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" }), query: "memory", results: examples },
   { id: "copied-notice", label: "Copied notice after hiding", library: library(), query: "memory", results: examples, notice: "[@example2026]" },
   // Browser-only review states (board M); the native evidence app captures the fifteen above.
+  { id: "copy-warnings", label: "Copy warnings", library: library(), query: "memory", results: examples,
+    copied: { text: "[@example2026]", warnings: ["A synthetic reference has no year — 研究 العربية <literal>."] } },
   { id: "empty-zotero", label: "Empty Zotero library", library: library({ name: "My Library", snapshot_name: "My Library", zotero: true, snapshot_zotero: true, references: 0 }) },
   { id: "reloading", label: "Reloading with retained references", library: library({ state: "reloading", references: 2 }), query: "memory", results: examples.slice(0, 2) },
   { id: "zotero-unavailable", label: "Zotero unavailable without a snapshot", library: library({ state: "error", name: "Zotero library", snapshot_name: null, has_snapshot: false, zotero: true, references: 0,
