@@ -1,16 +1,17 @@
 //! The BibTeX reader must never panic, whatever bytes it is given.
 
+#[path = "support/subprocess_watchdog.rs"]
+mod subprocess_watchdog;
+
 use ibis_core::{
     bibtex::load_str,
     model::{LoadResult, WarningKind},
 };
 use proptest::prelude::*;
+use std::time::Instant;
 
 #[test]
 fn long_author_whitespace_runs_finish_before_the_deadline() {
-    use std::process::Command;
-    use std::time::{Duration, Instant};
-
     const CHILD: &str = "IBIS_AUTHOR_WHITESPACE_TEST_CHILD";
     if std::env::var_os(CHILD).is_some() {
         let start = Instant::now();
@@ -31,29 +32,11 @@ fn long_author_whitespace_runs_finish_before_the_deadline() {
         eprintln!("synthetic author load: {:?}", start.elapsed());
         return;
     }
-    // Keep the deadline outside the loader process so a regression cannot hang CI.
-    let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
-        .args([
-            "--exact",
-            "long_author_whitespace_runs_finish_before_the_deadline",
-            "--nocapture",
-        ])
-        .env(CHILD, "1")
-        .spawn()
-        .unwrap_or_else(|e| panic!("{e}"));
-    let start = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e}")) {
-            assert!(status.success());
-            break;
-        }
-        if start.elapsed() >= Duration::from_secs(2) {
-            child.kill().unwrap_or_else(|e| panic!("{e}"));
-            child.wait().unwrap_or_else(|e| panic!("{e}"));
-            panic!("synthetic author load exceeded the 2 second deadline");
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    subprocess_watchdog::assert_finishes(
+        "long_author_whitespace_runs_finish_before_the_deadline",
+        CHILD,
+        "synthetic author load exceeded the 2 second deadline",
+    );
 }
 
 #[test]

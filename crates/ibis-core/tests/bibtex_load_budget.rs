@@ -1,7 +1,9 @@
 //! Bound hostile work without truncating ordinary large libraries.
 
-use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Instant;
+
+#[path = "support/subprocess_watchdog.rs"]
+mod subprocess_watchdog;
 
 use ibis_core::{bibtex::load_str, model::WarningKind};
 
@@ -67,23 +69,9 @@ fn distinct_aliases_share_one_load_budget() {
         assert!(warnings[0].line.is_some() && warnings[0].key.is_some());
         return;
     }
-    // Run this test's loader in a killable process, so a regression cannot hang CI.
-    let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
-        .args(["--exact", "distinct_aliases_share_one_load_budget", "--nocapture"])
-        .env(CHILD, "1")
-        .spawn()
-        .unwrap_or_else(|e| panic!("{e}"));
-    let start = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e}")) {
-            assert!(status.success());
-            break;
-        }
-        if start.elapsed() >= Duration::from_secs(2) {
-            child.kill().unwrap_or_else(|e| panic!("{e}"));
-            child.wait().unwrap_or_else(|e| panic!("{e}"));
-            panic!("synthetic load exceeded the 2 second deadline");
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    subprocess_watchdog::assert_finishes(
+        "distinct_aliases_share_one_load_budget",
+        CHILD,
+        "synthetic load exceeded the 2 second deadline",
+    );
 }
