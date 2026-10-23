@@ -16,7 +16,12 @@ pub(super) struct Progress(pub Option<Snapshot>);
 
 impl Progress {
     pub fn begin(&mut self) -> Option<u32> {
-        let attempt = self.0.as_ref().map_or(Some(1), |s| s.attempt.checked_add(1))?;
+        let Some(attempt) = self.0.as_ref().map_or(Some(1), |s| s.attempt.checked_add(1)) else {
+            if let Some(s) = self.0.as_mut() {
+                s.phase = "failed";
+            }
+            return None;
+        };
         self.0 = Some(Snapshot {
             attempt,
             revision: 0,
@@ -89,5 +94,6 @@ mod tests {
         assert_eq!((s.received, s.total, s.revision), (MAX_BYTES, None, 0));
         p.0.as_mut().unwrap_or_else(|| panic!("snapshot")).attempt = u32::MAX;
         assert_eq!(p.begin(), None);
+        assert_eq!(p.0.as_ref().map(|s| s.phase), Some("failed"));
     }
 }

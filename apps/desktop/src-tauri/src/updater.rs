@@ -354,6 +354,7 @@ const INSTALL_FAILURE_MESSAGE: &str = "The update could not be installed. Try ag
 async fn install_update(app: &AppHandle, update: Update) {
     let attempt = app.state::<Updates>().progress.lock().ok().and_then(|mut p| p.begin());
     let Some(attempt) = attempt else {
+        publish_progress(app);
         app.state::<Updates>().busy.store(false, Ordering::SeqCst);
         installation_failed(app);
         return;
