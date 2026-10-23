@@ -4060,7 +4060,7 @@ $clause=$clause.Replace('[System.Windows.Automation.', '[IbisClickContract.')
 $operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
 [Console]::Error.WriteLine('WINDOWS CLICK CONTRACT parse-ready')
 [Console]::Error.WriteLine('WINDOWS CLICK CONTRACT compile-start')
-Add-Type @'
+Add-Type -ReferencedAssemblies System.Runtime -TypeDefinition @'
 using System;
 public static class IbisSmoke {
  public static bool Valid=true, Visible=true, ReadFails=false, VisibilityFails=false;
