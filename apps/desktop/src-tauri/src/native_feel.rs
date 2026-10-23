@@ -17,6 +17,15 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 struct Cache {
     requested: Option<Appearance>,
     applied: Appearance,
+    accent: Option<Option<[f64; 3]>>,
+}
+
+impl Cache {
+    fn accent_changed(&mut self, accent: Option<[f64; 3]>, replay: bool) -> bool {
+        let changed = replay || self.accent != Some(accent);
+        self.accent = Some(accent);
+        changed
+    }
 }
 
 fn warning() {
@@ -49,7 +58,7 @@ fn schedule(app: &AppHandle) {
     let handle = app.clone();
     if app
         .run_on_main_thread(move || {
-            refresh(&handle);
+            refresh(&handle, false);
         })
         .is_err()
     {
@@ -65,7 +74,7 @@ pub(crate) async fn native_appearance(app: AppHandle) -> String {
     let handle = app.clone();
     if app
         .run_on_main_thread(move || {
-            let _ = send.try_send(refresh(&handle));
+            let _ = send.try_send(refresh(&handle, true));
         })
         .is_err()
     {
@@ -75,7 +84,7 @@ pub(crate) async fn native_appearance(app: AppHandle) -> String {
     receive.recv().await.unwrap_or(Appearance::Opaque).name().to_owned()
 }
 
-fn refresh(app: &AppHandle) -> Appearance {
+fn refresh(app: &AppHandle, replay: bool) -> Appearance {
     let Some(window) = app.get_webview_window("main") else {
         return Appearance::Opaque;
     };
@@ -99,6 +108,12 @@ fn refresh(app: &AppHandle) -> Appearance {
         warning();
         return Appearance::Opaque;
     };
+    // Accent changes and query replay are independent of material success and
+    // cache state, including opaque mode before JavaScript has subscribed.
+    let accent = platform::accent();
+    if cache.accent_changed(accent, replay) && window.emit("accent:changed", accent).is_err() {
+        warning();
+    }
     if cache.requested == Some(requested) {
         return cache.applied;
     }
@@ -137,6 +152,21 @@ mod tests {
     use std::io::{Read, Write};
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn accent_changes_and_query_replays_ignore_unchanged_opaque_material() {
+        let mut cache = super::Cache {
+            requested: Some(super::Appearance::Opaque),
+            ..Default::default()
+        };
+        let yellow = Some([1.0, 0.72, 0.0]);
+        assert!(cache.accent_changed(yellow, false));
+        assert!(!cache.accent_changed(yellow, false));
+        assert!(cache.accent_changed(yellow, true));
+        assert!(cache.accent_changed(None, false));
+        assert!(cache.accent_changed(None, true));
+        assert_eq!(cache.applied, super::Appearance::Opaque);
+    }
 
     #[test]
     fn appearance_warning_survives_closed_stderr() {

@@ -57,3 +57,20 @@ test("live native changes replace startup state and reject invalid modes", async
   expect(document.documentElement.dataset.nativeAppearance).toBe("opaque");
   dispose();
 });
+
+test("a newer event survives a failed initial read and disposal rejects late callbacks", async () => {
+  let changed!: (value: unknown) => void;
+  let reject!: (error: Error) => void;
+  const ready = installNativeAppearance(() => new Promise((_, fail) => { reject = fail; }), async (handler) => {
+    changed = handler;
+    return () => {};
+  });
+  await Promise.resolve();
+  changed("vibrancy");
+  reject(new Error("synthetic"));
+  const dispose = await ready;
+  expect(document.documentElement.dataset.nativeAppearance).toBe("vibrancy");
+  dispose();
+  changed("mica");
+  expect(document.documentElement.dataset.nativeAppearance).toBe("opaque");
+});

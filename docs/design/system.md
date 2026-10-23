@@ -58,7 +58,7 @@ browser comparisons verify the winning values and rendered appearance.
 | D3 | **Per-OS radius values:** macOS 15: win 12, control 6, menu 8 (verify). macOS 26: win 28, control capsule in the header, 8 in content, menu 12. Windows 11: win/overlay/card 8, control/row/tile 4. GNOME (libadwaita 1.8+ look): win/card 15, derived row 7, control/tile 6, popover 12. | `--r-*` |
 | D4 | **Surfaces are four layers:** `--surface-window` (base) < `--surface` (content sheet) < `--surface-raised` (band, cards, shelf) < `--surface-overlay` (menus, popovers, dialogs). Values from soft depth B. | §2 |
 | D5 | **Text has four levels:** `--text`, `--muted` (secondary, always 4.5:1), `--text-tertiary` (icons at rest, placeholder hints, 3:1 minimum, never for sentences), `--text-disabled`. | |
-| D6 | **Accent is always the system's.** `--accent` (fill), `--accent-text` (accent as text or glyph, 4.5:1), `--text-on-accent`. Ibis never offers an accent override. On Windows and GNOME the accent is injected from Rust (#763). | |
+| D6 | **Accent is always the system's.** `--accent` (fill), `--accent-text` (accent as text or glyph, 4.5:1), `--text-on-accent`. Ibis never offers an accent override. Native accent projection starts with macOS; Windows and GNOME providers follow (#763). | |
 | D7 | **Selection is a fill, never a ring.** macOS and GNOME: full accent fill with `--text-on-accent`. Windows: subtle fill plus a 3 × 16 px accent pill. `--row-inactive-background` for a kept-open picker that lost focus. Menu highlight: accent fill on macOS, subtle fill on Windows and GNOME. | `--row-active-*`, `--menu-highlight*` |
 | D8 | **Focus ring only on keyboard focus** (`:focus-visible` / `data-focus-visible`). macOS: 2 px accent, 1 px gap. Windows: 2 px text-colour outer, 1 px surface inner. GNOME: 2 px half-accent mixed to 3:1, drawn **inside** (offset −2 px) so scroll containers never clip it. Contrast modes: 2 px `CanvasText`. | `--focus-ring-*` |
 | D9 | **Scarlet marks the citation only:** the shelf's decorative beak quote mark (the supplied two-head SVG from #888, 20 px tall, scaled with type), the added tile and the logo. The mark sits at the tile column's end on the citation line, mirrors in RTL, dims to 45 % while pending and uses `CanvasText` in contrast modes. The citation's text is in the text colour ([preview.md](preview.md)). Never on a control, link, toggle, progress, badge, selection, focus or error. On an accent-filled selected row the added tile becomes a `--text-on-accent` tile with a scarlet check, so a red or orange accent never meets scarlet fill-on-fill. | `--citation`, `--citation-tile` |
@@ -181,6 +181,15 @@ Native Stop colours are not adopted: Fluent's `#c42b1c` and libadwaita's
 your citation" one colour. Done and Look stay close to the platform hues.
 
 ### 2.3 Appearance and contrast modes
+
+The native bridge reuses `native_appearance` (still returning a material string)
+and its watcher. `accent:changed` carries an optional finite sRGB triple in
+[0,1], replayed on every initial query independently of the material cache.
+Only private CSS inputs are injected. Normal-contrast roles preserve the fill,
+choose readable paired text for rest, hover and pressed primary fills, and
+derive near-black/white accent text and focus cues. Invalid/unavailable input clears the projection to the existing system
+colour fallback. Contrast modes retain their system pairs. Gallery theme
+simulations never adopt the host's accent; native acceptance uses the picker.
 
 - **Light and dark** come from `color-scheme: light dark` and `light-dark()`;
   components never read `prefers-color-scheme`. The Appearance setting sets
