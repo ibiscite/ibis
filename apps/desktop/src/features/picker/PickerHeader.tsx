@@ -1,4 +1,6 @@
 import type React from "react";
+import { Button } from "../../ui/Button";
+import { composing } from "./shortcuts";
 import { pickerText } from "../../messages";
 import type { Choice } from "./choice";
 import { FormatMenu, type FormatCommand } from "./FormatMenu";
@@ -31,21 +33,27 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
       <label className="visually-hidden" htmlFor="search">
         {pickerText.searchLabel}
       </label>
-      <input
-        id="search"
-        type="search"
-        placeholder={pickerText.searchPlaceholder}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={expanded}
-        aria-controls="results"
-        aria-activedescendant={activeDescendant}
-        ref={inputRef}
-        autoFocus
-        value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-        onKeyDown={onSearchKeyDown}
-      />
+      <div className="search-field" title=""
+        onKeyDownCapture={(e) => { if (composing(e)) e.stopPropagation(); }}
+        onKeyUpCapture={(e) => { if (composing(e)) e.stopPropagation(); }}>
+        <input
+          id="search"
+          type="search"
+          placeholder={pickerText.searchPlaceholder}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={expanded}
+          aria-controls="results"
+          aria-activedescendant={activeDescendant}
+          ref={inputRef}
+          autoFocus
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={onSearchKeyDown}
+        />
+        {query !== "" && <Button variant="icon" className="search-clear" aria-label={pickerText.clearSearch}
+          onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
+      </div>
       {showFormat && <FormatMenu format={format} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
     </header>
   );

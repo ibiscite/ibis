@@ -32,7 +32,8 @@ main {
    row titles start (docs/design.md, "Edges line up"). */
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }
 /* Reserve readable query space before wrapping controls, at every text size. */
-#search { flex: 1; width: auto; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); height: var(--field-h); font-size: var(--search-size); line-height: var(--search-line); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
+.search-field { --search-clear-size: var(--control-min-size); position: relative; display: flex; flex: 1; min-width: min(var(--search-min-width), calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap))); }
+#search { width: 100%; min-width: 0; height: max(var(--field-h), calc(var(--search-clear-size) + var(--space-1))); font-size: var(--search-size); line-height: var(--search-line); letter-spacing: var(--search-tracking); background: var(--clear); border: 0; padding: 0; outline-offset: var(--search-focus-offset); cursor: text; user-select: text; }
 #search::placeholder { color: var(--muted); }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue (Windows adds its accent underline). Contrast and forced colours restore
@@ -40,8 +41,10 @@ main {
    16 px glyph in a 32 px target. */
 #search { border-radius: var(--r-row); }
 #search:focus-visible { outline: none; box-shadow: none; }
-#search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: var(--control-min-size); height: var(--control-min-size); margin: 0; background: var(--muted); -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; cursor: default; }
-#search::-webkit-search-cancel-button:hover { background: var(--text); }
+#search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+.search-clear.ui-button { --focus-ring-offset: calc(-1 * var(--focus-ring-width)); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); width: var(--search-clear-size); height: var(--search-clear-size); }
+.search-clear::before { content: ""; width: var(--icon-size); height: var(--icon-size); background: currentColor; mask: var(--clear-glyph) center / contain no-repeat; }
+@media (pointer: coarse) { .search-field { --search-clear-size: 2.75rem; } }
 /* Windows and Linux search in a framed 16 px text box with the icon inside it.
    The icon overlaps the box's start padding, so the flex row never changes;
    the box starts at the inset and its text still starts at the row titles. */
@@ -54,6 +57,7 @@ main {
 :root[data-platform="windows"] #search:focus { outline: none; background: var(--field-active-background); border-bottom-color: var(--accent); box-shadow: inset 0 calc(-1 * var(--border-width)) var(--accent); }
 /* Linux: a framed entry. */
 :root[data-platform="linux"] #search { border: var(--border-width) solid var(--clear); }
+:root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
 .results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; padding: var(--inset); scrollbar-width: thin; }
@@ -211,7 +215,7 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   [role="option"][data-citation-selected] .result-tile { background: CanvasText; color: Canvas; }
   [role="option"][data-active][data-citation-selected] .result-tile { background: HighlightText; color: Highlight; }
   .search-bar:focus-within { outline: var(--focus-ring-width) solid var(--selected-background); outline-offset: var(--forced-search-offset); }
-  #search::-webkit-search-cancel-button { forced-color-adjust: none; background: FieldText; }
+  .search-clear::before { forced-color-adjust: none; background: ButtonText; }
   #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-ring-width) solid CanvasText; outline-offset: var(--focus-ring-search-offset); }
   :root[data-platform="windows"] [role="option"][data-active]::before { background: HighlightText; }
 }
@@ -221,7 +225,7 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   main { height: auto; min-height: var(--picker-height); overflow: visible; }
   .results-area { flex: none; overflow: visible; }
   /* Keep an editable search row when enlarged text leaves no room for controls. */
-  #search { flex-basis: calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap)); }
+  .search-field { flex-basis: calc(100% - var(--lead) - var(--search-icon-width) - var(--lead-gap)); }
   .result-meta { flex-wrap: wrap; }
   /* Authors and container flow as one wrapping run of text. */
   .result-byline { display: block; }

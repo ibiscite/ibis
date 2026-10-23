@@ -428,13 +428,15 @@ test("the search has a quiet clear glyph, and contrast restores its ring", () =>
   expect(tokens).toMatch(/--focus-ring-width:\s*2px/);
   const clear = rules(styles, "#search::-webkit-search-cancel-button");
   expect(clear).toMatch(/appearance:\s*none/);
-  expect(clear).toMatch(/width:\s*var\(--control-min-size\)/);
-  expect(clear).toMatch(/background:\s*var\(--muted\)/);
-  expect(clear).toMatch(/center \/ var\(--icon-size\)/);
+  expect(clear).toMatch(/display:\s*none/);
+  const glyph = rules(styles, ".search-clear::before");
+  expect(glyph).toMatch(/width:\s*var\(--icon-size\)/);
+  expect(glyph).toMatch(/background:\s*currentColor/);
+  expect(glyph).toMatch(/mask:\s*var\(--clear-glyph\)/);
   expect(tokens).toMatch(/--control-min-size:\s*2rem/);
   expect(tokens).toMatch(/--icon-size:\s*1rem/);
   const forced = styles.slice(styles.indexOf("@media (forced-colors: active)"));
-  expect(rules(forced, "#search::-webkit-search-cancel-button")).toMatch(/background:\s*FieldText/);
+  expect(rules(forced, ".search-clear::before")).toMatch(/background:\s*ButtonText/);
   // The gallery's contrast preview restores the ring as prefers-contrast does.
   expect(rules(gallery, ':root[data-gallery-theme="contrast"] #search:focus-visible'))
     .toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
@@ -672,7 +674,7 @@ function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = 
         return (!prefix || doc.documentElement.matches(prefix)) && (!look || look === platform);
       });
       if (!active) continue;
-      const scope = /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
+      const scope = /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
       const values: [string, string][] = Array.from(styled.style).map((name) => [name, styled.style.getPropertyValue(name)]);
       if (scope === "root" && values.some(([name]) => name.startsWith("--")) && !selector.split(/,(?![^()]*\))/).every((part) => /^:root\S*$/.test(part.trim()))) throw new Error(`Unmodeled token scope: ${selector}`);
       blocks.push({ file, selector, scope, values });
@@ -710,7 +712,7 @@ function tokenScopes(blocks: TokenBlock[]) {
   const root = raw("root");
   // Inherited custom properties resolve on the parent, before child overrides.
   const inherited = [...root].map(([name, value]) => [name, resolveToken(value, root) ?? value] as [string, string]);
-  return new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+  return new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
 }
 
 test.each(["macos", "windows", "linux"])("every application var resolves on %s in its active mode, without alias cycles", (platform) => {

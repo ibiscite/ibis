@@ -2362,6 +2362,27 @@ test.each([[30_000, "first"], [61_000, ""]])(
     }
   });
 
+test("Search Clear preserves citations and invalidates an escaped query before reopening", async () => {
+  const calls = backend({ search: ({ query }) => [result("a", query ? `First ${String(query)}` : "First")] });
+  render(<App />);
+  const box = screen.getByRole("combobox", { name: "Search references" }) as HTMLInputElement;
+  await screen.findByText("First");
+  fireEvent.change(box, { target: { value: "before" } });
+  fireEvent.keyDown(box, { key: "Escape" });
+  fireEvent.change(box, { target: { value: "研究" } });
+  await screen.findByText("First 研究");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  await screen.findByRole("button", { name: /^Remove a from the selection$/ });
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(box.value).toBe("");
+  expect(document.activeElement).toBe(box);
+  expect(screen.getByRole("button", { name: /^Remove a from the selection$/ })).toBeTruthy();
+  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  expect(box.value).toBe("");
+  fireEvent.keyDown(box, { key: "Enter", repeat: true });
+  expect(calls).not.toContain("copy_citation");
+});
+
 test("a search cleared by Escape stays cleared once something else is typed or copied", async () => {
   backend({ search: () => [result("a", "First")], copy_citation: () => ({ text: "@a", warnings: [] }) });
   render(<App />);
@@ -2494,7 +2515,7 @@ test("alternate footer buttons use the current add, remove, clear and hide actio
   expect(await screen.findByRole("list", { name: "Selected references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Remove from citation" }));
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Clear search" }));
   expect((box as HTMLInputElement).value).toBe("");
   expect(document.activeElement).toBe(box);
   fireEvent.click(screen.getByRole("button", { name: "Hide Ibis" }));
@@ -2625,7 +2646,7 @@ test("when nothing matches, the picker offers to clear the search", async () => 
   expect(await screen.findByText("No matching references")).toBeTruthy();
   expect(screen.getByText("Try a surname, year or fewer words.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Search all Zotero libraries" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  fireEvent.click(within(document.querySelector(".empty-state") as HTMLElement).getByRole("button", { name: "Clear search" }));
   expect(box.value).toBe("");
   expect(document.activeElement).toBe(box);
   expect(await screen.findByText("Type to find a reference")).toBeTruthy();
