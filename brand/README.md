@@ -20,7 +20,7 @@ The logo, app icon and other brand files for Ibis. Use the files in [`exports/`]
 | The logo drawing itself (websites, slides) | `exports/ibis-logo-animated.svg`, `exports/ibis-logo-animated-on-dark.svg` |
 | The bird alone drawing itself (splash, loading, video corners) | `exports/ibis-mark-animated.svg`, `exports/ibis-mark-animated-on-dark.svg` |
 | Video title, end card and YouTube banner | `exports/png/video-title-card.png`, `-title-card-dark.png`, `-end-card.png`, `-youtube-banner.png` (1920 × 1080; banner 2560 × 1440) |
-| A YouTube thumbnail | Edit the two lines in `exports/video/thumbnail-template.svg`, then export at 1280 × 720 |
+| A YouTube thumbnail | Edit `words.thumbnail` in `settings.json`, rebuild, then use `exports/png/video-thumbnail-template.png` |
 | The quote mark from the app's citation shelf | `exports/ibis-quote-beak.svg` |
 
 ## Rules
@@ -40,17 +40,28 @@ M is the height of the bird.
 
 ## Changing the brand
 
-Two files hold everything you might want to change:
+1. Edit `settings.json` for colours, sizes, depth, motion or words, or `master.svg`
+   for shapes. The wordmark is Inter Display SemiBold, already outlined.
+2. From the repository root, run `python3 brand/build.py`. This rebuilds every
+   brand export, the Windows/macOS/Linux icons and the small in-app beak.
+3. Look at the changed PNGs on light and dark backgrounds, including small
+   entries. Check that eyes, shadows and text are clear and nothing clips.
+   For YouTube, keep text inside the centre safe area (1546 × 423).
+4. Open a pull request with the inputs and all generated changes.
+5. After merging, the maintainer re-uploads `exports/png/github-social-preview.png`
+   and `exports/png/ibis-avatar-512.png` to GitHub if they changed. Update any
+   external profile image, such as the Notion project icon, from those same files.
 
-- `settings.json`: every colour, size, spacing, depth (rim light, shade and shadow), animation timing and line of text, with plain names. Small adjustments happen here.
-- `master.svg`: the shapes as exact outlines with no padding: the bird (`mark`), its eye (`eye`), the wordmark (`wordmark`, Inter Display SemiBold, outlined) and the quote mark (`beak`). Edit it only to change a shape.
+The build needs Python 3, librsvg's `rsvg-convert`, fontconfig and Inter Display
+(the Linux CI packages are `librsvg2-bin` and `fonts-inter`). The [desktop icon
+notes](../apps/desktop/src-tauri/icons/source/README.md) describe platform sizing
+and formats. Rendering uses Pango's fontconfig backend on every platform so it
+matches the font check, rather than the host's native font substitutions.
+Never edit generated SVGs, PNGs, icon containers or `src/brand.ts`
+by hand.
 
-After editing either, rebuild every export from the repository root:
-
-```sh
-python3 brand/build.py
-```
-
-It needs Python 3 and librsvg's `rsvg-convert`; the social preview, video cards and thumbnail need the Inter font installed. After changing a line of text, check `exports/png/video-youtube-banner.png`: the banner's text must stay inside YouTube's centre safe area (1546 × 423). Never edit files in `exports/` by hand. The desktop app's own icons are built separately from `apps/desktop/src-tauri/icons/source/`.
+`node scripts/check.mjs` includes the drift check; Linux CI runs it with
+`--brand-assets`. It rebuilds into a temporary folder and names every stale,
+missing or unexpected generated file, without changing the checkout.
 
 Design explorations (the design canvas, rejected options, screenshots) stay outside the repository. When one is chosen, record it in `docs/design.md` or `docs/design/system.md` and here.

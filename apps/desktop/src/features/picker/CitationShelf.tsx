@@ -5,6 +5,7 @@ import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
 import { Button } from "../../ui/Button";
+import { beak } from "../../brand";
 import "./CitationShelf.css";
 
 /** The shelf shows at most this many chips; the rest fold into "+N"
@@ -123,13 +124,9 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
             <section ref={outputRef} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
               data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
               tabIndex={focusable && shown && typeof shown === "object" ? 0 : undefined}>
-              <svg className="shelf-mark" viewBox="23 25 58 51" fill="currentColor" aria-hidden="true" focusable="false"
-                preserveAspectRatio="xMaxYMid meet">
-                <g transform="rotate(180 50 50)">
-                  <g transform="rotate(60 30 36)"><circle cx="30" cy="36" r="10" /><path d="M30 26C44 26 55 38 58 62 51 48 43 42 35 44.5z" /></g>
-                  <g transform="rotate(60 64 36)"><circle cx="64" cy="36" r="10" /><path d="M64 26C78 26 89 38 92 62 85 48 77 42 69 44.5z" /></g>
-                </g>
-              </svg>
+              {/* Static generated artwork, never user or library markup. */}
+              <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
+                preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />
               {shown === null && <p role="status">{pickerText.previewPending}</p>}
               {shown === "failed" && <p role="alert">{pickerText.previewError}</p>}
               {shown === "stale" && <p role="status">{pickerText.shelfStale}</p>}

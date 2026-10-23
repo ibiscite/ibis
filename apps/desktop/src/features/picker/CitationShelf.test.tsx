@@ -236,7 +236,8 @@ test("the beak quote is decorative, unfocusable and confined to the output line"
   const { container, rerender } = render(shelf({ selected: chosen([record("a")]), shown: output, focusable: true }));
   const preview = screen.getByRole("region", { name: "Preview" });
   const mark = preview.querySelector("svg.shelf-mark");
-  expect(mark?.getAttribute("viewBox")).toBe("23 25 58 51");
+  const master = new DOMParser().parseFromString(readFileSync(new FileURL("../../../../../brand/master.svg", import.meta.url), "utf8"), "image/svg+xml");
+  expect(mark?.getAttribute("viewBox")).toBe(master.querySelector('[id="beak"]')?.getAttribute("viewBox"));
   expect(mark?.getAttribute("aria-hidden")).toBe("true");
   expect(mark?.getAttribute("focusable")).toBe("false");
   expect(mark?.querySelectorAll("circle")).toHaveLength(2);

@@ -324,7 +324,11 @@ jobs:
           # Match runner-images' acquire bounds even on images with older defaults (#857).
           ibis_apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15)
           sudo apt-get "${ibis_apt_options[@]}" update
-          sudo apt-get "${ibis_apt_options[@]}" install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
+          sudo apt-get "${ibis_apt_options[@]}" install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev librsvg2-bin fonts-inter libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
+
+      - name: Check generated brand assets (Linux)
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        run: node scripts/check.mjs --brand-assets
 
       - name: Cache Rust build
         if: env.NATIVE == 'true'

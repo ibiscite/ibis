@@ -67,6 +67,8 @@ All state lives on GitHub, so any agent can stop at any point and any other can 
 
 Follow the [architecture principles](docs/architecture.md#principles), including privacy, escaping and endpoints, and the contract documented with each component. No real library data, document text, paths or credentials in code, tests, logs, issues or pull requests.
 
+Logos and icons come only from `brand/`. Change `settings.json` or `master.svg`, run `python3 brand/build.py`, and never edit generated files by hand.
+
 ## Version control safety
 
 - Run `git status` before editing; never reset, restore, delete or reformat work you did not make.

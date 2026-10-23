@@ -170,9 +170,11 @@ icons say what a reference is: article, book, chapter, thesis, web page, report
 and other (chosen from its CSL type). They never reuse an attachment drawing
 (the document or the globe), so a row never shows the same picture twice.
 
-**App icon (#579).** Direction 1, the ibis, variation B (upright stance and
-shortened neck), gradient G1 (`#e5532d` to `#c0361a`), with separate small and
-symbolic masters. How the assets are regenerated is in the
+**App icon (#952).** The [final brand kit](../brand/README.md): a scarlet bird
+with soft depth on a light tile, with a 62% glyph-to-tile ratio and the kit's
+optical centring. Windows uses the bird on transparency; macOS and GNOME retain
+their platform face sizes. Small and symbolic art comes from the same master,
+with a thicker neck and flat colour. How the assets are regenerated is in the
 [icon source notes](../apps/desktop/src-tauri/icons/source/README.md).
 
 **Per platform.** Only these change:
