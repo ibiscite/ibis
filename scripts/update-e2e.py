@@ -40,6 +40,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 import urllib.request
 from pathlib import Path
+# Keep sibling helpers available to direct execution and importlib/runpy callers.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from native_test_settings import clean_settings, settings_exist
 
 IDENTIFIER = "io.github.ibiscite.ibis.nightly"
 BUTTON = "Install and Restart"
@@ -193,14 +196,9 @@ def claim_settings(config):
     """Windows and macOS have no settings-folder override, so the test uses the
     account's own folder and must never overwrite someone's real settings."""
     folder = config / IDENTIFIER
-    if any(os.path.lexists(folder / name) for name in ("settings.json", "settings.json.bak", "settings.json.tmp")):
+    if settings_exist(folder / "settings.json"):
         raise SystemExit(f"Ibis Nightly settings already exist in {folder}; use a disposable account")
     return seed_settings(config)
-
-
-def clean_settings(settings):
-    for name in ("settings.json", "settings.json.bak", "settings.json.tmp"):
-        (settings.parent / name).unlink(missing_ok=True)
 
 
 def environment(inherited, config, library):

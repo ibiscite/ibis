@@ -23,6 +23,9 @@ import tempfile
 import time
 import unittest
 from unittest.mock import Mock, call, patch
+# Contract subprocesses also load this file with runpy, outside Python's script path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from native_test_settings import clean_settings, settings_exist
 
 
 class Unavailable(RuntimeError):
@@ -473,15 +476,9 @@ def answer_update_question(settings):
 
 
 def claim_settings(candidate):
-    if any(candidate.with_suffix(suffix).exists() or candidate.with_suffix(suffix).is_symlink()
-           for suffix in (".json", ".json.bak", ".json.tmp")):
+    if settings_exist(candidate):
         raise Unavailable("Use a disposable desktop account without existing Ibis settings")
     return candidate
-
-
-def clean_settings(owned):
-    for suffix in (".json", ".json.bak", ".json.tmp"):
-        owned.with_suffix(suffix).unlink(missing_ok=True)
 
 
 CLIPBOARD_SENTINEL = "Ibis native smoke clipboard sentinel"
@@ -2446,12 +2443,19 @@ class ContractTests(unittest.TestCase):
             {"name": "Nothing was copied. Try again, or use Reload." if error else "", "role": "AXStaticText"},
         ]}
 
+    def copy_setup(self, step=10):
+        native = Mock()
+        native.snapshot.return_value = self.copy_snapshot()
+        return native, {}, self.CopyClock(step)
+
+    def copy_time(self, clock):
+        return patch.multiple(time, monotonic=clock.monotonic, sleep=clock.sleep)
+
     def test_native_copy_accepts_a_later_equality_poll_without_another_return(self):
-        native, report, clock = Mock(), {}, self.CopyClock(19)
+        native, report, clock = self.copy_setup(19)
         sentinel = "Ibis native smoke clipboard sentinel"
         native.clipboard.side_effect = [sentinel, sentinel, "[@smoke000001]"]
-        native.snapshot.return_value = self.copy_snapshot()
-        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep):
+        with self.copy_time(clock):
             copy_with_diagnostics(native, report)
         self.assertEqual(native.key.call_args_list, [call("Return")])
         self.assertEqual(native.clipboard.call_count, 3)
@@ -2460,23 +2464,21 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
 
     def test_return_waits_until_the_picker_owns_the_keyboard(self):
-        native, report, clock = Mock(), {}, self.CopyClock(1)
+        native, report, clock = self.copy_setup(1)
         sentinel = "Ibis native smoke clipboard sentinel"
         native.clipboard.side_effect = [sentinel, "[@smoke000001]"]
-        native.snapshot.return_value = self.copy_snapshot()
         native.picker_key.side_effect = [False, False, True]
-        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep):
+        with self.copy_time(clock):
             copy_with_diagnostics(native, report, native.picker_key)
         self.assertEqual(native.mock_calls[:7], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(),
                                                  call.picker_key(), call.picker_key(), call.picker_key(), call.key("Return")])
         self.assertNotIn("copy_failure", report)
 
     def test_return_is_never_sent_while_another_window_owns_the_keyboard(self):
-        native, report, clock = Mock(), {}, self.CopyClock()
+        native, report, clock = self.copy_setup()
         native.clipboard.return_value = "Ibis native smoke clipboard sentinel"
-        native.snapshot.return_value = self.copy_snapshot()
         native.picker_key.return_value = False
-        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+        with self.copy_time(clock), \
              patch("sys.stderr", new_callable=io.StringIO), \
              self.assertRaisesRegex(AssertionError, "Timed out: picker is the key window before Return"):
             copy_with_diagnostics(native, report, native.picker_key)
@@ -2488,11 +2490,10 @@ class ContractTests(unittest.TestCase):
         for probe, expected in ((Mock(side_effect=[True, False]), False),
                                 (Mock(side_effect=[True, RuntimeError("private helper payload")]), None)):
             with self.subTest(expected=expected):
-                native, report, clock = Mock(), {}, self.CopyClock()
+                native, report, clock = self.copy_setup()
                 native.clipboard.return_value = "Ibis native smoke clipboard sentinel"
-                native.snapshot.return_value = self.copy_snapshot()
                 errors = io.StringIO()
-                with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+                with self.copy_time(clock), \
                      patch("sys.stderr", errors), self.assertRaisesRegex(AssertionError, "expected citation on OS clipboard"):
                     copy_with_diagnostics(native, report, probe)
                 self.assertIs(report["copy_failure"]["key_window_after_timeout"], expected)
@@ -2501,11 +2502,12 @@ class ContractTests(unittest.TestCase):
                 self.assertNotIn("private", errors.getvalue() + json.dumps(report))
 
     def test_native_copy_timeout_records_fresh_state_without_reading_clipboard_again(self):
-        native, report, clock = Mock(), {"last_native_state": {"visible": True}}, self.CopyClock()
+        native, report, clock = self.copy_setup()
+        report["last_native_state"] = {"visible": True}
         sentinel = "Ibis native smoke clipboard sentinel"
         native.clipboard.side_effect = [sentinel, sentinel, sentinel, "[@smoke000001]"]
         native.snapshot.side_effect = [self.copy_snapshot(), self.copy_snapshot(visible=False, focused=False, error=True)]
-        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+        with self.copy_time(clock), \
              patch("sys.stderr", new_callable=io.StringIO), self.assertRaisesRegex(AssertionError, "Timed out: expected citation on OS clipboard"):
             copy_with_diagnostics(native, report)
         facts = report["copy_failure"]
@@ -2530,7 +2532,7 @@ class ContractTests(unittest.TestCase):
                     native.clipboard.side_effect = [CLIPBOARD_SENTINEL] + [CLIPBOARD_SENTINEL] * completed + [original, "[@smoke000001]"]
                     native.snapshot.side_effect = [self.copy_snapshot(), self.copy_snapshot(visible=False, focused=False, error=True)]
                     output, errors = io.StringIO(), io.StringIO()
-                    with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+                    with self.copy_time(clock), \
                          patch("sys.stdout", output), patch("sys.stderr", errors), self.assertRaises(type(original)) as caught:
                         copy_with_diagnostics(native, report)
                     self.assertIs(caught.exception, original)
@@ -2573,8 +2575,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn(private, output.getvalue() + errors.getvalue() + json.dumps(report))
 
     def test_copy_keeps_success_from_a_poll_started_before_the_deadline(self):
-        native, report, clock = Mock(), {}, self.CopyClock()
-        native.snapshot.return_value = self.copy_snapshot()
+        native, report, clock = self.copy_setup()
         reads = iter(["Ibis native smoke clipboard sentinel", "[@smoke000001]"])
         def clipboard():
             value = next(reads)
@@ -2582,7 +2583,7 @@ class ContractTests(unittest.TestCase):
                 clock.elapsed = 25  # The existing wait accepts this completed read.
             return value
         native.clipboard.side_effect = clipboard
-        with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep):
+        with self.copy_time(clock):
             copy_with_diagnostics(native, report)
         self.assertNotIn("copy_failure", report)
         self.assertEqual(native.key.call_args_list, [call("Return")])
@@ -2618,7 +2619,7 @@ class ContractTests(unittest.TestCase):
     def test_copy_failure_facts_never_record_clipboard_or_accessible_payloads(self):
         for clipboard in ("", "private unexpected clipboard payload"):
             with self.subTest(empty=clipboard == ""):
-                native, report, clock = Mock(), {}, self.CopyClock()
+                native, report, clock = self.copy_setup()
                 native.clipboard.side_effect = ["Ibis native smoke clipboard sentinel", clipboard, clipboard]
                 native.snapshot.return_value = {"visible": True, "nodes": [
                     {"name": "Search references", "role": "AXTextField", "value": "private query", "focused": True},
@@ -2627,7 +2628,7 @@ class ContractTests(unittest.TestCase):
                     {"name": "private Nothing was copied. Try again, or use Reload. suffix"},
                 ]}
                 errors = io.StringIO()
-                with patch(__name__ + ".time.monotonic", clock.monotonic), patch(__name__ + ".time.sleep", clock.sleep), \
+                with self.copy_time(clock), \
                      patch("sys.stderr", errors), self.assertRaises(AssertionError):
                     copy_with_diagnostics(native, report)
                 facts = report["copy_failure"]
