@@ -5,6 +5,7 @@ Installs the previous Ibis Nightly with automatic update checks on, waits for
 it to offer the newly published nightly, accepts the install/restart action through
 the system's accessibility interface and checks that the installed app was
 replaced by the new version and that the new version started in its place.
+The seeded synthetic library and shortcut must remain in its settings.
 
 - Linux: the AppImage, under a virtual display, pressed through AT-SPI.
 - Windows: the setup executable, pressed through UI Automation; the updater
@@ -32,6 +33,7 @@ import os
 import platform
 import plistlib
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -45,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from native_test_settings import clean_settings, settings_exist
 
 IDENTIFIER = "io.github.ibiscite.ibis.nightly"
+SHORTCUT = "Control+Alt+Y"
 BUTTON = "Install and Restart"
 # The app's first check comes 30 seconds after start; the download is ~100 MB.
 OFFER_TIMEOUT = 180
@@ -184,30 +187,50 @@ def digest(path):
     return h.hexdigest()
 
 
-def seed_settings(config):
+def seed_settings(config, library):
     """Update checks already allowed, so the first-launch question never shows."""
     settings = config / IDENTIFIER / "settings.json"
     settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text(json.dumps({"schema_version": 2, "update_checks": True}), encoding="utf-8")
+    settings.write_text(json.dumps({"schema_version": 2, "update_checks": True,
+                                    "library": {"bibtex": str(library)}, "shortcut": SHORTCUT}), encoding="utf-8")
     return settings
 
 
-def claim_settings(config):
-    """Windows and macOS have no settings-folder override, so the test uses the
-    account's own folder and must never overwrite someone's real settings."""
+def claim_settings(config, library):
+    """This harness uses Windows/macOS's account settings folder and must
+    never overwrite someone's real settings."""
     folder = config / IDENTIFIER
     if settings_exist(folder / "settings.json"):
         raise SystemExit(f"Ibis Nightly settings already exist in {folder}; use a disposable account")
-    return seed_settings(config)
+    return seed_settings(config, library)
 
 
-def environment(inherited, config, library):
-    env = dict(inherited, IBIS_LIBRARY=str(library))
+def environment(inherited, config):
+    env = dict(inherited)
     if config is not None:
         env.update(XDG_CONFIG_HOME=str(config), NO_AT_BRIDGE="0", GTK_MODULES="gail:atk-bridge")
-    for name in ("APPIMAGE", "APPDIR", "IBIS_GALLERY", "IBIS_GALLERY_STATE"):
+    for name in ("APPIMAGE", "APPDIR", "IBIS_GALLERY", "IBIS_GALLERY_STATE", "IBIS_LIBRARY"):
         env.pop(name, None)
     return env
+
+
+def preserved_settings(settings, library):
+    """Fixed facts only: never include settings contents or paths in a failure."""
+    try:
+        metadata = settings.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 65536:
+            raise ValueError("invalid synthetic settings")
+        with settings.open("rb") as source:
+            contents = source.read(65537)
+        if len(contents) > 65536:
+            raise ValueError("oversized synthetic settings")
+        saved = json.loads(contents)
+    except (OSError, ValueError, RecursionError):
+        raise AssertionError("the updated app's synthetic settings could not be read") from None
+    for field, expected in (("library", {"bibtex": str(library)}), ("shortcut", SHORTCUT)):
+        if not isinstance(saved, dict) or saved.get(field) != expected:
+            raise AssertionError(f"the synthetic {field} choice was not preserved")
+    return {"library": True, "shortcut": True}
 
 
 def look_result(stdout):
@@ -296,11 +319,11 @@ def feed_version(url="https://github.com/ibiscite/ibis/releases/download/nightly
 class Linux:
     """The AppImage is copied into the test folder; the updater replaces that file."""
 
-    def __init__(self, folder, args):
+    def __init__(self, folder, args, library):
         import pyatspi
         self.atspi = pyatspi
         self.config = folder / "config"
-        self.settings = seed_settings(self.config)
+        self.settings = seed_settings(self.config, library)
         self.appimage = folder / "Ibis Nightly.AppImage"
         shutil.copyfile(args.previous, self.appimage)
         self.appimage.chmod(0o755)
@@ -347,11 +370,11 @@ class MacOS:
     """The .app from the update archive in a private Applications folder; the
     updater replaces the bundle there and reopens it with LaunchServices."""
 
-    def __init__(self, folder, args):
+    def __init__(self, folder, args, library):
         # Resolved, because LaunchServices reopens /private/var/..., not /var/...
         folder = folder.resolve()
         self.config = None
-        self.settings = claim_settings(Path.home() / "Library/Application Support")
+        self.settings = claim_settings(Path.home() / "Library/Application Support", library)
         applications, expected = folder / "Applications", folder / "expected"
         for target, archive in ((applications, args.previous), (expected, args.expected)):
             target.mkdir()
@@ -406,13 +429,13 @@ class Windows:
     """Installed for the current user by the setup executable; the updater
     runs the new setup executable, which starts the app again."""
 
-    def __init__(self, folder, args):
+    def __init__(self, folder, args, library):
         if not args.version:
             raise SystemExit("--version is required on Windows")
         self.version = args.version
         self.config = None
         roaming = powershell("[Environment]::GetFolderPath('ApplicationData')").strip()
-        self.settings = claim_settings(Path(roaming))
+        self.settings = claim_settings(Path(roaming), library)
         if digest(args.previous) == digest(args.expected):
             raise AssertionError("the previous and the new setup executable are identical")
         before = uninstall_entries()
@@ -537,11 +560,11 @@ def run(args):
             library.write_text("@article{update1, title = {Synthetic update test}, year = {2026}}\n", encoding="utf-8")
             seen = {"helper": None, "probe": None}
             try:
-                install = SYSTEMS[platform.system()](folder, args)
+                install = SYSTEMS[platform.system()](folder, args, library)
                 report["steps"].append("previous nightly installed")
 
                 log = (args.output / "update-e2e-app.log").open("w", encoding="utf-8")
-                app = subprocess.Popen(install.command, env=environment(os.environ, install.config, library),
+                app = subprocess.Popen(install.command, env=environment(os.environ, install.config),
                                        stdout=log, stderr=log, cwd=folder)
                 started.append(app)
                 report["steps"].append("previous nightly started")
@@ -572,6 +595,8 @@ def run(args):
                 if not install.instances() & fresh:
                     raise AssertionError("the new version exited right after the update")
                 report["steps"].append("new version started and stayed up")
+                report["settings_preserved"] = preserved_settings(install.settings, library)
+                report["steps"].append("synthetic library and shortcut choices preserved")
                 report["status"] = "passed"
             except Exception as error:
                 report["error"] = str(error) if isinstance(error, AssertionError) else f"{type(error).__name__}: {error}"
@@ -798,18 +823,89 @@ function Contract-Result($pressed,$how) {
 
     def test_settings_allow_update_checks_in_the_nightly_folder(self):
         with tempfile.TemporaryDirectory() as temporary:
-            settings = seed_settings(Path(temporary))
+            library = Path(temporary) / "synthetic 引用.bib"
+            settings = seed_settings(Path(temporary), library)
             self.assertEqual(settings, Path(temporary) / "io.github.ibiscite.ibis.nightly/settings.json")
-            self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), {"schema_version": 2, "update_checks": True})
+            self.assertEqual(json.loads(settings.read_text(encoding="utf-8")),
+                             {"schema_version": 2, "update_checks": True,
+                              "library": {"bibtex": str(library)}, "shortcut": "Control+Alt+Y"})
+
+    def test_restarted_update_must_keep_choices_without_an_environment_override(self):
+        for changed in ("library", "shortcut", None):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary:
+                def installed(folder, _args, _library):
+                    settings = folder / "settings.json"
+                    choices = {"library": {"bibtex": str(folder / "synthetic.bib")}, "shortcut": "Control+Alt+Y"}
+                    settings.write_text(json.dumps(choices), encoding="utf-8")
+                    def replaced():
+                        if changed:
+                            choices[changed] = "synthetic wrong choice"
+                            settings.write_text(json.dumps(choices), encoding="utf-8")
+                        return True
+                    app = MagicMock(command=["synthetic"], config=None, settings=settings)
+                    app.instances.side_effect = [{42}, {43}, {43}, {43}, {43}]
+                    app.look.return_value = (True, [], None)
+                    app.updated.side_effect = replaced
+                    app.facts.return_value = {}
+                    return app
+                process = MagicMock()
+                process.poll.return_value = None
+                with patch.dict(SYSTEMS, {"Linux": installed}), patch("platform.system", return_value="Linux"), \
+                        patch.dict(os.environ, {"IBIS_LIBRARY": "/synthetic outer override.bib"}), \
+                        patch("subprocess.Popen", return_value=process) as launch, patch("time.sleep"), \
+                        patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"):
+                    self.assertEqual(run(argparse.Namespace(output=Path(temporary))), int(changed is not None))
+                self.assertTrue("IBIS_LIBRARY" not in launch.call_args.kwargs["env"], "library override masks persistence")
+                report = json.loads((Path(temporary) / "update-e2e.json").read_text(encoding="utf-8"))
+                self.assertEqual(report["status"], "failed" if changed else "passed")
+                if not changed:
+                    self.assertEqual(report["settings_preserved"], {"library": True, "shortcut": True})
+
+    def test_settings_verification_refuses_bad_files_without_disclosing_them(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / "synthetic 引用.bib"
+            settings = seed_settings(root, library)
+            original = settings.read_bytes()
+            for contents in (b"", b"{private payload", b"\xff", b"[]", b"null", b"x" * 65537,
+                             b"[" * 2000 + b"]" * 2000):
+                settings.write_bytes(contents)
+                with self.subTest(contents=contents[:8]), self.assertRaises(AssertionError) as failure:
+                    preserved_settings(settings, library)
+                self.assertNotIn(str(root), str(failure.exception))
+                self.assertNotIn("private payload", str(failure.exception))
+            settings.write_bytes(original)
+            saved = json.loads(original)
+            saved["unknown"] = "kept"
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+            settings.unlink()
+            settings.mkdir()
+            with self.assertRaises(AssertionError):
+                preserved_settings(settings, library)
+            settings.rmdir()
+            if hasattr(os, "mkfifo"):
+                os.mkfifo(settings)
+                with patch.object(Path, "open", side_effect=AssertionError("special file was opened")) as opened:
+                    with self.assertRaisesRegex(AssertionError, "synthetic settings could not be read"):
+                        preserved_settings(settings, library)
+                    opened.assert_not_called()
+                settings.unlink()
+            if os.name != "nt":
+                settings.symlink_to(root / "unread synthetic target")
+                with patch.object(Path, "open", side_effect=AssertionError("symlink was opened")) as opened:
+                    with self.assertRaisesRegex(AssertionError, "synthetic settings could not be read"):
+                        preserved_settings(settings, library)
+                    opened.assert_not_called()
 
     def test_claim_never_overwrites_existing_settings_and_clean_removes_only_its_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            settings = claim_settings(root)
+            settings = claim_settings(root, root / "synthetic.bib")
             (settings.parent / "settings.json.bak").write_text("{}", encoding="utf-8")
             (settings.parent / "other.json").write_text("{}", encoding="utf-8")
             with self.assertRaises(SystemExit):
-                claim_settings(root)
+                claim_settings(root, root / "synthetic.bib")
             clean_settings(settings)
             self.assertEqual([entry.name for entry in settings.parent.iterdir()], ["other.json"])
 
@@ -823,7 +919,7 @@ function Contract-Result($pressed,$how) {
                 target = root / "elsewhere.json"
                 (folder / name).symlink_to(target)
                 with self.assertRaises(SystemExit):
-                    claim_settings(root / "config")
+                    claim_settings(root / "config", root / "synthetic.bib")
                 self.assertTrue((folder / name).is_symlink())
                 self.assertFalse(target.exists())
 
@@ -840,13 +936,13 @@ function Contract-Result($pressed,$how) {
                 self.assertEqual(mac.updated(), updated)
 
     def test_environment_drops_an_outer_appimage(self):
-        env = environment({"APPIMAGE": "/outer", "PATH": "/bin"}, Path("/c"), Path("/l.bib"))
+        env = environment({"APPIMAGE": "/outer", "PATH": "/bin"}, Path("/c"))
         self.assertNotIn("APPIMAGE", env)
         self.assertEqual((env["XDG_CONFIG_HOME"], env["PATH"]), (str(Path("/c")), "/bin"))
 
-    def test_environment_without_a_config_folder_sets_only_the_library(self):
-        env = environment({"PATH": "/bin", "IBIS_GALLERY": "1"}, None, Path("/l.bib"))
-        self.assertEqual(env, {"PATH": "/bin", "IBIS_LIBRARY": str(Path("/l.bib"))})
+    def test_environment_without_a_config_folder_uses_the_persisted_library(self):
+        env = environment({"PATH": "/bin", "IBIS_GALLERY": "1", "IBIS_LIBRARY": "/synthetic outer.bib"}, None)
+        self.assertEqual(env, {"PATH": "/bin"})
 
     @unittest.skipIf(os.name == "nt", "AppImages and /proc exist only on Linux")
     def test_instances_match_the_exact_appimage_path(self):
