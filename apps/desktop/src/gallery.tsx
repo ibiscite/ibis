@@ -63,6 +63,7 @@ function seedSteps(root: HTMLElement, state: GalleryState): (() => void)[] {
     if (i > 0) steps.push(() => press(search(), "ArrowDown"));
     steps.push(() => press(search(), "Enter", { shiftKey: true }));
   }
+  if (state.trayExpanded) steps.push(() => root.querySelector<HTMLButtonElement>('.chip-more:not(.chip-fit-measure) button')?.click());
   if (state.pinned) steps.push(() => press(search(), "P", { code: "KeyP", shiftKey: true, ...(navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true }) }));
   if (state.keys) steps.push(() => press(root.querySelector("main"), "?"));
   if (state.menuOpen) steps.push(() => root.querySelector<HTMLButtonElement>('footer button[aria-haspopup]')?.click());
@@ -110,6 +111,31 @@ function selectionContained(root: HTMLElement, state: GalleryState): boolean {
     });
 }
 
+/** Expanded hit areas must stay inside the scrollport and belong to their button. */
+function shelfTargetsContained(root: HTMLElement): boolean {
+  const list = root.querySelector(".shelf-chips");
+  const viewport = list?.getBoundingClientRect();
+  if (!viewport?.width || !list?.clientWidth || typeof document.elementFromPoint !== "function") return true;
+  const minimum = parseFloat(getComputedStyle(document.documentElement).fontSize) * (matchMedia("(pointer: coarse)").matches ? 2.75 : 2);
+  let tested = 0;
+  const contained = [...list.querySelectorAll<HTMLElement>(".chip:not([hidden]) button, .chip-more:not(.chip-fit-measure) button")].every((button) => {
+    const box = button.getBoundingClientRect();
+    // Partly scrolled rows are not the complete visible controls under test.
+    if (box.top < viewport.top || box.bottom > viewport.bottom) return true;
+    tested++;
+    const hit = getComputedStyle(button, "::after");
+    const left = box.left + (parseFloat(hit.left) || 0);
+    const right = box.right - (parseFloat(hit.right) || 0);
+    const top = box.top + (parseFloat(hit.top) || 0);
+    const bottom = box.bottom - (parseFloat(hit.bottom) || 0);
+    return right - left >= minimum - 0.1 && bottom - top >= minimum - 0.1
+      && left >= viewport.left - 0.1 && right <= viewport.right + 0.1 && top >= viewport.top - 0.1 && bottom <= viewport.bottom + 0.1
+      && [[left + 1, (top + bottom) / 2], [right - 1, (top + bottom) / 2], [(left + right) / 2, top + 1], [(left + right) / 2, bottom - 1]]
+        .every(([x, y]) => button.contains(document.elementFromPoint(x!, y!)));
+  });
+  return tested > 0 && contained;
+}
+
 /** The seeded settings and interactions are on screen, and nothing else is. */
 function seeded(root: HTMLElement, state: GalleryState): boolean {
   const html = document.documentElement;
@@ -127,11 +153,12 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (document.querySelector(".toolbar-menu") !== null) === Boolean(state.formatMenu)
     && (typeof state.formatMenu !== "string" || filter?.value === state.formatMenu)
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
-    && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li.chip`).length === Math.min(state.tray ?? 0, SHELF_CHIPS)
+    && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li.chip`).length === (state.trayExpanded ? state.tray : Math.min(state.tray ?? 0, SHELF_CHIPS))
+    && Boolean(root.querySelector('.shelf-chips[data-expanded]')) === Boolean(state.trayExpanded)
     && (state.showPastePreview === false ? root.querySelector(".shelf-output") === null
       && root.querySelector('footer [aria-keyshortcuts="Enter"]') !== null
       : !(state.formatted || state.showPastePreview) || root.querySelector(".shelf-output .preview-text") !== null)
-    && selectionContained(root, state);
+    && selectionContained(root, state) && shelfTargetsContained(root);
 }
 
 /**

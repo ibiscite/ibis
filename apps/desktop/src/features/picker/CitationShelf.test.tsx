@@ -47,6 +47,39 @@ test("six chips show, the rest fold into +N, and +N shows every chip so each can
   expect(within(list).getByText("Author8 2021").closest("li")?.getAttribute("title")).toBe("k8");
 });
 
+test("shelf controls share Button states and their measuring copies stay inaccessible", () => {
+  const { container } = render(shelf({ selected: chosen(Array.from({ length: 9 }, (_, i) => record(`k${i}`))) }));
+  const buttons = screen.getAllByRole("button");
+  expect(buttons).toHaveLength(7);
+  for (const button of buttons) expect(button.classList.contains("ui-button")).toBe(true);
+  const measure = container.querySelector(".chip-fit-measure")!;
+  expect(measure.getAttribute("aria-hidden")).toBe("true");
+  expect(measure.hasAttribute("inert")).toBe(true);
+  for (const button of measure.querySelectorAll("button")) {
+    expect(button.classList.contains("ui-button")).toBe(true);
+    expect(button.tabIndex).toBe(-1);
+    expect(buttons).not.toContain(button);
+  }
+});
+
+test.each(["Enter", " "])("%s expands, removes and folds exactly once from the keyboard", (key) => {
+  const records = Array.from({ length: 9 }, (_, i) => record(`k${i}`));
+  const onRemove = vi.fn();
+  render(shelf({ selected: chosen(records), onRemove }));
+  const press = (button: HTMLElement) => {
+    act(() => button.focus());
+    const code = key === " " ? "Space" : "Enter";
+    fireEvent.keyDown(button, { key, code });
+    fireEvent.keyUp(button, { key, code });
+  };
+  press(screen.getByRole("button", { name: "Show all 9 selected references" }));
+  expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
+  press(screen.getByRole("button", { name: "Remove k8" }));
+  expect(onRemove).toHaveBeenCalledExactlyOnceWith(records[8]);
+  press(screen.getByRole("button", { name: "Show fewer selected references" }));
+  expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(6);
+});
+
 test("50 choices fit narrow and 200% text rows, keeping hidden source identities removable", () => {
   let scale = 1;
   let width = 344;

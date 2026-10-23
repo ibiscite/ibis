@@ -596,6 +596,10 @@ test("the shelf is two 40 px lines of 24 px chips and one output line above the 
   // Windows draws a layer card with a stroke; GNOME a flat band under one separator.
   expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/border:\s*var\(--border-width\) solid var\(--button-edge\)/);
   expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:\s*var\(--border-width\) solid var\(--separator\)/);
+  const shelf = readFileSync(new FileURL("./features/picker/CitationShelf.css", import.meta.url), "utf8");
+  const forced = shelf.slice(shelf.indexOf("@media (forced-colors: active)"));
+  expect(rules(forced, ".chip-remove::before")).toMatch(/forced-color-adjust:\s*none/);
+  expect(rules(forced, ".chip-remove::before")).toMatch(/background:\s*ButtonText/);
 });
 
 test("a wrapped footer keeps breathing room above and below its lines", () => {
@@ -779,6 +783,8 @@ function opticalSpacing(block: TokenBlock, name: string, value: string) {
   const normalized = (text: string) => text.replace(/(^|[^\d.])0(?:px|rem)(?=$|[^\w.])/g, (_, lead: string) => lead + "0").replace(/(?<![\d.])\.(\d+)/g, "0.$1").replace(/\s/g, "");
   const same = (expected: string) => normalized(value) === normalized(expected);
   if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
+  // Centre the 24 px fill in a 32/44 px target: the coarse inset is 10 px.
+  if (block.selector === ".shelf .shelf-chips[data-expanded]" && name === "padding-block") return same("calc((var(--chip-hit-size) - var(--chip-height)) / 2)");
   const borderCompensation = [".search-bar", '[role="option"]', '[role="option"][data-active]', ".key-caps kbd", ".library-bar", ".more > button"].includes(block.selector);
   if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
   if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
@@ -801,6 +807,9 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
     const scope = tokenScopes(tokenBlocks(local, "windows", "normal", true, false, false, coarse)).get("chip-group")!;
     expect(gridPixels(resolveToken("var(--chip-group-target)", scope)!)).toBe(target);
     expect(gridPixels(resolveToken("max(var(--space-1), calc(var(--chip-group-target) - var(--chip-height)))", scope)!)).toBe(gap);
+    const shelf = tokenScopes(tokenBlocks(appSheets, "windows", "normal", true, false, false, coarse)).get("shelf")!;
+    expect(gridPixels(resolveToken("var(--chip-hit-size)", shelf)!)).toBe(target);
+    expect(gridPixels(resolveToken("calc((var(--chip-hit-size) - var(--chip-height)) / 2)", shelf)!)).toBe(gap / 2);
   }
   expect(opticalSpacing({ file: "fixture", selector: ".other", scope: "root", values: [] }, "padding", "1px")).toBeFalsy();
 });

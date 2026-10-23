@@ -29,6 +29,7 @@ export type GalleryState = {
   /** Opens the header format menu; a string is typed into its filter. */
   formatMenu?: true | string;
   tray?: number;
+  trayExpanded?: boolean;
   formatted?: boolean;
   showPastePreview?: boolean;
   keys?: boolean;
@@ -181,6 +182,8 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "format-menu-filtered", label: "Format menu filtered", library: library(), query: "memory", results: examples, formatMenu: "APA" },
   ...[20, 40, 50].map((count) => ({ id: `tray-${count}`, label: `${count} long keys selected`,
     library: library({ references: 50 }), query: "selection", results: largeSelection, tray: count, pinned: true })),
+  { id: "tray-expanded", label: "50 chosen references expanded", library: library({ references: 50 }), query: "selection",
+    results: largeSelection, tray: 50, trayExpanded: true, pinned: true },
   { id: "tray-preview", label: "50 selected with formatted preview", library: library({ references: 50 }), query: "selection",
     results: largeSelection, tray: 50, pinned: true, formatted: true },
   { id: "tray-system-large", label: "50 selected at 200% system text", library: library({ references: 50 }), query: "selection",

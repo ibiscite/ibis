@@ -4,6 +4,7 @@ import { provisional, type FormattedCitation } from "../../format/formatted";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
+import { Button } from "../../ui/Button";
 import "./CitationShelf.css";
 
 /** The shelf shows at most this many chips; the rest fold into "+N"
@@ -99,21 +100,21 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
             <ul ref={chips} className="shelf-chips" aria-label={pickerText.selectedReferences} data-expanded={(folded > 0 && expanded) || undefined}>
               <li ref={sizes} className="chip-more chip-fit-measure" aria-hidden="true" inert>
                 {Array.from({ length: Math.min(records.length, SHELF_CHIPS + 1) }, (_, i) => (
-                  <button key={i} type="button" tabIndex={-1}>{pickerText.moreChosen(records.length - i)}</button>
+                  <Button key={i} variant="quiet" size="small" excludeFromTabOrder>{pickerText.moreChosen(records.length - i)}</Button>
                 ))}
               </li>
               {shownChips.map((r, i) => (
                 <li key={keysOf[i]} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
                   <bdi className="chip-label">{labels[i]}</bdi>
-                  <button type="button" className="chip-remove" onClick={() => onRemove(r)} aria-label={removeLabel(r)} />
+                  <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
                 </li>
               ))}
               {folded > 0 && (
                 <li ref={more} className="chip-more">
-                  <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}
+                  <Button variant="quiet" size="small" aria-expanded={expanded} onPress={() => setExpanded(!expanded)}
                     aria-label={expanded ? pickerText.fewerChosen : pickerText.allChosen(records.length)}>
                     {expanded ? pickerText.fewerChosenShort : pickerText.moreChosen(folded)}
-                  </button>
+                  </Button>
                 </li>
               )}
             </ul>

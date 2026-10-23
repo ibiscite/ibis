@@ -328,8 +328,8 @@ async function expectRenderedFixture(id: string): Promise<void> {
       for (let i = 0; i < state.tray! * 2 + 32 && acknowledge.mock.calls.length === 0; i++) {
         await act(() => vi.advanceTimersByTimeAsync(16));
       }
-      // Six chips, then "+N" for the rest (docs/design/preview.md).
-      expect(container.querySelectorAll('[aria-label="Selected references"] > li.chip')).toHaveLength(Math.min(state.tray!, 6));
+      // Six chips, then "+N", or all selected references after expanding.
+      expect(container.querySelectorAll('[aria-label="Selected references"] > li.chip')).toHaveLength(state.trayExpanded ? state.tray! : Math.min(state.tray!, 6));
       expect(container.querySelector("[data-active]")?.id).toBe(`result-${state.tray! - 1}`);
       if (state.formatted) expect(container.querySelector(".shelf-output .preview-text")?.textContent).toBe(text);
     } else {

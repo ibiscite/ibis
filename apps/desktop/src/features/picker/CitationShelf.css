@@ -2,6 +2,23 @@
 .chip-fit-measure { position: absolute; visibility: hidden; pointer-events: none; width: 0; height: 0; overflow: hidden; }
 .chip-fit-measure > button { width: max-content; max-width: none; }
 
+/* Preserve the 24 px chip fill; the shared Button owns every painted state. */
+.shelf { --chip-hit-size: var(--control-min-size); }
+.shelf .shelf-chips { height: max(var(--shelf-line), var(--chip-hit-size)); column-gap: max(var(--space-1), calc(var(--chip-hit-size) - var(--chip-height))); }
+/* Three complete target rows, with no neighboring remove areas overlapping. */
+.shelf .shelf-chips[data-expanded] { height: auto; max-height: calc(3 * var(--chip-hit-size)); row-gap: calc(var(--chip-hit-size) - var(--chip-height)); padding-block: calc((var(--chip-hit-size) - var(--chip-height)) / 2); }
+.shelf .chip-remove.ui-button[data-variant] { flex: none; width: var(--chip-height); min-width: var(--chip-height); height: var(--chip-height); min-height: var(--chip-height); padding: 0; border-width: 0; border-radius: var(--chip-radius); --focus-ring-offset: -2px; }
+.chip-remove::before { content: ""; position: absolute; inset: 0; background: currentColor; -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; }
+.chip-more .ui-button { min-width: 0; min-height: var(--chip-height); padding: 0 var(--space-2); border-width: 0; border-radius: var(--chip-radius); font-size: var(--type-label-size); }
+/* Matching hidden measurement geometry keeps the overflow count stable. */
+.shelf .chip-remove.ui-button::after, .shelf .chip-more .ui-button::after { inset: calc((var(--chip-hit-size) - var(--chip-height)) / -2); }
+@media (pointer: coarse) {
+  .shelf { --chip-hit-size: 2.75rem; }
+}
+@media (forced-colors: active) {
+  .chip-remove::before { forced-color-adjust: none; background: ButtonText; }
+}
+
 /* #888: the beak opens toward the citation, at the tile column's end.
    Keep the full column width so the text stays on the result-title edge.
    The 20 px glyph scales with text inside the existing 40 px output line. */

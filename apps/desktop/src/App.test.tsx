@@ -558,7 +558,7 @@ test.each([
   },
 );
 
-test.each([false, true])("a held Enter after removal waits for a fresh press (Shift=%s)", async (shiftKey) => {
+test.each([false, true])("removal ignores queued Enter repeats and waits for a fresh press (Shift=%s)", async (shiftKey) => {
   const copies: Record<string, unknown>[] = [];
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
@@ -574,6 +574,9 @@ test.each([false, true])("a held Enter after removal waits for a fresh press (Sh
   const remove = screen.getByRole("button", { name: "Remove a from the selection" });
   act(() => remove.focus());
   fireEvent.keyDown(remove, { key: "Enter", shiftKey });
+  expect(chipKeys()).toEqual(["a", "b"]);
+  expect(copies).toEqual([]);
+  fireEvent.keyUp(remove, { key: "Enter", shiftKey });
   fireEvent.click(remove, { detail: 0 });
   expect(document.activeElement).toBe(box);
   await act(async () => { fireEvent.keyDown(box, { key: "Enter", repeat: true, shiftKey }); });

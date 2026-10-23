@@ -140,24 +140,11 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .chip { flex: 0 1 auto; min-width: var(--chip-min-width); display: inline-flex; align-items: center; height: var(--chip-height); max-width: var(--chip-max-width); padding-inline-start: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: 500; }
 .chip[hidden] { display: none; }
 .chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A 16 px cross in the chip's last 24 px; the glyph is a mask on a pseudo-element
-   so the keyboard focus ring is never masked away. */
-.chip-remove { flex: none; position: relative; width: var(--chip-height); min-height: 0; height: var(--chip-height); padding: 0; border: 0; border-radius: var(--chip-radius); background: var(--clear); color: var(--muted); }
-.chip-remove::before { content: ""; position: absolute; inset: 0; background: currentColor; -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; }
-.chip-remove:hover { background: var(--clear); color: var(--text); }
-/* The 24 px cross and "+N" are hit across 32 px, and 44 px with touch (D12). */
-.chip-remove::after, .chip-more button::after { content: ""; position: absolute; inset: calc((var(--control-min-size) - var(--chip-height)) / -2); }
-.chip-more button { position: relative; }
-@media (pointer: coarse) {
-  .chip-remove::after, .chip-more button::after { inset: calc((2.75rem - var(--chip-height)) / -2); }
-}
 .chip-more { flex: none; }
-.chip-more button { min-height: var(--chip-height); padding: 0 var(--space-2); border: 0; border-radius: var(--chip-radius); background: var(--clear); color: var(--muted); font-size: var(--type-label-size); }
-.chip-more button:hover { background: var(--chip-fill); color: var(--text); }
 /* "+N" opened: every chip, wrapping onto at most three scrolling lines. */
 /* Chips shorten before "+N" is pushed out of sight. */
 .shelf-chips[data-expanded] .chip { flex: none; max-width: min(var(--chip-max-width), 100%); }
-.shelf-chips[data-expanded] { flex-wrap: wrap; align-content: flex-start; height: auto; max-height: calc(3 * (var(--chip-height) + var(--space-1)) + var(--space-2) * 2); padding-block: var(--space-2); overflow: auto; }
+.shelf-chips[data-expanded] { flex-wrap: wrap; align-content: flex-start; overflow: auto; }
 .shelf-output { display: flex; align-items: center; gap: var(--row-gap); height: var(--shelf-line); padding-inline: var(--row-pad); font-size: var(--type-citation-size); }
 .shelf-mark { flex: none; width: var(--tile-size); text-align: center; font-size: var(--icon-size); font-weight: 700; line-height: 1; }
 .shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
