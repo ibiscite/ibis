@@ -140,3 +140,56 @@ test.each([false, true])("final removal leaves a newly focused control alone (un
   act(() => row(0).focus()); press("Delete");
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "New destination" })));
 });
+
+function mountCitation(locale = "en-US", dir: "ltr" | "rtl" = "ltr") {
+  const removed = vi.fn();
+  const parentKeys = vi.fn();
+  function Preview() {
+    const fallback = useRef<HTMLInputElement>(null);
+    const [chosen, setChosen] = useState(items.map((item, index) => ({
+      ...item, content: <i>{`{key${index}}`}</i>, before: index === 0 ? "\\cites" : "", after: "",
+    })));
+    return <main onKeyDown={parentKeys}><input ref={fallback} aria-label="Search" />
+      <ChipGroup label="Citation" variant="citation" dir={dir} locale={locale} items={chosen} fallbackFocusRef={fallback}
+        onRemove={(keys) => { removed([...keys]); setChosen((previous) => previous.filter((item) => !keys.has(item.id))); }} />
+    </main>;
+  }
+  render(<Preview />);
+  return { removed, parentKeys, search: screen.getByRole("textbox", { name: "Search" }) };
+}
+
+test("citation segments keep supplied rich text and zero-width separators with named identity removal", async () => {
+  const { removed } = mountCitation();
+  const group = screen.getByRole("grid", { name: "Citation" });
+  expect(group.textContent).toContain("\\cites{key0}");
+  expect(screen.getByText("{key1}", { selector: "i" })).toBeTruthy();
+  expect(screen.getAllByRole("row").map((element) => element.getAttribute("aria-label"))).toEqual(items.map((item) => item.textValue));
+  act(() => row(1).focus()); press("Delete");
+  await waitFor(() => expect(document.activeElement).toBe(row(2)));
+  expect(removed).toHaveBeenCalledExactlyOnceWith([items[1]!.id]);
+  expect(screen.queryByText("{key1}", { selector: "i" })).toBeNull();
+  expect(screen.getByText("{key2}", { selector: "i" })).toBeTruthy();
+});
+
+test.each([
+  ["en-US", "ltr", "ArrowRight", "ArrowLeft"], ["en-US", "rtl", "ArrowLeft", "ArrowRight"],
+  ["ar-AE", "rtl", "ArrowLeft", "ArrowRight"], ["ar-AE", "ltr", "ArrowRight", "ArrowLeft"],
+] as const)("citation arrows follow rendered %s/%s direction and retain edge wrapping", (locale, dir, forward, back) => {
+  const { removed } = mountCitation(locale, dir);
+  expect(screen.getByRole("grid", { name: "Citation" }).closest("[dir]")?.getAttribute("dir")).toBe(dir);
+  act(() => row(0).focus()); press(forward); expect(document.activeElement).toBe(row(1));
+  press(forward); expect(document.activeElement).toBe(row(2));
+  press(forward); expect(document.activeElement).toBe(row(0));
+  press(back); expect(document.activeElement).toBe(row(2));
+  expect(removed).not.toHaveBeenCalled();
+});
+
+test("citation Escape returns to Search, while composition and 229 preserve the focused segment", () => {
+  const { search, parentKeys, removed } = mountCitation("en-US", "rtl");
+  act(() => row(1).focus());
+  fireEvent.compositionStart(row(1)); press("Escape"); press("ArrowLeft"); press("Delete");
+  fireEvent.compositionEnd(row(1)); press("Escape", { keyCode: 229 }); press("ArrowLeft", { isComposing: true });
+  expect(document.activeElement).toBe(row(1));
+  expect(parentKeys).not.toHaveBeenCalled(); expect(removed).not.toHaveBeenCalled();
+  press("Escape"); expect(document.activeElement).toBe(search); expect(parentKeys).not.toHaveBeenCalled();
+});
