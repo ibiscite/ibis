@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) enum NativeIssue {
     Startup,
     LoginRegistrationRefresh,
+    #[cfg(target_os = "macos")]
+    ReapprovalNotice,
     TrayCreation,
     Shortcut,
     Window,
@@ -42,6 +44,8 @@ impl NativeIssue {
         match self {
             Self::Startup => "the app could not start",
             Self::LoginRegistrationRefresh => "the login registration could not be refreshed",
+            #[cfg(target_os = "macos")]
+            Self::ReapprovalNotice => "the Open at Login notice remains pending",
             Self::TrayCreation => "the menu bar item could not be created",
             Self::Shortcut => "the shortcut needs attention; check the picker for details",
             Self::Window => "the picker window is unavailable",

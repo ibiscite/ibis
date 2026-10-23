@@ -63,8 +63,13 @@ libraries, shortcuts and other migrated settings intact.
   an earlier rename succeeded but its flush failed. Both receipts, malformed or
   special entries, and unsafe channel ownership are unresolved errors; preserve
   them. No receipt means no migration obligation, never inferred consent.
-  A crash may repeat the informational notice. Delivery remains a separate
-  prerequisite; acknowledgement neither requests nor registers Open at Login.
+  Deliver only after the picker is actually visible, including a later explicit
+  show after a hidden login launch. Recheck its native owner on the main thread
+  and retain exclusive dialog ownership until the attached sheet answers. Only
+  the informational OK result starts acknowledgement, off the main thread;
+  cancellation, dropped delivery or a busy/unavailable owner keeps the notice
+  unresolved for a later show. A crash may repeat it. Acknowledgement neither
+  requests nor registers Open at Login.
 - Do not switch the shipped identifiers until these platform transitions and
   notice handling are implemented and tested. Installed upgrade, direct
   replacement and restart/login acceptance remain required; this amendment

@@ -69,20 +69,12 @@ pub(crate) enum Reapproval {
 
 /// Read only the exact channel's receipt; this is never startup consent.
 #[cfg(target_os = "macos")]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "#695 native notice delivery is a separate prerequisite")
-)]
 pub(crate) fn macos_login_reapproval(directory: &Path, identifier: &str) -> io::Result<Reapproval> {
     reapproval_with(directory, identifier, false, sync_directory)
 }
 
 /// Call from the native notice callback only after successful visible dismissal.
 #[cfg(target_os = "macos")]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "#695 native notice callback is a separate prerequisite")
-)]
 pub(crate) fn acknowledge_macos_login_reapproval(directory: &Path, identifier: &str) -> io::Result<()> {
     reapproval_with(directory, identifier, true, sync_directory).map(|_| ())
 }

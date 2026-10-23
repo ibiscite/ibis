@@ -1,4 +1,5 @@
-//! Picker-owned file choosers and macOS update consent prevent hiding on blur.
+//! Picker-owned file choosers, macOS update consent and visible macOS login
+//! reapproval sheets prevent hiding on blur.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

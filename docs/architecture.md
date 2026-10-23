@@ -67,12 +67,13 @@ share one writer lock with synchronous settings updates; each save reads the
 current file after taking that lock, then changes and flushes it (ADRs 0020/0022).
 The interface's existing promise chain preserves preference choice order.
 
-Only a picker-owned file chooser or macOS update consent prevents native blur
-hiding. An exclusive RAII lease in `picker/dialogs.rs` stays alive through the
-native answer callback, including a chooser's source-open handoff; dropping or
-unwinding the callback releases it. Both blur guards read the same atomic state.
-Update information, feedback and login messages do not acquire a lease. Update
-checks and downloads also leave ordinary blur hiding unchanged.
+Only a picker-owned file chooser, macOS update consent or visible macOS Open at
+Login reapproval sheet prevents native blur hiding. An exclusive RAII lease in
+`picker/dialogs.rs` stays alive through the native answer callback, including a
+chooser's source-open handoff; dropping or unwinding the callback releases it.
+Both blur guards read the same atomic state. Other update information, feedback
+and login messages do not acquire a lease. Update checks and downloads also leave
+ordinary blur hiding unchanged.
 
 Library status carries the failure reason, retained-reference flag and unsaved
 choice provenance separately for native presentation. The tray derives its

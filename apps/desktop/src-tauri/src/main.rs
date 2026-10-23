@@ -16,6 +16,8 @@ mod identity;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
+mod macos_reapproval;
+#[cfg(target_os = "macos")]
 mod native_corners;
 mod native_feel;
 mod notice;
@@ -61,7 +63,9 @@ fn main() {
     report(gallery::configure(&mut context), NativeIssue::GalleryNavigation);
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
-    let builder = builder.manage(initial_panel);
+    let builder = builder
+        .manage(initial_panel)
+        .manage(macos_reapproval::Delivery::default());
     #[cfg(target_os = "windows")]
     let builder = builder.manage(picker::FocusChanges::default());
     let builder = builder
