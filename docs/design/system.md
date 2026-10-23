@@ -54,8 +54,8 @@ browser comparisons verify the winning values and rendered appearance.
 | # | Decision | Target token(s) |
 |---|---|---|
 | D1 | **Components read role tokens only**, never raw colours, `GrayText`, literal px radii or literal shadows. | all below |
-| D2 | **One radius chain per OS.** Set only `--r-win`, `--inset`, `--r-min`, `--r-menu`, `--menu-pad`; everything else derives. New: `--r-control` (buttons, fields, pop-ups), `--r-key` (key caps, chips' inner parts), `--r-card` (= `--r-win`), `--r-dialog`, `--r-full: 999px`. | §3 |
-| D3 | **Per-OS radius values:** macOS 15: win 12, control 6, menu 8 (verify). macOS 26: win 28, control capsule in the header, 8 in content, menu 12. Windows 11: win/overlay/card 8, control/row/tile 4. GNOME (libadwaita 1.8+ look): win/card 15, derived row 7, control/tile 6, popover 12. | `--r-*` |
+| D2 | **One radius chain per OS.** Derive rows/tiles from `--r-win`, `--r-min` and fixed baseline 8/12 px shape insets; derive items from `--r-menu` and `--menu-pad`. Layout spacing remains rem. Roles: `--r-control` (buttons, fields, pop-ups), `--r-key` (key caps, chips' inner parts), `--r-card` (= `--r-win`), `--r-dialog`, `--r-full: 999px`. | §3 |
+| D3 | **Per-OS radius values (C15), fixed CSS px at every text size:** macOS: win 16, row/control 8, tile 6, menu 12, item/padding 6. Windows 11: win/menu 8, row/tile/control/item/padding 4. GNOME: win 15, row 7, tile/control/item/padding 6, menu 12. | `--r-*` |
 | D4 | **Surfaces are four layers:** `--surface-window` (base) < `--surface` (content sheet) < `--surface-raised` (band, cards, shelf) < `--surface-overlay` (menus, popovers, dialogs). Values from soft depth B. | §2 |
 | D5 | **Text has four levels:** `--text`, `--muted` (secondary, always 4.5:1), `--text-tertiary` (icons at rest, placeholder hints, 3:1 minimum, never for sentences), `--text-disabled`. | |
 | D6 | **Accent is always the system's.** `--accent` (fill), `--accent-text` (accent as text or glyph, 4.5:1), `--text-on-accent`. Ibis never offers an accent override. Native accent projection starts with macOS; Windows and GNOME providers follow (#763). | |
@@ -243,12 +243,12 @@ colour, custom CSS or colour themes.
 
 ### 3.1 The concentric rule
 
-An inner radius is the outer radius minus the inset between them, never larger,
-and never below a per-OS floor:
+At baseline size an inner radius is the outer radius minus its shape inset,
+never larger and never below a per-OS floor. C15 keeps that shape as text grows:
 
 ```
---r-row     = max(--r-min, --r-win  − --inset)       rows, search field, shelf card
---r-tile    = max(--r-min, --r-row  − --row-pad)     type tile, footer buttons
+--r-row     = max(--r-min, --r-win  − 8px)          rows, search field, shelf card
+--r-tile    = max(--r-min, --r-row  − 12px)         type tile
 --r-mi      = max(--r-min, --r-menu − --menu-pad)    menu items
 --r-control = per OS                                  buttons, pop-ups, fields outside a chain
 --r-key     = max(--r-min − 2px, 4px)                 key caps, chip remove buttons
@@ -264,19 +264,24 @@ Liquid Glass's three shape kinds map to `--r-control` (fixed), `--r-full`
 
 | Token | macOS 15 and earlier | macOS 26 | Windows 11 | GNOME |
 |---|---|---|---|---|
-| `--r-win` | 12 | 28 (verify against Spotlight) | 8 | 15 |
+| `--r-win` | 16 | 16 | 8 | 15 |
 | `--inset` | 8 | 8 | 8 | 8 |
 | `--r-min` | 6 | 6 | 4 | 6 |
-| `--r-row` | 6 | 20 | 4 | 7 |
-| `--r-tile` | 6 | 8 | 4 | 6 |
-| `--r-control` | 6 | 8 in content, capsule in the header | 4 | 6 |
-| `--r-menu` / `--menu-pad` / `--r-mi` | 8 / 5 / 4 (verify) | 12 / 6 / 6 | 8 / 4 / 4 | 12 / 6 / 6 |
+| `--r-row` | 8 | 8 | 4 | 7 |
+| `--r-tile` | 6 | 6 | 4 | 6 |
+| `--r-control` | 8 | 8 | 4 | 6 |
+| `--r-menu` / `--menu-pad` / `--r-mi` | 12 / 6 / 6 | 12 / 6 / 6 | 8 / 4 / 4 | 12 / 6 / 6 |
 | `--r-dialog` | 12 | 20 (verify) | 8 | 12 (18 for alert dialogs) |
 | `--r-key` | 4 | 5 | 4 | 4 |
 | Tooltip | 6 | 8 | 4 | 6 |
 | Toast / notice | capsule | capsule | 8 | capsule |
 | Settings card | grouped form rows, 12 (verify) | verify | 4 per `SettingsCard`; the picker's list layer card stays 8 | 12 (boxed list) |
 | Switch, segmented track | capsule | capsule | capsule | capsule (switch), 6 (linked buttons) |
+
+Canvas C15 supersedes the older macOS version split. Its shape radii and the
+baseline 8/12 px shape insets stay fixed while rem layout spacing scales with
+text. The native macOS panel mask is 16 logical points. Keycap roles are
+unchanged; C7 will introduce the 6 px citation-segment pill consumer.
 
 GNOME follows [libadwaita 1.8's 15 px window](https://github.com/GNOME/libadwaita/blob/1.8.0/doc/css-variables.md#window-radius);
 1.6/1.7 used 12 px. The 8 px inset derives 7 px rows; tiles keep the 6 px

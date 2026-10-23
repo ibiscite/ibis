@@ -111,23 +111,24 @@ These numbers are also in [`design-geometry.json`](design-geometry.json), which
 `node scripts/gallery-geometry.mjs` measures the evidence gallery against;
 change both together (a test checks that they agree).
 
-**Corners.** Nested shapes are concentric: an inner radius is its container's
-radius minus the inset between them, never larger. When the inset is close to
+**Corners.** At baseline size nested shapes are concentric: an inner radius is
+its container's radius minus the shape inset, never larger. When the inset is close to
 or larger than the outer radius, the inner corner drops to a small floor
 instead of going square or looking like a separate floating slab.
 
 ```
---r-row  = max(--r-min, --r-win  − --inset)     rows, search field
---r-tile = max(--r-min, --r-row  − --row-pad)   type tile, footer buttons
+--r-row  = max(--r-min, --r-win  − 8px)        rows, search field
+--r-tile = max(--r-min, --r-row  − 12px)       type tile
 --r-mi   = max(--r-min, --r-menu − --menu-pad)  menu items
 ```
 
 | | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
-| `--r-win` | 28 on macOS 26 and later; 12 pt before that (the native panel corner, #236) | 8 | 15 |
+| `--r-win` | 16 (all versions; matches the native panel mask) | 8 | 15 |
 | `--inset` · `--r-min` | 8 · 6 | 8 · 4 | 8 · 6 |
-| `--r-row` | 20 on macOS 26 and later; 6 before | 4 | 7 |
-| `--r-tile` | 8 on macOS 26 and later; 6 before | 4 | 6 |
+| `--r-row` | 8 | 4 | 7 |
+| `--r-tile` | 6 | 4 | 6 |
+| `--r-control` | 8 | 4 | 6 |
 | `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 | 8 · 4 · 4 | 12 · 6 · 6 |
 | Menu elevation | One `--shadow-overlay` per look; values and theme treatment in [system §6.3](design/system.md#63-shadows). | | |
 
@@ -136,9 +137,11 @@ GNOME follows [libadwaita 1.8's 15 px window](https://github.com/GNOME/libadwait
 rows and 6 px tiles; popovers keep their separate 12 px radius. Windows rows
 and tiles use Fluent's 4 px small radius.
 
-Each look sets only `--r-win`, `--inset` and `--r-min` (and the menu pair);
-every inner radius follows from them. With Larger text the inset grows with the
-text and the window corner does not, so inner radii shrink toward the floor.
+Canvas C15 fixes these radii in CSS pixels across text sizes. The chain uses
+the baseline 8/12 px shape insets; Larger text scales rem layout spacing without
+changing the shape. The native macOS mask uses the same 16 logical points.
+Keycaps retain their existing roles. The 6 px citation-segment pill is C7's
+future consumer; current chips are not citation segments.
 
 **Menus.** The operating system's own menus are used only where the system owns
 them: the menu bar, the tray menu and right-click context menus ([ADR 0021](adr/0021-ui-foundation.md)).

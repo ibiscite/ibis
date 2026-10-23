@@ -30,14 +30,14 @@ const LAYOUT_STATES = ["tray-preview", "tray-20", "tray", "compact", "many-resul
 /** The per-platform values docs/design.md derives from its tokens. */
 export function derive(spec, platform, scale = 1) {
   const look = spec.platforms[platform];
-  const rRow = Math.max(look.rMin, look.rWin - look.inset * scale);
+  const rRow = Math.max(look.rMin, look.rWin - spec.shapeInsets.window);
   return {
     searchBand: look.searchBand * scale,
     tileCentre: (look.inset + spec.rowPad + spec.tile / 2) * scale,
     textX: (look.inset + spec.rowPad + spec.tile + spec.rowGap) * scale,
     rWin: look.rWin,
     rRow,
-    rTile: Math.max(look.rMin, rRow - spec.rowPad * scale),
+    rTile: Math.max(look.rMin, rRow - spec.shapeInsets.row),
   };
 }
 
@@ -48,7 +48,7 @@ export function compare(spec, platform, text, density, measured) {
   const rows = [];
   const check = (name, want, got) => rows.push({ name: measured.direction === "rtl" ? `${name} (RTL)` : name, platform, text, density, expected: want, measured: got,
     pass: Number.isFinite(got) && Math.abs(got - want) <= spec.tolerance });
-  // Larger text scales rem sizes and insets; window corners and radius floors stay fixed.
+  // Larger text scales layout; all C15 radii remain fixed CSS pixels.
   check(`row height (${density})`, spec.rowHeight[density] * scale, measured.rowHeight);
   // Coordinates are logical-start distances from the picker, not physical left edges.
   for (const [name, value] of [["tile centre x", "tileCentre"], ["search glyph centre x", "glyphCentre"], ["status dot centre x", "statusDotCentre"]])
@@ -71,6 +71,7 @@ export function compare(spec, platform, text, density, measured) {
   check("row radius", expected.rRow, measured.rRow);
   check("search field radius", expected.rRow, measured.rField);
   check("tile radius", expected.rTile, measured.rTile);
+  for (const name of ["rControl", "rPopup"]) check(name === "rControl" ? "control radius" : "popup radius", look.controlRadius, measured[name]);
   return rows;
 }
 
@@ -168,6 +169,8 @@ export function measure() {
     rRow: px(row, "borderTopLeftRadius"),
     rField: px(input, "borderTopLeftRadius"),
     rTile: px(row?.querySelector(".result-tile"), "borderTopLeftRadius"),
+    rControl: px(document.querySelector(".pin-button"), "borderTopLeftRadius"),
+    rPopup: px(document.querySelector(".toolbar-menu-button"), "borderTopLeftRadius"),
   };
 }
 

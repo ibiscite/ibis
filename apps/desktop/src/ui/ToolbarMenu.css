@@ -6,7 +6,7 @@
 }
 .search-bar .toolbar-menu-control, .search-bar .toolbar-menu-button { min-height: var(--field-h); }
 :root[data-platform="macos"] .toolbar-menu-button {
-  min-height: calc(var(--control-min-size) - var(--space-1)); border-radius: calc(var(--control-min-size) / 2);
+  min-height: calc(var(--control-min-size) - var(--space-1)); border-radius: var(--r-control);
 }
 /* The 28 px macOS fill retains its 32 px target inside the toolbar. */
 :root[data-platform="macos"] .toolbar-menu-button::after {

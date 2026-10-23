@@ -16,9 +16,9 @@
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
   /* One geometry chain (docs/design.md, "Space and size" and "Corners"):
-     the look layers below set only --r-win, --inset and --r-min; every inner
-     radius and the search band follow from them. Radii are px (they follow the
-     native window corner); sizes are rem, so Larger text keeps edges aligned. */
+     looks set the outer radius and floor; inner radii use fixed shape insets.
+     Radii stay px, matching the native corner; layout sizes and spacing are
+     rem, so Larger text keeps edges aligned without changing the shape. */
   --inset: var(--space-2);      /* window edge to the field, the list and the footer */
   --field-h: 2.25rem;           /* tallest header control: macOS pin */
   --row-pad: var(--space-3);    /* row side padding */
@@ -34,12 +34,12 @@
   --row-spacious: 4.75rem;     /* three lines */
   --row-height: var(--row-comfortable);
   --larger-text-scale: 1.15;
-  /* macOS: the native 12 pt panel corner (native_corners.rs). macOS 26 moves
-     it to 28 (#576), which gives rows 20 and tiles 8 through the chain. */
-  --r-win: 12px;
+  /* C15 shapes stay fixed as text grows; these are the 8/12 px baseline
+     shape insets, independent of the rem spacing used for layout. */
+  --r-win: 16px; /* matches native_corners.rs on every macOS version */
   --r-min: 6px;
-  --r-row: max(var(--r-min), calc(var(--r-win) - var(--inset)));     /* rows, search field */
-  --r-tile: max(var(--r-min), calc(var(--r-row) - var(--row-pad)));  /* type tile */
+  --r-row: max(var(--r-min), calc(var(--r-win) - 8px));  /* rows, search field */
+  --r-tile: max(var(--r-min), calc(var(--r-row) - 12px)); /* type tile */
   --r-menu: 12px;
   --menu-pad: 6px;
   --r-mi: max(var(--r-min), calc(var(--r-menu) - var(--menu-pad)));  /* menu items */
@@ -115,7 +115,7 @@
   --focus-ring-shadow: none;
   --alert-color: CanvasText;
   --alert-border-width: 3px;
-  --r-control: 6px;
+  --r-control: 8px;
   --hint-radius: 4px;
   --picker-height: 100dvh;
   /* Between the field and the header's controls. The search glyph sits over
@@ -268,9 +268,8 @@
   --focus-ring-color: var(--text); --focus-ring-shadow: 0 0 0 1px var(--surface);
 }
 :root[data-platform="linux"] {
-  /* libadwaita 1.8+: the 15 px window derives 7 px rows at the 8 px inset;
-     tiles and larger-text rows keep the 6 px floor. Popovers stay separate. */
-  --r-win: 15px; --field-h: 2.125rem; --r-min: 6px;
+  /* libadwaita 1.8+: fixed 7 px rows and 6 px tiles/controls (Canvas C15). */
+  --r-win: 15px; --field-h: 2.125rem; --r-min: 6px; --r-control: 6px;
   --r-dialog: var(--r-menu); --ease-out: cubic-bezier(.33, 1, .68, 1);
   --shadow-card: 0 0 0 1px rgb(0 0 6 / 3%), 0 1px 3px 1px rgb(0 0 6 / 7%), 0 2px 6px 2px rgb(0 0 6 / 3%);
   --shadow-raised: none;

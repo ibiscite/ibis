@@ -12,6 +12,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
+const toolbar = readFileSync(new FileURL("./ui/ToolbarMenu.css", import.meta.url), "utf8");
 const gallery = readFileSync(new FileURL("./gallery.css", import.meta.url), "utf8");
 const corners = readFileSync(new FileURL("../src-tauri/src/native_corners.rs", import.meta.url), "utf8");
 
@@ -119,14 +120,14 @@ function geometry(platform?: string): Record<string, number> {
 test("every inner radius follows one concentric chain per platform", () => {
   // The formulas are written once in the base layer; looks set only their inputs.
   const base = rules(tokens, ":root");
-  expect(base).toMatch(/--r-row:\s*max\(var\(--r-min\), calc\(var\(--r-win\) - var\(--inset\)\)\);/);
-  expect(base).toMatch(/--r-tile:\s*max\(var\(--r-min\), calc\(var\(--r-row\) - var\(--row-pad\)\)\);/);
+  expect(base).toMatch(/--r-row:\s*max\(var\(--r-min\), calc\(var\(--r-win\) - 8px\)\);/);
+  expect(base).toMatch(/--r-tile:\s*max\(var\(--r-min\), calc\(var\(--r-row\) - 12px\)\);/);
   expect(base).toMatch(/--r-mi:\s*max\(var\(--r-min\), calc\(var\(--r-menu\) - var\(--menu-pad\)\)\);/);
   for (const name of ["--r-row", "--r-tile", "--r-mi"]) {
     for (const platform of ["windows", "linux"]) expect(rules(tokens, `:root[data-platform="${platform}"]`), `${platform} ${name}`).not.toContain(`${name}:`);
   }
-  // docs/design.md, Corners: macOS before 26 (the native 12 pt corner), Windows 11, GNOME.
-  const expected = { macos: [12, 8, 6, 6, 12, 6], windows: [8, 8, 4, 4, 8, 4], linux: [15, 8, 7, 6, 12, 6] };
+  // Canvas C15: all macOS versions, Windows 11 and GNOME share fixed shapes.
+  const expected = { macos: [16, 8, 8, 6, 12, 6], windows: [8, 8, 4, 4, 8, 4], linux: [15, 8, 7, 6, 12, 6] };
   for (const [platform, [win, inset, row, tile, menu, item]] of Object.entries(expected)) {
     const g = geometry(platform === "macos" ? undefined : platform);
     const rRow = Math.max(g["--r-min"]!, g["--r-win"]! - g["--inset"]!);
@@ -166,12 +167,18 @@ test("tile targets stay centred when Compact shrinks the visible tile", () => {
 });
 
 test("window radius follows each platform and macOS matches the native corner", () => {
-  // macOS keeps the natively verified 12 pt corner until macOS 26 detection lands; the token must agree with it.
   const native = corners.match(/CORNER_RADIUS_POINTS: f64 = ([\d.]+);/)?.[1];
+  expect(Number(native)).toBe(16);
   expect(rules(tokens, ":root")).toMatch(new RegExp(`--r-win:\\s*${Number(native)}px`));
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-win:\s*8px/);
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-control:\s*4px/);
   expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-win:\s*15px/);
+});
+
+test("C15 controls use the same per-OS shape in every palette", () => {
+  expect(rules(tokens, ":root")).toMatch(/--r-control:\s*8px/);
+  expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-control:\s*6px/);
+  expect(rules(toolbar, ':root[data-platform="macos"] .toolbar-menu-button')).toMatch(/border-radius:\s*var\(--r-control\)/);
 });
 
 test("per-OS overlay roles keep their shapes, easing, scrims and shadow-free contrast", () => {
