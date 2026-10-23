@@ -297,11 +297,215 @@ mod tests {
         Ok(())
     }
 
+    // Own every child immediately; cleanup also runs on `?` and assertion unwinds.
+    struct MigrationChildren {
+        children: Vec<std::process::Child>,
+        deadline: std::time::Instant,
+    }
+
+    impl MigrationChildren {
+        fn new(budget: std::time::Duration) -> Self {
+            Self {
+                children: Vec::new(),
+                deadline: std::time::Instant::now() + budget,
+            }
+        }
+
+        fn spawn(&mut self, root: &Path, mode: &str, executable: &Path) -> io::Result<()> {
+            use std::process::{Command, Stdio};
+            if let Err(error) = self.poll() {
+                self.cleanup();
+                return Err(error);
+            }
+            let result = Command::new(executable)
+                .args(["--exact", "identity::tests::migration_child"])
+                .env("IBIS_TEST_MIGRATION_ROOT", root)
+                .env(
+                    "IBIS_TEST_MIGRATION_READY",
+                    root.join(format!("ready-{}", self.children.len())),
+                )
+                .env("IBIS_TEST_MIGRATION_MODE", mode)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+            match result {
+                Ok(child) => {
+                    self.children.push(child);
+                    Ok(())
+                }
+                Err(_) => {
+                    self.cleanup();
+                    Err(io::Error::other("migration child spawn failed"))
+                }
+            }
+        }
+
+        fn poll(&mut self) -> io::Result<bool> {
+            if std::time::Instant::now() >= self.deadline {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+            let mut complete = true;
+            for child in &mut self.children {
+                match child.try_wait()? {
+                    Some(status) if !status.success() => return Err(io::Error::other("migration child failed")),
+                    Some(_) => {}
+                    None => complete = false,
+                }
+            }
+            Ok(complete)
+        }
+
+        fn ready(&mut self, root: &Path) -> io::Result<()> {
+            let result = (|| loop {
+                let complete = self.poll()?;
+                if (0..self.children.len()).all(|index| root.join(format!("ready-{index}")).is_file()) {
+                    return Ok(());
+                }
+                if complete {
+                    return Err(io::ErrorKind::UnexpectedEof.into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            })();
+            if result.is_err() {
+                self.cleanup();
+            }
+            result
+        }
+
+        fn release(&mut self, index: usize) -> io::Result<()> {
+            use std::io::Write;
+            let result = (|| {
+                self.poll()?;
+                self.children[index]
+                    .stdin
+                    .take()
+                    .ok_or(io::ErrorKind::BrokenPipe)?
+                    .write_all(b"!")
+            })();
+            if result.is_err() {
+                self.cleanup();
+            }
+            result
+        }
+
+        fn finish(&mut self) -> io::Result<()> {
+            let result = (|| {
+                while !self.poll()? {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Ok(())
+            })();
+            if result.is_err() {
+                self.cleanup();
+            }
+            result
+        }
+
+        fn cleanup(&mut self) {
+            // Kill all before reaping any: no sibling is left running behind a wait.
+            for child in &mut self.children {
+                let _ = child.kill();
+            }
+            for child in &mut self.children {
+                let _ = child.wait();
+            }
+        }
+    }
+
+    impl Drop for MigrationChildren {
+        fn drop(&mut self) {
+            self.cleanup();
+        }
+    }
+
     #[test]
     fn migration_child() -> io::Result<()> {
         if let Some(root) = std::env::var_os("IBIS_TEST_MIGRATION_ROOT") {
-            let new = Path::new(&root).join("com.ibiscite.ibis");
+            use std::io::Read;
+            let root = Path::new(&root);
+            let mode = std::env::var("IBIS_TEST_MIGRATION_MODE").map_err(|_| io::ErrorKind::InvalidInput)?;
+            if mode == "fail-before-ready" {
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            let lock = if mode == "migrate" {
+                let lock = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(root.join("com.ibiscite.ibis.migration.lock"))?;
+                // Readiness proves real contention, even on a single-core runner.
+                assert!(matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock)));
+                Some(lock)
+            } else {
+                None
+            };
+            let ready = std::env::var_os("IBIS_TEST_MIGRATION_READY").ok_or(io::ErrorKind::InvalidInput)?;
+            fs::write(ready, b"")?;
+            if let Some(lock) = lock {
+                // The parent's held lock is the release barrier; no timing-based start.
+                lock.lock()?;
+                drop(lock);
+            } else {
+                std::io::stdin().read_exact(&mut [0])?;
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            let new = root.join("com.ibiscite.ibis");
             assert!(!settings_location(&new, "com.ibiscite.ibis").using_legacy);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn migration_children_reap_blocked_siblings_on_timeout_failure_and_spawn_error() -> io::Result<()> {
+        use std::time::{Duration, Instant};
+        let executable = std::env::current_exe()?;
+        for mode in ["timeout", "failure", "spawn", "readiness"] {
+            let root = tempfile::tempdir()?;
+            let mut group = MigrationChildren::new(Duration::from_secs(20));
+            group.spawn(root.path(), "blocked", &executable)?;
+            group.ready(root.path())?;
+            group.spawn(
+                root.path(),
+                if mode == "readiness" {
+                    "fail-before-ready"
+                } else {
+                    "fail"
+                },
+                &executable,
+            )?;
+            if mode != "readiness" {
+                group.ready(root.path())?;
+            }
+            let started = Instant::now();
+            let result = match mode {
+                "timeout" => {
+                    // Both children are confirmed blocked; no scheduler-dependent startup budget.
+                    group.deadline = started + Duration::from_millis(100);
+                    group.finish()
+                }
+                "failure" => {
+                    group.release(1)?;
+                    group.finish()
+                }
+                "spawn" => group.spawn(root.path(), "blocked", &root.path().join("absent-child")),
+                _ => group.ready(root.path()),
+            };
+            let error = result.err().unwrap_or_else(|| panic!("child failure was missed"));
+            assert_eq!(
+                error.kind(),
+                if mode == "timeout" {
+                    io::ErrorKind::TimedOut
+                } else {
+                    io::ErrorKind::Other
+                }
+            );
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "child cleanup exceeded budget"
+            );
+            for child in &mut group.children {
+                assert!(child.try_wait()?.is_some(), "owned child was not reaped");
+            }
         }
         Ok(())
     }
@@ -310,31 +514,37 @@ mod tests {
     fn concurrent_launches_clean_interrupted_staging_and_publish_a_complete_pair() -> io::Result<()> {
         let root = tempfile::Builder::new().prefix("ibis migration 漢字 ").tempdir()?;
         let bytes = vec![b'x'; 256 * 1024];
-        write(&root.path().join("io.github.ibiscite.ibis/settings.json"), &bytes)?;
-        write(
-            &root.path().join("io.github.ibiscite.ibis/settings.json.bak"),
-            b"backup",
-        )?;
+        let old = root.path().join("io.github.ibiscite.ibis");
+        write(&old.join("settings.json"), &bytes)?;
+        write(&old.join("settings.json.bak"), b"backup")?;
         let stale = root.path().join("com.ibiscite.ibis.migration-42-7");
         write(&stale.join("settings.json"), b"partial")?;
-        let mut children = Vec::new();
+        let lock = File::create(root.path().join("com.ibiscite.ibis.migration.lock"))?;
+        lock.lock()?;
+        let mut group = MigrationChildren::new(std::time::Duration::from_secs(20));
+        let executable = std::env::current_exe()?;
         for _ in 0..4 {
-            children.push(
-                std::process::Command::new(std::env::current_exe()?)
-                    .args(["--exact", "identity::tests::migration_child"])
-                    .env("IBIS_TEST_MIGRATION_ROOT", root.path())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()?,
+            group.spawn(root.path(), "migrate", &executable)?;
+        }
+        group.ready(root.path())?;
+        let new = root.path().join("com.ibiscite.ibis");
+        assert!(!new.exists());
+        assert!(stale.exists());
+        drop(lock);
+        group.finish()?;
+        for (name, expected) in [("settings.json", bytes.as_slice()), ("settings.json.bak", b"backup")] {
+            assert_eq!(fs::read(new.join(name))?, expected);
+            assert_eq!(fs::read(old.join(name))?, expected);
+        }
+        assert!(!stale.exists());
+        for entry in fs::read_dir(root.path())? {
+            assert!(
+                !entry?
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("com.ibiscite.ibis.migration-")
             );
         }
-        for child in children {
-            assert!(child.wait_with_output()?.status.success());
-        }
-        let new = root.path().join("com.ibiscite.ibis");
-        assert_eq!(fs::read(new.join("settings.json"))?, bytes);
-        assert_eq!(fs::read(new.join("settings.json.bak"))?, b"backup");
-        assert!(!stale.exists());
         Ok(())
     }
 
