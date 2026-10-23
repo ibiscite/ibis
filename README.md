@@ -1,6 +1,11 @@
-# Ibis
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ibis-logo-on-dark.svg">
+    <img src="docs/assets/ibis-logo.svg" alt="Ibis" width="220">
+  </picture>
+</h1>
 
-**Find a reference. Copy a citation.** Search your libraries, copy a citation, and paste it where you write.
+<p align="center"><strong>Find a reference. Copy a citation.</strong><br>Search your libraries, copy a citation, and paste it where you write.</p>
 
 Ibis is free and open source. Searching and copying work offline after setup. Ibis adds no analytics and never changes your libraries. See [privacy and local storage](PRIVACY.md) for runtime data and optional update checks.
 
