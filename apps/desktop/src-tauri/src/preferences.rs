@@ -1,7 +1,7 @@
 //! Saving choices made in the picker to the settings file.
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use ibis_core::cite::KeyFormat;
 use ibis_core::settings::{self, CitationStyle, Density};
@@ -43,17 +43,18 @@ pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<
 }
 
 /// Where the settings file is, for saving choices made in the picker.
+#[derive(Clone)]
 pub(crate) struct SettingsFile {
     pub(crate) path: PathBuf,
     /// Held for each whole read, change and save, so two saves never interleave.
-    writing: Mutex<()>,
+    writing: Arc<Mutex<()>>,
 }
 
 impl SettingsFile {
     pub(crate) fn new(path: PathBuf) -> Self {
         SettingsFile {
             path,
-            writing: Mutex::new(()),
+            writing: Arc::new(Mutex::new(())),
         }
     }
 
@@ -98,12 +99,16 @@ pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Pick
 /// Remember the picker preferences; other settings in the file are kept.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn set_picker_preferences(
+pub(crate) async fn set_picker_preferences(
     preferences: PickerPreferences,
     copy_format: Option<KeyFormat>,
     settings_file: State<'_, SettingsFile>,
 ) -> Result<(), String> {
-    settings_file.save_preferences(preferences, copy_format).map(|_| ())
+    let settings_file = settings_file.inner().clone();
+    // Keep the whole locked read/change/flush off the command and async workers.
+    tauri::async_runtime::spawn_blocking(move || settings_file.save_preferences(preferences, copy_format).map(|_| ()))
+        .await
+        .map_err(|_| "picker preferences could not be saved".to_string())?
 }
 
 impl SettingsFile {
@@ -129,6 +134,131 @@ impl SettingsFile {
 mod tests {
     use super::*;
     use ibis_core::settings::LibrarySetting;
+    use tauri::Manager;
+
+    fn preference_request(
+        preferences: PickerPreferences,
+        copy_format: Option<KeyFormat>,
+    ) -> tauri::webview::InvokeRequest {
+        tauri::webview::InvokeRequest {
+            cmd: "set_picker_preferences".into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: if cfg!(windows) {
+                "http://tauri.localhost"
+            } else {
+                "tauri://localhost"
+            }
+            .parse()
+            .unwrap_or_else(|e| panic!("invalid fixture URL: {e}")),
+            body: tauri::ipc::InvokeBody::Json(serde_json::json!({
+                "preferences": preferences, "copyFormat": copy_format,
+            })),
+            headers: Default::default(),
+            invoke_key: tauri::test::INVOKE_KEY.into(),
+        }
+    }
+
+    #[test]
+    fn preference_dispatch_returns_while_writer_is_busy_and_save_keeps_current_settings() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        std::fs::write(&path, r#"{"copy_format":"keys","future_choice":"before dispatch"}"#)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let app = tauri::test::mock_builder()
+            .manage(SettingsFile::new(path.clone()))
+            .invoke_handler(tauri::generate_handler![set_picker_preferences])
+            .build(tauri::generate_context!(test = true))
+            .unwrap_or_else(|e| panic!("cannot build preference fixture: {e}"));
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
+        let file = app.state::<SettingsFile>();
+        let writing = file.writing.lock().unwrap_or_else(|_| panic!("writer lock poisoned"));
+        let chosen = PickerPreferences {
+            citation_style: None,
+            density: Density::Spacious,
+            larger_text: true,
+            show_paste_preview: false,
+        };
+        let (dispatched, dispatch) = mpsc::channel();
+        let (responded, response) = mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            window.as_ref().clone().on_message(
+                preference_request(chosen, Some(KeyFormat::Typst)),
+                Box::new(move |_, _, reply, _, _| {
+                    let _ = responded.send(reply);
+                }),
+            );
+            let _ = dispatched.send(());
+        });
+        let returned = dispatch.recv_timeout(Duration::from_secs(3));
+        let pending = matches!(response.try_recv(), Err(mpsc::TryRecvError::Empty));
+        // Simulate an external edit after dispatch, before the writer can read.
+        let current = serde_json::json!({
+            "schema_version": 2, "copy_format": "cite", "citation_style": "apa",
+            "library": { "bibtex": "refs.bib" }, "shortcut": "Alt+Space", "update_checks": false,
+            "future_choice": { "kept": [true, null, "参考"] },
+        });
+        let edited = std::fs::write(&path, current.to_string());
+        drop(writing);
+        let reply = response.recv_timeout(Duration::from_secs(3));
+        // Release the lock and collect the reply even on a regression.
+        assert!(returned.is_ok(), "IPC dispatch blocked behind a settings writer");
+        assert!(pending, "save must wait for the existing writer");
+        edited.unwrap_or_else(|e| panic!("{e}"));
+        let tauri::ipc::InvokeResponse::Ok(body) = reply.unwrap_or_else(|e| panic!("save did not finish: {e}")) else {
+            panic!("save unexpectedly failed");
+        };
+        assert_eq!(
+            body.deserialize::<serde_json::Value>()
+                .unwrap_or_else(|e| panic!("invalid reply: {e}")),
+            serde_json::Value::Null
+        );
+        thread.join().unwrap_or_else(|_| panic!("dispatch thread panicked"));
+        let loaded = settings::load(&path);
+        assert!(loaded.problem.is_none());
+        assert_eq!(PickerPreferences::from_settings(&loaded.settings), chosen);
+        assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+        for field in ["library", "shortcut", "update_checks", "future_choice"] {
+            assert_eq!(saved[field], current[field], "queued save keeps the current {field}");
+        }
+    }
+
+    #[test]
+    fn preference_ipc_rejects_invalid_settings_without_private_details_or_overwriting() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        let app = tauri::test::mock_builder()
+            .manage(SettingsFile::new(path.clone()))
+            .invoke_handler(tauri::generate_handler![set_picker_preferences])
+            .build(tauri::generate_context!(test = true))
+            .unwrap_or_else(|e| panic!("cannot build preference fixture: {e}"));
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
+        let chosen = PickerPreferences::from_settings(&settings::Settings::default());
+        for (text, expected) in [
+            (
+                r#"{"copy_format":"synthetic-private-value"}"#,
+                "settings.json is not valid",
+            ),
+            (
+                r#"{"schema_version":3,"private":"synthetic-private-value"}"#,
+                "settings.json was written by a newer version of Ibis",
+            ),
+        ] {
+            std::fs::write(&path, text).unwrap_or_else(|e| panic!("{e}"));
+            let result = tauri::test::get_ipc_response(&window, preference_request(chosen, None));
+            assert_eq!(result.err(), Some(serde_json::json!(expected)));
+            assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), text);
+        }
+    }
 
     #[test]
     fn unreadable_settings_report_no_operating_system_payload() {
@@ -237,7 +367,7 @@ mod tests {
     fn settings_saves_from_several_threads_never_lose_each_other() {
         let dir = std::env::temp_dir().join(format!("ibis-concurrent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let file = std::sync::Arc::new(SettingsFile::new(dir.join("settings.json")));
+        let file = SettingsFile::new(dir.join("settings.json"));
         let threads: Vec<_> = (0..8)
             .map(|i| {
                 let file = file.clone();

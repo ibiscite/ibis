@@ -62,6 +62,11 @@ The desktop app (`apps/desktop`) is a Tauri 2 shell: a React and TypeScript inte
 
 Until measurements justify more, the app is a single process that keeps the library index in memory and hides its window between uses (ADR 0012). The original plan of a small background engine plus an on-demand picker process (ADR 0004) remains the option if idle memory or wakeups exceed the budgets in `scripts/smoke-budgets.json`.
 
+Picker preference saves run on Tauri's blocking pool. Owned settings handles
+share one writer lock with synchronous settings updates; each save reads the
+current file after taking that lock, then changes and flushes it (ADRs 0020/0022).
+The interface's existing promise chain preserves preference choice order.
+
 Only the picker-owned file chooser prevents native blur hiding. An exclusive
 RAII lease in `picker/dialogs.rs` stays alive through the chooser callback,
 including its source-open handoff; dropping or unwinding the callback releases
