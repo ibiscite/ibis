@@ -73,6 +73,22 @@ test("Ibis Nightly is a separate app that reads only the nightly feed", () => {
   assert.ok(!("pubkey" in config.plugins.updater), "both apps trust the same built-in key");
 });
 
+test("Windows installers keep the historical install-location key across the planned identity change", () => {
+  const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+  const overrides = nightlyConfig("0.1.1-nightly.20261019223000");
+  const nightly = { ...stable, ...overrides, bundle: { ...stable.bundle, ...overrides.bundle } };
+  // Pinned Tauri CLI 2.12.3 NSIS: publisher, or identifier component 2, is
+  // MANUFACTURER; MANUPRODUCTKEY is Software\<manufacturer>\<product name>.
+  // https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.3/crates/tauri-bundler/src/bundle/windows/nsis/mod.rs#L284-L286
+  for (const [config, expected] of [[stable, "Software\\github\\Ibis"], [nightly, "Software\\github\\Ibis Nightly"]]) {
+    for (const identifier of [config.identifier, config.identifier.replace(/^io\.github\./, "com.")]) {
+      const manufacturer = config.bundle.publisher ?? identifier.split(".")[1] ?? identifier;
+      assert.equal(`Software\\${manufacturer}\\${config.productName}`, expected, identifier);
+      assert.equal(manufacturer, "github", "the displayed Windows Publisher keeps its historical value");
+    }
+  }
+});
+
 test("versions compare as the updater does, so the stable feed never moves back", () => {
   const ordered = ["0.1.0-nightly.20261019223000", "0.1.0-rc.1", "0.1.0-rc.2", "0.1.0-rc.10", "0.1.0", "0.1.1", "0.2.0", "0.10.0", "1.0.0"];
   for (let i = 0; i + 1 < ordered.length; i++) {
