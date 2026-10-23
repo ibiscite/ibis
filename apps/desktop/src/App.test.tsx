@@ -3792,3 +3792,25 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(screen.queryByRole("progressbar")).toBeNull();
   expect(screen.getByRole("alert").textContent).toContain("Check for Updates");
 });
+
+test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {
+  backend();
+  const listen = vi.spyOn(api, "onUpdateProgress").mockRejectedValue(new Error("SYNTHETIC_PRIVATE_PAYLOAD"));
+  try {
+    const { rerender } = render(<App />);
+    expect((await screen.findByRole("alert")).textContent).toBe("Update progress is unavailable.");
+    expect(document.body.textContent).not.toMatch(/SYNTHETIC_PRIVATE|could not be installed|successfully installed/);
+    const search = screen.getByLabelText("Search references");
+    search.focus();
+    fireEvent.change(search, { target: { value: "still typing" } });
+    expect((search as HTMLInputElement).value).toBe("still typing");
+    expect(document.activeElement).toBe(search);
+    let rejectOld!: (error: Error) => void;
+    listen.mockImplementation(() => new Promise((_, reject) => { rejectOld = reject; }));
+    rerender(<App api={{ ...api }} />);
+    rerender(<App api={{ ...api, onUpdateProgress: async () => () => undefined }} />);
+    await act(async () => { rejectOld(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(document.activeElement).toBe(search);
+  } finally { listen.mockRestore(); }
+});

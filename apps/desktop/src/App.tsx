@@ -52,16 +52,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     useZoteroLibraries, zoteroGroups } = api;
   const { findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
-  useEffect(() => {
-    let mounted = true;
-    const subscription = api.onUpdateProgress?.((next) => {
-      if (mounted) setUpdateProgress((old) => nativeApi.newerUpdate(old, next));
-    }).catch(() => { console.error("Update progress is unavailable."); return null; });
-    return () => {
-      mounted = false;
-      void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
-    };
-  }, [api]);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -77,6 +67,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selected, setSelected] = useState<Map<string, SearchResult>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
+  useEffect(() => {
+    let mounted = true;
+    setFailures((old) => old.updateEvents ? { ...old, updateEvents: false } : old);
+    const subscription = api.onUpdateProgress?.((next) => {
+      if (mounted) setUpdateProgress((old) => nativeApi.newerUpdate(old, next));
+    }).catch(() => {
+      if (mounted) setFailures((old) => ({ ...old, updateEvents: true }));
+      return null;
+    });
+    return () => {
+      mounted = false;
+      void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
+    };
+  }, [api]);
   const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
   const { format, density, largerText, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;

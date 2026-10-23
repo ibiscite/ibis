@@ -17,6 +17,7 @@ export const operationFailures = {
   pin: "Ibis could not change the pin. Try again.",
   preferences: "Ibis could not read or save your picker choices. They apply until Ibis restarts.",
   quit: "Ibis could not quit. Try again.",
+  updateEvents: "Update progress is unavailable.",
   pickerEvents: "Ibis could not focus the search box. Restart Ibis to try again.",
   libraryEvents: "Your library may not update automatically. Use Reload, or restart Ibis.",
   findSources: "Ibis could not look for libraries on this computer. Choose a file instead.",
