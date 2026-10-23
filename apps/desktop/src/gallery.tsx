@@ -8,7 +8,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
 import { App, type PickerApi } from "./App";
 import { SHELF_CHIPS } from "./features/picker/CitationShelf";
-import { libraryMessages, pickerText } from "./messages";
+import { libraryMessages, pickerText, setupText } from "./messages";
 import { hasRetainedFreshnessProblem } from "./LibraryStatusLine";
 import { setPlatform } from "./nativeAppearance";
 import "./styles.css";
@@ -59,6 +59,8 @@ function press(target: Element | null, key: string, init: KeyboardEventInit = {}
 function seedSteps(root: HTMLElement, state: GalleryState): (() => void)[] {
   const steps: (() => void)[] = [];
   const search = () => root.querySelector("#search");
+  if (state.sources) steps.push(() => [...root.querySelectorAll<HTMLButtonElement>(".library-setup button")]
+    .find((button) => button.textContent === setupText.findLibraries)?.click());
   for (let i = 0; i < (state.tray ?? 0); i++) {
     if (i > 0) steps.push(() => press(search(), "ArrowDown"));
     steps.push(() => press(search(), "Enter", { shiftKey: true }));
@@ -175,6 +177,7 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (state.showPastePreview === false ? root.querySelector(".shelf-output") === null
       && root.querySelector('footer [aria-keyshortcuts="Enter"]') !== null
       : !(state.formatted || state.showPastePreview) || root.querySelector(".shelf-output .preview-text") !== null)
+    && (!state.sources || root.querySelectorAll(".found-files li").length === state.sources.files.length)
     && selectionContained(root, state) && shelfTargetsContained(root) && warningTargetContained(root);
 }
 
@@ -236,6 +239,7 @@ export function renderGalleryState(
     pickerPreferences: () => track(() => provider.api.pickerPreferences()),
     setPinned: (on) => track(() => provider.api.setPinned(on)),
     search: (query, limit) => track(() => provider.api.search(query, limit)),
+    findSources: provider.api.findSources ? () => track(() => provider.api.findSources!()) : undefined,
     onLibraryChanged: (handler) => track(() => provider.api.onLibraryChanged(handler)),
     onPickerShown: (handler) => track(() => provider.api.onPickerShown(handler)),
   };

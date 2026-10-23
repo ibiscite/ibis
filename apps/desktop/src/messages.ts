@@ -60,6 +60,7 @@ function signIn(platform: Platform) {
 }
 
 export const setupText = {
+  findLibraries: "Find libraries",
   looking: "Looking for Zotero and .bib files…",
   zoteroAccessOff:
     "Zotero is open, but it does not let other apps read it yet. In Zotero, open Settings, then Advanced, and turn on " +

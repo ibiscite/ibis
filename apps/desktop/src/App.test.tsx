@@ -1888,6 +1888,7 @@ test("first-run setup lists found .bib files by name and folder, and opens one b
     open_found_library: (args) => { opened.push(args); return null; },
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
   const found = await screen.findByRole("region", { name: "Found on this computer" });
   expect(within(found).getAllByRole("button").map((b) => b.textContent)).toEqual(["thesis.bib in PhD", "refs.bib in Downloads"]);
   expect(screen.getByText(/turn on “Allow other applications on this computer to communicate with Zotero”/)).toBeTruthy();
@@ -1908,6 +1909,7 @@ test("a refused choice from an older list looks again and shows the new list", a
     open_found_library: () => { throw new Error("That file is no longer offered"); },
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
   fireEvent.click(await screen.findByRole("button", { name: "v1.bib in Documents" }));
   expect(await screen.findByRole("button", { name: "v2.bib in Documents" })).toBeTruthy();
   expect(screen.getByText("That file could not be opened from the list. Pick it again from the new list.")).toBeTruthy();
@@ -1919,6 +1921,7 @@ test("when looking for libraries fails, setup still offers the file chooser and 
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
   expect(await screen.findByText("Ibis could not look for libraries on this computer. Choose a file instead.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Choose library to get started" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Use Zotero" })).toBeTruthy();
@@ -1932,6 +1935,7 @@ test("setup failures go away once a library is chosen", async () => {
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
   const failure = "Ibis could not look for libraries on this computer. Choose a file instead.";
   await screen.findByText(failure);
   status = { ...NO_LIBRARY, state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
@@ -1943,6 +1947,7 @@ test("setup says what it found, says when it found nothing, and Look again keeps
   let answer: unknown = { zotero: "available", list: 1, files: [{ name: "refs.bib", folder: "" }], cut_short: false };
   backend({ library_status: () => NO_LIBRARY, find_sources: () => answer });
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
   expect((await screen.findByText(/Zotero is open/)).textContent).toBe("Zotero is open, so Use Zotero can read your library. 1 .bib file found.");
   expect(screen.getByRole("button", { name: "refs.bib" })).toBeTruthy();
   answer = { zotero: "absent", list: 2, files: [], cut_short: false };
@@ -2169,6 +2174,7 @@ test("two Zotero libraries turned on before the first is reported are both kept,
 test("when Zotero refuses other apps and no files are found, setup explains Zotero without saying nothing was found", async () => {
   backend({ library_status: () => NO_LIBRARY, find_sources: () => ({ zotero: "access_off", list: 1, files: [], cut_short: false }) });
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
   expect(await screen.findByText(/does not let other apps read it yet/)).toBeTruthy();
   expect(screen.queryByText(/No Zotero or .bib files found/)).toBeNull();
 });

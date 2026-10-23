@@ -75,6 +75,28 @@ test("first-run-found offers Zotero and two synthetic files without a chosen lib
   const offered = await galleryProvider(found!).api.findSources?.();
   expect(offered?.zotero).toBe("available");
   expect(offered?.files).toHaveLength(2);
+  vi.useFakeTimers();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
+  vi.stubGlobal("cancelAnimationFrame", (frame: number) => window.clearTimeout(frame));
+  const provider = galleryProvider(found!);
+  const findSources = vi.fn(provider.api.findSources!);
+  const evidence = { ...provider, api: { ...provider.api, findSources } };
+  const acknowledge = vi.fn(async () => undefined);
+  const container = document.createElement("div");
+  document.body.append(container);
+  let stop = () => {};
+  try {
+    await act(async () => { stop = renderGalleryState(container, found!, acknowledge, evidence); });
+    expect(findSources).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(findSources).toHaveBeenCalledOnce();
+    expect(container.querySelectorAll(".found-files li")).toHaveLength(2);
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith("first-run-found");
+  } finally {
+    await act(async () => stop());
+    container.remove();
+  }
 });
 
 test.each([
@@ -91,6 +113,7 @@ test.each([
   expect(state).toBeTruthy();
   render(<App {...galleryProvider(state!)} />);
   await screen.findByText(message);
+  if (id === "first-run") expect(screen.getByRole("button", { name: "Find libraries" })).toBeTruthy();
   expect(nativeCalls).toEqual([]);
 });
 

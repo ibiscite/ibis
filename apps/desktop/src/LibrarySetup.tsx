@@ -40,13 +40,13 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
   startAtLogin?: { name: string; enabled: boolean; toggle: () => void };
 }) {
   const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
-  // Undefined while looking; null when looking failed or is not offered.
-  const [sources, setSources] = useState<Sources | null>();
+  // Undefined while looking; null before an explicit search or after failure.
+  const [sources, setSources] = useState<Sources | null | undefined>(null);
   const [search, setSearch] = useState(0);
   const heading = useId();
 
   useEffect(() => {
-    if (!findSources) { setSources(null); return; }
+    if (!findSources || search === 0) { setSources(null); return; }
     let current = true;
     setSources(undefined);
     void perform("findSources", () => findSources().then(
@@ -60,7 +60,7 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
   const looking = sources === undefined;
   const zotero = sources?.zotero;
   const files = openFoundLibrary ? sources?.files ?? [] : [];
-  const lookAgain = () => setSearch((n) => n + 1);
+  const lookAgain = () => { setSources(undefined); setSearch((n) => n + 1); };
   const outcome = looking ? setupText.looking
     : sources && files.length === 0 && zotero === "absent" ? setupText.nothingFound
     : sources ? setupText.found(files.length, zotero === "available") : "";
@@ -104,7 +104,7 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
       {findSources && (
         // Stays focusable while looking; the outcome status announces progress.
         <Button aria-disabled={looking || undefined} onPress={() => { if (!looking) lookAgain(); }}>
-          {setupText.lookAgain}
+          {search === 0 ? setupText.findLibraries : setupText.lookAgain}
         </Button>
       )}
       {writing && (
