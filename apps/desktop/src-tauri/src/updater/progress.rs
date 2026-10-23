@@ -41,8 +41,9 @@ impl Progress {
                 return;
             }
             let received = s.received.saturating_add(bytes as u64);
+            let consistent = s.received == 0 || s.total == total;
             s.received = received.min(MAX_BYTES);
-            s.total = total.filter(|&n| n > 0 && n <= MAX_BYTES && received <= n);
+            s.total = total.filter(|&n| consistent && n > 0 && n <= MAX_BYTES && received <= n);
         }
         s.phase = phase;
     }
@@ -67,7 +68,7 @@ mod tests {
         p.change(a, Some((25, Some(100))), "downloading");
         p.change(a, Some((30, Some(100))), "downloading");
         assert_eq!(p.0.as_ref().map(|s| (s.received, s.total)), Some((55, Some(100))));
-        for total in [None, Some(0), Some(1), Some(u64::MAX)] {
+        for total in [Some(200), None, Some(0), Some(1), Some(u64::MAX)] {
             p.change(a, Some((1, total)), "downloading");
             assert_eq!(p.0.as_ref().and_then(|s| s.total), None);
         }
