@@ -175,6 +175,10 @@ pub(super) fn install_result(
                 new.requested = library.requested.take();
                 new.error = library.error.take();
                 new.choice_save_warning = library.choice_save_warning.take();
+            } else if automatic && new.source == library.source {
+                // A refresh never saves the choice again, so a "not saved for
+                // next time" warning still holds after it brings changes.
+                new.choice_save_warning = library.choice_save_warning.take();
             }
             *library = new;
         }
@@ -534,6 +538,37 @@ mod tests {
         assert_eq!(recovered.name.as_deref(), Some("selected.bib"));
         assert!(recovered.error.is_none());
         assert!(recovered.note.is_none());
+    }
+
+    #[test]
+    fn an_automatic_refresh_that_brings_changes_keeps_the_unsaved_choice_warning() {
+        let saved = "the library opened but could not be saved for next time: synthetic";
+        for source in [
+            Source::File(PathBuf::from("synthetic/selected.bib")),
+            Source::Zotero(ZoteroLibrary::Group(7).into()),
+        ] {
+            let library = Mutex::new(Library::default());
+            let requests = LoadRequests::default();
+            let (request, _, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("open"));
+            let first = candidate(source.clone(), ibis_core::bibtex::load_str("synthetic", "@misc{first}"));
+            install(&library, &requests, request, Ok(first)).unwrap_or_else(|| panic!("opened"));
+            if let Ok(mut library) = library.lock() {
+                library.choice_save_warning = Some(saved.to_string());
+            }
+            let changed = candidate(
+                source.clone(),
+                ibis_core::bibtex::load_str("synthetic", "@misc{first}\n@misc{second}"),
+            );
+            let refreshed = install_automatic(&library, &requests, request, Ok(changed))
+                .unwrap_or_else(|| panic!("the refresh is current"));
+            assert_eq!(refreshed.references, 2);
+            assert!(refreshed.choice_not_saved);
+            assert_eq!(
+                refreshed.note.as_deref(),
+                Some(saved),
+                "a refresh never saves the choice"
+            );
+        }
     }
 
     #[test]

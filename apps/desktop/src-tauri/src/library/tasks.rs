@@ -18,7 +18,7 @@ use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
 use super::error::LoadError;
-use super::load::load_source;
+use super::load::{Loaded, load_source};
 use super::retry::{begin_check, begin_focus_retry, begin_zotero_retry, retry, zotero_choice, zotero_to_check};
 use super::source::Source;
 use super::state::{
@@ -121,6 +121,32 @@ pub(super) fn watch_current(app: &AppHandle, request: u64) {
     }
 }
 
+#[derive(Clone, Copy)]
+enum OpenIntent {
+    Remember,
+    Read,
+    Refresh,
+}
+
+impl OpenIntent {
+    fn retry(reload: bool) -> Self {
+        if reload { Self::Refresh } else { Self::Remember }
+    }
+
+    fn install(
+        self,
+        library: &Mutex<Library>,
+        requests: &LoadRequests,
+        request: u64,
+        loaded: Result<Loaded, LoadError>,
+    ) -> Option<LibraryStatus> {
+        match (self, loaded) {
+            (Self::Refresh, Ok(Loaded::New(new))) => install_automatic(library, requests, request, Ok(*new)),
+            (_, loaded) => install_loaded(library, requests, request, loaded),
+        }
+    }
+}
+
 /// Start opening a library in the background. The request is numbered here,
 /// synchronously and in the order requests arrive, so a load that finishes
 /// after a newer request is discarded. The outcome reaches the interface as
@@ -131,7 +157,12 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
     let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) else {
         return;
     };
-    run_open(app, request, source, reload, remember);
+    let intent = if remember {
+        OpenIntent::Remember
+    } else {
+        OpenIntent::Read
+    };
+    run_open(app, request, source, reload, intent);
 }
 
 #[cfg(debug_assertions)]
@@ -151,7 +182,7 @@ struct LoadPhases {
     load_ok: u8,
 }
 
-pub(super) fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, remember: bool) {
+fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent: OpenIntent) {
     #[cfg(debug_assertions)]
     let started = std::time::Instant::now();
     publish_current(app);
@@ -190,7 +221,7 @@ pub(super) fn run_open(app: &AppHandle, request: u64, source: Source, reload: bo
         };
         #[cfg(debug_assertions)]
         let installing = std::time::Instant::now();
-        let installed = install_loaded(&app.state(), &app.state(), request, loaded);
+        let installed = intent.install(&app.state(), &app.state(), request, loaded);
         #[cfg(debug_assertions)]
         {
             phases.install_ms = installing.elapsed().as_secs_f64() * 1000.0;
@@ -198,7 +229,9 @@ pub(super) fn run_open(app: &AppHandle, request: u64, source: Source, reload: bo
         }
         if installed.is_some() {
             let mut show_note = false;
-            if remember && let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
+            if matches!(intent, OpenIntent::Remember)
+                && let Ok(mut library) = app.state::<Mutex<Library>>().lock()
+            {
                 // Saving and the note belong to this request, never a newer choice.
                 if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request && library.error.is_none() {
                     let saved = app.state::<SettingsFile>().update(|s| s.library = Some(chosen));
@@ -298,7 +331,8 @@ pub(crate) fn refresh_zotero(app: &AppHandle) {
             let loaded = tauri::async_runtime::spawn_blocking(move || load_source(source, true, previous))
                 .await
                 .unwrap_or(Err(LoadError::Stopped));
-            if install_loaded(&app.state(), &app.state(), request, loaded).is_some() {
+            let installed = OpenIntent::Refresh.install(&app.state(), &app.state(), request, loaded);
+            if installed.is_some() {
                 publish_current(&app);
                 watch_current(&app, request);
             }
@@ -306,7 +340,7 @@ pub(crate) fn refresh_zotero(app: &AppHandle) {
         return;
     }
     if let Some((request, source, reload)) = begin_zotero_retry(&app.state(), &app.state(), false) {
-        run_open(app, request, source, reload, !reload);
+        run_open(app, request, source, reload, OpenIntent::retry(reload));
     }
 }
 
@@ -314,7 +348,7 @@ pub(crate) fn refresh_zotero(app: &AppHandle) {
 /// Healthy libraries are checked only on show, and no timer retries failures.
 pub(crate) fn retry_zotero_on_focus(app: &AppHandle) {
     if let Some((request, source, reload)) = begin_focus_retry(&app.state(), &app.state()) {
-        run_open(app, request, source, reload, !reload);
+        run_open(app, request, source, reload, OpenIntent::retry(reload));
     }
 }
 
@@ -365,6 +399,46 @@ pub(crate) fn reload_library_file(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_it() {
+        use super::super::error::ZOTERO_OFFLINE;
+        use super::super::state::install;
+
+        let source = Source::Zotero(ZoteroLibrary::Group(7).into());
+        let mut opened = candidate(source.clone(), ibis_core::bibtex::load_str("synthetic", "@misc{first}"));
+        let note = "the library opened but could not be saved for next time: synthetic";
+        opened.choice_save_warning = Some(note.to_string());
+        let library = Mutex::new(opened);
+        let requests = LoadRequests::default();
+        let (check, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("quiet check"));
+        install(&library, &requests, check, Err(ZOTERO_OFFLINE)).unwrap_or_else(|| panic!("failed check"));
+
+        let (request, retried, reload) =
+            begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("focus recovery"));
+        assert!(reload);
+        let changed = || {
+            Ok(Loaded::New(Box::new(candidate(
+                source.clone(),
+                ibis_core::bibtex::load_str("synthetic", "@misc{first}\n@misc{second}"),
+            ))))
+        };
+        let recovered = OpenIntent::retry(reload)
+            .install(&library, &requests, request, changed())
+            .unwrap_or_else(|| panic!("recovery is current"));
+        assert_eq!(retried, source);
+        assert_eq!(recovered.references, 2);
+        assert!(recovered.choice_not_saved);
+        assert_eq!(recovered.note.as_deref(), Some(note));
+
+        let (request, _, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("reload"));
+        let reloaded = OpenIntent::Read
+            .install(&library, &requests, request, changed())
+            .unwrap_or_else(|| panic!("explicit reload is current"));
+        assert_eq!(reloaded.references, 2);
+        assert!(!reloaded.choice_not_saved);
+        assert!(reloaded.note.is_none(), "explicit Reload retains its existing behavior");
+    }
 
     #[cfg(debug_assertions)]
     #[test]
