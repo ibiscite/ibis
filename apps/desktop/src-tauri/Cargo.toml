@@ -42,7 +42,7 @@ x11rb = { version = "0.14.0", default-features = false, features = ["xkb"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = "=2.1.1"
 # Safe native accessibility queries; no raw native calls in Ibis.
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility", "NSColor", "NSColorSpace"] }
 # Already locked through Tauri. Reads whether macOS opened Ibis as a login
 # item (#525), so the picker stays hidden then.
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "objc2-core-services"] }

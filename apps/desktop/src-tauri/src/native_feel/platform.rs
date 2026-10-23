@@ -1,6 +1,22 @@
 use super::policy::{Appearance, Preferences};
 use tauri::{AppHandle, WebviewWindow};
 
+pub(super) fn accent() -> Option<[f64; 3]> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSColor, NSColorSpace};
+        // Component getters raise for non-RGB colours. Convert first using the
+        // pinned safe API; never assume the dynamic accent's native space.
+        let color = NSColor::controlAccentColor().colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
+        let rgb = [color.redComponent(), color.greenComponent(), color.blueComponent()];
+        rgb.iter()
+            .all(|c| c.is_finite() && (0.0..=1.0).contains(c))
+            .then_some(rgb)
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
 pub(super) fn material() -> Appearance {
     #[cfg(target_os = "macos")]
     return Appearance::Vibrancy;
@@ -115,7 +131,7 @@ pub(super) fn watch(app: &AppHandle) {
                     let complete = pending.clone();
                     if handle
                         .run_on_main_thread(move || {
-                            super::refresh(&task);
+                            super::refresh(&task, false);
                             complete.store(false, Ordering::Relaxed);
                         })
                         .is_err()
