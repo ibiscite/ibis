@@ -20,10 +20,10 @@
      radius and the search band follow from them. Radii are px (they follow the
      native window corner); sizes are rem, so Larger text keeps edges aligned. */
   --inset: var(--space-2);      /* window edge to the field, the list and the footer */
-  --field-h: 2.5rem;            /* the search field */
+  --field-h: 2.25rem;           /* tallest header control: macOS pin */
   --row-pad: var(--space-3);    /* row side padding */
   --row-gap: var(--space-3);    /* tile to text */
-  --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* 56, 48 on Windows */
+  --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* band only; divider outside */
   --footer-height: 2.5rem;
   --control-min-size: 2rem;
   --touch-target: 2.75rem;
@@ -253,7 +253,7 @@
 :root[data-platform="windows"] { --font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 :root[data-platform="linux"] { --font-family: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
 :root[data-platform="windows"] {
-  --r-win: 8px; --inset: var(--space-1); --r-min: 4px; --r-menu: 8px; --menu-pad: 4px;
+  --r-win: 8px; --field-h: 2rem; --r-min: 4px; --r-menu: 8px; --menu-pad: 4px;
   --r-dialog: var(--r-win); --ease-out: cubic-bezier(0, 0, 0, 1); --ease-in: cubic-bezier(1, 0, 1, 1);
   --shadow-card: 0 0 2px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 14%);
   --shadow-raised: none;
@@ -270,7 +270,7 @@
 :root[data-platform="linux"] {
   /* libadwaita 1.8+: the 15 px window derives 7 px rows at the 8 px inset;
      tiles and larger-text rows keep the 6 px floor. Popovers stay separate. */
-  --r-win: 15px; --r-min: 6px;
+  --r-win: 15px; --field-h: 2.125rem; --r-min: 6px;
   --r-dialog: var(--r-menu); --ease-out: cubic-bezier(.33, 1, .68, 1);
   --shadow-card: 0 0 0 1px rgb(0 0 6 / 3%), 0 1px 3px 1px rgb(0 0 6 / 7%), 0 2px 6px 2px rgb(0 0 6 / 3%);
   --shadow-raised: none;

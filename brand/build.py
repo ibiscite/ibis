@@ -114,7 +114,8 @@ def optical_centre(name, neck=None):
 
 
 def depth_filter(fid, box):
-    """One soft light along the top rim, a shade along the bottom rim, and a short shadow.
+    """One soft light along the top rim, a shade along the bottom rim, and two shadows: a tight
+    contact shadow right under the shape and a wide, faint ambient one.
 
     The region is fixed in the symbol's units around its whole outline, so the shadow is never cut
     off, even mid-animation when only part of the shape is drawn.
@@ -129,11 +130,16 @@ def depth_filter(fid, box):
         f'<feFlood flood-color="#fff" flood-opacity="{D["rim_light"]}"/><feComposite in2="top" operator="in" result="hl"/>'
         f'<feOffset in="b" dy="{-D["rim_offset"]}" result="bu"/><feComposite in="SourceAlpha" in2="bu" operator="out" result="bot"/>'
         f'<feFlood flood-color="#000" flood-opacity="{D["rim_shade"]}"/><feComposite in2="bot" operator="in" result="sh"/>'
+        f'<feGaussianBlur in="SourceAlpha" stdDeviation="{D["contact_blur"]}" result="cb"/>'
+        f'<feOffset in="cb" dy="{D["contact_drop"]}" result="co"/>'
+        f'<feFlood flood-color="{D["shadow_colour"]}" flood-opacity="{D["contact_opacity"]}"/>'
+        '<feComposite in2="co" operator="in" result="contact"/>'
         f'<feGaussianBlur in="SourceAlpha" stdDeviation="{D["shadow_blur"]}" result="db"/>'
         f'<feOffset in="db" dy="{D["shadow_drop"]}" result="do"/>'
         f'<feFlood flood-color="{D["shadow_colour"]}" flood-opacity="{D["shadow_opacity"]}"/>'
         '<feComposite in2="do" operator="in" result="drop"/>'
-        '<feMerge><feMergeNode in="drop"/><feMergeNode in="SourceGraphic"/><feMergeNode in="hl"/><feMergeNode in="sh"/></feMerge>'
+        '<feMerge><feMergeNode in="drop"/><feMergeNode in="contact"/><feMergeNode in="SourceGraphic"/>'
+        '<feMergeNode in="hl"/><feMergeNode in="sh"/></feMerge>'
         "</filter>"
     )
 
@@ -150,9 +156,37 @@ def draw(name, k, tx, ty, paint, uid, depth=False, neck=None):
                 + depth_filter(f"{uid}f", SYM[name][0]))
         paint, attr = f"url(#{uid}g)", f' filter="url(#{uid}f)"'
     if neck:
-        body = thicken(body, neck)
+        body = thicken(body, neck)       # favicon sizes: no eye, as in the app's small icon
     body = body.replace("currentColor", paint)
-    return defs, f'<g transform="translate({tx:.3f} {ty:.3f}) scale({k:.5f})"><g{attr}>{body}</g></g>'
+    shape = f"<g{attr}>{body}</g>"
+    if name == "mark" and not neck:
+        mask, shape = cut_eye(body, uid, attr)
+        defs += mask
+    return defs, f'<g transform="translate({tx:.3f} {ty:.3f}) scale({k:.5f})">{shape}</g>'
+
+
+def cut_eye(body, uid, attr):
+    """Cut the eye out of the bird, so whatever is behind it shows through on any background.
+
+    The cut is made after the depth, so the eye is crisp. `eye_depth` (0 to 1) then fades in the
+    depth's own rim light and shade inside the eye, for a slightly inset look.
+    """
+    bx, by, bw, bh = SYM["mark"][0]
+    m = 4 * D["shadow_blur"]
+    box = f'x="{bx - m:g}" y="{by - m:g}" width="{bw + 2 * m:g}" height="{bh + 2 * m + D["shadow_drop"]:g}"'
+    eye = SYM["eye"][1].replace("currentColor", "#000")
+    defs = f'<mask id="{uid}e" maskUnits="userSpaceOnUse" {box}><rect {box} fill="#fff"/>{eye}</mask>'
+    shape = f'<g mask="url(#{uid}e)"><g{attr}>{body}</g></g>'
+    if attr and D["eye_depth"] > 0:
+        (ex, ey, ew, eh), _ = SYM["eye"]
+        cx, cy, r = ex + ew / 2, ey + eh / 2, 3.2 * ew      # feathered, so the shading has no edge
+        defs += (f'<radialGradient id="{uid}r" gradientUnits="userSpaceOnUse" cx="{cx:g}" cy="{cy:g}" r="{r:g}">'
+                 '<stop offset="0.3" stop-color="#fff"/><stop offset="1" stop-color="#000"/></radialGradient>'
+                 f'<mask id="{uid}s" maskUnits="userSpaceOnUse" x="{cx - r:g}" y="{cy - r:g}" width="{2 * r:g}" height="{2 * r:g}">'
+                 f'<circle cx="{cx:g}" cy="{cy:g}" r="{r:g}" fill="url(#{uid}r)"/></mask>')
+        shape += (f'<g class="eyeshade" mask="url(#{uid}s)" opacity="{D["eye_depth"]:g}">'
+                  f'<g{attr}><g mask="url(#{uid}e)">{body}</g></g></g>')
+    return defs, shape
 
 
 def place(name, x, y, height, paint, uid, depth=False):
@@ -186,7 +220,7 @@ def doc(w, h, defs, body, size=None):
 
 def mark(paint, uid, depth=True):
     bh = SYM["mark"][0][3]
-    side = fitted_side("mark", PAD * bh + D["shadow_drop"])
+    side = fitted_side("mark", PAD * bh + L["shadow_room"])
     defs, body = centred("mark", side, bh, paint, uid, depth)
     return doc(side, side, defs, body, (512, 512))
 
@@ -354,18 +388,21 @@ def motion_css():
         f".neck{{stroke-dasharray:1;animation:draw {t['neck_duration']}s {t['ease']} {t['neck_start']}s backwards}}"
         f".crown{{transform-box:fill-box;transform-origin:18% 22%;"
         f"animation:grow {t['crown_duration']}s {t['crown_ease']} {t['crown_start']}s backwards}}"
+        # The eye's shading fades in once the head has grown, so the two copies never show apart.
+        f".eyeshade{{animation:fade 0.2s linear {t['crown_start'] + t['crown_duration']:g}s backwards}}"
         f".word{{animation:word {t['word_duration']}s {t['ease']} {t['word_start']}s backwards}}"
         "@keyframes draw{0%{stroke-dashoffset:1;opacity:0}8%{opacity:1}to{stroke-dashoffset:0}}"
         f"@keyframes grow{{0%{{transform:rotate({t['crown_turn']}deg) scale({t['crown_from']});opacity:0}}15%{{opacity:1}}}}"
         f"@keyframes word{{0%{{opacity:0;transform:translateX({-t['word_slide']}px)}}}}"
-        "@media (prefers-reduced-motion:reduce){.neck,.crown,.word{animation:none}}"
+        "@keyframes fade{0%{opacity:0}}"
+        "@media (prefers-reduced-motion:reduce){.neck,.crown,.word,.eyeshade{animation:none}}"
     )
 
 
 def animate(svg):
     """Tag the neck and group the head with the beak so they grow from the head's centre as one shape."""
-    out = svg.replace('<path d="M36', '<path class="neck" pathLength="1" d="M36', 1)
-    out = re.sub(r'(<path d="M41 25[^"]*"[^>]*/>)(<circle [^>]*/>)', r'<g class="crown">\1\2</g>', out, count=1)
+    out = svg.replace('<path d="M36', '<path class="neck" pathLength="1" d="M36')
+    out = re.sub(r'(<path d="M41 25[^"]*"[^>]*/>)(<circle [^>]*/>)', r'<g class="crown">\1\2</g>', out)
     if 'class="neck"' not in out or 'class="crown"' not in out:
         raise SystemExit("master.svg's bird changed shape order; update animate() in build.py")
     return out.replace("<defs>", f"<defs><style>{motion_css()}</style>", 1)

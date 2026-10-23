@@ -83,11 +83,11 @@ letters.
 
 | Token | Value | Notes |
 |---|---|---|
-| `--inset` | 8 px (Windows 4 px) | Window edge to the search field, the list and the footer. The band above the field is the drag handle. |
-| `--field-h` | 40 px | Search field, so the search band is 56 px (48 px on Windows). |
+| `--inset` | 8 px on every OS | Window edge and divider to each adjacent fill; the list viewport keeps this gap while scrolling. |
+| Header control band | 52 px macOS, 48 px Windows, 50 px GNOME | Tallest control (36 / 32 / 34 px) plus 8 px above and below. The always-visible 1 px divider is outside: 53 / 49 / 51 px total. |
 | `--row-pad` / `--row-gap` | 12 px / 12 px | Row side padding; tile to text. |
 | `--tile` / `--icon` | 32 px / 20 px | Type tile and its icon. Compact draws a 24 px tile with no fill, centred in the 32 px column, so titles stay aligned with the search text. |
-| Footer | 40 px | Text starts at `--inset + --row-pad`. |
+| Footer | 40 px | 24 px actions with 8 px above and below. Windows/GNOME add an outside 1 px top divider (41 px total). Text starts at `--inset + --row-pad`. |
 | Smallest target | 32 px, 44 px on touch | |
 
 Edges line up: the search icon is centred over the tile column and the
@@ -96,7 +96,7 @@ placeholder starts where row titles start:
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
 --lead-gap = (tile − icon) / 2 + row-gap       icon to placeholder
-text x     = inset + row-pad + tile + row-gap  64 px (60 px on Windows)
+text x     = inset + row-pad + tile + row-gap  64 px on every OS
 ```
 
 These numbers are also in [`design-geometry.json`](design-geometry.json), which
@@ -117,7 +117,7 @@ instead of going square or looking like a separate floating slab.
 | | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
 | `--r-win` | 28 on macOS 26 and later; 12 pt before that (the native panel corner, #236) | 8 | 15 |
-| `--inset` · `--r-min` | 8 · 6 | 4 · 4 | 8 · 6 |
+| `--inset` · `--r-min` | 8 · 6 | 8 · 4 | 8 · 6 |
 | `--r-row` | 20 on macOS 26 and later; 6 before | 4 | 7 |
 | `--r-tile` | 8 on macOS 26 and later; 6 before | 4 | 6 |
 | `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 | 8 · 4 · 4 | 12 · 6 · 6 |

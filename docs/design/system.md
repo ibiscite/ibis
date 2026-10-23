@@ -265,7 +265,7 @@ Liquid Glass's three shape kinds map to `--r-control` (fixed), `--r-full`
 | Token | macOS 15 and earlier | macOS 26 | Windows 11 | GNOME |
 |---|---|---|---|---|
 | `--r-win` | 12 | 28 (verify against Spotlight) | 8 | 15 |
-| `--inset` | 8 | 8 | 4 | 8 |
+| `--inset` | 8 | 8 | 8 | 8 |
 | `--r-min` | 6 | 6 | 4 | 6 |
 | `--r-row` | 6 | 20 | 4 | 7 |
 | `--r-tile` | 6 | 8 | 4 | 6 |
@@ -348,7 +348,7 @@ Weights 400, 500 (key caps and chip labels) and 600. No 700, no italics except
 
 | Token | px | Use |
 |---|---|---|
-| `--space-1` | 4 | icon to label, Windows inset |
+| `--space-1` | 4 | icon to label |
 | `--space-2` | 8 | inset, chip padding, menu offset |
 | `--space-3` | 12 | row padding, row gap |
 | `--space-4` | 16 | dialog padding, Settings card padding |
@@ -380,6 +380,13 @@ Density changes rows only; controls, targets, type and the header never change.
 
 Adjacent targets never overlap; the 4 px gap between header controls belongs to
 the 32 px target.
+
+The header's nominal control bands are 52 / 48 / 50 px (macOS / Windows /
+GNOME): 36 / 32 / 34 px controls plus two 8 px gaps. The always-visible 1 px
+divider is outside that band, making the total 53 / 49 / 51 px. The footer has
+24 px fills and two 8 px gaps (40 px); Windows and GNOME add an outside 1 px
+top divider. Coarse 44 px targets and wrapped controls grow these bands.
+The list's clipping viewport keeps 8 px from adjacent bands even while scrolled.
 
 ### 5.4 Icons
 

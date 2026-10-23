@@ -6,6 +6,7 @@
 
 use std::sync::atomic::AtomicBool;
 
+use tauri::utils::config::WindowConfig;
 use tauri::{AppHandle, LogicalPosition, Monitor, PhysicalPosition, Position, WebviewWindow};
 
 use crate::diagnostics::{NativeIssue, checked, checked_once, report};
@@ -101,6 +102,26 @@ pub(crate) fn choose(
     }
 }
 
+/// Debug previews may retain an explicitly positioned window on its display.
+fn choose_for_show(
+    displays: &[Display],
+    pointer: Option<(f64, f64)>,
+    window: impl FnOnce() -> Option<Area>,
+    primary: Option<usize>,
+    first_show: bool,
+    preview: Option<&WindowConfig>,
+    debug: bool,
+) -> Placement {
+    let explicit = debug
+        && preview.is_some_and(|c| !c.center && c.x.is_some_and(f64::is_finite) && c.y.is_some_and(f64::is_finite));
+    choose(
+        displays,
+        if explicit { None } else { pointer },
+        if first_show && !explicit { None } else { window() },
+        primary,
+    )
+}
+
 /// The picker's top-left corner on a display: centred across its usable area,
 /// a fifth of the way down. A picker larger than the area starts at its corner.
 pub(crate) fn launcher_position(usable: Area, width: f64, height: f64) -> (f64, f64) {
@@ -162,11 +183,15 @@ pub(crate) fn place_on_active_display(app: &AppHandle, window: &WebviewWindow, f
     let pointer = checked_once(app.cursor_position(), NativeIssue::Pointer, &POINTER_FAILURE_REPORTED)
         .map(|p| (p.x / pointer_scale, p.y / pointer_scale));
     let primary = primary.and_then(|p| displays.iter().position(|d| *d == display(&p)));
-    if let Placement::Centre(i) = choose(
+    let config = app.config().app.windows.iter().find(|c| c.label == window.label());
+    if let Placement::Centre(i) = choose_for_show(
         &displays,
         pointer,
-        if first_show { None } else { window_area(window) },
+        || window_area(window),
         primary,
+        first_show,
+        config,
+        cfg!(debug_assertions),
     ) {
         place_on(window, &monitors[i]);
     }
@@ -212,6 +237,134 @@ mod tests {
     };
     const DISPLAYS: [Display; 2] = [LAPTOP, EXTERNAL];
     const PICKER_ON_LAPTOP: Area = rect(504.0, 246.0, 720.0, 480.0);
+
+    #[test]
+    fn explicit_debug_previews_keep_their_display_on_startup_and_reopen() {
+        let preview = WindowConfig {
+            x: Some(504.0),
+            y: Some(246.0),
+            center: false,
+            ..WindowConfig::default()
+        };
+        for first_show in [true, false] {
+            assert_eq!(
+                choose_for_show(
+                    &DISPLAYS,
+                    Some((-100.0, -100.0)),
+                    || Some(PICKER_ON_LAPTOP),
+                    Some(0),
+                    first_show,
+                    Some(&preview),
+                    true,
+                ),
+                Placement::Keep
+            );
+            let external = rect(-2000.0, -1000.0, 720.0, 480.0);
+            assert_eq!(
+                choose_for_show(
+                    &DISPLAYS,
+                    Some((100.0, 100.0)),
+                    || Some(external),
+                    Some(0),
+                    first_show,
+                    Some(&preview),
+                    true,
+                ),
+                Placement::Keep
+            );
+            for (window, expected) in [
+                (rect(1500.0, 600.0, 720.0, 480.0), Placement::Centre(0)),
+                (rect(5000.0, 5000.0, 720.0, 480.0), Placement::Centre(0)),
+            ] {
+                assert_eq!(
+                    choose_for_show(
+                        &DISPLAYS,
+                        Some((-100.0, -100.0)),
+                        || Some(window),
+                        Some(0),
+                        first_show,
+                        Some(&preview),
+                        true,
+                    ),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn defaults_release_and_incomplete_preview_coordinates_still_follow_the_pointer() {
+        let explicit = WindowConfig {
+            x: Some(504.0),
+            y: Some(246.0),
+            ..WindowConfig::default()
+        };
+        assert_eq!(
+            choose_for_show(
+                &DISPLAYS,
+                Some((-100.0, -100.0)),
+                || panic!("release startup does not read current geometry"),
+                Some(0),
+                true,
+                Some(&explicit),
+                false
+            ),
+            Placement::Centre(1)
+        );
+        for first_show in [true, false] {
+            assert_eq!(
+                choose_for_show(
+                    &DISPLAYS,
+                    Some((-100.0, -100.0)),
+                    || Some(PICKER_ON_LAPTOP),
+                    Some(0),
+                    first_show,
+                    Some(&explicit),
+                    false
+                ),
+                Placement::Centre(1)
+            );
+        }
+        for preview in [
+            None,
+            Some(WindowConfig::default()),
+            Some(WindowConfig {
+                center: true,
+                ..explicit.clone()
+            }),
+            Some(WindowConfig {
+                x: None,
+                ..explicit.clone()
+            }),
+            Some(WindowConfig {
+                y: None,
+                ..explicit.clone()
+            }),
+            Some(WindowConfig {
+                x: Some(f64::NAN),
+                ..explicit.clone()
+            }),
+            Some(WindowConfig {
+                y: Some(f64::INFINITY),
+                ..explicit.clone()
+            }),
+        ] {
+            for first_show in [true, false] {
+                assert_eq!(
+                    choose_for_show(
+                        &DISPLAYS,
+                        Some((-100.0, -100.0)),
+                        || Some(PICKER_ON_LAPTOP),
+                        Some(0),
+                        first_show,
+                        preview.as_ref(),
+                        true,
+                    ),
+                    Placement::Centre(1)
+                );
+            }
+        }
+    }
 
     #[test]
     fn the_picker_moves_to_the_display_with_the_pointer() {

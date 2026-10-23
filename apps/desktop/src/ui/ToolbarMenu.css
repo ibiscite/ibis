@@ -4,6 +4,7 @@
   position: relative; gap: var(--space-1);
   font: var(--metadata-size)/var(--metadata-line-height) var(--font-family);
 }
+.search-bar .toolbar-menu-control, .search-bar .toolbar-menu-button { min-height: var(--field-h); }
 :root[data-platform="macos"] .toolbar-menu-button {
   min-height: calc(var(--control-min-size) - var(--space-1)); border-radius: calc(var(--control-min-size) / 2);
 }

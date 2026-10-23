@@ -41,20 +41,25 @@
     "word_gap": 0.34,
     "container": 0.62,
     "optical_sideways": 0.5,
-    "optical_lift": 0.015,
+    "optical_lift": 0.0075,
     "favicon_neck": 10.5,
     "app_icon_radius": 0.225,
-    "banner_logo": 0.15
+    "banner_logo": 0.15,
+    "shadow_room": 1.6
   },
   "depth": {
-    "rim_light": 0.3,
-    "rim_shade": 0.16,
-    "shadow_opacity": 0.2,
-    "shadow_blur": 2.0,
-    "shadow_drop": 1.6,
+    "rim_light": 0.24,
+    "rim_shade": 0.12,
+    "contact_opacity": 0.22,
+    "contact_blur": 0.5,
+    "contact_drop": 0.5,
+    "shadow_opacity": 0.13,
+    "shadow_blur": 2.6,
+    "shadow_drop": 2.0,
     "shadow_colour": "#4A0F04",
     "rim_blur": 1.1,
-    "rim_offset": 1.3
+    "rim_offset": 1.3,
+    "eye_depth": 0.35
   },
   "motion": {
     "neck_start": 0.1,

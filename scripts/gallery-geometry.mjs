@@ -50,8 +50,15 @@ export function compare(spec, platform, text, density, measured) {
   // Larger text scales rem sizes and insets; window corners and radius floors stay fixed.
   check(`row height (${density})`, spec.rowHeight[density] * scale, measured.rowHeight);
   if (density !== "comfortable") return rows;
-  check("footer height", spec.footer * scale, measured.footer);
+  const look = spec.platforms[platform];
+  check("footer height", spec.footer * scale + look.footerDivider, measured.footer);
   check("search band height", expected.searchBand, measured.searchBand);
+  check("header divider", spec.headerDivider, measured.headerDivider);
+  for (const name of ["fieldHeight", "pinHeight"]) check(name, look.headerControl * scale, measured[name]);
+  check("popup height", look.popup * scale, measured.popupHeight);
+  check("footer action height", spec.footerAction * scale, measured.footerAction);
+  check("footer divider", look.footerDivider, measured.footerDivider);
+  for (const name of ["pinTopGap", "pinBottomGap", "pinEndGap", "footerTopGap", "footerBottomGap"]) check(name, look.inset * scale, measured[name]);
   check("search glyph centre x = tile centre x", measured.tileCentre, measured.glyphCentre);
   check("typed text x = row title x", measured.titleX, measured.textX);
   check("typed text x", expected.textX, measured.textX);
@@ -79,6 +86,15 @@ export function layout(platform, text, state, { regions, tray, list }) {
   check(pairs.length ? `no regions overlap: ${pairs.join(", ")}` : "no regions overlap", pairs.length === 0, pairs.length);
   if (tray) check("no chip cut by the tray edge", cut(tray.clip, tray.chips) === 0, cut(tray.clip, tray.chips));
   check("the list scrolls in its own area", Boolean(list?.ownScroll), list?.ownScroll ? 0 : 1);
+  const area = regions.find(box => box.name === "results-area");
+  if (area) {
+    const inset = 8 * (text === "large" ? LARGER_TEXT : 1);
+    const before = regions.filter(box => box !== area && box.bottom <= area.top).map(box => box.bottom);
+    const after = regions.filter(box => box !== area && box.top >= area.bottom).map(box => box.top);
+    for (const [edge, gap] of [["top", area.top - Math.max(...before)], ["bottom", Math.min(...after) - area.bottom]]) {
+      rows.push({ name: `list ${edge} gap (${state})`, platform, text, density: state, expected: inset, measured: gap, pass: Number.isFinite(gap) && Math.abs(gap - inset) <= .5 });
+    }
+  }
   return rows;
 }
 
@@ -116,12 +132,23 @@ function measure() {
   const input = document.querySelector("#search");
   const inputBox = input?.getBoundingClientRect();
   const root = getComputedStyle(document.documentElement);
+  const header = document.querySelector(".search-bar"), footer = document.querySelector("footer");
+  const pin = box(".search-bar .pin-button"), action = box("footer button[aria-haspopup]");
+  const headerBox = header.getBoundingClientRect(), footerBox = footer.getBoundingClientRect();
+  const headerDivider = px(header, "borderBottomWidth"), footerDivider = px(footer, "borderTopWidth");
   // The chain's name once #576 lands, the fixed token before it.
   const rWin = parseFloat(root.getPropertyValue("--r-win") || root.getPropertyValue("--window-radius"));
   return {
     rowHeight: row?.getBoundingClientRect().height ?? NaN,
     footer: box("footer")?.height ?? NaN,
-    searchBand: box(".search-bar")?.height ?? NaN,
+    searchBand: headerBox.height - headerDivider,
+    headerDivider, footerDivider, fieldHeight: inputBox?.height ?? NaN, pinHeight: pin?.height ?? NaN,
+    popupHeight: box(".toolbar-menu-button")?.height ?? NaN, footerAction: action?.height ?? NaN,
+    pinTopGap: pin ? pin.top - headerBox.top : NaN,
+    pinBottomGap: pin ? headerBox.bottom - headerDivider - pin.bottom : NaN,
+    pinEndGap: pin ? (document.documentElement.dir === "rtl" ? pin.left - headerBox.left : headerBox.right - pin.right) : NaN,
+    footerTopGap: action ? action.top - footerBox.top - footerDivider : NaN,
+    footerBottomGap: action ? footerBox.bottom - action.bottom : NaN,
     glyphCentre: glyph ? glyph.left + glyph.width / 2 : NaN,
     tileCentre: tile ? tile.left + tile.width / 2 : NaN,
     textX: inputBox ? inputBox.left + px(input, "borderLeftWidth") + px(input, "paddingLeft") : NaN,
@@ -180,6 +207,10 @@ async function main() {
           await page.waitForFunction((id) => document.documentElement.dataset.galleryRendered === id, job.state, { timeout: 60_000 });
           rows.push(...(job.layout ? layout(job.platform, job.text, job.state, await page.evaluate(measureLayout))
             : compare(spec, job.platform, job.text, job.density, await page.evaluate(measure))));
+          if (job.layout) {
+            await page.evaluate(() => { const list = document.querySelector(".results-area"); list.scrollTop = list.scrollHeight / 2; });
+            rows.push(...layout(job.platform, job.text, job.state, await page.evaluate(measureLayout)).map(row => ({ ...row, name: `${row.name}; scrolled` })));
+          }
         } catch (error) {
           failures.push(`${job.platform}/${job.text}/${job.state}: ${error.message.split("\n")[0]}`);
         } finally {
