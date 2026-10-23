@@ -200,8 +200,7 @@ footer { display: flex; align-items: center; border-top: var(--border-width) sol
 
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
-.quiet-button, .icon-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
-.icon-button { font-size: var(--icon-size); padding: var(--icon-padding); }
+.quiet-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
 /* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
    20 px cap on the button fill; contrast modes give it an edge. */
 kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inline-block; min-width: var(--key-cap); height: var(--key-cap); line-height: calc(var(--key-cap) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--button-background); border: var(--border-width) solid var(--button-edge); border-radius: var(--hint-radius); margin-inline-start: var(--hint-margin); }
