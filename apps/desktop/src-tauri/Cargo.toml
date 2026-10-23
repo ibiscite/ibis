@@ -32,6 +32,9 @@ tauri-plugin-updater = { version = "2.14", default-features = false, features = 
 # because a passive shortcut grab can leave GTK's active flag stale.
 [target.'cfg(target_os = "linux")'.dependencies]
 raw-window-handle = "0.6.2"
+# Already locked through Tauri; bounded local session-bus portal calls.
+zbus = "5.19.0"
+tokio = { version = "1.52", features = ["time"] }
 x11rb = { version = "0.14.0", default-features = false, features = ["xkb"] }
 
 # #198: normal windows cannot enter another app's full-screen Space. This

@@ -12,6 +12,9 @@ use crate::placement::place_on_active_display;
 
 mod dialogs;
 mod full_screen;
+#[cfg(target_os = "linux")]
+#[expect(dead_code, reason = "portal transport is wired to the picker in the next #782 slice")]
+mod portal;
 #[cfg_attr(
     not(test),
     expect(dead_code, reason = "visible-row activation will consume this policy (#756)")

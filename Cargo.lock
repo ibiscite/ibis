@@ -2016,9 +2016,11 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-specta",
  "tempfile",
+ "tokio",
  "window-vibrancy",
  "windows",
  "x11rb 0.14.0",
+ "zbus",
 ]
 
 [[package]]

@@ -62,6 +62,10 @@ The GlobalShortcuts portal work in [#782](https://github.com/ibiscite/ibis/issue
 is scheduled for 0.2 but has not shipped. No native GNOME/KDE Wayland shortcut
 test is claimed. `ibis toggle` and portal-based insertion are also unshipped.
 
+The #782 portal client awaits picker integration. Desktop triggers are not
+persisted. Real GNOME/KDE sessions remain unverified; unit/fake-portal tests do
+not establish compositor activation or focus behavior.
+
 GNOME without a tray extension and some other desktops show no tray icon.
 The launcher and picker library controls still work. Use **More > Quit** to
 exit; closing the window only hides it. Nightly's start-at-login switch is
