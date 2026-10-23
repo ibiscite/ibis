@@ -91,8 +91,9 @@ states; React Aria supplies pointer, press and keyboard-focus attributes.
 Folded footer actions preserve their hidden accessibility state and tab order.
 Small-button gallery readiness checks actual hit targets beyond the visible fill.
 Tab dismisses More's modal popover synchronously before returning focus to
-Search, so typing never waits for its exit animation. Other dismissals retain
-their existing animation and focus destinations.
+Search. Choosing a toolbar format also removes its modal synchronously, so the
+next typed character reaches Search without waiting for an exit animation.
+Other dismissals retain their existing animation and focus destinations.
 
 Desktop search replies and each result carry an opaque in-memory index revision,
 captured with the index under the library mutex. Scope filtering and request
