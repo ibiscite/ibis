@@ -591,8 +591,14 @@ focus until clicked or summoned. It is the only time Ibis stays on top.
 in Word and LibreOffice, so Windows and Linux use Ctrl+Shift+Y; Ctrl+Alt types letters on many European layouts; Ctrl+Space
 switches input languages), open by itself, appear in the taskbar,
 Dock or Alt+Tab (only the settings window does), or animate longer than 280 ms.
-The shortcut is ignored while a full-screen app or presentation runs, unless it
-is pressed again.
+On X11, the first shortcut press is ignored when the window manager reports a
+full-screen foreground app or presentation; a second press within two seconds
+opens Ibis. An unreadable foreground never blocks the shortcut. The macOS panel
+opens on the first press over full-screen apps in the current Space. Windows
+currently cannot detect this state and opens normally; its protection remains
+[#510](https://github.com/ibiscite/ibis/issues/510). XWayland window properties do
+not establish the foreground state of native Wayland apps, so they provide no
+native Wayland full-screen guarantee.
 
 **Platform limits.**
 
