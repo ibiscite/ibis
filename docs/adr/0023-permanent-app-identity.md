@@ -55,7 +55,16 @@ libraries, shortcuts and other migrated settings intact.
   Flush the receipt and staging directory before publication; failure leaves
   the old settings in use. The receipt records an owed notice, never consent.
   Do not copy a receipt from the old directory or claim an existing destination.
-  Notice delivery and acknowledgement remain separate prerequisites.
+  After successful informational dismissal, rename that receipt to
+  `macos-login-reapproval-v1.acknowledged` under the same per-channel migration
+  lock, then flush its directory. Retain the fixed payload; never unlink it as
+  acknowledgement. On reopening, accept Acknowledged only after validating the
+  exact regular receipt and successfully flushing its directory, including when
+  an earlier rename succeeded but its flush failed. Both receipts, malformed or
+  special entries, and unsafe channel ownership are unresolved errors; preserve
+  them. No receipt means no migration obligation, never inferred consent.
+  A crash may repeat the informational notice. Delivery remains a separate
+  prerequisite; acknowledgement neither requests nor registers Open at Login.
 - Do not switch the shipped identifiers until these platform transitions and
   notice handling are implemented and tested. Installed upgrade, direct
   replacement and restart/login acceptance remain required; this amendment

@@ -52,6 +52,111 @@ fn copy_settings(old: &Path, directory: &Path) -> io::Result<()> {
     copy_settings_prepared(old, directory, prepare_staging)
 }
 
+#[cfg(target_os = "macos")]
+const PENDING: &str = "macos-login-reapproval-v1.pending";
+#[cfg(target_os = "macos")]
+const ACKNOWLEDGED: &str = "macos-login-reapproval-v1.acknowledged";
+#[cfg(target_os = "macos")]
+const RECEIPT: &[u8] = b"macos-open-at-login-reapproval-v1\n";
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Reapproval {
+    NotNeeded,
+    Pending,
+    Acknowledged,
+}
+
+/// Read only the exact channel's receipt; this is never startup consent.
+#[cfg(target_os = "macos")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "#695 native notice delivery is a separate prerequisite")
+)]
+pub(crate) fn macos_login_reapproval(directory: &Path, identifier: &str) -> io::Result<Reapproval> {
+    reapproval_with(directory, identifier, false, sync_directory)
+}
+
+/// Call from the native notice callback only after successful visible dismissal.
+#[cfg(target_os = "macos")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "#695 native notice callback is a separate prerequisite")
+)]
+pub(crate) fn acknowledge_macos_login_reapproval(directory: &Path, identifier: &str) -> io::Result<()> {
+    reapproval_with(directory, identifier, true, sync_directory).map(|_| ())
+}
+
+#[cfg(target_os = "macos")]
+fn sync_directory(directory: &Path) -> io::Result<()> {
+    File::open(directory)?.sync_all()
+}
+
+#[cfg(target_os = "macos")]
+fn reapproval_with(
+    directory: &Path,
+    identifier: &str,
+    acknowledge: bool,
+    flush: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<Reapproval> {
+    if !matches!(identifier, "com.ibiscite.ibis" | "com.ibiscite.ibis.nightly")
+        || directory.file_name() != Some(std::ffi::OsStr::new(identifier))
+    {
+        return Ok(Reapproval::NotNeeded);
+    }
+    let parent = directory.parent().ok_or(io::ErrorKind::InvalidInput)?;
+    match fs::metadata(parent) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Reapproval::NotNeeded),
+        other => {
+            other?;
+        }
+    }
+    let _lock = migration_lock(directory)?;
+    match fs::symlink_metadata(directory) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Reapproval::NotNeeded),
+        Ok(metadata) if metadata.is_dir() => {}
+        _ => return Err(io::ErrorKind::InvalidData.into()),
+    }
+    let pending = receipt_present(&directory.join(PENDING))?;
+    let acknowledged = receipt_present(&directory.join(ACKNOWLEDGED))?;
+    if pending && acknowledged {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    if pending && !acknowledge {
+        return Ok(Reapproval::Pending);
+    }
+    if pending {
+        fs::rename(directory.join(PENDING), directory.join(ACKNOWLEDGED))?;
+    }
+    if pending || acknowledged {
+        // A failed flush leaves a retained but uncertain receipt. Reopening must
+        // complete this flush before it may report Acknowledged, never consent.
+        flush(directory)?;
+        return Ok(Reapproval::Acknowledged);
+    }
+    Ok(Reapproval::NotNeeded)
+}
+
+#[cfg(target_os = "macos")]
+fn receipt_present(path: &Path) -> io::Result<bool> {
+    use std::io::Read;
+    let metadata = match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        other => other?,
+    };
+    if !metadata.is_file() || metadata.len() != RECEIPT.len() as u64 {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    let mut bytes = Vec::new();
+    File::open(path)?
+        .take(RECEIPT.len() as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes != RECEIPT {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    Ok(true)
+}
+
 fn prepare_staging(staging: &Path) -> io::Result<()> {
     #[cfg(target_os = "macos")]
     {
@@ -62,8 +167,8 @@ fn prepare_staging(staging: &Path) -> io::Result<()> {
             .write(true)
             .create_new(true)
             .mode(0o600)
-            .open(staging.join("macos-login-reapproval-v1.pending"))?;
-        receipt.write_all(b"macos-open-at-login-reapproval-v1\n")?;
+            .open(staging.join(PENDING))?;
+        receipt.write_all(RECEIPT)?;
         receipt.sync_all()?;
         // Publish neither the pair nor its obligation if this flush fails.
         File::open(staging)?.sync_all()?;
@@ -75,11 +180,7 @@ fn prepare_staging(staging: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn copy_settings_prepared(
-    old: &Path,
-    directory: &Path,
-    prepare: impl FnOnce(&Path) -> io::Result<()>,
-) -> io::Result<()> {
+fn migration_lock(directory: &Path) -> io::Result<File> {
     let app = directory
         .file_name()
         .and_then(|name| name.to_str())
@@ -98,6 +199,19 @@ fn copy_settings_prepared(
     }
     let lock = options.open(lock_path)?;
     lock.lock()?;
+    Ok(lock)
+}
+
+fn copy_settings_prepared(
+    old: &Path,
+    directory: &Path,
+    prepare: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<()> {
+    let app = directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(io::ErrorKind::InvalidInput)?;
+    let _lock = migration_lock(directory)?;
     // The lock covers cleanup, staging creation and publication across processes.
     clean_staging(directory, &format!("{app}.migration-"))?;
     if directory.exists() && fs::read_dir(directory)?.next().is_some() {
@@ -187,6 +301,164 @@ mod tests {
     fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
         std::fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("missing test parent")))?;
         std::fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reapproval_acknowledgement_preserves_each_channels_opaque_settings() -> io::Result<()> {
+        for identifier in ["com.ibiscite.ibis", "com.ibiscite.ibis.nightly"] {
+            let root = tempfile::tempdir()?;
+            let directory = root.path().join(identifier);
+            write(&directory.join("settings.json"), b"opaque settings; startup unknown")?;
+            write(&directory.join("settings.json.bak"), b"opaque backup")?;
+            prepare_staging(&directory)?;
+            assert_eq!(macos_login_reapproval(&directory, identifier)?, Reapproval::Pending);
+            acknowledge_macos_login_reapproval(&directory, identifier)?;
+            assert!(!directory.join(PENDING).exists());
+            assert_eq!(fs::read(directory.join(ACKNOWLEDGED))?, RECEIPT);
+            assert_eq!(
+                macos_login_reapproval(&directory, identifier)?,
+                Reapproval::Acknowledged
+            );
+            acknowledge_macos_login_reapproval(&directory, identifier)?;
+            assert_eq!(
+                fs::read(directory.join("settings.json"))?,
+                b"opaque settings; startup unknown"
+            );
+            assert_eq!(fs::read(directory.join("settings.json.bak"))?, b"opaque backup");
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reapproval_requires_exact_channel_ownership_and_a_receipt() -> io::Result<()> {
+        let root = tempfile::tempdir()?;
+        for identifier in [
+            "com.ibiscite.ibis",
+            "com.ibiscite.ibis.nightly",
+            "io.github.ibiscite.ibis",
+            "dev",
+        ] {
+            let directory = root.path().join(identifier);
+            write(&directory.join("settings.json"), br#"{"open_at_login":true}"#)?;
+            acknowledge_macos_login_reapproval(&directory, identifier)?;
+            assert_eq!(macos_login_reapproval(&directory, identifier)?, Reapproval::NotNeeded);
+            assert!(!directory.join(ACKNOWLEDGED).exists());
+        }
+        let directory = root.path().join("com.ibiscite.ibis");
+        prepare_staging(&directory)?;
+        for identifier in ["com.ibiscite.ibis.nightly", "io.github.ibiscite.ibis", "dev"] {
+            acknowledge_macos_login_reapproval(&directory, identifier)?;
+            assert_eq!(macos_login_reapproval(&directory, identifier)?, Reapproval::NotNeeded);
+            assert!(directory.join(PENDING).is_file());
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reapproval_refuses_symlinked_directories_and_locks() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir()?;
+        let directory = root.path().join("com.ibiscite.ibis");
+        let target = root.path().join("unrelated");
+        fs::create_dir(&target)?;
+        prepare_staging(&target)?;
+        symlink(&target, &directory)?;
+        assert!(acknowledge_macos_login_reapproval(&directory, "com.ibiscite.ibis").is_err());
+        fs::remove_file(&directory)?;
+        fs::create_dir(&directory)?;
+        prepare_staging(&directory)?;
+        let lock = directory.with_file_name("com.ibiscite.ibis.migration.lock");
+        fs::remove_file(&lock)?;
+        symlink(target.join(PENDING), &lock)?;
+        assert!(acknowledge_macos_login_reapproval(&directory, "com.ibiscite.ibis").is_err());
+        assert_eq!(fs::read(target.join(PENDING))?, RECEIPT);
+        assert_eq!(fs::read(directory.join(PENDING))?, RECEIPT);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reapproval_refuses_malformed_special_and_ambiguous_receipts() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+        for name in [PENDING, ACKNOWLEDGED] {
+            for case in 0..7 {
+                let root = tempfile::tempdir()?;
+                let directory = root.path().join("com.ibiscite.ibis");
+                fs::create_dir(&directory)?;
+                let receipt = directory.join(name);
+                match case {
+                    0 => fs::write(&receipt, [])?,
+                    1 => fs::write(&receipt, vec![b'x'; 256 * 1024])?,
+                    2 => fs::create_dir(&receipt)?,
+                    3 => {
+                        fs::write(root.path().join("target"), RECEIPT)?;
+                        symlink(root.path().join("target"), &receipt)?;
+                    }
+                    4 => symlink(root.path().join("missing"), &receipt)?,
+                    5 => fs::write(&receipt, vec![b'x'; RECEIPT.len()])?,
+                    _ => {
+                        fs::write(directory.join(PENDING), RECEIPT)?;
+                        fs::write(directory.join(ACKNOWLEDGED), RECEIPT)?;
+                    }
+                }
+                assert!(macos_login_reapproval(&directory, "com.ibiscite.ibis").is_err());
+                assert!(acknowledge_macos_login_reapproval(&directory, "com.ibiscite.ibis").is_err());
+                assert!(fs::symlink_metadata(receipt).is_ok());
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reapproval_flush_failure_remains_unresolved_across_reopening() -> io::Result<()> {
+        let root = tempfile::tempdir()?;
+        let directory = root.path().join("com.ibiscite.ibis");
+        fs::create_dir(&directory)?;
+        prepare_staging(&directory)?;
+        // Pending -> Acknowledged rename cannot replace a directory.
+        fs::create_dir(directory.join(ACKNOWLEDGED))?;
+        assert!(acknowledge_macos_login_reapproval(&directory, "com.ibiscite.ibis").is_err());
+        assert_eq!(fs::read(directory.join(PENDING))?, RECEIPT);
+        fs::remove_dir(directory.join(ACKNOWLEDGED))?;
+        let refuse_flush = |_: &Path| Err(io::ErrorKind::PermissionDenied.into());
+        assert!(reapproval_with(&directory, "com.ibiscite.ibis", true, refuse_flush).is_err());
+        assert!(!directory.join(PENDING).exists());
+        assert_eq!(fs::read(directory.join(ACKNOWLEDGED))?, RECEIPT);
+        assert!(reapproval_with(&directory, "com.ibiscite.ibis", false, refuse_flush).is_err());
+        assert_eq!(
+            macos_login_reapproval(&directory, "com.ibiscite.ibis")?,
+            Reapproval::Acknowledged
+        );
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn concurrent_reapproval_acknowledgements_are_idempotent() -> io::Result<()> {
+        let root = tempfile::tempdir()?;
+        let directory = root.path().join("com.ibiscite.ibis");
+        fs::create_dir(&directory)?;
+        prepare_staging(&directory)?;
+        std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..4)
+                .map(|_| scope.spawn(|| acknowledge_macos_login_reapproval(&directory, "com.ibiscite.ibis")))
+                .collect();
+            for worker in workers {
+                worker
+                    .join()
+                    .unwrap_or_else(|_| panic!("acknowledgement thread panicked"))?;
+            }
+            io::Result::Ok(())
+        })?;
+        assert_eq!(
+            macos_login_reapproval(&directory, "com.ibiscite.ibis")?,
+            Reapproval::Acknowledged
+        );
         Ok(())
     }
 
