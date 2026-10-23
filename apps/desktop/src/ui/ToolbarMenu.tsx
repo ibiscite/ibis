@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject, type ComponentPropsWithRef } from "react";
+import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { Button } from "./Button";
@@ -102,7 +103,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   </Menu>;
   return <span className="toolbar-menu-control" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
     onKeyDownCapture={(event) => {
-      if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) event.stopPropagation();
+      if (isComposing(event, composing.current)) event.stopPropagation();
       else if (open || popover.current) {
         const command = onKeyCommand?.(event);
         if (command || event.key === "Escape" || event.key === "Tab") { event.preventDefault(); event.stopPropagation(); changeOpen(false, command); }

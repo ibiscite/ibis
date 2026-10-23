@@ -195,12 +195,20 @@ test.each([false, true])("Tab (shift=%s) releases the modal before immediate typ
   await exit.finish();
 });
 
-test("composition does not trigger the immediate Tab dismissal", async () => {
-  const { trigger } = mount();
-  fireEvent.click(trigger);
+test.each(["Escape", "Tab", "Enter", " "])("composing %s does not dismiss or activate a menu", async (key) => {
+  const { trigger, onAction, toggle } = mount();
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
   const menu = await screen.findByRole("menu");
-  fireEvent.keyDown(menu, { key: "Tab", isComposing: true });
-  expect(screen.getByRole("menu")).toBe(menu);
+  for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
+    fireEvent.keyDown(document.activeElement!, { key, ...composition });
+    fireEvent.keyUp(document.activeElement!, { key, ...composition });
+    expect(screen.getByRole("menu")).toBe(menu);
+    expect(onAction).not.toHaveBeenCalled();
+    expect(toggle).not.toHaveBeenCalled();
+  }
+  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+  fireEvent.keyUp(document.activeElement!, { key: "Enter" });
+  expect(onAction).toHaveBeenCalledWith("open");
 });
 
 test("a shortcut can reopen immediately after Tab and action exits still animate", async () => {

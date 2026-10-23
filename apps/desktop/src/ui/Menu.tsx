@@ -1,4 +1,5 @@
 import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Button } from "./Button";
@@ -202,13 +203,13 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
     <Popover ref={popoverRef} className="menu-popover" placement={placement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
-        if (event.nativeEvent.isComposing) return;
+        if (isComposing(event)) { event.stopPropagation(); return; }
         const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;
         if (to === undefined) return;
         event.preventDefault();
         event.stopPropagation();
         leave(to, event.key === "Tab");
-      }}>
+      }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
         <AriaMenu key={opening} ref={listRef} id={id} className="menu" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
           <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
             {children}

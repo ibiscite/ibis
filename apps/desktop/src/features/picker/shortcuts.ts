@@ -3,11 +3,7 @@ import type React from "react";
 import { commandKey, keysFor, matchesAccelerator } from "../../keys";
 import { isMac } from "../../platform";
 
-/** True while an input method is composing text; Enter then confirms the text.
- * Some WebKit versions report the confirming Enter with key code 229 only. */
-export function composing(e: React.KeyboardEvent): boolean {
-  return e.nativeEvent.isComposing || e.keyCode === 229;
-}
+export { composing } from "../../composition";
 
 /** Typing a character there enters text, so a bare `?` is not a command. */
 export function typesText(target: EventTarget | null): boolean {

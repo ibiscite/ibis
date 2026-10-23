@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type ComponentPropsWithRef, type KeyboardEvent, type RefObject } from "react";
+import { composing as isComposing } from "../composition";
 import { I18nProvider, Tag, TagGroup, TagList, useLocale } from "react-aria-components";
 import { Button } from "./Button";
 import "./ChipGroup.css";
@@ -39,7 +40,7 @@ function Chips({ label, items, onRemove, fallbackFocusRef }: Props) {
     if (items.length === 0 && emptyRemoval.current) restore();
   }, [items.length, restore]);
   const guard = (event: KeyboardEvent) => {
-    if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) event.stopPropagation();
+    if (isComposing(event, composing.current)) event.stopPropagation();
   };
   return <TagGroup ref={ref} className="chip-group" aria-label={label} dir={direction} selectionMode="none"
     render={(props) => <div {...props as ComponentPropsWithRef<"div">}
