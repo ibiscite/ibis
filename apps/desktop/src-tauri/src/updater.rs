@@ -219,10 +219,7 @@ fn offer(app: &AppHandle, update: Update) {
     app.dialog()
         .message(offer_text(&app.package_info().version.to_string(), &update))
         .title("An update is available")
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            "Install and Restart".into(),
-            "Later".into(),
-        ))
+        .buttons(offer_buttons())
         .show(move |install| {
             if install {
                 tauri::async_runtime::spawn(async move { install_update(&handle, update).await });
@@ -236,6 +233,16 @@ fn offer(app: &AppHandle, update: Update) {
         });
 }
 
+fn offer_buttons() -> MessageDialogButtons {
+    if cfg!(target_os = "windows") {
+        // rfd's custom TaskDialog actions have no usable InvokePattern in the
+        // installed-update reports. Prefer the OS's standard Yes/No actions.
+        MessageDialogButtons::YesNo
+    } else {
+        MessageDialogButtons::OkCancelCustom("Install and Restart".into(), "Later".into())
+    }
+}
+
 pub(crate) fn offer_text(current: &str, update: &Update) -> String {
     let notes = update
         .body
@@ -244,8 +251,13 @@ pub(crate) fn offer_text(current: &str, update: &Update) -> String {
         .filter(|notes| !notes.is_empty())
         .map(|notes| format!("\n\n{}", shorten(notes, 600)))
         .unwrap_or_default();
+    let question = if cfg!(target_os = "windows") {
+        "\n\nInstall this update and restart Ibis?"
+    } else {
+        ""
+    };
     format!(
-        "Ibis {} is available; you have {current}.{notes}\n\nIbis will download it, check its signature, install it and restart.",
+        "Ibis {} is available; you have {current}.{notes}\n\nIbis will download it, check its signature, install it and restart.{question}",
         update.version
     )
 }
@@ -258,15 +270,14 @@ fn shorten(text: &str, limit: usize) -> String {
     }
 }
 
+const INSTALL_FAILURE_MESSAGE: &str = "The update could not be installed. Try again later. If Ibis no longer opens, download and reinstall the newest version from GitHub.";
+
 async fn install_update(app: &AppHandle, update: Update) {
     match update.download_and_install(|_, _| {}, || {}).await {
         Ok(()) => app.restart(),
         Err(_) => {
             app.state::<Updates>().busy.store(false, Ordering::SeqCst);
-            tell(
-                app,
-                "The update could not be installed, so Ibis was left unchanged. Try again later, or download the newest version from GitHub.",
-            );
+            tell(app, INSTALL_FAILURE_MESSAGE);
         }
     }
 }
@@ -279,6 +290,27 @@ fn tell(app: &AppHandle, text: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn installation_failure_offers_recovery_without_claiming_rollback() {
+        assert!(!INSTALL_FAILURE_MESSAGE.contains("unchanged"));
+        assert!(INSTALL_FAILURE_MESSAGE.contains("Try again"));
+        assert!(INSTALL_FAILURE_MESSAGE.contains("download"));
+    }
+
+    #[test]
+    fn update_offer_uses_standard_windows_consent_buttons() {
+        if cfg!(target_os = "windows") {
+            assert!(matches!(offer_buttons(), MessageDialogButtons::YesNo));
+        } else {
+            match offer_buttons() {
+                MessageDialogButtons::OkCancelCustom(yes, no) => {
+                    assert_eq!((yes.as_str(), no.as_str()), ("Install and Restart", "Later"));
+                }
+                _ => panic!("the update must offer an explicit accept and decline action"),
+            }
+        }
+    }
 
     #[test]
     fn automatic_checks_log_a_fixed_outcome_never_the_error_text() {
@@ -562,6 +594,9 @@ mod tests {
                 "manifest budget must not limit the package download"
             );
             assert!(offer_text("0.1.0", &update).contains("Synthetic notes."));
+            if cfg!(target_os = "windows") {
+                assert!(offer_text("0.1.0", &update).ends_with("Install this update and restart Ibis?"));
+            }
             tauri::async_runtime::block_on(update.download(|_, _| {}, || {}))
         };
 

@@ -2,7 +2,7 @@
 """End-to-end update test for Ibis Nightly (#319, #493).
 
 Installs the previous Ibis Nightly with automatic update checks on, waits for
-it to offer the newly published nightly, presses "Install and Restart" through
+it to offer the newly published nightly, accepts the install/restart action through
 the system's accessibility interface and checks that the installed app was
 replaced by the new version and that the new version started in its place.
 
@@ -95,7 +95,13 @@ try {
     if ($probe.elements -gt 4000) { throw 'Update element bound exceeded' }
     foreach ($item in $items) {
       $name = $item.Current.Name
-      if ($env:IBIS_PRESS -and $name -ceq $env:IBIS_PRESS) { $matches += $item }
+      if ($env:IBIS_PRESS) {
+        # Older nightlies use the exact custom label. New Windows offers
+        # use the OS-localized Yes button: IDYES is 6, never IDNO (7).
+        $custom = $name -ceq $env:IBIS_PRESS
+        $standard = !$custom -and $item.Current.ControlType.ProgrammaticName -ceq 'ControlType.Button' -and $item.Current.AutomationId -ceq '6'
+        if ($custom -or $standard) { $matches += $item }
+      }
       if ($name -and $seen.Count -lt 200) { $seen.Add($item.Current.ControlType.ProgrammaticName + ': ' + $name) }
     }
   }
@@ -666,7 +672,7 @@ namespace IbisUpdateContract {
   public static Node RootElement=new Node();
  }
  public class Node {
-  public string Name="", Type="Pane"; public int ProcessId=42; public bool IsEnabled=true, IsOffscreen=false;
+  public string Name="", Type="Pane", AutomationId=""; public int ProcessId=42; public bool IsEnabled=true, IsOffscreen=false;
   public bool Supported=true, ThrowOnRead=false, Fail=false; public int Invocations=0;
   public Node[] Nodes=new Node[0];
   public Node Current { get {if(ThrowOnRead && Invocations>0) throw new Exception("synthetic stale element"); return this;} }
@@ -684,6 +690,19 @@ $item=[IbisUpdateContract.Node]::new(); $item.Name='Install and Restart'; $item.
 $window.Nodes=@($item); [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window)
 switch($Scenario) {
  'button' {$item.Type='Button'}
+ 'standard' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'}
+ 'standard-localized' {$item.Type='Button'; $item.Name='はい'; $item.AutomationId='6'}
+ 'standard-rtl' {$item.Type='Button'; $item.Name='نعم'; $item.AutomationId='6'}
+ 'standard-no' {$item.Type='Button'; $item.Name='No'; $item.AutomationId='7'}
+ 'standard-wrong-id' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='06'}
+ 'standard-pane' {$item.Name='Yes'; $item.AutomationId='6'}
+ 'standard-disabled' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'; $item.IsEnabled=$false}
+ 'standard-hidden' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'; $item.IsOffscreen=$true}
+ 'standard-uncertain' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'; $item.Fail=$true}
+ 'standard-unsupported' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'; $item.Supported=$false}
+ 'standard-duplicate' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'; $window.Nodes=@($item,$item)}
+ 'standard-wrong-owner' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'; $item.ProcessId=43}
+ 'mixed-actions' {$standard=[IbisUpdateContract.Node]::new(); $standard.Type='Button'; $standard.Name='Yes'; $standard.AutomationId='6'; $window.Nodes=@($item,$standard)}
  'wrong-owner' {$item.ProcessId=43}
  'wrong-window' {$window.Name='Other dialog'}
  'wrong-name' {$item.Name='Install and Restart suffix'}
@@ -702,10 +721,10 @@ switch($Scenario) {
 }
 $env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
 function Contract-Result($pressed,$how) {
- $expected=$Scenario -in @('pane','button')
- if($pressed -ne $expected -or $item.Invocations -ne [int]($expected -or $Scenario -eq 'uncertain')) {throw 'Unsafe or missing activation'}
- if($probe.attempted -ne ($expected -or $Scenario -eq 'uncertain')) {throw 'Incorrect attempt metadata'}
- if($probe.blocked -ne ($Scenario -notin @('pane','button','wrong-window','wrong-name','case-name','case-window','missing-window'))) {throw 'Unsafe observation can poll'}
+ $expected=$Scenario -in @('pane','button','standard','standard-localized','standard-rtl')
+ if($pressed -ne $expected -or $item.Invocations -ne [int]($expected -or $Scenario -in @('uncertain','standard-uncertain'))) {throw 'Unsafe or missing activation'}
+ if($probe.attempted -ne ($expected -or $Scenario -in @('uncertain','standard-uncertain'))) {throw 'Incorrect attempt metadata'}
+ if($probe.blocked -ne ($Scenario -notin @('pane','button','standard','standard-localized','standard-rtl','wrong-window','wrong-name','case-name','case-window','missing-window','standard-no','standard-wrong-id','standard-pane'))) {throw 'Unsafe observation can poll'}
  if($expected -and $how -ne 'invoke') {throw 'Incorrect invocation metadata'}
 }
 '''
@@ -717,10 +736,13 @@ function Contract-Result($pressed,$how) {
         with tempfile.TemporaryDirectory() as temporary:
             script = Path(temporary) / "update-contract.ps1"
             script.write_text(model + helper, encoding="utf-8")
-            for scenario in ("pane", "button", "wrong-owner", "wrong-window", "wrong-name", "disabled", "hidden",
+            for scenario in ("pane", "button", "standard", "standard-localized", "standard-rtl", "standard-no", "standard-wrong-id", "standard-pane",
+                             "standard-disabled", "standard-hidden", "standard-uncertain", "standard-unsupported", "standard-duplicate",
+                             "standard-wrong-owner", "mixed-actions", "wrong-owner", "wrong-window", "wrong-name", "disabled", "hidden",
                              "unsupported", "duplicate-action", "duplicate-window", "missing-window", "wrong-window-owner",
                              "window-bound", "case-name", "case-window", "bound", "uncertain"):
                 with self.subTest(scenario=scenario):
+                    expected = scenario in ("pane", "button", "standard", "standard-localized", "standard-rtl")
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), scenario],
                                             capture_output=True, timeout=30)
                     self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode("utf-8", errors="replace"))
@@ -731,8 +753,8 @@ function Contract-Result($pressed,$how) {
                             with self.assertRaises(WindowsActivationFailure):
                                 Windows.__new__(Windows).look({42}, BUTTON)
                         else:
-                            self.assertEqual(Windows.__new__(Windows).look({42}, BUTTON)[0], scenario in ("pane", "button"))
-                    self.assertEqual(pressed, scenario in ("pane", "button"))
+                            self.assertEqual(Windows.__new__(Windows).look({42}, BUTTON)[0], expected)
+                    self.assertEqual(pressed, expected)
 
     def test_windows_activation_uncertainty_is_fatal_instead_of_pollable(self):
         windows = Windows.__new__(Windows)
