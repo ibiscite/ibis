@@ -1,4 +1,4 @@
-import { useRef, type MouseEvent } from "react";
+import { useCallback, useRef, useState, type MouseEvent } from "react";
 
 /** A pointer that has not moved for this long is treated as still again. */
 const STILL_AFTER_MS = 1000;
@@ -12,6 +12,9 @@ const STILL_AFTER_MS = 1000;
  */
 export function usePointerSelection(active: number, setActive: (index: number) => void) {
   const last = useRef<{ x: number; y: number; at: number } | null>(null);
+  const [hoverAllowed, setHoverAllowed] = useState(false);
+  const resetHover = useCallback(() => setHoverAllowed(false), []);
+  const resetPointer = useCallback(() => { last.current = null; setHoverAllowed(false); }, []);
   // Set when the pointer changed the active row, so the list is not
   // scrolled under the pointer to reveal it.
   const fromPointer = useRef(false);
@@ -24,9 +27,11 @@ export function usePointerSelection(active: number, setActive: (index: number) =
     if (!moved || !(event.target instanceof Element)) return;
     const row = event.target.closest('[role="option"][id^="result-"]');
     const index = row ? Number(row.id.slice("result-".length)) : Number.NaN;
-    if (!Number.isInteger(index) || index < 0 || index === active) return;
+    if (!Number.isInteger(index) || index < 0) return;
+    setHoverAllowed(true);
+    if (index === active) return;
     fromPointer.current = true;
     setActive(index);
   };
-  return { onMouseMove, fromPointer };
+  return { onMouseMove, fromPointer, hoverAllowed, resetHover, resetPointer };
 }

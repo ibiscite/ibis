@@ -18,7 +18,7 @@
   /* Pressed and other state frames (for example the first-run writing choice) keep their own border. */
   :root[data-platform="macos"]:not([data-gallery-theme="contrast"]) :is(button, select):not([aria-pressed="true"]) { border-color: var(--clear); }
   :root[data-platform="macos"]:not([data-gallery-theme="contrast"]) kbd {
-    min-width: 1.25rem; border-color: var(--clear); background: var(--button-background);
+    min-width: 1.25rem; border-color: var(--clear); background: var(--fill-control);
     font-weight: var(--type-strong-weight); text-align: center;
   }
 

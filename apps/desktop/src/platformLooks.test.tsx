@@ -11,6 +11,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
 const gallery = readFileSync(new FileURL("./gallery.css", import.meta.url), "utf8");
 const corners = readFileSync(new FileURL("../src-tauri/src/native_corners.rs", import.meta.url), "utf8");
 
@@ -157,12 +158,17 @@ test("the search text starts where row titles start, with the glyph over the til
   expect(rules(styles, "footer")).toMatch(/padding-inline:\s*var\(--footer-padding\)/);
 });
 
+test("tile targets stay centred when Compact shrinks the visible tile", () => {
+  expect(rules(styles, ".result-tile .tile-button")).toMatch(/inset:\s*50% auto auto 50%;.*transform:\s*translate\(-50%, -50%\)/);
+  expect(rules(styles, ':root[data-density="compact"] .result-tile .tile-button')).not.toMatch(/inset:/);
+});
+
 test("window radius follows each platform and macOS matches the native corner", () => {
   // macOS keeps the natively verified 12 pt corner until macOS 26 detection lands; the token must agree with it.
   const native = corners.match(/CORNER_RADIUS_POINTS: f64 = ([\d.]+);/)?.[1];
   expect(rules(tokens, ":root")).toMatch(new RegExp(`--r-win:\\s*${Number(native)}px`));
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-win:\s*8px/);
-  expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--button-radius:\s*4px/);
+  expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-control:\s*4px/);
   expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-win:\s*15px/);
 });
 
@@ -537,16 +543,16 @@ test("spacing tokens, direct gaps/padding and resolved formulas keep the 4 px gr
 });
 
 test("unused tokens are gone and the spec's line heights apply", () => {
-  for (const name of ["--forced-selected-offset", "--key-padding", "--key-radius"]) expect(tokens, name).not.toContain(`${name}:`);
+  for (const name of ["--forced-selected-offset", "--key-padding", "--key-radius", "--button-background", "--button-hover-background", "--button-edge", "--button-radius", "--button-padding", "--hover-background"]) expect(tokens, name).not.toContain(`${name}:`);
   expect(rules(styles, ".results-heading")).toMatch(/line-height:\s*var\(--type-label-line\)/);
   expect(rules(styles, "#search")).toMatch(/line-height:\s*var\(--search-line\)/);
 });
 
-test("every button is at least 32 px, with on-grid padding", () => {
-  const button = rules(styles, "button");
+test("shared default buttons are at least 32 px, with on-grid padding", () => {
+  const button = rules(buttons, ".ui-button[data-variant]");
   expect(button).toMatch(/min-height:\s*var\(--control-min-size\)/);
   expect(tokens).toMatch(/--control-min-size:\s*2rem/);
-  expect(tokens).toMatch(/--button-padding:\s*0 var\(--space-3\)/);
+  expect(button).toMatch(/padding:\s*0 var\(--space-3\)/);
 });
 
 test("dividers are quiet separators, distinct from 3:1 control edges", () => {
@@ -571,14 +577,14 @@ test("the search box draws one underline: the header rule never changes on focus
 });
 
 test("buttons and key caps are fills without an outline except in contrast modes", () => {
-  expect(rules(styles, "button")).toMatch(/border:\s*var\(--border-width\) solid var\(--button-edge\)/);
+  expect(rules(buttons, ".ui-button[data-variant]")).toMatch(/border:\s*var\(--border-width\) solid var\(--stroke-control\)/);
   const kbd = rules(styles, "kbd");
-  expect(kbd).toMatch(/background:\s*var\(--button-background\)/);
-  expect(kbd).toMatch(/border:\s*var\(--border-width\) solid var\(--button-edge\)/);
+  expect(kbd).toMatch(/background:\s*var\(--fill-control\)/);
+  expect(kbd).toMatch(/border:\s*var\(--border-width\) solid var\(--stroke-control\)/);
   expect(kbd).toMatch(/height:\s*var\(--key-cap\)/);
-  expect(rules(tokens, ":root")).toMatch(/--button-edge:\s*var\(--clear\)/);
+  expect(rules(tokens, ":root")).toMatch(/--stroke-control:\s*var\(--clear\)/);
   for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
-    expect(rules(tokens.slice(tokens.indexOf(media)), ":root[data-platform]"), media).toMatch(/--button-edge:\s*(CanvasText|ButtonText)/);
+    expect(rules(tokens.slice(tokens.indexOf(media)), ":root[data-platform]"), media).toMatch(/--stroke-control:\s*(CanvasText|ButtonText)/);
   }
 });
 
@@ -596,7 +602,7 @@ test("the shelf is two 40 px lines of 24 px chips and one output line above the 
   const contrast = styles.slice(edge);
   expect(rules(contrast, ".shelf, .chip")).toMatch(/border:\s*var\(--border-width\) solid CanvasText/);
   // Windows draws a layer card with a stroke; GNOME a flat band under one separator.
-  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/border:\s*var\(--border-width\) solid var\(--button-edge\)/);
+  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/border:\s*var\(--border-width\) solid var\(--stroke-control\)/);
   expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:\s*var\(--border-width\) solid var\(--separator\)/);
   const shelf = readFileSync(new FileURL("./features/picker/CitationShelf.css", import.meta.url), "utf8");
   const forced = shelf.slice(shelf.indexOf("@media (forced-colors: active)"));
@@ -674,7 +680,7 @@ function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = 
         return (!prefix || doc.documentElement.matches(prefix)) && (!look || look === platform);
       });
       if (!active) continue;
-      const scope = /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
+      const scope = /\.ui-button\[data-pointer-only\]/.test(selector) ? "pointer-button" : /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
       const values: [string, string][] = Array.from(styled.style).map((name) => [name, styled.style.getPropertyValue(name)]);
       if (scope === "root" && values.some(([name]) => name.startsWith("--")) && !selector.split(/,(?![^()]*\))/).every((part) => /^:root\S*$/.test(part.trim()))) throw new Error(`Unmodeled token scope: ${selector}`);
       blocks.push({ file, selector, scope, values });
@@ -712,7 +718,7 @@ function tokenScopes(blocks: TokenBlock[]) {
   const root = raw("root");
   // Inherited custom properties resolve on the parent, before child overrides.
   const inherited = [...root].map(([name, value]) => [name, resolveToken(value, root) ?? value] as [string, string]);
-  return new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+  return new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search", "pointer-button"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
 }
 
 test.each(["macos", "windows", "linux"])("every application var resolves on %s in its active mode, without alias cycles", (platform) => {

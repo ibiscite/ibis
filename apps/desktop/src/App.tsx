@@ -61,6 +61,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [resultsRevision, setResultsRevision] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const pointer = usePointerSelection(active, setActive);
+  const { resetPointer } = pointer;
+  useEffect(resetPointer, [results, resetPointer]);
   const [selected, setSelected] = useState<Map<string, SearchResult>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
@@ -224,6 +226,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       return () => undefined;
     };
     const focusSearch = () => {
+      resetPointer();
       copyVisibility.current += 1;
       pickerShows.current += 1;
       if (hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
@@ -241,6 +244,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
+      resetPointer();
       copyVisibility.current += 1;
       hiddenAt.current = performance.now();
       setKeysOpen(false);
@@ -272,7 +276,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlistenLibrary.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
     };
-  }, []);
+  }, [resetPointer]);
 
   useEffect(() => {
     setAnnouncement("");
@@ -647,6 +651,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       data-selection={selected.size > 0 || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
       onBlur={() => setSearchFocused(false)}
+      onKeyDownCapture={pointer.resetHover}
+      onScrollCapture={pointer.resetHover}
       onKeyDown={(e) => {
         if (composing(e)) return;
         if (isPinShortcut(e)) {
@@ -680,6 +686,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         inputRef={input}
         query={query}
         onQueryChange={(value) => {
+          pointer.resetHover();
           escapedQuery.current = null;
           setQuery(value);
         }}
@@ -736,7 +743,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           {announcement}
         </p>
         {busy && emptyState}
-        <ResultList results={results} active={active} selected={selected} density={density}
+        <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
           libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
           onChoose={(i, r, action) => {
             // Rows of an earlier query, still shown while a newer search

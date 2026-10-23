@@ -6,14 +6,6 @@
 * { box-sizing: border-box; }
 body { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
-button, select {
-  background: var(--button-background);
-  border: var(--border-width) solid var(--button-edge);
-  border-radius: var(--button-radius);
-  padding: var(--button-padding);
-  min-height: var(--control-min-size);
-}
-button:not(.ui-button):hover { background: var(--button-hover-background); }
 /* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
    focus (:focus-visible), 2 px with a 1 px gap, in the platform's colour:
    accent on macOS, ink on Windows, half-accent on Linux. Contrast and forced
@@ -75,11 +67,20 @@ main {
    still covers 32 px. */
 .result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile-size); height: var(--tile-size); border-radius: var(--r-tile); background: var(--tile-background); color: var(--muted); }
 .result-tile .type-icon { width: var(--icon-glyph-size); height: var(--icon-glyph-size); }
-.result-tile .tile-button { position: absolute; inset: 0; display: grid; place-items: center; border-radius: var(--r-tile); color: inherit; cursor: default; opacity: 0; }
-.result-tile .tile-button:active { background: color-mix(in srgb, currentColor 14%, transparent); }
-[role="option"]:hover .tile-button, [data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
-[role="option"]:hover .type-icon, [data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
-[role="option"]:hover .result-tile, [data-active] .result-tile { color: inherit; }
+.result-tile .tile-button { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: var(--control-min-size); height: var(--control-min-size); border-radius: var(--r-tile); opacity: 0; }
+[data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
+[data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
+[data-active] .result-tile { color: inherit; }
+@media (hover: hover) {
+  [role="option"][data-hovered] .tile-button { opacity: 1; }
+  [role="option"][data-hovered] .type-icon { opacity: 0; }
+  [role="option"][data-hovered] .result-tile { color: inherit; }
+  [role="option"][data-hovered]:not([data-active]) { background: var(--fill-subtle-hover); }
+}
+@media (pointer: coarse) {
+  [role="option"] { min-height: max(var(--row-height), 2.75rem); }
+  .result-tile .tile-button { width: 2.75rem; height: 2.75rem; }
+}
 [data-active] .result-tile { background: var(--tile-active-background); }
 [role="option"][data-citation-selected] .result-tile { background: var(--citation-tile); color: var(--on-citation); }
 /* Only the year occupies the trailing column, centred across the whole row. */
@@ -108,7 +109,6 @@ main {
 .result-key { flex: 0 1000 auto; min-width: min(6ch, 100%); max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--key-size); }
 .result-why { font-style: italic; }
 .result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[role="option"]:hover:not([data-active]) { background: var(--hover-background); }
 /* The selected (active) row follows the platform: filled accent on macOS,
    soft grey with an accent pill on Windows, the GTK selection colour on Linux. Fill only:
    no border or ring, as in each platform's own lists. */
@@ -155,7 +155,7 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 /* Monospace only for key syntaxes, where the syntax is the point. */
 .shelf-output[data-keys] .preview-text { font-family: var(--font-mono); }
 .shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); color: var(--muted); font-size: var(--metadata-size); line-height: var(--chip-height); white-space: nowrap; }
-:root[data-platform="windows"] .shelf { border: var(--border-width) solid var(--button-edge); }
+:root[data-platform="windows"] .shelf { border: var(--border-width) solid var(--stroke-control); }
 :root[data-platform="linux"] .shelf { margin: 0; border-radius: 0; background: var(--clear); border-top: var(--border-width) solid var(--separator); }
 :root[data-platform="linux"] main:has(> .shelf) > footer { border-top-color: var(--separator); }
 
@@ -191,7 +191,7 @@ footer { display: flex; align-items: center; border-top: var(--border-width) sol
 .quiet-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
 /* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
    20 px cap on the button fill; contrast modes give it an edge. */
-kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inline-block; min-width: var(--key-cap); height: var(--key-cap); line-height: calc(var(--key-cap) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--button-background); border: var(--border-width) solid var(--button-edge); border-radius: var(--hint-radius); margin-inline-start: var(--hint-margin); }
+kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inline-block; min-width: var(--key-cap); height: var(--key-cap); line-height: calc(var(--key-cap) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill-control); border: var(--border-width) solid var(--stroke-control); border-radius: var(--hint-radius); margin-inline-start: var(--hint-margin); }
 
 @media (prefers-contrast: more) {
 
@@ -261,7 +261,6 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
    so titles still start where the search text does; its control covers 32 px. */
 :root[data-density="compact"] { --row-height: var(--row-compact); --tile-background: var(--clear); --tile-active-background: var(--clear); }
 :root[data-density="compact"] .result-tile { width: var(--tile-compact); height: var(--tile-compact); margin-inline: calc((var(--tile-size) - var(--tile-compact)) / 2); }
-:root[data-density="compact"] .result-tile .tile-button { inset: calc((var(--tile-compact) - var(--tile-size)) / 2); }
 :root[data-density="compact"] .result-meta { display: none; }
 :root[data-density="spacious"] { --row-height: var(--row-spacious); }
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }

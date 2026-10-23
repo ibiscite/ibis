@@ -83,7 +83,23 @@ test("memoised rows call the newest handlers", () => {
   expect(newest).toHaveBeenCalledWith(3, rows[3], "copy");
   const toggle = vi.fn();
   rerender(list(0, newest, toggle));
-  fireEvent.click(container.querySelector("#result-2 .tile-button")!);
+  const tile = container.querySelector("#result-2 .tile-button")!;
+  expect(tile.getAttribute("data-variant")).toBe("icon");
+  expect(tile.getAttribute("aria-hidden")).toBe("true");
+  expect(tile.hasAttribute("tabindex")).toBe(false);
+  fireEvent.click(tile);
   expect(toggle).toHaveBeenCalledWith(2, rows[2]);
   expect(newest).toHaveBeenCalledTimes(1);
+});
+
+
+test.each([2, 60])("a cancelled tile drag cannot fall through to copying its row (%i px)", (distance) => {
+  const choose = vi.fn(), toggle = vi.fn();
+  const { container } = render(list(0, choose, toggle));
+  const row = container.querySelector("#result-2")!;
+  fireEvent.pointerDown(row.querySelector(".tile-button")!, { pointerType: "mouse", pointerId: 1, button: 0, clientX: 20, clientY: 20 });
+  fireEvent.pointerUp(row, { pointerType: "mouse", pointerId: 1, button: 0, clientX: 20 + distance, clientY: 20 });
+  fireEvent.click(row, { clientX: 20 + distance, clientY: 20 });
+  expect(toggle).not.toHaveBeenCalled();
+  expect(choose).not.toHaveBeenCalled();
 });

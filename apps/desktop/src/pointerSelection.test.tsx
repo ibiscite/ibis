@@ -64,6 +64,41 @@ test("moving the mouse over a row makes it the active row", async () => {
   expect(activeTitle()).toBe("Gamma");
 });
 
+test("keyboard takeover removes resting hover until qualified movement, even inside the active row", async () => {
+  backend(() => three);
+  render(<App />);
+  await screen.findByText("Gamma");
+  const beta = row("Beta");
+  const tile = beta.querySelector<HTMLElement>(".tile-button")!;
+  fireEvent.pointerEnter(beta, { pointerType: "mouse" });
+  fireEvent.pointerEnter(tile, { pointerType: "mouse" });
+  move(beta, 10, 40); move(beta, 11, 40);
+  expect(beta.hasAttribute("data-hovered")).toBe(true);
+  expect(tile.hasAttribute("data-hovered")).toBe(true);
+  const search = screen.getByLabelText("Search references");
+  fireEvent.keyDown(search, { key: "ArrowUp" });
+  expect(activeTitle()).toBe("Alpha");
+  expect(beta.hasAttribute("data-hovered")).toBe(false);
+  expect(tile.hasAttribute("data-hovered")).toBe(false);
+  move(beta, 11, 40);
+  expect(beta.hasAttribute("data-hovered")).toBe(false);
+  move(beta, 12, 40);
+  expect(beta.hasAttribute("data-hovered")).toBe(true);
+  // Keyboard ownership also changes when an arrow is already at its boundary.
+  fireEvent.keyDown(search, { key: "ArrowUp" });
+  fireEvent.keyDown(search, { key: "ArrowUp" });
+  expect(beta.hasAttribute("data-hovered")).toBe(false);
+  move(beta, 13, 40);
+  expect(beta.hasAttribute("data-hovered")).toBe(true);
+  fireEvent.scroll(screen.getByRole("listbox", { name: "Results" }));
+  expect(beta.hasAttribute("data-hovered")).toBe(false);
+  move(beta, 13, 40);
+  expect(beta.hasAttribute("data-hovered")).toBe(false);
+  move(beta, 14, 40);
+  expect(beta.hasAttribute("data-hovered")).toBe(true);
+  expect(document.activeElement).toBe(search);
+});
+
 test("a row sliding under a still pointer while typing does not change the selection", async () => {
   backend((query) => (query ? [result("b", "Beta"), result("c", "Gamma")] : three));
   render(<App />);
@@ -122,7 +157,8 @@ test("selecting by pointer does not scroll the list, but arrow keys do", async (
 });
 
 test("hovering a row only tints it, swaps the tile's icon for its add control, and never changes its layout", () => {
-  const hoverRules = [...styles.matchAll(/([^{}]*\[role="option"\][^{}]*:hover[^{}]*)\{([^}]*)\}/g)];
+  expect(styles).not.toMatch(/\[role="option"\]:hover/);
+  const hoverRules = [...styles.matchAll(/([^{}]*\[role="option"\][^{}]*\[data-hovered\][^{}]*)\{([^}]*)\}/g)];
   expect(hoverRules.length).toBeGreaterThan(0);
   for (const [, , body] of hoverRules) {
     const properties = (body ?? "").split(";").map((d) => d.split(":")[0]?.trim()).filter(Boolean);

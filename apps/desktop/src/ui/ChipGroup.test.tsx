@@ -45,7 +45,11 @@ test.each(["macos", "windows", "linux"])("%s chips navigate without changing mem
   press("ArrowLeft");
   expect(document.activeElement).toBe(row(0));
   expect(screen.getAllByRole("row").map((element) => element.getAttribute("aria-label"))).toEqual(items.map((item) => item.textValue));
-  for (const item of items) expect(screen.getByRole("button", { name: item.removeLabel })).toBeTruthy();
+  for (const item of items) {
+    const remove = screen.getByRole("button", { name: item.removeLabel });
+    expect(remove.getAttribute("data-variant")).toBe("icon");
+    expect(remove.getAttribute("data-size")).toBe("small");
+  }
   expect(removed).not.toHaveBeenCalled();
   expect((await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } })).violations).toEqual([]);
 });

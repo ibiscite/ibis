@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type ComponentPropsWithRef, type KeyboardEvent, type RefObject } from "react";
-import { Button, I18nProvider, Tag, TagGroup, TagList, useLocale } from "react-aria-components";
+import { I18nProvider, Tag, TagGroup, TagList, useLocale } from "react-aria-components";
+import { Button } from "./Button";
 import "./ChipGroup.css";
 
 export type ChipItem = { id: string; label: string; textValue: string; removeLabel: string };
@@ -51,7 +52,7 @@ function Chips({ label, items, onRemove, fallbackFocusRef }: Props) {
     <TagList items={items} className="chip-group-list">
       {(item) => <Tag id={item.id} textValue={item.textValue} className="chip-group-item">
         <bdi>{item.label}</bdi>
-        <Button slot="remove" className="chip-group-remove"
+        <Button slot="remove" variant="icon" size="small" className="chip-group-remove"
           render={(props) => <button {...props as ComponentPropsWithRef<"button">} aria-label={item.removeLabel} aria-labelledby={undefined} />}>
           <span aria-hidden="true">×</span>
         </Button>

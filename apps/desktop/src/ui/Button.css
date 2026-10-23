@@ -9,12 +9,12 @@
 .ui-button[data-size="small"] { position: relative; min-height: 1.5rem; padding-inline: var(--space-2); }
 /* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
 .ui-button[data-size="small"]::after { content: ""; position: absolute; inset: calc(-1 * (var(--space-1) + var(--border-width))) calc(-1 * var(--border-width)); }
-.ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: var(--clear); border-color: var(--clear); color: var(--muted); }
+.ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: var(--clear); border-color: var(--clear); color: var(--control-icon-color, var(--muted)); }
 .ui-button[data-variant="icon"] { min-width: var(--control-min-size); padding: 0; }
 .ui-button[data-variant="primary"] { background: var(--accent); color: var(--text-on-accent); border-color: var(--clear); }
 @media (hover: hover) {
   .ui-button[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
-  .ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-subtle-hover); color: var(--text); }
+  .ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-subtle-hover); color: var(--control-icon-hover-color, var(--text)); }
   .ui-button[data-variant="primary"][data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-primary-hover); }
 }
 .ui-button:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-pressed); }
@@ -23,6 +23,9 @@
 .ui-button[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
 .ui-button:is([data-disabled], [aria-disabled="true"]) { background: var(--fill-disabled); color: var(--text-disabled); }
 .ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-disabled], [aria-disabled="true"]) { background: var(--clear); }
+/* Presentational controls inherit their option's paired foreground. Darkening
+   overlays preserve white checks on citation/selection fills. */
+.ui-button[data-pointer-only] { --control-icon-color: currentColor; --control-icon-hover-color: currentColor; --fill-subtle-hover: var(--fill-on-color-hover); --fill-subtle-pressed: var(--fill-on-color-pressed); }
 @media (pointer: coarse) {
   .ui-button[data-variant] { min-width: 2.75rem; min-height: 2.75rem; }
   .ui-button[data-size="small"]::after { inset: 0; }

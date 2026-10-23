@@ -49,7 +49,7 @@ test("the macOS glass look applies only to macOS and never under increased contr
 
 test("macOS fills and hairlines are translucent so the native material shows through", () => {
   const { body } = macBlock();
-  for (const token of ["--line", "--hover-background", "--button-background", "--button-hover-background"]) {
+  for (const token of ["--line", "--fill-subtle-hover", "--fill-control", "--fill-control-hover"]) {
     for (const [, , , alpha] of rgba(body, token)) expect(alpha, token).toBeLessThan(.2);
   }
   expect(body).toMatch(/--separator:\s*var\(--line\)/);
@@ -144,7 +144,7 @@ test("the frameless macOS writing toggles use the shared pressed fill", () => {
   const mac = native.slice(start + native.slice(start).indexOf("{") + 1, native.lastIndexOf("}"));
   const sheet = document.createElement("style");
   // jsdom does not resolve custom properties in border colours: substitute them.
-  const values: Record<string, string> = { "--clear": "transparent", "--button-edge": "transparent", "--selected-background": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-control": "transparent", "--fill-control": "rgb(240, 240, 240)", "--fill-control-pressed": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
+  const values: Record<string, string> = { "--clear": "transparent", "--selected-background": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-control": "transparent", "--fill-control": "rgb(240, 240, 240)", "--fill-control-pressed": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
   sheet.textContent = (mac.replace(/@supports[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, "") + styles + read("ui/Button.css"))
     .replace(/var\((--[\w-]+)\)/g, (whole, name: string) => values[name] ?? whole);
   document.head.append(sheet);

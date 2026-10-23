@@ -274,7 +274,7 @@ test("menu role tokens exist, forced colours frame the button, and reduced motio
   const definitions = new Set([...(tokens + menuCss + toolbarCss + buttonCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
   expect([...(menuCss + toolbarCss + buttonCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
   expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke-control\)/);
-  expect(tokens).toMatch(/forced-colors: active[\s\S]*--button-edge: ButtonText/);
+  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke-control: ButtonText/);
   expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
   expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
 });

@@ -96,12 +96,12 @@
   --active-edge: CanvasText;
   --accent: Highlight;
   --font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --button-background: color-mix(in srgb, var(--text) 4%, var(--surface));
-  --button-hover-background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  --fill-control: color-mix(in srgb, var(--text) 4%, var(--surface));
+  --fill-control-hover: color-mix(in srgb, var(--text) 8%, var(--surface));
   /* Buttons and key caps are fills without an edge, as in native toolbars;
      Windows adds Fluent's faint control stroke, contrast modes a solid one. */
-  --button-edge: var(--clear);
-  --hover-background: color-mix(in srgb, var(--text) 3%, var(--surface));
+  --stroke-control: var(--clear);
+  --fill-subtle-hover: color-mix(in srgb, var(--text) 3%, var(--surface));
   --selected-background: Highlight;
   --selected-text: HighlightText;
   --clear: transparent;
@@ -115,9 +115,8 @@
   --focus-ring-shadow: none;
   --alert-color: CanvasText;
   --alert-border-width: 3px;
-  --button-radius: 6px;
+  --r-control: 6px;
   --hint-radius: 4px;
-  --button-padding: 0 var(--space-3); /* height from --control-min-size (rule 4) */
   --picker-height: 100dvh;
   /* Between the field and the header's controls. The search glyph sits over
      the tile column and the query starts where row titles start:
@@ -177,7 +176,7 @@
   --hint-margin: var(--space-1);
   --contrast-border-width: 3px;
   --forced-search-offset: -3px;
-  --field-background: var(--button-background);
+  --field-background: var(--fill-control);
   --field-active-background: var(--surface);
   --clear-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
   --field-edge: color-mix(in srgb, var(--line) 35%, var(--surface));
@@ -222,9 +221,9 @@
       --surface: light-dark(#f3f3f3, #202020);
       --text: light-dark(#1b1b1b, #ffffff);
       --muted: light-dark(#606060, #cfcfcf);
-      --button-background: light-dark(rgb(255 255 255 / 70%), rgb(255 255 255 / 6%));
-      --button-hover-background: light-dark(rgb(249 249 249 / 50%), rgb(255 255 255 / 8%));
-      --hover-background: light-dark(rgb(0 0 0 / 4%), rgb(255 255 255 / 6%));
+      --fill-control: light-dark(rgb(255 255 255 / 70%), rgb(255 255 255 / 6%));
+      --fill-control-hover: light-dark(rgb(249 249 249 / 50%), rgb(255 255 255 / 8%));
+      --fill-subtle-hover: light-dark(rgb(0 0 0 / 4%), rgb(255 255 255 / 6%));
       --field-active-background: light-dark(#ffffff, #1e1e1e);
     }
     /* GNOME (libadwaita): window_bg and window_fg; buttons and the entry on
@@ -232,8 +231,8 @@
     :root[data-platform="linux"]:not([data-gallery-theme="contrast"]) {
       --surface: light-dark(#fafafb, #222226);
       --text: light-dark(#323236, #ffffff);
-      --button-background: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 8%));
-      --button-hover-background: light-dark(rgb(0 0 6 / 12%), rgb(255 255 255 / 12%));
+      --fill-control: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 8%));
+      --fill-control-hover: light-dark(rgb(0 0 6 / 12%), rgb(255 255 255 / 12%));
     }
   }
 }
@@ -261,7 +260,7 @@
   --shadow-overlay: 0 0 2px rgb(0 0 0 / 12%), 0 8px 16px rgb(0 0 0 / 14%);
   --shadow-dialog: 0 0 8px rgb(0 0 0 / 12%), 0 32px 64px rgb(0 0 0 / 14%);
   --shadow-toast: 0 4px 16px rgb(0 0 0 / 22%);
-  --button-radius: 4px; --chip-radius: var(--button-radius);
+  --r-control: 4px; --chip-radius: var(--r-control);
   --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
   --tile-active-background: light-dark(#fff, rgb(255 255 255 / 10%));
   /* Fluent's focus visual: an outer stroke in the text colour (black in light
@@ -297,11 +296,11 @@
       --text: light-dark(#16181d, #f5f5f7);
       --muted: light-dark(#4c5260, #c0c3cc);
       --line: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-      --hover-background: light-dark(rgb(0 0 0 / 4.5%), rgb(255 255 255 / 6%));
-      --button-background: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
-      --button-hover-background: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
+      --fill-subtle-hover: light-dark(rgb(0 0 0 / 4.5%), rgb(255 255 255 / 6%));
+      --fill-control: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
+      --fill-control-hover: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
       --separator: var(--line);
-      --button-radius: 8px; --hint-radius: 5px;
+      --r-control: 8px; --hint-radius: 5px;
       --vibrancy-tint: light-dark(rgb(250 250 252 / 55%), rgb(30 30 34 / 55%));
       /* A hairline, as on a native panel: no white rim or glow (prototype round six). */
       --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
@@ -341,7 +340,7 @@
 /* Windows: Fluent's DividerStrokeColorDefault and ControlStrokeColorDefault.
    Before the contrast blocks, which must override it. */
 @supports (color: light-dark(white, black)) {
-  :root[data-platform="windows"] { --separator: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 8%)); --button-edge: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 7%)); }
+  :root[data-platform="windows"] { --separator: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 8%)); --stroke-control: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 7%)); }
 }
 
 @media (prefers-contrast: more), (forced-colors: active) {
@@ -350,36 +349,36 @@
 :root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --scrim: Canvas; }
 
 @media (prefers-contrast: more) {
-  :root, :root[data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
+  :root, :root[data-platform] { --separator: CanvasText; --stroke-control: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
 }
 @media (forced-colors: active) {
-  :root, :root[data-platform] { --separator: CanvasText; --button-edge: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
+  :root, :root[data-platform] { --separator: CanvasText; --stroke-control: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
 }
 
 /* Explicit contrast preview in the development states gallery. */
-:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --button-edge: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; }
+:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --stroke-control: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; }
 :root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
 
-/* Remaining aliases preserve current values as controls migrate.
+/* Semantic roles preserve platform values.
    Per-look shape, elevation and motion roles are defined above.
-   Keep dependencies one-way: legacy values never read these aliases. */
+   Keep aliases one-way, from semantic roles to their platform inputs. */
 :root {
   --surface-window: var(--surface); --surface-raised: var(--surface);
   --surface-overlay: var(--surface); --surface-field: var(--field-background);
-  --fill-control: var(--button-background); --fill-control-hover: var(--button-hover-background);
+  --fill-on-color-hover: rgb(0 0 0 / 8%); --fill-on-color-pressed: rgb(0 0 0 / 16%);
   --fill-primary-hover: color-mix(in srgb, var(--accent) 92%, var(--text));
   --fill-primary-pressed: color-mix(in srgb, var(--accent) 84%, var(--text));
-  --fill-control-pressed: light-dark(rgb(0 0 0 / 13%), rgb(255 255 255 / 18%)); --fill-disabled: var(--button-background);
-  --fill-subtle-hover: var(--hover-background); --fill-subtle-pressed: color-mix(in srgb, var(--text) 12%, var(--surface));
+  --fill-control-pressed: light-dark(rgb(0 0 0 / 13%), rgb(255 255 255 / 18%)); --fill-disabled: var(--fill-control);
+  --fill-subtle-pressed: color-mix(in srgb, var(--text) 12%, var(--surface));
   --text-tertiary: var(--muted); --text-disabled: var(--muted); --text-on-accent: var(--selected-text);
   --accent-text: var(--accent); --status-info: var(--accent-text);
-  --row-inactive-background: var(--hover-background);
-  --stroke-control: var(--button-edge); --stroke-field: var(--field-edge); --stroke-overlay: var(--field-edge);
+  --row-inactive-background: var(--fill-subtle-hover);
+  --stroke-field: var(--field-edge); --stroke-overlay: var(--field-edge);
   --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-tooltip: 20; --z-modal: 30; --z-toast: 40;
   --overlay-margin: var(--space-2);
-  --r-control: var(--button-radius); --r-key: var(--hint-radius);
+  --r-key: var(--hint-radius);
   --r-card: var(--r-win); --r-full: 999px;
 }
 :root[data-platform="windows"] {
@@ -387,3 +386,5 @@
   --fill-subtle-pressed: light-dark(rgb(0 0 0 / 3%), rgb(255 255 255 / 3%));
 }
 :root[data-platform="linux"] { --fill-control-pressed: color-mix(in srgb, var(--text) 30%, transparent); }
+
+@media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
