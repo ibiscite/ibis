@@ -160,12 +160,30 @@ pub(super) struct Portal {
     pub(super) connection: Connection,
     pub(super) owner: String,
     pub(super) session: OwnedObjectPath,
+    owner_changes: MessageStream,
 }
 
 impl Portal {
     pub(super) async fn connect() -> Result<Self, Failure> {
         let connection = bounded(Connection::session()).await?;
         let bus = bounded(zbus::fdo::DBusProxy::new(&connection)).await?;
+        // Subscribe before activation/owner resolution/session creation: even
+        // a still-live unique connection may stop owning the portal meanwhile.
+        // Even release/reacquisition by that connection invalidates this setup.
+        let rule = MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender("org.freedesktop.DBus")
+            .map_err(|_| ())?
+            .path("/org/freedesktop/DBus")
+            .map_err(|_| ())?
+            .interface("org.freedesktop.DBus")
+            .map_err(|_| ())?
+            .member("NameOwnerChanged")
+            .map_err(|_| ())?
+            .arg(0, SERVICE)
+            .map_err(|_| ())?
+            .build();
+        let owner_changes = bounded(MessageStream::for_match_rule(rule, &connection, Some(64))).await?;
         // Properties.Get activates the service and proves the interface exists.
         let service = bounded(Proxy::new(&connection, SERVICE, ROOT, INTERFACE)).await?;
         let _: u32 = bounded(service.get_property("version")).await?;
@@ -178,24 +196,31 @@ impl Portal {
             connection: connection.clone(),
             owner,
             session,
+            owner_changes,
         })
     }
 
     /// Consume the session so BindShortcuts cannot be repeated or run concurrently.
     /// Drain before and during Bind/List, including while consent is pending.
     /// Activation is coalesced until consent succeeds; denial emits no events.
-    /// Closed/transport failure ends this session. App wiring and owner restart
+    /// Closed/owner loss/transport failure ends this session. App wiring and owner restart
     /// recovery remain separate; callbacks must not block this signal loop.
     pub(super) async fn run(self, mut emit: impl FnMut(Event)) -> Result<(), Failure> {
+        let Self {
+            connection,
+            owner,
+            session,
+            mut owner_changes,
+        } = self;
         let rule = MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
-            .sender(self.owner.as_str())
+            .sender(owner.as_str())
             .map_err(|_| ())?
             .path_namespace(ROOT)
             .map_err(|_| ())?
             .build();
-        let mut signals = bounded(MessageStream::for_match_rule(rule, &self.connection, Some(64))).await?;
-        let mut binding = std::pin::pin!(self.bind());
+        let mut signals = bounded(MessageStream::for_match_rule(rule, &connection, Some(64))).await?;
+        let mut binding = std::pin::pin!(Self::bind(&connection, &owner, &session));
         let mut ready = false;
         let mut completed = None;
         let mut remaining = 0usize;
@@ -205,8 +230,13 @@ impl Portal {
             enum Next {
                 Bound(Result<(Option<String>, Sequence), Failure>),
                 Signal(Option<zbus::Result<Message>>),
+                Owner(Option<zbus::Result<Message>>),
             }
             let next = poll_fn(|cx| {
+                // Ownership loss wins over buffered consent/activation events.
+                if let Poll::Ready(message) = Pin::new(&mut owner_changes).poll_next(cx) {
+                    return Poll::Ready(Next::Owner(message));
+                }
                 if !ready
                     && completed.is_none()
                     && let Poll::Ready(result) = binding.as_mut().poll(cx)
@@ -237,7 +267,7 @@ impl Portal {
                         emit(Event::Activated);
                     }
                 }
-                Next::Signal(Some(Ok(message))) => match signal(&message, &self.session) {
+                Next::Signal(Some(Ok(message))) => match signal(&message, &session) {
                     Some(Signal::Closed) => return Err(Failure::Unavailable),
                     Some(Signal::Event(event)) if ready => emit(event),
                     Some(Signal::Event(Event::Activated)) => activation = true,
@@ -245,17 +275,26 @@ impl Portal {
                     None => {}
                 },
                 Next::Signal(_) => return Err(Failure::Unavailable),
+                Next::Owner(Some(Ok(message))) => {
+                    let (name, old, new): (String, String, String) = message.body().deserialize().map_err(|_| ())?;
+                    if name == SERVICE && old == owner && new != owner {
+                        return Err(Failure::Unavailable);
+                    }
+                }
+                Next::Owner(_) => return Err(Failure::Unavailable),
             }
             tokio::task::yield_now().await;
         }
     }
 
-    async fn bind(&self) -> Result<(Option<String>, Sequence), Failure> {
-        let proxy = bounded(Proxy::new(&self.connection, self.owner.as_str(), ROOT, INTERFACE)).await?;
-        let bound = request(&proxy, "BindShortcuts", Some(&self.session)).await?;
-        let listed = request(&proxy, "ListShortcuts", Some(&self.session))
-            .await
-            .unwrap_or(bound);
+    async fn bind(
+        connection: &Connection,
+        owner: &str,
+        session: &OwnedObjectPath,
+    ) -> Result<(Option<String>, Sequence), Failure> {
+        let proxy = bounded(Proxy::new(connection, owner, ROOT, INTERFACE)).await?;
+        let bound = request(&proxy, "BindShortcuts", Some(session)).await?;
+        let listed = request(&proxy, "ListShortcuts", Some(session)).await.unwrap_or(bound);
         Ok((
             listed
                 .0
@@ -395,8 +434,15 @@ mod tests {
         #[zbus::interface(name = "org.freedesktop.portal.GlobalShortcuts")]
         impl Fake {
             #[zbus(property, name = "version")]
-            fn version(&self) -> u32 {
-                2
+            async fn version(&self, #[zbus(connection)] connection: &Connection) -> zbus::fdo::Result<u32> {
+                if self.0.load(Ordering::Relaxed) == 7 {
+                    // Ownership changes before GetNameOwner or CreateSession.
+                    connection.release_name(SERVICE).await?;
+                    connection
+                        .request_name_with_flags(SERVICE, zbus::fdo::RequestNameFlags::AllowReplacement.into())
+                        .await?;
+                }
+                Ok(2)
             }
 
             async fn create_session(
@@ -405,8 +451,13 @@ mod tests {
                 #[zbus(connection)] connection: &Connection,
                 #[zbus(header)] header: zbus::message::Header<'_>,
             ) -> zbus::fdo::Result<OwnedObjectPath> {
+                let code = self.0.load(Ordering::Relaxed);
+                if code == 6 {
+                    // The unique connection stays alive and responds, without Closed.
+                    connection.release_name(SERVICE).await?;
+                }
                 respond(
-                    self.0.load(Ordering::Relaxed),
+                    if code >= 6 { 0 } else { code },
                     dict("session_handle", &format!("{ROOT}/session/fake")),
                     options,
                     connection,
@@ -608,8 +659,80 @@ mod tests {
                     assert!(matches!(Portal::connect().await, Err(Failure::Denied)));
                     code.store(2, Ordering::Relaxed);
                     assert!(matches!(Portal::connect().await, Err(Failure::Unavailable)));
+                    ownership_changes_end_managed_sessions(&server, &code).await?;
                     Ok(())
                 })
+        }
+
+        async fn ownership_changes_end_managed_sessions(
+            server: &Connection,
+            code: &Arc<AtomicU32>,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            let replacement = zbus::connection::Builder::session()?
+                .serve_at(ROOT, Fake(Arc::new(AtomicU32::new(0))))?
+                .build()
+                .await?;
+            for phase in [6, 7, 8, 9] {
+                server.release_name(SERVICE).await?;
+                server
+                    .request_name_with_flags(SERVICE, zbus::fdo::RequestNameFlags::AllowReplacement.into())
+                    .await?;
+                code.store(if phase <= 7 { phase } else { 0 }, Ordering::Relaxed);
+                let portal = Portal::connect().await.map_err(|_| "owner-loss setup failed")?;
+                code.store(0, Ordering::Relaxed);
+                if phase >= 8 {
+                    server.request_name("org.example.Unrelated").await?;
+                    server.release_name("org.example.Unrelated").await?;
+                    server
+                        .emit_signal(
+                            None::<&str>,
+                            "/org/freedesktop/DBus",
+                            "org.freedesktop.DBus",
+                            "NameOwnerChanged",
+                            &(SERVICE, portal.owner.as_str(), ""),
+                        )
+                        .await?;
+                }
+                let mut events = Vec::new();
+                let mut change_task = None;
+                let result = tokio::time::timeout(Duration::from_secs(3), async {
+                    let result = portal
+                        .run(|event| {
+                            if matches!(event, Event::Trigger(_)) && phase >= 8 {
+                                let old = server.clone();
+                                let new = replacement.clone();
+                                change_task = Some(tokio::spawn(async move {
+                                    if phase == 8 {
+                                        old.release_name(SERVICE).await?;
+                                    } else {
+                                        let flags = zbus::fdo::RequestNameFlags::ReplaceExisting
+                                            | zbus::fdo::RequestNameFlags::DoNotQueue;
+                                        new.request_name_with_flags(SERVICE, flags).await?;
+                                    }
+                                    // A stale old-owner activation must not escape after loss.
+                                    let session = OwnedObjectPath::try_from(format!("{ROOT}/session/fake"))?;
+                                    emit(&old, "Activated", &(&session, ID, 0u64, Dict::new())).await
+                                }));
+                            }
+                            events.push(event);
+                        })
+                        .await;
+                    if let Some(task) = change_task {
+                        task.await??;
+                    }
+                    Ok::<_, Box<dyn std::error::Error>>(result)
+                })
+                .await
+                .map_err(|_| "owner loss without Closed must terminate the session")??;
+                assert_eq!(result, Err(Failure::Unavailable));
+                if phase <= 7 {
+                    assert!(events.is_empty(), "setup ownership loss must precede binding/events");
+                } else {
+                    assert_eq!(events, [Event::Trigger(Some("Ctrl+Shift+Y".into())), Event::Activated]);
+                }
+                replacement.release_name(SERVICE).await?;
+            }
+            Ok(())
         }
     }
 }
