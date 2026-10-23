@@ -40,7 +40,7 @@ function mount() {
   const onAction = vi.fn();
   const toggle = vi.fn();
   render(<Harness onAction={onAction} toggle={toggle} />);
-  return { onAction, toggle, trigger: screen.getByRole("button", { name: "Actions" }), search: screen.getByRole("textbox") };
+  return { onAction, toggle, trigger: screen.getByRole("button", { name: "Actions" }), search: screen.getByRole<HTMLInputElement>("textbox") };
 }
 
 test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highlighted, a shortcut highlights the first item, axe passes", async (platform) => {
@@ -160,6 +160,48 @@ test.each(["Escape", "Tab"])("%s restores its destination after an animated exit
   fireEvent.keyDown(menu, { key });
   await exit.finish();
   expect(document.activeElement).toBe(key === "Escape" ? trigger : search);
+});
+
+test.each([false, true])("Tab (shift=%s) releases the modal before immediate typing", async (shiftKey) => {
+  const { trigger, search } = mount();
+  act(() => trigger.focus());
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  const menu = await screen.findByRole("menu");
+  const exit = holdExit(menu);
+  const focusSearch = search.focus.bind(search);
+  const focus = vi.spyOn(search, "focus").mockImplementation(() => {
+    if (!exit.popover.isConnected) focusSearch();
+  });
+  fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey });
+  // No animation completion or frame is allowed before the next input.
+  expect(exit.popover.isConnected).toBe(false);
+  expect(document.activeElement).toBe(search);
+  fireEvent.input(document.activeElement!, { target: { value: "immediate" } });
+  expect(search.value).toBe("immediate");
+  focus.mockRestore();
+  await exit.finish();
+});
+
+test("composition does not trigger the immediate Tab dismissal", async () => {
+  const { trigger } = mount();
+  fireEvent.click(trigger);
+  const menu = await screen.findByRole("menu");
+  fireEvent.keyDown(menu, { key: "Tab", isComposing: true });
+  expect(screen.getByRole("menu")).toBe(menu);
+});
+
+test("a shortcut can reopen immediately after Tab and action exits still animate", async () => {
+  const { trigger, search } = mount();
+  fireEvent.click(trigger);
+  fireEvent.keyDown(await screen.findByRole("menu"), { key: "Tab" });
+  expect(document.activeElement).toBe(search);
+  fireEvent.keyDown(search, { key: "k", ctrlKey: true });
+  const reopened = await screen.findByRole("menu");
+  const exit = holdExit(reopened);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+  expect(exit.popover.hasAttribute("data-exiting")).toBe(true);
+  await exit.finish();
+  expect(document.activeElement).toBe(search);
 });
 
 test.each(["focus", "pointer", "keyboard"])("later %s intent supersedes the action's focus destination", async (intent) => {

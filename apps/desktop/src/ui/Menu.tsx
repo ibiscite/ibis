@@ -1,4 +1,5 @@
 import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { Button, Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
 import "./Menu.css";
 
@@ -131,6 +132,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const focusFrame = useRef(0);
   const closingList = useRef<HTMLDivElement | null>(null);
   const [opening, setOpening] = useState(0);
+  const [skipExit, setSkipExit] = useState(false);
   const listRef = useCallback((node: HTMLDivElement | null) => {
     list.current = node;
     if (!node) closingList.current = null;
@@ -176,6 +178,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   }, [restoreFocus]);
   useLayoutEffect(() => {
     if (isOpen) {
+      setSkipExit(false);
       pendingFocus.current = null;
       cancelAnimationFrame(focusFrame.current);
     } else restoreFocus();
@@ -192,7 +195,18 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       document.removeEventListener("keydown", cancel, true);
     };
   }, []);
-  const leave = (to: HTMLElement | null | undefined) => {
+  const leave = (to: HTMLElement | null | undefined, immediate: boolean) => {
+    if (immediate) {
+      // Tab hands input back now. Keeping the modal mounted for its exit would
+      // reject focus, losing any typing before its animation finishes.
+      const previous = document.activeElement;
+      pendingFocus.current = null;
+      cancelAnimationFrame(focusFrame.current);
+      flushSync(() => { setSkipExit(true); onOpenChange(false); });
+      const active = document.activeElement;
+      if (to?.isConnected && (active === previous || active === document.body || active === button.current || active === to)) to.focus();
+      return;
+    }
     pendingFocus.current = to ?? null;
     onOpenChange(false);
   };
@@ -203,14 +217,14 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
-    <Popover ref={popoverRef} className="menu-popover" placement={placement} offset={6} containerPadding={8} {...boundary}>
+    <Popover ref={popoverRef} className="menu-popover" placement={placement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (event.nativeEvent.isComposing) return;
         const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;
         if (to === undefined) return;
         event.preventDefault();
         event.stopPropagation();
-        leave(to);
+        leave(to, event.key === "Tab");
       }}>
         <AriaMenu key={opening} ref={listRef} id={id} className="menu" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
           <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
