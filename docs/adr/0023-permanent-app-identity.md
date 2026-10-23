@@ -11,7 +11,11 @@ after distribution must preserve settings rather than start from defaults.
 ADR 0019 keeps Stable and Nightly independent. Login-item state is held by the
 operating system, not settings JSON; Apple's
 [main-app service](https://developer.apple.com/documentation/servicemanagement/smappservice/mainapp)
-controls the running app's registration.
+controls the running app's registration. The reviewed migration paths can leave
+the former macOS login choice unknown. The maintainer
+[accepted visible one-time reapproval on 2026-10-22](https://github.com/ibiscite/ibis/issues/695#issuecomment-6345031681),
+replacing automatic preservation of an unknown macOS login choice while keeping
+libraries, shortcuts and other migrated settings intact.
 
 ## Decision
 
@@ -34,13 +38,22 @@ controls the running app's registration.
   replace an unrelated nonempty destination. On a failed migration, continue
   reading and saving the old settings and show a fixed notice; retry on a later
   launch. Do not log file contents, paths or operating-system error payloads.
-- Preserve each channel's actual start-at-login choice. Windows retains the
-  product-named Run entry. Linux replaces only the corresponding Ibis-owned
-  autostart entry after preparing its replacement. macOS re-registers the new
-  main-app service when the prior enabled choice can be established; report
-  required system approval. A copied JSON file is never evidence of consent.
-  Do not switch the shipped identifiers until these platform transitions are
-  implemented and tested. Existing system permissions may need approval again.
+- Preserve each channel's actual start-at-login choice on Windows and Linux.
+  Windows retains the product-named Run entry. Linux replaces only the
+  corresponding Ibis-owned autostart entry after preparing its replacement.
+- On macOS, after matching legacy settings migration, show a visible one-time
+  notice explaining the new app identity and how to turn on Open at Login in
+  More. Leave unknown prior startup consent off. Register the new main-app
+  service only after the person explicitly requests On, then report its actual
+  enabled, approval-required or refused result. A copied JSON file is never
+  evidence of consent.
+- Keep that notice once per channel. Record acknowledgement only after
+  successful display/dismissal. If delivery or safe acknowledgement persistence
+  fails, keep it pending across reopening rather than suppressing it.
+- Do not switch the shipped identifiers until these platform transitions and
+  notice handling are implemented and tested. Installed upgrade, direct
+  replacement and restart/login acceptance remain required; this amendment
+  does not establish them. Existing system permissions may need approval again.
 
 Special files are unreadable settings, not streams to open: keep regular backup
 recovery and refuse writes over a special primary, backup or temporary file.
