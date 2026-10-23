@@ -41,9 +41,10 @@ For example, export a template view with the bundled Apple CLI (on macOS):
 ```
 
 Repeat with `Dark`, `ClearLight`, `ClearDark`, `TintedLight`, `TintedDark` and
-sizes 128, 32 and 16 for the review set. `../review/` holds the labelled sheets,
-source commit, file hashes and binary audit. Those are CLI exports composited on
-synthetic backgrounds, not native editor, Dock or taskbar screenshots.
+sizes 128, 32 and 16 for the review set. The historical labelled sheets, source
+commit, file hashes and binary audit are [archived in Git](https://github.com/ibiscite/ibis/tree/5704c7a8790e4e43a5247025c870402bbd0438c9/apps/desktop/src-tauri/icons/review).
+Those are CLI exports composited on synthetic backgrounds, not native editor,
+Dock or taskbar screenshots.
 
 The Windows adaptation needs the maintainer's final look. Windows uses the
 same curves in G1 on transparency, with an eye cutout, to satisfy the no-tile
