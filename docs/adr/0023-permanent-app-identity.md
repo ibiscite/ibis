@@ -39,8 +39,13 @@ libraries, shortcuts and other migrated settings intact.
   reading and saving the old settings and show a fixed notice; retry on a later
   launch. Do not log file contents, paths or operating-system error payloads.
 - Preserve each channel's actual start-at-login choice on Windows and Linux.
-  Windows retains the product-named Run entry. Linux replaces only the
-  corresponding Ibis-owned autostart entry after preparing its replacement.
+  Windows retains the product-named Run entry. Linux retains the matching legacy
+  autostart basename as its per-channel compatibility slot and prepares content
+  before replacing only that owned entry. Preserve disabled/custom keys and the
+  existing executable-refresh policy. Refuse foreign/special legacy entries and
+  competing permanent-identity or partial slots; never create duplicate entries.
+  Development/unknown identities keep their own slots. Application launcher
+  desktop/icon names may use the permanent identity independently.
 - On macOS, after matching legacy settings migration, show a visible one-time
   notice explaining the new app identity and how to turn on Open at Login in
   More. Leave unknown prior startup consent off. Register the new main-app

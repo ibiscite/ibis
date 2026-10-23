@@ -8,12 +8,13 @@
 //! - macOS 13 and later: `SMAppService.mainApp`, listed under Open at Login.
 //! - Windows: a value in the current user's `Run` key, named after the app;
 //!   Task Manager's switch for it counts.
-//! - Linux: an XDG autostart `.desktop` file, named after the app identifier.
+//! - Linux: a per-channel XDG autostart file; permanent release identities keep
+//!   the matching legacy basename as their compatibility slot.
 //!
 //! Ibis and Ibis Nightly have different names and identifiers, so each has
 //! its own entry; debug builds use another one again.
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 mod linux;
 
 use std::sync::Mutex;
@@ -218,11 +219,6 @@ fn platform_entry(app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
     // $XDG_CONFIG_HOME, or ~/.config when it is not set (XDG autostart spec).
     let config = app.path().config_dir().ok()?;
     let identifier = &app.config().identifier;
-    let file = if cfg!(debug_assertions) {
-        format!("{identifier}.development.desktop")
-    } else {
-        format!("{identifier}.desktop")
-    };
     // An AppImage runs from a temporary mount; the entry must name the file.
     let env = app.env();
     let program = linux::launch_program(
@@ -231,11 +227,13 @@ fn platform_entry(app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
         env.appdir.map(std::path::PathBuf::from),
         option_env!("IBIS_PACKAGE_LAUNCHER"),
     )?;
-    Some(Box::new(linux::DesktopFile {
-        path: config.join("autostart").join(file),
-        name: name.to_string(),
+    Some(Box::new(linux::DesktopFile::for_identity(
+        &config.join("autostart"),
+        identifier,
+        cfg!(debug_assertions),
+        name,
         program,
-    }))
+    )))
 }
 
 #[cfg(target_os = "macos")]
