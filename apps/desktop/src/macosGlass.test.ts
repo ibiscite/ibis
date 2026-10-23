@@ -7,6 +7,19 @@ const read = (name: string) => readFileSync(new FileURL(`./${name}`, import.meta
 const tokens = read("tokens.css");
 const native = read("nativeAppearance.css");
 
+function cssRules(source: string): CSSRule[] {
+  const sheet = document.createElement("style");
+  sheet.textContent = source;
+  document.head.append(sheet);
+  try { return [...sheet.sheet!.cssRules]; } finally { sheet.remove(); }
+}
+
+function macSkinRules(): CSSRule[] {
+  const skin = cssRules(native).find((rule) => rule.type === CSSRule.MEDIA_RULE
+    && (rule as CSSMediaRule).conditionText === "(prefers-contrast: no-preference) and (forced-colors: none)") as CSSMediaRule;
+  return [...skin.cssRules];
+}
+
 /** The macOS glass token block: one rule, inside its contrast guard. */
 function macBlock(): { guard: string; body: string } {
   const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root\[data-platform="macos"\]:not\(\.notice-window\):not\(\[data-gallery-theme="contrast"\]\) \{([^{}]*)\}/);
@@ -38,7 +51,7 @@ test("the macOS glass look applies only to macOS and never under increased contr
   expect(guard).toBe("@media (prefers-contrast: no-preference) and (forced-colors: none)");
   expect(native).toMatch(/@media \(prefers-contrast: no-preference\) and \(forced-colors: none\) \{/);
   // Every macOS element rule is scoped to macOS and skips the contrast preview.
-  const scoped = native.slice(native.indexOf("@media (prefers-contrast: no-preference)")).replace(/\/\*[^]*?\*\//g, "");
+  const scoped = "\n" + macSkinRules().map((rule) => rule.cssText).join("\n");
   for (const [, head] of scoped.matchAll(/\n\s*([^{}\n/][^{}]*)\{/g)) {
     if (head!.trim().startsWith("@supports")) continue;
     expect(head!.trim()).toMatch(/^:root\[data-platform="macos"\][^ ]*:not\(\[data-gallery-theme="contrast"\]\)/);
@@ -164,8 +177,7 @@ test("the frameless macOS writing toggles use the shared pressed fill", () => {
   // jsdom evaluates no media queries: apply the macOS rules, then the picker's
   // own rules, in the order styles.css imports them.
   const styles = read("styles.css").replace(/@import[^;]+;/g, "");
-  const start = native.indexOf("@media (prefers-contrast: no-preference) and (forced-colors: none) {");
-  const mac = native.slice(start + native.slice(start).indexOf("{") + 1, native.lastIndexOf("}"));
+  const mac = macSkinRules().filter((rule) => rule.type === CSSRule.STYLE_RULE).map((rule) => rule.cssText).join("\n");
   const sheet = document.createElement("style");
   // jsdom does not resolve custom properties in border colours: substitute them.
   const values: Record<string, string> = { "--clear": "transparent", "--selected-background": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-control": "transparent", "--fill-control": "rgb(240, 240, 240)", "--fill-control-pressed": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
@@ -192,4 +204,63 @@ test("the frameless macOS writing toggles use the shared pressed fill", () => {
 test("menus stay opaque where the webview cannot blur behind them", () => {
   const fallback = native.slice(native.indexOf("@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))"));
   expect(fallback).toMatch(/\.menu-popover, \.keys-dialog\)\s*\{\s*background:\s*var\(--surface\);/);
+});
+
+// JSDOM does not evaluate media/supports queries. Apply the real rules for a
+// blur-capable webview under each preference, retaining selector specificity.
+function overlayRules(source: string, preferences: Set<string>): string {
+  const select = (rules: CSSRuleList | CSSRule[]): string => [...rules].map((rule) => {
+    if (rule.type === CSSRule.STYLE_RULE) return rule.cssText;
+    if (rule.type === CSSRule.MEDIA_RULE) {
+      const media = rule as CSSMediaRule;
+      return media.conditionText.split(",").some((query) => query.split(/\s+and\s+/).every((part) => preferences.has(part.trim())))
+        ? select(media.cssRules) : "";
+    }
+    if ("cssRules" in rule) {
+      const group = rule as CSSSupportsRule;
+      return group.conditionText?.startsWith("not ") ? "" : select(group.cssRules);
+    }
+    return "";
+  }).join("\n");
+  return select(cssRules(source));
+}
+
+test.each([
+  ["macos", "opaque", "normal"], ["macos", undefined, "normal"],
+  ["macos", "opaque", "reduce"], ["macos", "vibrancy", "reduce"], ["macos", "liquid-glass", "reduce"],
+  ["macos", "liquid-glass", "contrast"], ["macos", "liquid-glass", "forced"], ["macos", "liquid-glass", "gallery"],
+  ["macos", "vibrancy", "normal"], ["macos", "liquid-glass", "normal"],
+  ["windows", "acrylic", "reduce"], ["linux", "opaque", "reduce"],
+] as const)("%s overlay cascade: %s material with %s preferences", (platform, mode, preference) => {
+  const preferences = new Set([
+    `(prefers-contrast: ${preference === "contrast" ? "more" : "no-preference"})`,
+    `(forced-colors: ${preference === "forced" ? "active" : "none"})`,
+    `(prefers-reduced-transparency: ${preference === "reduce" ? "reduce" : "no-preference"})`,
+  ]);
+  const sheet = document.createElement("style");
+  // These are the production import order and real component selectors.
+  const source = native + read("styles.css").replace(/@import[^;]+;/g, "") + read("ui/Menu.css");
+  sheet.textContent = overlayRules(source, preferences).replace(/var\(--surface\)/g, "rgb(252, 252, 253)");
+  document.head.append(sheet);
+  document.documentElement.dataset.platform = platform;
+  if (mode) document.documentElement.dataset.nativeAppearance = mode;
+  if (preference === "gallery") document.documentElement.dataset.galleryTheme = "contrast";
+  document.body.innerHTML = '<div class="menu-popover">Menu</div><div class="keys-dialog">Shortcuts</div>';
+  try {
+    const solid = preference !== "normal" || mode !== "vibrancy" && mode !== "liquid-glass";
+    for (const element of document.body.children) {
+      const style = getComputedStyle(element);
+      if (solid) {
+        expect(style.getPropertyValue("backdrop-filter")).toBe("none");
+        expect(style.backgroundColor).toBe("rgb(252, 252, 253)");
+      } else {
+        expect(style.getPropertyValue("backdrop-filter")).toBe("blur(30px) saturate(180%)");
+      }
+    }
+  } finally {
+    sheet.remove(); document.body.innerHTML = "";
+    delete document.documentElement.dataset.platform;
+    delete document.documentElement.dataset.nativeAppearance;
+    delete document.documentElement.dataset.galleryTheme;
+  }
 });

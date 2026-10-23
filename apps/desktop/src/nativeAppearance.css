@@ -54,3 +54,17 @@
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog) { background: var(--surface); }
   }
 }
+
+/* Native failure/unknown preferences must not leave a web-only glass menu. */
+:root[data-platform="macos"]:not(.notice-window):not([data-native-appearance="vibrancy"]):not([data-native-appearance="liquid-glass"]) :is(.menu-popover, .keys-dialog),
+:root[data-platform][data-gallery-theme="contrast"]:not(.notice-window) :is(.menu-popover, .keys-dialog) {
+  background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+
+/* Include the applied-mode specificity while a native preference refresh waits. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  :root[data-platform]:not(.notice-window) :is(.menu-popover, .keys-dialog),
+  :root[data-platform][data-native-appearance]:not(.notice-window) :is(.menu-popover, .keys-dialog) {
+    background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
