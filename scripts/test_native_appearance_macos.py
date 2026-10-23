@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import subprocess
 import unittest
 from unittest.mock import patch
@@ -7,6 +8,10 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location("appearance", Path(__file__).with_name("check-native-appearance-macos.py"))
 appearance = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(appearance)
+
+
+def picker_geometry():
+    return {"window": 12, "position": [20, 30], "size": [720, 480], "screen": [1600, 1000]}
 
 
 class PreferenceTransactionTests(unittest.TestCase):
@@ -76,8 +81,7 @@ class PreferenceTransactionTests(unittest.TestCase):
             self.assertEqual(ui.failure_facts, {"action": "picker-owner", "stage": "invocation", "reason": "invalid-response"})
 
     def test_replaced_window_between_phases_cannot_produce_more_captures(self):
-        from tempfile import TemporaryDirectory
-        state = {"window": 12, "position": [20, 30], "size": [720, 480], "screen": [1600, 1000]}
+        state = picker_geometry()
         captures, writes = [], []
         read = appearance.pin_picker_window(lambda: dict(state))
         def resize(window, size):
@@ -92,9 +96,8 @@ class PreferenceTransactionTests(unittest.TestCase):
         self.assertEqual(writes, [12, 12])
 
     def test_each_phase_captures_normal_and_verified_resized_window_then_restores(self):
-        from tempfile import TemporaryDirectory
         events = []
-        state = {"window": 12, "position": [20, 30], "size": [720, 480], "screen": [1600, 1000]}
+        state = picker_geometry()
         def frame(): return dict(state)
         def resize(window, size):
             self.assertEqual(window, 12)
@@ -111,9 +114,8 @@ class PreferenceTransactionTests(unittest.TestCase):
         self.assertIn("increase-contrast-resized.png", captures)
 
     def test_noop_resize_cannot_produce_resized_capture_and_still_restores(self):
-        from tempfile import TemporaryDirectory
         captures, resized = [], []
-        frame = lambda: {"window": 12, "position": [20, 30], "size": [720, 480], "screen": [1600, 1000]}
+        frame = picker_geometry
         def wait(read, _):
             if not read(): raise AssertionError("unverified resize")
         with TemporaryDirectory() as folder, patch.object(appearance, "wait_for", side_effect=wait):
@@ -124,8 +126,7 @@ class PreferenceTransactionTests(unittest.TestCase):
         self.assertEqual(resized[-1], [720, 480])
 
     def test_failed_resized_capture_restores_geometry_and_both_preferences(self):
-        from tempfile import TemporaryDirectory
-        state = {"window": 12, "position": [20, 30], "size": [720, 480], "screen": [1600, 1000]}
+        state = picker_geometry()
         prefs = {"contrast": True, "transparency": True}
         def resize(window, size): state["size"] = list(size)
         def capture(path):
@@ -139,13 +140,12 @@ class PreferenceTransactionTests(unittest.TestCase):
         self.assertEqual(prefs, {"contrast": True, "transparency": True})
 
     def test_invalid_or_offscreen_geometry_never_authorizes_resize(self):
-        frame = {"window": 12, "position": [20, 30], "size": [720, 480], "screen": [1600, 1000]}
+        frame = picker_geometry()
         for key, value in (("window", True), ("size", [float("nan"), 480]), ("position", [-1, 30]), ("screen", [700, 500])):
             with self.assertRaises(RuntimeError):
                 appearance.picker_frame({**frame, key: value})
 
     def test_missing_fresh_image_cannot_reuse_prior_png_and_nonpng_is_rejected(self):
-        from tempfile import TemporaryDirectory
         with TemporaryDirectory() as folder, patch.object(appearance.time, "sleep"):
             path = Path(folder) / "material.png"
             path.write_bytes(b"\x89PNG\r\n\x1a\nold evidence")
