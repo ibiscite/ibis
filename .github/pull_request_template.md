@@ -15,7 +15,7 @@ Closes #
 ## Verification
 
 - [ ] A test or fixture fails without this change
-- [ ] `node scripts/check.mjs` passed on the final commit
+- [ ] Focused local tests passed; the required "CI result" is green on the final commit
 - [ ] No real library data, document text, paths or credentials anywhere
 - Manual checks (operating system, app), or "none":
 
