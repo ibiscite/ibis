@@ -1,0 +1,77 @@
+/* Ibis brand colours. Made by brand/build.py; do not edit.
+   Themes follow the system unless the page sets data-theme="light", "dark" or "dim". */
+:root {
+  --ibis-scarlet-50: #FEF2EF;
+  --ibis-scarlet-100: #FFE5DE;
+  --ibis-scarlet-200: #FFC9BC;
+  --ibis-scarlet-300: #FEA793;
+  --ibis-scarlet-400: #FF7A5C;
+  --ibis-scarlet-500: #E4583A;
+  --ibis-scarlet-600: #C23A1C;
+  --ibis-scarlet-700: #9F2C12;
+  --ibis-scarlet-800: #7A220E;
+  --ibis-scarlet-900: #52170B;
+  --ibis-gray-50: #F5F7FA;
+  --ibis-gray-100: #EFF0F4;
+  --ibis-gray-200: #DFE1E6;
+  --ibis-gray-300: #CBCED4;
+  --ibis-gray-400: #A1A4AC;
+  --ibis-gray-500: #777A83;
+  --ibis-gray-600: #575B64;
+  --ibis-gray-700: #3F424B;
+  --ibis-gray-800: #282B32;
+  --ibis-gray-850: #1F2227;
+  --ibis-gray-900: #16181D;
+  --ibis-gray-950: #0C0D11;
+  --ibis-ink: #16181D;
+  --ibis-slate: #4C5260;
+  --ibis-mist: #C0C3CC;
+  --ibis-paper: #FFFFFF;
+  --ibis-warm-paper: #F1EEE9;
+  --ibis-snow: #F5F5F7;
+  --bg: #FFFFFF;
+  --surface: #F5F7FA;
+  --line: #DFE1E6;
+  --text: #16181D;
+  --muted: #4C5260;
+  --accent: #C23A1C;
+  --accent-soft: #FEF2EF;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #0C0D11;
+    --surface: #16181D;
+    --line: #282B32;
+    --text: #F5F5F7;
+    --muted: #CBCED4;
+    --accent: #FF7A5C;
+    --accent-soft: #52170B;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #FFFFFF;
+  --surface: #F5F7FA;
+  --line: #DFE1E6;
+  --text: #16181D;
+  --muted: #4C5260;
+  --accent: #C23A1C;
+  --accent-soft: #FEF2EF;
+}
+:root[data-theme="dark"] {
+  --bg: #0C0D11;
+  --surface: #16181D;
+  --line: #282B32;
+  --text: #F5F5F7;
+  --muted: #CBCED4;
+  --accent: #FF7A5C;
+  --accent-soft: #52170B;
+}
+:root[data-theme="dim"] {
+  --bg: #1F2227;
+  --surface: #282B32;
+  --line: #3F424B;
+  --text: #F5F5F7;
+  --muted: #CBCED4;
+  --accent: #FF7A5C;
+  --accent-soft: #52170B;
+}

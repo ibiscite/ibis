@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420">
+<!-- Ibis brand master. Edit the three symbols below; build.py reads them by id and makes every export.
+     Each symbol's viewBox is the exact outline of its shape, with no padding: build.py adds padding and effects.
+     mark: the ibis (approved 1B silhouette). wordmark: "Ibis" in Inter Display SemiBold, outlined, cap height 100.
+     beak: the closing quote mark used on the app's citation shelf. Shapes use currentColor. -->
+<defs>
+<symbol id="mark" viewBox="27.275 25 57.225 59.25"><path d="M36 80C35 70 30 62 32 52 33.5 45 36.5 40.5 41 38" fill="none" stroke="currentColor" stroke-width="8.5" stroke-linecap="round"/><path d="M41 25C62 25.5 77 39 84.5 69 75 50 63 41.5 43 43.2z" fill="currentColor"/><circle cx="41" cy="34.5" r="9.5" fill="currentColor"/></symbol>
+<symbol id="wordmark" viewBox="8.322 -100.671 195.78 102.349"><path d="M26.04 -100H8.32V0H26.04ZM77.39 1.41C95.91 1.41 108.06 -13.42 108.06 -35.5C108.06 -57.32 95.71 -72.28 77.45 -72.28C68.26 -72.28 60.74 -68.59 56.18 -60.81H56.04V-100H39.13V0H55.77V-10.81H55.91C60.34 -2.62 68.12 1.41 77.39 1.41ZM73.43 -12.75C62.35 -12.75 55.1 -21.68 55.1 -35.5C55.1 -49.26 62.35 -58.26 73.43 -58.26C83.9 -58.26 90.94 -50.13 90.94 -35.5C90.94 -20.81 83.9 -12.75 73.43 -12.75ZM117.05 0H133.97V-70.87H117.05ZM125.51 -81.41C131.28 -81.41 135.64 -85.57 135.64 -91.07C135.64 -96.51 131.28 -100.67 125.51 -100.67C119.74 -100.67 115.37 -96.51 115.37 -91.07C115.37 -85.57 119.74 -81.41 125.51 -81.41ZM174.03 1.68C191.55 1.68 204.1 -7.05 204.1 -20.87C204.1 -31.28 197.59 -37.45 183.57 -40.4L170.81 -43.02C164.91 -44.3 161.42 -46.91 161.42 -51.14C161.42 -55.97 165.98 -59.73 173.43 -59.73C181.15 -59.73 186.32 -55.1 186.45 -48.79H202.36C201.95 -63.36 190.21 -72.42 173.03 -72.42C155.71 -72.42 144.5 -63.62 144.5 -50.6C144.5 -39.87 151.62 -32.95 165.18 -30.13L177.26 -27.65C183.23 -26.38 186.92 -23.89 186.92 -19.6C186.92 -14.56 181.95 -11.01 173.77 -11.01C165.31 -11.01 160.34 -14.97 159.61 -21.88H142.89C143.97 -6.64 156.79 1.68 174.03 1.68Z" fill="currentColor"/></symbol>
+<symbol id="beak" viewBox="24.3 26.75 55.7 47.25"><g fill="currentColor" transform="rotate(180 50 50)"><g transform="rotate(60 30 36)"><circle cx="30" cy="36" r="10"/><path d="M30 26C44 26 55 38 58 62 51 48 43 42 35 44.5z"/></g><g transform="rotate(60 64 36)"><circle cx="64" cy="36" r="10"/><path d="M64 26C78 26 89 38 92 62 85 48 77 42 69 44.5z"/></g></g></symbol>
+</defs>
+<rect width="960" height="420" fill="#ffffff"/>
+<g font-family="Inter, sans-serif" font-size="13" fill="#4c5260">
+<text x="40" y="40">mark</text><text x="300" y="40">wordmark</text><text x="760" y="40">beak</text>
+<text x="40" y="390">Exact outlines, no padding. Run python3 brand/build.py after editing.</text>
+</g>
+<g fill="none" stroke="#9fc3ef" stroke-dasharray="4 4">
+<rect x="40" y="60" width="193.2" height="200"/><rect x="300" y="85" width="287" height="150"/><rect x="760" y="60" width="160" height="135.7"/>
+</g>
+<use href="#mark" x="40" y="60" width="193.2" height="200" color="#c23a1c"/>
+<use href="#wordmark" x="300" y="85" width="287" height="150" color="#16181d"/>
+<use href="#beak" x="760" y="60" width="160" height="135.7" color="#c23a1c"/>
+</svg>
