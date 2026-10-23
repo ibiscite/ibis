@@ -49,6 +49,37 @@ fn present(path: &Path) -> bool {
 }
 
 fn copy_settings(old: &Path, directory: &Path) -> io::Result<()> {
+    copy_settings_prepared(old, directory, prepare_staging)
+}
+
+fn prepare_staging(staging: &Path) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        // This receipt records an owed notice, never the old startup choice.
+        let mut receipt = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(staging.join("macos-login-reapproval-v1.pending"))?;
+        receipt.write_all(b"macos-open-at-login-reapproval-v1\n")?;
+        receipt.sync_all()?;
+        // Publish neither the pair nor its obligation if this flush fails.
+        File::open(staging)?.sync_all()?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = File::open(staging).and_then(|folder| folder.sync_all());
+    #[cfg(not(unix))]
+    let _ = staging;
+    Ok(())
+}
+
+fn copy_settings_prepared(
+    old: &Path,
+    directory: &Path,
+    prepare: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<()> {
     let app = directory
         .file_name()
         .and_then(|name| name.to_str())
@@ -107,8 +138,7 @@ fn copy_settings(old: &Path, directory: &Path) -> io::Result<()> {
             output.set_permissions(metadata.permissions())?;
             output.sync_all()?;
         }
-        #[cfg(unix)]
-        let _ = File::open(&staging).and_then(|folder| folder.sync_all());
+        prepare(&staging)?;
         if directory.exists() {
             fs::remove_dir(directory)?;
         }
@@ -157,6 +187,125 @@ mod tests {
     fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
         std::fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("missing test parent")))?;
         std::fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_migration_publishes_a_pending_receipt_with_the_unchanged_pair() -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        for suffix in ["", ".nightly"] {
+            let root = tempfile::tempdir()?;
+            let identifier = format!("com.ibiscite.ibis{suffix}");
+            let old = root.path().join(format!("io.github.ibiscite.ibis{suffix}"));
+            let new = root.path().join(&identifier);
+            let primary = br#"{ "schema_version": 99, "open_at_login": true, "future": ["opaque"] }"#;
+            let backup = b"unparsed recovery bytes";
+            write(&old.join("settings.json"), primary)?;
+            write(&old.join("settings.json.bak"), backup)?;
+            write(&old.join("macos-login-reapproval-v1.pending"), b"untrusted old receipt")?;
+            let location = settings_location(&new, &identifier);
+            assert!(!location.using_legacy);
+            let receipt = new.join("macos-login-reapproval-v1.pending");
+            assert_eq!(fs::read(&receipt)?, b"macos-open-at-login-reapproval-v1\n");
+            assert!(fs::symlink_metadata(&receipt)?.is_file());
+            assert_eq!(fs::metadata(receipt)?.permissions().mode() & 0o777, 0o600);
+            for (name, expected) in [("settings.json", primary.as_slice()), ("settings.json.bak", backup)] {
+                assert_eq!(fs::read(new.join(name))?, expected);
+                assert_eq!(fs::read(old.join(name))?, expected);
+            }
+            assert_eq!(
+                fs::read(old.join("macos-login-reapproval-v1.pending"))?,
+                b"untrusted old receipt"
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn receipt_preparation_failures_never_publish_the_staged_pair() -> io::Result<()> {
+        for receipt in [
+            None,
+            Some(b"partial".as_slice()),
+            Some(b"macos-open-at-login-reapproval-v1\n"),
+        ] {
+            let root = tempfile::tempdir()?;
+            let old = root.path().join("io.github.ibiscite.ibis");
+            let new = root.path().join("com.ibiscite.ibis");
+            write(&old.join("settings.json"), b"primary")?;
+            write(&old.join("settings.json.bak"), b"backup")?;
+            let failed = copy_settings_prepared(&old, &new, |staging| {
+                assert_eq!(fs::read(staging.join("settings.json"))?, b"primary");
+                assert_eq!(fs::read(staging.join("settings.json.bak"))?, b"backup");
+                if let Some(bytes) = receipt {
+                    fs::write(staging.join("macos-login-reapproval-v1.pending"), bytes)?;
+                }
+                // Receipt creation/write/flush or staging-directory flush failed.
+                Err(io::ErrorKind::Other.into())
+            });
+            assert!(failed.is_err());
+            assert!(!new.exists());
+            assert_eq!(fs::read(old.join("settings.json"))?, b"primary");
+            assert_eq!(fs::read(old.join("settings.json.bak"))?, b"backup");
+            assert_eq!(fs::read_dir(root.path())?.count(), 2, "failed staging was cleaned");
+            assert!(!settings_location(&new, "com.ibiscite.ibis").using_legacy);
+            assert_eq!(
+                fs::read(new.join("macos-login-reapproval-v1.pending"))?,
+                b"macos-open-at-login-reapproval-v1\n"
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn receipt_creation_refuses_existing_files_directories_and_symlinks() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+        for kind in ["malformed", "directory", "symlink", "dangling"] {
+            let root = tempfile::tempdir()?;
+            let receipt = root.path().join("macos-login-reapproval-v1.pending");
+            let target = root.path().join("unrelated");
+            let contents = vec![b'x'; 256 * 1024];
+            match kind {
+                "malformed" => fs::write(&receipt, &contents)?,
+                "directory" => fs::create_dir(&receipt)?,
+                "symlink" => {
+                    fs::write(&target, &contents)?;
+                    symlink(&target, &receipt)?;
+                }
+                _ => symlink(&target, &receipt)?,
+            }
+            assert!(prepare_staging(root.path()).is_err());
+            match kind {
+                "malformed" => assert_eq!(fs::read(receipt)?, contents),
+                "directory" => assert!(receipt.is_dir()),
+                "symlink" => {
+                    assert!(fs::symlink_metadata(receipt)?.is_symlink());
+                    assert_eq!(fs::read(target)?, contents);
+                }
+                _ => assert!(fs::symlink_metadata(receipt)?.is_symlink()),
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn existing_destination_receipts_and_lookalikes_are_never_claimed() -> io::Result<()> {
+        for name in [
+            "macos-login-reapproval-v1.pending",
+            "macos-login-reapproval-v1.acknowledged",
+            "macos-login-reapproval-v1.pending-other",
+        ] {
+            let root = tempfile::tempdir()?;
+            let new = root.path().join("com.ibiscite.ibis");
+            write(&root.path().join("io.github.ibiscite.ibis/settings.json"), b"legacy")?;
+            write(&new.join(name), b"unrelated")?;
+            assert!(settings_location(&new, "com.ibiscite.ibis").using_legacy);
+            assert_eq!(fs::read(new.join(name))?, b"unrelated");
+            assert!(!new.join("settings.json").exists());
+        }
         Ok(())
     }
 
@@ -537,6 +686,11 @@ mod tests {
             assert_eq!(fs::read(old.join(name))?, expected);
         }
         assert!(!stale.exists());
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            fs::read(new.join("macos-login-reapproval-v1.pending"))?,
+            b"macos-open-at-login-reapproval-v1\n"
+        );
         for entry in fs::read_dir(root.path())? {
             assert!(
                 !entry?
@@ -588,6 +742,7 @@ mod tests {
                 assert_eq!(location.path, new.join("settings.json"));
                 assert!(!location.using_legacy);
                 assert_eq!(std::fs::read(new.join(name))?, contents);
+                assert!(!new.join("macos-login-reapproval-v1.pending").exists());
                 if name.ends_with(".bak") {
                     assert!(!location.path.exists());
                 }
@@ -612,7 +767,11 @@ mod tests {
             if identifier.starts_with("com.") {
                 assert!(!location.path.exists());
             }
+            assert!(!new.join("macos-login-reapproval-v1.pending").exists());
         }
+        let fresh = root.path().join("fresh/com.ibiscite.ibis");
+        assert!(!settings_location(&fresh, "com.ibiscite.ibis").using_legacy);
+        assert!(!fresh.exists());
         Ok(())
     }
 

@@ -50,6 +50,12 @@ libraries, shortcuts and other migrated settings intact.
 - Keep that notice once per channel. Record acknowledgement only after
   successful display/dismissal. If delivery or safe acknowledgement persistence
   fails, keep it pending across reopening rather than suppressing it.
+- On macOS publish `macos-login-reapproval-v1.pending`, containing the fixed
+  `macos-open-at-login-reapproval-v1` line, with the staged settings pair.
+  Flush the receipt and staging directory before publication; failure leaves
+  the old settings in use. The receipt records an owed notice, never consent.
+  Do not copy a receipt from the old directory or claim an existing destination.
+  Notice delivery and acknowledgement remain separate prerequisites.
 - Do not switch the shipped identifiers until these platform transitions and
   notice handling are implemented and tested. Installed upgrade, direct
   replacement and restart/login acceptance remain required; this amendment
