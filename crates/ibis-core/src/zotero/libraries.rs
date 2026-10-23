@@ -224,6 +224,7 @@ mod tests {
 
     use super::*;
     use crate::zotero::api::Response;
+    use crate::zotero::test_support::{items, number};
 
     fn ok(headers: &[(&str, String)], body: Value) -> Response {
         // One installation throughout: a refresh only trusts "unchanged"
@@ -238,13 +239,6 @@ mod tests {
             headers: all,
             body: serde_json::to_vec(&body).unwrap_or_default(),
         }
-    }
-
-    fn number(path: &str, name: &str) -> usize {
-        path.split(['?', '&'])
-            .find_map(|part| part.strip_prefix(name))
-            .and_then(|n| n.parse().ok())
-            .unwrap_or(0)
     }
 
     /// A Zotero holding a few libraries, each a list of item keys at a
@@ -296,13 +290,7 @@ mod tests {
                 return Ok(ok(&[version_header], body));
             }
             let end = (start + limit).min(keys.len());
-            let items: Vec<Value> = keys[start.min(end)..end]
-                .iter()
-                .map(|key| {
-                    let csl = json!([{ "type": "book", "title": key }]).to_string();
-                    json!({ "key": key, "data": { "itemType": "book" }, "csljson": csl })
-                })
-                .collect();
+            let items = items(&keys[start.min(end)..end]);
             Ok(ok(
                 &[version_header, ("Total-Results", keys.len().to_string())],
                 Value::Array(items),

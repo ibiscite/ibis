@@ -21,6 +21,9 @@ use serde_json::{Map, Value};
 pub mod api;
 pub mod libraries;
 
+#[cfg(test)]
+mod test_support;
+
 use crate::model::{
     AttachmentKind, Issued, LoadResult, LoadWarning, Name, PartialDate, RecordId, Reference, WarningKind, days_in_month,
 };

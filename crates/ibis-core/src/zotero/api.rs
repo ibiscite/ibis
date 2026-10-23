@@ -389,9 +389,8 @@ fn snapshot(response: &Response) -> Result<Snapshot, ZoteroError> {
 mod tests {
     use std::collections::VecDeque;
 
-    use serde_json::json;
-
     use super::*;
+    use crate::zotero::test_support::{items, number};
 
     /// A scripted Zotero: answers requests in order and records them.
     #[derive(Default)]
@@ -418,14 +417,8 @@ mod tests {
         }
     }
 
-    fn book(key: &str) -> Value {
-        // The local API sends CSL JSON as the text of its export, an array.
-        let csl = json!([{ "type": "book", "title": key }]).to_string();
-        json!({ "key": key, "data": { "itemType": "book" }, "csljson": csl })
-    }
-
     fn page(version: u64, total: usize, keys: &[&str]) -> Response {
-        let items: Vec<Value> = keys.iter().map(|k| book(k)).collect();
+        let items = items(keys);
         Response {
             status: 200,
             headers: vec![
@@ -472,13 +465,7 @@ mod tests {
     impl Transport for Exporting {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
             self.asked.push(path.to_string());
-            let number = |name: &str| -> usize {
-                path.split(['?', '&'])
-                    .find_map(|part| part.strip_prefix(name))
-                    .and_then(|n| n.parse().ok())
-                    .unwrap_or(0)
-            };
-            let (start, limit) = (number("start="), number("limit="));
+            let (start, limit) = (number(path, "start="), number(path, "limit="));
             let end = (start + limit).min(self.keys.len());
             let range = start.min(end)..end;
             if path.contains("format=keys") {
@@ -787,13 +774,7 @@ mod tests {
 
     impl Transport for Reordering {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
-            let number = |name: &str| -> usize {
-                path.split(['?', '&'])
-                    .find_map(|part| part.strip_prefix(name))
-                    .and_then(|n| n.parse().ok())
-                    .unwrap_or(0)
-            };
-            let (start, limit) = (number("start="), number("limit="));
+            let (start, limit) = (number(path, "start="), number(path, "limit="));
             if self.edits_after.contains(&self.pages) {
                 let edited = self.keys.remove(150);
                 self.keys.insert(0, edited);
