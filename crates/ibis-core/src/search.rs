@@ -69,47 +69,6 @@ pub struct Hit<'a> {
     pub matched: Vec<MatchField>,
 }
 
-/// Search index over a set of references.
-pub struct Index<'a> {
-    docs: Vec<(&'a Reference, [String; 8], Vec<Identifier>)>,
-}
-
-impl<'a> Index<'a> {
-    pub fn new(references: &'a [Reference]) -> Self {
-        Index {
-            docs: references
-                .iter()
-                .map(|r| (r, prepare(r), identifier::of_reference(r)))
-                .collect(),
-        }
-    }
-
-    /// Return up to `limit` matches, best first. An empty query matches nothing.
-    pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'a>> {
-        self.search_scoped(query, limit, None)
-    }
-
-    /// Search only these exact source IDs before ranking or limiting results.
-    /// `None` searches all sources; an empty slice searches none.
-    pub fn search_scoped(&self, query: &str, limit: usize, scope: Option<&[String]>) -> Vec<Hit<'a>> {
-        if let Some(hits) = by_identifier(
-            self.docs.iter().map(|(r, _, ids)| (*r, ids.as_slice())),
-            query,
-            limit,
-            scope,
-            &|| false,
-        )
-        .flatten()
-        {
-            return hits;
-        }
-        rank(self.docs.iter().map(|(r, f, _)| (*r, f)), query, limit, scope, &|| {
-            false
-        })
-        .unwrap_or_default()
-    }
-}
-
 /// Search index that owns its references, for front ends that keep a library
 /// open and search it many times. Normalization happens once, when it is built.
 #[derive(Default)]
@@ -158,7 +117,8 @@ impl OwnedIndex {
         self.search_scoped_until(query, limit, None, stop)
     }
 
-    /// Like [`Index::search_scoped`], using this owned snapshot.
+    /// Search only these exact source IDs before ranking or limiting results.
+    /// `None` searches all sources; an empty slice searches none.
     pub fn search_scoped(&self, query: &str, limit: usize, scope: Option<&[String]>) -> Vec<Hit<'_>> {
         self.search_scoped_until(query, limit, scope, &|| false)
             .unwrap_or_default()
@@ -535,7 +495,6 @@ mod tests {
             r.issued = Some(Issued::year(2020 + n));
             refs.push(r);
         }
-        let borrowed = Index::new(&refs);
         let owned = OwnedIndex::new(refs.clone());
         assert_eq!(owned.source_counts().get("zotero:user"), Some(&1));
         assert_eq!(owned.source_counts().get("zotero:group:7"), Some(&3));
@@ -564,15 +523,11 @@ mod tests {
                     .take(2)
                     .map(|h| h.reference.id.clone())
                     .collect();
-                for hits in [
-                    borrowed.search_scoped(query, 2, scope),
-                    owned.search_scoped(query, 2, scope),
-                ] {
-                    assert_eq!(
-                        hits.iter().map(|h| h.reference.id.clone()).collect::<Vec<_>>(),
-                        expected
-                    );
-                }
+                let hits = owned.search_scoped(query, 2, scope);
+                assert_eq!(
+                    hits.iter().map(|h| h.reference.id.clone()).collect::<Vec<_>>(),
+                    expected
+                );
             }
             assert!(owned.search_scoped(query, 0, Some(&group)).is_empty());
             assert!(owned.search_scoped_until(query, 2, Some(&group), &|| true).is_none());
@@ -735,19 +690,17 @@ mod tests {
         let mut blue = reference("b", "Blue", "Example", 2025);
         blue.abstract_text = Some("Red".into());
         let refs = [blue, red];
-        let index = Index::new(&refs);
-        let owned = OwnedIndex::new(refs.to_vec());
-        for hits in [index.search("RÉD red blue", 10), owned.search("RÉD red blue", 10)] {
-            assert_eq!(
-                hits.iter()
-                    .map(|h| (&*h.reference.id.native_key, h.score, h.matched.clone()))
-                    .collect::<Vec<_>>(),
-                [
-                    ("r", 42, vec![MatchField::Title, MatchField::Abstract]),
-                    ("b", 24, vec![MatchField::Title, MatchField::Abstract]),
-                ]
-            );
-        }
+        let owned = OwnedIndex::new(refs.into());
+        let hits = owned.search("RÉD red blue", 10);
+        assert_eq!(
+            hits.iter()
+                .map(|h| (&*h.reference.id.native_key, h.score, h.matched.clone()))
+                .collect::<Vec<_>>(),
+            [
+                ("r", 42, vec![MatchField::Title, MatchField::Abstract]),
+                ("b", 24, vec![MatchField::Title, MatchField::Abstract]),
+            ]
+        );
         let hits = owned.search_scoped("red red blue", 1, Some(&["t".into()]));
         assert_eq!(hits[0].reference.id.native_key, "r");
         assert!(owned.search_scoped("red red blue", 1, Some(&[])).is_empty());
@@ -985,8 +938,7 @@ mod tests {
              @article{other, title={Mentions 10.1000/abc.1 in passing}, year={2023}}",
         )
         .references;
-        let borrowed = Index::new(&refs);
-        let owned = OwnedIndex::new(refs.clone());
+        let owned = OwnedIndex::new(refs);
         for (query, key, field) in [
             ("https://doi.org/10.1000/abc.1", "doi1", MatchField::Doi),
             ("978-0-306-40615-7", "isbn1", MatchField::Identifier),
@@ -996,39 +948,13 @@ mod tests {
             ("arXiv:hep-th/9711200", "old", MatchField::Identifier),
             ("https://arxiv.org/abs/hep-th/9711200", "old", MatchField::Identifier),
         ] {
-            for hits in [borrowed.search(query, 10), owned.search(query, 10)] {
-                assert_eq!(hits.len(), 1, "{query}");
-                assert_eq!(hits[0].reference.id.native_key, key, "{query}");
-                assert_eq!(hits[0].matched, [field], "{query}");
-            }
+            let hits = owned.search(query, 10);
+            assert_eq!(hits.len(), 1, "{query}");
+            assert_eq!(hits[0].reference.id.native_key, key, "{query}");
+            assert_eq!(hits[0].matched, [field], "{query}");
         }
         // An identifier nobody carries falls back to ordinary search.
         assert_eq!(owned.search("10.1000/zzz", 10).len(), 0);
         assert_eq!(owned.search("passing", 10)[0].reference.id.native_key, "other");
-    }
-
-    #[test]
-    fn owned_index_ranks_exactly_like_the_borrowed_one() {
-        let refs = vec![
-            reference("smith2020", "Sleep and memory", "Smith", 2020),
-            reference("smith2021", "Sleep and diet", "Smith", 2021),
-            reference("garcia2022", "Sueño y memoria", "García", 2022),
-        ];
-        let borrowed = Index::new(&refs);
-        let owned = OwnedIndex::new(refs.clone());
-        for query in ["sleep", "smith", "memoria", "2021", "", "missing"] {
-            let a: Vec<_> = borrowed
-                .search(query, 10)
-                .iter()
-                .map(|h| (&h.reference.id, h.score))
-                .collect();
-            let b: Vec<_> = owned
-                .search(query, 10)
-                .iter()
-                .map(|h| (&h.reference.id, h.score))
-                .collect();
-            assert_eq!(a, b, "{query}");
-        }
-        assert_eq!(owned.references().len(), 3);
     }
 }
