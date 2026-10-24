@@ -1,5 +1,5 @@
 import manifest from "../../vendor/csl/manifest.json";
-import { escape, Formatter, STYLES, type CslItem } from "./engine";
+import { eraseOwnership, escape, Formatter, STYLES, type CslItem } from "./engine";
 
 // Synthetic references only.
 const garcia: CslItem = {
@@ -43,6 +43,36 @@ describe("formatted citations", () => {
       expect(result.output).toContain("Garcia");
       expect(result.output).toContain("Müller");
     }
+  });
+
+  it("keeps IEEE ownership tied to bibliography positions across subsets and repeated requests", () => {
+    const fresh = new Formatter();
+    const items = Array.from({ length: 5 }, (_, index) => ({ ...garcia, id: `item-${index}`, title: `Synthetic ${index}` }));
+    for (const indices of [[4], [3, 1], [0, 1, 2, 3, 4], [1], [4]]) {
+      const cites = indices.map((index) => ({ id: items[index]!.id, locator: "12", label: "page" }));
+      const canonical = fresh.citation("ieee", items, cites, "html");
+      const annotated = fresh.citation("ieee", items, cites, "html", true);
+      expect(annotated.output).toBe(canonical.output);
+      expect(annotated.problems).toEqual(canonical.problems);
+      if (annotated.preview) {
+        expect(eraseOwnership(annotated.preview)).toBe(canonical.output);
+        const owners = [...annotated.preview.matchAll(/data-item="(\d+)"/g)].map((match) => Number(match[1]));
+        expect(owners.length).toBeGreaterThan(0);
+        expect(owners.every((index) => indices.includes(index))).toBe(true);
+        if (indices.length === 1) expect([...new Set(owners)]).toEqual(indices);
+      }
+      expect(fresh.citation("ieee", items, cites, "html")).toEqual(canonical);
+    }
+  });
+
+  it("keeps forged ownership markup in reference fields as escaped reference text", () => {
+    const item = { id: "forged", type: "book", title: '<ibis-reference data-item="1"><img src=x onerror="bad()">Title</ibis-reference>' };
+    const canonical = formatter.citation("modern-language-association", [item], [{ id: item.id }], "html");
+    const annotated = formatter.citation("modern-language-association", [item], [{ id: item.id }], "html", true);
+    expect(annotated.output).toBe(canonical.output);
+    expect(canonical.output).not.toContain("<ibis-reference");
+    expect(canonical.output).not.toContain("<img");
+    if (annotated.preview) expect(eraseOwnership(annotated.preview)).toBe(canonical.output);
   });
 
   it("escapes HTML and writes a complete RTF document", () => {

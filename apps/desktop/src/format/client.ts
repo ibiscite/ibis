@@ -3,7 +3,7 @@
 import type { CiteItem, CslItem, Formatted, OutputFormat, StyleId } from "./engine";
 
 type Request =
-  | { kind: "citation"; style: StyleId; format: OutputFormat; items: CslItem[]; cites: CiteItem[] }
+  | { kind: "citation"; style: StyleId; format: OutputFormat; items: CslItem[]; cites: CiteItem[]; segments?: boolean }
   | { kind: "bibliography"; style: StyleId; format: OutputFormat; items: CslItem[] };
 
 export type FormatRequest = Request & { id: number };

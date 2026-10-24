@@ -52,6 +52,11 @@ Keyword search is instant, case- and accent-insensitive, works in every script a
 
 Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. For now this runs in the desktop web interface (`apps/desktop/src/format/`), not in the core, so the command line cannot format with styles; moving it into the core is planned for 0.5 (#366). Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
 
+Optional formatted-preview ownership uses a separate processor pass. Generated
+wrappers must erase to the canonical output; bounded, sanitized markup must also
+retain its plain text. Missing or ambiguous ownership keeps an aggregate preview
+and reports unrepresented references. Clipboard output never uses annotations.
+
 ## Insertion
 
 Planned for 0.4; today the picker copies. Every insertion will end in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
