@@ -12,6 +12,16 @@
   --type-strong-weight: 600;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
+  /* Website reading and rhythm; page composition stays in website/style.css. */
+  --font-reading: "Iowan Old Style", Charter, "Palatino Linotype", Cambria, Georgia, serif;
+  --type-reading-size: 1rem; --type-heading-size: 1.25rem;
+  --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
+  --website-pad: clamp(1.25rem, 3.5vw, 3.5rem);
+  --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;
+  --website-section-pad: clamp(2rem, 4vw, 2.75rem);
+  --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
+  --website-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 5%);
+
   /* Space and size on a 4 px grid. */
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;

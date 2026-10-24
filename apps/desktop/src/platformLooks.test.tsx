@@ -568,6 +568,8 @@ test("spacing tokens, direct gaps/padding and resolved formulas keep the 4 px gr
   for (const platform of ["macos", "windows", "linux"]) for (const mode of ["normal", "more", "forced", "gallery"]) for (const coarse of [false, true]) {
     const blocks = tokenBlocks(appSheets, platform, mode, true, false, false, coarse), scopes = tokenScopes(blocks);
     for (const block of blocks) for (const [name, value] of block.values) {
+      // Website prose follows its own approved rhythm, not the native 4 px grid.
+      if (name.startsWith("--website-")) continue;
       if (/^padding-(top|right|bottom|left)$/.test(name) && block.values.some(([key]) => key === "padding")) continue;
       if (!/^(--[\w-]*(padding|gap|inset)|gap|row-gap|column-gap|padding[\w-]*)$/.test(name) || opticalSpacing(block, name, value)) continue;
       const resolved = resolveToken(value, scopes.get(block.scope)!);
@@ -579,6 +581,13 @@ test("spacing tokens, direct gaps/padding and resolved formulas keep the 4 px gr
     }
   }
   expect([...new Set(off)]).toEqual([]);
+});
+
+test("website rhythm tokens cannot bypass the native spacing grid", () => {
+  for (const [file, css] of Object.entries(appSheets)) {
+    if (file === "tokens.css") continue;
+    expect(css, file).not.toMatch(/var\(\s*--website-/);
+  }
 });
 
 test("unused tokens are gone and the spec's line heights apply", () => {
