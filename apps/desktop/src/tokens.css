@@ -164,6 +164,11 @@
   --chip-radius: calc(var(--chip-height) / 2);
   --chip-max-width: 12rem;
   --chip-min-width: 5rem;
+  --citation-segment-inset: 1px;
+  --citation-pill-radius: 6px;
+  --citation-remove-size: 16px;
+  --citation-remove-fade: 6px;
+  --mask-opaque: #000;
   --footer-padding: calc(var(--inset) + var(--row-pad)) var(--inset); /* inline start, end */
   --footer-size: var(--type-label-size);
   --footer-gap: var(--space-2);

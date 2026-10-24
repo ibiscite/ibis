@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, type ComponentPropsWithRef, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, type ComponentPropsWithRef, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { composing as isComposing } from "../composition";
 import { ListKeyboardDelegate } from "react-aria";
 import { I18nProvider, ListStateContext, Tag, TagGroup, TagList, useLocale } from "react-aria-components";
@@ -77,11 +77,18 @@ function CitationKeyboard({ dir, children }: { dir?: Props["dir"]; children: Rea
   const state = useContext(ListStateContext);
   const { direction: localeDirection } = useLocale();
   const boundary = useRef<HTMLDivElement>(null);
+  const renderedDirection = () => {
+    const value = boundary.current && getComputedStyle(boundary.current).direction;
+    const direction = value || (dir === "rtl" ? "rtl" : dir === "ltr" ? "ltr" : localeDirection);
+    if (boundary.current) boundary.current.dataset.direction = direction;
+    return direction;
+  };
+  useLayoutEffect(() => { renderedDirection(); }, [children, dir, localeDirection]);
   const navigate = (event: KeyboardEvent) => {
     if (!state || !boundary.current || !["ArrowLeft", "ArrowRight"].includes(event.key)
       || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
       || !(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "row") return;
-    const direction = getComputedStyle(boundary.current).direction || (dir === "rtl" ? "rtl" : dir === "ltr" ? "ltr" : localeDirection);
+    const direction = renderedDirection();
     if (direction === localeDirection) return;
     const delegate = new ListKeyboardDelegate({ collection: state.collection, ref: boundary, orientation: "horizontal",
       direction: direction === "rtl" ? "rtl" : "ltr", disabledKeys: state.disabledKeys, disabledBehavior: state.selectionManager.disabledBehavior });
@@ -92,5 +99,6 @@ function CitationKeyboard({ dir, children }: { dir?: Props["dir"]; children: Rea
       ?? (forward ? delegate.getFirstKey() : delegate.getLastKey());
     if (next !== null) { event.preventDefault(); event.stopPropagation(); state.selectionManager.setFocusedKey(next); }
   };
-  return <div ref={boundary} onKeyDownCapture={navigate}>{children}</div>;
+  return <div ref={boundary} className="citation-keyboard" onFocusCapture={renderedDirection} onPointerEnter={renderedDirection}
+    onKeyDownCapture={navigate}>{children}</div>;
 }
