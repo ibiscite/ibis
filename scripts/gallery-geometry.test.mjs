@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { SPEC_FILE, compare, derive, layout, table } from "./gallery-geometry.mjs";
+import { compare, derive, layout, loadSpec, table, tokenPx } from "./gallery-geometry.mjs";
 
-const spec = JSON.parse(readFileSync(SPEC_FILE, "utf8"));
+const spec = loadSpec();
 const design = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "docs", "design.md"), "utf8");
 const LOOKS = ["macos", "windows", "linux"];
 
@@ -143,4 +143,15 @@ test("absolute columns reject equally misplaced pairs and every existing text co
   const failures = compare(spec, "windows", "normal", "comfortable", frame).filter(row => !row.pass).map(row => row.name);
   for (const name of ["tile centre x", "search glyph centre x", "row title x", "status dot centre x", "status text x", "shelf citation x"])
     assert.ok(failures.includes(name), `${name} must be checked against its absolute column`);
+});
+
+test("token sizes come from tokens.css: a look's own rule, var() and rem, never a rule inside @media", () => {
+  const css = `:root { --space-2: .5rem; --inset: var(--space-2); --r-win: 16px; /* --r-win: 99px */ }
+    :root[data-platform="windows"], :root[data-platform="linux"] { --r-win: 8px; }
+    @media (prefers-contrast: more) { :root { --r-win: 2px; } }
+    :root { --r-win: 12px; --odd: calc(1px + 2px); }`;
+  assert.deepEqual(["macos", "windows"].map(look => tokenPx(css, "--r-win", look)), [12, 8]);
+  assert.equal(tokenPx(css, "--inset", "linux"), 8);
+  assert.ok(Number.isNaN(tokenPx(css, "--odd", "macos")) && Number.isNaN(tokenPx(css, "--missing", "macos")));
+  for (const look of LOOKS) assert.ok(Object.values(spec.platforms[look]).every(Number.isFinite), `${look} has every size`);
 });

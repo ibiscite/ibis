@@ -1,19 +1,12 @@
 {
-  "$comment": "Picker geometry from docs/design.md (Space and size, Corners), in CSS px at normal text. scripts/gallery-geometry.mjs measures the evidence gallery against it; derived values (text x, row and tile radii) follow the formulas in docs/design.md. Change this file and docs/design.md together.",
+  "$comment": "Picker geometry from docs/design.md (Space and size, Corners) that has no token, in CSS px at normal text. scripts/gallery-geometry.mjs reads row heights, footer, insets, tile, row padding, field height and radii from apps/desktop/src/tokens.css and these values from here; derived values (search band, text x, row and tile radii) follow the formulas in docs/design.md. Change this file and docs/design.md together.",
   "tolerance": 0.5,
-  "rowHeight": { "compact": 40, "comfortable": 58, "spacious": 76 },
-  "footer": 40,
-  "headerDivider": 1,
   "footerAction": 24,
   "shapeInsets": { "window": 8, "row": 12 },
   "columns": { "tileCentre": 36, "titleStart": 64 },
-  "rowPad": 12,
-  "rowGap": 12,
-  "tile": 32,
-  "icon": 20,
   "platforms": {
-    "macos": { "inset": 8, "rWin": 16, "rMin": 6, "controlRadius": 8, "headerControl": 36, "popup": 28, "searchBand": 52, "footerDivider": 0 },
-    "windows": { "inset": 8, "rWin": 8, "rMin": 4, "controlRadius": 4, "headerControl": 32, "popup": 32, "searchBand": 48, "footerDivider": 1 },
-    "linux": { "inset": 8, "rWin": 15, "rMin": 6, "controlRadius": 6, "headerControl": 34, "popup": 34, "searchBand": 50, "footerDivider": 1 }
+    "macos": { "popup": 28, "footerDivider": 0 },
+    "windows": { "popup": 32, "footerDivider": 1 },
+    "linux": { "popup": 34, "footerDivider": 1 }
   }
 }
