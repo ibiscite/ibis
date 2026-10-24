@@ -10,7 +10,11 @@ body { margin: 0; background: var(--website-bg); color: var(--website-text); fon
 a { color: var(--citation); text-underline-offset: .2em; }
 a:hover { text-decoration-thickness: var(--focus-ring-width); }
 ::selection { background: color-mix(in srgb, var(--citation) 22%, transparent); color: var(--text); }
-:where(a, button, input, select):focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: calc(-1 * var(--focus-ring-width)); border-radius: var(--r-min); }
+:where(a, button, input, select):focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-width); border-radius: var(--r-min); }
+/* The ring sits outside so it never crosses text; inside only where a scroller or the page edge would clip it. */
+:where(.index, .rows, .picker) :focus-visible { outline-offset: calc(-1 * var(--focus-ring-width)); }
+/* The sidebar is navigation: a press-and-drag there moves a link, it never starts a text selection across the page. */
+.index { -webkit-user-select: none; user-select: none; }
 .skip { position: absolute; left: -100vw; }
 .skip:focus { left: var(--space-4); top: var(--space-4); z-index: var(--z-chrome); background: var(--surface); padding: var(--space-3) var(--space-4); }
 .index { padding-top: var(--space-4); margin-bottom: var(--space-6); font-family: var(--font-family); }

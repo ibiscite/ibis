@@ -238,6 +238,8 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
     await page.getByRole("button", { name: "Share Ibis" }).click();
     await page.locator(".share-status", { hasText: "Link copied" }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "https://ibiscite.org/");
+    // Safari starts a text selection across the page when a sidebar link is dragged; Chromium drags the link instead.
+    assert.equal(await page.locator(".index").evaluate(e => getComputedStyle(e).userSelect), "none", "dragging in the sidebar never selects page text");
     const signature = page.locator(".signature .key");
     await signature.hover();
     await page.waitForFunction(() => document.querySelector(".signature .key").textContent === "[@diyanko]");
