@@ -1,0 +1,8 @@
+{
+  "name": "ibis-website",
+  "compatibility_date": "2026-10-23",
+  "assets": {
+    "directory": "./website/dist",
+    "not_found_handling": "none"
+  }
+}

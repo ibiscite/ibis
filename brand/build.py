@@ -423,6 +423,12 @@ def animated_logo(dark, uid):
     return animate(head + '<g class="word"><g transform=' + word.replace("</svg>", "</g></svg>"))
 
 
+def bird_animated_logo(dark, uid):
+    """The logo with only the bird drawing itself and the wordmark already in place: website headers,
+    where the name should be readable at once and the bird can redraw when the home link is used."""
+    return animate(logo(dark, uid))
+
+
 def animated_mark(dark, uid):
     """The bird alone drawing itself, for splash screens, avatars in videos and loading states."""
     return animate(mark(GRADIENT_DARK if dark else GRADIENT, uid))
@@ -496,6 +502,8 @@ def main(root=HERE.parent):
         "favicon-png.svg": favicon(SCARLET_MID),
         "ibis-logo-animated.svg": animated_logo(False, "la"),
         "ibis-logo-animated-on-dark.svg": animated_logo(True, "lad"),
+        "ibis-logo-bird-animated.svg": bird_animated_logo(False, "lb"),
+        "ibis-logo-bird-animated-on-dark.svg": bird_animated_logo(True, "lbd"),
         "ibis-mark-animated.svg": animated_mark(False, "ma"),
         "ibis-mark-animated-on-dark.svg": animated_mark(True, "mad"),
         "video/title-card.svg": video_card(1920, 1080, False, "vt", [TAGLINE, SUBLINE]),
