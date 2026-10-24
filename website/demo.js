@@ -24,13 +24,16 @@ export function setupDemo() {
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
   const count = el("span"), output = el("code"), status = el("span"); status.setAttribute("role", "status");
   const copy = el("button", { type: "button", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
-  const paste = el("button", { type: "button", className: "paste-target", textContent: "Paste here" });
-  paste.setAttribute("aria-label", "Paste the copied citation into this example");
+  const paste = el("button", { type: "button", className: "paste-slot" }, "Paste ", el("kbd", { textContent: keyLabel("CmdOrCtrl+V", mac) }));
+  paste.setAttribute("aria-label", "Paste the copied citation into the sentence");
   const reopen = el("button", { type: "button", textContent: "Open the picker again", hidden: true });
   const hint = el("p", { className: "demo-hint" });
   const labels = { copy: "copy", add: "add", move: "choose", escape: "step back", preview: "show output" };
-  hint.textContent = "Click a row to choose; double-click to copy. Click its tile or use Add to combine references. " + KEY_TABLE.filter(row => labels[row.action]).map(row => `${row.keys.map(key => keyLabel(key, mac)).join(" / ")} ${labels[row.action]}`).join(" · ") + ".";
-  const shelf = el("div", { className: "picker-shelf" }, el("img", { src: "assets/ibis-quote-beak.svg", alt: "", width: 22, height: 19 }), output);
+  const touch = matchMedia("(hover: none)").matches;
+  if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then Copy.";
+  else hint.append("Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
+  const beak = el("img", { src: "assets/ibis-quote-beak.svg", alt: "", width: 22, height: 19 });
+  const shelf = el("div", { className: "picker-shelf" }, beak, output, status);
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, select),
     el("p", { className: "picker-meta" }, "Best matches", count), list, shelf,
     el("div", { className: "picker-foot" }, el("span", {}, "sample.bib · 6 invented references"), add, copy));
@@ -49,7 +52,7 @@ export function setupDemo() {
   function render() {
     const found = model.found(); state.selected = Math.max(0, Math.min(state.selected, found.length - 1));
     const current = found[state.selected], value = model.output();
-    input.value = state.query; panel.hidden = !state.open; reopen.hidden = state.open; shelf.hidden = !state.preview;
+    input.value = state.query; panel.hidden = !state.open; reopen.hidden = state.open;
     clear.hidden = !state.query;
     input.setAttribute("aria-expanded", String(state.open));
     count.textContent = `${found.length} ${found.length === 1 ? "result" : "results"}`;
@@ -62,20 +65,26 @@ export function setupDemo() {
     }
     empty.hidden = found.length > 0;
     if (current) input.setAttribute("aria-activedescendant", rows.get(current.key).row.id); else input.removeAttribute("aria-activedescendant");
-    output.textContent = value || "—"; status.textContent = state.pasted ? "Pasted in demo" : value && value === state.copied ? "Copied in demo" : "";
-    copy.disabled = !value; copy.textContent = `Copy as ${formats[state.format]} ${keyLabel(keysFor("copy"), mac)}`;
+    output.textContent = value || "—"; status.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
+    output.hidden = beak.hidden = !state.preview; shelf.hidden = !state.preview && !status.textContent;
+    copy.disabled = !value; copy.replaceChildren(`Copy as ${formats[state.format]} `, el("kbd", { textContent: keyLabel(keysFor("copy"), mac) }));
     add.disabled = !current; add.textContent = current && state.added.includes(current.key) ? "Remove" : "Add";
-    paste.hidden = !state.copied || Boolean(state.pasted);
-    if (!state.copied) result.replaceChildren(`${sentence} `, el("span", { className: "paste-gap", ariaHidden: "true", textContent: "\u00a0" }), ".");
-    else result.replaceChildren(`${sentence} `, state.pasted ? el("code", { className: "key", textContent: state.pasted }) : paste, ".");
+    const pasted = state.pasted ? [" ", el("code", { className: "key", textContent: state.pasted })] : [];
+    const waiting = state.copied && state.copied !== state.pasted ? [" ", paste] : [];
+    const blank = !state.copied ? [" ", el("span", { className: "paste-gap", ariaHidden: "true", textContent: "\u00a0" })] : [];
+    result.replaceChildren(sentence, ...pasted, ...waiting, ...blank, ".");
   }
-  function performCopy() { if (model.copy()) { render(); paste.focus(); } }
+  function performCopy() { if (model.copy()) { render(); if (paste.isConnected) paste.focus(); } }
+  function performPaste() { model.paste(); render(); result.focus({ preventScroll: true }); }
   input.addEventListener("input", () => { state.query = input.value; state.selected = 0; render(); list.scrollTop = 0; });
   clear.addEventListener("click", () => { state.query = ""; state.selected = 0; render(); list.scrollTop = 0; input.focus(); });
   select.addEventListener("change", () => { state.format = select.value; render(); input.focus(); });
   copy.addEventListener("click", performCopy);
   add.addEventListener("click", () => { const ref = model.found()[state.selected]; if (ref) model.add(ref.key); render(); });
-  paste.addEventListener("click", () => { model.paste(); render(); result.focus({ preventScroll: true }); });
+  paste.addEventListener("click", performPaste);
+  figure.closest("ol").addEventListener("keydown", event => {
+    if (!event.isComposing && event.keyCode !== 229 && matchesAccelerator(event, "CmdOrCtrl+V", mac) && state.copied && state.copied !== state.pasted && event.target !== input) { event.preventDefault(); performPaste(); }
+  });
   reopen.addEventListener("click", () => { state.open = true; render(); input.focus(); });
   panel.addEventListener("keydown", event => {
     if (event.isComposing || event.keyCode === 229) return;
@@ -98,6 +107,6 @@ export function setupDemo() {
     }
   });
   figure.querySelector(".picker-panel").replaceWith(panel);
-  figure.append(status, reopen, hint); render();
+  figure.append(reopen, hint); render();
   if (anchorBottom < 0) window.scrollBy({ top: section.getBoundingClientRect().bottom - anchorBottom, behavior: "instant" });
 }

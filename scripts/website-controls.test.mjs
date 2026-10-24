@@ -36,26 +36,29 @@ test("appearance is applied before paint; both controls sync, persist and reset 
   assert.equal(context("untrusted").ctx.document.documentElement.dataset.theme, undefined);
 });
 
-test("navigation updates one current chip and scrolls it only when the section changes", () => {
-  const { ctx, media } = context(); media.matches = true;
-  const names = ["how", "download", "setup", "roadmap", "why", "shape"], frames = [], handlers = {};
-  const calls = [];
-  const links = names.map(name => ({ attrs: {}, getAttribute: () => `#${name}`, hasAttribute(k) { return k in this.attrs; },
-    setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; }, querySelector: () => ({ scrollIntoView: args => calls.push([name, args]) }) }));
-  const bar = { scrollLeft: 0, clientWidth: 200, scrollWidth: 600, addEventListener() {}, toggleAttribute() {} };
+test("navigation updates one current chip, scrolls only the chip bar, and keeps a followed link current", () => {
+  const { ctx } = context();
+  const names = ["how", "download", "setup", "roadmap", "why", "shape"], frames = [], handlers = {}, clicks = [];
+  const links = names.map((name, index) => ({ attrs: {}, getAttribute: () => `#${name}`, hasAttribute(k) { return k in this.attrs; },
+    setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; },
+    getBoundingClientRect: () => ({ left: index * 100 - bar.scrollLeft, right: index * 100 + 80 - bar.scrollLeft }) }));
+  const bar = { scrollLeft: 0, clientWidth: 200, scrollWidth: 600, addEventListener() {}, toggleAttribute() {}, getBoundingClientRect: () => ({ left: 0, right: 200 }) };
   ctx.window = { scrollY: 0, innerHeight: 1000, addEventListener: (name, fn) => { handlers[name] = fn; } };
   ctx.requestAnimationFrame = fn => frames.push(fn);
-  ctx.document.documentElement.scrollHeight = 7000;
+  ctx.document.documentElement.scrollHeight = 5400;
+  ctx.document.addEventListener = (_name, fn) => clicks.push(fn);
   ctx.document.querySelectorAll = () => links;
-  ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : { getBoundingClientRect: () => ({ top: names.indexOf(selector.slice(1)) * 1000 - ctx.window.scrollY }) };
-  ctx.navigation(); assert.equal(calls.length, 1);
-  ctx.window.scrollY = 1000; handlers.scroll(); handlers.scroll();
+  ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : { id: selector.slice(1),
+    getBoundingClientRect: () => { const top = names.indexOf(selector.slice(1)) * 1000 - ctx.window.scrollY; return { top, bottom: top + 900 }; } };
+  const current = () => links.filter(link => link.hasAttribute("aria-current")).map(link => link.getAttribute());
+  ctx.navigation(); assert.deepEqual(current(), ["#how"]); assert.equal(bar.scrollLeft, 0);
+  ctx.window.scrollY = 3000; handlers.scroll(); handlers.scroll();
   assert.equal(frames.length, 1); frames.shift()();
-  assert.equal(calls.at(-1)[0], "download");
-  assert.equal(calls.at(-1)[1].inline, "nearest"); assert.equal(calls.at(-1)[1].block, "nearest");
-  ctx.window.scrollY = 1010; handlers.scroll(); frames.shift()(); assert.equal(calls.length, 2);
-  ctx.window.scrollY = 6000; handlers.scroll(); frames.shift()(); assert.equal(calls.at(-1)[0], "shape");
-  assert.equal(links.filter(link => link.hasAttribute("aria-current")).length, 1);
+  assert.deepEqual(current(), ["#roadmap"]); assert.equal(bar.scrollLeft, 196, "the chip bar scrolls sideways to reveal the current chip");
+  ctx.window.scrollY = 4400; handlers.scroll(); frames.shift()(); assert.deepEqual(current(), ["#shape"], "the page end selects the last section");
+  clicks.forEach(fn => fn({ target: { closest: () => links[4] } })); handlers.scroll(); frames.shift()();
+  assert.deepEqual(current(), ["#why"], "a followed link stays current at the page end");
+  handlers.wheel(); handlers.scroll(); frames.shift()(); assert.deepEqual(current(), ["#shape"], "scrolling releases the followed link");
 });
 
 test("resizing into a tablet or phone restores all platform downloads", () => {
@@ -86,12 +89,14 @@ test("desktop sidebar remains clickable over every scrolled section", { skip: !p
       const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, reducedMotion: "no-preference" });
       await page.goto(url.href);
       const contrast = await page.locator(".index .appearance").evaluate(group => {
-        const rgb = color => color.match(/[\d.]+/g).slice(0, 3).map(Number);
+        const rgba = color => { const context = document.createElement("canvas").getContext("2d"); context.fillStyle = color; context.fillRect(0, 0, 1, 1); return [...context.getImageData(0, 0, 1, 1).data]; };
+        const over = (color, background) => { const [r, g, b, alpha] = rgba(color); return [r, g, b].map((v, i) => v * alpha / 255 + background[i] * (1 - alpha / 255)); };
         const luminance = channels => channels.map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
         const ratio = (a, b) => { a = luminance(a); b = luminance(b); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
-        const background = rgb(getComputedStyle(document.body).backgroundColor), opacity = Number(getComputedStyle(group).opacity);
-        const text = rgb(getComputedStyle(group).color).map((v, i) => v * opacity + background[i] * (1 - opacity));
-        return { text: ratio(text, background), switch: ratio(rgb(getComputedStyle(group.querySelector(".appearance-thumb")).backgroundColor), rgb(getComputedStyle(group.querySelector(".appearance-track")).backgroundColor)) };
+        const background = rgba(getComputedStyle(document.body).backgroundColor).slice(0, 3), opacity = Number(getComputedStyle(group).opacity);
+        const text = over(getComputedStyle(group).color, background).map((v, i) => v * opacity + background[i] * (1 - opacity));
+        const track = over(getComputedStyle(group.querySelector(".appearance-track")).backgroundColor, background);
+        return { text: ratio(text, background), switch: ratio(over(getComputedStyle(group.querySelector(".appearance-thumb")).backgroundColor, track), track) };
       });
       assert.ok(contrast.text >= 4.5, "resting theme labels remain readable");
       assert.ok(contrast.switch >= 3, "theme switch thumb remains distinct");
@@ -136,7 +141,10 @@ test("browser keeps navigation, keyboard selection and long output visible", { s
     await page.goto(url.href);
     const input = page.getByRole("combobox", { name: "Search the made-up library" }); await input.waitFor();
     const mac = await page.locator("html").getAttribute("data-platform") === "macos";
-    await page.getByRole("button", { name: "Clear search", exact: true }).click();
+    const clear = page.getByRole("button", { name: "Clear search", exact: true });
+    await clear.hover();
+    assert.equal(await clear.evaluate(e => getComputedStyle(e).backgroundColor), "rgba(0, 0, 0, 0)", "clear remains a quiet cross on hover");
+    await clear.click();
     assert.equal(await input.inputValue(), "");
     await page.locator(".pick").nth(0).click({ modifiers: [mac ? "Meta" : "Control"] });
     await page.locator(".pick .tile").nth(1).click();
@@ -174,15 +182,35 @@ test("browser keeps navigation, keyboard selection and long output visible", { s
     });
     assert.ok(fits, "keyboard-selected result stays inside the list");
     assert.ok(await page.locator(".picker-shelf").evaluate(e => e.scrollWidth <= e.clientWidth + 1));
-    await input.press("Enter"); await page.getByRole("button", { name: "Paste the copied citation into this example", exact: true }).click();
+    await input.press("Enter"); await page.getByRole("button", { name: "Paste the copied citation into the sentence", exact: true }).click();
     assert.equal(await input.isVisible(), true, "picker stays visible after pasting");
     assert.equal((await page.locator("[data-result]").textContent()).match(/@/g).length, 6);
     assert.ok(await page.locator("[data-result]").evaluate(e => e.scrollWidth <= e.clientWidth + 1));
+    assert.equal(await page.locator("[data-result]").evaluate(e => e === document.activeElement), true);
+    const receipt = await page.locator("[data-result] code").textContent();
+    await page.getByRole("combobox", { name: "Copy format" }).selectOption("cite"); await input.press("Enter");
+    assert.equal(await page.locator("[data-result] code").textContent(), receipt, "copying again retains the pasted citation");
+    const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence", exact: true });
+    await paste.press(mac ? "Meta+v" : "Control+v");
+    assert.match(await page.locator("[data-result] code").textContent(), /^\\cite/);
+    assert.equal(await page.locator("[data-result]").evaluate(e => e === document.activeElement), true, "keyboard paste restores focus");
+    await input.press("Enter"); assert.equal(await input.evaluate(e => e === document.activeElement), true, "same-value copy keeps focus");
+    assert.equal(await paste.count(), 0, "same-value copy needs no second paste");
+    await input.dispatchEvent("keydown", previewKey);
+    assert.equal(await page.locator(".picker-shelf code").isVisible(), false);
+    assert.equal(await page.getByRole("status").isVisible(), true, "feedback survives a hidden output preview");
     await page.emulateMedia({ forcedColors: "active" });
     assert.equal(await page.locator('.pick[aria-selected="true"]').evaluate(e => getComputedStyle(e).forcedColorAdjust), "none");
     await page.locator('.index nav a[href="#how"]').click();
     await page.waitForFunction(() => document.querySelector('.index nav a[href="#how"]').hasAttribute("aria-current"));
     assert.equal(await page.locator('.index a[aria-current] .key').evaluate(e => getComputedStyle(e).forcedColorAdjust), "none");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const touch = await browser.newPage({ viewport: { width: 320, height: 600 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" });
+    await touch.goto(url.href); await touch.getByRole("button", { name: /^Copy as Pandoc/ }).click();
+    assert.ok(await touch.locator(".paste-slot").evaluate(e => e.getBoundingClientRect().height >= 44), "paste remains a touch target");
+    assert.match(await touch.locator(".demo-hint").textContent(), /^Tap a row/);
+    assert.equal(await touch.locator(".picker-foot kbd").isVisible(), false);
+    assert.ok(await touch.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await touch.close();
   } finally { await browser.close(); }
 });

@@ -60,18 +60,25 @@ function navigation() {
   const links = [...document.querySelectorAll('.index nav a[href^="#"]')];
   const targets = links.map(link => document.querySelector(link.getAttribute("href")));
   const bar = document.querySelector(".index nav ul");
-  const edge = () => bar.toggleAttribute("data-at-end", bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1);
+  const edge = () => { bar.toggleAttribute("data-at-end", bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1); bar.toggleAttribute("data-at-start", bar.scrollLeft <= 1); };
   bar.addEventListener("scroll", edge, { passive: true });
   window.addEventListener("resize", edge); edge();
-  let pending = false;
+  let pending = false, pinned = null;
+  // A followed link keeps its own section current until the reader scrolls, even when the page end is reached.
+  document.addEventListener("click", event => { const target = event.target.closest?.('a[href^="#"]'); pinned = target && targets.find(section => `#${section.id}` === target.getAttribute("href")) || null; });
+  for (const type of ["wheel", "touchmove", "keydown"]) window.addEventListener(type, () => { pinned = null; }, { passive: true });
   function show() {
     pending = false;
+    const visible = target => { const box = target.getBoundingClientRect(); return box.top < window.innerHeight && box.bottom > 0; };
     const bottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
-    const current = bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1);
+    const current = pinned && visible(pinned) ? pinned : bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1);
     links.forEach((link, index) => { if (targets[index] === current) {
       if (!link.hasAttribute("aria-current")) {
         link.setAttribute("aria-current", "location");
-        if (matchMedia("(max-width: 39.99rem)").matches) link.querySelector(".key").scrollIntoView({ inline: "nearest", block: "nearest" });
+        // Scroll the chip bar sideways only; scrollIntoView would also move the page.
+        const chip = link.getBoundingClientRect(), view = bar.getBoundingClientRect(), room = 16;
+        if (chip.left < view.left) bar.scrollLeft += chip.left - view.left - room;
+        else if (chip.right > view.right) bar.scrollLeft += chip.right - view.right + room;
       }
     } else link.removeAttribute("aria-current"); });
   }

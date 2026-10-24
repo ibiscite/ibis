@@ -25,7 +25,7 @@ export function createDemo() {
   };
   return { state, found, output,
     add(key) { if (!references.some(ref => ref.key === key)) return; state.added = state.added.includes(key) ? state.added.filter(value => value !== key) : [...state.added, key]; },
-    copy() { const value = output(); if (!value) return false; state.copied = value; state.pasted = null; return true; },
+    copy() { const value = output(); if (!value) return false; state.copied = value; return true; },
     paste() { state.pasted = state.copied; },
     back() { if (state.preview) state.preview = false; else if (state.query) { state.query = ""; state.selected = 0; } else state.open = false; },
   };

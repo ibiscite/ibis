@@ -14,6 +14,10 @@ test("demo adds in order and captures copied output independently of later edits
   assert.equal(demo.state.pasted, "[@okafor2021; @okafor2023]");
   demo.add("okafor2021");
   assert.equal(demo.output(), "\\cite{okafor2023}");
+  demo.copy();
+  assert.equal(demo.state.pasted, "[@okafor2021; @okafor2023]", "copying again preserves the previous paste");
+  demo.paste(); assert.equal(demo.state.pasted, "\\cite{okafor2023}");
+  demo.copy(); assert.equal(demo.state.pasted, demo.state.copied, "same-value copies preserve the receipt");
 });
 test("demo searches across fields and steps back without discarding added references", () => {
   const demo = createDemo();
