@@ -11,12 +11,14 @@ test("public build copies canonical tokens, keys and only allowlisted assets", a
   try {
     const source = join(dir, "source"), output = join(dir, "public");
     await mkdir(source); await mkdir(output);
-    for (const name of ["index.html", "style.css", "site.js", "_headers"]) await writeFile(join(source, name), "synthetic");
+    for (const name of ["index.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs"]) await writeFile(join(source, name), "synthetic");
     await writeFile(join(source, "private.txt"), "must not publish");
     await writeFile(join(output, "stale.txt"), "stale");
     await build(output, source);
-    assert.deepEqual((await readdir(output)).sort(), ["_headers", "assets", "index.html", "keys.js", "site.js", "style.css", "tokens.css"]);
+    assert.deepEqual((await readdir(output)).sort(), ["_headers", "assets", "demo-model.mjs", "demo.css", "demo.js", "icon-paths.js", "index.html", "keys.js", "site.js", "style.css", "tokens.css"]);
     assert.equal(await readFile(join(output, "tokens.css"), "utf8"), await readFile(new URL("../apps/desktop/src/tokens.css", import.meta.url), "utf8"));
+    const icons = await import(pathToFileURL(join(output, "icon-paths.js")).href);
+    assert.ok(icons.typePaths.article.length > 0, "shared icon data loads without React");
     const keys = await import(pathToFileURL(join(output, "keys.js")).href);
     assert.equal(keys.keysFor("add"), "Shift+Enter");
     assert.ok(!/from ["']/.test(await readFile(join(output, "keys.js"), "utf8")), "keys have no runtime dependencies");
