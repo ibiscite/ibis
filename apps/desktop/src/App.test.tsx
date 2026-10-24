@@ -3811,8 +3811,7 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
     fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); toggleKeepOpen();
     await screen.findByRole("button", { name: "Keep Window Open", pressed: true });
     if (mode === "pointer") {
-      fireEvent.mouseMove(document.getElementById("result-0")!, { screenX: 1, screenY: 1 });
-      fireEvent.mouseMove(document.getElementById("result-19")!, { screenX: 2, screenY: 2 });
+      fireEvent.click(document.getElementById("result-19")!);
     }
     const owner = mode === "other focus" ? screen.getByRole("button", { name: /^More/ }) : search;
     act(() => owner.focus()); globalScroll.mockClear();
@@ -3860,4 +3859,25 @@ test("inline shelf deletion keeps identity and focus through deferred and stale 
   fireEvent.keyDown(document.activeElement!, { key: "Delete" });
   await waitFor(() => expect(document.activeElement).toBe(box));
   expect(chipKeys()).toEqual([]);
+});
+
+test("crossing other rows on the way to Copy preserves the clicked reference", async () => {
+  const copies: Record<string, unknown>[] = [];
+  backend({ search: () => [result("a", "First"), result("b", "Clicked"), result("c", "Crossed")],
+    copy_citation: (args) => { copies.push(args); return { text: "@b", warnings: [] }; } });
+  render(<App />);
+  await screen.findByText("Clicked");
+  fireEvent.click(screen.getByText("Clicked"));
+  const search = screen.getByLabelText("Search references");
+  const selected = search.getAttribute("aria-activedescendant");
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b"));
+  const list = screen.getByRole("listbox", { name: "Results" });
+  fireEvent.mouseMove(screen.getByText("Clicked"), { screenX: 10, screenY: 40 });
+  fireEvent.mouseMove(screen.getByText("Crossed"), { screenX: 10, screenY: 70 });
+  fireEvent.mouseLeave(list);
+  expect(search.getAttribute("aria-activedescendant")).toBe(selected);
+  expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b");
+  fireEvent.click(within(screen.getByRole("group", { name: "Keys" })).getByRole("button", { name: "Copy as Pandoc" }));
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(copies[0]).toMatchObject({ ids: [result("b", "Clicked").id], expectedRevision: "1" });
 });

@@ -55,16 +55,16 @@ function move(target: Element, x: number, y: number, at?: number) {
   fireEvent(target, event);
 }
 
-test("moving the mouse over a row makes it the active row", async () => {
+test("moving the mouse over rows leaves the active reference unchanged", async () => {
   backend(() => three);
   await act(async () => { render(<App />); });
   await screen.findByText("Gamma");
   expect(activeTitle()).toBe("Alpha");
   move(row("Alpha"), 10, 10);
   move(row("Beta"), 10, 40);
-  expect(activeTitle()).toBe("Beta");
+  expect(activeTitle()).toBe("Alpha");
   move(row("Gamma"), 10, 70);
-  expect(activeTitle()).toBe("Gamma");
+  expect(activeTitle()).toBe("Alpha");
 });
 
 test("keyboard takeover removes resting hover until qualified movement, even inside the active row", async () => {
@@ -128,7 +128,7 @@ test("the wheel scrolls without changing the selection", async () => {
   move(row("Beta"), 10, 11);
   expect(activeTitle()).toBe("Alpha");
   move(row("Beta"), 10, 14);
-  expect(activeTitle()).toBe("Beta");
+  expect(activeTitle()).toBe("Alpha");
 });
 
 test("the first move after the pointer has been still does not select", async () => {
@@ -140,7 +140,7 @@ test("the first move after the pointer has been still does not select", async ()
   move(row("Gamma"), 10, 300, 60_000);
   expect(activeTitle()).toBe("Alpha");
   move(row("Gamma"), 10, 302, 60_016);
-  expect(activeTitle()).toBe("Gamma");
+  expect(activeTitle()).toBe("Alpha");
 });
 
 test("selecting by pointer does not scroll the list, but arrow keys do", async () => {
@@ -150,8 +150,7 @@ test("selecting by pointer does not scroll the list, but arrow keys do", async (
   render(<App />);
   await screen.findByText("Gamma");
   scrolled.mockClear();
-  move(row("Alpha"), 10, 10);
-  move(row("Gamma"), 10, 70);
+  fireEvent.click(row("Gamma"));
   expect(activeTitle()).toBe("Gamma");
   expect(scrolled).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowUp" });

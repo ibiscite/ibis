@@ -60,7 +60,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [resultsQuery, setResultsQuery] = useState<string | null>(null);
   const [resultsRevision, setResultsRevision] = useState<string | null>(null);
   const [active, setActive] = useState(0);
-  const pointer = usePointerSelection(active, setActive);
+  const pointer = usePointerSelection();
   const { resetPointer } = pointer;
   useEffect(resetPointer, [results, resetPointer]);
   const [selected, setSelected] = useState<Map<string, SearchResult>>(new Map());
@@ -388,6 +388,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       if (!next.delete(idKey(result.id))) next.set(idKey(result.id), result);
       return next;
     });
+  };
+
+  const selectByPointer = (index: number) => {
+    followKeyboard.current = false;
+    pointer.fromPointer.current = index !== active;
+    setActive(index);
   };
 
   // Results belong to the query that produced them. While a newer search is
@@ -758,7 +764,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             // Rows of an earlier query, still shown while a newer search
             // is pending, are not acted on by a click or Shift+click (#507).
             if (current !== results) return;
-            setActive(i);
+            selectByPointer(i);
             if (action === "toggle") toggle(r);
             else if (action === "copy") setClickCopy(selected.size > 0 ? chosenKey : choiceKey([r]));
             input.current?.focus();
@@ -766,7 +772,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           onContext={(i, r) => {
             if (current !== results || !rowContext) return;
             resetPointer();
-            setActive(i);
+            selectByPointer(i);
             const scope = rowScope, visibility = copyVisibility.current, request = ++contextRequest.current;
             const owns = () => scope === latestRowScope.current && visibility === copyVisibility.current && request === contextRequest.current && latestHighlight.current === choiceKey([r]);
             void rowContext(selected.has(idKey(r.id))).then((action) => {
@@ -779,7 +785,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           }}
           onToggle={(i, r) => {
             if (current !== results) return;
-            setActive(i);
+            selectByPointer(i);
             toggle(r);
             input.current?.focus();
           }} />

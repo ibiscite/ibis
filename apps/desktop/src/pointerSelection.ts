@@ -4,19 +4,17 @@ import { useCallback, useRef, useState, type MouseEvent } from "react";
 const STILL_AFTER_MS = 1000;
 
 /**
- * Moving the mouse selects the row under it; a row sliding under a still
- * pointer (typing, scrolling, the picker reopening) does not (docs/design.md,
- * "Hover"). Browsers repeat a mouse move at the same position when content
- * moves under the pointer, so only a change of screen position soon after an
- * earlier move counts. The wheel never selects.
+ * Qualified mouse movement enables hover styling only. A row sliding under a
+ * still pointer (typing, scrolling or reopening) must not reclaim hover from
+ * the keyboard. Selection belongs to explicit clicks and keyboard commands.
  */
-export function usePointerSelection(active: number, setActive: (index: number) => void) {
+export function usePointerSelection() {
   const last = useRef<{ x: number; y: number; at: number } | null>(null);
   const [hoverAllowed, setHoverAllowed] = useState(false);
   const resetHover = useCallback(() => setHoverAllowed(false), []);
   const resetPointer = useCallback(() => { last.current = null; setHoverAllowed(false); }, []);
-  // Set when the pointer changed the active row, so the list is not
-  // scrolled under the pointer to reveal it.
+  // Explicit row clicks mark their selection so scrolling does not move it
+  // away from the pointer. Hover never marks or changes the selection.
   const fromPointer = useRef(false);
   const onMouseMove = (event: MouseEvent<HTMLElement>) => {
     const previous = last.current;
@@ -25,13 +23,8 @@ export function usePointerSelection(active: number, setActive: (index: number) =
     const moved = previous !== null && now.at - previous.at <= STILL_AFTER_MS
       && (previous.x !== now.x || previous.y !== now.y);
     if (!moved || !(event.target instanceof Element)) return;
-    const row = event.target.closest('[role="option"][id^="result-"]');
-    const index = row ? Number(row.id.slice("result-".length)) : Number.NaN;
-    if (!Number.isInteger(index) || index < 0) return;
+    if (!event.target.closest('[role="option"][id^="result-"]')) return;
     setHoverAllowed(true);
-    if (index === active) return;
-    fromPointer.current = true;
-    setActive(index);
   };
   return { onMouseMove, fromPointer, hoverAllowed, resetHover, resetPointer };
 }
