@@ -12,11 +12,22 @@ test("website headline and planned features come from the canonical sources", as
   assert.match(html, /formatted citations in APA, Chicago, Harvard, IEEE and MLA/);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
   const design = await readFile(new URL("../docs/design.md", import.meta.url), "utf8");
-  for (const [, label] of html.matchAll(/<li><strong>([^<]+)<\/strong><span>Planned/g)) assert.ok(design.replace(/\s*\([^)]*\)/g, "").includes(label));
+  const highlights = [...html.matchAll(/<li><strong>([^<]+)<\/strong>/g)];
+  assert.equal(highlights.length, 3);
+  for (const name of ["Page numbers and locators", "Zotero while closed", "Insertion"]) assert.ok(design.includes(name));
   assert.match(html, /not a stable release/);
   assert.match(html, /does not generate your document’s bibliography/);
   assert.ok(html.indexOf("not a stable release") < html.indexOf("/releases/download/"));
   for (const [, target] of html.matchAll(/href="#([^"\s]+)"/g)) assert.ok(html.includes(`id="${target}"`), target);
+});
+
+test("keys lead the example and roadmap highlights omit version numbers", async () => {
+  const html = await content(await readFile(new URL("../website/index.html", import.meta.url), "utf8"));
+  const how = html.match(/<section id="how"[\s\S]*?<\/section>/)[0];
+  assert.ok(how.indexOf("formatted citations") > how.indexOf("data-result"));
+  const roadmap = html.match(/<section id="roadmap"[\s\S]*?<\/section>/)[0];
+  assert.doesNotMatch(roadmap, /Planned for|\b0\.\d/);
+  assert.doesNotMatch(roadmap, /<strong>Insertion<\/strong>|cloud-synced data/);
 });
 
 test("macOS browser platform names select Mac shortcuts and native tokens", async () => {

@@ -7,12 +7,15 @@ export async function content(html) {
   const roadmap = await text("../ROADMAP.md");
   if (!design) throw Error("Canonical Coming features section is missing");
   const rows = [...design.matchAll(/^\| ([^|]+) \|/gm)].map(([, feature]) => feature);
-  const plans = ["Page numbers and locators", "Zotero while closed", "Insertion"].map(name => {
+  const plans = [
+    ["Page numbers and locators", "Add page numbers to a citation"],
+    ["Zotero while closed", "Find references even when Zotero is closed"],
+    ["Insertion", "Insert a citation into the app you’re writing in"],
+  ].map(([name, label]) => {
     const row = rows.find(value => value.startsWith(name));
     const version = row?.match(/\((0\.\d)/)?.[1];
     if (!row || !version || !roadmap.includes(`**${version} `)) throw Error(`Canonical roadmap item missing: ${name}`);
-    const label = row.replace(/\s*\([^)]*\)/g, "");
-    return `<li><strong>${escape(label)}</strong><span>Planned for ${version}</span></li>`;
+    return `<li><strong>${escape(label)}</strong></li>`;
   });
   return html.replaceAll("{{headline}}", escape(headline)).replace("{{roadmap}}", `<ul class="roadmap">${plans.join("")}</ul>`);
 }

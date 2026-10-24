@@ -63,14 +63,13 @@
   <section id="how" class="row" aria-labelledby="how-h" data-flow="copy">
     <p class="margin"><span class="key">@how</span></p>
     <div class="text"><h2 id="how-h">From your library to your sentence</h2>
-      <p>Ibis also copies formatted citations in APA, Chicago, Harvard, IEEE and MLA.</p>
       <p>A citation key is a short label for a reference, such as <code class="citation-key">okafor2023</code>. Tools like Pandoc, LaTeX and Typst use it to find the full reference.</p></div>
     <ol class="journey">
       <li><p class="action">You need a source.</p><p class="draft">Wading birds notice changes in water quality before most instruments do<span class="caret" aria-hidden="true"></span></p></li>
       <li><div><p class="action">Press your Ibis shortcut. Search by author, title, year or journal, or combine them. The arrow keys choose.</p>
         <p class="action flow-copy">Press Enter. Ibis copies the key.</p></div>
         <figure class="picker" data-picker>
-          <figcaption>The Ibis picker, working here with made-up references. In the app it opens over whatever you’re writing in.</figcaption>
+          <figcaption>Try the picker with made-up references. Copy and paste below stay inside this example. In the app, Ibis copies to your clipboard for you to paste where you write.</figcaption>
           <div class="picker-panel">
             <p>Search: <strong>okafor</strong></p>
             <p>Wading birds as early signals of wetland change<br><small>Okafor, Brandt · 2023 · Journal of Imagined Ecology</small></p>
@@ -80,7 +79,8 @@
       <li><p class="action flow-copy">You paste it. Pandoc, LaTeX or Typst builds the reference list.</p>
         <p class="draft" data-result>Wading birds notice changes in water quality before most instruments do <code class="key">[@okafor2023]</code>.</p></li>
     </ol>
-    <p class="text after small">Ibis finds and copies the key; it does not generate your document’s bibliography.</p>
+    <div class="text after"><p class="small">Ibis finds and copies the key; it does not generate your document’s bibliography.</p>
+      <p class="small">Ibis also copies formatted citations in APA, Chicago, Harvard, IEEE and MLA.</p></div>
   </section>
 
   <section id="download" class="row" aria-labelledby="download-h">
@@ -117,7 +117,7 @@
     <p class="margin"><span class="key">@setup</span></p>
     <div class="text"><h2 id="setup-h">Two steps to your first citation</h2>
       <ol class="setup">
-        <li><h3>Choose your library</h3><p>Zotero: keep it open, and once tick “Allow other applications on this computer to communicate with Zotero” in its Settings → Advanced. Or choose any <code>.bib</code> file; <a href="https://github.com/ibiscite/ibis#use-with-zotero">Better BibTeX can keep one up to date</a>.</p></li>
+        <li><h3>Choose your library</h3><p>For Zotero, open Settings → Advanced and turn on “Allow other applications on this computer to communicate with Zotero”. Keep Zotero open while using Ibis. Or choose a <code>.bib</code> file; <a href="https://github.com/ibiscite/ibis#use-with-zotero">Better BibTeX can keep one up to date</a>.</p></li>
         <li><h3>Press your shortcut</h3><p>By default it’s Control+Command+R on macOS, and Ctrl+Shift+Y on Windows and Linux X11, if it is available. Type a few words, choose with the arrow keys and press Enter, just like in <a class="key" href="#how">@how</a>.</p></li>
       </ol>
       <p class="small">Ibis reads your library without changing it. Searching and copying work offline after setup; update checks are opt-in. <a href="https://github.com/ibiscite/ibis/blob/main/PRIVACY.md">App privacy</a> · <a href="https://github.com/ibiscite/ibis#install">Full installation guide</a>.</p>
@@ -128,7 +128,7 @@
     <p class="margin"><span class="key">@roadmap</span></p>
     <div class="text"><h2 id="roadmap-h">A small start, with room to grow</h2>
       {{roadmap}}
-      <p class="small">These are plans, not features of the numbered preview. Scope may change; no dates are promised. <a href="https://github.com/ibiscite/ibis/blob/main/ROADMAP.md">Follow the full roadmap on GitHub</a>.</p>
+      <p class="small">These are plans, not available in the early preview. Scope may change; no dates are promised. <a href="https://github.com/ibiscite/ibis/blob/main/ROADMAP.md">Follow the full roadmap on GitHub</a>.</p>
     </div>
   </section>
 
@@ -154,7 +154,7 @@
 </main>
 <footer class="row"><div class="text">
   <p class="colophon"><span>Ibis is free and open source under the GNU AGPL v3.0 or later.</span>
-    <a href="https://github.com/ibiscite/ibis">Source code</a> <a href="https://github.com/ibiscite/ibis/blob/main/ROADMAP.md">Full roadmap</a> <a href="https://github.com/ibiscite/ibis/releases">All releases</a></p>
+    <a href="https://github.com/ibiscite/ibis">Source on GitHub</a> <a href="https://github.com/ibiscite/ibis/blob/main/ROADMAP.md">Full roadmap</a> <a href="https://github.com/ibiscite/ibis/releases">All releases</a></p>
   <div class="appearance" hidden>
     <button class="appearance-toggle" type="button" role="switch" aria-label="Dark appearance" aria-checked="false">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></svg>
