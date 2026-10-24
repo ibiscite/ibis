@@ -391,6 +391,9 @@ only together with the code that handles it.
 | Right-click a row | Opens More for that row |
 | Esc | Steps back one layer: menu or dialog, preview, search and filters, then hide |
 | ↑ ↓ (focus stays in search) | Move the selected row (`aria-activedescendant`) |
+| ← →, Home, End (in the shelf) | Move between chosen references |
+| Delete or Backspace (in the shelf) | Remove the focused reference |
+| Esc (in the shelf) | Return to Search without clearing the citation |
 | ⌘K / Ctrl+K | More, the one door to every other action, each with its shortcut |
 | ⌘/ / Ctrl+/, or `?` outside a text field | The keyboard shortcuts list |
 | ⇧⌘P / Ctrl+Shift+P | Keep window open (the pin) [C6] |

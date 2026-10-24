@@ -106,7 +106,6 @@ export const pickerText = {
   provisionalShort: "Numbers may change",
   shelfStale: "The library changed since these were chosen.",
   warningCount: (n: number) => (n === 1 ? "1 warning" : `${n} warnings`),
-  /** The shelf's last chip, for references beyond the ones it shows. */
   dismiss: "Dismiss",
   dismissWarnings: "Dismiss copy warnings",
   copyWarnings: "Copy warnings",
@@ -176,6 +175,7 @@ export const keyText = {
   or: "or",
   regions: {
     search: "Search box",
+    citation: "Citation shelf",
     picker: "Anywhere in Ibis",
     menu: "More menu",
     system: "Any app",
@@ -185,6 +185,9 @@ export const keyText = {
     copy: "Copy the highlighted reference, or the ones added to the citation, in the Copy as format",
     add: "Add the highlighted reference to the citation, or remove it",
     move: "Move through the results",
+    citationMove: "Move through the chosen references",
+    citationRemove: "Remove the focused reference from the citation",
+    citationLeave: "Return to Search without clearing the citation",
     escape: "Step back: close a menu, clear the search, then hide Ibis",
     more: "Open or close More",
     pin: "Keep Window Open, or stop keeping it open",

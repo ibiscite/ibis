@@ -12,9 +12,9 @@
 /* Citation ownership is inline. Every remove target remains inside its pill,
    even beside an adjacent command with no separator. Hover never changes size. */
 .chip-group[data-variant="citation"] { font: inherit; }
-.chip-group[data-variant="citation"] .chip-group-list { flex-wrap: nowrap; gap: 0; overflow-x: auto; overflow-y: hidden; min-height: max(var(--shelf-line), var(--chip-group-target)); scrollbar-width: none; }
-.chip-group[data-variant="citation"] .chip-group-list::-webkit-scrollbar { display: none; }
-.chip-group[data-variant="citation"] .chip-group-item { flex: none; max-width: none; height: max(var(--shelf-line), var(--chip-group-target)); padding: 0; border: 0; border-radius: 0; background: var(--clear); color: inherit; font: inherit; outline: none; }
+.chip-group[data-variant="citation"] .chip-group-list { flex-wrap: nowrap; align-items: center; gap: 0; overflow-x: auto; overflow-y: hidden; min-height: max(var(--shelf-line), calc(var(--chip-group-target) + var(--space-2))); scrollbar-width: thin; }
+.chip-group[data-variant="citation"] .chip-group-list::-webkit-scrollbar { height: var(--space-2); }
+.chip-group[data-variant="citation"] .chip-group-item { flex: none; max-width: none; height: var(--chip-group-target); padding: 0; border: 0; border-radius: 0; background: var(--clear); color: inherit; font: inherit; outline: none; }
 .chip-group-citation-keyboard { --citation-mask-direction: to right; min-width: 0; }
 .chip-group-citation-keyboard[data-direction="rtl"] { --citation-mask-direction: to left; }
 .chip-group .citation-pill { position: relative; display: inline-flex; align-items: center; min-width: var(--chip-group-target); height: var(--chip-group-target); margin-inline: var(--citation-segment-inset); border-radius: var(--citation-pill-radius); }

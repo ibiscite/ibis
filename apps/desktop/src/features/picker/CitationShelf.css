@@ -1,6 +1,6 @@
 /* The shared collection owns target geometry and scrolling, in a single line. */
 .shelf { --shelf-hit-size: var(--control-min-size); }
-.shelf-output, .shelf-controls { min-height: max(var(--shelf-line), var(--shelf-hit-size)); }
+.shelf-output, .shelf-controls { min-height: max(var(--shelf-line), calc(var(--shelf-hit-size) + var(--space-2))); }
 .shelf-controls { display: flex; align-items: center; padding-inline: calc(var(--row-pad) + var(--tile-size) + var(--row-gap)) var(--row-pad); }
 .shelf-segments { flex: 1; min-width: 0; }
 .shelf-fallback { flex: 0 1 45%; min-width: 0; }

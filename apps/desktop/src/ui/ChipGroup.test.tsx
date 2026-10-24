@@ -181,6 +181,8 @@ test.each([
   press(forward); expect(document.activeElement).toBe(row(2));
   press(forward); expect(document.activeElement).toBe(row(0));
   press(back); expect(document.activeElement).toBe(row(2));
+  press("Home"); expect(document.activeElement).toBe(row(0));
+  press("End"); expect(document.activeElement).toBe(row(2));
   expect(removed).not.toHaveBeenCalled();
 });
 

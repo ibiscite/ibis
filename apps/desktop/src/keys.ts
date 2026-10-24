@@ -12,6 +12,9 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "search", action: "copy", keys: ["Enter"] },
   { region: "search", action: "add", keys: ["Shift+Enter"] },
   { region: "search", action: "move", keys: ["ArrowDown", "ArrowUp"] },
+  { region: "citation", action: "citationMove", keys: ["ArrowLeft", "ArrowRight", "Home", "End"] },
+  { region: "citation", action: "citationRemove", keys: ["Delete", "Backspace"] },
+  { region: "citation", action: "citationLeave", keys: ["Escape"] },
   { region: "picker", action: "escape", keys: ["Escape"] },
   { region: "picker", action: "more", keys: ["CmdOrCtrl+K"] },
   { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
@@ -31,6 +34,7 @@ export function keysFor(action: KeyAction): string {
 
 const NAMED: Record<string, [mac: string, other: string]> = {
   enter: ["↵", "Enter"], escape: ["Esc", "Esc"], arrowdown: ["↓", "↓"], arrowup: ["↑", "↑"],
+  arrowleft: ["←", "←"], arrowright: ["→", "→"], delete: ["⌦", "Delete"], backspace: ["⌫", "Backspace"],
   home: ["Home", "Home"], end: ["End", "End"], tab: ["Tab", "Tab"], space: ["Space", "Space"],
 };
 

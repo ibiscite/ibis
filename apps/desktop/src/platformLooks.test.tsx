@@ -642,7 +642,7 @@ test("the shelf uses one citation line with shared removal controls", () => {
   expect(rules(styles, ".shelf-output .preview-text, .shelf-output p")).toMatch(/white-space:\s*nowrap/);
   expect(styles).not.toContain(".shelf-chips");
   const shelf = readFileSync(new FileURL("./features/picker/CitationShelf.css", import.meta.url), "utf8");
-  expect(rules(shelf, ".shelf-output, .shelf-controls")).toContain("min-height: max(var(--shelf-line), var(--shelf-hit-size))");
+  expect(rules(shelf, ".shelf-output, .shelf-controls")).toContain("min-height: max(var(--shelf-line), calc(var(--shelf-hit-size) + var(--space-2)))");
   expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/box-shadow:\s*inset/);
   expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:/);
 });
