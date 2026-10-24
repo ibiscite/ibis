@@ -43,6 +43,38 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 
 export class Unavailable extends Error {}
 
+/** Only a clean gallery-readiness timeout may recover on one isolated retry. */
+export function frameFailure(frame, stage, error, errors, attempt) {
+  return { frame, attempt, stage, retryable: stage === "ready" && error.name === "TimeoutError" && errors.length === 0,
+    message: (errors.length ? errors.join("; ") : error.message).split("\n")[0], screenshot: null };
+}
+
+export async function renderFrames(jobs, render) {
+  const failed = [], failedAttempts = [], recovered = [], retry = [];
+  let next = 0;
+  const capture = async (job, attempt) => {
+    const failure = await render(job, attempt);
+    if (failure) failedAttempts.push(failure);
+    return failure;
+  };
+  const worker = async () => {
+    while (next < jobs.length) {
+      const job = jobs[next++];
+      const failure = await capture(job, 1);
+      if (failure?.retryable) retry.push({ job, failure });
+      else if (failure) failed.push(failure);
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
+  for (const { job, failure: first } of retry) {
+    const failure = await capture(job, 2);
+    if (failure) failed.push(failure);
+    else recovered.push(first.frame);
+  }
+  return { failed: failed.map((failure) => `${failure.frame}: ${failure.message}`).sort(),
+    failedAttempts: failedAttempts.sort((a, b) => a.frame.localeCompare(b.frame) || a.attempt - b.attempt), recovered: recovered.sort() };
+}
+
 function parse(argv) {
   const options = { output: path.join(repo, "target", "gallery-contact-sheet"), dist: path.join(repo, "apps", "desktop", "dist"),
     build: true, scale: 1, state: [], platform: [], theme: [], text: [] };
@@ -212,7 +244,7 @@ async function main() {
         contexts.set(theme, await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: options.scale, colorScheme: theme, reducedMotion: "reduce" }));
       }
     }
-    const render = async (job, timeout) => {
+    const render = async (job, attempt) => {
       const name = `${job.text}/${job.platform}-${job.theme}/${job.state.id}`;
       const dir = path.join(output, job.text, `${job.platform}-${job.theme}`);
       await mkdir(dir, { recursive: true });
@@ -230,9 +262,14 @@ async function main() {
       page.on("pageerror", (error) => errors.push(error.message));
       page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
       const query = new URLSearchParams({ state: job.state.state, platform: job.platform, theme: job.theme, text: job.text });
+      let stage = "navigation";
+      let caught = null, png = null, screenshot = null;
+      const failureFile = path.join(dir, `failure-${job.state.id}-attempt-${attempt}.png`);
       try {
         await page.goto(`${base}/gallery.html?${query}`);
-        await page.waitForFunction((id) => document.documentElement.dataset.galleryRendered === id, job.state.state, { timeout });
+        stage = "ready";
+        await page.waitForFunction((id) => document.documentElement.dataset.galleryRendered === id, job.state.state, { timeout: FRAME_TIMEOUT });
+        stage = "capture";
         if (job.state.hover) await page.hover(job.state.hover, { timeout: 5_000 });
         // Let hover fades finish; endless ones (a spinner) never do and are skipped,
         // and a paused one is waited for at most two seconds.
@@ -240,38 +277,37 @@ async function main() {
           .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
           .map((animation) => animation.finished.catch(() => undefined)))]));
         if (errors.length > 0) throw new Error(errors.join("; "));
-        const png = await page.screenshot({ path: path.join(dir, `${job.state.id}.png`) });
-        frames.set(name, { png });
-        return null;
+        png = await page.screenshot({ path: path.join(dir, `${job.state.id}.png`) });
       } catch (error) {
-        await page.screenshot({ path: path.join(dir, `failure-${job.state.id}.png`) }).catch(() => undefined);
-        return `${name}: ${error.message.split("\n")[0]}`;
+        caught = error;
+        try {
+          await page.screenshot({ path: failureFile });
+          screenshot = path.relative(output, failureFile);
+        } catch { /* a crashed page may be unable to supply a failure capture */ }
       } finally {
-        await page.close();
+        try { await page.close(); }
+        catch (error) { errors.push(error.message); }
       }
-    };
-    let next = 0;
-    const retry = [];
-    const worker = async () => {
-      while (next < jobs.length) {
-        const job = jobs[next++];
-        if (await render(job, FRAME_TIMEOUT)) retry.push(job);
+      // Include errors emitted during screenshots or close before deciding to retry.
+      if (caught || errors.length > 0) {
+        if (!screenshot && png) {
+          await writeFile(failureFile, png);
+          screenshot = path.relative(output, failureFile);
+        }
+        return { ...frameFailure(name, stage, caught ?? new Error(errors.join("; ")), errors, attempt), screenshot };
       }
+      frames.set(name, { png });
+      return null;
     };
-    await Promise.all(Array.from({ length: 4 }, worker));
-    // A frame that failed beside others gets one more try on its own, so CPU
-    // contention never decides what the evidence shows; a real failure fails twice.
-    for (const job of retry) {
-      const failure = await render(job, FRAME_TIMEOUT);
-      if (failure) failures.push(failure);
-      else await rm(path.join(output, job.text, `${job.platform}-${job.theme}`, `failure-${job.state.id}.png`), { force: true });
-    }
+    const { failed, failedAttempts, recovered } = await renderFrames(jobs, render);
+    failures.push(...failed);
     const browserName = `Chromium ${browser.version()}`;
     const label = `Ibis picker states, ${source()}. Browser render in ${browserName}, synthetic data; not a native capture`;
     for (const text of options.text) await contactSheet(browser, output, text, columns, states, frames, label);
     await writeFile(path.join(output, "manifest.json"), `${JSON.stringify({ source: source(), browser: browserName,
-      viewport: VIEWPORT, scale: options.scale, rendered: [...frames.keys()].sort(), failed: failures }, null, 2)}\n`);
+      viewport: VIEWPORT, scale: options.scale, rendered: [...frames.keys()].sort(), failed: failures, failedAttempts, recovered }, null, 2)}\n`);
     console.log(`${frames.size} of ${jobs.length} frames rendered into ${output}`);
+    if (recovered.length > 0) console.log(`Recovered readiness timeouts (first-attempt evidence retained):\n  ${recovered.join("\n  ")}`);
   } finally {
     server.close();
     await browser.close();
