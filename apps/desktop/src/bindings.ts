@@ -52,7 +52,7 @@ export const commands = {
 	 */
 	copyCitation: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { ids, format, expectedRevision }),
 	/**  Preview a key citation without writing the clipboard or saving a choice. */
-	citationText: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("citation_text", { ids, format, expectedRevision }),
+	citationText: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<CitationPreview>("citation_text", { ids, format, expectedRevision }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**
@@ -120,6 +120,13 @@ export const commands = {
 };
 
 /* Types */
+/**  Request-local display pieces; copied output keeps its existing payload. */
+export type CitationPreview = {
+	text: string,
+	warnings: string[],
+	segments: PreviewSegment[],
+};
+
 /**  A bundled citation style the picker can format with (ADR 0020). */
 export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
 
@@ -251,6 +258,11 @@ export type PickerPreferences = {
 	density: Density,
 	larger_text: boolean,
 	show_paste_preview: boolean,
+};
+
+export type PreviewSegment = {
+	item: number | null,
+	text: string,
 };
 
 /**  Stable identity of a record: which source it came from and its key there. */

@@ -62,6 +62,7 @@ All state lives on GitHub, so any agent can stop at any point and any other can 
 - Hard-to-reverse decisions (license, persisted data formats, public CLI or API contracts, network use, security boundaries) need an ADR.
 - When an agent repeats a mistake, add a check to `scripts/check.mjs` or `scripts/pr-lint.mjs` (preferred) or one line here; remove lines that no longer matter.
 - Before reading or invoking an unfamiliar repository file, locate it with `rg --files`; do not guess its path.
+- Use a distinct Cargo target directory per source worktree, or clean `ibis-core`, `ibis-zotero-local` and `ibis-desktop` before reusing one; stale cross-worktree artifacts can hide source changes.
 
 ## Code, privacy and security
 
