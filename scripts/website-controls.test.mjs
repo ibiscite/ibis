@@ -238,6 +238,13 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
     await page.getByRole("button", { name: "Share Ibis" }).click();
     await page.locator(".share-status", { hasText: "Link copied" }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "https://ibiscite.org/");
+    const signature = page.locator(".signature .key");
+    await signature.hover();
+    await page.waitForFunction(() => document.querySelector(".signature .key").textContent === "[@diyanko]");
+    await page.waitForTimeout(1100);
+    assert.equal(await signature.textContent(), "[@diyanko]", "reduced motion holds the first citation form");
+    await page.mouse.move(0, 0);
+    assert.equal(await signature.textContent(), "@diyanko", "a chip returns to its key when the pointer leaves");
     await context.close();
   } finally { await browser.close(); }
 });

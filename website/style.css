@@ -9,7 +9,7 @@ body { margin: 0; background: var(--website-bg); color: var(--website-text); fon
 .site { min-height: 100svh; --surface: var(--website-bg); --text: var(--website-text); --muted: var(--website-muted); --separator: var(--website-line); position: relative; max-width: 84rem; margin-inline: auto; padding-inline: var(--website-pad); }
 a { color: var(--citation); text-underline-offset: .2em; }
 a:hover { text-decoration-thickness: var(--focus-ring-width); }
-::selection { background: var(--selected-background); color: var(--selected-text); }
+::selection { background: color-mix(in srgb, var(--citation) 22%, transparent); color: var(--text); }
 :where(a, button, input, select):focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: calc(-1 * var(--focus-ring-width)); border-radius: var(--r-min); }
 .skip { position: absolute; left: -100vw; }
 .skip:focus { left: var(--space-4); top: var(--space-4); z-index: var(--z-chrome); background: var(--surface); padding: var(--space-3) var(--space-4); }
@@ -71,6 +71,7 @@ section { padding-block: var(--website-section-pad); }
 .button:hover { background: color-mix(in srgb, var(--text) 84%, var(--website-bg)); }
 .button svg { width: 1em; height: 1em; margin-right: var(--space-2); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linejoin: round; }
 .button.quiet { border: 0; background: none; box-shadow: inset 0 0 0 var(--border-width) var(--separator); color: var(--text); cursor: pointer; }
+.button:hover .star path { fill: currentColor; }
 .button.quiet:hover { background: var(--fill-subtle-hover); }
 .closing { padding-bottom: var(--website-section-pad); }
 .pull { margin: 0 0 var(--website-block-gap); }
@@ -172,6 +173,9 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .key, .button, .rows a { transition: background-color var(--motion-feedback) var(--ease-out), color var(--motion-feedback) var(--ease-out), box-shadow var(--motion-feedback) var(--ease-out), scale var(--motion-feedback) var(--ease-out); }
   .index nav .key { transition-duration: var(--motion-panel); }
   a:active .key, a.key:active, .button:active { scale: var(--website-press); }
+  .star path { transition: fill var(--motion-feedback) var(--ease-out); }
+  .button:hover .star { animation: star var(--motion-panel) var(--ease-out); }
+  .reveal .pull img { transform-origin: 20% 80%; animation: peck calc(2 * var(--motion-panel)) var(--ease-out) var(--motion-panel); }
   .rows .arrow { transition: translate var(--motion-feedback) var(--ease-out); }
   .rows a:hover .arrow { translate: var(--space-1) 0; }
   .rows a[href*="/releases/download/"]:hover .arrow { translate: 0 var(--space-1); }
@@ -184,5 +188,7 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
 @keyframes land-text { from { color: var(--citation); } }
 @keyframes reveal { from { opacity: 0; translate: 0 var(--website-reveal); } }
 @keyframes caret-blink { 50% { opacity: 0; } }
+@keyframes star { 50% { scale: 1.2; } }
+@keyframes peck { 40% { rotate: -12deg; } }
 @keyframes receipt { from { opacity: .4; } }
 @media (forced-colors: active) { a[aria-current="location"] .key { forced-color-adjust: none; background: Highlight; color: HighlightText; } .key { outline: var(--border-width) solid LinkText; } .site::before { background: CanvasText; } }
