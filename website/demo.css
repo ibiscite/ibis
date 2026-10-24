@@ -59,3 +59,9 @@
 /* The slot keeps the sentence's line height, so pasting never moves the page; its touch area reaches past it. */
 .draft .paste-slot { position: relative; } .draft .paste-slot::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
 @media (prefers-reduced-motion: no-preference) { .draft .paste-slot { transition: scale var(--motion-feedback) var(--ease-out); } .draft .paste-slot:active { scale: var(--website-press); } }
+/* Small confirmations: a tick lands with the Copied or Pasted word, and on touch a row gives under the finger. */
+.picker-shelf .picker-status:not(:empty)::before { content: "✓"; margin-right: var(--space-1); }
+@media (prefers-reduced-motion: no-preference) {
+  .picker-shelf .picker-status:not(:empty) { animation: receipt var(--motion-panel) var(--ease-out); }
+  @media (pointer: coarse) { .pick { transition: scale var(--motion-feedback) var(--ease-out); } .pick:active { scale: .985; } }
+}

@@ -623,7 +623,9 @@ margin rule. Why opens with the beak quote mark and is signed with the
 maker's `@key` chip, linking to their GitHub profile. On touch screens the demo's
 controls match the page buttons' 2.25 rem height, with an invisible 44 px
 touch area. The paste slot and its blank keep the sentence's line height, so
-copying and pasting never moves the page.
+copying and pasting never moves the page. Copied and Pasted land with a tick,
+and on touch a pressed row gives slightly. Text links rest with a soft
+underline that turns solid on hover.
 The demo mirrors the shipped app. When a change alters what the demo shows
 (the picker, its keys, styles or paste), update the demo in the same pull
 request, and grow the demo as the app gains features worth showing.
