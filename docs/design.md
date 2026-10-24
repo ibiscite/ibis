@@ -1,97 +1,119 @@
-# Picker design
+# Design
 
-This is the agreed starting point for the picker redesign (#223), accepted by the
-maintainer on 2026-10-19 after five rounds of prototypes. It describes what the
-picker should look like and how its window should behave. It is brought into the
-app in small steps (see [Rollout](#rollout)); until a step lands, the app keeps its
-current appearance. User-selectable looks may come later; this is the default.
+The one current rule book for how Ibis looks and behaves: picker, first run,
+Settings, preview, brand and website. Accepted ADRs win over it. Values live in
+[`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
+tokens by role and gives numbers only where no token exists. The unbuilt
+Settings window's detail is in [design/settings.md](design/settings.md); scope is
+in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
+(design canvas) and [D7] (token foundations) are cited by code and tests; keep
+each beside its rule.
 
-The prototypes were built outside the repository. Everything needed to implement
-the design is written down here.
+## Principles
 
-This page describes the target, including longer-term parts. Release scope
-comes from [ROADMAP.md](../ROADMAP.md). What is built and what is left is tracked
-in #223 and the issues named under [Rollout](#rollout), not on this page.
-
-More detail:
-
-- [Design system foundations](design/system.md): decisions D1–D17, per-OS tokens, shapes, states and components.
-- [Settings window and shortcut customization](design/settings.md): pages, the shortcut recorder and conflict rules.
-- [Citation preview](design/preview.md): the citation shelf and the wide pane.
-
-## Eight rules
-
-1. **One anatomy everywhere.** Search, list, detail, citation tray and footer, in
-   that order, in every form from a one-line bar to the large settings window.
-2. **Native material, Ibis voice.** Each platform's material, used by layer:
-   content on the standard material, glass only on controls (macOS), Acrylic
-   for the Windows picker, flat on Linux. Type, spacing, icon drawings and
-   wording stay the same on every platform.
-3. **Readable first.** Nothing smaller than 12 px, metadata at 13 px, titles at
-   15 px. Secondary text passes 4.5:1 contrast.
-4. **Easy to hit.** Every button is at least 32 px; 44 px on touch screens.
+1. **One anatomy everywhere.** Search, list, shelf and footer, in that order,
+   at every size. Layouts fold rather than reorder.
+2. **Native material, Ibis voice.** Each platform's material, radii, selection,
+   menu metrics, font and shortcut labels. Ibis keeps its anatomy, icon
+   drawings, wording and citation scarlet on every platform.
+3. **Readable first.** Nothing smaller than 12 px; secondary text passes 4.5:1.
+4. **Easy to hit.** Every target is at least 32 px; 44 px under `pointer: coarse`.
 5. **Show less, reveal more.** An element appears when it becomes useful and
-   steps back when it is not. Nothing is removed, only folded one key away.
+   steps back when it is not. Nothing is removed, only folded one key away. No
+   modes and no "advanced" switch.
 6. **Say what happened.** Every action ends in a visible result: copied,
-   inserted, or why not. Colour is never the only signal.
+   inserted, or why not. Colour is never the only signal. Nothing asks "are you
+   sure?"; destructive actions apply at once with an 8 s Undo [D16].
 7. **Calm motion.** Movement only explains where something came from, and it
    switches off when the system asks for reduced motion.
 8. **No glow, no edge rings.** Selection is a fill, never an outline. No
    coloured borders, outer glows or bright rims. A focus ring appears only when
    the keyboard moved focus.
 
-## Design language
+## Tokens
 
-**Type.** The system font on each platform, one scale:
+Components read role tokens only, never raw colours, `GrayText`, literal px
+radii or literal shadows [D1]. Three layers (ADR 0021): base values that
+components never read; role tokens, whose defaults are CSS system colours so an
+unknown webview still follows dark mode, the accent and high contrast; then
+look overrides (`:root[data-platform=…]`), increased contrast, forced colours
+and the gallery contrast preview, in that order. Light and dark come from
+`color-scheme` and `light-dark()`; components never read `prefers-color-scheme`.
 
-| Role | Size / line | Example |
+| Role | Tokens | Rule |
 |---|---|---|
-| Search | 22/28 on macOS (frameless, sized like Spotlight's query); 16/22 on Windows and Linux, in a framed text box like PowerToys Run (16) and GNOME's search entries | Search references… |
-| Title | 15/20, semibold | Sleep spindles predict memory |
-| Body | 14/20 | Spindle density predicted recall. |
-| Meta | 13/18 | García, Okafor · 2021 |
-| Label | 12/16, semibold | Best matches |
-| Citation | 13, monospace | `[@garcia2021, p. 4]` |
+| Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. |
+| Text [D5] | `--text`, `--muted`, `--text-tertiary`, `--text-disabled` | `--muted` always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
+| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | Always the system accent; Ibis offers no override. Selected rows and the menu highlight use `--selected-text`, the platform's own selected-text colour (white), as native lists do; never black. `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
+| Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
+| Focus [D8] | `--focus-ring-*` | See **Selection and focus**. |
+| Fills | `--fill-control(-hover/-pressed)`, `--fill-subtle-*`, `--fill-primary-*`, `--fill-disabled` | Pressed is darker on macOS and GNOME, lighter on Windows. |
+| Strokes | `--separator`, `--stroke-control`, `--stroke-field`, `--stroke-overlay`, `--line`, `--border-width`, `--contrast-border-width` | Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
+| Citation [D9] | `--citation`, `--citation-tile`, `--on-citation` | Scarlet; see **Colour roles**. |
+| Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
+| Elevation [D11] | `--shadow-card`, `--shadow-raised`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
+| Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap` | 4 px grid; 2 px only as an optical nudge. |
+| Shape [D2] | `--r-win`, `--r-min`, `--r-row`, `--r-tile`, `--r-menu`, `--menu-pad`, `--r-mi`, `--r-control`, `--r-key`, `--r-card`, `--r-dialog`, `--r-full` | See **Corners**. |
+| Type [D13] | `--type-*`, `--font-family`, `--font-mono` | See **Type**. |
+| Motion [D14] | `--motion-feedback/-panel/-layout/-exit`, `--ease-out`, `--ease-in` | See **Motion**. |
+| Layers [D15] | `--z-content`, `--z-chrome`, `--z-overlay`, `--z-tooltip`, `--z-modal`, `--z-toast`, `--overlay-margin` | One z-order; overlays keep 8 px from the window edge and never leave the webview. |
 
-**Colour roles.** Selection, focus, the main button and the menu highlight
-use the system accent ("you are here, act on this"). Ibis scarlet means "this is
-what gets pasted" and marks only the citation: the copied text, the shelf's
-quote mark, the tile of a row added to the citation, and the logo. Ibis
-sets no app accent of its own, so a red or orange system accent never meets
-scarlet on a fill (on macOS, the Multicolor accent stays system blue). Status
-uses Done (copied, inserted), Look (skipped, needs a look) and Stop
-(unreachable, failed), always with words or an icon as well as colour.
+**Colour roles.** The system accent means "you are here, act on this":
+selection, focus, the primary button, switches and the macOS menu highlight.
+Scarlet means "this is what gets pasted" and marks only the citation: the
+shelf's beak mark, the added tile, the Copied notice's citation, the format
+preview, and the logo [C14]. It never appears on a control, link, toggle,
+progress, badge, counter, selection, focus ring, error, Stop status, Settings
+control or the shortcut recorder. Brand scarlet itself (no app token) is for the
+logo, app icon, website and store art. On an accent-filled row the added tile
+becomes a `--text-on-accent` tile with a scarlet check, so a red or orange
+accent never meets scarlet fill on fill. Ibis offers Appearance (System, Light,
+Dark) and never an accent, brand colour, per-element colours, fonts, radius,
+spacing, custom CSS or themes.
 
-| Role | Token | Light | Dark | Over the macOS veil | More contrast, forced colours |
-|---|---|---|---|---|---|
-| Citation text | `--citation` | `#c23a1c` | `#ff7a5c` | `#982d16` / `#ff9d87` | `CanvasText` |
-| Added tile, behind a white check | `--citation-tile` | `#c23a1c` | `#d2401f` | as light / dark | `CanvasText` |
-| Brand scarlet | none in the app | `#d2401f` | `#d2401f` | | |
-| Done / Look / Stop | `--status-*` | `#1a7f37` / `#8a5a00` / `#c4314b` | `#5bc26f` / `#e3b341` / `#ff8a8a` | one step deeper | `CanvasText` |
+**Contrast.** Text, placeholder, footer and key-cap labels: 4.5:1 against
+rendered pixels on every look and theme, the 22 px query included; over the
+macOS material, over white, black and saturated wallpapers (#774). Focus rings,
+meaningful icons, tertiary glyphs and boundaries that are the only cue: 3:1.
+Increased contrast and forced colours collapse roles to system pairs (`Canvas`,
+`CanvasText`, `Highlight`, `ButtonText`, `GrayText`), make materials opaque,
+remove shadows, give controls a 1 px edge, the active row a 3 px edge and focus
+a 2 px `CanvasText` ring; scarlet becomes `CanvasText`, so the check says
+"added". Reduced transparency makes every material opaque.
 
-Text roles pass 4.5:1 on their surface; the added tile stands 3:1 off the
-surface and keeps its white check at 4.5:1. Brand scarlet is for the logo, the
-app icon, the website and store art. In the app it fills only the dark-mode
-added tile, never a control, a selection, a link or a focus ring. Stop is a
-rose, kept apart from scarlet in hue and lightness, and never used for the
-citation.
+**Type** [D13]. The platform UI font (SF Pro; Segoe UI Variable; Adwaita Sans
+or the GNOME interface font), never another platform's. One scale of roles,
+`--type-search-*` (large and frameless on macOS like Spotlight, a framed box
+elsewhere), `--type-title-*` (semibold), `--type-body-*`, `--type-meta-*`
+(menus, descriptions, footer, shelf) and `--type-label-*`, the smallest; dialog
+headings (20/28) and Windows Settings page titles (28/36) have no token yet.
+Weights 400, 500 and 600; no uppercase transforms; italics only for "why it
+matched". Monospace (`--font-mono`) only for citation keys and key-format
+output. `tabular-nums` on years, counts and pages.
 
-**Space and size.** A 4 px grid. Rows come in three densities: Compact 40 px
-(one line), Comfortable 58 px (default, two lines) and Spacious 76 px (three
-lines). A Larger text setting scales the whole window by 1.15, not just the
-letters.
+**Text size.** Type and vertical sizes are rem; radii and hairlines stay px.
+Larger text multiplies the root size by `--larger-text-scale` and grows the
+window by the same factor; three steps are planned (#775). System text scaling
+multiplies with it, capped at 2.
 
-| Token | Value | Notes |
-|---|---|---|
-| `--inset` | 8 px on every OS | Window edge and divider to each adjacent fill; the list viewport keeps this gap while scrolling. |
-| Header control band | 52 px macOS, 48 px Windows, 50 px GNOME | Tallest control (36 / 32 / 34 px) plus 8 px above and below. The always-visible 1 px divider is outside: 53 / 49 / 51 px total. |
-| `--row-pad` / `--row-gap` | 12 px / 12 px | Row side padding; tile to text. |
-| `--tile` / `--icon` | 32 px / 20 px | Type tile and its icon. Compact draws a 24 px tile with no fill, centred in the 32 px column, so titles stay aligned with the search text. |
-| Footer | 40 px | 24 px actions with 8 px above and below. Windows/GNOME add an outside 1 px top divider (41 px total). Status text starts on the title column. |
-| Smallest target | 32 px, 44 px on touch | |
+## Layout and geometry
 
-Edges line up: the search icon is centred over the tile column and the
-placeholder starts where row titles start:
+**Spacing** [C1]. S = `--inset` = 8 px on every OS. Every fill (search field,
+row, shelf, icon-button hover, footer action, menu) keeps S from the window edge
+and from any divider it touches. The header is its tallest control + 2S, the
+footer its 24 px actions + 2S, and the list's clipping viewport starts S below
+the header divider and ends S above the shelf, even while scrolled.
+
+**Header** [C2]. Control bands of 52 px macOS, 48 px Windows, 50 px GNOME: the
+tallest control (36 / 32 / 34 px) plus S above and below; the always-visible
+1 px divider is outside the band (53 / 49 / 51 px total). Order: search glyph,
+query, clear ×, format pop-up (filled, no divider), pin. The trailing button
+keeps S to the edge, top and bottom.
+
+**Two columns** [C3]. Icons, the search glyph, the status dot and type tiles
+centre on the 32 px tile column; text starts on the title column: row titles,
+the search query, the status text and the shelf citation. The search glyph sits
+6 px inside the tile column on each side.
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -100,596 +122,446 @@ tile centre = inset + row-pad + tile / 2       36 px on every OS
 text x     = inset + row-pad + tile + row-gap  64 px on every OS
 ```
 
-These are distances from the logical start edge, including in RTL. The status
-dot shares the tile centre; status text and the shelf citation share the title
-column. Windows field/card strokes are inset shadows, so they consume no column
-space. GNOME's full-bleed shelf adds the window inset inside its citation line.
-Recently added will reuse the compact result columns when C11 introduces it;
-there is no separate current consumer to verify.
+Distances run from the logical start edge, also in RTL. Windows field and card
+strokes are inset shadows, so they take no column space. The trailing edge is
+where row text ends (`W − inset − row-pad`): the last header control, the last
+footer key cap and the year column end there; a 32 px target may overhang a
+drawn glyph. Controls in one bar share a centre line, text a baseline.
 
-These numbers are also in [`design-geometry.json`](design-geometry.json), which
-`node scripts/gallery-geometry.mjs` measures the evidence gallery against;
-change both together (a test checks that they agree).
+| Token | Value | Notes |
+|---|---|---|
+| `--inset` | 8 px on every OS | [C1] |
+| `--row-pad` / `--row-gap` | 12 px / 12 px | Row side padding; tile to text. |
+| `--tile-size` / `--icon-glyph-size` | 32 px / 20 px | Compact draws a 24 px tile with no fill, centred in the column. |
+| Footer | 40 px | 24 px actions + 2S; Windows and GNOME add a 1 px top divider outside it. |
+| Smallest target | 32 px, 44 px on touch | A smaller drawn control keeps the target with `::before`. |
 
-**Corners.** At baseline size nested shapes are concentric: an inner radius is
-its container's radius minus the shape inset, never larger. When the inset is close to
-or larger than the outer radius, the inner corner drops to a small floor
-instead of going square or looking like a separate floating slab.
+**Rows** [C4]. Rows are 2 px apart in results, Recently added and choice lists.
+Densities (ADR 0020): Compact 40 px (one line), Comfortable 58 px (the default,
+two lines) and Spacious 76 px (three lines). Density changes rows only, never
+controls, targets, type or the header. The citation key is not shown in rows
+(it stays in the accessible name and tooltip); the year (or "No date") is
+trailing and vertically centred.
+
+**Size follows content** [C10]. Every state is as tall as its content: search
+and footer alone, one hint line, Recently added, or a list of choices. Results
+grow the window in 220 ms with the top edge fixed, up to the remembered height;
+it never shrinks while open and starts compact next time. Reduced motion: no
+animation. Width: 720 px by default, 360 px minimum.
+
+**Compact start** [C11]. With an empty query: Recently added (three compact
+rows) when the library has dates; otherwise one rotating tip ("1 of 6");
+otherwise nothing but search and footer. The placeholder carries the hint:
+"Search by title, author, year or key".
+
+**Corners** [C15][D3]. Fixed CSS px at every text size; nested shapes are
+concentric, and an inner corner never goes below the per-OS floor:
 
 ```
---r-row  = max(--r-min, --r-win  − 8px)        rows, search field
+--r-row  = max(--r-min, --r-win  − 8px)        rows, search field, shelf card
 --r-tile = max(--r-min, --r-row  − 12px)       type tile
---r-mi   = max(--r-min, --r-menu − --menu-pad)  menu items
+--r-mi   = max(--r-min, --r-menu − --menu-pad) menu items
 ```
 
-| | macOS | Windows 11 | Linux (GNOME) |
+| Token | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
-| `--r-win` | 16 (all versions; matches the native panel mask) | 8 | 15 |
-| `--inset` · `--r-min` | 8 · 6 | 8 · 4 | 8 · 6 |
+| `--r-win` | 16 (every version; the native panel mask) | 8 | 15 (libadwaita 1.8) |
+| `--r-min` | 6 | 4 | 6 |
 | `--r-row` | 8 | 4 | 7 |
 | `--r-tile` | 6 | 4 | 6 |
 | `--r-control` | 8 | 4 | 6 |
 | `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 | 8 · 4 · 4 | 12 · 6 · 6 |
-| Menu elevation | One `--shadow-overlay` per look; values and theme treatment in [system §6.3](design/system.md#63-shadows). | | |
+| Citation segment pill | 6 | 6 | 6 |
 
-GNOME follows [libadwaita 1.8's 15 px window](https://github.com/GNOME/libadwaita/blob/1.8.0/doc/css-variables.md#window-radius);
-1.6/1.7 used 12 px. With an 8 px inset and 6 px floor the chain gives 7 px
-rows and 6 px tiles; popovers keep their separate 12 px radius. Windows rows
-and tiles use Fluent's 4 px small radius.
+Key caps use `--r-key`, Settings cards `--r-card`, switches, toasts and capsules
+`--r-full`.
 
-Canvas C15 fixes these radii in CSS pixels across text sizes. The chain uses
-the baseline 8/12 px shape insets; Larger text scales rem layout spacing without
-changing the shape. The native macOS mask uses the same 16 logical points.
-Keycaps retain their existing roles. The 6 px citation-segment pill is C7's
-future consumer; current chips are not citation segments.
+These numbers are also in [`design-geometry.json`](design-geometry.json), which
+`node scripts/gallery-geometry.mjs` measures the evidence gallery against;
+change both together with this page (a test checks that they agree).
 
-**Menus.** The operating system's own menus are used only where the system owns
-them: the menu bar, the tray menu and right-click context menus ([ADR 0021](adr/0021-ui-foundation.md)).
-In-window menus (format, library scope, More) are Ibis's, but match that
-platform's native menu metrics: radius and padding from the table above, the
-C9 item padding (10 px on both sides), separators inset 10 px with 4 px
-above and below, and native open and close motion. Format reserves a leading
-check column; More starts at its labels and shows toggle checks at the end.
-Format filter text aligns with labels; the menu opens 4 px below its pop-up,
-aligned to the trailing edge. Items stay at least 32 px high (rule 4).
-Check them side by side with a real
-menu on each platform before calling them done.
+**Width classes** (container queries, in em). Below 28.75 em: header controls
+wrap and footer hints show keys only. Below 60 em the preview replaces the
+list; at 60 em (960 px) it sits beside it [C17]. Below 22 em high the shelf and
+pane cap at 6 rem. Strokes at Windows 125 % and 150 % are inset shadows.
 
-**Motion.** 120 ms for feedback, 200 ms for panels, 280 ms for layout. Each
-look uses its `--ease-out` for entrances and `--ease-in` for exits
-([system §7](design/system.md#7-motion)). No bounce. Reduced motion keeps fades
-at most 100 ms and removes movement. Hover never moves anything.
+## Components and their states
 
-**Icons.** Ibis's own set: 20 px, 1.5 px stroke, rounded ends, the same
-drawings on every platform, so a source or a reference type always looks the
-same. Each platform gets them at its own weight:
+Each `src/ui/` component wraps one React Aria component (ADR 0021), owns one CSS
+file that reads role tokens only, and has a test per look and a gallery state.
+Screens never restyle a shared component.
 
-| | Base | macOS | Windows 11 | Linux (GNOME) |
-|---|---|---|---|---|
-| Grid | 20 px | 20 px | 16, 20, 24 px masters | 16 px, drawn natively |
-| Stroke | 1.5 px | 1.6 px (SF Symbols Regular) | 1 px (Fluent Regular) | 1.5 px (Adwaita symbolic), solid small details |
-| "On" state | filled | the `.fill` form | the Filled style | the button's checked fill, same drawing |
+**States.** Hover (`--fill-*-hover`, only under `@media (hover: hover)`) never
+moves or resizes anything; pressed has no scale on Windows and GNOME. Disabled
+uses `--text-disabled`, `--fill-disabled` and `aria-disabled` (menu items stay
+focusable). Busy shows a 16 px spinner after 400 ms with `aria-busy`. Invalid
+fields show words and an icon, never a red ring.
 
-GNOME icons are named `ibis-…-symbolic` and recoloured by GTK. Where the
-platform already has an icon with the exact meaning (menus, system dialogs), the
-platform's icon is used. Seven type
-icons say what a reference is: article, book, chapter, thesis, web page, report
-and other (chosen from its CSL type). They never reuse an attachment drawing
-(the document or the globe), so a row never shows the same picture twice.
+**Selection and focus.**
 
-**App icon (#952).** The [final brand kit](../brand/README.md): a scarlet bird
-with soft depth on a light tile, with a 62% glyph-to-tile ratio and the kit's
-optical centring. Windows uses the bird on transparency; macOS and GNOME retain
-their platform face sizes. Small and symbolic art comes from the same master,
-with a thicker neck and flat colour. How the assets are regenerated is in the
-[icon source notes](../apps/desktop/src-tauri/icons/source/README.md).
-
-**Per platform.** Only these change:
-
-| | macOS | Windows 11 | Linux (GNOME) |
+| | Pointer over it | Chosen or current | Keyboard focus |
 |---|---|---|---|
-| Material | Standard material for the window; Liquid Glass only on the search bar (Rollout 9) | Desktop Acrylic | Flat, opaque |
-| System font | SF Pro (`-apple-system`) | Segoe UI Variable (Text) | Adwaita Sans or Cantarell (GTK's `system-ui`) |
-| Neutrals | Translucent fills over the material (below) | Fluent: surface `#f3f3f3` / `#202020`, text `#1b1b1b` / `#fff`, secondary `#606060` / `#cfcfcf`; controls on `ControlFillColorDefault` | Adwaita `window_bg` `#fafafb` / `#222226`, `window_fg`; buttons and entry on the control fill (text at 8%) |
-| Corners | See **Corners** above | | |
-| Selected row | Filled accent, white text | Soft grey with an accent pill on the left | GTK's selection colour (filled accent) with its paired text |
-| Keyboard focus ring | 2 px accent, 1 px gap | 2 px in the text colour around a 1 px surface-coloured stroke (Fluent's focus visual) | 2 px, the accent mixed half toward the text colour, 1 px gap |
-| Search box | Frameless, large; with Liquid Glass, a 40 px capsule that also holds format | Text box with an underline that turns accent on focus | Framed entry |
-| Shortcut labels | ⌘ ⌥ ⇧ ⌃, joined in one key cap (⌘K) | Ctrl Alt Shift, one cap per key (Ctrl K) | Ctrl Super Shift, one cap per key with "+" between (Ctrl + K) |
-| Header menus | Borderless pop-up button with ⌃⌄ | ComboBox with a chevron | Flat drop-down with `pan-down-symbolic` |
-| Switch | 38 × 22, the regular `NSSwitch` size | 40 × 20, outlined when off | 46 × 26 |
-| Copied | Pill near the top of the screen | Notice bottom-right | Toast at the bottom |
+| Result row | Quiet tint | The selected-row fill | The same fill; never a ring |
+| Menu item | The menu highlight | Leading check (format) or trailing check (More toggles) | The menu highlight; never a ring |
+| Segmented choice | Quiet tint | Raised thumb on a recessed track | Ring around the group |
+| Pop-up button, More | Quiet fill | Pressed fill while open | Ring |
+| Buttons | One step darker | Primary: accent fill with `--text-on-accent` | Ring |
+| Switch | No change | Accent track | Ring |
+| Search box | None | None | None: the caret (Windows: its accent underline) |
 
-On macOS, use WebKit's paired selected-content background and alternate-selected text when both are supported. `AccentColorText` can resolve to black even on saturated blue; keyword support alone does not establish a native pair or custom-accent following. Generic fallbacks remain for other engines, and increased contrast and forced colours retain their system Highlight pair.
+- **Selection is a fill** [D7]. macOS and GNOME: the full accent with paired
+  text (a tint reaches only about 1.2:1 beside other rows). Windows: a subtle
+  fill and a 3 × 16 px accent pill. A kept-open picker without focus uses
+  `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
+  Windows and GNOME.
+- **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
+  click, and **drawn inside the item it marks**, so no scroll area clips it and
+  it never covers a neighbour. macOS 2 px accent with a 1 px gap; Windows 2 px
+  text colour around 1 px surface; GNOME 2 px accent mixed half toward the text;
+  contrast modes 2 px `CanvasText`.
 
-The Linux selected row uses the full selection colour rather than a tint: focus
-stays in the search box while ↑ ↓ move the selection, so the fill is the only
-cue, and libadwaita's list tint (25 % accent, `$view_selected_color`) or a
-plain neutral fill reaches only about 1.1–1.3:1 against the rows beside it.
-The full accent reaches about 3.7:1 (light) and 4:1 (dark) with Adwaita blue.
-Adwaita's half-accent focus ring is mixed toward the text colour instead of
-made transparent for the same reason.
+**List and row.** Type tile, title, meta line, trailing year. On hover or
+selection the add button replaces the tile (plus, or check when added; a 32 px
+target with a tooltip and no Tab stop), so the row never reflows; a row in the
+citation always shows the scarlet tile with a white check. Comfortable's meta
+line: authors shortened as in a citation ("García et al.") then the container,
+each with an ellipsis; Spacious adds the type word; Compact puts the first
+author after the title. "Why it matched" only when the match is hidden; "In 2
+libraries" for duplicates; one 16 px attachment icon in a 24 px chip. Screen
+readers hear title, first author, year, container, type and why it matched.
 
-High contrast and reduced transparency replace every material with the opaque
-system surface, as [native appearance groundwork](https://github.com/ibiscite/ibis/pull/232#issuecomment-6282577029) already does.
+**Menus** [C9]. The operating system's own menus only where the system owns
+them: menu bar, tray and native right-click (ADR 0021). In-window menus (format,
+library scope, More) are Ibis's but match native metrics: `--r-menu`,
+`--menu-pad`, items padded 10 px on both sides, `--menu-item-height` high (28 px macOS, 32 px Windows and GNOME),
+separators inset 10 px with 4 px above and below, native open and close motion.
+A leading check column only in a menu whose items are a choice (the format
+menu). More starts at its labels; its toggles are `menuitemcheckbox` items with
+a trailing check. The format menu's filter field aligns with the item
+labels; menus with more than seven items get one. Format opens 4 px below its
+pop-up, aligned to its trailing edge; header menus open `bottom end`, footer
+menus `top end`, flipping then shifting within 8 px of the window. A shortcut in
+a menu is plain trailing text in native modifier order (⇧⌘C), never a key cap.
+Check each menu side by side with a real one on every platform.
 
-On macOS the glass is AppKit's popover material (`NSVisualEffectView`) behind
-the page, under a light veil of the surface colour at 55%: web text cannot use
-AppKit's vibrant blending, and without the veil secondary text drops below
-4.5:1 over a bright or colourful wallpaper. Over the veil, the citation and
-status colours are one step deeper (scarlet `#982d16` light, `#ff9d87` dark) so
-they keep 4.5:1; the opaque surface keeps the usual scarlet. Fills, hairlines
-and key caps are translucent so the material shows through, and the window edge
-is a 1 px hairline (black 10% in light, white 10% in dark), never a white rim.
+**Buttons.** Primary: `--accent` with `--text-on-accent`, one per view.
+Secondary: `--fill-control` (plus the Windows stroke). Quiet: no fill, `--muted`
+text, subtle hover. Icon button: a 20 px glyph in a 32 px square whose tooltip
+names the action and key; a toggle shows a filled glyph on the pressed fill,
+never the accent. Buttons size to content (at least 64 px wide) and never hold a
+key cap: they use quiet trailing text ("Cite this page ⌘↩") [C8].
 
-**Materials by layer.** Every platform separates a content layer (the result
-list, preview and tray) from a control layer (search and format).
+**Pop-ups.** The format pop-up shows its value and a secondary indicator that
+never turns (⌃⌄, a Fluent chevron, `pan-down-symbolic`). Space, Enter or ↓
+opens it (also Alt+↓ off macOS); a pick or Escape returns to search, Tab moves
+on. Named by what it sets and its value ("Copy as Pandoc"); items are
+`menuitemradio`. Hidden until a library is chosen.
 
-- **macOS.** Content stays on the standard material described above. Liquid
-  Glass (`NSGlassEffectView`, macOS 26) is a later step (Rollout 9) and then
-  covers only the search capsule: the regular variant, untinted, never on rows,
-  lists or the preview, and never glass on glass. Selection stays the system
-  accent. Ibis sets no blur or opacity of its own, so the macOS 27 glass
-  opacity setting, Reduce Transparency and Increase Contrast apply unchanged.
-- **Windows.** The picker is a transient, light-dismiss surface, which is what
-  Microsoft reserves Desktop Acrylic for. Content sits directly on it, with no
-  second layer. Mica is for long-lived windows such as settings. Both become the
-  solid surface when transparency effects are off or battery saver is on.
-- **Linux.** Flat and opaque on `window_bg`, with the search entry on
-  `view_bg`. Ibis does not use the GNOME 51 blur API, since GNOME's own apps
-  stay flat.
+**Key caps.** Only in the footer and in lists of keys, never in buttons or menus
+[C8]. A 20 px fill (`--key-cap` on `--fill-control`), `--r-key`, label-type
+UI-font text, never an outline and never scarlet. macOS joins glyphs in one cap (⌘K;
+the Return cap is the ↵ glyph); Windows gives each key a cap 4 px apart (Ctrl
+K); GNOME adds "+" between caps (Ctrl + K). Decorative caps are hidden from
+screen readers; `aria-keyshortcuts` names the keys.
 
-## What shows, and when
+**Scroll areas.** One scroll bar style for the list, menus, the shelf and every
+other scroller, from the shared component: overlay scroll bars on macOS, the
+platform's thin style elsewhere. Content never shifts when a bar appears.
 
-| Element | Visible | Why |
-|---|---|---|
-| Search box | Always | The largest element, focused on open. Its placeholder lists what can be searched. |
-| Format (for example "Pandoc ⌃⌄" on macOS) | Once a library is chosen | What is pasted depends on it. One word, no icon; each platform's pop-up button (see **Header**). "Key formats" and "Citation styles" show real samples and a leading check; unavailable styles stay focusable; typing filters. |
-| More (Ctrl/⌘ K) | Always | The one door to every other action; each shows its shortcut, so the menu is also the cheat sheet. In the footer it reads "More ⌘K", like the hints beside it (see **Footer**). |
-| Keep Window Open | Always in the header and in More | Neutral pin toggle; More reads "Keep window open" / "Stop keeping open", with ⇧⌘P on macOS and Ctrl+Shift+P elsewhere. The filled glyph and neutral selected fill show that it is kept open. The first outside-click tip is planned for 0.3 (#571/#572), naming the action and shortcut. |
-| Filter chips | Once added | `#tag`, `y:2019-2022` or `a:name` followed by a space becomes a removable chip. Backspace in an empty box removes the last one. |
-| Recently cited, Recently added, With PDF | While browsing | Shown when the search is empty or one is selected; hidden while typing so rows get the room. Tab reaches the current browsing tab; ← and → choose another (see **Keyboard focus order**). |
-| Tag and author suggestions | While typing `#` or `a:` | Take the place of the tabs. Enter, or Tab while the suggestions are open, picks the first. |
-| Row: type tile | Always | A 32 px tile at the row's start with the type icon on a quiet fill (24 px and no fill in Compact, so rows stay 40 px). Decorative: screen readers hear the type word instead. |
-| Row: title and year | Always | Only the year (or "No date") occupies the trailing column, vertically centred across the whole row, at the same edge on every row. |
-| Row: authors and journal | Comfortable and Spacious | Tells apart references with the same first author and year. The journal is the container title (journal, book or proceedings), else the publisher. Spacious adds the item type as one word ("Article", "Book"). One line: authors are shortened as in a citation ("García", "García, Okafor", or "García et al." for three or more; screen readers hear every name), then the journal, each with an ellipsis (the key and library label shorten first, never below a few letters, and the type word stays whole; only when enlarged text leaves no room do they move under them); a match in the journal is always named, since it may be shortened. Compact shows the first author ("García et al.") after the title. |
-| Row: citation key | Comfortable and Spacious | Monospace in the meta line, after the byline and optional type word; it and the library label shorten before the byline, retaining a few letters, then reflow below it when space runs out. Hover reveals the full key. Compact keeps it in the accessible name. |
-| Row: why it matched | Only when hidden | "In the abstract: …sleep…" or "Tagged: …" when the match is not in the title or authors. |
-| Attachment chip | When a file is attached | The platform's document (or globe) icon only, 16 px in a 24 px chip. "PDF, 12 pages" is its tooltip and accessible name, and it opens the preview. No empty column otherwise. |
-| "In 2 libraries" | Only for duplicates | Explains why one reference may differ between sources; it is listed once. |
-| Add button | Hovered or selected row | Takes the place of the type icon, so the row never reflows: a plus, or a check on a row already added. A row in the citation always shows a scarlet tile with a white check, the only scarlet on the row. A 32 px pointer target with its name in the tooltip ("Add García 2021 to citation"); it adds no Tab stop, because a listbox option holds no controls, and keyboards use Shift+Enter. |
-| Citation shelf | Once a reference is highlighted or added | One quiet card above the footer's Copy action ([design/preview.md](design/preview.md)): the chosen references as author-year chips (at most six, then "+N", which shows them all), then the exact text Enter pastes on one line, in text colours with the decorative scarlet beak SVG from #888 (20 px tall, scaled with text), at the tile column’s end on the citation line. It mirrors in RTL, dims to 45 % while pending and uses `CanvasText` in contrast modes; citation text stays on the row text edge and chips keep their position. Results never move when a reference is added. Page numbers come later (#24). |
-| Footer key hints | Always | What Enter does now, Shortcuts and More, label first and keys after (see **Footer**). |
-| Footer tip | One at a time | Tied to what the user is doing, retired once they have done it. Otherwise the footer shows library status. |
-| Library status | Always, quietly | A dot, the source and the count; the age only when it is news or a warning (see below). A sentence above the list only when something needs the user. |
+**Tables** (the keyboard shortcuts list, Settings lists). Columns size to their
+content and never break a word; a table that does not fit scrolls or drops a
+column, it does not hyphenate.
 
-**Library status.** One footer line, as Mail's "Updated just now" and VS Code's
-status bar do it: short words, colour only alongside them, detail on demand.
+**Labels and long strings.** Labels on actions, menu items and settings never
+wrap, also at Larger text: the layout widens, or the label truncates with a
+tooltip. Data truncates with a tooltip; file names shorten in the middle and
+keep their extension. Budget +35 % for German and Greek. RTL uses logical
+properties (pill, tile, year and chevron mirror; key caps keep platform order);
+mixed-direction strings are isolated and citation keys stay LTR.
+
+**Icons.** Ibis's own drawings on every platform: 20 px grid, 1.5 px rounded
+stroke (1.6 px macOS, 1 px Windows, 16 px symbolic `ibis-…-symbolic` on GNOME);
+"on" is the filled form. Seven type icons (article, book, chapter, thesis, web
+page, report, other) never reuse an attachment drawing. Platform icons only
+where the platform owns the meaning.
+
+**Footer and status** [C8]. Status dot and text at the leading edge, then
+"Copy N as <format> ↵" (the primary hint, text colour), "Shortcuts ⌘/" and
+"More ⌘K" (secondary). Every hint is label first, then keys: 8 px between them,
+16 px between hints, label type on one baseline. Actions are quiet 24 px fills,
+radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
+the keys and sit in one group named "Keys". With Alt held: "Add to citation ⇧↵",
+the Escape step ("Clear search Esc" or "Hide Esc"), then More. When the footer
+does not fit, drop Shortcuts first (More lists it), then shorten the status,
+then wrap. The status dot is `--status-dot-size`, centred on the tile column and
+the text's x-height; the status text starts on the title column [C3].
 
 | Case | Footer | Dot |
 |---|---|---|
 | Starting, first run | "Checking library…", "No library chosen" | Grey |
 | Opening | "Zotero · opening…" | Grey |
 | Loaded | "Zotero · 1,204 references" or "thesis.bib · 1,204 references" | Done |
-| Changed while open (ten minutes) | "… · updated 2 minutes ago", only when a reread brought different references | Done |
+| Changed while open | "… · updated 2 minutes ago", only when a reread brought different references | Done |
 | Reloading | "… · reloading…", count kept | Unchanged |
 | Reading notices, empty | "… · 2 reading notices", "Zotero · no references" | Look |
 | Update failed, old copy kept | "Zotero · not updated · checked 2 hours ago" | Stop |
-| Switch to another library failed | The library still searched, as when loaded | Stop |
 | Never opened | "thesis.bib · not opened" | Stop |
 
-Several Zotero libraries still read "Zotero"; rows name their library. The
-tooltip, and the top of More (also the name of its library group, so keyboard and
-screen-reader users reach it), give two lines: a short one ("Zotero · 1,204
-references") and a quieter one with the libraries, when they were last checked
-(relative and clock time) and any problem ("My Library, Lab group · checked 2
-hours ago, 3:19 PM · Zotero could not be reached"). "Updated" always means the
-references changed; "checked" means Ibis last read them or found them unchanged.
-The footer always names the library that is searched, even after a switch to
-another one failed. A long name is shortened before the state words, and names
-are isolated so right-to-left names keep their place. The English summary keeps
-source, state and age in that order inside an isolated phrase; the age and result
-count are isolated too, so an RTL page cannot reorder their words. Times
-use `Intl.RelativeTimeFormat` in the app's language ("just now" under 45 seconds,
-a date after a week) and tick every 30 seconds without redrawing the picker. The
-live region holds only the words before the age, so a ticking clock is never
-announced. The tray line has no time, because a native menu is not redrawn while
-open; after a failed update it says "not updated" and why.
+"Updated" means the references changed; "checked" means Ibis read them. The
+footer always names the library searched; its tooltip and the top of More add
+libraries, check times and problems. Names and ages are isolated for RTL; the
+age ticks every 30 s outside the live region.
 
-## Header, footer and empty states
+**Notices.** "Copied" or "Inserted" shows after the picker hides, in a window
+that never takes focus: a pill near the top on macOS, bottom right on Windows,
+a bottom toast on GNOME. In-window toasts ("Removed · Undo") last 8 s and pause
+on hover and focus. Errors are one sentence beside their cause, never a modal.
 
-The picker's chrome: what sits around the result list, and how it lines up.
-Sizes come from **Space and size** and **Corners**. Four role tokens are
-new, from the design-system foundations, and are defined here:
-
-| Token | Meaning | macOS | Windows 11 | Linux (GNOME) |
-|---|---|---|---|---|
-| `--r-control` | Buttons, fields, pop-up buttons | 6 (a capsule in the header on macOS 26) | 4 | 6 |
-| `--r-key` | Key caps | 4 (5 on macOS 26) | 4 | 4 |
-| `--surface-raised` | Cards and grouped forms, one step above `--surface` | `#fff` / `#2c2c2f` | white 70 % / white 5 % | `#fff` / `#2e2e32` |
-| `--text-tertiary` | Glyphs at rest (indicators, empty-state icons), at least 3:1; never sentences | black 45 % / white 45 % (`tertiaryLabelColor`) | black 45 % / white 54 % (`TextFillColorTertiary`) | `currentColor` at 45 % |
-
-`--key-cap` (20 px) is the existing key-cap height.
-
-**Edges.** Visible edges line up with the content; hit targets may overhang
-them. The leading edge is the tile column (`inset + row-pad`), the text column
-starts at `text x`, and the trailing edge is where row text ends
-(`W − inset − row-pad`). The last header selector, the last key cap in the footer and
-the year column all end on that trailing edge; a 32 px target around a 20 px
-glyph overhangs it by 6 px. Controls in one bar share a centre line, and text
-in one bar shares a baseline.
-
-**Header.** In order: search glyph, query, clear button, the header menus
-(format, then library scope when there is one), then the pin (C6 in
-[system.md](design/system.md#canvas-decisions-c1c18-2026-10-23)).
-
-- **Clear (×).** Inside the field at its trailing end, only while there is a
-  query: a 16 px glyph in a 32 px target, secondary colour. Its name is
-  "Clear search"; it is not a Tab stop, because Escape does the same. The
-  glyph follows the platform, as the **Icons** rule allows for meanings the
-  system owns, but is Ibis's own bundled SVG (a webview cannot load SF
-  Symbols or Segoe icons): a filled circle with a × on macOS, like its search
-  fields; a plain × on Windows and GNOME, like a Fluent text box and a GTK
-  search entry.
-- **Header menus** are pop-up buttons: they show the current choice as their
-  label, and the menu marks it with a leading check. The label is the value,
-  in the text colour at 13 px; the indicator is secondary and never turns
-  when the menu opens. 4 px between the field and the first menu, and between
-  two menus.
-
-  | | macOS | Windows 11 | Linux (GNOME) |
-  |---|---|---|---|
-  | Native model | Pop-up button, borderless (toolbar) style | ComboBox | Drop-down (`GtkDropDown`), flat in a header |
-  | Indicator (bundled SVG, drawn like) | ⌃⌄, as `chevron.up.chevron.down`, 8 × 12 | a chevron, as Fluent's `ChevronDown`, 12 px, 1 px stroke | a chevron, as `pan-down-symbolic`, 16 px |
-  | Rest | No fill | Control fill, 1 px stroke with a darker bottom edge | No fill |
-  | Hover / open | Quiet fill / pressed fill | Hover fill / pressed fill | Quiet fill / pressed fill |
-  | Height, radius (`--r-control`) | 28 px in a 32 px target, capsule | 32 px, 4 px | 32 px, 6 px |
-  | Label | Regular weight | Regular weight | Bold, as libadwaita buttons are |
-
-  These are in-window menus drawn in the webview (**Menus**, ADR 0021), so
-  typing filters them. The menu opens below the button, aligned to its
-  trailing edge. Space, Enter or ↓ opens it (Alt+↓ too on Windows and Linux,
-  as their combo boxes do). A pick or Escape closes it and returns focus to
-  the search box; Tab closes it and moves on (see **Keyboard focus order**).
-  Each button is named by what it sets and its value ("Copy as Pandoc",
-  "Search in All libraries"), with `aria-haspopup="menu"` and
-  `aria-expanded`; items are `menuitemradio` with `aria-checked`. While no
-  library is chosen the header menus are hidden, because first-run setup asks
-  the same question in its own words.
-- **Keep Window Open.** The header pin (C6), also in More as "Keep window
-  open" / "Stop keeping open", with ⇧⌘P on macOS and Ctrl+Shift+P elsewhere.
-- **Targets.** Every header control keeps a 32 px target (44 px under
-  `pointer: coarse`), even where it draws 28 px.
-
-**Keyboard focus order.** Tab moves through the following stops, skipping
-hidden controls, then back to the first; Shift+Tab reverses the order and
-nothing holds focus:
-
-1. The search box. Tab leaves it, except while tag or author suggestions are
-   open, when Tab picks the first (as a combo box's autocomplete does).
-   Escape closes suggestions without clearing the query; Tab then leaves the
-   box. Suggestions stay closed until the query changes.
-2. The header format menu, then Keep Window Open. A future library-scope
-   menu precedes Keep Window Open.
-3. The browsing tabs, only while visible: one stop on the current tab in a
-   `tablist` named "Browse references". Each `tab` has `aria-selected` and
-   names its result `tabpanel`; only the current tab has `tabindex="0"`.
-   ← and → focus and choose the previous or next tab, wrapping at the ends;
-   Home and End choose the first or last. These keys apply only while a tab
-   has focus, leaving text editing and attachment preview in the search box
-   unchanged. Tab leaves for the footer actions;
-   Shift+Tab returns to Keep Window Open.
-   Clicking or tapping a tab chooses the same view. There is no required
-   Ctrl+Tab shortcut: ordinary Tab followed by arrow keys is the keyboard
-   route on every platform, including when browser accelerators are consumed.
-4. The footer actions, then More.
-
-The result list is not a stop: ↑ and ↓ in the search box move through it
-(`aria-activedescendant`). Inside an open menu, Tab closes the menu and moves
-to the next stop, as if focus were on its button; from More that next stop is
-the search box. The [shared key table](../apps/desktop/src/keys.ts) lists the
-implemented keys; add these browsing-tab keys when the tabs are implemented.
-
-**Footer.** Library status at the leading edge; at the trailing edge, key hints
-and More. One hint pattern everywhere outside menus: **the label first, then
-its keys**, 8 px between them, 16 px between hints, all at 12 px on one
-baseline, each key cap 20 px high and centred on it.
-
-- **Order.** What Enter does now ("Copy as Pandoc ↵", the primary hint, in the
-  text colour), then "Shortcuts ⌘/", then "More ⌘K" (both secondary). The
-  hint that comes and goes is first, so the cluster's trailing end never moves.
-  With Alt held: "Add to citation ⇧↵", then the Escape step ("Clear search
-  Esc" or "Hide Esc"), then More.
-- **Actions** are quiet buttons, including Copy, the alternate Add/Remove and
-  Escape step, Shortcuts and More. Their labels match their accessible names;
-  decorative caps are hidden from screen readers and `aria-keyshortcuts`
-  names the keys. They invoke the same guarded actions as the keyboard.
-  The quiet fill is drawn 28 px high in the 40 px footer, with a
-  32 px target (44 px under `pointer: coarse`), radius `--r-tile`.
-  Targets wrap without overlap; the footer grows when needed. More has
-  `aria-haspopup="menu"`, `aria-expanded` and `aria-keyshortcuts`; its caps
-  are hidden from screen readers.
-- **Shortcuts** opens the keyboard shortcuts list. The name matches each system's own term (macOS and
-  Windows both say "Keyboard shortcuts"); the footer shortens it to one word,
-  and More and the list's title say it in full. Changing shortcuts belongs to
-  the settings design, not to this list.
-- **Screen readers** hear the actions in one group named "Keys". Buttons stay
-  visible and reachable when focus leaves Search; Enter then presses the
-  focused button. Copy is offered only when its current output is ready.
-- **Fit before wrapping.** Measure the actual controls and key caps, including
-  the current Copy label. When they do not fit, drop Shortcuts first
-  (More still lists it), then shorten the library status using its existing
-  ellipses and full tooltip. Only then wrap, keeping 8 px above and below.
-  Restore the hint and status space when the contents fit again; width, text
-  size, platform and format labels all affect this decision. A folded focused
-  Shortcuts action returns focus to More; Search and unrelated controls keep it.
-  If the footer still changes height, the local results scroller keeps the
-  highlighted row visible only while Search owns keyboard navigation. Pointer
-  choices and another focused control do not make the list move.
-- **Library status** keeps its rules (see **Library status**): the dot is
-  6 px, centred on the text's x-height, and starts on the leading edge.
-- **Key caps.** A 20 px fill (`--key-cap` on the control fill), radius
-  `--r-key`, 5 px side padding, 12 px text in the UI font, never an outline
-  and never scarlet. macOS joins the glyphs in one cap, as its menus write them
-  (⌘K, ⇧↵). Windows gives each key its own cap, 4 px apart, as PowerToys does
-  (Ctrl K). GNOME gives each key its own cap with a "+" between, as GTK's
-  shortcut labels do (Ctrl + K). In menus a shortcut is plain trailing text,
-  as in each system's own menus, never a cap.
-
-**Empty states.** The empty library and the missing file use C12's choice
-rows instead (#949). Otherwise one template on every platform, centred like
-`ContentUnavailableView`, `AdwStatusPage` and Fluent's empty state: a 48 px
-symbolic icon in `--text-tertiary`, a title (15/20, semibold), a line of
-at most 40 characters per row, wrapping to at most three rows (13/18,
-secondary), then one filled suggested action, or key hints, 16 px below.
-Necessary alternative recovery actions use quieter text controls. Descriptions
-are one short sentence, fitting one line at the normal picker size. A file name
-in a title is shortened in the middle, keeping its extension
-("my-very-long…library.bib"). The title and line are plain text after the
-list, so screen readers reach them by reading on; the existing polite live
-region already announces "0 results". Key hints in an empty state are hidden
-from screen readers, because the keyboard shortcuts list says the same. No skeletons; a spinner only after 400 ms. It starts 48 px below the search band. The
-result heading ("Best matches", "20 results") appears only above rows: with
-no rows there is nothing to name.
+**Empty states.** Empty library, missing file and first run use the choice
+screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
+`--text-tertiary`, a title (title type), one line of at most 40 characters
+(meta type, `--muted`, up to three rows), then one suggested action 16 px below;
+quieter text buttons for alternatives. No skeletons or illustrations; a spinner
+only after 400 ms, 48 px below the search band. The result heading appears only
+above rows.
 
 | Case | Title | Line | Below |
 |---|---|---|---|
-| Nothing typed, library loaded | Type to find a reference | Search by title, author, year, citation key or DOI. | Decorative Copy/Add key hints; no action |
-| Nothing typed, with history (Rollout 6) | | | No template: "Recently cited" rows, ready for ↓ and Enter |
-| No matches | No matching references | Try a surname, year or fewer words. | Suggested: Clear search; quieter Search all libraries when some are left out |
-| Empty `.bib` library | No references in thesis.bib | Choose a file with references. | Suggested: Choose library… |
-| Empty Zotero library | No references in My Library | Add items in Zotero, then reload. | Suggested: Reload; quieter Choose library… |
-| Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then a spinner and the title 48 px below Search; no actions; retained rows remain below |
+| No matches | No matching references | Try a surname, year or fewer words. | Clear search; quieter Search all libraries when some are left out |
+| Empty Zotero library | No references in My Library | Add items in Zotero, then reload. | Reload |
+| Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then a spinner; retained rows stay |
 
-Spotlight, Alfred and GNOME's search show nothing until something is typed;
-Raycast and the Windows 11 Start menu show recent items. Ibis does the second
-once it keeps a local history (Rollout 6, which can be turned off and cleared),
-and until then the first, with the two keys that make the first minute work.
-No illustration and no tips beyond those keys.
+**Shelf** [C7]. What Enter pastes, one 40 px line above the footer's Copy
+action: the beak mark hangs at the tile column's end and the citation starts on
+the title column. Shown while there are results; hidden on empty, error and
+choice screens. Results never move when a reference is added. With several
+references the citation itself holds them as segments (no chips line): each
+reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6)
+with a 16 px round remove button inside its end over a 6 px fade, so nothing
+moves and neighbours are never covered (also for zero-width separators). From
+the keyboard ← → select a segment as an accent-filled token and Delete removes
+it. On copy the shelf shows a closing beak and "Copied" at the line end.
 
-**First run.** Superseded by C12 (two steps of choice rows, #950); the
-grouped form below is replaced when #950 lands. A grouped form, as macOS System Settings, Windows Settings
-cards and libadwaita preference groups are: a title ("Choose a library to get
-started") and one secondary line saying what was found, then one group of
-labelled rows on `--surface-raised`, each at least 48 px high (56 px with a
-second line) with `row-pad` sides and one control or value at the trailing
-edge, separated by hairlines, radius `--r-row`. These are the same rows the
-Settings window will use.
+- **Text.** Text colours; key formats monospace with punctuation in `--muted`;
+  formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
+  ellipsis; the full text is in the tooltip and the wide pane.
+- **Beak mark** (#888). The supplied two-head SVG in `currentColor` from
+  `--citation`, 20 px tall (`--space-5`), scaled with text, `aria-hidden`,
+  mirrored in RTL, 45 % while pending, `CanvasText` in contrast modes [C16].
+- **States.** Pending: the old text dims for 300 ms, then "Formatting…"; Enter
+  waits. Failed: a Stop icon, "Couldn't format in APA. Choose another style, or
+  copy keys.", no Enter hint. Stale: a Look icon, "The library changed. Reading
+  it again…". Warnings: a trailing pill ("1 warning", "Numbers may change").
+- **Show what will be pasted.** On by default (`show_paste_preview`, ADR 0020),
+  ⌘I / Ctrl+I, in More until Settings exists. Off hides only the line and
+  closes the wide pane; the chosen references and copy readiness stay. If the
+  output had focus, Search receives it first. Copied while the window is kept
+  open says "Copied" without repeating text only when the visible output is
+  exactly the copied string.
+- **Per OS** [C13]. A tint on the macOS glass, a stroked card on Windows,
+  full-bleed between dividers on GNOME. Without room it scrolls in its own area,
+  keeping 24 px of results reachable.
 
-1. **Library:** Use Zotero and Choose library…. Exactly one is the primary
-   button (accent fill, paired text): Use Zotero when Zotero is open,
-   otherwise Choose library…. Files found nearby follow as rows of their own,
-   name above folder, each with a Use button.
-2. **I write in:** a segmented choice, "Markdown (Pandoc)", "LaTeX", "Typst"
-   (and "Word" when citation styles are available). The copy format has one
-   name everywhere: the header menu, the footer ("Copy as Pandoc") and this
-   choice all say "Pandoc"; first run adds only the place people know,
-   Markdown, in front of it.
-   It is a radio group named "I write in" (each segment a `radio` with
-   `aria-checked`; ← and → move and choose).
-3. **Open Ibis from any app:** the shortcut, in key caps. A value, not a
-   control: changing the shortcut belongs to the Settings window.
-4. **Start Ibis when you log in:** a switch (`role="switch"`, named by its
-   row), off until turned on.
+**Preview** [C17]. At 960 px or wider the list keeps 400 px and the pane takes
+the rest; below that the preview replaces the list. Pane toolbar and bottom row
+are 48 px with S padding; the page area keeps S from the divider and the edge;
+the content ends S above the shelf. The pane shows the focused reference, the
+references in the citation and the full output, wrapped and selectable. The page
+field shows the printed label with "PDF n of m"; "Cite this page ⌘↩"; Shift
+extends to a range. Opening it widens the window toward the side with room.
 
-"Look again" is a text button under the group. The footer shows "No library
-chosen", Shortcuts and More, so nothing else changes once a library opens.
+**Overlays** [D15]. One of each kind at a time; a menu closes a tooltip, a modal
+closes any menu. Tooltips appear after 600 ms (then at once for 300 ms), name
+the action and its key, and never take focus. Dialogs trap focus, end-align
+their buttons in platform order and become full-window sheets below 420 × 360.
+Overlays close when the picker hides and do not reopen.
 
-**Selection and focus.** One rule set for every control:
+## Interaction
 
-| | Pointer over it | Chosen or current | Keyboard focus |
+One table for every input. [`apps/desktop/src/keys.ts`](../apps/desktop/src/keys.ts)
+(`KEY_TABLE`) is the code source of keyboard shortcuts: the keys overlay, the
+footer hints and the More menu read their labels from it. A key is added there
+only together with the code that handles it.
+
+| Input | Does |
+|---|---|
+| Click a row | Selects it; the shelf shows its citation [C5] |
+| Double-click, Enter, or the footer Copy | Copies (or inserts) what the shelf shows; only copying closes the window |
+| ⌘-click / Ctrl-click, the + on a hovered tile, Shift+Enter | Adds to the citation, in order (no Shift-click ranges) |
+| Right-click a row | Opens More for that row |
+| Esc | Steps back one layer: menu or dialog, preview, search and filters, then hide |
+| ↑ ↓ (focus stays in search) | Move the selected row (`aria-activedescendant`) |
+| ⌘K / Ctrl+K | More, the one door to every other action, each with its shortcut |
+| ⌘/ / Ctrl+/, or `?` outside a text field | The keyboard shortcuts list |
+| ⇧⌘P / Ctrl+Shift+P | Keep window open (the pin) [C6] |
+| ⌘I / Ctrl+I | Show or hide what will be pasted |
+| → in search | Opens the preview (planned, with attachments) |
+| Typing anywhere | Types into search |
+
+**Pin** [C6]. A neutral icon button at the header's end, always visible. On:
+the filled glyph on the pressed fill, never the accent; More says "Keep window
+open" / "Stop keeping open". Escape never unpins.
+
+**Focus order.** Tab: search box (Tab picks the first tag or author suggestion
+while they are open), header pop-ups, the pin, the browsing tabs while visible
+(one stop in a `tablist`; ← → choose, Home and End), the footer actions, More,
+then back. The list is not a stop. Inside an open menu Tab closes it and moves
+on. Nothing asks for focus except the search box on open.
+
+**Filters and browsing.** `#tag`, `y:2019-2022` and `a:name` plus a space become
+removable chips (Backspace in an empty box removes the last). Recently cited,
+Recently added and With PDF show while the query is empty; suggestions for `#`
+and `a:` take their place while typing.
+
+**Learning and parity** (#788). First minute: type, Enter, paste; first week:
+one footer tip at a time, retired once done (local "seen" flags only); power:
+filters, the format menu, More, pin. No tour or "what's new". Every task works
+by mouse, touch, voice or switch access: the tray and app icons open the picker,
+every key has a visible control, hover is never the only way to see something,
+and visible labels match accessible names.
+
+## Per platform
+
+| | macOS | Windows 11 | Linux (GNOME) |
 |---|---|---|---|
-| Result row | Quiet tint | The platform's selected-row fill (see **Per platform**) | The same fill; never a ring |
-| Menu item | The menu highlight | Leading check | The menu highlight; never a ring |
-| Segmented choice | Quiet tint | A raised thumb on a recessed track; never a coloured border | Ring around the focused segment |
-| Pop-up button, More | Quiet fill | Pressed fill while its menu is open | Ring |
-| Buttons | One step darker fill | Primary: the accent fill | Ring |
-| Switch | No change | Accent track | Ring around the switch |
-| Search box | None | None | None (the caret; on Windows its underline) |
+| Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass | Desktop Acrylic (build 22621+), content directly on it; footer band with a top divider | Opaque `window_bg`, no blur; footer band with a divider |
+| Accent fallback [C14] (light / dark) | #007AFF / #0A84FF | #005FB8 / #60CDFF | #3584E4 / #78AEED |
+| Selected row [C4] | Accent fill, paired selected-content text | Subtle fill, 3 × 16 px accent pill | Full accent with its paired text |
+| Search box | Frameless, large | Text box whose underline turns accent on focus | Framed entry |
+| Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule | ComboBox, chevron | Drop-down, `pan-down-symbolic`, bold label |
+| Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |
+| Switch | 38 × 22 | 40 × 20, outlined when off | 46 × 26 |
 
-The ring is the platform's focus ring from **Per platform**, only after
-keyboard movement (rule 8). Increased contrast and forced colours add their
-solid edges as described under **Accessibility**. Forced colours remove
-fills, so every chosen state there uses system colour pairs as well as its
-shape: the chosen segment is `Highlight` with `HighlightText`; a switch has a
-1 px `ButtonText` edge, a `ButtonText` thumb on the start side when off, and
-a `Highlight` track with a `HighlightText` thumb on the end side when on;
-menu items keep their check; the pressed pop-up button keeps a 1 px
-`ButtonText` edge.
+- **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
+  Over the macOS veil, citation and status colours go one step deeper to keep
+  4.5:1; fills, hairlines and key caps are translucent; the window edge is a
+  1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
+  Windows: unknown versions, transparency off and battery saver are opaque;
+  Mica only for long-lived windows such as Settings. Reduced transparency and
+  contrast modes make every layer solid.
+- **Accent** [C14]. The system accent, injected natively where the webview
+  cannot read it (Windows; GNOME through the portal), else the fallbacks above.
+  macOS uses WebKit's paired selected-content background and text.
 
-## Learning without a tutorial
+## Motion
 
-Three layers, each reached from the one before by something on screen:
+Feedback, panel, layout and exit durations come from `--motion-*`; layout is
+the 280 ms hard cap. Entrances use the look's `--ease-out`, exits `--ease-in`. No
+bounce. Windows menus slide 8 px and fade; macOS and GNOME menus appear at
+once. Chevrons never rotate. Reduced motion: no translate, scale or slide,
+fades of at most 100 ms. Never animated: list content while typing, row height,
+the caret, layout on hover, the citation text, ticking counts, focus rings,
+anything over 280 ms, anything that loops except a busy indicator.
 
-- **First minute:** type, press Enter, paste. Clicking a row selects it;
-  double-clicking copies it (C5).
-- **First week:** → in the search box previews the attachment and "Cite page"
-  fills in the page; Shift+Enter builds a citation with several sources;
-  Tab reaches the browsing tabs, where ← and → choose recent items or PDFs.
-- **Power:** `#tag`, `y:`, `a:` filters; the format menu; Ctrl/⌘ K
-  for every action; pin; per-app behaviour.
+## Accessibility
 
-The format menu offers all seven key formats from [ADR 0016](adr/0016-settings-format.md):
-Pandoc, `\autocite`, `\parencite`, `\textcite`, `\cite`, Typst and bare keys.
-The five bundled citation styles are separate choices ([ADR 0020](adr/0020-picker-preferences.md)).
-Number-key bindings are not implemented or assigned here; the shared key table
-for #223 must name each binding before any are advertised.
-That table is `apps/desktop/src/keys.ts`; the `?` overlay (Ctrl/⌘ / inside the
-search box), the footer hints and the More menu all read their labels from it.
-
-No pop-up tour and no "advanced mode". Tooltips appear after 600 ms and name the
-action and its key. Empty and no-result states say what to try next. Footer tips
-are stored locally as "seen" flags only, never as usage data.
+Every action has a key, discoverable on screen; focus, contrast and screen
+reader names follow **Selection and focus**, **Tokens** and **List and row**.
+"Copied" is announced politely. VoiceOver, NVDA and Orca verify it for 1.0.
 
 ## Window behaviour
 
-**Opening.** On the display with the focused window (settings: display with the
-pointer, or last position), at the position last used on that display. Focus is
-in the search box at once; typing must work without a click. If Ibis was closed
-less than a minute ago, the last search returns, selected so typing replaces it
-(adjustable up to three minutes; Raycast and PowerToys Command Palette offer
-the same setting in their documentation). The kept search lives in memory only
-and is never written to disk.
-It appears in 120 ms with a short fade. The at-cursor form opens under the text
-caret and flips above it near the bottom of the screen.
+- **Opening.** On the focused window's display, at the last position there,
+  with a 120 ms fade and focus in search. A search from under a minute ago
+  returns selected (memory only). The at-cursor form opens under the caret.
+- **Moving.** Drag the empty header, never the list; snap to the centre line and
+  upper third within 18 px (Alt places freely); remembered per display.
+- **Clicking outside** hides Ibis and the click reaches its target, unless
+  pinned or while a page number, picker dialog, file chooser, drag or sign-in
+  is in progress.
+- **Hover** selects only under a moving pointer; the wheel never selects.
+- **After a copy** Ibis hides, focus returns to the previous window and the
+  notice appears; a failed insert leaves the citation on the clipboard and
+  says why. Pinned, Ibis stays. Escape never asks or unpins.
+- **Never** take keys people type with (so Windows and Linux use Ctrl+Shift+Y,
+  not Ctrl+Shift+Space; Ctrl+Alt and Ctrl+Space belong to layouts and input
+  methods), open by itself, appear in the taskbar, Dock or Alt+Tab (only
+  Settings does), or animate past 280 ms. On X11 the first press over a
+  full-screen app is ignored and a second within two seconds opens Ibis;
+  Windows is #510.
+- **Platform limits.** macOS: a non-activating floating panel, also over
+  full-screen apps. Windows: comes forward only when asked; copies instead of
+  typing into elevated apps. Wayland: centred, pinned means "stays open", copies
+  and says "Press Ctrl+V" ([compatibility.md](compatibility.md#linux-shortcuts-and-tray)).
+- **Persistence.** A new choice kept across restarts needs an ADR before it adds
+  a `settings.json` field.
 
-**Moving.** Drag the handle or the empty part of the header; the list never
-starts a drag. It snaps to the centre line and the upper third within 18 px,
-showing a thin guide; Alt places it freely. Position is remembered per display;
-double-clicking the handle re-centres. It cannot be dragged more than half off
-screen. If a remembered display is gone, it opens centred.
+## First run and choice screens
 
-**Clicking outside.** Ibis hides and the click reaches what was clicked. The
-search and selection wait a minute. When pinned, Ibis stays. It never hides while
-a page number is being typed, a dialog attached to the picker or its file
-chooser is open, a drag is in progress or a sign-in is under way. Independent
-messages, such as an update offer, do not keep an unpinned picker visible.
+[C12] Empty library, missing file and first run share one pattern: a title and
+one line on the tile column's edge, then result-style rows (tile, title, one
+line of help, optional trailing tag, chevron).
 
-**Hover.** Moving the mouse selects the row under it; a row sliding under a
-still pointer (while typing or scrolling) does not. Hover only tints: no new
-columns, no height change. The wheel scrolls without changing the selection.
-
-**Sizes.** Opening the preview widens the window toward the side with more room,
-so the list does not jump under the pointer. Resizable from any edge, remembered
-per display. On small screens, the preview replaces the list instead of sitting
-beside it.
-
-**Giving focus back.** After Enter, Ibis hides and focus returns to the window it
-came from, and a short "Copied" (or "Inserted") notice appears where the
-table above says, drawn by Ibis in a small window that never takes focus;
-native system notifications may replace it later. If inserting fails, the
-citation is on the clipboard and a notice says why. Shift+Enter adds to the tray and keeps Ibis open. When pinned, Enter inserts
-and Ibis stays open.
-
-**Escape** steps back one layer: close a menu or dialog, close the preview,
-clear the search and filters, then hide. Nothing asks for confirmation. After
-hiding, the search is kept in memory for a minute. Clearing keeps the chosen
-references. Reopening within that minute restores even a query cleared by
-Escape, unless new typing or a completed copy replaced it; reopening later
-clears the search and selection. Escape never unpins.
-
-**Pinned** Ibis floats above the document, keeps its place, and does not take
-focus until clicked or summoned. It is the only time Ibis stays on top.
-
-**Never** take keys people type with (Ctrl+Shift+Space is the non-breaking space
-in Word and LibreOffice, so Windows and Linux use Ctrl+Shift+Y; Ctrl+Alt types letters on many European layouts; Ctrl+Space
-switches input languages), open by itself, appear in the taskbar,
-Dock or Alt+Tab (only the settings window does), or animate longer than 280 ms.
-On X11, the first shortcut press is ignored when the window manager reports a
-full-screen foreground app or presentation; a second press within two seconds
-opens Ibis. An unreadable foreground never blocks the shortcut. The macOS panel
-opens on the first press over full-screen apps in the current Space. Windows
-currently cannot detect this state and opens normally; its protection remains
-[#510](https://github.com/ibiscite/ibis/issues/510). XWayland window properties do
-not establish the foreground state of native Wayland apps, so they provide no
-native Wayland full-screen guarantee.
-
-**Platform limits.**
-
-- macOS: a non-activating floating panel, like Spotlight, so the writing app
-  stays in front; it opens over full-screen apps in the current Space.
-- Windows: an app may come to the front only when the user asked (shortcut or
-  tray), which is when Ibis opens. Ibis remembers the window it came from.
-  Typing into apps running as administrator is blocked, so Ibis copies instead
-  and says why.
-- Linux on Wayland: the compositor places windows and pinning on top is not
-  available, so Ibis opens centred and "pinned" means "stays open". Pasting into
-  other apps is generally not allowed, so Ibis copies and says "Press Ctrl+V".
-  A future global shortcut goes through the system's shortcut dialog; the
-  preview has no GlobalShortcuts portal integration. Its existing shortcut
-  backend requires reachable X11/XWayland with XKB, and otherwise explains
-  the limitation while keeping the application launcher available. See
-  [Linux preview shortcut capability](compatibility.md#linux-preview-shortcut-capability).
-  On X11, Ibis
-  can place its window, stay on top when pinned and register its shortcut
-  directly, as on Windows.
-
-**Accessibility.** Reduced motion uses fades only. Screen readers hear the
-result count and, per row, title, first author, year, journal or container
-(Comfortable and Spacious), its type in words and why it matched;
-"Copied" is announced politely. Every action has a key. Focus rings appear only for keyboard
-focus (`:focus-visible`), never after a click, in the platform's style (see the
-table above), and reach 3:1 against the surface with the platform's default
-accent. The search box never shows one: it always has focus, the caret is
-the cue, and on Windows its accent underline. Rows moved with ↑ ↓ show their
-fill, not a ring. With increased contrast or forced colours, every control and
-the search box show a solid 2 px ring and the active row a 3 px edge; a row
-in the citation keeps its check tile in system colours, so the check, not
-colour, says it was added. Right-to-left titles align right within their row.
+- **Empty library:** Zotero ("Found on this Mac/PC/computer") and BibTeX or
+  BibLaTeX file; a CSL JSON or YAML row joins only when those sources ship (0.5);
+  "You can drop a file here too."
+- **Missing file:** "Find example.bib" (accent tile) and "Use another library".
+- **First run:** two steps of the same pattern: where your references live,
+  then what you write in (Markdown (Pandoc), LaTeX, Typst). The copy format has
+  one name everywhere ("Pandoc"); first run adds only "Markdown" in front. The
+  open shortcut and start at login live in Settings and the footer tip. No mark
+  in first run. The footer shows "No library chosen", Shortcuts and More.
 
 ## Settings
 
-Until the settings window exists (rollout step 9), settings live in the More
-menu and the menu bar or tray menu, and each takes effect at once.
+[C18] Its own window (Dock, taskbar and Alt+Tab while open) with a searchable
+sidebar of pages (General, Shortcuts, Libraries, Citations, Preview, Advanced,
+About), each a stack of titled groups of the same rows; 720 × 560, down to 560
+wide where the sidebar collapses. A row is a label and optional description,
+then one control at the end, at least 48 px (56 with a description), in groups
+on `--surface-raised` [D17]. Changes apply at once; resets offer Undo.
 
-**Start Ibis when you log in.** The shortcut only works while Ibis runs, so
-Ibis offers to start at login: once during first-run setup, beside the shortcut
-it teaches, and always in More and the menu bar or tray menu. It is off until
-the person turns it on: Apple's App Review Guideline 2.4.5(iii) asks Mac apps for
-consent first, and Raycast, Alfred, PowerToys and 1Password offer it as a
-setting. The menu item uses each system's own words, the same in More and the
-menu bar or tray: "Open at Login" on macOS (Apple's term), "Start when you sign
-in" on Windows (Microsoft says *sign in*), and "Start on Login" on Linux (GNOME
-capitalizes menu items; GNOME has no official term). A login start leaves the
-picker hidden until the shortcut is pressed. The switch is read from the system
-each time, never from `settings.json`, so turning Ibis off in the system's own
-startup settings shows at once; if the system refuses, the switch shows the real
-state and a sentence says where to change it. Ibis Nightly and development
-builds register under their own names. How each platform stores the entry is in
-`apps/desktop/src-tauri/src/login_item.rs` and [PRIVACY.md](../PRIVACY.md).
+Until then settings live in More and the tray menu. **Start Ibis when you log
+in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
+("Open at Login", "Start when you sign in", "Start on Login"), and is read from
+the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).
+The detailed spec is [design/settings.md](design/settings.md).
 
-## Rollout
+## Brand and mark
 
-Each step is one pull request against #223 (or an issue split from it), reviewed
-with the states gallery on every platform. Settings format 2 is
-[ADR 0018](adr/0018-settings-format-2.md); [ADR 0019](adr/0019-update-checks.md)
-and [ADR 0020](adr/0020-picker-preferences.md) add optional update and picker
-fields. Any other choice kept across restarts (window position per display,
-display choice, how long a search is kept, which tips were seen) needs an ADR
-before it adds a `settings.json` field.
+[C16] The final master and settings in `brand/` ([brand/README.md](../brand/README.md)):
+one silhouette with a top-to-bottom tone, top rim light, bottom rim shade and a
+short shadow from one SVG filter. App icon: the scarlet bird at 62 % of a light
+tile with the kit's optical centring (on transparency on Windows); entries
+below 48 px are flat. Logos and icons come only from `brand/`; regeneration is
+in the [icon source notes](../apps/desktop/src-tauri/icons/source/README.md).
 
-1. Design values in `tokens.css` (#307, done); per-platform corner radii and
-   spacing from **Corners** (#576); the 280 ms cap and reduced motion for every
-   transition.
-2. Picker layout (#313), header and platform looks (#490), footer, `?` key
-   list and no-result actions (#491), rows that tell similar references apart
-   (#492); all done.
-3. Window behaviour that needs no settings: outside-click hiding, the Escape
-   ladder, the kept search and pinning (#314, done); "Copied" after hiding and
-   row selection on click and copy on double-click (C5); staying out of the taskbar and Alt+Tab, and
-   the full-screen guard (#495, #509, #510).
-4. Density and Larger text (ADR 0020, done); then an ADR for display choice and
-   remembered per-display position, and opening on the focused window's display.
-5. Footer tips, and `#tag`, `y:` and `a:` filters (tags need source support).
-6. Recently cited and Recently added (needs a local history that stays on the
-   device and, as PRIVACY.md promises, can be turned off and cleared).
-7. Citation tray with page numbers (0.3, with #24).
-8. Attachments: the attachment chip and the preview pane (needs attachment
-   data from Zotero).
-9. Later: one-line and at-cursor forms, the settings window, and alternative
-   looks users can choose, including macOS Liquid Glass (which needs the newest
-   macOS material API); native Wayland GlobalShortcuts portal integration
-   and its system shortcut dialog need their own implementation and evidence.
+## Website
 
-Also open: Desktop Acrylic instead of Mica on Windows (#577), per-platform icon
-weights, and the layered macOS app icon (#663).
+The website uses the same tokens, the same components' look and the rules on
+this page. It describes features and the roadmap only from
+[ROADMAP.md](../ROADMAP.md) and this page, with no separate claims. Website
+rules (pages, layout, voice) belong in this section, not in a separate
+language file.
+
+## Coming features
+
+How each user-visible item in ROADMAP.md fits the components above; "open"
+means not decided yet.
+
+| Feature (release) | Fits as |
+|---|---|
+| Page numbers and locators (0.3, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
+| Any CSL style, prefix, suffix, author omission (0.3) | Styles in the format pop-up (filter, leading checks), listed per Settings › Citations; prefix, suffix and omission controls: open |
+| Multiple references (0.3) | Shelf segments [C7], added with ⌘/Ctrl-click, Shift+Enter or the tile + |
+| Zotero while closed (0.3, #14), changed keys, cloud-synced data | Footer status with words and a Look or Stop dot; detail in the tooltip and More |
+| "Is this in my library?" (0.3) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
+| Collections (0.3) | Shown on rows and usable as a filter chip; placement and syntax: open |
+| Settings window (0.3, #776) | **Settings**; General, Shortcuts and Libraries first |
+| Insertion (0.4) | Enter, double-click and Copy insert when Settings › Citations says so; the notice says "Inserted" or why it copied |
+| Action registry (0.4) | Every action in More with its `keys.ts` key; picker keys editable in Settings › Shortcuts |
+| Open in Zotero, PDF at the page (0.4) | More and the row's right-click menu; the attachment chip opens the preview [C17] |
+| Recently cited and added (0.4) | Compact start [C11] and browsing tabs; local history that can be turned off and cleared |
+| `ibis toggle` for Wayland (0.4, #782) | No picker UI; Settings › Shortcuts explains it |
+| Online mode (0.5) | Its own section after local rows, never reordering them; needs its ADR and the maintainer's yes |
+
+## How the design changes
+
+- A design change edits this page, `tokens.css` or a shared component, never one
+  screen.
+- A visual bug is fixed in the rule or component that allowed it, with a check
+  (a test, the geometry check or a gallery state) so it cannot return.
+- The maintainer's design canvas is the visual reference. Its decisions are
+  written here, in place, with a [C] tag; the stale text they replace is
+  deleted in the same change, never left as a "superseded" layer.
+- Values marked as measured need native evidence on each platform (#774).

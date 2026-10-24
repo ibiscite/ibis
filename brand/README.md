@@ -64,4 +64,4 @@ by hand.
 `--brand-assets`. It rebuilds into a temporary folder and names every stale,
 missing or unexpected generated file, without changing the checkout.
 
-Design explorations (the design canvas, rejected options, screenshots) stay outside the repository. When one is chosen, record it in `docs/design.md` or `docs/design/system.md` and here.
+Design explorations (the design canvas, rejected options, screenshots) stay outside the repository. When one is chosen, record it in `docs/design.md` and here.

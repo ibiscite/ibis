@@ -229,7 +229,7 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
   for (const target of [".copy-notice code", ".shelf-mark"]) {
     expect(scarlet, target).toContain(target);
   }
-  // The shelf's output and chips use text colours (docs/design/preview.md).
+  // The shelf's output and chips use text colours (docs/design.md, "Shelf").
   expect(scarlet).not.toMatch(/preview-text|\.chip/);
   // Selection, the pin and the main controls keep the system accent.
   expect(scarlet).not.toMatch(/button|\.search-bar|::before|\[role="option"\]\[data-active\]\s*(,|$)/);

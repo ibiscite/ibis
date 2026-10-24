@@ -15,7 +15,7 @@
   /* Space and size on a 4 px grid. */
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
-  /* One geometry chain (docs/design.md, "Space and size" and "Corners"):
+  /* One geometry chain (docs/design.md, "Layout and geometry" and "Corners"):
      looks set the outer radius and floor; inner radii use fixed shape insets.
      Radii stay px, matching the native corner; layout sizes and spacing are
      rem, so Larger text keeps edges aligned without changing the shape. */
@@ -154,7 +154,7 @@
   --copy-padding: .5rem;
   --dismiss-margin: .5rem 0 .5rem .5rem;
   --alert-padding: var(--space-3);
-  /* The citation shelf (docs/design/preview.md): two 40 px lines, 24 px chips
+  /* The citation shelf (docs/design.md, "Shelf"): two 40 px lines, 24 px chips
      with a quieter fill than the card under them. */
   --shelf-line: 2.5rem;
   --shelf-fill: var(--tile-background);

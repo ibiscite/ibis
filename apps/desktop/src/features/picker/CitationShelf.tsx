@@ -9,7 +9,7 @@ import { beak } from "../../brand";
 import "./CitationShelf.css";
 
 /** The shelf shows at most this many chips; the rest fold into "+N"
- * (docs/design/preview.md, "Chips before the count"). */
+ * (docs/design.md, "Shelf"). */
 export const SHELF_CHIPS = 6;
 
 /** "García 2021": the first author's family name and the year, or the key
@@ -26,7 +26,7 @@ export function chipLabels(records: SearchResult[]): string[] {
     labels.indexOf(label) !== labels.lastIndexOf(label) && label !== records[i]!.key ? `${label} · ${records[i]!.key}` : label);
 }
 
-/** What Enter pastes, above the footer's Copy action (docs/design/preview.md):
+/** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
 export function CitationShelf({ announce, selected, removeLabel, onRemove, style, keys, shown, focusable, outputRef }: {

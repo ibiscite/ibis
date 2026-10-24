@@ -1,5 +1,5 @@
 {
-  "$comment": "Picker geometry from docs/design.md (Space and size, Corners) that has no token, in CSS px at normal text. scripts/gallery-geometry.mjs reads row heights, footer, insets, tile, row padding, field height and radii from apps/desktop/src/tokens.css and these values from here; derived values (search band, text x, row and tile radii) follow the formulas in docs/design.md. Change this file and docs/design.md together.",
+  "$comment": "Picker geometry from docs/design.md (Layout and geometry, Corners) that has no token, in CSS px at normal text. scripts/gallery-geometry.mjs reads row heights, footer, insets, tile, row padding, field height and radii from apps/desktop/src/tokens.css and these values from here; derived values (search band, text x, row and tile radii) follow the formulas in docs/design.md. Change this file and docs/design.md together.",
   "tolerance": 0.5,
   "footerAction": 24,
   "shapeInsets": { "window": 8, "row": 12 },
