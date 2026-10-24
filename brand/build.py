@@ -331,20 +331,23 @@ def palette():
     steps = {50: (0.97, 0.02), 100: (0.94, 0.04), 200: (0.88, 0.08), 300: (0.81, 0.13), 400: SCARLET_DARK,
              500: (0.64, 0.18), 600: SCARLET, 700: (0.47, 0.155), 800: (0.39, 0.125), 900: (0.30, 0.09)}
     scarlet = {k: v if isinstance(v, str) else oklch(v[0], v[1], 34) for k, v in steps.items()}
-    # Gray leans faintly toward the ink's cool blue, more in the darks than the lights.
-    grays = {50: (0.975, 0.004), 100: (0.955, 0.005), 200: (0.91, 0.007), 300: (0.85, 0.009), 400: (0.72, 0.012),
-             500: (0.58, 0.014), 600: (0.47, 0.016), 700: (0.38, 0.016), 800: (0.29, 0.013), 850: (0.25, 0.011),
-             900: (0.21, 0.010), 950: (0.16, 0.008)}
-    gray = {k: oklch(v[0], v[1], 268) for k, v in grays.items()}
+    # Neutral sRGB stops; converting through OKLCH with chroma 0 keeps R=G=B.
+    grays = {50: 245, 100: 240, 200: 229, 300: 181, 400: 163, 500: 115,
+             600: 82, 700: 64, 800: 46, 850: 38, 900: 28, 950: 17}
+    def neutral_stop(channel):
+        value = channel / 255
+        linear = value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+        return oklch(linear ** (1 / 3), 0, 0)
+    gray = {k: neutral_stop(v) for k, v in grays.items()}
     neutral = {"ink": INK, "slate": SLATE, "mist": MIST, "paper": "#FFFFFF",
                "warm-paper": PAPER[1], "snow": INK_DARK}
     themes = {
         "light": {"bg": "#FFFFFF", "surface": gray[50], "line": gray[200], "text": INK, "muted": SLATE,
-                  "accent": SCARLET, "accent-soft": scarlet[50]},
+                  "accent": SCARLET, "accent-soft": "rgb(194 58 28 / .08)"},
         "dark": {"bg": gray[950], "surface": gray[900], "line": gray[800], "text": INK_DARK, "muted": gray[300],
-                 "accent": SCARLET_DARK, "accent-soft": scarlet[900]},
+                 "accent": SCARLET_DARK, "accent-soft": "rgb(255 122 92 / .13)"},
         "dim": {"bg": gray[850], "surface": gray[800], "line": gray[700], "text": INK_DARK, "muted": gray[300],
-                "accent": SCARLET_DARK, "accent-soft": scarlet[900]},
+                "accent": SCARLET_DARK, "accent-soft": "rgb(255 122 92 / .13)"},
     }
     return {"scarlet": scarlet, "gray": gray, "neutral": neutral, "themes": themes}
 
@@ -365,6 +368,31 @@ def write_palette():
            ":root[data-theme=\"dark\"] {\n" + theme("dark") + "}\n"
            ":root[data-theme=\"dim\"] {\n" + theme("dim") + "}\n")
     (OUT / "colors.css").write_text(css, encoding="utf-8")
+
+
+PALETTE_START = "/* BEGIN generated website palette: brand/build.py */"
+PALETTE_END = "/* END generated website palette */"
+
+
+def website_tokens(root):
+    source = HERE.parent / "apps/desktop/src/tokens.css"
+    tokens = source.read_text(encoding="utf-8")
+    if PALETTE_START in tokens:
+        before, rest = tokens.split(PALETTE_START, 1)
+        _, after = rest.split(PALETTE_END, 1)
+        tokens = before.rstrip() + after
+    themes = palette()["themes"]
+    roles = {"bg": "Canvas", "surface": "Canvas", "line": "GrayText",
+             "text": "CanvasText", "muted": "CanvasText", "accent-soft": "Canvas"}
+    lines = [PALETTE_START, ":root {" ]
+    lines += [f"  --website-{key}: {fallback};" for key, fallback in roles.items()]
+    lines += ["}", "@supports (color: light-dark(white, black)) {",
+              "  @media (forced-colors: none) {", "    :root {"]
+    lines += [f"      --website-{key}: light-dark({themes['light'][key]}, {themes['dark'][key]});" for key in roles]
+    lines += ["    }", "  }", "}", PALETTE_END]
+    target = root / "apps/desktop/src/tokens.css"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(tokens.rstrip() + "\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
 
 
 def png(svg_name, out_name, width, height=None):
@@ -537,6 +565,7 @@ def main(root=HERE.parent):
     (OUT / "favicon-png.svg").unlink()
     (OUT / "site.webmanifest").write_text(json.dumps(MANIFEST, indent=2) + "\n", encoding="utf-8")
     write_palette()
+    website_tokens(root)
     # The small in-app mark is generated too: no copied geometry in the UI.
     box, body = SYM["beak"]
     ui = root / "apps/desktop/src/brand.ts"
@@ -554,8 +583,10 @@ def generated_files(root):
         for path in (root / directory).rglob("*"):
             if (path.is_file() or path.is_symlink()) and (directory == "brand/exports" or path.suffix in {".svg", ".png", ".ico", ".icns", ".json"}):
                 files.add(path.relative_to(root))
-    if (root / "apps/desktop/src/brand.ts").exists():
-        files.add(Path("apps/desktop/src/brand.ts"))
+    for name in ("apps/desktop/src/brand.ts", "apps/desktop/src/tokens.css"):
+        path = root / name
+        if path.exists() or path.is_symlink():
+            files.add(Path(name))
     return files
 
 

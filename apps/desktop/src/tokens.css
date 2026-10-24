@@ -388,3 +388,26 @@
 :root[data-platform="linux"] { --fill-control-pressed: color-mix(in srgb, var(--text) 30%, transparent); }
 
 @media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
+
+/* BEGIN generated website palette: brand/build.py */
+:root {
+  --website-bg: Canvas;
+  --website-surface: Canvas;
+  --website-line: GrayText;
+  --website-text: CanvasText;
+  --website-muted: CanvasText;
+  --website-accent-soft: Canvas;
+}
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) {
+    :root {
+      --website-bg: light-dark(#FFFFFF, #111111);
+      --website-surface: light-dark(#F5F5F5, #1C1C1C);
+      --website-line: light-dark(#E5E5E5, #2E2E2E);
+      --website-text: light-dark(#171717, #F2F2F2);
+      --website-muted: light-dark(#525252, #B5B5B5);
+      --website-accent-soft: light-dark(rgb(194 58 28 / .08), rgb(255 122 92 / .13));
+    }
+  }
+}
+/* END generated website palette */
