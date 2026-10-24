@@ -7,8 +7,8 @@
 html { scroll-padding-top: var(--space-6); }
 body { margin: 0; background: var(--website-bg); color: var(--website-text); font: calc(var(--type-body-size) * 1.35)/1.6 var(--font-reading); }
 .site { min-height: 100svh; --surface: var(--website-bg); --text: var(--website-text); --muted: var(--website-muted); --separator: var(--website-line); position: relative; max-width: 84rem; margin-inline: auto; padding-inline: var(--website-pad); }
-a { color: var(--citation); text-underline-offset: .2em; }
-a:hover { text-decoration-thickness: var(--focus-ring-width); }
+a { color: var(--citation); text-underline-offset: .2em; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
+a:hover { text-decoration-color: currentColor; text-decoration-thickness: var(--focus-ring-width); }
 ::selection { background: color-mix(in srgb, var(--citation) 22%, transparent); color: var(--text); }
 :where(a, button, input, select):focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-width); border-radius: var(--r-min); }
 /* The ring sits outside so it never crosses text; inside only where a scroller or the page edge would clip it. */
@@ -183,6 +183,7 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .star path { transition: fill var(--motion-feedback) var(--ease-out); }
   .button:hover .star { animation: star var(--motion-panel) var(--ease-out); }
   .reveal .pull img { transform-origin: 20% 80%; animation: peck calc(2 * var(--motion-panel)) var(--ease-out) var(--motion-panel); }
+  a { transition: text-decoration-color var(--motion-feedback) var(--ease-out); }
   .rows .arrow { transition: translate var(--motion-feedback) var(--ease-out); }
   .rows a:hover .arrow { translate: var(--space-1) 0; }
   .rows a[href*="/releases/download/"]:hover .arrow { translate: 0 var(--space-1); }

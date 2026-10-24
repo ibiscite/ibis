@@ -5,7 +5,9 @@
 .picker input:focus-visible { border-radius: var(--r-row); }
 .picker select, .picker button, .draft button { min-height: var(--control-min-size); padding: var(--space-1) var(--space-2); border: var(--border-width) solid var(--stroke-control); border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-meta-size)/var(--type-meta-line) var(--font-family); cursor: pointer; }
 /* A drawn chevron, so the select keeps the buttons' height in every browser (iOS ignores it on native selects). */
-.picker select { appearance: none; padding-right: calc(var(--space-2) + 1.1em); background: var(--fill-control) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4.5 6.5 3.5 3.5 3.5-3.5' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right var(--space-1) center / 1em; }
+.picker-format { position: relative; display: inline-flex; flex: none; }
+.picker-format select { appearance: none; padding-right: calc(var(--space-2) + 1.1em); }
+.picker-format svg { position: absolute; right: var(--space-2); top: 50%; width: 1em; height: 1em; translate: 0 -50%; fill: none; stroke: var(--muted); stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
 .picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-min-size); padding: 0; line-height: 1; border: 0; background: none; color: var(--text); font-size: var(--type-heading-size); }
 .picker button:disabled { color: var(--text-disabled); cursor: default; }
@@ -59,3 +61,9 @@
 /* The slot keeps the sentence's line height, so pasting never moves the page; its touch area reaches past it. */
 .draft .paste-slot { position: relative; } .draft .paste-slot::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
 @media (prefers-reduced-motion: no-preference) { .draft .paste-slot { transition: scale var(--motion-feedback) var(--ease-out); } .draft .paste-slot:active { scale: var(--website-press); } }
+/* Small confirmations: a tick lands with the Copied or Pasted word, and on touch a row gives under the finger. */
+.picker-shelf .picker-status:not(:empty)::before { content: "✓"; margin-right: var(--space-1); }
+@media (prefers-reduced-motion: no-preference) {
+  .picker-shelf .picker-status:not(:empty) { animation: receipt var(--motion-panel) var(--ease-out); }
+  @media (pointer: coarse) { .pick { transition: scale var(--motion-feedback) var(--ease-out); } .pick:active { scale: .985; } }
+}

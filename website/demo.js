@@ -20,6 +20,9 @@ export function setupDemo() {
   for (const [key, value] of Object.entries({ role: "combobox", "aria-label": "Search the made-up library", "aria-autocomplete": "list", "aria-controls": "demo-results", "aria-expanded": "true" })) input.setAttribute(key, value);
   const select = el("select", {}, ...Object.entries(formats).map(([value, label]) => el("option", { value, textContent: label })));
   select.setAttribute("aria-label", "Copy format");
+  // A drawn chevron beside the select: native arrows ignore its height on iOS, and Safari drops background chevrons.
+  const format = el("span", { className: "picker-format" }, select);
+  format.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>');
   const list = el("ul", { id: "demo-results", className: "picker-results" });
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
   const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
@@ -39,7 +42,7 @@ export function setupDemo() {
   else hint.append(el("kbd", { textContent: mac ? "⌃⌘R" : "Ctrl+Shift+Y" }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
   const beak = el("img", { src: "assets/ibis-quote-beak.svg", alt: "", width: 22, height: 19 });
   const shelf = el("div", { className: "picker-shelf" }, beak, output, status);
-  const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, select),
+  const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, format),
     el("p", { className: "picker-meta" }, "Best matches", count), list, shelf,
     el("div", { className: "picker-foot" }, el("span", {}, "sample.bib · 6 invented references"), add, copy));
   const empty = el("li", { textContent: "Nothing matches. Try an author, title, year or journal.", className: "picker-empty" });
