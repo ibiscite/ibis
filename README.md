@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-<p align="center"><strong>Find references. Copy citation keys.</strong><br>Search your libraries, copy a citation key or a formatted citation, and paste it where you write.</p>
+<p align="center"><strong>Your next citation, a shortcut away.</strong><br>Search your libraries, copy a citation key or a formatted citation, and paste it where you write.</p>
 
 Ibis is free and open source. Searching and copying work offline after setup. Ibis adds no analytics and never changes your libraries. See [privacy and local storage](PRIVACY.md) for runtime data and optional update checks.
 
@@ -43,7 +43,7 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 ## First use
 
 1. Press the shortcut. The first time, Ibis offers Zotero if it is open and lists `.bib` files in your Documents, Desktop and Downloads folders; pick one, or choose **Choose library…** for any other file. It also asks where you write and sets the copy format to match.
-2. Type a few words from the author, title or year, and use the arrow keys to pick a reference.
+2. Search by author, title, year, journal, citation key or keywords. You can combine words from different fields. Use the arrow keys to pick a reference.
 3. Press **Enter** to copy the citation, then paste it into your document. **Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on macOS) to see every key.
 
 Hide or show the citation output with **Show what will be pasted** in **More**, or **Ctrl+I** (**⌘I** on macOS). Ibis remembers this choice; the references you added stay selected.

@@ -36,7 +36,7 @@ M is the height of the bird.
 - **Colour.** Scarlet 600 `#C23A1C` on light backgrounds and Scarlet 400 `#FF7A5C` on dark. Text is Ink `#16181D` or Slate `#4C5260` on light, and near-white on dark. The full Scarlet scale (50 to 900) is for websites and videos: tints for backgrounds, 600 to 800 for text and links on light. Never stretch, outline or recolour the bird in other hues, or add effects.
 - **Themes.** Websites use `colors.css`: light by default, dark when the system is dark, and an optional dim theme (`data-theme="dim"`) for a softer charcoal. Each theme names the same roles: `bg`, `surface`, `line`, `text`, `muted`, `accent`, `accent-soft`.
 - **Motion.** The logo animation draws the neck, grows the head and beak out together as one shape, then fades in the wordmark, in about 1.5 s. People who ask their system for reduced motion see the finished logo. Use it once per page or video, never on a loop.
-- **Words.** Lead with "Find references. Copy citation keys." Say "early preview" until 1.0, and name only what ships today.
+- **Words.** Use `words.tagline` in `settings.json` for the public headline. Say "early preview" until 1.0, and name only what ships today.
 
 ## Changing the brand
 

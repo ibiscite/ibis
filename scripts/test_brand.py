@@ -1,5 +1,7 @@
 """The brand drift check reports stale, missing and unexpected generated files."""
 from pathlib import Path
+import html
+import json
 import os
 import runpy
 import tempfile
@@ -10,6 +12,13 @@ BUILD = runpy.run_path(str(Path(__file__).resolve().parents[1] / "brand/build.py
 
 
 class BrandDrift(unittest.TestCase):
+    def test_readme_uses_the_current_public_headline(self):
+        root = Path(__file__).resolve().parents[1]
+        words = json.loads((root / "brand/settings.json").read_text())["words"]
+        headline = f'<strong>{html.escape(words["tagline"])}</strong>'
+        self.assertTrue(headline in (root / "README.md").read_text(),
+                        "README headline must match brand/settings.json words.tagline")
+
     def test_text_rendering_does_not_inherit_the_native_font_backend(self):
         with patch.dict(os.environ, {"PANGOCAIRO_BACKEND": "coretext"}), patch("subprocess.run") as render:
             BUILD["png"]("synthetic.svg", "synthetic.png", 32)
