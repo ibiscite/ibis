@@ -212,6 +212,8 @@ test("browser keeps navigation, keyboard selection and long output visible", { s
     assert.match(await touch.locator(".demo-hint").textContent(), /^Tap a row/);
     assert.equal(await touch.locator(".picker-foot kbd").isVisible(), false);
     assert.ok(await touch.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert.equal(await touch.evaluate(() => { delete document.documentElement.dataset.platform; return getComputedStyle(document.documentElement).getPropertyValue("--selected-text").trim(); }), "#FFFFFF", "phones pair the selected row with white text, not WebKit's black AccentColorText");
+    assert.ok(await touch.evaluate(() => { const logo = document.querySelector(".logo").getBoundingClientRect(), note = document.querySelector(".index-note").getBoundingClientRect(); return note.top < logo.bottom && note.left > logo.right; }), "the preview note shares the logo row");
     await touch.close();
   } finally { await browser.close(); }
 });
@@ -240,6 +242,7 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "https://ibiscite.org/");
     // Safari starts a text selection across the page when a sidebar link is dragged; Chromium drags the link instead.
     assert.equal(await page.locator(".index").evaluate(e => getComputedStyle(e).userSelect), "none", "dragging in the sidebar never selects page text");
+    assert.equal(await page.locator(".closing .button").first().evaluate(e => getComputedStyle(e).height), "36px", "page buttons keep one slim height");
     const signature = page.locator(".signature .key");
     await signature.hover();
     await page.waitForFunction(() => document.querySelector(".signature .key").textContent === "[@diyanko]");

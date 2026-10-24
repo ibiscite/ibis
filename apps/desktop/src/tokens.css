@@ -20,6 +20,7 @@
   --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;
   --website-section-pad: clamp(2rem, 4vw, 2.75rem);
   --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
+  --website-button-height: 2.25rem;
   --website-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 5%);
 
   /* Space and size on a 4 px grid. */
@@ -249,6 +250,10 @@
 @supports (color: AccentColor) { :root { --accent: AccentColor; } }
 /* Filled accent with its paired text colour, so any system accent stays legible. */
 @supports (color: AccentColorText) { :root { --selected-background: AccentColor; --selected-text: AccentColorText; } }
+
+/* With no desktop platform (the website on a phone), WebKit's AccentColorText
+   is black even on a dark accent; use the macOS list pair instead. */
+:root:not([data-platform]) { --selected-background: light-dark(#0064E1, #0058D0); --selected-text: #FFFFFF; }
 
 /* WKWebView accepts AccentColorText but resolves it to black. Use the paired
    native list colours on macOS; contrast overrides below still take priority. */
