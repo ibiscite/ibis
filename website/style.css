@@ -14,8 +14,9 @@ a:hover { text-decoration-thickness: var(--focus-ring-width); }
 .skip { position: absolute; left: -100vw; }
 .skip:focus { left: var(--space-4); top: var(--space-4); z-index: var(--z-chrome); background: var(--surface); padding: var(--space-3) var(--space-4); }
 .index { padding-top: var(--space-4); margin-bottom: var(--space-6); font-family: var(--font-family); }
-.logo { display: block; width: fit-content; margin-bottom: var(--space-2); }
-.logo img { display: block; width: 11rem; height: auto; }
+/* The brand export keeps clear space around the mark; --logo-edge pulls its ink to the text edge. */
+.logo { --logo-width: 11rem; --logo-edge: calc(var(--logo-width) * -.0513); display: block; width: fit-content; margin-bottom: var(--space-2); margin-left: var(--logo-edge); }
+.logo img { display: block; width: var(--logo-width); height: auto; }
 .logo .logo-dark { display: none; }
 :root[data-theme="dark"] .logo-light { display: none; }
 :root[data-theme="dark"] .logo-dark { display: block; }
@@ -24,6 +25,8 @@ a:hover { text-decoration-thickness: var(--focus-ring-width); }
   :root:not([data-theme="light"]) .logo-dark { display: block; }
 }
 .index-note { margin-bottom: var(--space-5); font-size: var(--type-body-size); color: var(--muted); }
+.index-note a { color: inherit; text-decoration: none; font-variant-numeric: tabular-nums; }
+.index-note a:hover { color: var(--text); text-decoration: underline; }
 .index ul { display: flex; flex-wrap: wrap; gap: 0 var(--space-4); list-style: none; padding: 0; margin: 0; }
 .index nav a { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-height: var(--touch-target); padding-block: var(--space-2); font-size: var(--type-title-size); color: var(--muted); text-decoration: none; }
 .index nav a:hover, .index a[aria-current="location"] { color: var(--text); }
@@ -66,11 +69,20 @@ section { padding-block: var(--website-section-pad); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-6); margin-top: var(--space-8); }
 .button { display: inline-flex; align-items: center; min-height: var(--touch-target); padding: var(--space-3) var(--space-5); border-radius: var(--r-control); background: var(--text); color: var(--website-bg); font: var(--type-strong-weight) var(--type-reading-size) var(--font-family); text-decoration: none; }
 .button:hover { background: color-mix(in srgb, var(--text) 84%, var(--website-bg)); }
+.button svg { width: 1em; height: 1em; margin-right: var(--space-2); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linejoin: round; }
+.button.quiet { border: 0; background: none; box-shadow: inset 0 0 0 var(--border-width) var(--separator); color: var(--text); cursor: pointer; }
+.button.quiet:hover { background: var(--fill-subtle-hover); }
+.closing { padding-bottom: var(--website-section-pad); }
+.pull { margin: 0 0 var(--website-block-gap); }
+.pull img { display: block; width: 2rem; height: auto; margin-bottom: var(--space-3); } /* The beak is the opening quote mark. */
+.pull p { margin: 0; font-style: italic; }
+.signature { font: var(--type-reading-size)/1.5 var(--font-family); color: var(--muted); } /* The beak opens the quote; a key signs it. */
+.closing .actions { margin-top: var(--space-5); }
 .actions a:not(.button) { padding-block: var(--space-3); font: var(--type-reading-size) var(--font-family); color: var(--text); text-decoration: none; }
 .platform { margin-top: var(--space-8); }
 .platform-switch:not([hidden]) ~ .platform h3 { display: none; }
 .platform ~ .small { margin-top: var(--space-6); }
-.platform h3 { margin: 0; font: var(--type-strong-weight) var(--type-reading-size)/1.4 var(--font-family); }
+.platform h3 { margin: 0; font-size: var(--type-heading-size); }
 .install { margin: 0; padding-left: var(--space-6); font: var(--type-reading-size)/1.6 var(--font-family); }
 .install li { padding-left: var(--space-1); margin-bottom: var(--space-2); }
 .rows { list-style: none; padding: 0; margin: var(--website-block-gap) 0; border-top: var(--border-width) solid var(--separator); }
@@ -95,12 +107,15 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
 .colophon span { flex-basis: 100%; }
 .colophon a { padding-block: var(--space-2); }
 @media (min-width: 62rem) {
+  footer > .text { position: relative; }
+  footer > .text::before { content: ""; position: absolute; top: calc(-1 * var(--border-width)); left: calc(var(--website-gap) / -2); width: calc(var(--website-gap) / 2); height: var(--border-width); background: var(--separator); } /* The footer rule meets the margin rule. */
   .site::before { content: ""; position: absolute; inset-block: 0; left: calc(var(--website-pad) + var(--website-margin) + var(--website-gap) / 2); width: var(--border-width); background: var(--separator); }
   .row { grid-template-columns: var(--website-margin) minmax(0, 1fr); }
   .row > .text { grid-column: 2; }
   .index { position: absolute; z-index: var(--z-chrome); top: clamp(3rem, 10vh, 7rem); bottom: 0; left: var(--website-pad); width: var(--website-margin); padding: 0; text-align: right; }
   .index-sticky { position: sticky; top: var(--space-6); max-height: calc(100svh - 3rem); overflow-y: auto; }
-  .logo { margin-left: auto; } .logo img { width: 13rem; }
+  .logo { --logo-width: 13rem; margin-left: auto; overflow: clip; }
+  .logo img { margin-right: var(--logo-edge); } /* Clipping only clear space keeps the sidebar from scrolling sideways. */
   .index ul { display: block; } .index nav a { justify-content: flex-end; font-size: var(--type-reading-size); }
   .intro { padding-block: clamp(3rem, 10vh, 7rem) var(--website-section-pad); }
   .margin { display: none; } .journey { grid-column: 2; max-width: 43rem; }
@@ -125,7 +140,8 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
 @media (max-width: 61.99rem) {
   html { scroll-padding-top: 4rem; }
   .index, .index-sticky, .index-content { display: contents; }
-  .logo { padding-top: var(--space-4); } .logo img { width: 7.5rem; }
+  .logo { --logo-width: 7.5rem; padding-top: var(--space-4); }
+  .index-note { margin-bottom: 0; }
   .index nav { position: sticky; top: 0; z-index: var(--z-chrome); margin-inline: calc(-1 * var(--website-pad)); padding-inline: var(--website-pad); background: var(--website-bg); border-bottom: var(--border-width) solid var(--website-line); }
   .index ul { flex-wrap: nowrap; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; padding-block: .6rem; mask-image: linear-gradient(90deg, CanvasText 85%, transparent); }
   .index li { flex: none; }

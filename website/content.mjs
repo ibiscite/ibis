@@ -5,6 +5,8 @@ export async function content(html) {
   const headline = JSON.parse(await text("../brand/settings.json")).words.tagline;
   const design = (await text("../docs/design.md")).split("## Coming features")[1]?.split("## How the design changes")[0];
   const roadmap = await text("../ROADMAP.md");
+  const version = JSON.parse(await text("../.release-please-manifest.json"))["."];
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw Error("Release version is missing");
   if (!design) throw Error("Canonical Coming features section is missing");
   const rows = [...design.matchAll(/^\| ([^|]+) \|/gm)].map(([, feature]) => feature);
   const plans = [
@@ -17,5 +19,5 @@ export async function content(html) {
     if (!row || !version || !roadmap.includes(`**${version} `)) throw Error(`Canonical roadmap item missing: ${name}`);
     return `<li><strong>${escape(label)}</strong></li>`;
   });
-  return html.replaceAll("{{headline}}", escape(headline)).replace("{{roadmap}}", `<ul class="roadmap">${plans.join("")}</ul>`);
+  return html.replaceAll("{{headline}}", escape(headline)).replaceAll("{{version}}", version).replace("{{roadmap}}", `<ul class="roadmap">${plans.join("")}</ul>`);
 }

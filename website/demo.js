@@ -32,8 +32,11 @@ export function setupDemo() {
   const hint = el("p", { className: "demo-hint" });
   const labels = { copy: "copy", add: "add", move: "choose", escape: "step back", preview: "show output" };
   const touch = matchMedia("(hover: none)").matches;
+  // The app's default shortcut also opens this example, so visitors learn it by using it.
+  const opens = mac ? event => event.ctrlKey && event.metaKey && !event.altKey && !event.shiftKey && event.code === "KeyR"
+    : event => event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyY";
   if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then Copy.";
-  else hint.append("Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
+  else hint.append(el("kbd", { textContent: mac ? "⌃⌘R" : "Ctrl+Shift+Y" }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
   const beak = el("img", { src: "assets/ibis-quote-beak.svg", alt: "", width: 22, height: 19 });
   const shelf = el("div", { className: "picker-shelf" }, beak, output, status);
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, select),
@@ -88,6 +91,12 @@ export function setupDemo() {
     if (!event.isComposing && event.keyCode !== 229 && matchesAccelerator(event, "CmdOrCtrl+V", mac) && state.copied && state.copied !== state.pasted && event.target !== input) { event.preventDefault(); performPaste(); }
   });
   reopen.addEventListener("click", () => { state.open = true; render(); input.focus(); });
+  document.addEventListener("keydown", event => {
+    if (event.isComposing || event.repeat || !opens(event)) return;
+    event.preventDefault(); state.open = true; render();
+    figure.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    input.focus({ preventScroll: true }); input.select();
+  });
   panel.addEventListener("keydown", event => {
     if (event.isComposing || event.keyCode === 229) return;
     if (event.repeat && event.key === "Enter") { event.preventDefault(); return; }

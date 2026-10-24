@@ -52,6 +52,6 @@
 .picker-foot kbd, .demo-hint kbd { font-size: .95em; }
 @media (hover: hover) { .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; } }
 @media (hover: none) { .picker-foot kbd, .draft .paste-slot kbd { display: none; } }
-@media (max-width: 39.99rem) { .picker-foot > span { flex-basis: 100%; } .picker-foot button:first-of-type { margin-left: auto; } }
+@media (max-width: 39.99rem) { .picker-results { height: 12rem; } .picker-foot > span { flex-basis: 100%; } .picker-foot button:first-of-type { margin-left: auto; } }
 @media (pointer: coarse) { .draft .paste-slot, .pick .tile { min-height: var(--touch-target); } .pick .tile { width: var(--touch-target); } }
 @media (prefers-reduced-motion: no-preference) { .draft .paste-slot { transition: scale var(--motion-feedback) var(--ease-out); } .draft .paste-slot:active { scale: var(--website-press); } }

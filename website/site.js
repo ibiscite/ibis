@@ -56,6 +56,18 @@ function platforms() {
   show(detected);
   matchMedia("(max-width: 61.99rem)").addEventListener("change", () => show(selected));
 }
+// The browser's own share sheet, or a copied link where there is none; no third-party buttons.
+function share() {
+  const button = document.querySelector(".share"), status = document.querySelector(".share-status"), url = "https://ibiscite.org/";
+  if (!button || !(navigator.share || navigator.clipboard)) return;
+  button.hidden = false;
+  button.addEventListener("click", async () => {
+    try {
+      if (navigator.share) await navigator.share({ title: "Ibis", text: document.querySelector("h1").textContent, url });
+      else { await navigator.clipboard.writeText(url); status.textContent = "Link copied"; setTimeout(() => { status.textContent = ""; }, 2000); }
+    } catch { /* Cancelled or blocked; nothing changed. */ }
+  });
+}
 function navigation() {
   const links = [...document.querySelectorAll('.index nav a[href^="#"]')];
   const targets = links.map(link => document.querySelector(link.getAttribute("href")));
@@ -87,7 +99,7 @@ function navigation() {
 }
 document.addEventListener("DOMContentLoaded", () => {
   if (!document.querySelector(".index nav")) return; // Plain pages such as 404 need only the appearance applied above.
-  appearance(); platforms(); navigation();
+  appearance(); platforms(); navigation(); share();
   let lastMove = performance.now();
   const markMove = () => { lastMove = performance.now(); };
   window.addEventListener("scroll", markMove, { passive: true }); window.addEventListener("hashchange", markMove);

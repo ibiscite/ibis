@@ -152,16 +152,22 @@ def depth_filter(fid, box):
 
 
 def draw(name, k, tx, ty, paint, uid, depth=False, neck=None):
-    """The symbol in its own units, scaled by k, with its unit origin moved to (tx, ty)."""
+    """The symbol in its own units, scaled by k, with its unit origin moved to (tx, ty).
+
+    `depth` True adds the gradient, rims and shadows; "gradient" keeps only the gradient, for
+    transparent exports whose background is unknown, where a shadow shows as a dark halo.
+    """
     (_, by, _, bh), body = SYM[name]
     defs, attr = "", ""
     if depth:
         top, bottom = paint
         # Gradient and filter work in the symbol's units, so depth scales with size.
         defs = (f'<linearGradient id="{uid}g" gradientUnits="userSpaceOnUse" x1="0" y1="{by - 1}" x2="0" y2="{by + bh}">'
-                f'<stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
-                + depth_filter(f"{uid}f", SYM[name][0]))
-        paint, attr = f"url(#{uid}g)", f' filter="url(#{uid}f)"'
+                f'<stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>')
+        paint = f"url(#{uid}g)"
+    if depth is True:
+        defs += depth_filter(f"{uid}f", SYM[name][0])
+        attr = f' filter="url(#{uid}f)"'
     if neck:
         body = thicken(body, neck)       # favicon sizes: no eye, as in the app's small icon
     body = body.replace("currentColor", paint)
@@ -232,7 +238,7 @@ def mark(paint, uid, depth=True):
     return doc(side, side, defs, body, (512, 512))
 
 
-def logo(dark, uid):
+def logo(dark, uid, depth="gradient"):
     m = 100
     pad = PAD * m
     mark_w = m * ratio("mark")
@@ -243,7 +249,7 @@ def logo(dark, uid):
     baseline = pad + m / 2 + cap / 2        # cap height centred on the bird
     w = pad + mark_w + WORD_GAP * m + word_w + pad
     h = m + 2 * pad
-    d1, b1 = place("mark", pad, pad, m, GRADIENT_DARK if dark else GRADIENT, uid, True)
+    d1, b1 = place("mark", pad, pad, m, GRADIENT_DARK if dark else GRADIENT, uid, depth)
     d2, b2 = place("wordmark", pad + mark_w + WORD_GAP * m, baseline + wy * cap / 100, word_h,
                    INK_DARK if dark else INK, uid + "w")
     return doc(w, h, d1 + d2, b1 + b2, (round(w * 200 / h), 200))
@@ -287,7 +293,7 @@ def favicon(paint, style=""):
 def card(w, h, uid):
     """The social card: logo, lead line and status line, centred as one block."""
     m = 184 * h / 640
-    logo_svg = logo(False, uid)
+    logo_svg = logo(False, uid, True)
     lw, lh = (float(v) for v in re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', logo_svg).groups())
     k = m * (1 + 2 * PAD) / lh
     inner = re.search(r"<defs>(.*)</defs>(.*)</svg>", logo_svg, re.S)
@@ -305,7 +311,7 @@ def card(w, h, uid):
 def beak():
     m = 100
     w, h = m * ratio("beak") + 2 * PAD * m, m * (1 + 2 * PAD)
-    defs, body = place("beak", PAD * m, PAD * m, m, GRADIENT, "bk", True)
+    defs, body = place("beak", PAD * m, PAD * m, m, GRADIENT, "bk", "gradient")
     return doc(w, h, defs, body, (round(256 * w / h), 256))
 
 
@@ -465,7 +471,7 @@ def animated_mark(dark, uid):
 def video_card(w, h, dark, uid, lines, logo_size=0.2):
     """A full-frame card for video and social: the logo above one or two lines of text, centred as a block."""
     m = h * logo_size
-    logo_svg = logo(dark, uid)
+    logo_svg = logo(dark, uid, True)      # a known background, so the full depth is safe
     lw, lh = (float(v) for v in re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', logo_svg).groups())
     k = m * (1 + 2 * PAD) / lh
     inner = re.search(r"<defs>(.*)</defs>(.*)</svg>", logo_svg, re.S)

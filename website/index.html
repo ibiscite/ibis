@@ -34,7 +34,7 @@
     <picture class="logo-light"><source media="(prefers-reduced-motion: reduce)" srcset="assets/ibis-logo.svg"><img src="assets/ibis-logo-bird-animated.svg" alt="" width="418" height="200"></picture>
     <picture class="logo-dark"><source media="(prefers-reduced-motion: reduce)" srcset="assets/ibis-logo-on-dark.svg"><img src="assets/ibis-logo-bird-animated-on-dark.svg" alt="" width="418" height="200"></picture>
   </a>
-  <p class="index-note">Early preview</p>
+  <p class="index-note">Early preview · <a href="https://github.com/ibiscite/ibis/releases/tag/v{{version}}">{{version}}</a></p>
   <nav aria-label="On this page"><ul>
     <li><a href="#how"><span class="label">How it works</span> <span class="key">@how</span></a></li>
     <li><a href="#download"><span class="label">Try the preview</span> <span class="key">@download</span></a></li>
@@ -95,7 +95,8 @@
   <section id="download" class="row" aria-labelledby="download-h">
     <p class="margin"><span class="key">@download</span></p>
     <div class="text"><h2 id="download-h">Try the early preview</h2>
-      <p>Free, for people happy to meet rough edges: <strong>it is not a stable release.</strong> The apps aren’t signed by Apple or Microsoft yet, so your computer warns you the first time you open Ibis. Read the installation notes for your system before you download.</p>
+      <p class="lede">Free, for people happy to meet rough edges.</p>
+      <p><strong>It is not a stable release.</strong> The apps aren’t signed by Apple or Microsoft yet, so your computer warns you the first time you open Ibis. Read your system’s notes before you download.</p>
       <div class="platform" data-os="mac">
         <h3>Mac</h3>
         <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg"><strong>Mac with Apple silicon</strong><span>Disk image</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li>
@@ -106,7 +107,7 @@
       </div>
       <div class="platform" data-os="windows">
         <h3>Windows</h3>
-        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe"><strong>Windows</strong><span>Installer, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
+        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe"><strong>Installer</strong><span>64-bit PCs</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
         <ol class="install"><li>Run the installer. If the WebView2 Runtime is missing, it downloads it once.</li>
           <li>If SmartScreen warns you, check you downloaded it here, then choose More info → Run anyway, if offered. Smart App Control or a work computer may block it: keep protection on and ask IT, or wait for a signed build.</li></ol>
       </div>
@@ -144,22 +145,31 @@
   <section id="why" class="row" aria-labelledby="why-h">
     <p class="margin"><span class="key">@why</span></p>
     <div class="text"><h2 id="why-h">A reference within reach</h2>
-      <p>I wanted a simple way to find references in Zotero or a BibTeX file without setting up several extra apps. I move between operating systems, so I wanted the same tool to work consistently on Windows, macOS and Linux.</p>
-      <p>My goal is to make Ibis fast, easy to set up and easy to customize for different ways of writing. It is still early. I’m building it for myself and other people who want their reference tools to make life easier, and I’d like your help shaping it.</p>
+      <blockquote class="pull"><img src="assets/ibis-quote-beak.svg" alt="" width="22" height="19"><p class="lede">Write in any app you like, and bring your references with you.</p></blockquote>
+      <p>I wanted the freedom to write wherever I want: an editor, a notes app or a plain text file. I just wanted my references one direct shortcut away, without depending on multiple apps, and something that works everywhere: Windows, macOS and Linux, because I move between all three.</p>
+      <p>Ibis is still early. I’m trying to make it very fast, easy to set up and easy to fit to the way you write, and I’d like your help shaping it.</p>
+      <p class="signature">— Diyanko <a class="key" href="https://github.com/diyanko">@diyanko</a></p>
     </div>
   </section>
 
   <section id="shape" class="row" aria-labelledby="shape-h">
     <p class="margin"><span class="key">@shape</span></p>
     <div class="text"><h2 id="shape-h">What would make Ibis useful to you?</h2>
-      <p>Where do you write? How do you keep your references? What keeps pulling you out of the flow?</p>
-      <p>You don’t need to write code, or have a fully formed feature request. Share a workflow, ask a question, or tell me what’s missing. Those conversations can help shape what gets built.</p>
+      <p class="lede">Where do you write? How do you keep your references? What pulls you out of the flow?</p>
+      <p>You don’t need code or a finished feature request. A workflow, a question or a missing piece is enough to shape what gets built.</p>
       <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/discussions"><strong>Share what you need</strong><span>Ideas, workflows and questions</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li>
         <li><a href="https://github.com/ibiscite/ibis/issues/new/choose"><strong>Report a problem</strong><span>Something broke or confused you</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li>
         <li><a href="https://github.com/ibiscite/ibis/blob/main/CONTRIBUTING.md"><strong>Contribute</strong><span>Examples, tests, docs or code</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li></ul>
       <p class="small">These links open GitHub. You can read without an account; posting needs one. Posts are public, so leave out private documents, libraries and personal details. I maintain Ibis on my own, so replies may take a little time.</p>
     </div>
   </section>
+
+  <div class="row closing"><div class="text">
+    <p class="lede">Like where it’s heading?</p>
+    <p class="actions"><a class="button" href="https://github.com/ibiscite/ibis"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1.8 1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"/></svg>Star on GitHub</a>
+      <button class="button quiet share" type="button" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v8M5 4.5l3-3 3 3M5.5 7H4v7.5h8V7h-1.5"/></svg>Share Ibis</button>
+      <span class="share-status small" aria-live="polite"></span></p>
+  </div></div>
 </main>
 <footer class="row"><div class="text">
   <p class="colophon"><span>Ibis is free and open source under the GNU AGPL v3.0 or later.</span>
