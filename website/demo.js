@@ -25,7 +25,7 @@ export function setupDemo() {
   format.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>');
   const list = el("ul", { id: "demo-results", className: "picker-results" });
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
-  const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
+  const count = el("span"), output = el("code", { dir: "ltr" }), status = el("span", { className: "picker-status" });
   // The visible status can appear with the shelf; this live region is always rendered so the first change is announced.
   const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
   const copy = el("button", { type: "button", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
@@ -57,6 +57,61 @@ export function setupDemo() {
     const item = el("li", {}, row); item.setAttribute("role", "none"); list.append(item);
     return [ref.key, { row, item, tile, ref }];
   }));
+  // Added references sit inline in the shelf's citation, one focus stop for the group, as in the app.
+  let activeKey = null;
+  const segment = key => [...output.querySelectorAll('[role="row"]')].find(row => row.dataset.key === key);
+  function renderOutput() {
+    const pieces = model.pieces(), focused = output.contains(document.activeElement) ? document.activeElement.closest("[data-key]")?.dataset.key : undefined;
+    if (!pieces.some(piece => piece.key)) {
+      output.removeAttribute("role"); output.removeAttribute("aria-label");
+      output.replaceChildren(pieces.map(piece => piece.text).join("") || "—");
+    } else {
+      output.setAttribute("role", "grid"); output.setAttribute("aria-label", "Selected references");
+      const segments = []; let leading = "";
+      for (const { text, key } of pieces) {
+        if (!key) { if (segments.length) segments.at(-1).firstChild.append(text); else leading += text; continue; }
+        const ref = references.find(value => value.key === key);
+        const remove = el("button", { type: "button", tabIndex: -1, className: "citation-remove" });
+        remove.setAttribute("aria-label", `Remove ${ref.title} from citation`);
+        const cell = el("span", {}, leading, el("span", { className: "citation-pill" }, el("span", { className: "citation-text", textContent: text }), remove));
+        cell.setAttribute("role", "gridcell"); leading = "";
+        const row = el("span", { className: "citation-segment", tabIndex: -1 }, cell);
+        row.setAttribute("role", "row"); row.setAttribute("aria-label", `${ref.authors.split(", ")[0]} ${ref.year}`); row.dataset.key = key;
+        segments.push(row);
+      }
+      if (!state.added.includes(activeKey)) activeKey = segments[0].dataset.key;
+      for (const row of segments) row.tabIndex = row.dataset.key === activeKey ? 0 : -1;
+      output.replaceChildren(...segments);
+    }
+    if (focused === undefined) return;
+    // Rebuilding keeps focus on the same reference, or its neighbour once removed, else Search.
+    const row = state.preview && (segment(focused) ?? segment(activeKey));
+    if (row) row.focus(); else input.focus({ preventScroll: true });
+  }
+  function removeSegment(key, keyboard) {
+    const index = state.added.indexOf(key);
+    model.remove(key); activeKey = state.added[Math.min(index, state.added.length - 1)] ?? null;
+    render();
+    if (!keyboard) (segment(activeKey) ?? input).focus({ preventScroll: true });
+  }
+  output.addEventListener("focusin", event => {
+    const row = event.target.closest('[role="row"]'); if (!row) return;
+    activeKey = row.dataset.key;
+    for (const each of output.querySelectorAll('[role="row"]')) each.tabIndex = each === row ? 0 : -1;
+  });
+  output.addEventListener("click", event => { const remove = event.target.closest(".citation-remove"); if (remove) removeSegment(remove.closest("[data-key]").dataset.key, event.detail === 0); });
+  // The group keeps its own keys: Escape returns to Search without stepping the picker back.
+  output.addEventListener("keydown", event => {
+    const row = event.target.closest('[role="row"]');
+    if (!row || event.isComposing || event.keyCode === 229 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const segments = [...output.querySelectorAll('[role="row"]')], index = segments.indexOf(row);
+    const next = { ArrowLeft: segments[index - 1], ArrowRight: segments[index + 1], Home: segments[0], End: segments.at(-1) };
+    if (Object.hasOwn(next, event.key)) next[event.key]?.focus();
+    else if (event.key === "Delete" || event.key === "Backspace") { if (!event.repeat) removeSegment(row.dataset.key, true); }
+    else if (event.key === "Escape") input.focus();
+    else return;
+    event.preventDefault(); event.stopPropagation();
+  });
   function render() {
     const found = model.found(); state.selected = Math.max(0, Math.min(state.selected, found.length - 1));
     const current = found[state.selected], value = model.output();
@@ -73,8 +128,8 @@ export function setupDemo() {
     }
     empty.hidden = found.length > 0;
     if (current) input.setAttribute("aria-activedescendant", rows.get(current.key).row.id); else input.removeAttribute("aria-activedescendant");
-    output.textContent = value || "—"; status.textContent = announce.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
-    output.hidden = beak.hidden = !state.preview; shelf.hidden = !state.preview && !status.textContent;
+    output.hidden = beak.hidden = !state.preview; renderOutput(); status.textContent = announce.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
+    shelf.hidden = !state.preview && !status.textContent;
     copy.disabled = !value; copy.replaceChildren(`Copy as ${formats[state.format]} `, el("kbd", { textContent: keyLabel(keysFor("copy"), mac) }));
     add.disabled = !current; add.textContent = current && state.added.includes(current.key) ? "Remove" : "Add";
     const pasted = state.pasted ? [" ", el("code", { className: "key", textContent: state.pasted })] : [];

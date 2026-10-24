@@ -26,8 +26,31 @@
 .ref strong { font-size: var(--type-title-size); }
 .ref .sub { font-size: var(--type-meta-size); color: var(--muted); }
 .is-selected .sub { color: var(--row-active-muted); }
-.picker-shelf { display: flex; align-items: center; gap: var(--space-2); margin: 0 var(--inset); min-height: var(--shelf-line); padding: var(--space-2) var(--row-pad); background: var(--shelf-fill); border-radius: var(--r-row); overflow-wrap: anywhere; }
-.picker-shelf code { min-width: 0; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; background: none; padding: 0; font-size: var(--type-citation-size); color: var(--citation); }
+.picker-shelf { --shelf-hit-size: var(--control-min-size); display: flex; align-items: center; gap: var(--space-2); margin: 0 var(--inset); min-height: max(var(--shelf-line), calc(var(--shelf-hit-size) + var(--space-2))); padding: 0 var(--row-pad); background: var(--shelf-fill); border-radius: var(--r-row); }
+.picker-shelf code { display: flex; align-items: center; min-width: 0; flex: 1; white-space: pre; overflow: auto hidden; scrollbar-width: thin; background: none; padding: 0; font-size: var(--type-citation-size); color: var(--citation); }
+.picker-shelf code::-webkit-scrollbar { height: var(--space-2); }
+/* Added references stay inline in the one citation line. Each remove target stays inside its own piece, even
+   beside an adjacent command with no separator, and hover never changes size. */
+.citation-segment, .citation-segment > span { display: inline-flex; flex: none; align-items: center; outline: none; }
+.citation-pill { position: relative; display: inline-flex; align-items: center; min-width: var(--shelf-hit-size); height: var(--shelf-hit-size); margin-inline: var(--citation-segment-inset); border-radius: var(--citation-pill-radius); }
+.citation-text { flex: 1; }
+.picker-shelf .citation-pill .citation-remove { position: absolute; inset-inline-end: 0; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: var(--citation-remove-size); min-height: 0; height: var(--citation-remove-size); padding: 0; border: 0; border-radius: var(--r-full); background: var(--fill-on-color-hover); color: inherit; font-size: var(--citation-remove-size); line-height: 1; opacity: 0; pointer-events: none; user-select: none; }
+.citation-remove::before { content: "×"; }
+.citation-remove::after { content: ""; position: absolute; inset-block: calc((var(--citation-remove-size) - var(--shelf-hit-size)) / 2); inset-inline: calc(var(--citation-remove-size) - var(--shelf-hit-size)) 0; }
+.citation-pill:is(:hover, :focus-within) { background: var(--fill-subtle-hover); }
+.citation-segment:focus-visible .citation-pill { background: var(--selected-background); color: var(--selected-text); outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: calc(-1 * var(--focus-ring-width)); }
+.picker-shelf .citation-pill:is(:hover, :focus-within) .citation-remove, .picker-shelf .citation-segment:focus-visible .citation-remove { opacity: 1; pointer-events: auto; }
+.picker-shelf .citation-pill .citation-remove:is(:hover, :active) { background: var(--fill-on-color-pressed); }
+.citation-pill:is(:hover, :focus-within) .citation-text, .citation-segment:focus-visible .citation-text { mask-image: linear-gradient(to right, var(--mask-opaque) calc(100% - var(--citation-remove-size) - var(--citation-remove-fade)), var(--clear) calc(100% - var(--citation-remove-size))); }
+@media (hover: none) {
+  .picker-shelf .citation-pill .citation-remove { opacity: 1; pointer-events: auto; }
+  .citation-pill .citation-text { mask-image: linear-gradient(to right, var(--mask-opaque) calc(100% - var(--citation-remove-size) - var(--citation-remove-fade)), var(--clear) calc(100% - var(--citation-remove-size))); }
+}
+@media (pointer: coarse) { .picker-shelf { --shelf-hit-size: var(--touch-target); } }
+@media (forced-colors: active), (prefers-contrast: more) {
+  .citation-segment:focus-visible .citation-pill { forced-color-adjust: none; background: Highlight; color: HighlightText; outline-color: HighlightText; }
+  .picker-shelf .citation-pill .citation-remove { forced-color-adjust: none; background: ButtonFace; color: ButtonText; outline: var(--border-width) solid ButtonText; outline-offset: calc(-1 * var(--border-width)); }
+}
 .picker-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--inset); color: var(--muted); font-size: var(--type-meta-size); }
 .picker-foot > span { flex: 1 1 12rem; }
 .demo-hint { display: block; margin-top: var(--space-2); color: var(--muted); font: var(--type-meta-size)/1.5 var(--font-family); }
@@ -35,9 +58,9 @@
 .demo-status { position: absolute; width: var(--hidden-size); height: var(--hidden-size); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 .picker-empty { padding: var(--space-4); }
 :root[data-platform="windows"] .pick.is-selected::before { content: ""; position: absolute; left: var(--space-1); width: var(--pill-width); height: var(--pill-height); border-radius: var(--r-full); background: var(--accent); }
-@media (hover: hover) { .pick:not(.is-selected):hover { background: var(--fill-subtle-hover); } .picker button:not(.tile):not(.picker-clear):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); } }
-.picker button:not(.tile):not(.picker-clear):active, .draft button:active { background: var(--fill-control-pressed); }
-@media (pointer: coarse) { .picker button:not(.tile):not(.picker-clear), .picker select { min-height: var(--website-button-height); } .picker button:not(.tile) { position: relative; } .picker button:not(.tile)::after { content: ""; position: absolute; inset: calc((var(--website-button-height) - var(--touch-target)) / 2) 0; } .platform-switch button { padding-block: .6em; margin-block: -.35em; } }
+@media (hover: hover) { .pick:not(.is-selected):hover { background: var(--fill-subtle-hover); } .picker button:not(.tile):not(.picker-clear):not(.citation-remove):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); } }
+.picker button:not(.tile):not(.picker-clear):not(.citation-remove):active, .draft button:active { background: var(--fill-control-pressed); }
+@media (pointer: coarse) { .picker button:not(.tile):not(.picker-clear):not(.citation-remove), .picker select { min-height: var(--website-button-height); } .picker button:not(.tile):not(.citation-remove) { position: relative; } .picker button:not(.tile):not(.citation-remove)::after { content: ""; position: absolute; inset: calc((var(--website-button-height) - var(--touch-target)) / 2) 0; } .platform-switch button { padding-block: .6em; margin-block: -.35em; } }
 .platform-switch { color: var(--muted); font: var(--type-title-size)/1.5 var(--font-family); }
 .platform-switch button { min-height: 0; padding: .25em 0; border: 0; background: var(--clear); color: var(--citation); font: inherit; text-decoration: underline; cursor: pointer; }
 

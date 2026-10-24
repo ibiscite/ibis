@@ -239,7 +239,8 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
     assert.ok(Math.abs(ink - chip) <= 1.5, `wordmark ink ${ink} aligns with chips ${chip}`);
     assert.ok(await page.locator(".index-sticky").evaluate(e => e.scrollWidth <= e.clientWidth), "the sidebar never scrolls sideways");
     await page.locator(".demo-hint").waitFor();
-    await page.keyboard.press("Control+Shift+Y");
+    const mac = await page.evaluate(() => document.documentElement.dataset.platform === "macos");
+    await page.keyboard.press(mac ? "Control+Meta+R" : "Control+Shift+Y");
     await page.waitForFunction(() => document.activeElement?.matches(".picker input"));
     assert.ok(await page.locator("[data-picker]").evaluate(e => { const r = e.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }), "the app shortcut brings the example into view");
     await page.keyboard.press("Enter"); await page.locator(".picker-status", { hasText: "Copied" }).waitFor();
@@ -258,5 +259,43 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
     await page.mouse.move(0, 0);
     assert.equal(await signature.textContent(), "@diyanko", "a chip returns to its key when the pointer leaves");
     await context.close();
+  } finally { await browser.close(); }
+});
+
+test("inline demo segments keep exact output, contained targets and keyboard focus", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { loadPlaywright } = await import("./gallery-contact-sheet.mjs");
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const touch of [false, true]) for (const forcedColors of ["none", "active"]) {
+      const page = await browser.newPage({ viewport: { width: touch ? 380 : 1440, height: 900 }, hasTouch: touch, forcedColors, reducedMotion: "reduce" });
+      await page.goto(url.href);
+      const search = page.getByRole("combobox", { name: "Search the made-up library" });
+      await search.focus(); await search.press("Shift+Enter"); await search.press("ArrowDown"); await search.press("Shift+Enter");
+      await page.getByRole("combobox", { name: "Copy format" }).selectOption("autocite");
+      const grid = page.getByRole("grid", { name: "Selected references" });
+      assert.equal(await grid.textContent(), "\\autocites{okafor2023}{okafor2021}");
+      const rows = grid.getByRole("row"), first = rows.first(), pill = first.locator(".citation-pill");
+      const width = await pill.evaluate(e => e.getBoundingClientRect().width);
+      if (!touch) await pill.hover();
+      const target = await first.getByRole("button").evaluate(button => {
+        const hit = getComputedStyle(button, "::after"), style = getComputedStyle(button);
+        return { width: parseFloat(hit.width), height: parseFloat(hit.height), visible: style.opacity === "1" && style.pointerEvents !== "none" };
+      });
+      assert.ok(target.visible); assert.equal(target.width, touch ? 44 : 32); assert.equal(target.height, touch ? 44 : 32);
+      assert.equal(await pill.evaluate(e => e.getBoundingClientRect().width), width, "hover never changes geometry");
+      await first.focus(); await first.press("End");
+      assert.equal(await rows.last().evaluate(e => e === document.activeElement), true);
+      await rows.last().press("Delete");
+      assert.equal(await grid.getByRole("row").count(), 1);
+      assert.equal(await grid.getByRole("row").evaluate(e => e === document.activeElement), true);
+      await grid.getByRole("row").press("Escape");
+      assert.equal(await search.evaluate(e => e === document.activeElement), true);
+      assert.equal(await search.inputValue(), "okafor");
+      assert.equal(await grid.textContent(), "\\autocite{okafor2023}");
+      await page.close();
+    }
   } finally { await browser.close(); }
 });
