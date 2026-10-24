@@ -598,6 +598,9 @@ explain internal names such as “Insertion” in words a new visitor understand
 Insertion stays a plan until shipped. The demo uses invented references and
 says Ibis does not build the document bibliography. Setup stays short. Default
 shortcuts come from `keys.ts`, and the demo follows **Interaction**.
+The demo mirrors the shipped app. When a change alters what the demo shows
+(the picker, its keys, styles or paste), update the demo in the same pull
+request, and grow the demo as the app gains features worth showing.
 A missing page shows the same quiet page with the logo, one line and a way
 home; it is never indexed, and neither are preview links.
 The web example keeps its picker visible after copying and pasting so visitors
