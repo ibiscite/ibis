@@ -620,7 +620,10 @@ or copies the link. No third-party share buttons, star counts or badges.
 Each section after the first opens with one larger lead sentence so a skimmer
 gets the point; detail follows at reading size. The footer rule meets the
 margin rule. Why opens with the beak quote mark and is signed with the
-maker’s first name and an `@key` chip linking to their GitHub profile.
+maker's `@key` chip, linking to their GitHub profile. On touch screens the demo's
+controls match the page buttons' 2.25 rem height, with an invisible 44 px
+touch area. The paste slot and its blank keep the sentence's line height, so
+copying and pasting never moves the page.
 The demo mirrors the shipped app. When a change alters what the demo shows
 (the picker, its keys, styles or paste), update the demo in the same pull
 request, and grow the demo as the app gains features worth showing.
