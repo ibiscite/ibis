@@ -32,7 +32,7 @@ Any agent (Claude, Codex or another tool) or human can do any part of the work u
 
 1. **Pick.** Take the first untaken item in your lane of the current tracking issue's Queue and say in its issue that you took it. A red `main` comes first: when the required "CI result" check fails on `main`, revert the merge whose own run first turned it red, then fix it in a new pull request. A failing job that is not required never triggers a revert or a queue hold by itself; record it in the issue CI opened for it, and if it fails twice on `main` for the same reason, treat it as a P2 bug.
 2. **Branch** `<type>/<issue>-<short-name>` from `origin/main` in your own worktree; never share a checkout. Start with a failing test or a fixture in `fixtures/`.
-3. **Build** in small steps, under about 300 changed lines including tests. Use an explicit working directory or absolute paths, and inspect the diff before testing. Update docs and snapshots in the same change; review snapshot diffs like code.
+3. **Build** complete, coherent features in reviewable steps; do not split a usable outcome merely to meet a line count. Use an explicit working directory or absolute paths, and inspect the diff before testing. Update docs and snapshots in the same change; review snapshot diffs like code.
 4. **Check** with the fast commands and the focused tests for what you changed. The full check is the required "CI result" on the exact head, then the merge queue's complete validation; run `node scripts/check.mjs` locally only to diagnose a failure or for what CI cannot cover. Report each step as passed, failed or blocked, never "passed" for something that did not run.
 5. **Attack your own change once:** hostile, huge or empty input, other scripts and locales, concurrency, each platform, silent failure. P1 = crash, hang, data loss, security; P2 = wrong or silently changed output. Fix P1, P2 and regressions with a test; file P3s as one follow-up issue.
 6. **Open** the pull request with the template. Push unfinished work early as a draft so nothing lives on one machine, and mark it ready once the check passes.
@@ -63,6 +63,10 @@ All state lives on GitHub, so any agent can stop at any point and any other can 
 - When an agent repeats a mistake, add a check to `scripts/check.mjs` or `scripts/pr-lint.mjs` (preferred) or one line here; remove lines that no longer matter.
 - Before reading or invoking an unfamiliar repository file, locate it with `rg --files`; do not guess its path.
 - Use a distinct Cargo target directory per source worktree, or clean `ibis-core`, `ibis-zotero-local` and `ibis-desktop` before reusing one; stale cross-worktree artifacts can hide source changes.
+
+## Engineering priorities
+
+Prefer simple, modular code, fewer dependencies and bounded memory/work. Keep shared behavior in the Rust core and front ends thin; tune usability, accessibility and native behavior for each OS. This is an alpha: remove obsolete compatibility and architecture when rebuilding serves the agreed plan, while preserving data safety. Parallelize independent work and validation; keep one writer per file.
 
 ## Code, privacy and security
 

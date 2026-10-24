@@ -636,26 +636,15 @@ test("buttons and key caps are fills without an outline except in contrast modes
   }
 });
 
-test("the shelf is two 40 px lines of 24 px chips and one output line above the footer", () => {
+test("the shelf uses one citation line with shared removal controls", () => {
   expect(rules(tokens, ":root")).toMatch(/--shelf-line:\s*2\.5rem/);
-  expect(rules(tokens, ":root")).toMatch(/--chip-height:\s*1\.5rem/);
-  expect(rules(styles, ".shelf-chips")).toMatch(/height:\s*var\(--shelf-line\)/);
   expect(rules(styles, ".shelf-output")).toMatch(/height:\s*var\(--shelf-line\)/);
-  // The output is one line; the full text is its tooltip.
   expect(rules(styles, ".shelf-output .preview-text, .shelf-output p")).toMatch(/white-space:\s*nowrap/);
-  // Chips are fills without an outline, except in contrast modes.
-  const edge = styles.lastIndexOf("@media (prefers-contrast: more), (forced-colors: active) {");
-  expect(rules(styles.slice(0, edge), ".chip")).toMatch(/background:\s*var\(--chip-fill\)/);
-  expect(rules(styles.slice(0, edge), ".chip")).not.toMatch(/border:/);
-  const contrast = styles.slice(edge);
-  expect(rules(contrast, ".shelf, .chip")).toMatch(/border:\s*var\(--border-width\) solid CanvasText/);
-  // Windows draws a layer card with a stroke; GNOME a flat band under one separator.
-  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/box-shadow:\s*inset 0 0 0 var\(--border-width\) var\(--stroke-control\)/);
-  expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:\s*var\(--border-width\) solid var\(--separator\)/);
+  expect(styles).not.toContain(".shelf-chips");
   const shelf = readFileSync(new FileURL("./features/picker/CitationShelf.css", import.meta.url), "utf8");
-  const forced = shelf.slice(shelf.indexOf("@media (forced-colors: active)"));
-  expect(rules(forced, ".chip-remove::before")).toMatch(/forced-color-adjust:\s*none/);
-  expect(rules(forced, ".chip-remove::before")).toMatch(/background:\s*ButtonText/);
+  expect(rules(shelf, ".shelf-output, .shelf-controls")).toContain("min-height: max(var(--shelf-line), var(--shelf-hit-size))");
+  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/box-shadow:\s*inset/);
+  expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:/);
 });
 
 test("a wrapped footer keeps breathing room above and below its lines", () => {
@@ -841,8 +830,6 @@ function opticalSpacing(block: TokenBlock, name: string, value: string) {
   // C7 reserves exactly one pixel on each side of a citation segment.
   if (block.file === "tokens.css" && name === "--citation-segment-inset") return same("1px");
   if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
-  // Centre the 24 px fill in a 32/44 px target: the coarse inset is 10 px.
-  if (block.selector === ".shelf .shelf-chips[data-expanded]" && name === "padding-block") return same("calc((var(--chip-hit-size) - var(--chip-height)) / 2)");
   const borderCompensation = [".search-bar", '[role="option"]', '[role="option"][data-active]', ".key-caps kbd", ".library-bar", ".more > button"].includes(block.selector);
   if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
   if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
@@ -867,8 +854,7 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
     expect(gridPixels(resolveToken("var(--chip-group-target)", scope)!)).toBe(target);
     expect(gridPixels(resolveToken("max(var(--space-1), calc(var(--chip-group-target) - var(--chip-height)))", scope)!)).toBe(gap);
     const shelf = tokenScopes(tokenBlocks(appSheets, "windows", "normal", true, false, false, coarse)).get("shelf")!;
-    expect(gridPixels(resolveToken("var(--chip-hit-size)", shelf)!)).toBe(target);
-    expect(gridPixels(resolveToken("calc((var(--chip-hit-size) - var(--chip-height)) / 2)", shelf)!)).toBe(gap / 2);
+    expect(gridPixels(resolveToken("var(--shelf-hit-size)", shelf)!)).toBe(target);
   }
   expect(opticalSpacing({ file: "fixture", selector: ".other", scope: "root", values: [] }, "padding", "1px")).toBeFalsy();
   const segment = { file: "tokens.css", selector: ":root", scope: "root", values: [] };

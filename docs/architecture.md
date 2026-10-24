@@ -138,4 +138,8 @@ literal separators, with identity-based removal and direction-aware navigation.
 Its horizontal overflow retains contained pointer/touch targets without changing
 layout on hover; Escape returns to the caller's Search control. Non-hover input
 keeps removal visible and contrast modes use system control/selection pairs.
-The component gallery exercises this foundation before picker integration.
+The picker maps formatter positions through each request’s captured identities.
+Pending replies retain the surviving controls and dimmed display pieces; repeated
+deletion uses current membership. Opaque output retains canonical text beside
+named controls. Copy feedback uses its completed receipt, and clearing a focused
+collection returns to Search. The old folding chip row is removed.

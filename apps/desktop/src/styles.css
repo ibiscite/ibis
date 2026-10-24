@@ -137,22 +137,10 @@ main {
 .copy-notice { display: flow-root; border-bottom: var(--border-width) solid var(--separator); padding-bottom: var(--copy-padding); }
 .dismiss { float: right; margin: var(--dismiss-margin); }
 [role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
-/* The citation shelf (docs/design.md, "Shelf"): one quiet card above the
-   footer's Copy action, with the chosen references as chips, then the exact
-   output on one line. Its quote mark is centred over the tile column and the
-   output starts at the row titles, so the search glyph, the tiles and the mark
-   share one column. Windows draws a layer card with a stroke; GNOME a flat band. */
-.shelf { flex: 0 1 auto; min-height: 0; overflow: auto; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--shelf-fill); }
+/* One citation line above Copy, aligned with the result-title column. */
+.shelf { flex: none; min-height: 0; overflow: hidden; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--shelf-fill); }
+.shelf[hidden] { display: none; }
 main:has(> .shelf) > footer { border-top-color: var(--clear); }
-.shelf-chips { display: flex; align-items: center; gap: var(--space-1); height: var(--shelf-line); margin: 0; padding: 0 var(--row-pad); list-style: none; overflow: hidden; }
-.chip { flex: 0 1 auto; min-width: var(--chip-min-width); display: inline-flex; align-items: center; height: var(--chip-height); max-width: var(--chip-max-width); padding-inline-start: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: 500; }
-.chip[hidden] { display: none; }
-.chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip-more { flex: none; }
-/* "+N" opened: every chip, wrapping onto at most three scrolling lines. */
-/* Chips shorten before "+N" is pushed out of sight. */
-.shelf-chips[data-expanded] .chip { flex: none; max-width: min(var(--chip-max-width), 100%); }
-.shelf-chips[data-expanded] { flex-wrap: wrap; align-content: flex-start; overflow: auto; }
 .shelf-output { display: flex; align-items: center; gap: var(--row-gap); height: var(--shelf-line); padding-inline: var(--row-pad); font-size: var(--type-citation-size); }
 .shelf-mark { flex: none; width: var(--tile-size); text-align: center; font-size: var(--icon-size); font-weight: 700; line-height: 1; }
 .shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
@@ -323,7 +311,7 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 }
 /* The shelf and its chips keep an edge where fills are not drawn. */
 @media (prefers-contrast: more), (forced-colors: active) {
-  .shelf, .chip { border: var(--border-width) solid CanvasText; }
+  .shelf { border: var(--border-width) solid CanvasText; }
   .shelf { border-inline: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
   :root[data-platform="windows"] .shelf, :root[data-platform="windows"] #search { border: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
 }

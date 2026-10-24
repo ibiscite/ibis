@@ -157,7 +157,7 @@ test("the borderless picker has a permitted drag region around its editable sear
 /** Mock the Rust commands; returns the list of commands called. */
 /** The keys of the shelf's chips, in order: each chip's tooltip is its key. */
 function chipKeys(root: ParentNode = document) {
-  return [...root.querySelectorAll<HTMLElement>('[aria-label="Selected references"] .chip')].map((chip) => chip.title);
+  return [...root.querySelectorAll<HTMLElement>('[aria-label="Selected references"] .chip-group-item')].map((chip) => chip.querySelector<HTMLElement>("[title]")!.title);
 }
 
 function backend(overrides: Record<string, Handler> = {}): string[] {
@@ -567,7 +567,7 @@ test.each([
   { position: "last", count: 3, index: 2 },
   { position: "only", count: 1, index: 0 },
 ].flatMap((entry) => ["pointer", "Enter", "Space"].map((activation) => ({ ...entry, activation }))))(
-  "removing the $position selected reference via $activation restores Search navigation", async ({ count, index, activation }) => {
+  "removing the $position reference via $activation retains shelf navigation until Escape", async ({ count, index, activation }) => {
     // Duplicate native keys must remain distinct by source through removal/copy.
     const records = [result("same", "First", "a.bib"), result("same", "Second", "b.bib"), result("last", "Last", "c.bib")];
     const copies: Record<string, unknown>[] = [];
@@ -588,7 +588,7 @@ test.each([
     }
     for (let i = 1; i < count; i++) fireEvent.keyDown(box, { key: "ArrowUp" });
     const active = box.getAttribute("aria-activedescendant");
-    const tray = screen.getByRole("list", { name: "Selected references" });
+    const tray = screen.getByRole("grid", { name: "Selected references" });
     const remove = within(tray).getAllByRole("button")[index]!;
     act(() => remove.focus());
     if (activation === "pointer") {
@@ -607,6 +607,10 @@ test.each([
     expect(box.getAttribute("aria-activedescendant")).toBe(active);
     expect(calls).not.toContain("copy_citation");
     expect(calls).not.toContain("hide_picker");
+    if (remaining.length) {
+      expect(document.activeElement?.getAttribute("role")).toBe("row");
+      fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    }
     expect(document.activeElement).toBe(box);
     expect((box as HTMLInputElement).value).toBe("focus");
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
@@ -614,7 +618,7 @@ test.each([
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     await waitFor(() => expect(copies).toHaveLength(1));
     expect(copies[0]).toEqual({ ids: (remaining.length ? remaining : [records[1]!]).map((record) => record.id), format: "pandoc", expectedRevision: "1" });
-    expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+    expect(screen.queryByRole("grid", { name: "Selected references" })).toBeNull();
   },
 );
 
@@ -638,11 +642,13 @@ test.each([false, true])("removal ignores queued Enter repeats and waits for a f
   expect(copies).toEqual([]);
   fireEvent.keyUp(remove, { key: "Enter", shiftKey });
   fireEvent.click(remove, { detail: 0 });
-  expect(document.activeElement).toBe(box);
-  await act(async () => { fireEvent.keyDown(box, { key: "Enter", repeat: true, shiftKey }); });
+  expect(document.activeElement?.getAttribute("role")).toBe("row");
+  await act(async () => { fireEvent.keyDown(document.activeElement!, { key: "Enter", repeat: true, shiftKey }); });
   expect(copies).toEqual([]);
   expect(chipKeys()).toEqual(["b"]);
-  fireEvent.keyUp(box, { key: "Enter", shiftKey });
+  fireEvent.keyUp(document.activeElement!, { key: "Enter", shiftKey });
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(document.activeElement).toBe(box);
   if (shiftKey) {
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     fireEvent.keyUp(box, { key: "Enter", shiftKey: true });
@@ -694,10 +700,8 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
       if (i + 1 < Math.min(start + 20, count)) fireEvent.keyDown(box, { key: "ArrowDown" });
     }
   }
-  const tray = screen.getByRole("list", { name: "Selected references" });
-  // The shelf shows six chips and folds the rest into "+N", which shows them all.
-  expect(chipKeys(tray)).toHaveLength(6);
-  fireEvent.click(within(tray).getByRole("button", { name: `Show all ${count} selected references` }));
+  const tray = screen.getByRole("grid", { name: "Selected references" });
+  // Every chosen identity stays in the scrolling collection.
   expect(chipKeys(tray)).toHaveLength(count);
   const removed = [0, Math.floor(count / 2), count - 1];
   for (const i of removed) fireEvent.click(within(tray).getByRole("button", { name: `Remove ${records[i]!.key} from the selection` }));
@@ -708,7 +712,7 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(copies[0]).toEqual({ ids: expected.map((record) => record.id), format: "pandoc", expectedRevision: "1" });
   await screen.findByText(`[@${expected.map((record) => record.key).join("; @")}]`);
-  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  expect(screen.queryByRole("grid", { name: "Selected references" })).toBeNull();
 });
 
 test("warnings keep the picker open and failures say nothing was copied", async () => {
@@ -1209,7 +1213,7 @@ test("a citation style shows a safe preview and copies rich text with its warnin
     fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => expect(copies).toHaveLength(1));
     expect(copies[0]).toEqual({ text: "(Garcia, 2021); Second", html: "(Garcia, 2021); Second", expectedRevision: "1" });
-    await screen.findByText("Copied");
+    await screen.findByText("Copied", { selector: ".shelf-copied" });
     expect(screen.getAllByText(/“Second”: this style could not format the reference/).length).toBeGreaterThan(0);
   } finally {
     vi.unstubAllGlobals();
@@ -1395,8 +1399,8 @@ test.each(["same", "hidden", "different"])("copy feedback only omits exact visib
   }
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByText("Synthetic copy warning");
-  if (presentation === "different") await waitFor(() => expect(document.querySelector(".shelf-output bdi")?.textContent).toBe("@b"));
-  expect(Boolean(document.querySelector(".copy-notice code"))).toBe(presentation !== "same");
+  if (presentation !== "hidden") await waitFor(() => expect(document.querySelector(".shelf-output bdi")?.textContent).toBe(copied));
+  expect(Boolean(document.querySelector(".copy-notice code"))).toBe(presentation === "hidden");
   expect(screen.getByRole("button", { name: "Dismiss copy warnings" })).toBeTruthy();
 });
 
@@ -1573,11 +1577,11 @@ test("Escape clears the search before it hides the picker, keeping chosen refere
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   fireEvent.keyDown(box, { key: "Escape" });
   expect(box.value).toBe("");
-  expect(within(screen.getByRole("list", { name: "Selected references" })).getByTitle("a")).toBeTruthy();
+  expect(within(screen.getByRole("grid", { name: "Selected references" })).getByTitle("a")).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
   fireEvent.keyDown(box, { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
-  expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+  expect(screen.getByRole("grid", { name: "Selected references" })).toBeTruthy();
 });
 
 test("header and More share the pin with state-dependent labels", async () => {
@@ -2074,7 +2078,7 @@ test("removing one of two chosen references with the same key names its library"
   // Only one garcia2021 chosen so far: its key is enough.
   expect(screen.getByRole("button", { name: "Remove garcia2021 from the selection" })).toBeTruthy();
   fireEvent.click(screen.getByText("Shared"), { shiftKey: true });
-  const chosen = within(screen.getByRole("list", { name: "Selected references" }));
+  const chosen = within(screen.getByRole("grid", { name: "Selected references" }));
   expect(chosen.getByRole("button", { name: "Remove garcia2021 (My Library) from the selection" })).toBeTruthy();
   expect(chosen.getByRole("button", { name: "Remove garcia2021 (Synthetic lab) from the selection" })).toBeTruthy();
   expect(chosen.getByRole("button", { name: "Remove other from the selection" })).toBeTruthy();
@@ -2582,9 +2586,9 @@ test("alternate footer buttons use the current add, remove, clear and hide actio
   fireEvent.change(box, { target: { value: "first" } });
   fireEvent.keyDown(box, { key: "Alt", altKey: true });
   fireEvent.click(await screen.findByRole("button", { name: "Add to citation" }));
-  expect(await screen.findByRole("list", { name: "Selected references" })).toBeTruthy();
+  expect(await screen.findByRole("grid", { name: "Selected references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Remove from citation" }));
-  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  expect(screen.queryByRole("grid", { name: "Selected references" })).toBeNull();
   fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Clear search" }));
   expect((box as HTMLInputElement).value).toBe("");
   expect(document.activeElement).toBe(box);
@@ -2971,7 +2975,7 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter", shiftKey: action === "Shift+Enter" });
   await act(async () => { await Promise.resolve(); });
   expect(copied).toEqual([]);
-  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  expect(screen.queryByRole("grid", { name: "Selected references" })).toBeNull();
   expect(calls).not.toContain("hide_picker");
   await act(async () => { release([fresh]); });
   fireEvent.click(await screen.findByText("Replacement title and key"), { detail: 2 });
@@ -3649,7 +3653,7 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     await waitFor(() => expect(shown).toBe(false));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-    expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+    expect(screen.getByRole("grid", { name: "Selected references" })).toBeTruthy();
     expect(formatValue()).toBe("style:apa");
     act(() => box.focus());
     fireEvent.keyDown(box, { key: "Enter" });
@@ -3758,7 +3762,7 @@ test.each(["i", "I"])("Format hands off the %s preview shortcut without changing
     await waitFor(() => expect(document.activeElement).toBe(box));
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
     expect(formatValue()).toBe("style:apa");
-    expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+    expect(screen.getByRole("grid", { name: "Selected references" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy as APA");
     for (const command of ["quit", "copy_citation", "copy_formatted"]) expect(calls).not.toContain(command);
   } finally { format.mockRestore(); }
@@ -3824,4 +3828,36 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
   } finally {
     HTMLElement.prototype.scrollIntoView = originalScroll; vi.restoreAllMocks(); vi.unstubAllGlobals();
   }
+});
+
+test("inline shelf deletion keeps identity and focus through deferred and stale preview replies", async () => {
+  const pending: { ids: api.RecordId[]; resolve: (value: unknown) => void }[] = [];
+  backend({ search: () => [result("same", "First", "a.bib"), result("same", "Second", "b.bib"), result("c", "Third")],
+    citation_text: ({ ids }) => new Promise((resolve) => pending.push({ ids: ids as api.RecordId[], resolve })),
+  });
+  render(<App />);
+  await screen.findByText("First");
+  const box = screen.getByLabelText("Search references");
+  for (let i = 0; i < 3; i++) {
+    if (i) fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  }
+  const grid = screen.getByRole("grid", { name: "Selected references" });
+  const rows = () => within(grid).getAllByRole("row");
+  act(() => rows()[0]!.focus());
+  fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+  await waitFor(() => expect(document.activeElement).toBe(rows()[0]));
+  fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+  expect(chipKeys()).toEqual(["c"]);
+  expect(document.activeElement).toBe(rows()[0]);
+  await act(async () => {
+    for (const request of [...pending].reverse()) request.resolve({ text: request.ids.map((id) => `@${id.native_key}`).join("; "), warnings: [],
+      segments: request.ids.flatMap((id, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text: `@${id.native_key}` }]) });
+  });
+  expect(chipKeys()).toEqual(["c"]);
+  expect(within(grid).queryByText("@same")).toBeNull();
+  expect(document.activeElement).toBe(rows()[0]);
+  fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+  await waitFor(() => expect(document.activeElement).toBe(box));
+  expect(chipKeys()).toEqual([]);
 });

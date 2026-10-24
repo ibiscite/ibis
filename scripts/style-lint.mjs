@@ -93,7 +93,6 @@ export function lint(repo, allowlist, roots = ROOTS) {
 // Existing raw values, to be moved into tokens by #1033. Counts only shrink.
 const reason = "#1033";
 export const ALLOWLIST = {
-  "apps/desktop/src/features/picker/CitationShelf.css": { reason, values: { "-2px": 1 } },
   "apps/desktop/src/nativeAppearance.css": { reason, values: {
     "rgb(249 249 249 / 92%)": 1, "rgb(40 40 40 / 92%)": 1, "#982d16": 1, "#ff9d87": 1, "#135f29": 1, "#6fca81": 1,
     "#734b00": 1, "#f0c25a": 1, "#9b273b": 1, "#ff9c9c": 1, "30px": 2 } },

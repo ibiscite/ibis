@@ -107,10 +107,6 @@ export const pickerText = {
   shelfStale: "The library changed since these were chosen.",
   warningCount: (n: number) => (n === 1 ? "1 warning" : `${n} warnings`),
   /** The shelf's last chip, for references beyond the ones it shows. */
-  moreChosen: (n: number) => `+${n}`,
-  allChosen: (n: number) => `Show all ${n} selected references`,
-  fewerChosen: "Show fewer selected references",
-  fewerChosenShort: "Fewer",
   dismiss: "Dismiss",
   dismissWarnings: "Dismiss copy warnings",
   copyWarnings: "Copy warnings",

@@ -5,7 +5,7 @@ import { I18nProvider, ListStateContext, Tag, TagGroup, TagList, useLocale } fro
 import { Button } from "./Button";
 import "./ChipGroup.css";
 
-export type ChipItem = { id: string; label: string; textValue: string; removeLabel: string; content?: ReactNode; before?: ReactNode; after?: ReactNode };
+export type ChipItem = { id: string; label: string; textValue: string; removeLabel: string; title?: string; content?: ReactNode; before?: ReactNode; after?: ReactNode };
 type Props = {
   label: string; items: readonly ChipItem[]; onRemove: (keys: ReadonlySet<string>) => void;
   fallbackFocusRef: RefObject<HTMLElement | null>; locale?: string;
@@ -33,7 +33,7 @@ function Chips({ label, items, onRemove, fallbackFocusRef, variant = "chips", di
   }, []);
   const ref = useCallback((node: HTMLDivElement | null) => {
     // A caller may remove the empty group in the same update as its last chip.
-    if (!node && emptyRemoval.current) restore();
+    if (!node && (emptyRemoval.current || group.current?.contains(document.activeElement))) restore();
     group.current = node;
   }, [restore]);
   useEffect(() => {
@@ -55,7 +55,7 @@ function Chips({ label, items, onRemove, fallbackFocusRef, variant = "chips", di
   const list = <TagList items={items} className="chip-group-list">
     {(item) => <Tag id={item.id} textValue={item.textValue} className="chip-group-item">
       {variant === "citation" ? <>{item.before}<span className="citation-pill">
-        <bdi className="citation-text" dir={dir === "ltr" ? "ltr" : "auto"}>{item.content ?? item.label}</bdi>{remove(item)}
+        <bdi className="citation-text" title={item.title} dir={dir === "ltr" ? "ltr" : "auto"}>{item.content ?? item.label}</bdi>{remove(item)}
       </span>{item.after}</> : <><bdi>{item.label}</bdi>{remove(item)}</>}
     </Tag>}
   </TagList>;

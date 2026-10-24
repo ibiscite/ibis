@@ -71,7 +71,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   // The formatted preview, tagged with the style, choice and library it was
   // made for, so Enter never copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale" } | null>(null);
+  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale"; ids?: string[] } | null>(null);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [error, setError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const outputRef = useCallback((node: HTMLElement | null) => {
     // Saved choices can hide output too. Hand off before removing its focus,
     // without taking focus from More, chips or another control.
-    if (!node && output.current?.contains(document.activeElement) && input.current?.isConnected) input.current.focus({ preventScroll: true });
+    if (!node && output.current === document.activeElement && input.current?.isConnected) input.current.focus({ preventScroll: true });
     output.current = node;
   }, []);
   const moreButton = useRef<HTMLButtonElement>(null);
@@ -115,6 +115,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A selected citation owns its references independently of result highlighting.
   const activeChoice = selected.size === 0 ? highlightedChoice : null;
   const copyContext = useRef({ selected, query, format, snapshotRevision, activeChoice });
+  const copyReceipt = useRef<object | null>(null);
   const before = copyContext.current;
   if (before.selected !== selected || before.query !== query || before.format !== format || before.snapshotRevision !== snapshotRevision || before.activeChoice !== activeChoice) {
     copyContext.current = { selected, query, format, snapshotRevision, activeChoice };
@@ -411,6 +412,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
   // Visibility changes presentation only. Key copying also survives a failed preview.
   const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined;
+  const receipt = showPastePreview && copied && (preview || copyReceipt.current === copyContext.current) ? copied : null;
   const refreshSnapshot = () => {
     const request = ++statusReads.current;
     void libraryStatus().then((status) => {
@@ -429,11 +431,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const replaced = new AbortController();
     const ids = chosen.map((r) => r.id);
     let made: Promise<FormattedCitation>;
-    if (style && cslItems) made = cslItems(ids, chosenRevision).then((csl) => formatCitation(csl, style, { signal: replaced.signal }));
-    else if (keyPreview && citationText) made = citationText(ids, keyPreview, chosenRevision).then(({ text, warnings }) => ({ markup: [], text, html: "", warnings }));
+    if (style && cslItems) made = cslItems(ids, chosenRevision).then((csl) => formatCitation(csl, style, { signal: replaced.signal, segments: true }));
+    else if (keyPreview && citationText) made = citationText(ids, keyPreview, chosenRevision).then(({ text, warnings, segments }) => ({ markup: [], text, html: "", warnings,
+      segments: segments?.map(({ item, text }) => ({ item, markup: [text] })) }));
     else return;
     made
-      .then((result) => { if (live) setFormatted({ key, result }); })
+      .then((result) => { if (live) setFormatted({ key, result, ids: ids.map(idKey) }); })
       .catch((error) => { if (live) {
         const stale = nativeApi.isSnapshotChanged(error);
         setFormatted({ key, result: stale ? "stale" : "failed" });
@@ -486,6 +489,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const clearedSelection = new Map<string, SearchResult>();
     const completedContext = { ...context, selected: clearedSelection, activeChoice: latestHighlight.current };
     copyContext.current = completedContext;
+    copyReceipt.current = completedContext;
     setSelected(clearedSelection);
     // After a copy, reopening keeps the current search, not one cleared before it.
     escapedQuery.current = null;
@@ -738,7 +742,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <div className="picker-content">
       <Notices library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied}
-        showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
+        showCopiedText={!receipt && (displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text)}
         onDismissCopied={() => setCopied(null)} />
       <div className="results-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
@@ -782,11 +786,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         {!busy && emptyState}
       </div>
       </div>
-      <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {
-        toggle(r);
-        input.current?.focus({ preventScroll: true });
-      }} style={style} keys={keyFormat !== null}
-        shown={displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
+      <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(ids) => {
+        setSelectionChanged(true);
+        setSelected((previous) => { const next = new Map(previous); for (const id of ids) next.delete(id); return next; });
+      }} style={style} keys={keyFormat !== null} searchRef={input}
+        previewIds={formatted?.key === previewKey ? formatted.ids : undefined}
+        visible={results.length > 0 && !error && !library?.error}
+        copied={Boolean(receipt)}
+        shown={receipt ? { markup: [], text: receipt.text, html: "", warnings: [] } : displayedOutput}
+        focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: () => { void copy(); }, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}

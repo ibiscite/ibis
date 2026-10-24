@@ -351,8 +351,8 @@ async function expectRenderedFixture(id: string): Promise<void> {
       for (let i = 0; i < state.tray! * 2 + 32 && acknowledge.mock.calls.length === 0; i++) {
         await act(() => vi.advanceTimersByTimeAsync(16));
       }
-      // Six chips, then "+N", or all selected references after expanding.
-      expect(container.querySelectorAll('[aria-label="Selected references"] > li.chip')).toHaveLength(state.trayExpanded ? state.tray! : Math.min(state.tray!, 6));
+      // Every reference remains in the horizontally scrolling collection.
+      expect(container.querySelectorAll('[aria-label="Selected references"] .chip-group-item')).toHaveLength(state.tray!);
       expect(container.querySelector("[data-active]")?.id).toBe(`result-${state.tray! - 1}`);
       if (state.formatted) expect(container.querySelector(".shelf-output .preview-text")?.textContent).toBe(text);
     } else {
@@ -453,7 +453,7 @@ test.each([
   ["pinned", (root: HTMLElement) => root.querySelector('header .pin-button[aria-pressed="true"]') !== null],
   ["menu-open", () => document.querySelector('[role="menu"]') !== null],
   ["keys", (root: HTMLElement) => root.querySelector('[role="dialog"]') !== null],
-  ["tray", (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('ul[aria-label="Selected references"] .chip')].map((chip) => chip.title).join() === "example2026,研究2026"],
+  ["tray", (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[aria-label="Selected references"] .citation-text')].map((chip) => chip.title).join() === "example2026,研究2026"],
   ["compact", () => document.documentElement.dataset.density === "compact"],
   ["spacious", () => document.documentElement.dataset.density === "spacious"],
   ["larger-text", () => document.documentElement.dataset.textSize === "larger"],

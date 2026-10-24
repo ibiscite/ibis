@@ -1,6 +1,6 @@
 # Development process
 
-This project favours small, verified, reversible steps.
+This project favours complete, usable features delivered in verified, reversible steps. Keep the implementation simple, modular, memory-conscious and accessible; add complexity only for a concrete need.
 
 ## Contribution standard
 
@@ -8,7 +8,7 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 
 ### Issues
 
-- **One outcome per issue**, small enough for one pull request (about 300 changed lines). After a partial pull request, rewrite the issue to what remains. Never open an issue only so a pull request has something to close; use `Part of #N` instead.
+- **One outcome per issue**, delivered as a coherent, reviewable pull request. Do not split a usable feature just to meet a line count. After a partial pull request, rewrite the issue to what remains. Never open an issue only so a pull request has something to close; use `Part of #N` instead.
 - **Title:** a plain sentence about the outcome or the problem, with no commit prefix: "Zotero mapper drops malformed name fields".
 - **Body:** what a user sees now, and when it is done. The Task issue form has this shape.
 - **Ideas and questions** start in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions); an issue is opened when the work is agreed.

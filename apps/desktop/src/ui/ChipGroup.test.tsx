@@ -193,3 +193,17 @@ test("citation Escape returns to Search, while composition and 229 preserve the 
   expect(parentKeys).not.toHaveBeenCalled(); expect(removed).not.toHaveBeenCalled();
   press("Escape"); expect(document.activeElement).toBe(search); expect(parentKeys).not.toHaveBeenCalled();
 });
+
+test("clearing the collection outside removal restores only its owned focus", () => {
+  function Preview() {
+    const search = useRef<HTMLInputElement>(null);
+    const [chosen, setChosen] = useState(items);
+    return <><input ref={search} aria-label="Search" />{chosen.length > 0 && <ChipGroup label="Chosen" items={chosen} fallbackFocusRef={search} onRemove={() => undefined} />}
+      <button onClick={() => setChosen([])}>Copy</button></>;
+  }
+  render(<Preview />);
+  act(() => row(0).focus());
+  // WebKit pointer activation may leave focus in the collection.
+  fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Search" }));
+});

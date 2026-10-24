@@ -1,158 +1,106 @@
-import { useLayoutEffect, useRef, useState, type Ref } from "react";
+import { useLayoutEffect, useRef, type Ref, type RefObject } from "react";
 import type { SearchResult } from "../../api";
 import { provisional, type FormattedCitation } from "../../format/formatted";
-import { render } from "../../format/markup";
+import { plainText, render, type Markup } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
-import { Button } from "../../ui/Button";
+import { ChipGroup, type ChipItem } from "../../ui/ChipGroup";
 import { beak } from "../../brand";
 import "./CitationShelf.css";
 
-/** The shelf shows at most this many chips; the rest fold into "+N"
- * (docs/design.md, "Shelf"). */
-export const SHELF_CHIPS = 6;
-
-/** "García 2021": the first author's family name and the year, or the key
- * when the record names neither. */
+/** A short spoken reference label, with a key fallback. */
 export function chipLabel(r: SearchResult): string {
-  const label = [r.first_author, r.year ?? ""].join(" ").trim();
-  return label || r.key;
+  return [r.first_author, r.year ?? ""].join(" ").trim() || r.key;
 }
-
-/** Chip labels, with the key added to any label that two chips share. */
 export function chipLabels(records: SearchResult[]): string[] {
   const labels = records.map(chipLabel);
-  return labels.map((label, i) =>
-    labels.indexOf(label) !== labels.lastIndexOf(label) && label !== records[i]!.key ? `${label} · ${records[i]!.key}` : label);
+  return labels.map((label, i) => labels.indexOf(label) !== labels.lastIndexOf(label) && label !== records[i]!.key ? `${label} · ${records[i]!.key}` : label);
 }
 
-/** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
- * a line of chips for the references chosen with Shift+Enter, then the exact
- * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, removeLabel, onRemove, style, keys, shown, focusable, outputRef }: {
-  /** False until the selection first changes, so opening the picker is silent. */
-  announce: boolean;
-  selected: Map<string, SearchResult>;
-  removeLabel: (r: SearchResult) => string;
-  onRemove: (r: SearchResult) => void;
-  /** The citation style, when one is chosen. */
-  style: StyleId | null;
-  /** True for a citation-key syntax, which is shown in monospace. */
-  keys: boolean;
-  /** What Enter would copy; null while it is being made, undefined when there is nothing to show. */
+type Piece = { content: Markup[]; before: Markup[]; after: Markup[] };
+/** Only complete, byte-equal ownership may replace the canonical aggregate. */
+function projection(shown: FormattedCitation | string | null | undefined, owners: readonly string[] | undefined, selected: Map<string, SearchResult>) {
+  if (!shown || typeof shown !== "object" || !shown.segments || !owners || owners.length !== selected.size
+    || plainText(shown.segments.flatMap((part) => part.markup)) !== shown.text) return null;
+  const pieces = new Map<string, Piece>();
+  let leading: Markup[] = [], last: Piece | undefined;
+  for (const part of shown.segments) {
+    if (part.item === null) (last ? last.after : leading).push(...part.markup);
+    else {
+      const id = owners[part.item];
+      if (!id || !selected.has(id) || pieces.has(id)) return null;
+      last = { content: part.markup, before: leading, after: [] };
+      leading = []; pieces.set(id, last);
+    }
+  }
+  return pieces.size === selected.size ? pieces : null;
+}
+
+/** One stable collection owns removal while preview requests come and go. */
+export function CitationShelf({ announce, selected, removeLabel, onRemove, style, keys, shown, focusable, outputRef,
+  previewIds, searchRef, visible = true, copied = false }: {
+  announce: boolean; selected: Map<string, SearchResult>;
+  removeLabel: (r: SearchResult) => string; onRemove: (ids: ReadonlySet<string>) => void;
+  style: StyleId | null; keys: boolean;
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
-  /** A built citation can be focused, to read it whole. */
-  focusable: boolean;
-  outputRef?: Ref<HTMLElement>;
+  focusable: boolean; outputRef?: Ref<HTMLElement>;
+  previewIds?: readonly string[]; searchRef?: RefObject<HTMLElement | null>;
+  visible?: boolean; copied?: boolean;
 }) {
-  const records = [...selected.values()];
-  const keysOf = [...selected.keys()];
-  const labels = chipLabels(records);
-  // More than SHELF_CHIPS fold into "+N", which shows every chip on a few
-  // scrolling lines, so each chosen reference can always be removed here.
-  const [expanded, setExpanded] = useState(false);
-  const [visibleChips, setVisibleChips] = useState(SHELF_CHIPS);
-  const chips = useRef<HTMLUListElement>(null);
-  const more = useRef<HTMLLIElement>(null);
-  const sizes = useRef<HTMLLIElement>(null);
+  const fallback = useRef<HTMLElement>(null);
+  const shelfRef = useRef<HTMLDivElement>(null);
+  const order = useRef<string[]>([]);
+  const cache = useRef<Map<string, Piece> | null>(null);
+  const ready = projection(shown, previewIds, selected);
+  if (ready || shown !== null) cache.current = ready;
+  // Keep surviving controls and their widths while the replacement is pending.
+  // These dimmed pieces are never used for clipboard output or metadata mapping.
+  const pieces = ready ?? (shown === null && cache.current
+    ? new Map([...cache.current].filter(([id]) => selected.has(id))) : null);
   useLayoutEffect(() => {
-    const list = chips.current;
-    if (!list) return;
-    const fit = () => {
-      const first = list.querySelector<HTMLElement>(".chip");
-      if (!first || list.clientWidth <= 0) return;
-      const style = getComputedStyle(list);
-      const minimum = parseFloat(getComputedStyle(first).minWidth);
-      if (!(minimum > 0)) return;
-      const gap = parseFloat(style.columnGap) || 0;
-      const available = list.clientWidth - (parseFloat(style.paddingInlineStart) || 0) - (parseFloat(style.paddingInlineEnd) || 0);
-      const capacity = Math.min(selected.size, SHELF_CHIPS);
-      let next = SHELF_CHIPS;
-      if (selected.size > SHELF_CHIPS || capacity * minimum + (capacity - 1) * gap > available) {
-        const button = more.current?.querySelector("button");
-        // Reserve the widest possible label, independently of the preceding fit.
-        // At most seven labels cover zero through six visible chips.
-        const overflow = Math.max(0, ...[...(sizes.current?.children ?? [])].map((node) => node.getBoundingClientRect().width));
-        next = Math.max(0, Math.min(capacity, Math.floor((available - overflow) / (minimum + gap))));
-        if (!expanded && [...list.querySelectorAll(".chip")].slice(next).some((chip) => chip.contains(document.activeElement))) button?.focus();
-      }
-      setVisibleChips(next);
-    };
-    fit();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
-    observer?.observe(list);
-    for (const node of sizes.current?.children ?? []) observer?.observe(node);
-    window.addEventListener("resize", fit);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", fit); };
-  }, [selected, expanded, visibleChips]);
-  if (expanded && selected.size === 0) setExpanded(false);
-  const folded = Math.max(0, records.length - visibleChips);
-  // Keep the first chips measurable even if none fit; hidden chips are neither
-  // exposed nor focusable. Expanding still renders every record in source order.
-  const shownChips = expanded ? records : records.slice(0, SHELF_CHIPS);
-  return (
-    <>
-      <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
-        {announce ? pickerText.selectionCount(selected.size) : ""}
-      </p>
-      {(records.length > 0 || shown !== undefined) && (
-        <div className="shelf">
-          {records.length > 0 && (
-            <ul ref={chips} className="shelf-chips" aria-label={pickerText.selectedReferences} data-expanded={(folded > 0 && expanded) || undefined}>
-              <li ref={sizes} className="chip-more chip-fit-measure" aria-hidden="true" inert>
-                {Array.from({ length: Math.min(records.length, SHELF_CHIPS + 1) }, (_, i) => (
-                  <Button key={i} variant="quiet" size="small" excludeFromTabOrder>{pickerText.moreChosen(records.length - i)}</Button>
-                ))}
-              </li>
-              {shownChips.map((r, i) => (
-                <li key={keysOf[i]} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
-                  <bdi className="chip-label">{labels[i]}</bdi>
-                  <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
-                </li>
-              ))}
-              {folded > 0 && (
-                <li ref={more} className="chip-more">
-                  <Button variant="quiet" size="small" aria-expanded={expanded} onPress={() => setExpanded(!expanded)}
-                    aria-label={expanded ? pickerText.fewerChosen : pickerText.allChosen(records.length)}>
-                    {expanded ? pickerText.fewerChosenShort : pickerText.moreChosen(folded)}
-                  </Button>
-                </li>
-              )}
-            </ul>
-          )}
-          {shown !== undefined && (
-            <section ref={outputRef} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
-              data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
-              tabIndex={focusable && shown && typeof shown === "object" ? 0 : undefined}>
-              {/* Static generated artwork, never user or library markup. */}
-              <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
-                preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />
-              {shown === null && <p role="status">{pickerText.previewPending}</p>}
-              {shown === "failed" && <p role="alert">{pickerText.previewError}</p>}
-              {shown === "stale" && <p role="status">{pickerText.shelfStale}</p>}
-              {shown && typeof shown === "object" && (
-                <>
-                  <bdi dir={keys ? "ltr" : "auto"} className="preview-text" title={shown.text}>
-                    {shown.markup.length > 0 ? render(shown.markup) : shown.text}
-                  </bdi>
-                  {style && provisional(style) && (
-                    <span className="shelf-pill" title={pickerText.provisional}>
-                      <span aria-hidden="true">{pickerText.provisionalShort}</span>
-                      <span className="visually-hidden">{pickerText.provisional}</span>
-                    </span>
-                  )}
-                  {shown.warnings.length > 0 && (
-                    <span className="shelf-pill" title={shown.warnings.join("\n")}>
-                      <span aria-hidden="true">{pickerText.warningCount(shown.warnings.length)}</span>
-                      <span className="visually-hidden">{shown.warnings.join(" ")}</span>
-                    </span>
-                  )}
-                </>
-              )}
-            </section>
-          )}
+    if (!visible && shelfRef.current?.contains(document.activeElement)) searchRef?.current?.focus({ preventScroll: true });
+  }, [visible, searchRef]);
+  const retained = order.current.filter((id) => selected.has(id));
+  const known = pieces ? [...pieces.keys()] : retained;
+  const knownIds = new Set(known);
+  order.current = [...known, ...[...selected.keys()].filter((id) => !knownIds.has(id))];
+  const labels = chipLabels(order.current.map((id) => selected.get(id)!));
+  const items: ChipItem[] = order.current.map((id, index) => {
+    const record = selected.get(id)!;
+    const piece = pieces?.get(id);
+    return { id, label: record.key, title: record.key, textValue: labels[index]!, removeLabel: removeLabel(record),
+      content: piece ? render(piece.content) : labels[index], before: piece ? render(piece.before) : undefined, after: piece ? render(piece.after) : undefined };
+  });
+  const built = shown && typeof shown === "object" ? shown : null;
+  return <>
+    <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
+      {announce ? pickerText.selectionCount(selected.size) : ""}
+    </p>
+    {(selected.size > 0 || shown !== undefined) && <div ref={shelfRef} className="shelf" hidden={!visible}>
+      <section ref={shown === undefined ? undefined : outputRef} aria-label={shown === undefined ? undefined : pickerText.preview}
+        className={shown === undefined ? "shelf-controls" : "shelf-output"} data-keys={keys || undefined}
+        title={built?.text} data-state={typeof shown === "string" || shown === null ? shown ?? "pending" : undefined}
+        tabIndex={focusable && built ? 0 : undefined}>
+        {shown !== undefined && <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
+          preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />}
+        {!pieces && <>
+          {shown === null && <p role="status">{pickerText.previewPending}</p>}
+          {shown === "failed" && <p role="alert">{pickerText.previewError}</p>}
+          {shown === "stale" && <p role="status">{pickerText.shelfStale}</p>}
+          {built && <bdi dir={keys ? "ltr" : "auto"} className="preview-text" title={built.text}>{built.markup.length ? render(built.markup) : built.text}</bdi>}
+        </>}
+        {pieces && shown === null && <span className="visually-hidden" role="status">{pickerText.previewPending}</span>}
+        <div className={pieces ? "shelf-segments preview-text" : "shelf-fallback"}>
+          {selected.size > 0 && <ChipGroup label={pickerText.selectedReferences} variant="citation" dir={keys ? "ltr" : "auto"}
+            items={items} fallbackFocusRef={searchRef ?? fallback} onRemove={onRemove} />}
         </div>
-      )}
-    </>
-  );
+        {copied && <><svg className="shelf-mark shelf-close" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
+          dangerouslySetInnerHTML={{ __html: beak.body }} /><span className="shelf-copied">{pickerText.copied}</span></>}
+        {style && provisional(style) && <span className="shelf-pill" title={pickerText.provisional}><span aria-hidden="true">{pickerText.provisionalShort}</span><span className="visually-hidden">{pickerText.provisional}</span></span>}
+        {built && built.warnings.length > 0 && <span className="shelf-pill" title={built.warnings.join("\n")}>
+          <span aria-hidden="true">{pickerText.warningCount(built.warnings.length)}</span><span className="visually-hidden">{built.warnings.join(" ")}</span>
+        </span>}
+      </section>
+    </div>}
+  </>;
 }
