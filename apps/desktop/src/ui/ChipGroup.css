@@ -33,5 +33,5 @@
 @media (forced-colors: active), (prefers-contrast: more) {
   .chip-group-item { border-color: ButtonText; }
   .chip-group-item[data-focus-visible] .citation-pill { forced-color-adjust: none; background: Highlight; color: HighlightText; outline-color: HighlightText; }
-  .chip-group .citation-pill .chip-group-remove.ui-button[data-variant] { forced-color-adjust: none; background: ButtonFace; color: ButtonText; border: var(--border-width) solid ButtonText; }
+  .chip-group .citation-pill .chip-group-remove.ui-button[data-variant] { forced-color-adjust: none; background: ButtonFace; color: ButtonText; outline: var(--border-width) solid ButtonText; outline-offset: calc(-1 * var(--border-width)); }
 }

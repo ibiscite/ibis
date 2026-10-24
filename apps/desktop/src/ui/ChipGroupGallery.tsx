@@ -47,9 +47,10 @@ export function renderChipGroupGallery(root: HTMLElement, id: string) {
       const pill = row.querySelector<HTMLElement>(".citation-pill")!;
       const button = pill.querySelector("button")!;
       const painted = button.getBoundingClientRect();
+      const style = getComputedStyle(button);
       const after = getComputedStyle(button, "::after");
-      const hit = { left: painted.left + parseFloat(after.left), right: painted.right - parseFloat(after.right),
-        top: painted.top + parseFloat(after.top), bottom: painted.bottom - parseFloat(after.bottom) };
+      const hit = { left: painted.left + parseFloat(style.borderLeftWidth) + parseFloat(after.left), right: painted.right - parseFloat(style.borderRightWidth) - parseFloat(after.right),
+        top: painted.top + parseFloat(style.borderTopWidth) + parseFloat(after.top), bottom: painted.bottom - parseFloat(style.borderBottomWidth) - parseFloat(after.bottom) };
       const bounds = pill.getBoundingClientRect();
       const minimum = parseFloat(getComputedStyle(pill).minWidth);
       // One browser layout unit tolerates floating-point subtraction only.
