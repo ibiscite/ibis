@@ -3,8 +3,10 @@
   "compatibility_date": "2026-10-23",
   "workers_dev": false,
   "preview_urls": true,
+  // Pull request previews start from this block; static assets stay top-level.
+  "previews": {},
   "assets": {
     "directory": "./website/dist",
-    "not_found_handling": "none"
+    "not_found_handling": "404-page"
   }
 }

@@ -6,7 +6,7 @@
 [hidden] { display: none !important; }
 html { scroll-padding-top: var(--space-6); }
 body { margin: 0; background: var(--website-bg); color: var(--website-text); font: calc(var(--type-body-size) * 1.35)/1.6 var(--font-reading); }
-.site { --surface: var(--website-bg); --text: var(--website-text); --muted: var(--website-muted); --separator: var(--website-line); position: relative; max-width: 84rem; margin-inline: auto; padding-inline: var(--website-pad); }
+.site { min-height: 100svh; --surface: var(--website-bg); --text: var(--website-text); --muted: var(--website-muted); --separator: var(--website-line); position: relative; max-width: 84rem; margin-inline: auto; padding-inline: var(--website-pad); }
 a { color: var(--citation); text-underline-offset: .2em; }
 a:hover { text-decoration-thickness: var(--focus-ring-width); }
 ::selection { background: var(--selected-background); color: var(--selected-text); }

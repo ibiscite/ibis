@@ -14,3 +14,7 @@
 /assets/*.svg
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox
+
+# Preview and version links are for review only; keep them out of search results.
+https://:version.:subdomain.workers.dev/*
+  X-Robots-Tag: noindex

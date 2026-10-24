@@ -11,11 +11,11 @@ test("public build copies canonical tokens, keys and only allowlisted assets", a
   try {
     const source = join(dir, "source"), output = join(dir, "public");
     await mkdir(source); await mkdir(output);
-    for (const name of ["index.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs"]) await writeFile(join(source, name), "synthetic");
+    for (const name of ["index.html", "404.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs"]) await writeFile(join(source, name), "synthetic");
     await writeFile(join(source, "private.txt"), "must not publish");
     await writeFile(join(output, "stale.txt"), "stale");
     await build(output, source);
-    assert.deepEqual((await readdir(output)).sort(), ["_headers", "assets", "demo-model.mjs", "demo.css", "demo.js", "icon-paths.js", "index.html", "keys.js", "site.js", "style.css", "tokens.css"]);
+    assert.deepEqual((await readdir(output)).sort(), ["404.html", "_headers", "assets", "demo-model.mjs", "demo.css", "demo.js", "icon-paths.js", "index.html", "keys.js", "site.js", "style.css", "tokens.css"]);
     assert.equal(await readFile(join(output, "tokens.css"), "utf8"), await readFile(new URL("../apps/desktop/src/tokens.css", import.meta.url), "utf8"));
     const icons = await import(pathToFileURL(join(output, "icon-paths.js")).href);
     assert.ok(icons.typePaths.article.length > 0, "shared icon data loads without React");
@@ -36,13 +36,15 @@ test("public build copies canonical tokens, keys and only allowlisted assets", a
 test("Cloudflare serves a self-only policy and bounded caches without Apache", async () => {
   const headers = await readFile(new URL("../website/_headers", import.meta.url), "utf8");
   assert.match(headers, /default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'/);
-  assert.doesNotMatch(headers, /https?:|data:|unsafe-eval/);
+  assert.doesNotMatch(headers.replace(/^https:\/\/:version.*$/m, ""), /https?:|data:|unsafe-eval/);
   assert.match(headers, /Cache-Control: no-cache/);
   assert.match(headers, /Cache-Control: public, max-age=3600, must-revalidate/);
+  assert.match(headers, /https:\/\/:version\.:subdomain\.workers\.dev\/\*\n  X-Robots-Tag: noindex/, "preview links stay out of search results");
   assert.match(headers, /! Content-Security-Policy\n  Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox/);
-  const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
-  assert.deepEqual(config.assets, { directory: "./website/dist", not_found_handling: "none" });
+  const config = JSON.parse((await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8")).replace(/^\s*\/\/.*$/gm, ""));
+  assert.deepEqual(config.assets, { directory: "./website/dist", not_found_handling: "404-page" });
   assert.equal(config.main, undefined, "static assets need no Worker code");
+  assert.deepEqual(config.previews, {}, "pull request previews use the top-level static assets");
   const source = await readdir(new URL("../website/", import.meta.url));
   assert.ok(!source.includes(".htaccess") && !source.includes("deploy.mjs"));
 });

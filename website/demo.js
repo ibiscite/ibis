@@ -22,7 +22,9 @@ export function setupDemo() {
   select.setAttribute("aria-label", "Copy format");
   const list = el("ul", { id: "demo-results", className: "picker-results" });
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
-  const count = el("span"), output = el("code"), status = el("span"); status.setAttribute("role", "status");
+  const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
+  // The visible status can appear with the shelf; this live region is always rendered so the first change is announced.
+  const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
   const copy = el("button", { type: "button", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
   const paste = el("button", { type: "button", className: "paste-slot" }, "Paste ", el("kbd", { textContent: keyLabel("CmdOrCtrl+V", mac) }));
   paste.setAttribute("aria-label", "Paste the copied citation into the sentence");
@@ -65,7 +67,7 @@ export function setupDemo() {
     }
     empty.hidden = found.length > 0;
     if (current) input.setAttribute("aria-activedescendant", rows.get(current.key).row.id); else input.removeAttribute("aria-activedescendant");
-    output.textContent = value || "—"; status.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
+    output.textContent = value || "—"; status.textContent = announce.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
     output.hidden = beak.hidden = !state.preview; shelf.hidden = !state.preview && !status.textContent;
     copy.disabled = !value; copy.replaceChildren(`Copy as ${formats[state.format]} `, el("kbd", { textContent: keyLabel(keysFor("copy"), mac) }));
     add.disabled = !current; add.textContent = current && state.added.includes(current.key) ? "Remove" : "Add";
@@ -107,6 +109,6 @@ export function setupDemo() {
     }
   });
   figure.querySelector(".picker-panel").replaceWith(panel);
-  figure.append(reopen, hint); render();
+  figure.append(reopen, hint, announce); render();
   if (anchorBottom < 0) window.scrollBy({ top: section.getBoundingClientRect().bottom - anchorBottom, behavior: "instant" });
 }

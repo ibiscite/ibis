@@ -27,12 +27,13 @@
 .picker-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--inset); color: var(--muted); font-size: var(--type-meta-size); }
 .picker-foot > span { flex: 1 1 12rem; }
 .demo-hint { display: block; margin-top: var(--space-2); color: var(--muted); font: var(--type-meta-size)/1.5 var(--font-family); }
-.picker-shelf [role="status"] { flex: none; margin-left: auto; color: var(--citation); font: var(--type-strong-weight) var(--type-meta-size)/1 var(--font-family); }
+.picker-shelf .picker-status { flex: none; margin-left: auto; color: var(--citation); font: var(--type-strong-weight) var(--type-meta-size)/1 var(--font-family); }
+.demo-status { position: absolute; width: var(--hidden-size); height: var(--hidden-size); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 .picker-empty { padding: var(--space-4); }
 :root[data-platform="windows"] .pick.is-selected::before { content: ""; position: absolute; left: var(--space-1); width: var(--pill-width); height: var(--pill-height); border-radius: var(--r-full); background: var(--accent); }
 @media (hover: hover) { .pick:not(.is-selected):hover { background: var(--fill-subtle-hover); } .picker button:not(.tile):not(.picker-clear):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); } }
 .picker button:not(.tile):not(.picker-clear):active, .draft button:active { background: var(--fill-control-pressed); }
-@media (pointer: coarse) { .picker button, .picker select, .draft button { min-height: var(--touch-target); } }
+@media (pointer: coarse) { .picker button, .picker select, .draft button { min-height: var(--touch-target); } .platform-switch button { padding-block: .6em; margin-block: -.35em; } }
 .platform-switch { color: var(--muted); font: var(--type-title-size)/1.5 var(--font-family); }
 .platform-switch button { min-height: 0; padding: .25em 0; border: 0; background: var(--clear); color: var(--citation); font: inherit; text-decoration: underline; cursor: pointer; }
 

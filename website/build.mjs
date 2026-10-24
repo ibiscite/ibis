@@ -20,7 +20,7 @@ export async function build(output = join(source, "dist"), input = source) {
   await mkdir(dirname(output), { recursive: true });
   const stage = await mkdtemp(join(dirname(output), ".ibis-build-"));
   try {
-    for (const file of ["index.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs"]) await copyFile(join(input, file), join(stage, file));
+    for (const file of ["index.html", "404.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs"]) await copyFile(join(input, file), join(stage, file));
     await writeFile(join(stage, "index.html"), await content(await readFile(join(stage, "index.html"), "utf8")));
     await copyFile(join(root, "apps/desktop/src/tokens.css"), join(stage, "tokens.css"));
     for (const name of ["keys", "icon-paths"]) {

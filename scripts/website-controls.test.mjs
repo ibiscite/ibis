@@ -198,7 +198,8 @@ test("browser keeps navigation, keyboard selection and long output visible", { s
     assert.equal(await paste.count(), 0, "same-value copy needs no second paste");
     await input.dispatchEvent("keydown", previewKey);
     assert.equal(await page.locator(".picker-shelf code").isVisible(), false);
-    assert.equal(await page.getByRole("status").isVisible(), true, "feedback survives a hidden output preview");
+    assert.equal(await page.locator(".picker-status").isVisible(), true, "feedback survives a hidden output preview");
+    assert.equal(await page.getByRole("status").textContent(), await page.locator(".picker-status").textContent(), "the always-rendered live region announces the same feedback");
     await page.emulateMedia({ forcedColors: "active" });
     assert.equal(await page.locator('.pick[aria-selected="true"]').evaluate(e => getComputedStyle(e).forcedColorAdjust), "none");
     await page.locator('.index nav a[href="#how"]').click();
