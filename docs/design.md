@@ -528,11 +528,43 @@ in the [icon source notes](../apps/desktop/src-tauri/icons/source/README.md).
 
 ## Website
 
-The website uses the same tokens, the same components' look and the rules on
-this page. It describes features and the roadmap only from
-[ROADMAP.md](../ROADMAP.md) and this page, with no separate claims. Website
-rules (pages, layout, voice) belong in this section, not in a separate
-language file.
+The website uses the same tokens, components’ appearance and interaction rules
+as the app. `website/build.mjs` copies `apps/desktop/src/tokens.css` into the
+public build; no second token source is kept. Website CSS owns page layout.
+Feature and roadmap text comes from [ROADMAP.md](../ROADMAP.md) and **Coming
+features** below, not a separate feature list. The headline comes from
+`brand/settings.json`; keep the root README, GitHub About and organization
+profile aligned when it changes. Downloads stay on GitHub Releases.
+
+- **Compact page, margin navigation.** Content sets section heights, with more
+  breathing room for the introduction and sticky navigation near the top.
+  Keep the structural margin line, ordinary scrolling and short setup steps;
+  no viewport-sized sections or scroll snapping. Small screens use normal flow.
+- **Reading and controls.** System serif for prose and sample writing; platform
+  UI type for controls and labels; monospace only for citation keys and output.
+  No remote fonts. Use shared type, colour, shape and motion roles.
+- **Keys name places.** Section links such as `@how` and `@setup` echo citation
+  keys. These are links, never generic badges. The margin and brand artwork
+  can use citation scarlet; controls follow the shared accent and focus roles.
+- **Notes, not callouts.** No accent bars, inset rules or disclosure controls.
+  Use a plain sentence where a warning applies, a short footnote for the
+  preview caveat, and margin notes for the demonstration’s steps.
+- **Honest preview.** Put “Early preview” near the logo and limitations before
+  downloads. Describe copying and pasting as today’s workflow; insertion is a
+  plan until released. The demo uses invented references and explicitly says
+  that Ibis does not build the document bibliography. Never promise dates.
+- **Show what fits first.** Offer the visitor’s platform first without removing
+  the others; phones and tablets see all platforms. Shortcuts are defaults.
+  The demo follows **Interaction** and reads shortcuts from `keys.ts`.
+- **Appearance.** A small light/dark switch below margin navigation, with a quiet
+  System reset. Follow the device by default; remember only the local choice
+  before paint. No dropdown or hover-only menu. Respect reduced motion; the
+  brand logo draws once and can redraw from the home link, never loops.
+- **Small footer.** Open-source note and essential links. Operational hosting
+  details and deployment instructions belong in `website/README.md`; private
+  credentials and backups never enter the repository or public build.
+- **Useful without scripts.** Explanation, setup, downloads and navigation work
+  without JavaScript. Keyboard, touch and assistive access never depend on hover.
 
 ## Coming features
 
