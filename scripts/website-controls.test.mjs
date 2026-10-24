@@ -213,6 +213,7 @@ test("browser keeps navigation, keyboard selection and long output visible", { s
     assert.ok(await touch.locator(".paste-slot").evaluate(e => { const r = e.getBoundingClientRect(), x = r.left + r.width / 2; return document.elementFromPoint(x, r.top - 6)?.closest(".paste-slot") === e && document.elementFromPoint(x, r.bottom + 6)?.closest(".paste-slot") === e; }), "paste remains a touch target");
     assert.equal(await touch.locator("[data-result]").evaluate(e => e.getBoundingClientRect().height), result, "showing the paste slot never moves the page");
     assert.ok(await touch.evaluate(() => { const h = e => document.querySelector(e).getBoundingClientRect().height; return Math.abs(h(".picker select") - h(".picker-foot button")) < 1; }), "the format menu and the footer buttons share one height");
+    assert.ok(await touch.locator(".picker-format svg").isVisible(), "the format menu shows its own chevron in every browser");
     assert.match(await touch.locator(".demo-hint").textContent(), /^Tap a row/);
     assert.equal(await touch.locator(".picker-foot kbd").isVisible(), false);
     assert.ok(await touch.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
