@@ -419,6 +419,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Visibility changes presentation only. Key copying also survives a failed preview.
   const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined;
   const receipt = showPastePreview && copied && (preview || copyReceipt.current === copyContext.current) ? copied : null;
+  const shelfVisible = results.length > 0 && !error && !library?.error;
+  const shelfShown = receipt ? { markup: [], text: receipt.text, html: "", warnings: [] } : displayedOutput;
+  const visibleOutput = shelfVisible ? shelfShown : undefined;
   const refreshSnapshot = () => {
     const request = ++statusReads.current;
     void libraryStatus().then((status) => {
@@ -748,7 +751,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <div className="picker-content">
       <Notices library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied}
-        showCopiedText={!receipt && (displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text)}
+        showCopiedText={visibleOutput == null || typeof visibleOutput === "string" || visibleOutput.text !== copied?.text}
         onDismissCopied={() => setCopied(null)} />
       <div className="results-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
@@ -797,9 +800,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         setSelected((previous) => { const next = new Map(previous); for (const id of ids) next.delete(id); return next; });
       }} style={style} keys={keyFormat !== null} searchRef={input}
         previewIds={formatted?.key === previewKey ? formatted.ids : undefined}
-        visible={results.length > 0 && !error && !library?.error}
+        visible={shelfVisible}
         copied={Boolean(receipt)}
-        shown={receipt ? { markup: [], text: receipt.text, html: "", warnings: [] } : displayedOutput}
+        shown={shelfShown}
         focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}

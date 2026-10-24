@@ -3881,3 +3881,17 @@ test("crossing other rows on the way to Copy preserves the clicked reference", a
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(copies[0]).toMatchObject({ ids: [result("b", "Clicked").id], expectedRevision: "1" });
 });
+
+test("copying retained choices while results are empty keeps the hidden shelf receipt visible in the notice", async () => {
+  backend({ search: ({ query }) => query === "missing" ? [] : [result("a", "First")],
+    copy_citation: () => ({ text: "@a", warnings: ["Synthetic retained warning"] }) });
+  render(<App />); await screen.findByText("First");
+  const box = screen.getByLabelText("Search references");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.change(box, { target: { value: "missing" } });
+  await screen.findByText("No matching references");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await screen.findByText("Synthetic retained warning");
+  expect(screen.getByText("@a", { selector: ".copy-notice code" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+});
