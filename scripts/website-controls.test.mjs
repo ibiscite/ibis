@@ -207,8 +207,12 @@ test("browser keeps navigation, keyboard selection and long output visible", { s
     assert.equal(await page.locator('.index a[aria-current] .key').evaluate(e => getComputedStyle(e).forcedColorAdjust), "none");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     const touch = await browser.newPage({ viewport: { width: 320, height: 600 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" });
-    await touch.goto(url.href); await touch.getByRole("button", { name: /^Copy as Pandoc/ }).click();
-    assert.ok(await touch.locator(".paste-slot").evaluate(e => e.getBoundingClientRect().height >= 44), "paste remains a touch target");
+    await touch.goto(url.href); const result = await touch.locator("[data-result]").evaluate(e => e.getBoundingClientRect().height);
+    await touch.getByRole("button", { name: /^Copy as Pandoc/ }).click();
+    await touch.locator(".paste-slot").evaluate(e => e.scrollIntoView({ block: "center" }));
+    assert.ok(await touch.locator(".paste-slot").evaluate(e => { const r = e.getBoundingClientRect(), x = r.left + r.width / 2; return document.elementFromPoint(x, r.top - 6)?.closest(".paste-slot") === e && document.elementFromPoint(x, r.bottom + 6)?.closest(".paste-slot") === e; }), "paste remains a touch target");
+    assert.equal(await touch.locator("[data-result]").evaluate(e => e.getBoundingClientRect().height), result, "showing the paste slot never moves the page");
+    assert.ok(await touch.evaluate(() => { const h = e => document.querySelector(e).getBoundingClientRect().height; return Math.abs(h(".picker select") - h(".picker-foot button")) < 1; }), "the format menu and the footer buttons share one height");
     assert.match(await touch.locator(".demo-hint").textContent(), /^Tap a row/);
     assert.equal(await touch.locator(".picker-foot kbd").isVisible(), false);
     assert.ok(await touch.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

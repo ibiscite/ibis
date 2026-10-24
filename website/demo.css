@@ -4,6 +4,8 @@
 .picker input { flex: 1; min-width: 0; border: 0; padding: var(--space-2); background: var(--clear); color: var(--text); font: var(--search-size)/var(--search-line) var(--font-family); }
 .picker input:focus-visible { border-radius: var(--r-row); }
 .picker select, .picker button, .draft button { min-height: var(--control-min-size); padding: var(--space-1) var(--space-2); border: var(--border-width) solid var(--stroke-control); border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-meta-size)/var(--type-meta-line) var(--font-family); cursor: pointer; }
+/* A drawn chevron, so the select keeps the buttons' height in every browser (iOS ignores it on native selects). */
+.picker select { appearance: none; padding-right: calc(var(--space-2) + 1.1em); background: var(--fill-control) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4.5 6.5 3.5 3.5 3.5-3.5' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right var(--space-1) center / 1em; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
 .picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-min-size); padding: 0; line-height: 1; border: 0; background: none; color: var(--text); font-size: var(--type-heading-size); }
 .picker button:disabled { color: var(--text-disabled); cursor: default; }
@@ -33,7 +35,7 @@
 :root[data-platform="windows"] .pick.is-selected::before { content: ""; position: absolute; left: var(--space-1); width: var(--pill-width); height: var(--pill-height); border-radius: var(--r-full); background: var(--accent); }
 @media (hover: hover) { .pick:not(.is-selected):hover { background: var(--fill-subtle-hover); } .picker button:not(.tile):not(.picker-clear):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); } }
 .picker button:not(.tile):not(.picker-clear):active, .draft button:active { background: var(--fill-control-pressed); }
-@media (pointer: coarse) { .picker button, .picker select, .draft button { min-height: var(--touch-target); } .platform-switch button { padding-block: .6em; margin-block: -.35em; } }
+@media (pointer: coarse) { .picker button:not(.tile):not(.picker-clear), .picker select { min-height: var(--website-button-height); } .picker button:not(.tile) { position: relative; } .picker button:not(.tile)::after { content: ""; position: absolute; inset: calc((var(--website-button-height) - var(--touch-target)) / 2) 0; } .platform-switch button { padding-block: .6em; margin-block: -.35em; } }
 .platform-switch { color: var(--muted); font: var(--type-title-size)/1.5 var(--font-family); }
 .platform-switch button { min-height: 0; padding: .25em 0; border: 0; background: var(--clear); color: var(--citation); font: inherit; text-decoration: underline; cursor: pointer; }
 
@@ -46,12 +48,14 @@
 
 .picker-shelf img { flex: none; }
 .draft code { display: inline; white-space: normal; overflow-wrap: anywhere; }
-.paste-gap { display: inline-block; min-width: 7rem; border-bottom: var(--focus-ring-width) dashed var(--citation); }
+.paste-gap { display: inline-block; min-width: 7rem; line-height: 1; border-bottom: var(--focus-ring-width) dashed var(--citation); }
 .draft .paste-slot { display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--citation); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--citation); font: var(--type-meta-size)/1.4 var(--font-family); }
 .draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; opacity: .8; }
 .picker-foot kbd, .demo-hint kbd { font-size: .95em; }
 @media (hover: hover) { .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; } }
 @media (hover: none) { .picker-foot kbd, .draft .paste-slot kbd { display: none; } }
 @media (max-width: 39.99rem) { .picker-results { height: 12rem; } .picker-foot > span { flex-basis: 100%; } .picker-foot button:first-of-type { margin-left: auto; } }
-@media (pointer: coarse) { .draft .paste-slot, .pick .tile { min-height: var(--touch-target); } .pick .tile { width: var(--touch-target); } }
+@media (pointer: coarse) { .pick .tile { min-height: var(--touch-target); width: var(--touch-target); } }
+/* The slot keeps the sentence's line height, so pasting never moves the page; its touch area reaches past it. */
+.draft .paste-slot { position: relative; } .draft .paste-slot::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
 @media (prefers-reduced-motion: no-preference) { .draft .paste-slot { transition: scale var(--motion-feedback) var(--ease-out); } .draft .paste-slot:active { scale: var(--website-press); } }
