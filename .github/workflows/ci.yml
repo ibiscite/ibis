@@ -221,11 +221,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Every script test, as scripts/check.mjs runs them locally.
-      - name: Script tests and UI import boundary
+      - name: Script tests, UI import boundary and style tokens
         working-directory: .
         run: |
           node scripts/check.mjs --script-tests
           node scripts/ui-imports.mjs
+          node scripts/style-lint.mjs
 
       - name: Type check and test the interface
         if: env.WEB == 'true'

@@ -10,7 +10,7 @@ self.onmessage = (event: MessageEvent<FormatRequest>) => {
   let reply: FormatReply;
   try {
     const result = request.kind === "citation"
-      ? formatter.citation(request.style, request.items, request.cites, request.format)
+      ? formatter.citation(request.style, request.items, request.cites, request.format, request.segments)
       : formatter.bibliography(request.style, request.items, request.format);
     reply = { id: request.id, result };
   } catch {

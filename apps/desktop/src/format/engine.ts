@@ -37,6 +37,8 @@ export interface CiteItem {
 
 export interface Formatted {
   output: string;
+  /** Display-only ownership; erasing its generated wrappers equals output. */
+  preview?: string;
   /** Items shown with a plain fallback because the style could not format them. */
   problems: { id: string; reason: string }[];
 }
@@ -45,31 +47,53 @@ const FALLBACK_REASON = "this style could not format the reference, so its title
 
 type Engine = InstanceType<typeof CSL.Engine>;
 
-/** One cached engine per style; items are swapped in for each request. */
+/** Canonical and optional preview passes have separate engines; each request replaces their items. */
 export class Formatter {
   private engines = new Map<StyleId, Engine>();
+  private previews = new Map<StyleId, Engine>();
+  private numbers: string[][] = [];
   private items = new Map<string, CslItem>();
 
-  private engine(style: StyleId): Engine {
-    let engine = this.engines.get(style);
+  private engine(style: StyleId, preview = false): Engine {
+    const cache = preview ? this.previews : this.engines;
+    let engine = cache.get(style);
     if (!engine) {
       engine = new CSL.Engine(
         {
           retrieveLocale: () => enUS,
-          retrieveItem: (id) => this.items.get(id),
+          retrieveItem: (id) => {
+            const item = this.items.get(id);
+            // The numeric entry callback requires this request-local system id.
+            // Keep it out of the untouched canonical processor's input.
+            return preview && style === "ieee" && item ? { ...item, system_id: id } : item;
+          },
+          ...(preview ? {
+            variableWrapper: (params: { itemData?: { id?: unknown }; system_id?: unknown }, pre: string, value: string, post: string) =>
+              pre + owned(value, params.itemData?.id ?? params.system_id) + post,
+            ...(style === "ieee" ? {
+              wrapCitationEntry: (value: string, id?: string) => {
+                // Bare NumberBlob callbacks lose item_id. Use the processor's
+                // bibliography numbering, never a citekey/title string search.
+                const number = value.match(/^\[?(\d+)\]?$/)?.[1];
+                const ids = number ? this.numbers[Number(number) - 1] : undefined;
+                return owned(value, id ?? (ids?.length === 1 ? ids[0] : undefined));
+              },
+            } : {}),
+          } : {}),
         },
         STYLES[style].xml,
         "en-US",
       );
-      this.engines.set(style, engine);
+      if (preview && style === "ieee") engine.opt.development_extensions.apply_citation_wrapper = true;
+      cache.set(style, engine);
     }
     return engine;
   }
 
   /** Run with exactly `items` loaded; `items` carry engine keys as ids. */
-  private attempt<T>(style: StyleId, items: CslItem[], format: OutputFormat, run: (engine: Engine) => T): T {
+  private attempt<T>(style: StyleId, items: CslItem[], format: OutputFormat, run: (engine: Engine) => T, preview = false): T {
     this.items = new Map(items.map((item) => [item.id, item]));
-    const engine = this.engine(style);
+    const engine = this.engine(style, preview);
     try {
       engine.setOutputFormat(format);
       // Forget items from earlier requests: the engine keeps what it fetched
@@ -79,13 +103,13 @@ export class Formatter {
       return run(engine);
     } catch (error) {
       // The engine may be left half-updated; start the next request afresh.
-      this.engines.delete(style);
+      (preview ? this.previews : this.engines).delete(style);
       throw error;
     }
   }
 
   /** The in-text citation for `cites`, such as "(Garcia, 2021, p. 13)". */
-  citation(style: StyleId, items: CslItem[], cites: CiteItem[], format: OutputFormat): Formatted {
+  citation(style: StyleId, items: CslItem[], cites: CiteItem[], format: OutputFormat, segments = false): Formatted {
     const { keyed, keyOf } = engineKeys(items);
     const problems: Formatted["problems"] = [];
     if (cites.length === 0) problems.push({ id: "", reason: "no reference was chosen" });
@@ -130,7 +154,27 @@ export class Formatter {
       }
     }
     const text = [output, ...missing].filter(Boolean).join("; ");
-    return { output: wrap(text, format, "citation"), problems };
+    let preview: string | undefined;
+    if (segments && format === "html" && problems.length === 0 && keyed.length <= 1000 && text.length <= 1024 * 1024) {
+      try {
+        const annotated = this.attempt(style, keyed, format, (engine) => {
+          const bibliography = engine.makeBibliography();
+          const ids = bibliography && bibliography[0].entry_ids;
+          this.numbers = Array.isArray(ids) ? ids.map((group) =>
+            Array.isArray(group) ? group.filter((id): id is string => typeof id === "string") : []) : [];
+          return engine.makeCitationCluster(found);
+        }, true);
+        // Hooks can change punctuation or omit collapsed/unprinted entries.
+        // Never replace canonical clipboard output with the annotated pass.
+        if (eraseOwnership(annotated) === text) preview = annotated;
+      } catch {
+        // Preserve the working citation; the UI retains individual removals
+        // through its aggregate fallback when ownership is unavailable.
+      } finally {
+        this.numbers = [];
+      }
+    }
+    return { output: wrap(text, format, "citation"), problems, ...(preview === undefined ? {} : { preview }) };
   }
 
   /** Bibliography entries for `items`, in the order the style sorts them. */
@@ -159,6 +203,15 @@ export class Formatter {
       return { output: wrap(output, format, "bibliography"), problems };
     }
   }
+}
+
+function owned(value: string, id: unknown): string {
+  const index = typeof id === "string" ? /^ibis-(\d+)$/.exec(id)?.[1] : undefined;
+  return index === undefined ? value : `<ibis-reference data-item="${index}">${value}</ibis-reference>`;
+}
+
+export function eraseOwnership(html: string): string {
+  return html.replace(/<ibis-reference data-item="\d+">|<\/ibis-reference>/g, "");
 }
 
 const MISSING_REASON = "the reference is missing";

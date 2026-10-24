@@ -29,6 +29,64 @@ fn text(format: KeyFormat, items: &[CiteItem]) -> String {
 }
 
 #[test]
+fn preview_segments_keep_syntax_and_input_identity() {
+    use ibis_core::cite::render_with_segments;
+
+    // Repeated keys remain distinct choices; Unicode and punctuation must not
+    // be decorated before each syntax makes its escaping decisions.
+    let items = [item("same"), item("same"), item("é.")];
+    let cases = [
+        (KeyFormat::Pandoc, "[@same; @same; @{é.}]"),
+        (KeyFormat::Autocite, "\\autocites{same}{same}{é.}"),
+        (KeyFormat::Parencite, "\\parencites{same}{same}{é.}"),
+        (KeyFormat::Textcite, "\\textcites{same}{same}{é.}"),
+        (KeyFormat::Cite, "\\cite{same,same,é.}"),
+        (KeyFormat::Typst, "@same @same #cite(label(\"é.\"))"),
+        (KeyFormat::Keys, "same, same, é."),
+    ];
+    for (format, expected) in cases {
+        let (rendered, segments) = render_with_segments(format, &items).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(rendered.text, expected);
+        assert_eq!(rendered, render(format, &items).unwrap_or_else(|e| panic!("{e}")));
+        assert_eq!(
+            segments.iter().map(|part| part.text.as_str()).collect::<String>(),
+            expected
+        );
+        assert_eq!(
+            segments.iter().filter_map(|part| part.item).collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+        // Existing CLI/clipboard serialization has no preview metadata.
+        let fields = serde_json::to_value(&rendered).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(fields.as_object().map(|fields| fields.len()), Some(2));
+        assert_eq!(fields["text"], expected);
+        assert!(fields["warnings"].is_array());
+    }
+}
+
+#[test]
+fn preview_segments_keep_zero_separator_notes_inside_their_reference() {
+    use ibis_core::cite::render_with_segments;
+
+    let items = [
+        CiteItem {
+            prefix: Some("see &".into()),
+            ..pages("a", "12")
+        },
+        pages("b", "24–26"),
+    ];
+    let (rendered, segments) = render_with_segments(KeyFormat::Autocite, &items).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(rendered.text, "\\autocites[see \\&][12]{a}[24--26]{b}");
+    assert_eq!(segments.len(), 3);
+    assert_eq!(segments[0].item, None);
+    assert_eq!(segments[0].text, "\\autocites");
+    assert_eq!(segments[1].item, Some(0));
+    assert_eq!(segments[1].text, "[see \\&][12]{a}");
+    assert_eq!(segments[2].item, Some(1));
+    assert_eq!(segments[2].text, "[24--26]{b}");
+}
+
+#[test]
 fn pandoc_separate_locators_prefix_and_suppressed_author() {
     let see = CiteItem {
         prefix: Some("see".into()),

@@ -1,4 +1,4 @@
-/* One state table for buttons (system.md §8–§9), independent of the feature. */
+/* One state table for buttons (docs/design.md, "Components and their states"), independent of the feature. */
 .ui-button[data-variant] {
   display: inline-flex; align-items: center; justify-content: center;
   gap: var(--space-2); min-height: var(--control-min-size);

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Measures the picker in the evidence gallery against the geometry in
-// docs/design-geometry.json (the numbers in docs/design.md): row height per
+// apps/desktop/src/tokens.css, and docs/design-geometry.json for the numbers
+// without a token (together, the numbers in docs/design.md): row height per
 // density, footer, search band, search glyph over the tile column, typed text
 // at the row title's x, and the corner chain, for each look at normal and
 // Larger text.
@@ -21,11 +22,49 @@ import { PLATFORM_NAMES, Unavailable, VIEWPORT, openGallery } from "./gallery-co
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const SPEC_FILE = path.join(repo, "docs", "design-geometry.json");
+export const TOKENS_FILE = path.join(repo, "apps", "desktop", "src", "tokens.css");
 // The gallery state that shows each density with rows on screen.
 const DENSITY_STATES = { compact: "compact", comfortable: "many-results", spacious: "spacious" };
 const LARGER_TEXT = 1.15;
 // States whose regions must stay separate: chosen references, a preview, none.
 const LAYOUT_STATES = ["tray-preview", "tray-20", "tray", "compact", "many-results"];
+
+/** A token's value in CSS px for one look: its top-level `:root[data-platform]`
+ * rule over `:root`, the last declaration winning. Follows var() and rem (16 px);
+ * anything else (calc, max, rules inside @media or @supports) reads as NaN. */
+export function tokenPx(css, name, platform) {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const own = `:root[data-platform="${platform}"]`;
+  let value, depth = 0, start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{" && depth++ === 0) {
+      const selectors = text.slice(start, i).split(",").map((selector) => selector.trim());
+      const body = text.slice(i + 1, text.indexOf("}", i));
+      if (body.includes("{") || !(selectors.includes(":root") || selectors.includes(own))) continue;
+      for (const [, key, raw] of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+)/g))
+        if (key === name && (selectors.includes(own) || !value?.own)) value = { raw: raw.trim(), own: selectors.includes(own) };
+    } else if (text[i] === "}" && --depth === 0) start = i + 1;
+  }
+  const alias = value?.raw.match(/^var\((--[\w-]+)\)$/);
+  if (alias) return tokenPx(css, alias[1], platform);
+  const number = value?.raw.match(/^(\d*\.?\d+)(rem|px)$/);
+  return number ? Number(number[1]) * (number[2] === "rem" ? 16 : 1) : NaN;
+}
+
+/** The geometry spec: sizes from tokens.css where a token holds them, the rest from docs/design-geometry.json. */
+export function loadSpec(css = readFileSync(TOKENS_FILE, "utf8"), json = JSON.parse(readFileSync(SPEC_FILE, "utf8"))) {
+  const px = (name, platform) => tokenPx(css, name, platform);
+  const spec = { ...json, rowHeight: {}, footer: px("--footer-height"), headerDivider: px("--border-width"), rowPad: px("--row-pad"),
+    rowGap: px("--row-gap"), tile: px("--tile-size"), icon: px("--icon-glyph-size"), platforms: {} };
+  for (const density of ["compact", "comfortable", "spacious"]) spec.rowHeight[density] = px(`--row-${density}`);
+  for (const [platform, look] of Object.entries(json.platforms)) {
+    const inset = px("--inset", platform), headerControl = px("--field-h", platform);
+    // --search-bar-height is calc(var(--field-h) + 2 * var(--inset)).
+    spec.platforms[platform] = { ...look, inset, rWin: px("--r-win", platform), rMin: px("--r-min", platform),
+      controlRadius: px("--r-control", platform), headerControl, searchBand: headerControl + 2 * inset };
+  }
+  return spec;
+}
 
 /** The per-platform values docs/design.md derives from its tokens. */
 export function derive(spec, platform, scale = 1) {
@@ -196,7 +235,7 @@ function parse(argv) {
 
 async function main() {
   const options = parse(process.argv.slice(2));
-  const spec = JSON.parse(readFileSync(SPEC_FILE, "utf8"));
+  const spec = loadSpec();
   const { browser, server } = await openGallery(options);
   const base = `http://127.0.0.1:${server.address().port}`;
   const rows = [];

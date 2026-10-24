@@ -2,8 +2,9 @@
 
 This page specifies the Settings window, its pages, the global shortcut
 recorder and how settings are stored. It sits beside the picker spec in
-[design.md](../design.md) and uses the tokens and components in
-[system.md](system.md). Where an accepted ADR disagrees, the ADR wins.
+[design.md](../design.md), the rule book whose tokens, components and
+Settings summary (C18) it follows; where they disagree, design.md wins, and an
+accepted ADR wins over both.
 
 Release scope (maintainer, 2026-10-21): a minimal Settings window with
 **General, Shortcuts and Libraries** ships in 0.3, and the global shortcut must
@@ -17,8 +18,8 @@ insertion. Work is tracked in #776 and its sub-issues.
    while you try a new shortcut in another app. The picker stays a quick,
    light-dismiss panel. The window is created when opened and destroyed when
    closed, so it costs no memory while unused.
-2. **Five pages: General, Shortcuts, Libraries, Citations, Advanced.** About
-   fifteen visible controls in all. Every control has a working default, and
+2. **Pages: General, Shortcuts, Libraries, Citations, Preview, Advanced and
+   About** in a searchable sidebar (C18). About fifteen visible controls in all. Every control has a working default, and
    every change applies at once, with no Save button. Rare things sit on Advanced.
 3. **The picker keeps what you change while writing** (format menu, switching or
    narrowing libraries, Reload, Keep Window Open). **Settings keeps what you set
@@ -50,13 +51,8 @@ grouping everywhere. Only the native rendering differs.
 | **Settings window** | Set once or rarely; needs explanation; or destructive | Everything in 1.2 |
 | **Not a setting** | The system owns it, or a good default makes it unnecessary | Accent colour, contrast, reduced motion and transparency, system text scale, watching `.bib` files, the Copied notice position |
 
-**Keep Window Open** (decided in #757): pinning leaves the header. It is a
-checkable item in the More menu with ⇧⌘P (Ctrl+Shift+P elsewhere), defined in
-`keys.ts`. While pinned, the footer's status area shows a small pin
-glyph with the tooltip "Kept open; click to stop", and clicking it unpins. When
-not pinned, nothing shows. The header ends with the format selector, aligned to
-the content edge. In 0.3, #571/#572 add the one-time "an outside click hides
-Ibis" tip, naming the menu item and its shortcut.
+**Keep Window Open** is the header pin, also a checkable More item with ⇧⌘P
+(Ctrl+Shift+P elsewhere), defined in `keys.ts` (design.md, C6).
 
 Once the Settings window exists, **Density, Larger text and Start at login leave
 the More menu.** Start at login stays in the menu bar or tray menu, where
@@ -72,8 +68,8 @@ needs an ADR before it adds a field. *Planned*: tied to a roadmap milestone.
 
 | Setting | Control | Default | Status |
 |---|---|---|---|
-| Start Ibis when you log in | switch, read from the system each time | **off** until turned on (first run offers it) | exists, not in `settings.json` |
-| Light or dark | segmented: **System** / Light / Dark | System | new ([system.md](system.md) §14) |
+| Start Ibis when you log in | switch, read from the system each time | **off** until turned on (the first-run footer tip offers it) | exists, not in `settings.json` |
+| Light or dark | segmented: **System** / Light / Dark | System | new |
 | Result rows | segmented: Compact / **Comfortable** / Spacious | Comfortable | exists (`density`) |
 | Larger text | switch (three steps later, #775) | **off** | exists (`larger_text`) |
 | Keep the last search for | pop-up: Don't keep / **1 minute** / 3 minutes | 1 minute | new |
@@ -81,7 +77,7 @@ needs an ADR before it adds a field. *Planned*: tied to a roadmap milestone.
 | Check for updates automatically | switch, with what is sent written underneath | asked once at first run | exists (`update_checks`) |
 | Version · last check · Check Now | info row with a button | | exists (tray) |
 
-Accent colour is never offered (system D6).
+Accent colour is never offered (design.md, D6).
 
 **Shortcuts**
 
@@ -106,7 +102,7 @@ The group footer says "Ibis only reads your libraries. It never changes them."
 | Setting | Control | Default | Status |
 |---|---|---|---|
 | When you press Enter, copy | one grouped pop-up: *Citation keys* (Pandoc, \autocite, \parencite, \textcite, \cite, Typst, bare keys) and *Styles* (the five bundled; any CSL style from 0.3) | **Pandoc** | exists (`copy_format` + `citation_style`) |
-| Preview | a synthetic reference in the chosen format, drawn as the citation shelf draws it ([preview.md](preview.md)) | | new UI |
+| Preview | a synthetic reference in the chosen format, drawn as the citation shelf draws it (design.md, Shelf) | | new UI |
 | Show what will be pasted | switch (also ⌘I / Ctrl+I in the picker; in More until Settings exists) | **on** | exists (`show_paste_preview`, ADR 0020) |
 | Format menu | tick and drag: which formats and styles the format menu shows, in order | the seven key formats + five styles | new (`format_menu`), needed once 0.3 adds about 2,600 styles |
 | After you choose a reference | pop-up: **Paste into the app** / Copy only | Copy only until 0.4 insertion ships, then Paste | planned 0.4 |
@@ -120,7 +116,7 @@ receiving app chooses.
 | Setting | Control | Default | Status |
 |---|---|---|---|
 | Privacy and network | one row per network flow, each saying what is sent; mirrors `PRIVACY.md` | all **off** except what the person said yes to | update checks exist; everything else reserved (§6) |
-| Remember recently cited references · Clear History | switch + button; clearing applies at once with an 8 s Undo and deletes only after it | **on** once history exists | planned (rollout step 6) |
+| Remember recently cited references · Clear History | switch + button; clearing applies at once with an 8 s Undo and deletes only after it | **on** once history exists | planned 0.4 (ROADMAP: recently cited) |
 | Export… / Import… | buttons | | new (§5.3) |
 | Reset all settings | button; applies at once with an 8 s Undo and the `.bak` copy | | new |
 | Copy diagnostic report | button: allowlisted fields to the clipboard, never uploaded | | optional, matches `diagnostics.rs` |
@@ -135,9 +131,7 @@ ships.
   recorder, the Windows SettingsExpander (picker keys collapsed by default).
 - Level 3: Advanced, then `settings.json` itself. Unknown fields are kept
   (ADR 0022), so hand edits survive.
-- Search: ⌘F / Ctrl+F. Windows shows "Find a setting" in the NavigationView;
-  GNOME shows the AdwPreferences search button; macOS shows none (five short
-  panes), and ⌘F jumps to the first matching row.
+- Search: ⌘F / Ctrl+F focuses the sidebar's search field (C18).
 
 ## 2. Shortcut customization
 
@@ -304,12 +298,12 @@ is visible. Never register one silently.**
 - The suggestion is the OS default if free, otherwise the next free entry in an
   ordered per-OS list kept as data with tests. "Free" means it passes the
   reserved-key table and registers successfully.
-- The first-run row shows it in key caps and is true from the moment it
-  appears: "Press Ctrl+Shift+Y in any app."
+- The first-run footer tip (design.md, C12) shows it in key caps and is true
+  from the moment it appears: "Press Ctrl+Shift+Y in any app."
 - If nothing is free, the row says Ibis stays reachable from the menu bar or
   tray and the app icon. No error dialog.
 - Existing installs keep their shortcut and behaviour.
-- 0.3: first run gains **Change…** (this recorder, #778) and **Not now**, which
+- 0.3: the tip gains **Change…** (this recorder, #778) and **Not now**, which
   stores "no shortcut" (ADR #783). While no shortcut is active, the tray reads
   "Set a Shortcut…".
 
@@ -331,21 +325,13 @@ capability file (`capabilities/settings.json`), so settings and recorder
 commands are granted to that window only. The cost is a second webview while it
 is open; measure it against `scripts/smoke-budgets.json`.
 
-- **macOS:** a titled window, title = the current pane name (system-drawn, 13
-  semibold; no title in the content), a toolbar of icon tabs, fixed width
-  680 pt, height animating per pane (200 ms; about 520 typical, minimum 440). Not
-  resizable or full-screenable. ⌘W closes; Escape does not. Opens on the last
-  pane viewed this session (memory only). While open, the activation policy is
-  Regular (Dock icon, ⌘Tab, app menu), Accessory again after. The toolbar is
-  web-drawn under `titleBarStyle: "Overlay"` until a native NSToolbar is proven
-  better side by side.
-- **Windows:** native title bar, Mica, 1000×700 default, resizable, minimum
-  640×500, Snap layouts allowed. NavigationView collapses to compact below
-  1008 px and minimal below 641 px. Page titles 28/36 semibold.
-- **GNOME:** header bar with search, an AdwViewSwitcher (icon above label) and a
-  close button; 640×600 default, minimum 360×294; the switcher moves to a bottom
-  bar when narrow. Web-drawn with `decorations: false`, honouring
-  `gtk-decoration-layout`.
+- **Layout (C18):** one layout on every OS: a searchable sidebar of pages and a
+  content stack of titled groups; 720 × 560 by default, down to 560 wide, where
+  the sidebar collapses. Native title bar and window chrome per OS (Mica on
+  Windows; GNOME honours `gtk-decoration-layout`). ⌘W / Ctrl+W closes; Escape
+  does not. It opens on the last page viewed this session (memory only). On
+  macOS the activation policy is Regular while it is open (Dock icon, ⌘Tab, app
+  menu) and Accessory again after.
 - **Single instance:** a second "Settings…" focuses the window and switches to
   the requested pane. Opening Settings hides the picker unless Keep Window Open
   is on. Settings opens on the display with the pointer.
@@ -361,9 +347,9 @@ lifted rows.
 
 | Component | Rule | macOS | Windows 11 | GNOME (libadwaita) |
 |---|---|---|---|---|
-| Page title | | in the title bar | 28/36 semibold | none (the switcher names it) |
+| Page title | | in the title bar | 28/36 semibold | none (the sidebar names it) |
 | Group | heading 13 semibold, card padding 16, 24 between groups, page side 32 | rounded box radius 12, 0.5 px hairline | BodyStrong 14 header, cards 4 px apart | `.heading`, boxed list radius 12 with the card shadow |
-| Row (system D17) | label 14/20, description 13/18 `--muted`, one control at the end; 48 min (56 with description) | pad 9×12, inset hairlines, no icons | SettingsCard min 68, pad 16, 20 px icon, radius 4 | AdwActionRow min 48, pad 8×12, no icons |
+| Row (design.md D17) | label 14/20, description 13/18 `--muted`, one control at the end; 48 min (56 with description) | pad 9×12, inset hairlines, no icons | SettingsCard min 68, pad 16, 20 px icon, radius 4 | AdwActionRow min 48, pad 8×12, no icons |
 | Expandable row | | disclosure row | SettingsExpander (child rows indented 58) | AdwExpanderRow |
 | Switch | | NSSwitch | ToggleSwitch with "On/Off" to its left | AdwSwitchRow (whole row toggles) |
 | One of a few | segmented | NSSegmentedControl | Toolkit Segmented | AdwToggleGroup |
@@ -373,32 +359,12 @@ lifted rows.
 | Destructive | never confirm; 8 s Undo | red label | neutral button | `destructive-action` |
 | Key caps | | ⌃⌥⇧⌘ in HIG order, light caps | accent-filled (editable), neutral (fixed) | GtkShortcutLabel |
 | Message | Done / Look / Stop, icon and words | inline note under the row | InfoBar | dialog banner; AdwToast with Undo after a save |
-| Focus ring | system D8 | 2 px accent, 1 px gap | Fluent double stroke | half-accent mixed toward text, inside |
+| Focus ring | design.md D8 | 2 px accent, 1 px gap | Fluent double stroke | half-accent mixed toward text, inside |
 | Source tile | neutral tile + type glyph | | | Zotero is not drawn in brand red |
 
-Colour roles hold: the system accent is for switches, selection and primary
-buttons. Scarlet never appears on a Settings control or the recorder; the
-Citations preview uses the shelf's rule from [preview.md](preview.md) (text
-colour with a small scarlet quote mark).
-
-White on the default dark macOS accent measures 3.65:1 and on GNOME blue 3.77:1.
-Switches and primary buttons keep the platform pair; no scarlet or extra tint is
-added to compensate.
-
-### Alignment with the design system
-
-Settled between the two specs and already reflected in [system.md](system.md)
-D13 and D17:
-
-- Windows page titles use `--type-title-large` 28/36 (Fluent Title).
-- Windows SettingsCard radius is 4 (`ControlCornerRadius`); overlays and
-  dialogs stay 8.
-- macOS uses a toolbar of icon tabs, 680 wide, height per pane, not a sidebar.
-- macOS names the pane in the title bar instead of a title in the content.
-
-Also adopted from system.md: role tokens only; never confirm, offer an 8 s Undo
-(D16); the §14 customization scope (light or dark override, footer tips, no
-accent override); D8 focus rings; Mica for the Windows Settings window.
+Colour roles, scarlet, contrast (including text on the accent) and focus rings
+follow [design.md](../design.md); the Citations preview draws the citation as
+the shelf does.
 
 ## 5. Data model (`settings.json`)
 
@@ -459,7 +425,7 @@ turned on (App Review 2.4.5(iii)); the history switch is on once history exists.
 
 Engineering questions to settle with evidence: whether
 `PushSymbolicHotKeyMode` lets ⌘Space reach the recorder without extra
-permission; web-drawn versus native macOS toolbar; the minimum portal versions;
+permission; web-drawn versus native window chrome; the minimum portal versions;
 the Settings window's memory per OS; reaching Settings when the shortcut is
 unavailable and there is no tray (proposed: launching Ibis again opens it);
 whether security tools flag the Windows recording hook in signed builds.

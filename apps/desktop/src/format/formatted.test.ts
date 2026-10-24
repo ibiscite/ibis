@@ -1,6 +1,8 @@
 import { CANCELLED, FormatClient } from "./client";
 import { InlineWorker } from "./inline-worker";
 import { formatCitation } from "./formatted";
+import { plainText } from "./markup";
+import { STYLE_TITLES, type StyleId } from "./styles";
 
 // Synthetic references; both share a citation key, as two sources can.
 const csl = JSON.stringify([
@@ -26,5 +28,35 @@ describe("formatted citation for the picker", () => {
     const replaced = new AbortController();
     replaced.abort();
     await expect(formatCitation(csl, "apa", { client, signal: replaced.signal })).rejects.toThrow(CANCELLED);
+  });
+
+  for (const style of Object.keys(STYLE_TITLES) as StyleId[]) {
+    for (const families of [["Okafor", "García"], ["García", "García"], ["سالم", "לוי"]]) {
+      it(`retains canonical output and reference ownership for ${style}: ${families.join(" / ")}`, async () => {
+        const items = JSON.stringify(families.map((family, index) => ({
+          id: "same", type: "book", title: `Synthetic ${index}`, author: [{ family }], issued: { "date-parts": [[2020 + index]] },
+        })));
+        const canonical = await formatCitation(items, style, { client });
+        const preview = await formatCitation(items, style, { client, segments: true });
+        expect({ text: preview.text, html: preview.html, warnings: preview.warnings }).toEqual({
+          text: canonical.text, html: canonical.html, warnings: canonical.warnings,
+        });
+        expect(preview.segments).toBeDefined();
+        const parts = preview.segments ?? [];
+        expect(plainText(parts.flatMap((part) => part.markup))).toBe(canonical.text);
+        expect(parts.filter((part) => part.item !== null).map((part) => part.item).sort()).toEqual([0, 1]);
+        expect(preview.unrepresented).toEqual([]);
+      });
+    }
+  }
+
+  it("keeps an unprinted MLA cluster opaque instead of inventing reference text", async () => {
+    const items = JSON.stringify([{ type: "book" }, { type: "book" }]);
+    const canonical = await formatCitation(items, "modern-language-association", { client });
+    const preview = await formatCitation(items, "modern-language-association", { client, segments: true });
+    expect(preview.text).toBe(canonical.text);
+    expect(preview.html).toBe(canonical.html);
+    expect(preview.unrepresented).toEqual([0, 1]);
+    expect((preview.segments ?? []).every((part) => part.item === null)).toBe(true);
   });
 });

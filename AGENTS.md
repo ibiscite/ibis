@@ -62,10 +62,15 @@ All state lives on GitHub, so any agent can stop at any point and any other can 
 - Hard-to-reverse decisions (license, persisted data formats, public CLI or API contracts, network use, security boundaries) need an ADR.
 - When an agent repeats a mistake, add a check to `scripts/check.mjs` or `scripts/pr-lint.mjs` (preferred) or one line here; remove lines that no longer matter.
 - Before reading or invoking an unfamiliar repository file, locate it with `rg --files`; do not guess its path.
+- Use a distinct Cargo target directory per source worktree, or clean `ibis-core`, `ibis-zotero-local` and `ibis-desktop` before reusing one; stale cross-worktree artifacts can hide source changes.
 
 ## Code, privacy and security
 
 Follow the [architecture principles](docs/architecture.md#principles), including privacy, escaping and endpoints, and the contract documented with each component. No real library data, document text, paths or credentials in code, tests, logs, issues or pull requests.
+
+The website demo (`website/demo.js`) mirrors the app: a change to the picker, its keys or its styles updates the demo in the same pull request ([design](docs/design.md)).
+
+UI changes edit `apps/desktop/src/tokens.css`, a shared component in `apps/desktop/src/ui/`, or `docs/design.md`; never style one screen on its own. Fix a visual bug in the rule or component that allowed it, with a check.
 
 Logos and icons come only from `brand/`. Change `settings.json` or `master.svg`, run `python3 brand/build.py`, and never edit generated files by hand.
 

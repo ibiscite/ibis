@@ -28,14 +28,32 @@ impl From<cite::Rendered> for Copied {
     }
 }
 
+/// Request-local display pieces; copied output keeps its existing payload.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct CitationPreview {
+    text: String,
+    warnings: Vec<String>,
+    segments: Vec<PreviewSegment>,
+}
+
+#[derive(Serialize, specta::Type)]
+struct PreviewSegment {
+    item: Option<usize>,
+    text: String,
+}
+
 /// Render the selected records as one citation in `format`.
 pub(crate) fn render_citation(
     references: &[Reference],
     ids: &[RecordId],
     format: KeyFormat,
 ) -> Result<cite::Rendered, String> {
-    let items = ids
-        .iter()
+    let items = citation_items(references, ids)?;
+    cite::render(format, &items).map_err(|e| e.to_string())
+}
+
+fn citation_items(references: &[Reference], ids: &[RecordId]) -> Result<Vec<CiteItem>, String> {
+    ids.iter()
         .map(|id| {
             let reference = references
                 .iter()
@@ -52,8 +70,7 @@ pub(crate) fn render_citation(
                 ..CiteItem::default()
             })
         })
-        .collect::<Result<Vec<_>, String>>()?;
-    cite::render(format, &items).map_err(|e| e.to_string())
+        .collect()
 }
 
 /// Validate and prepare from one locked snapshot; clipboard I/O happens afterward.
@@ -75,11 +92,22 @@ fn prepare_citation(
     expected: &str,
     ids: &[RecordId],
     format: KeyFormat,
-) -> Result<Copied, CommandError> {
+) -> Result<CitationPreview, CommandError> {
     prepare_snapshot(library, expected, |locked| {
-        render_citation(locked.index.references(), ids, format)
+        let items = citation_items(locked.index.references(), ids)?;
+        let (rendered, segments) = cite::render_with_segments(format, &items).map_err(|e| e.to_string())?;
+        Ok(CitationPreview {
+            text: rendered.text,
+            warnings: rendered.warnings,
+            segments: segments
+                .into_iter()
+                .map(|part| PreviewSegment {
+                    item: part.item,
+                    text: part.text,
+                })
+                .collect(),
+        })
     })
-    .map(Copied::from)
 }
 
 /// Preview a key citation without writing the clipboard or saving a choice.
@@ -90,7 +118,7 @@ pub(crate) fn citation_text(
     format: KeyFormat,
     expected_revision: String,
     library: State<'_, Mutex<Library>>,
-) -> Result<Copied, CommandError> {
+) -> Result<CitationPreview, CommandError> {
     prepare_citation(&library, &expected_revision, &ids, format)
 }
 
@@ -105,7 +133,10 @@ pub(crate) fn copy_citation(
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
-    let rendered = prepare_citation(&library, &expected_revision, &ids, format)?;
+    let rendered = prepare_snapshot(&library, &expected_revision, |locked| {
+        render_citation(locked.index.references(), &ids, format)
+    })?;
+    let rendered = Copied::from(rendered);
     app.clipboard()
         .write_text(rendered.text.clone())
         .map_err(|e| format!("the clipboard could not be written ({e})"))?;
@@ -243,6 +274,18 @@ mod tests {
             assert_eq!(preview.text, copied.text);
             assert_eq!(preview.warnings, copied.warnings);
             assert!(preview.warnings.is_empty());
+            assert_eq!(
+                preview
+                    .segments
+                    .iter()
+                    .map(|part| part.text.as_str())
+                    .collect::<String>(),
+                expected
+            );
+            assert_eq!(
+                preview.segments.iter().filter_map(|part| part.item).collect::<Vec<_>>(),
+                [0, 1]
+            );
         }
         let many_ids = ids.iter().cloned().cycle().take(50).collect::<Vec<_>>();
         let many =

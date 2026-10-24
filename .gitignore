@@ -20,3 +20,6 @@ __pycache__/
 
 # nix build output link
 /result
+
+# Public website build output
+/website/dist/

@@ -1,4 +1,4 @@
-import { keyText } from "./messages";
+import type { keyText } from "./messages";
 
 export type KeyRegion = keyof typeof keyText.regions;
 export type KeyAction = keyof typeof keyText.actions;

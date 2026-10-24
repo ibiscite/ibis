@@ -1,6 +1,6 @@
 import { render as show } from "@testing-library/react";
 import { Formatter, type CslItem } from "./engine";
-import { clipboardHtml, parse, render } from "./markup";
+import { clipboardHtml, parse, parseSegments, plainText, render } from "./markup";
 
 // Synthetic reference whose title tries to inject markup.
 const hostile: CslItem = {
@@ -60,5 +60,46 @@ describe("formatted markup", () => {
     const other = { ...hostile, id: "other", title: "Second" };
     const copied = clipboardHtml(parse(formatter.bibliography("apa", [hostile, other], "html").output));
     expect(copied.match(/<p /g)).toHaveLength(2);
+  });
+
+  it("keeps sanitized styles and literal separators in owned segments", () => {
+    const parts = parseSegments('(<ibis-reference data-item="0"><i onclick="x()">García</i></ibis-reference>, '
+      + '<ibis-reference data-item="0"><b>2021</b></ibis-reference>; '
+      + '<ibis-reference data-item="1"><a href="javascript:x">سالم</a></ibis-reference>)', 2)!;
+    expect(parts.map((part) => [part.item, plainText(part.markup)])).toEqual([
+      [null, "("], [0, "García, 2021"], [null, "; "], [1, "سالم"], [null, ")"],
+    ]);
+    const { container } = show(<div>{parts.flatMap((part) => render(part.markup))}</div>);
+    expect(container.querySelector("a, [onclick], ibis-reference")).toBeNull();
+    expect(container.querySelector("i")?.textContent).toBe("García");
+    expect(container.querySelector("b")?.textContent).toBe("2021");
+  });
+
+  it.each(["-1", "01", "1.0", "1e0", "Infinity", "", "2", "9007199254740993"])("rejects invalid owner %s", (item) => {
+    expect(parseSegments(`<ibis-reference data-item="${item}">text</ibis-reference>`, 2)).toBeNull();
+  });
+
+  it("rejects extra ownership attributes and contradictory nesting", () => {
+    expect(parseSegments('<ibis-reference data-item="0" onclick="x()">text</ibis-reference>', 1)).toBeNull();
+    expect(parseSegments('<ibis-reference data-item="0"><ibis-reference data-item="1">text</ibis-reference></ibis-reference>', 2)).toBeNull();
+  });
+
+  it("leaves interleaved ownership opaque rather than merging unrelated references", () => {
+    const html = '<ibis-reference data-item="0">A</ibis-reference>, '
+      + '<ibis-reference data-item="1">B</ibis-reference>, '
+      + '<ibis-reference data-item="0">C</ibis-reference>, '
+      + '<ibis-reference data-item="2">D</ibis-reference>';
+    const parts = parseSegments(html, 3)!;
+    expect(parts.map((part) => [part.item, plainText(part.markup)])).toEqual([[null, "A, B, C, "], [2, "D"]]);
+  });
+
+  it("drops executable content and bounds annotation parsing", () => {
+    const html = '<script>bad()</script><style>bad{}</style><template>bad</template><ibis-reference data-item="0">safe</ibis-reference>';
+    expect(parseSegments(html, 1)).toEqual([{ item: 0, markup: ["safe"] }]);
+    expect(parseSegments("x", -1)).toBeNull();
+    expect(parseSegments("x", 1001)).toBeNull();
+    expect(parseSegments("x".repeat(1024 * 1024 + 1), 1)).toBeNull();
+    expect(parseSegments("<span>".repeat(257) + "x" + "</span>".repeat(257), 1)).toBeNull();
+    expect(parseSegments("x<i>x</i>".repeat(5001), 1)).toBeNull();
   });
 });

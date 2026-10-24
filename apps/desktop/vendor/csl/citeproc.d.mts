@@ -2,6 +2,8 @@
 interface CslSys {
   retrieveLocale(lang: string): string;
   retrieveItem(id: string): unknown;
+  variableWrapper?(params: { itemData?: { id?: unknown }; system_id?: unknown }, pre: string, value: string, post: string): string;
+  wrapCitationEntry?(value: string, id?: string, locator?: string, suffix?: string): string;
 }
 
 interface CslCite {
@@ -11,6 +13,7 @@ interface CslCite {
 }
 
 declare class CslEngine {
+  opt: { development_extensions: { apply_citation_wrapper: boolean } };
   constructor(sys: CslSys, style: string, lang?: string, forceLang?: boolean);
   setOutputFormat(format: "html" | "text" | "rtf"): void;
   updateItems(ids: string[]): void;

@@ -22,7 +22,7 @@ main {
 .search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar > svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
 /* The search glyph is centred over the tile column and the query starts where
-   row titles start (docs/design.md, "Edges line up"). */
+   row titles start (docs/design.md, "Two columns"). */
 .pin-button { flex: none; }
 .pin-button svg { width: var(--icon-glyph-size); height: var(--icon-glyph-size); stroke-width: var(--icon-stroke); }
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }
@@ -66,7 +66,7 @@ main {
    increased contrast) is taken from the side padding so titles stay aligned. */
 [role="option"] { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid var(--clear); }
 .result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
-/* The leading tile (docs/design.md, row anatomy): the type icon on a quiet
+/* The leading tile (docs/design.md, "List and row"): the type icon on a quiet
    fill. On hover and on the active row the icon gives way to the add control in
    the same place, so the row never reflows; a row in the citation keeps a
    scarlet tile with a white check, the only scarlet on the row. Fills only, no
@@ -137,7 +137,7 @@ main {
 .copy-notice { display: flow-root; border-bottom: var(--border-width) solid var(--separator); padding-bottom: var(--copy-padding); }
 .dismiss { float: right; margin: var(--dismiss-margin); }
 [role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
-/* The citation shelf (docs/design/preview.md): one quiet card above the
+/* The citation shelf (docs/design.md, "Shelf"): one quiet card above the
    footer's Copy action, with the chosen references as chips, then the exact
    output on one line. Its quote mark is centred over the tile column and the
    output starts at the row titles, so the search glyph, the tiles and the mark
