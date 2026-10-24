@@ -838,6 +838,8 @@ function gridPixels(value: string): number | null {
 function opticalSpacing(block: TokenBlock, name: string, value: string) {
   const normalized = (text: string) => text.replace(/(^|[^\d.])0(?:px|rem)(?=$|[^\w.])/g, (_, lead: string) => lead + "0").replace(/(?<![\d.])\.(\d+)/g, "0.$1").replace(/\s/g, "");
   const same = (expected: string) => normalized(value) === normalized(expected);
+  // C7 reserves exactly one pixel on each side of a citation segment.
+  if (block.file === "tokens.css" && name === "--citation-segment-inset") return same("1px");
   if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
   // Centre the 24 px fill in a 32/44 px target: the coarse inset is 10 px.
   if (block.selector === ".shelf .shelf-chips[data-expanded]" && name === "padding-block") return same("calc((var(--chip-hit-size) - var(--chip-height)) / 2)");
@@ -869,4 +871,8 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
     expect(gridPixels(resolveToken("calc((var(--chip-hit-size) - var(--chip-height)) / 2)", shelf)!)).toBe(gap / 2);
   }
   expect(opticalSpacing({ file: "fixture", selector: ".other", scope: "root", values: [] }, "padding", "1px")).toBeFalsy();
+  const segment = { file: "tokens.css", selector: ":root", scope: "root", values: [] };
+  expect(opticalSpacing(segment, "--citation-segment-inset", "1px")).toBe(true);
+  expect(opticalSpacing(segment, "--citation-segment-inset", "2px")).toBeFalsy();
+  expect(opticalSpacing({ ...segment, file: "fixture" }, "--citation-segment-inset", "1px")).toBeFalsy();
 });

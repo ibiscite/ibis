@@ -99,6 +99,6 @@ function CitationKeyboard({ dir, children }: { dir?: Props["dir"]; children: Rea
       ?? (forward ? delegate.getFirstKey() : delegate.getLastKey());
     if (next !== null) { event.preventDefault(); event.stopPropagation(); state.selectionManager.setFocusedKey(next); }
   };
-  return <div ref={boundary} className="citation-keyboard" onFocusCapture={renderedDirection} onPointerEnter={renderedDirection}
+  return <div ref={boundary} className="chip-group-citation-keyboard" onFocusCapture={renderedDirection} onPointerEnter={renderedDirection}
     onKeyDownCapture={navigate}>{children}</div>;
 }

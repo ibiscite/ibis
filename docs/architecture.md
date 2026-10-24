@@ -132,3 +132,10 @@ records item positions while emitting syntax, keeping literal delimiters apart
 from references, including adjacent BibLaTeX commands. Preview metadata does not
 change canonical citation text, the clipboard response, CLI JSON or persisted
 data. The removable shelf consumes these segments separately.
+
+The shared ChipGroup citation variant accepts caller-owned rich segments and
+literal separators, with identity-based removal and direction-aware navigation.
+Its horizontal overflow retains contained pointer/touch targets without changing
+layout on hover; Escape returns to the caller's Search control. Non-hover input
+keeps removal visible and contrast modes use system control/selection pairs.
+The component gallery exercises this foundation before picker integration.

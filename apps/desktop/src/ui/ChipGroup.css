@@ -15,17 +15,23 @@
 .chip-group[data-variant="citation"] .chip-group-list { flex-wrap: nowrap; gap: 0; overflow-x: auto; overflow-y: hidden; min-height: max(var(--shelf-line), var(--chip-group-target)); scrollbar-width: none; }
 .chip-group[data-variant="citation"] .chip-group-list::-webkit-scrollbar { display: none; }
 .chip-group[data-variant="citation"] .chip-group-item { flex: none; max-width: none; height: max(var(--shelf-line), var(--chip-group-target)); padding: 0; border: 0; border-radius: 0; background: var(--clear); color: inherit; font: inherit; outline: none; }
-.citation-keyboard { --citation-mask-direction: to right; min-width: 0; }
-.citation-keyboard[data-direction="rtl"] { --citation-mask-direction: to left; }
-.citation-pill { position: relative; display: inline-flex; align-items: center; min-width: var(--chip-group-target); height: var(--chip-group-target); margin-inline: var(--citation-segment-inset); border-radius: var(--citation-pill-radius); }
-.citation-pill .citation-text { display: block; min-width: 0; white-space: pre; overflow: visible; text-overflow: clip; }
-.citation-pill .chip-group-remove.ui-button[data-variant] { position: absolute; inset-inline-end: 0; top: 50%; transform: translateY(-50%); width: var(--citation-remove-size); min-width: var(--citation-remove-size); height: var(--citation-remove-size); min-height: var(--citation-remove-size); padding: 0; border: 0; border-radius: 50%; background: var(--fill-on-color-hover); color: inherit; line-height: 1; font-size: var(--citation-remove-size); opacity: 0; pointer-events: none; user-select: none; --focus-ring-offset: calc(-1 * var(--focus-ring-width)); }
-.citation-pill .chip-group-remove.ui-button::after { inset-block: calc((var(--citation-remove-size) - var(--chip-group-target)) / 2); inset-inline-start: calc(var(--citation-remove-size) - var(--chip-group-target)); inset-inline-end: 0; }
-.citation-pill:is(:hover, :focus-within) { background: var(--fill-subtle-hover); }
-.chip-group-item[data-focus-visible] .citation-pill { background: var(--selected-background); color: var(--selected-text); }
-.citation-pill:is(:hover, :focus-within) .chip-group-remove.ui-button, .chip-group-item[data-focus-visible] .citation-pill .chip-group-remove.ui-button { opacity: 1; pointer-events: auto; }
-.citation-pill .chip-group-remove.ui-button:is([data-hovered], [data-pressed]) { background: var(--fill-on-color-pressed); color: inherit; }
-.citation-pill:is(:hover, :focus-within) .citation-text, .chip-group-item[data-focus-visible] .citation-text { mask-image: linear-gradient(var(--citation-mask-direction), var(--mask-opaque) calc(100% - var(--citation-remove-size) - var(--citation-remove-fade)), var(--clear) calc(100% - var(--citation-remove-size))); }
+.chip-group-citation-keyboard { --citation-mask-direction: to right; min-width: 0; }
+.chip-group-citation-keyboard[data-direction="rtl"] { --citation-mask-direction: to left; }
+.chip-group .citation-pill { position: relative; display: inline-flex; align-items: center; min-width: var(--chip-group-target); height: var(--chip-group-target); margin-inline: var(--citation-segment-inset); border-radius: var(--citation-pill-radius); }
+.chip-group .citation-pill .citation-text { display: block; flex: 1; min-width: 0; white-space: pre; overflow: visible; text-overflow: clip; }
+.chip-group .citation-pill .chip-group-remove.ui-button[data-variant] { position: absolute; inset-inline-end: 0; top: 50%; transform: translateY(-50%); width: var(--citation-remove-size); min-width: var(--citation-remove-size); height: var(--citation-remove-size); min-height: var(--citation-remove-size); padding: 0; border: 0; border-radius: 50%; background: var(--fill-on-color-hover); color: inherit; line-height: 1; font-size: var(--citation-remove-size); opacity: 0; pointer-events: none; user-select: none; --focus-ring-offset: calc(-1 * var(--focus-ring-width)); }
+.chip-group .citation-pill .chip-group-remove.ui-button::after { inset-block: calc((var(--citation-remove-size) - var(--chip-group-target)) / 2); inset-inline-start: calc(var(--citation-remove-size) - var(--chip-group-target)); inset-inline-end: 0; }
+.chip-group .citation-pill:is(:hover, :focus-within) { background: var(--fill-subtle-hover); }
+.chip-group-item[data-focus-visible] .citation-pill { background: var(--selected-background); color: var(--selected-text); outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: calc(-1 * var(--focus-ring-width)); }
+.chip-group .citation-pill:is(:hover, :focus-within) .chip-group-remove.ui-button, .chip-group-item[data-focus-visible] .citation-pill .chip-group-remove.ui-button { opacity: 1; pointer-events: auto; }
+.chip-group .citation-pill .chip-group-remove.ui-button:is([data-hovered], [data-pressed]) { background: var(--fill-on-color-pressed); color: inherit; }
+.chip-group .citation-pill:is(:hover, :focus-within) .citation-text, .chip-group-item[data-focus-visible] .citation-text { mask-image: linear-gradient(var(--citation-mask-direction), var(--mask-opaque) calc(100% - var(--citation-remove-size) - var(--citation-remove-fade)), var(--clear) calc(100% - var(--citation-remove-size))); }
+@media (hover: none) {
+  .chip-group .citation-pill .chip-group-remove.ui-button[data-variant] { opacity: 1; pointer-events: auto; }
+  .chip-group .citation-pill .citation-text { mask-image: linear-gradient(var(--citation-mask-direction), var(--mask-opaque) calc(100% - var(--citation-remove-size) - var(--citation-remove-fade)), var(--clear) calc(100% - var(--citation-remove-size))); }
+}
 @media (forced-colors: active), (prefers-contrast: more) {
   .chip-group-item { border-color: ButtonText; }
+  .chip-group-item[data-focus-visible] .citation-pill { forced-color-adjust: none; background: Highlight; color: HighlightText; outline-color: HighlightText; }
+  .chip-group .citation-pill .chip-group-remove.ui-button[data-variant] { forced-color-adjust: none; background: ButtonFace; color: ButtonText; border: var(--border-width) solid ButtonText; }
 }

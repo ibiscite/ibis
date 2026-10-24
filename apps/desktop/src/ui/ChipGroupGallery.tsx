@@ -42,7 +42,7 @@ export function renderChipGroupGallery(root: HTMLElement, id: string) {
       pressed = true; rows[0]!.focus();
       rows[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: rtl ? "ArrowLeft" : "ArrowRight", bubbles: true }));
     }
-    const visible = rows.length === (citation ? 7 : 3) && (citation ? rows.slice(0, 2) : rows).every((row) => { const box = row.getBoundingClientRect(); return box.width > 0 && box.height > 0 && box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight; });
+    const visible = rows.length === (citation ? 7 : 3) && (citation ? rows.slice(1, 2) : rows).every((row) => { const box = row.getBoundingClientRect(); return box.width > 0 && box.height > 0 && (citation ? box.right > 0 && box.left < innerWidth : box.left >= 0 && box.right <= innerWidth) && box.bottom <= innerHeight; });
     const targets = citation ? rows.map((row) => {
       const pill = row.querySelector<HTMLElement>(".citation-pill")!;
       const button = pill.querySelector("button")!;
@@ -61,7 +61,11 @@ export function renderChipGroupGallery(root: HTMLElement, id: string) {
     const list = root.querySelector<HTMLElement>(".chip-group-list");
     const safeTargets = !citation || Boolean(list && list.scrollWidth > list.clientWidth
       && targets.every((target, index) => target.contained && (index === 0 || target.left >= targets[index - 1]!.right)));
-    if (visible && safeTargets && document.activeElement === rows[1] && document.fonts.status !== "loading") document.documentElement.dataset.galleryRendered = id;
+    const touchReady = !citation || !matchMedia("(hover: none)").matches || rows.every((row) => {
+      const style = getComputedStyle(row.querySelector("button")!);
+      return style.opacity === "1" && style.pointerEvents !== "none";
+    });
+    if (visible && safeTargets && touchReady && document.activeElement === rows[1] && document.fonts.status !== "loading") document.documentElement.dataset.galleryRendered = id;
     else frame = requestAnimationFrame(check);
   };
   frame = requestAnimationFrame(check);
