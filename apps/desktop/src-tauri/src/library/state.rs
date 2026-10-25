@@ -41,7 +41,7 @@ pub(crate) struct Library {
     pub(super) retained_error: Option<LoadError>,
     /// A failed choice save, separate from a retained-source refresh problem.
     pub(crate) choice_save_warning: Option<String>,
-    /// Persistent startup recovery notice; includes a path for the interface only.
+    /// Settings recovery notice, refreshed after saves; includes a path for the interface only.
     pub(crate) settings_notice: Option<String>,
     /// When a reread of the same source last brought different references
     /// during this run; `None` after the first read, so a launch or an
@@ -151,9 +151,21 @@ pub(super) fn install_result(
         && library.source.is_some()
         && library.requested.is_some()
         && library.requested != library.source;
-    // Never reuse a revision: even an exhausted counter retains the old index.
+    // A reread of the same source that brought equal references, compared
+    // against the index still installed, keeps the index and its revision,
+    // so a citation being built stays current.
+    let unchanged = matches!(&loaded, Ok(new) if new.source == library.source)
+        && compared
+            .as_ref()
+            .is_some_and(|(same, index)| *same && Arc::ptr_eq(index, &library.index));
+    // Otherwise never reuse a revision: even an exhausted counter retains the old index.
     let loaded = loaded.and_then(|mut new| {
-        new.revision = library.revision.checked_add(1).ok_or(LoadError::RevisionExhausted)?;
+        if unchanged {
+            new.revision = library.revision;
+            new.index = Arc::clone(&library.index);
+        } else {
+            new.revision = library.revision.checked_add(1).ok_or(LoadError::RevisionExhausted)?;
+        }
         Ok(new)
     });
     match loaded {
@@ -161,15 +173,8 @@ pub(super) fn install_result(
             new.settings_notice = library.settings_notice.take();
             // Only a reread of the same library that brought different
             // references is an update worth telling.
-            if let Some((same, index)) = compared
-                && new.source == library.source
-            {
-                // Unchanged only if the compared index is still the installed one.
-                new.changed_at = if same && Arc::ptr_eq(&index, &library.index) {
-                    library.changed_at
-                } else {
-                    new.checked_at
-                };
+            if compared.is_some() && new.source == library.source {
+                new.changed_at = if unchanged { library.changed_at } else { new.checked_at };
             }
             if failed_choice {
                 new.requested = library.requested.take();
@@ -837,6 +842,16 @@ mod tests {
         let unchanged = install_loaded(&library, &requests, request, Ok(Loaded::Unchanged))
             .unwrap_or_else(|| panic!("synthetic request is current"));
         assert_eq!(unchanged.revision, old_revision);
+        // A full reread that brings equal references keeps the revision and the index.
+        let (request, _, _) =
+            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
+        let reread = install(&library, &requests, request, Ok(make("oldkey", "Sleep old")))
+            .unwrap_or_else(|| panic!("synthetic request is current"));
+        assert_eq!(reread.revision, old_revision);
+        assert!(Arc::ptr_eq(
+            &old_index,
+            &library.lock().unwrap_or_else(|e| panic!("{e}")).index
+        ));
         let (request, _, _) =
             begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
         let failed = install(&library, &requests, request, Err(ZOTERO_OFFLINE))

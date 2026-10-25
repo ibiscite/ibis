@@ -233,7 +233,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     };
     window.addEventListener("resize", keepFocusedVisible);
     return () => window.removeEventListener("resize", keepFocusedVisible);
-  }, [isOpen]);
+  }, [isOpen, list]);
   // The exiting modal popover can refuse focus outside it. Retry after removal,
   // and leave a newly focused dialog/control alone.
   const restoreFocus = useCallback(() => {

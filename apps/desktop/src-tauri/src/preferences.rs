@@ -6,7 +6,9 @@ use std::sync::{Arc, Mutex};
 use ibis_core::cite::KeyFormat;
 use ibis_core::settings::{self, CitationStyle, Density};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
+
+use crate::library::Library;
 
 /// Settings errors can contain user-entered values or OS details. Only these
 /// fixed descriptions reach diagnostics or messages about failed saves.
@@ -34,8 +36,18 @@ fn settings_message(problem: &settings::SettingsError) -> String {
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
     loaded.problem.as_ref().map(|problem| {
         let recovery = if loaded.from_backup { "the backup" } else { "defaults" };
+        let recoverable = match problem {
+            settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => true,
+            settings::SettingsError::Unreadable(error) => error.kind() == std::io::ErrorKind::InvalidData,
+            settings::SettingsError::NewerVersion(_) => false,
+        };
+        let saving = if loaded.from_backup && recoverable {
+            "The next save will keep the damaged file as settings.json.invalid-N and restore settings from the backup."
+        } else {
+            "Changes are not being saved while this problem remains."
+        };
         format!(
-            "{}; using {recovery}. Changes are not being saved while this problem remains. Settings file: {}",
+            "{}; using {recovery}. {saving} Settings file: {}",
             settings_message(problem),
             path.display()
         )
@@ -64,6 +76,21 @@ impl SettingsFile {
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
         settings::update(&self.path, change).map_err(|error| settings_message(&error))
+    }
+
+    /// Refresh under the library lock so a reload cannot carry forward a stale
+    /// recovery warning. The separate identity-migration warning still applies.
+    pub(crate) fn refresh_notice(&self, library: &mut Library) {
+        let migration = library
+            .settings_notice
+            .as_deref()
+            .is_some_and(|notice| notice.starts_with(crate::identity::MIGRATION_NOTICE));
+        let notice = settings_notice(&self.path, &settings::load(&self.path));
+        library.settings_notice = match (migration, notice) {
+            (true, Some(notice)) => Some(format!("{} {notice}", crate::identity::MIGRATION_NOTICE)),
+            (true, None) => Some(crate::identity::MIGRATION_NOTICE.to_string()),
+            (false, notice) => notice,
+        };
     }
 }
 
@@ -102,16 +129,21 @@ pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Pick
 /// Remember the picker preferences; other settings in the file are kept.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn set_picker_preferences(
+pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     preferences: PickerPreferences,
     copy_format: Option<KeyFormat>,
     settings_file: State<'_, SettingsFile>,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let settings_file = settings_file.inner().clone();
     // Keep the whole locked read/change/flush off the command and async workers.
-    tauri::async_runtime::spawn_blocking(move || settings_file.save_preferences(preferences, copy_format).map(|_| ()))
-        .await
-        .map_err(|_| "picker preferences could not be saved".to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        settings_file.save_preferences(preferences, copy_format)?;
+        crate::library::refresh_settings_notice(&app, &settings_file);
+        Ok(())
+    })
+    .await
+    .map_err(|_| "picker preferences could not be saved".to_string())?
 }
 
 impl SettingsFile {
@@ -236,6 +268,67 @@ mod tests {
     }
 
     #[test]
+    fn preference_recovery_save_refreshes_and_publishes_the_settings_notice() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        use tauri::Listener;
+
+        for (has_backup, migrating) in [(false, false), (true, false), (true, true)] {
+            let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+            let path = directory.path().join("settings.json");
+            std::fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
+            if has_backup {
+                std::fs::write(path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
+            }
+            let mut startup_notice = settings_notice(&path, &settings::load(&path));
+            if migrating {
+                startup_notice = Some(format!(
+                    "{} {}",
+                    crate::identity::MIGRATION_NOTICE,
+                    startup_notice.unwrap_or_default()
+                ));
+            }
+            let mut library = crate::library::Library::default();
+            library.settings_notice = startup_notice.clone();
+            let app = tauri::test::mock_builder()
+                .manage(SettingsFile::new(path.clone()))
+                .manage(Mutex::new(library))
+                .invoke_handler(tauri::generate_handler![set_picker_preferences])
+                .build(tauri::generate_context!(test = true))
+                .unwrap_or_else(|e| panic!("cannot build preference fixture: {e}"));
+            let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+                .build()
+                .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
+            let (sent, events) = mpsc::channel();
+            app.listen("library:changed", move |event| {
+                let _ = sent.send(event.payload().to_string());
+            });
+            // Even unchanged preferences complete recovery.
+            let chosen = PickerPreferences::from_settings(&settings::load(&path).settings);
+            let result = tauri::test::get_ipc_response(&window, preference_request(chosen, None));
+            assert_eq!(result.is_ok(), has_backup);
+            let library = app.state::<Mutex<crate::library::Library>>();
+            let library = library.lock().unwrap_or_else(|_| panic!("library lock poisoned"));
+            if has_backup {
+                let expected = migrating.then_some(crate::identity::MIGRATION_NOTICE);
+                assert_eq!(
+                    library.settings_notice.as_deref(),
+                    expected,
+                    "successful recovery must clear the damaged-settings warning"
+                );
+                let event = events
+                    .recv_timeout(Duration::from_secs(3))
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let status: serde_json::Value = serde_json::from_str(&event).unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(status.get("settings_notice"), Some(&serde_json::json!(expected)));
+            } else {
+                assert_eq!(library.settings_notice, startup_notice);
+                assert!(events.try_recv().is_err(), "failed saves must keep the warning");
+            }
+        }
+    }
+
+    #[test]
     fn preference_ipc_rejects_invalid_settings_without_private_details_or_overwriting() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("settings.json");
@@ -319,6 +412,14 @@ mod tests {
             assert!(notice.contains("backup"));
             assert!(notice.contains(problem));
             assert!(!notice.contains(private));
+            assert_eq!(
+                notice.contains("not being saved"),
+                contents.contains("schema_version\":3")
+            );
+            assert_eq!(
+                notice.contains("settings.json.invalid-N"),
+                !contents.contains("schema_version\":3")
+            );
             std::fs::remove_file(path.with_extension("json.bak")).unwrap_or_else(|e| panic!("{e}"));
         }
         std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
@@ -326,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_recovery_and_preference_changes_leave_damaged_files_untouched() {
+    fn settings_recovery_and_preference_changes_preserve_damaged_files_and_refuse_newer_files() {
         for contents in [
             b"".as_slice(),
             b"{invalid synthetic settings",
@@ -350,7 +451,27 @@ mod tests {
                 assert_eq!(loaded.settings.copy_format, has_backup.then_some(KeyFormat::Typst));
                 assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
                 let chosen = PickerPreferences::from_settings(&loaded.settings);
-                assert!(file.save_preferences(chosen, Some(KeyFormat::Cite)).is_err());
+                let saved = file.save_preferences(chosen, Some(KeyFormat::Cite));
+                let recoverable = has_backup && contents != br#"{"schema_version":999}"#;
+                if recoverable {
+                    let saved = saved.unwrap_or_else(|e| panic!("recovery save failed: {e}"));
+                    assert_eq!(saved.copy_format, Some(KeyFormat::Cite));
+                    let restarted = settings::load(&file.path);
+                    assert!(restarted.problem.is_none());
+                    assert_eq!(restarted.settings, saved);
+                    assert_eq!(
+                        std::fs::read(file.path.with_extension("json.invalid-1")).unwrap_or_else(|e| panic!("{e}")),
+                        contents
+                    );
+                    assert_eq!(
+                        std::fs::read(&backup).unwrap_or_else(|e| panic!("{e}")),
+                        backup_contents
+                    );
+                    assert!(!temporary.exists());
+                    continue;
+                }
+                assert!(saved.is_err());
+                assert!(!file.path.with_extension("json.invalid-1").exists());
                 assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
                 if has_backup {
                     assert_eq!(
@@ -373,6 +494,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ibis-concurrent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let file = SettingsFile::new(dir.join("settings.json"));
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(&file.path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(file.path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
         let threads: Vec<_> = (0..8)
             .map(|i| {
                 let file = file.clone();
@@ -398,6 +522,11 @@ mod tests {
             Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib")))
         );
         assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
+        assert_eq!(
+            std::fs::read_to_string(file.path.with_extension("json.invalid-1")).unwrap_or_default(),
+            "{ damaged"
+        );
+        assert!(!file.path.with_extension("json.invalid-2").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

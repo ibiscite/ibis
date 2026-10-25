@@ -4,20 +4,26 @@ import { useCallback, useRef, useState, type MouseEvent } from "react";
 const STILL_AFTER_MS = 1000;
 
 /**
- * Moving the mouse selects the row under it; a row sliding under a still
- * pointer (typing, scrolling, the picker reopening) does not (docs/design.md,
- * "Hover"). Browsers repeat a mouse move at the same position when content
- * moves under the pointer, so only a change of screen position soon after an
- * earlier move counts. The wheel never selects.
+ * Moving the mouse only shows hover; a click selects [C5], so reaching across
+ * rows for Copy never changes what is copied (docs/design.md, "Hover"). A row
+ * sliding under a still pointer (typing, scrolling, the picker reopening) does
+ * not even show hover. Browsers repeat a mouse move at the same position when
+ * content moves under the pointer, so only a change of screen position soon
+ * after an earlier move counts.
  */
 export function usePointerSelection(active: number, setActive: (index: number) => void) {
   const last = useRef<{ x: number; y: number; at: number } | null>(null);
   const [hoverAllowed, setHoverAllowed] = useState(false);
   const resetHover = useCallback(() => setHoverAllowed(false), []);
   const resetPointer = useCallback(() => { last.current = null; setHoverAllowed(false); }, []);
-  // Set when the pointer changed the active row, so the list is not
+  // Set when a click changed the active row, so the list is not
   // scrolled under the pointer to reveal it.
   const fromPointer = useRef(false);
+  const choose = (index: number) => {
+    if (index === active) return;
+    fromPointer.current = true;
+    setActive(index);
+  };
   const onMouseMove = (event: MouseEvent<HTMLElement>) => {
     const previous = last.current;
     const now = { x: event.screenX, y: event.screenY, at: event.timeStamp };
@@ -27,11 +33,7 @@ export function usePointerSelection(active: number, setActive: (index: number) =
     if (!moved || !(event.target instanceof Element)) return;
     const row = event.target.closest('[role="option"][id^="result-"]');
     const index = row ? Number(row.id.slice("result-".length)) : Number.NaN;
-    if (!Number.isInteger(index) || index < 0) return;
-    setHoverAllowed(true);
-    if (index === active) return;
-    fromPointer.current = true;
-    setActive(index);
+    if (Number.isInteger(index) && index >= 0) setHoverAllowed(true);
   };
-  return { onMouseMove, fromPointer, hoverAllowed, resetHover, resetPointer };
+  return { onMouseMove, choose, fromPointer, hoverAllowed, resetHover, resetPointer };
 }

@@ -1143,7 +1143,8 @@ test("an unavailable initial library is named once without a duplicate search er
   const notice = await screen.findByRole("alert");
   expect(document.querySelector(".results-heading")).toBeNull();
   expect(notice.textContent).toBe("Can't open 研究 refs.bib. The library file is unavailable.");
-  expect(choiceRow(/^Try again/)).toBeTruthy();
+  // The choice list fills its rows after the notice renders.
+  expect(await screen.findByRole("option", { name: /^Try again/ })).toBeTruthy();
   expect(choiceRow(/^Use another library/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(screen.getAllByRole("alert")).toHaveLength(1);
@@ -3887,10 +3888,7 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
     if (mode !== "pointer") for (let i = 0; i < 19; i++) fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); toggleKeepOpen();
     await screen.findByRole("button", { name: "Keep Window Open", pressed: true });
-    if (mode === "pointer") {
-      fireEvent.mouseMove(document.getElementById("result-0")!, { screenX: 1, screenY: 1 });
-      fireEvent.mouseMove(document.getElementById("result-19")!, { screenX: 2, screenY: 2 });
-    }
+    if (mode === "pointer") fireEvent.click(document.getElementById("result-19")!, { detail: 1 });
     const owner = mode === "other focus" ? screen.getByRole("button", { name: /^More/ }) : search;
     act(() => owner.focus()); globalScroll.mockClear();
     const viewport = document.querySelector<HTMLElement>(".results-area")!;
