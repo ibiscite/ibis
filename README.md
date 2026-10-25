@@ -13,7 +13,7 @@ Ibis is free and open source. Searching and copying work offline after setup. Ib
 
 Ibis is an early preview.
 
-- Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Control+Command+R** on macOS, if the shortcut is available. On Wayland, use the application launcher; XWayland shortcut registration does not guarantee activation from native Wayland apps. Native Wayland shortcuts are being added in [#782](https://github.com/ibiscite/ibis/issues/782) and have not shipped.
+- Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Control+Command+R** on macOS, if the shortcut is available. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
 - Search a `.bib` file or, while Zotero is open, your Zotero library and any group libraries you choose.
 - Copy a citation key for Pandoc, BibLaTeX, LaTeX or Typst, or a formatted citation in APA, Chicago, Harvard, IEEE or MLA, then paste it where you write.
 - Works offline and never changes your library.
