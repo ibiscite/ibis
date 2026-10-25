@@ -292,6 +292,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     // chooser. Actual library/status failures still report search errors.
     if (library === undefined || library?.state === "none" || library?.state === "loading" || (library?.state === "error" && !library.has_snapshot)) {
       setResults([]);
+      setInterpretation(null);
       setResultsQuery(queryKey);
       setActive(0);
       setError(null);
@@ -320,6 +321,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         // Results of an earlier query must not sit beside this query's error.
         if (current) {
           setResults([]);
+          setInterpretation(null);
           setResultsQuery(queryKey);
           setError(pickerText.searchError);
         }

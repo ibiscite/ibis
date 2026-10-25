@@ -3899,3 +3899,203 @@ test("Search as typed preserves the full query and every edit restores interpret
   expect(screen.queryByText("Late literal result")).toBeNull();
   expect(screen.getByText("Using page 12")).toBeTruthy();
 });
+
+
+test.each(Object.keys(copyFormatNames) as api.CopyFormat[])("%s previews and copies the captured locator, including with output hidden", async (format) => {
+  const preview = vi.fn(() => ({ text: "key with locator", warnings: [] }));
+  const copy = vi.fn(() => ({ text: "key with locator", warnings: [] }));
+  backend({ search: () => locatorReply(), copy_format: () => format, citation_text: preview, copy_citation: copy });
+  render(<App />);
+  await screen.findByText("Locator reference");
+  await waitFor(() => expect(preview).toHaveBeenLastCalledWith({ items: [
+    { id: result("a", "").id, locator: { label: "page", value: "12" } },
+  ], format, expectedRevision: "1" }));
+  const box = screen.getByLabelText("Search references");
+  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
+  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ items: [
+    { id: result("a", "").id, locator: { label: "page", value: "12" } },
+  ], format, expectedRevision: "1" }));
+});
+
+test("applying a locator to the same identity retires a pending key preview", async () => {
+  const pending: Record<string, (value: unknown) => void> = {};
+  backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
+    citation_text: ({ items }) => new Promise((resolve) => { pending[items[0]!.locator!.value] = resolve; }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  await waitFor(() => expect(pending["12"]).toBeTypeOf("function"));
+  fireEvent.change(box, { target: { value: "Smith p.9" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Apply locator to a" }));
+  await waitFor(() => expect(pending["9"]).toBeTypeOf("function"));
+  await act(async () => { pending["9"]!({ text: "current page 9", warnings: [] }); });
+  await screen.findByText("current page 9");
+  await act(async () => { pending["12"]!({ text: "retired page 12", warnings: [] }); });
+  expect(screen.queryByText("retired page 12")).toBeNull();
+  expect(screen.getByText("current page 9")).toBeTruthy();
+});
+
+test.each(["copy", "context"])("applying a locator retires a pending native %s completion", async (operation) => {
+  let finish: (value: unknown) => void = () => undefined;
+  const calls = backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
+    copy_citation: () => new Promise((resolve) => { finish = resolve; }),
+    row_context: () => new Promise((resolve) => { finish = resolve; }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  fireEvent.change(box, { target: { value: "Smith p.9" } });
+  await screen.findByRole("button", { name: "Apply locator to a" });
+  if (operation === "copy") fireEvent.keyDown(box, { key: "Enter" });
+  else fireEvent.contextMenu(screen.getByText("Locator reference"));
+  fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
+  await act(async () => { finish(operation === "copy" ? { text: "retired locator receipt", warnings: [] } : "toggle"); });
+  expect(screen.getByRole("button", { name: "Remove page 9 from a" })).toBeTruthy();
+  expect(screen.queryByText("retired locator receipt")).toBeNull();
+  expect(calls).not.toContain("hide_picker");
+});
+
+test.each(["copy", "context"])("literal search mode retires a pending native %s completion without changing prepared locators", async (operation) => {
+  let finish: (value: unknown) => void = () => undefined;
+  const calls = backend({ search: ({ query }) => query.interpret_locators ? locatorReply() : new Promise(() => undefined),
+    copy_citation: () => new Promise((resolve) => { finish = resolve; }),
+    row_context: () => new Promise((resolve) => { finish = resolve; }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  if (operation === "copy") fireEvent.keyDown(box, { key: "Enter" });
+  else fireEvent.contextMenu(screen.getByText("Locator reference"));
+  fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
+  await act(async () => { finish(operation === "copy" ? { text: "retired mode receipt", warnings: [] } : "toggle"); });
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  expect(screen.queryByText("retired mode receipt")).toBeNull();
+  expect(calls).not.toContain("hide_picker");
+});
+
+
+test("a same-identity locator edit cancels a waiting CSL click and its formatter", async () => {
+  const formatter = await import("./format/formatted");
+  const pending: Record<string, () => void> = {};
+  const signals: (AbortSignal | undefined)[] = [];
+  const contexts: unknown[] = [];
+  const format = vi.spyOn(formatter, "formatCitation").mockImplementation((_csl, _style, options) => {
+    contexts.push(options?.cites);
+    signals.push(options?.signal);
+    const value = options?.cites?.[0]?.locator;
+    return new Promise((resolve) => { pending[value!] = () => resolve({ markup: [], text: `CSL page ${value}`, html: "", warnings: [] }); });
+  });
+  const copies = vi.fn(() => null);
+  backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"), csl_items: () => "[]", copy_formatted: copies,
+    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true }) });
+  try {
+    render(<App />);
+    const box = screen.getByLabelText("Search references");
+    fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+    await waitFor(() => expect(pending["12"]).toBeTypeOf("function"));
+    fireEvent.change(box, { target: { value: "Smith p.9" } });
+    await screen.findByRole("button", { name: "Apply locator to a" });
+    fireEvent.click(screen.getByText("Locator reference"), { detail: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
+    await waitFor(() => expect(pending["9"]).toBeTypeOf("function"));
+    expect(signals[0]?.aborted).toBe(true);
+    expect(contexts).toEqual([[{ locator: "12", label: "page" }], [{ locator: "9", label: "page" }]]);
+    await act(async () => { pending["12"]!(); pending["9"]!(); });
+    await screen.findByText("CSL page 9");
+    expect(copies).not.toHaveBeenCalled();
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(copies).toHaveBeenCalledExactlyOnceWith({ text: "CSL page 9", html: "", expectedRevision: "1" }));
+  } finally { format.mockRestore(); }
+});
+
+test("CSL receives ordered locator contexts and an empty context for a record without a citation key", async () => {
+  const formatter = await import("./format/formatted");
+  const format = vi.spyOn(formatter, "formatCitation").mockResolvedValue({ markup: [], text: "formatted selection", html: "", warnings: [] });
+  const csl = vi.fn(() => "[]");
+  backend({ search: ({ query }) => {
+    const key = query.text.startsWith("B") ? "b" : query.text.startsWith("C") ? "c" : "a";
+    return { revision: "1", results: [{ ...result(key, `CSL reference ${key}`), key: key === "c" ? "" : key }],
+      interpretation: key === "c" ? null : { search: key, locator: { label: key === "b" ? "section" : "page", value: key === "b" ? "9" : "12" }, typed: "synthetic" } };
+  }, csl_items: csl,
+  picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true }) });
+  try {
+    render(<App />);
+    const box = screen.getByLabelText("Search references");
+    fireEvent.click(await screen.findByText("CSL reference a"), { ctrlKey: true });
+    fireEvent.change(box, { target: { value: "B sec.9" } });
+    fireEvent.click(await screen.findByText("CSL reference b"), { ctrlKey: true });
+    fireEvent.change(box, { target: { value: "C" } });
+    fireEvent.click(await screen.findByText("CSL reference c"), { ctrlKey: true });
+    await waitFor(() => expect(format.mock.lastCall?.[2]?.cites).toEqual([
+      { locator: "12", label: "page" }, { locator: "9", label: "section" }, {},
+    ]));
+    expect(csl).toHaveBeenLastCalledWith({ ids: ["a", "b", "c"].map((key) => result(key, "").id), expectedRevision: "1" });
+  } finally { format.mockRestore(); }
+});
+
+
+test("a failed replacement search clears the earlier locator interpretation", async () => {
+  backend({ search: ({ query }) => {
+    if (query.text === "failed") throw new Error("synthetic search failure");
+    return locatorReply();
+  } });
+  render(<App />);
+  await screen.findByText("Using page 12");
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "failed" } });
+  await screen.findByText("Ibis could not search your library. Use Reload, then try again.");
+  expect(screen.queryByText("Using page 12")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
+});
+
+
+test("literal mode cancels a waiting CSL row click while keeping the prepared locator", async () => {
+  const formatter = await import("./format/formatted");
+  let finish: () => void = () => undefined;
+  const format = vi.spyOn(formatter, "formatCitation").mockImplementation(() => new Promise((resolve) => {
+    finish = () => resolve({ markup: [], text: "prepared page 12", html: "", warnings: [] });
+  }));
+  const copies = vi.fn(() => null);
+  backend({ search: ({ query }) => ({ ...locatorReply(), interpretation: query.interpret_locators ? locatorReply().interpretation : null }),
+    csl_items: () => "[]", copy_formatted: copies,
+    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true }) });
+  try {
+    render(<App />);
+    fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+    await waitFor(() => expect(format).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByText("Locator reference"), { detail: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
+    await act(async () => { finish(); });
+    await screen.findByText("prepared page 12");
+    expect(copies).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  } finally { format.mockRestore(); }
+});
+
+test("removing and re-adding a selected identity captures the newer query locator", async () => {
+  backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12") });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "Smith p.9" } });
+  await screen.findByText("Using page 9");
+  fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
+  fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
+  expect(screen.getByRole("button", { name: "Remove page 9 from a" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Remove page 12 from a" })).toBeNull();
+});
+
+test("a locator cannot update or copy a prepared reference from a retired snapshot", async () => {
+  let revision = "1";
+  const copy = vi.fn(() => ({ text: "unexpected", warnings: [] }));
+  backend({ search: () => ({ ...locatorReply(revision === "1" ? "12" : "9"), revision,
+    results: [{ ...result("a", `Snapshot locator ${revision}`), revision }] }), copy_citation: copy });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Snapshot locator 1"), { ctrlKey: true });
+  revision = "2";
+  await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
+  await screen.findByText("Snapshot locator 2");
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Apply locator to a" })).toBeNull();
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(copy).not.toHaveBeenCalled();
+  await screen.findByText("The library changed. Search again and reselect the references before copying.");
+});
