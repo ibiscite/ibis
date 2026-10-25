@@ -7,6 +7,7 @@ import sqlite3
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 
 
 SOURCE = Path(__file__).with_name("real-zotero.sh").read_text()
@@ -96,6 +97,53 @@ class CaptureTests(unittest.TestCase):
         output.mkdir()
         with self.assertRaises(RuntimeError):
             self.capture.copy_bundle(data, output, set())
+
+    def test_committed_wal_rows_survive_without_mutating_the_original_bundle(self):
+        data = self.root / "wal"
+        data.mkdir()
+        db = sqlite3.connect(data / "zotero.sqlite")
+        self.addCleanup(db.close)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA wal_autocheckpoint=0")
+        db.executescript("CREATE TABLE version(schema TEXT, version INT); INSERT INTO version VALUES('userdata',123); CREATE TABLE items(key TEXT); CREATE TABLE deletedItems(itemID INT);")
+        db.executemany("INSERT INTO items VALUES(?)", [(f"SYNTH00{i}",) for i in range(1, 5)])
+        db.commit()
+        self.assertGreater((data / "zotero.sqlite-wal").stat().st_size, 0)
+        before = {path.name: path.read_bytes() for path in data.iterdir()}
+        output = self.root / "retained"
+        output.mkdir()
+        result = self.capture.copy_bundle(data, output, {f"SYNTH00{i}" for i in range(1, 5)})
+        self.assertIn("zotero.sqlite-wal", result["database_files"])
+        self.assertEqual(result["counts"]["items"], 4)
+        self.assertEqual(before, {path.name: path.read_bytes() for path in data.iterdir()})
+        self.assertEqual(before, {path.name: path.read_bytes() for path in output.iterdir()})
+
+    def test_shutdown_failure_prevents_database_copy(self):
+        with patch.object(self.capture, "graceful_quit", side_effect=RuntimeError("owned quit failed")):
+            with patch.object(self.capture, "copy_bundle") as copied:
+                with self.assertRaises(RuntimeError):
+                    self.capture.finish_capture(object(), self.root, self.root, set())
+                copied.assert_not_called()
+
+    def test_quit_requires_subreaper_and_bounded_owned_process_ancestry(self):
+        with patch.object(self.capture, "_SUBREAPER_ENABLED", False):
+            with self.assertRaisesRegex(RuntimeError, "owned clean shutdown"):
+                self.capture.graceful_quit(object())
+        with patch.object(self.capture, "_process", return_value=(123, 1)) as process:
+            self.assertFalse(self.capture._owned(123, 456))
+            self.assertEqual(process.call_count, 64)
+
+    def test_corrupt_database_and_excess_file_size_are_rejected(self):
+        data = self.root / "corrupt"
+        data.mkdir()
+        (data / "zotero.sqlite").write_bytes(b"not a sqlite database")
+        output = self.root / "rejected"
+        output.mkdir()
+        with self.assertRaises(RuntimeError):
+            self.capture.copy_bundle(data, output, set())
+        with patch.object(self.capture, "MAX_DATABASE_BYTES", 1):
+            with self.assertRaisesRegex(RuntimeError, "oversized"):
+                self.capture.copy_bundle(data, output, set())
 
 
 if __name__ == "__main__":
