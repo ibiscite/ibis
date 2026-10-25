@@ -10,7 +10,7 @@ import { afterCopy } from "./copyFeedback";
 import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
-import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
+import { choiceKey, choiceName, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
 import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
@@ -24,6 +24,7 @@ import { useOperations } from "./features/picker/useOperations";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
+import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { usePin } from "./features/picker/usePin";
 import {
@@ -33,8 +34,6 @@ import {
   type Locator,
   type SearchResult,
   type ShortcutStatus,
-  type ZoteroGroup,
-  type ZoteroLibrary,
 } from "./api";
 
 // A search comes back if the picker returns within a minute, as in Raycast.
@@ -450,70 +449,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A library that could not be opened, with nothing earlier to search.
   const blocked = library?.state === "error" && !library.has_snapshot;
 
-  // Zotero libraries: the ones chosen, and the groups Zotero offers, listed
-  // when the menu opens or when results come from several libraries.
-  const [groups, setGroups] = useState<ZoteroGroup[] | null>(null);
-  // A choice sent but not yet reported back, so a second toggle builds on it.
-  const [pendingLibraries, setPendingLibraries] = useState<ZoteroLibrary[] | null>(null);
-  const reportedLibraries = library?.zotero_libraries ?? [];
-  const sameChoice = (a: ZoteroLibrary[], b: ZoteroLibrary[]) =>
-    a.length === b.length && a.every((choice, i) => sameLibrary(choice, b[i]!));
-  // biome-ignore lint/correctness/useExhaustiveDependencies: library is the trigger: a new status report settles the pending choice.
-  useEffect(() => {
-    if (pendingLibraries && sameChoice(pendingLibraries, reportedLibraries)) setPendingLibraries(null);
-  }, [library]);
-  const chosenLibraries = pendingLibraries ?? reportedLibraries;
-  const severalLibraries = chosenLibraries.length > 1;
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
-  const wantGroups = Boolean(zoteroGroups && library?.zotero && (menuOpen || severalLibraries || nothingMatched));
-  // biome-ignore lint/correctness/useExhaustiveDependencies: libraryVersion is a trigger: a library change refreshes group names.
-  useEffect(() => {
-    // Group names can refresh in the background, but a failure belongs only
-    // to this menu opening. Closing it also invalidates its pending request.
-    report("zoteroGroups", false);
-    if (!wantGroups || !zoteroGroups) return;
-    let current = true;
-    zoteroGroups()
-      .then((list) => { if (current) { setGroups(list); report("zoteroGroups", false); } })
-      .catch(() => { if (current && menuOpen) report("zoteroGroups"); });
-    return () => { current = false; };
-  }, [wantGroups, menuOpen, libraryVersion]);
-  const isChosen = (choice: ZoteroLibrary) => chosenLibraries.some((chosen) => sameLibrary(chosen, choice));
-  const toggleLibrary = (choice: ZoteroLibrary) => {
-    if (!chooseZoteroLibraries) return;
-    const next = isChosen(choice)
-      ? chosenLibraries.filter((chosen) => !sameLibrary(chosen, choice))
-      : [...chosenLibraries, choice];
-    if (next.length === 0) return;
-    setPendingLibraries(next);
-    void perform("zotero", () => chooseZoteroLibraries(next).catch((error: unknown) => {
-      setPendingLibraries(null);
-      throw error;
-    }));
-  };
-  // Every Zotero library on offer, once the group list is known.
-  const allLibraries = (): ZoteroLibrary[] => ["user", ...offeredGroups.map((group) => ({ group }))];
-  const searchAllLibraries = () => {
-    if (!chooseZoteroLibraries) return;
-    const all = allLibraries();
-    setPendingLibraries(all);
-    input.current?.focus();
-    void perform("zotero", () => chooseZoteroLibraries(all).catch((error: unknown) => {
-      setPendingLibraries(null);
-      throw error;
-    }));
-  };
-  const groupName = (id: number) => groups?.find((group) => group.id === id)?.name ?? pickerText.groupLibrary(id);
+  const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
+    useZoteroScope({ library, libraryVersion, menuOpen, nothingMatched, zoteroGroups, chooseZoteroLibraries, report, perform,
+      focusSearch: () => input.current?.focus() });
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  // Every group Zotero lists, plus chosen groups it no longer lists, so they can be turned off.
-  const offeredGroups = [...(groups?.map((group) => group.id) ?? []),
-    ...chosenLibraries.flatMap((chosen) => (typeof chosen === "object" ? [chosen.group] : []))]
-    .filter((id, i, all) => all.indexOf(id) === i);
-  const libraryOf = (source: string) =>
-    source === "zotero:user" ? pickerText.myLibrary
-      : source.startsWith("zotero:group:") ? groupName(Number(source.slice("zotero:group:".length))) : null;
   /** Names the library too when another chosen reference has the same key. */
   const removeLabel = (r: SearchResult) => {
     const library = libraryOf(r.id.source);
@@ -534,7 +476,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus();
     void perform(operation, action);
   };
-  const narrowed = Boolean(library?.zotero && chooseZoteroLibraries && groups) && allLibraries().some((choice) => !isChosen(choice));
   const openKeys = () => {
     closeMenu(false);
     const focused = document.activeElement;
