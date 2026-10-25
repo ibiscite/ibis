@@ -24,3 +24,8 @@
    The 20 px glyph scales with text inside the existing 40 px output line. */
 .shelf .shelf-mark { height: var(--space-5); }
 [dir="rtl"] .shelf-mark { transform: scaleX(-1); }
+
+/* #1129: a numeric style copies reference entries; they share the one output
+   line a gap apart, and the full text stays in the tooltip. */
+.shelf-output .preview-text .csl-entry { display: inline; }
+.shelf-output .preview-text .csl-entry + .csl-entry { margin-inline-start: var(--space-4); }

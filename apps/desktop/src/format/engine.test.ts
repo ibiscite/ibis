@@ -28,12 +28,19 @@ describe("formatted citations", () => {
     expect(formatter.bibliography("apa", [garcia], "text")).toEqual({
       output: "Garcia, A. (2021). Synthetic sleep study. Journal of Tests, 3, 12–14.",
       problems: [],
+      order: [0],
     });
     expect(formatter.citation("apa", [garcia], [{ id: "garcia2021", locator: "13", label: "page" }], "text").output)
       .toBe("(Garcia, 2021, p. 13)");
     expect(formatter.bibliography("ieee", [garcia], "text").output)
       .toBe("[1] A. Garcia, “Synthetic sleep study,” Journal of Tests, vol. 3, pp. 12–14, 2021.");
     expect(formatter.citation("ieee", [garcia], [{ id: "garcia2021" }], "text").output).toBe("[1]");
+  });
+
+  it("names the reference behind each bibliography entry, in the style's order", () => {
+    // APA sorts by author, so Garcia's entry comes before Müller's whatever order they arrive in.
+    expect(formatter.bibliography("apa", [mueller, garcia], "text").order).toEqual([1, 0]);
+    expect(formatter.bibliography("ieee", [mueller, garcia], "text").order).toEqual([0, 1]);
   });
 
   it("formats every bundled style", () => {
