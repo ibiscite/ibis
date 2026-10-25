@@ -297,6 +297,10 @@ pub fn load(path: &Path) -> Loaded {
 /// Save settings atomically, keeping the previous file as a backup. Refuses to
 /// replace a file written by a newer version.
 pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
+    write_settings(path, settings, false)
+}
+
+fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<(), SettingsError> {
     if let Ok(text) = read_regular(path)
         && let Err(SettingsError::NewerVersion(v)) = parse(&text)
     {
@@ -321,7 +325,9 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
     file.write_all(format!("{json}\n").as_bytes())?;
     file.sync_all()?;
     drop(file);
-    if path.exists() {
+    if recovering {
+        preserve_invalid(path)?;
+    } else if path.exists() {
         fs::copy(path, &backup)?;
         // Windows flushes only a handle opened for writing.
         fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
@@ -329,6 +335,27 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
     fs::rename(&temporary, path)?;
     sync_directory(path);
     Ok(())
+}
+
+/// Keep the damaged primary before replacing it. A hard link reserves the name
+/// without overwriting anything, even if another writer claims it concurrently.
+/// The primary stays in place until the flushed replacement is ready to rename.
+fn preserve_invalid(path: &Path) -> io::Result<()> {
+    for number in 1..=1000 {
+        let invalid = path.with_extension(format!("json.invalid-{number}"));
+        match fs::hard_link(path, &invalid) {
+            Ok(()) => {
+                sync_directory(&invalid);
+                return Ok(());
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "settings recovery names are exhausted",
+    ))
 }
 
 /// Flush the folder holding `path`, so the rename itself survives a power
@@ -345,18 +372,28 @@ fn sync_directory(path: &Path) {
 }
 
 /// Change settings on disk: read the file as it is now, apply `change` and
-/// save the result. Edits made to the file since it was loaded are kept. A file
-/// that cannot be read or is invalid is left untouched and the problem returned.
+/// save the result. Edits made to the file since it was loaded are kept. Invalid
+/// settings with a valid backup are preserved as `settings.json.invalid-N` on
+/// save; the backup is kept. Invalid UTF-8 can recover too; other read errors,
+/// newer versions and files without a valid backup are refused.
 pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Settings, SettingsError> {
-    let current = match read_regular(path) {
-        Ok(text) => parse(&text)?,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Settings::default(),
-        Err(e) => return Err(SettingsError::Unreadable(e)),
-    };
+    let loaded = load(path);
+    let recovering = loaded.from_backup
+        && match &loaded.problem {
+            Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
+            Some(SettingsError::Unreadable(error)) => error.kind() == io::ErrorKind::InvalidData,
+            _ => false,
+        };
+    if let Some(problem) = loaded.problem
+        && !recovering
+    {
+        return Err(problem);
+    }
+    let current = loaded.settings;
     let mut changed = current.clone();
     change(&mut changed);
-    if changed != current {
-        save(path, &changed)?;
+    if changed != current || recovering {
+        write_settings(path, &changed, recovering)?;
     }
     Ok(changed)
 }
@@ -553,6 +590,97 @@ mod tests {
     }
 
     #[test]
+    fn a_backup_recovery_saves_and_keeps_each_damaged_file() {
+        for backup in [
+            "{}",
+            r#"{"library":"refs.bib","future_choice":{"kept":[true,null,"参考"]}}"#,
+        ] {
+            let directory = dir("recover-save");
+            let path = directory.path().join("settings.json");
+            fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
+            let occupied = path.with_extension("json.invalid-1");
+            fs::write(&occupied, "previous damaged settings").unwrap_or_else(|e| panic!("{e}"));
+            let damaged = [
+                b"".as_slice(),
+                b"{ not json",
+                br#"{"copy_format":"unknown"}"#,
+                br#"{"library":{"zotero":["user",{"group":-1}]}}"#,
+                b"\xff",
+            ];
+            for (index, bad) in damaged.into_iter().enumerate() {
+                fs::write(&path, bad).unwrap_or_else(|e| panic!("{e}"));
+                let loaded = load(&path);
+                assert!(loaded.from_backup);
+                // Even a save with no changed values must finish recovery.
+                let saved = update(&path, |_| {}).unwrap_or_else(|e| panic!("recovery save failed: {e}"));
+                assert_eq!(saved, loaded.settings);
+                assert!(load(&path).problem.is_none());
+                assert_eq!(load(&path).settings, saved);
+                assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
+                assert_eq!(
+                    fs::read_to_string(&occupied).unwrap_or_default(),
+                    "previous damaged settings"
+                );
+                for (previous, expected) in damaged.into_iter().take(index + 1).enumerate() {
+                    assert_eq!(
+                        fs::read(path.with_extension(format!("json.invalid-{}", previous + 2)))
+                            .unwrap_or_else(|e| panic!("{e}")),
+                        expected
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn failed_recovery_preserves_the_primary_and_backup() {
+        for blocked_temporary in [false, true] {
+            let directory = dir("blocked-recovery");
+            let path = directory.path().join("settings.json");
+            fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
+            fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+            if blocked_temporary {
+                fs::create_dir(path.with_extension("json.tmp")).unwrap_or_else(|e| panic!("{e}"));
+            } else {
+                for number in 1..=1000 {
+                    fs::write(path.with_extension(format!("json.invalid-{number}")), "kept")
+                        .unwrap_or_else(|e| panic!("{e}"));
+                }
+            }
+            assert!(update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ damaged");
+            assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
+            assert!(load(&path).from_backup);
+            if !blocked_temporary {
+                for number in 1..=1000 {
+                    assert_eq!(
+                        fs::read_to_string(path.with_extension(format!("json.invalid-{number}"))).unwrap_or_default(),
+                        "kept"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_invalid_backup_cannot_authorize_recovery() {
+        for backup in [b"{".as_slice(), br#"{"schema_version":99}"#, b"\xff"] {
+            let directory = dir("invalid-backup");
+            let path = directory.path().join("settings.json");
+            fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
+            fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
+            assert!(!load(&path).from_backup);
+            let mut changed = false;
+            assert!(update(&path, |_| changed = true).is_err());
+            assert!(!changed);
+            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ damaged");
+            assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), backup);
+            assert!(!path.with_extension("json.invalid-1").exists());
+            assert!(!path.with_extension("json.tmp").exists());
+        }
+    }
+
+    #[test]
     fn settings_recovery_reports_backup_or_defaults_from_the_same_read() {
         let directory = dir("recovery-source");
         let path = directory.path().join("settings.json");
@@ -604,10 +732,28 @@ mod tests {
             Err(SettingsError::NewerVersion(99))
         ));
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), newer);
+        for with_backup in [false, true] {
+            if with_backup {
+                fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+            }
+            assert_eq!(load(&path).from_backup, with_backup);
+            let mut changed = false;
+            assert!(matches!(
+                update(&path, |_| changed = true),
+                Err(SettingsError::NewerVersion(99))
+            ));
+            assert!(!changed);
+            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), newer);
+            assert!(!path.with_extension("json.invalid-1").exists());
+            assert!(!path.with_extension("json.tmp").exists());
+            if with_backup {
+                assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
+            }
+        }
     }
 
     #[test]
-    fn updates_keep_edits_made_since_loading_and_never_replace_invalid_files() {
+    fn updates_keep_edits_made_since_loading_and_refuse_invalid_files_without_a_backup() {
         let directory = dir("update");
         let path = directory.path().join("settings.json");
         update(&path, |s| s.copy_format = Some(KeyFormat::Typst)).unwrap_or_else(|e| panic!("{e}"));
@@ -617,6 +763,7 @@ mod tests {
         let after = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(after.shortcut.as_deref(), Some("Alt+Space"));
         assert_eq!(load(&path).settings, after);
+        fs::remove_file(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
         fs::write(&path, "{ not json").unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(
             update(&path, |s| s.copy_format = Some(KeyFormat::Pandoc)),
@@ -808,7 +955,7 @@ mod tests {
     }
 
     #[test]
-    fn an_invalid_zotero_member_recovers_without_rewriting_the_file() {
+    fn an_invalid_zotero_member_is_preserved_when_saving_from_the_backup() {
         let directory = dir("zotero-member");
         let path = directory.path().join("settings.json");
         let good = Settings {
@@ -831,13 +978,16 @@ mod tests {
             error.to_string(),
             "the settings file is not valid: Zotero library entry 2 must be \"user\" or {\"group\": <non-negative integer ID>}"
         );
-        let mut changed = false;
-        let Err(update_error) = update(&path, |_| changed = true) else {
-            panic!("expected the invalid-member error");
-        };
-        assert_eq!(update_error.to_string(), error.to_string());
-        assert!(!changed);
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), bad);
+        let saved = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.library, good.library);
+        assert_eq!(saved.copy_format, Some(KeyFormat::Keys));
+        assert_eq!(load(&path).settings, saved);
+        assert!(load(&path).problem.is_none());
+        assert_eq!(
+            fs::read_to_string(path.with_extension("json.invalid-1")).unwrap_or_default(),
+            bad
+        );
         assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), backup);
     }
 }

@@ -34,8 +34,18 @@ fn settings_message(problem: &settings::SettingsError) -> String {
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
     loaded.problem.as_ref().map(|problem| {
         let recovery = if loaded.from_backup { "the backup" } else { "defaults" };
+        let recoverable = match problem {
+            settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => true,
+            settings::SettingsError::Unreadable(error) => error.kind() == std::io::ErrorKind::InvalidData,
+            settings::SettingsError::NewerVersion(_) => false,
+        };
+        let saving = if loaded.from_backup && recoverable {
+            "The next save will keep the damaged file as settings.json.invalid-N and restore settings from the backup."
+        } else {
+            "Changes are not being saved while this problem remains."
+        };
         format!(
-            "{}; using {recovery}. Changes are not being saved while this problem remains. Settings file: {}",
+            "{}; using {recovery}. {saving} Settings file: {}",
             settings_message(problem),
             path.display()
         )
@@ -319,6 +329,14 @@ mod tests {
             assert!(notice.contains("backup"));
             assert!(notice.contains(problem));
             assert!(!notice.contains(private));
+            assert_eq!(
+                notice.contains("not being saved"),
+                contents.contains("schema_version\":3")
+            );
+            assert_eq!(
+                notice.contains("settings.json.invalid-N"),
+                !contents.contains("schema_version\":3")
+            );
             std::fs::remove_file(path.with_extension("json.bak")).unwrap_or_else(|e| panic!("{e}"));
         }
         std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
@@ -326,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_recovery_and_preference_changes_leave_damaged_files_untouched() {
+    fn settings_recovery_and_preference_changes_preserve_damaged_files_and_refuse_newer_files() {
         for contents in [
             b"".as_slice(),
             b"{invalid synthetic settings",
@@ -350,7 +368,27 @@ mod tests {
                 assert_eq!(loaded.settings.copy_format, has_backup.then_some(KeyFormat::Typst));
                 assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
                 let chosen = PickerPreferences::from_settings(&loaded.settings);
-                assert!(file.save_preferences(chosen, Some(KeyFormat::Cite)).is_err());
+                let saved = file.save_preferences(chosen, Some(KeyFormat::Cite));
+                let recoverable = has_backup && contents != br#"{"schema_version":999}"#;
+                if recoverable {
+                    let saved = saved.unwrap_or_else(|e| panic!("recovery save failed: {e}"));
+                    assert_eq!(saved.copy_format, Some(KeyFormat::Cite));
+                    let restarted = settings::load(&file.path);
+                    assert!(restarted.problem.is_none());
+                    assert_eq!(restarted.settings, saved);
+                    assert_eq!(
+                        std::fs::read(file.path.with_extension("json.invalid-1")).unwrap_or_else(|e| panic!("{e}")),
+                        contents
+                    );
+                    assert_eq!(
+                        std::fs::read(&backup).unwrap_or_else(|e| panic!("{e}")),
+                        backup_contents
+                    );
+                    assert!(!temporary.exists());
+                    continue;
+                }
+                assert!(saved.is_err());
+                assert!(!file.path.with_extension("json.invalid-1").exists());
                 assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
                 if has_backup {
                     assert_eq!(
@@ -373,6 +411,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ibis-concurrent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let file = SettingsFile::new(dir.join("settings.json"));
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(&file.path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(file.path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
         let threads: Vec<_> = (0..8)
             .map(|i| {
                 let file = file.clone();
@@ -398,6 +439,11 @@ mod tests {
             Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib")))
         );
         assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
+        assert_eq!(
+            std::fs::read_to_string(file.path.with_extension("json.invalid-1")).unwrap_or_default(),
+            "{ damaged"
+        );
+        assert!(!file.path.with_extension("json.invalid-2").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
