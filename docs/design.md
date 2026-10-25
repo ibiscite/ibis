@@ -14,7 +14,8 @@ each beside its rule.
 1. **One anatomy everywhere.** Search, list, shelf and footer, in that order,
    at every size. Layouts fold rather than reorder.
 2. **Native material, Ibis voice.** Each platform's material, radii, selection,
-   menu metrics, font and shortcut labels. Ibis keeps its anatomy, icon
+   menu metrics, font and shortcut labels (materials and metrics not yet built
+   wait for 1.0; see the look freeze under Per platform). Ibis keeps its anatomy, icon
    drawings, wording and citation scarlet on every platform.
 3. **Readable first.** Nothing smaller than 12 px; secondary text passes 4.5:1.
 4. **Easy to hit.** Every target is at least 32 px; 44 px under `pointer: coarse`.
@@ -453,6 +454,13 @@ and visible labels match accessible names.
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule | ComboBox, chevron | Drop-down, `pan-down-symbolic`, bold label |
 | Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |
 | Switch | 38 × 22 | 40 × 20, outlined when off | 46 × 26 |
+
+**Look freeze until 1.0** (maintainer, 2026-10-25, #326). What has shipped
+stays and is kept working, but is not extended. Rules on this page that are not
+built yet for a platform are deferred: materials, native accent injection and
+depth [C13, C14], versioned macOS radii and GNOME icon weight. Their issues are
+in the Later milestone. New interface work uses the shared look and the
+fallbacks above.
 
 - **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
   Over the macOS veil, citation and status colours go one step deeper to keep

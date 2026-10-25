@@ -2,7 +2,7 @@
 
 These rules apply to coding agents and human contributors alike. Product behaviour is in `README.md`, `ROADMAP.md` and `docs/architecture.md`. **How we work** (issues, labels, milestones, tracking issues, branches, commits, pull requests, review and merge) is the [contribution standard](docs/development.md#contribution-standard); follow it exactly. Testing is in `docs/testing.md`. Lasting decisions are in `docs/adr/`; where documents disagree, accepted ADRs win.
 
-Everything needed to continue the work is in this repository and on GitHub: these rules, the docs above, the issues and their milestones, and one tracking issue per active milestone (label `tracking`). Do not rely on notes outside it or on an assistant's memory. `.local/` holds untracked maintainer notes: never commit, quote or summarize them in public text.
+Everything needed to continue the work is in this repository and on GitHub: these rules, the docs above, the issues and their milestones, and the one tracking issue (label `tracking`). Do not rely on notes outside it or on an assistant's memory. `.local/` holds untracked maintainer notes: never commit, quote or summarize them in public text.
 
 ## Commands
 

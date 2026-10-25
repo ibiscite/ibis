@@ -9,7 +9,7 @@ Ibis is meant to be the base layer for everyone who handles references, the way 
 Development now prioritizes complete Rust engine, CLI and backend workflows.
 Structured citation intent is available to scripts; typed locator integration
 through the picker is being validated. Independent offline Zotero discovery and
-mapper memory improvements proceed alongside it. Design refinement follows functional coverage;
+mapper memory improvements proceed alongside it. Until 1.0 the picker keeps one shared look with the system accent; per-platform materials, accents and metrics not yet built come after it (look freeze, 2026-10-25). Design refinement follows functional coverage;
 the existing 0.2 acceptance remains tracked separately. This changes implementation
 order, without nominating a release or changing the scopes below.
 
@@ -25,6 +25,7 @@ order, without nominating a release or changing the scopes below.
 
 ## After 1.0
 
+- Per-platform materials, native accents and metrics: Liquid Glass depth, Windows Desktop Acrylic, GNOME and Windows system accents, versioned macOS radii, GNOME icon weight.
 - Search by meaning: local multilingual meaning-based search combined with keyword search, with match explanations. No cloud services.
 - Cite a highlight: quote plus page-correct citation from Zotero annotations; notes search.
 - Reviewed corrections to library records through official APIs, opt-in.
