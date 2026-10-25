@@ -1,6 +1,8 @@
 //! Publication dates for one resolved BibTeX entry: `date`, `year`, `month`
 //! and `day` merged across inheritance into the fields the converter reads.
 
+use biblatex::{Chunk, Date, DateValue, Spanned};
+
 use super::resolve::MONTHS;
 use crate::model::days_in_month;
 
@@ -13,9 +15,15 @@ pub(super) const DATE_PARTS: [&str; 4] = ["date", "year", "month", "day"];
 /// gains inherited precision; an inherited plain `date` is combined with the
 /// entry's own year, month or day (own month `mar` with an inherited
 /// `2024-02-05` gives 2024-03-05). Ranges and approximate dates are kept
-/// whole. A day that is not a day of the month, or has no month, is named
-/// in `problems` and left out.
-pub(super) fn merge_dates(sources: &[Vec<(String, String)>], problems: &mut Vec<String>) -> Vec<(String, String)> {
+/// whole. With `check` (the entry being read, not a parent it inherits
+/// from), a day that is not a day of the month, or has no month, is named in
+/// `problems` and left out; a parent's day is kept so the entry's own year
+/// or month decides.
+pub(super) fn merge_dates(
+    sources: &[Vec<(String, String)>],
+    check: bool,
+    problems: &mut Vec<String>,
+) -> Vec<(String, String)> {
     let field = |source: &Vec<(String, String)>, n: &str| {
         source.iter().find(|(f, _)| f == n).map(|(_, v)| v.trim().to_string())
     };
@@ -31,13 +39,13 @@ pub(super) fn merge_dates(sources: &[Vec<(String, String)>], problems: &mut Vec<
         let year = field(own, "year").unwrap_or(y);
         let month = field(own, "month").as_deref().and_then(month_number).or(m);
         let day = field(own, "day").or(d);
-        return compose(year, month, day, problems);
+        return compose(year, month, day, check, problems);
     }
     let month = inherited("month");
     match (month.as_deref().map(month_number), inherited("year")) {
         // A month that is not a number or abbreviation ("Spring") stays as written.
         (Some(None), year) => {
-            if let Some(day) = inherited("day") {
+            if let Some(day) = inherited("day").filter(|_| check) {
                 problems.push(format!("`day` `{day}` has no month number; it is ignored"));
             }
             year.map(|y| ("year".to_string(), y))
@@ -45,7 +53,7 @@ pub(super) fn merge_dates(sources: &[Vec<(String, String)>], problems: &mut Vec<
                 .chain(month.map(|m| ("month".to_string(), m)))
                 .collect()
         }
-        (numeric, Some(year)) => compose(year, numeric.flatten(), inherited("day"), problems),
+        (numeric, Some(year)) => compose(year, numeric.flatten(), inherited("day"), check, problems),
         (numeric, None) => numeric
             .flatten()
             .map(|m| ("month".to_string(), m))
@@ -59,21 +67,29 @@ fn compose(
     year: String,
     month: Option<String>,
     day: Option<String>,
+    check: bool,
     problems: &mut Vec<String>,
 ) -> Vec<(String, String)> {
+    if !check {
+        let day = day.and_then(|d| d.parse::<u8>().ok().filter(|d| (1..=31).contains(d)));
+        return fields(year, month, day);
+    }
     let day = day.and_then(|text| {
         let Some(m) = month.as_deref().and_then(|m| m.parse::<u8>().ok()) else {
             problems.push(format!("`day` `{text}` has no month; it is ignored"));
             return None;
         };
-        // A year that does not parse could be a leap year; allow its 29 February.
-        let last = days_in_month(year.trim_start_matches('+').parse().unwrap_or(2000), m);
+        let last = days_in_month(astronomical_year(&year), m);
         let day = text.parse::<u8>().ok().filter(|d| (1..=last).contains(d));
         if day.is_none() {
             problems.push(format!("`day` `{text}` is not a day of that month; it is ignored"));
         }
         day
     });
+    fields(year, month, day)
+}
+
+fn fields(year: String, month: Option<String>, day: Option<u8>) -> Vec<(String, String)> {
     match month {
         Some(m) if is_digits(&year, 4) => {
             let date = match day {
@@ -88,6 +104,20 @@ fn compose(
             out.extend(day.map(|d| ("day".to_string(), d.to_string())));
             out
         }
+    }
+}
+
+/// The year as BibLaTeX reads a `year` field (signs and eras, so `45 BC` is
+/// -44), or a leap year when it cannot be read, so that an unreadable year
+/// never loses a 29 February.
+fn astronomical_year(year: &str) -> i32 {
+    let chunks = [Spanned::detached(Chunk::Normal(year.to_string()))];
+    match Date::parse_three_fields(&chunks, None, None) {
+        Ok(Date {
+            value: DateValue::At(date),
+            ..
+        }) => date.year,
+        _ => 2000,
     }
 }
 

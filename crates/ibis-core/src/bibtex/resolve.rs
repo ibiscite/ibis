@@ -528,7 +528,7 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
-        merged.extend(merge_dates(&sources, &mut walk.problems));
+        merged.extend(merge_dates(&sources, root, &mut walk.problems));
         let fields: Fields = Rc::new(merged);
         if !self.budget.exhausted() {
             walk.memo.insert((idx, remaining), Rc::clone(&fields));

@@ -133,6 +133,9 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
          @article{leap, title={T}, year={2024}, month={2}, day={29}}\n\
          @xdata{parent, date={2024-02-29}}\n\
          @article{child, title={T}, year={95}, xdata={parent}}\n\
+         @article{era, title={T}, year={2024 BC}, month={2}, day={29}}\n\
+         @xdata{plain, year={2023}, month={2}, day={29}}\n\
+         @article{override, title={T}, year={2024}, xdata={plain}}\n\
          @article{good, title={T}, year={2024}, month=mar, day={5}}",
     );
     let date = |key: &str| {
@@ -148,6 +151,8 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
     assert_eq!(date("nomonth"), Some((2024, None, None)));
     assert_eq!(date("good"), Some((2024, Some(3), Some(5))));
     assert_eq!(date("leap"), Some((2024, Some(2), Some(29))));
+    // The entry's own year decides whether its parent's 29 February exists.
+    assert_eq!(date("override"), Some((2024, Some(2), Some(29))));
     let warned = |key: &str| {
         loaded
             .warnings
@@ -165,11 +170,11 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
         loaded.warnings
     );
     assert!(
-        warned("short").is_empty() && warned("good").is_empty(),
+        warned("short").is_empty() && warned("good").is_empty() && warned("override").is_empty(),
         "{:?}",
         loaded.warnings
     );
-    for key in ["feb31", "signed", "child"] {
+    for key in ["feb31", "signed", "child", "era"] {
         assert_eq!(date(key).and_then(|(_, _, day)| day), None, "{key}");
         assert_eq!(warned(key).len(), 1, "{key}: {:?}", loaded.warnings);
     }
