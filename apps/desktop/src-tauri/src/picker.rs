@@ -239,6 +239,7 @@ pub(crate) fn dismiss_picker(app: &AppHandle) {
                 Ok::<(), tauri::Error>(())
             },
         );
+        crate::sizing::reset(app, &window);
     }
 }
 

@@ -246,6 +246,11 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
 /* Selection keeps the header and footer fixed; under pressure the results and
    shelf scroll in their own allocated areas. */
 .picker-content { display: contents; }
+/* Size follows content (C10): the window fits this height; once it has grown
+   it keeps its height while open, and the footer stays at the bottom. */
+main[data-compact] { height: auto; min-height: var(--picker-height); }
+main[data-compact] .results-area { flex: none; min-height: 0; overflow: visible; }
+main[data-compact] > footer { margin-block-start: auto; }
 main[data-selection] { height: var(--picker-height); min-height: 0; overflow: hidden; }
 main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; }
 /* Keep a result reachable at large system text; the shelf uses its own scroll
