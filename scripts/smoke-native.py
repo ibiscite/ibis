@@ -36,6 +36,9 @@ class Unavailable(RuntimeError):
 # never the picker, so picker visibility checks skip it.
 NOTICE_TITLE = "Ibis notice"
 
+# Hang guard, not a budget: a cold pwsh C# compile has exceeded 20 s on CI (#903).
+CONTRACT_TIMEOUT = 120
+
 
 def run(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.PIPE, timeout=20).strip()
@@ -3082,7 +3085,7 @@ class ContractTests(unittest.TestCase):
             (phases[0] + "\n" + "private" * 100000 + "\n" + phases[-1], None, phases[:1]),
             ("\n".join(phases * 100), "\n".join(phases), phases),
         ]:
-            error = subprocess.TimeoutExpired(["private-command"], 20, output=stdout, stderr=stderr)
+            error = subprocess.TimeoutExpired(["private-command"], CONTRACT_TIMEOUT, output=stdout, stderr=stderr)
             with patch("subprocess.run", side_effect=error) as helper, patch("builtins.print") as output:
                 with self.assertRaises(subprocess.TimeoutExpired) as caught:
                     self.test_global_macos_hid_event_contracts_without_native_execution()
@@ -3091,7 +3094,7 @@ class ContractTests(unittest.TestCase):
                 self.assertIs(error.stderr, stderr)
                 self.assertEqual(helper.call_count, 1)
                 self.assertEqual(helper.call_args.kwargs, {
-                    "check": True, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "timeout": 20,
+                    "check": True, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "timeout": CONTRACT_TIMEOUT,
                 })
                 self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
                 self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
@@ -3145,7 +3148,7 @@ class ContractTests(unittest.TestCase):
     def test_global_macos_hid_event_contracts_without_native_execution(self):
         try:
             subprocess.run(["node", str(Path(__file__).with_name("smoke-macos.test.cjs"))], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=CONTRACT_TIMEOUT)
         except subprocess.TimeoutExpired as error:
             allowed = {f"MACOS HID CONTRACT {phase}" for phase in (
                 "start", "source-ready", "fullscreen-cases", "key-plan-cases", "permission-cases",
@@ -3402,7 +3405,7 @@ Reject
             test.write_text(script, encoding="utf-8")
             result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                      "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                    capture_output=True, text=True, timeout=20)
+                                    capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
@@ -3830,7 +3833,7 @@ foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
             test.write_text(script, encoding="utf-8")
             result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                      "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                    capture_output=True, text=True, timeout=20)
+                                    capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         facts = [json.loads(line.removeprefix("NATIVE EDITOR FOCUS ")) for line in result.stderr.splitlines()]
         self.assertTrue(facts)
@@ -3984,7 +3987,7 @@ try {
                 with self.subTest(scenario=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                              "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
-                                             "-Scenario", scenario], capture_output=True, text=True, timeout=20)
+                                             "-Scenario", scenario], capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                     facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
                              for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
@@ -3997,7 +4000,7 @@ try {
                 with self.subTest(success=pattern):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                              "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
-                                             "-Scenario", f"success-{pattern}"], capture_output=True, text=True, timeout=20)
+                                             "-Scenario", f"success-{pattern}"], capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     facts = json.loads(result.stdout)
                     self.assertEqual(facts["tree"], {"nodes": [{"role": "ControlType.Edit", "name": "Synthetic node",
@@ -4032,14 +4035,14 @@ try {
         dirty = "\n".join([phases[0], "private-output", phases[1], phases[0], "WINDOWS CLICK CONTRACT private-command"])
         for stderr, expected in [(dirty, phases), (dirty.encode() + b'\n\xffprivate', phases), (None, []),
                                  (phases[0] + '\n' + 'private' * 100000 + '\nWINDOWS CLICK CONTRACT complete', phases[:1])]:
-            error = subprocess.TimeoutExpired(["private-command"], 20, stderr=stderr)
+            error = subprocess.TimeoutExpired(["private-command"], CONTRACT_TIMEOUT, stderr=stderr)
             with patch("shutil.which", return_value="synthetic-pwsh"), patch("subprocess.run", side_effect=error) as helper, patch("builtins.print") as output:
                 with self.assertRaises(subprocess.TimeoutExpired) as caught:
                     method(self)
                 self.assertIs(caught.exception, error)
                 self.assertIs(error.stderr, stderr)
                 self.assertEqual(helper.call_count, 1)
-                self.assertEqual(helper.call_args.kwargs["timeout"], 20)
+                self.assertEqual(helper.call_args.kwargs["timeout"], CONTRACT_TIMEOUT)
                 self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
                 self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
 
@@ -4193,7 +4196,7 @@ try {
             try:
                 result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                          "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                        capture_output=True, text=True, timeout=20)
+                                        capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
             except subprocess.TimeoutExpired as error:
                 allowed = {f"WINDOWS CLICK CONTRACT {phase}" for phase in (
                     "parse-start", "parse-ready", "compile-start", "compile-ready", "pattern-cases",
