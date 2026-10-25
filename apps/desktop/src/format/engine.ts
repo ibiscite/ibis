@@ -1,7 +1,7 @@
 // Formatted citations with Zotero's build of citeproc-js (ADR 0007). This
 // module runs anywhere, including the worker and tests; it never touches the
 // network, and styles are data, not code.
-import CSL, { type CslNameOutput } from "../../vendor/csl/citeproc.mjs";
+import CSL, { type CslName, type CslNameOutput } from "../../vendor/csl/citeproc.mjs";
 import enUS from "../../vendor/csl/locales/en-US.xml?raw";
 import apa from "../../vendor/csl/styles/apa.csl?raw";
 import chicago from "../../vendor/csl/styles/chicago-author-date.csl?raw";
@@ -264,15 +264,34 @@ function isOthers(name: unknown): boolean {
   return typeof text === "string" && text.trim().toLowerCase() === "others";
 }
 
-const impose = CSL.NameOutput.prototype._imposeNameConstraints;
-CSL.NameOutput.prototype._imposeNameConstraints = function (this: CslNameOutput, lists, count, key, pos) {
-  impose.call(this, lists, count, key, pos);
-  const names = lists[key] ?? [];
-  if (!names.some((name) => name?.family === OTHERS)) return;
-  // Without its true last name, "et al." is all a style can write.
-  this.etal_use_last = false;
-  lists[key] = names.filter((name) => name?.family !== OTHERS);
-};
+const output = CSL.NameOutput.prototype;
+// Lists that lost their marker: each may only end in "et al.".
+const cut = new WeakSet<CslName[]>();
+if (!output.ibisOthers) {
+  output.ibisOthers = true;
+  const impose = output._imposeNameConstraints;
+  output._imposeNameConstraints = function (this: CslNameOutput, lists, count, key, pos) {
+    impose.call(this, lists, count, key, pos);
+    const names = lists[key] ?? [];
+    // A sort key keeps the marker, so "Smith et al." sorts after "Smith".
+    if (this.state.tmp.sort_key_flag || !names.some((name) => name?.family === OTHERS)) return;
+    lists[key] = names.filter((name) => name?.family !== OTHERS);
+    cut.add(lists[key]);
+  };
+  const setEtAl = output._setEtAlParameter;
+  output._setEtAlParameter = function (this: CslNameOutput, type, v, j) {
+    setEtAl.call(this, type, v, j);
+    const spec = this.etal_spec[v];
+    const list = type === "persons" ? this.persons[v]?.[j ?? -1] : this[type][v];
+    if (!spec || !list || !cut.has(list)) return;
+    // Without its true last name, "et al." is all a style can write.
+    if (type !== "persons") {
+      if (spec[type] === 2) spec[type] = 1;
+    } else if (j !== undefined && spec.persons[j] === 2) {
+      spec.persons[j] = 1;
+    }
+  };
+}
 
 function callerId(items: CslItem[], key: string): string {
   const id = items[Number(key.slice("ibis-".length))]?.id;

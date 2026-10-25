@@ -223,6 +223,22 @@ describe("formatted citations", () => {
     expect(formatter.bibliography("apa", [truncated(others, smith)], "text").output).toMatch(/^others, & Smith, A\./);
   });
 
+  it("sorts a truncated list after the same names alone, and leaves other lists' rules alone", () => {
+    const smith = { family: "Smith", given: "Alex" };
+    const others = { literal: "others" };
+    const alone: CslItem = { ...garcia, id: "alone", author: [smith], issued: { "date-parts": [[2022]] } };
+    const cut: CslItem = { ...garcia, id: "cut", author: [smith, others] };
+    for (const format of ["text", "html", "rtf"] as const) {
+      const shown = formatter.bibliography("apa", [cut, alone], format).output;
+      expect(shown.indexOf("2022")).toBeLessThan(shown.indexOf("et al."));
+    }
+    const directors = Array.from({ length: 21 }, (_, i) => ({ family: `Director${i}`, given: "A" }));
+    const broadcast: CslItem = { ...garcia, type: "broadcast", author: undefined, "script-writer": [smith, others], director: directors };
+    const shown = formatter.bibliography("apa", [broadcast], "text").output;
+    expect(shown).toContain("Smith, A. et al.");
+    expect(shown).toContain("Director18, A., … Director20, A. (Directors)");
+  });
+
   it("escapes fallback text for each output", () => {
     expect(escape("a & {b} 😀", "rtf")).toBe("a & \\{b\\} \\uc0\\u-10179{}\\uc0\\u-8704{}");
     expect(escape("a\u0000b\tc", "rtf")).toBe("a b c");
