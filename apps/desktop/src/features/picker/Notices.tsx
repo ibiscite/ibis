@@ -1,9 +1,10 @@
-import type { Copied, LibraryStatus, LoginItem } from "../../api";
+import type { Copied, LibraryStatus, LoginItem, UpdateProgress } from "../../api";
 import { useRef } from "react";
+import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
 import { useScrollEdges } from "../../ui/ScrollArea";
 import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
-import { libraryMessages, loginItemText, operationFailures, pickerText } from "../../messages";
+import { libraryMessages, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
 import { currentPlatform } from "../../platform";
 
 /** An action whose failure the picker reports in its notices. */
@@ -11,7 +12,8 @@ export type Operation = keyof typeof operationFailures;
 
 /** Problems and confirmations above the results: library and settings
  * problems, failed actions, search and copy errors, and what was copied. */
-export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied }: {
+export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied, updateProgress }: {
+  updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
   startAtLogin: LoginItem | null;
@@ -25,6 +27,9 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
   useScrollEdges(scroll);
   return (
     <div ref={scroll} className="notices scroll-area">
+      {updateProgress && (updateProgress.phase === "failed" ? <p role="alert">{updateText.failed}</p> :
+        <Progress label={updateText[updateProgress.phase]} value={updateProgress.phase === "downloading" && updateProgress.total
+          ? Math.min(100, 100 * updateProgress.received / updateProgress.total) : undefined} />)}
       {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
       {/* A library that could not be opened at all gets the recovery screen instead. */}
       {library?.error && !(library.state === "error" && !library.has_snapshot) && !hasRetainedFreshnessProblem(library) && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}

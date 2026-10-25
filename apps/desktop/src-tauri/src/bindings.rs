@@ -127,6 +127,7 @@ mod tests {
             "core:event:allow-listen",
             "core:event:allow-unlisten",
             "core:window:allow-internal-toggle-maximize",
+            "core:window:allow-is-visible",
             "core:window:allow-start-dragging",
         ]
         .map(str::to_owned)

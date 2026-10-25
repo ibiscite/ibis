@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import axe from "axe-core";
@@ -25,6 +25,7 @@ afterEach(async () => {
   // Closing a React Aria scope also restores focus on the next frame.
   await act(async () => { await new Promise(requestAnimationFrame); });
   clearMocks();
+  delete document.documentElement.dataset.pickerHidden;
 });
 
 test("the shelf shows what Enter pastes in a key syntax, without copying, and leaves out a failed key preview", async () => {
@@ -193,6 +194,7 @@ function chipKeys(root: ParentNode = document) {
 function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
   const defaults: Record<string, Handler> = {
+    "plugin:window|is_visible": () => true,
     shortcut_status: () => ({ shortcut: "Control+Command+R", registered: true, error: null }),
     search: () => [],
     hide_picker: () => null,
@@ -208,6 +210,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };
+  mockWindows("main");
   mockIPC(
     (cmd, args) => {
       calls.push(cmd);
@@ -1066,10 +1069,10 @@ test("event subscription and cleanup failures are handled with safe messages", a
   } finally { focus.mockRestore(); library.mockRestore(); log.mockRestore(); }
 });
 
-test("web plugin permissions grant only event subscriptions and drag-region bootstrap", () => {
+test("web plugin permissions grant only event subscriptions, visibility reads and drag-region bootstrap", () => {
   expect(capability.permissions.filter((permission) => permission.includes(":")).sort()).toEqual([
     "core:event:allow-listen", "core:event:allow-unlisten",
-    "core:window:allow-internal-toggle-maximize", "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize", "core:window:allow-is-visible", "core:window:allow-start-dragging",
   ]);
   expect(config.app.windows[0]?.maximizable).toBe(false);
 });
@@ -3922,6 +3925,47 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
   }
 });
 
+test("update progress never takes focus, toggles the pin or accepts a stale operation", async () => {
+  const calls = backend();
+  render(<App />);
+  await screen.findByText("Type to find a reference");
+  const pin = screen.getByRole("button", { name: "Keep Window Open" });
+  pin.focus();
+  const progress = { attempt: 2, revision: 2, received: 25, total: 100, phase: "downloading" };
+  await act(async () => { await emit("update:progress", progress); });
+  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+  await act(async () => { await emit("update:progress", { ...progress, attempt: 1, phase: "failed" }); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(document.activeElement).toBe(pin);
+  expect(pin.getAttribute("aria-pressed")).toBe("false");
+  expect(calls).not.toContain("set_pinned");
+  await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
+  expect(screen.queryByRole("progressbar")).toBeNull();
+  expect(screen.getByRole("alert").textContent).toContain("Check for Updates");
+});
+
+test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {
+  backend();
+  const listen = vi.spyOn(api, "onUpdateProgress").mockRejectedValue(new Error("SYNTHETIC_PRIVATE_PAYLOAD"));
+  try {
+    const { rerender } = render(<App />);
+    expect((await screen.findByRole("alert")).textContent).toBe("Update progress is unavailable.");
+    expect(document.body.textContent).not.toMatch(/SYNTHETIC_PRIVATE|could not be installed|successfully installed/);
+    const search = screen.getByLabelText("Search references");
+    search.focus();
+    fireEvent.change(search, { target: { value: "still typing" } });
+    expect((search as HTMLInputElement).value).toBe("still typing");
+    expect(document.activeElement).toBe(search);
+    let rejectOld!: (error: Error) => void;
+    listen.mockImplementation(() => new Promise((_, reject) => { rejectOld = reject; }));
+    rerender(<App api={{ ...api }} />);
+    rerender(<App api={{ ...api, onUpdateProgress: async () => () => undefined }} />);
+    await act(async () => { rejectOld(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(document.activeElement).toBe(search);
+  } finally { listen.mockRestore(); }
+});
+
 test("typed locators stay with selected references across later searches", async () => {
   let second = false;
   const copies: unknown[] = [];
@@ -4239,4 +4283,74 @@ test("a locator cannot update or copy a prepared reference from a retired snapsh
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(copy).not.toHaveBeenCalled();
   await screen.findByText("The library changed. Search again and reselect the references before copying.");
+});
+
+test("looping animations pause while the picker is hidden and resume when it is shown", async () => {
+  backend({ search: () => [result("a", "First")] });
+  render(<App />);
+  await screen.findByText("First");
+  expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
+  await act(async () => { await emit("picker:hidden"); });
+  expect(document.documentElement.dataset.pickerHidden).toBe("");
+  await act(async () => { await emit("picker:shown"); });
+  expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
+});
+
+test.each([false, true])("picker visibility at startup pauses animations only when hidden (visible: %s)", async (visible) => {
+  const read = vi.fn(() => visible);
+  backend({ "plugin:window|is_visible": read });
+  await act(async () => { render(<App />); });
+  expect(read).toHaveBeenCalledOnce();
+  expect(document.documentElement.dataset.pickerHidden).toBe(visible ? undefined : "");
+});
+
+test.each(["shown", "hidden"])("picker visibility waits for the picker:%s subscription", async (event) => {
+  let finish!: () => void;
+  const ready = new Promise<void>((resolve) => { finish = resolve; });
+  const read = vi.fn(() => false);
+  backend({ "plugin:window|is_visible": read });
+  await act(async () => {
+    render(<App api={{ ...api,
+      onPickerShown: async (handler) => { if (event === "shown") await ready; return api.onPickerShown(handler); },
+      onPickerHidden: async (handler) => { if (event === "hidden") await ready; return api.onPickerHidden(handler); },
+    }} />);
+  });
+  expect(read).not.toHaveBeenCalled();
+  await act(async () => { await emit("picker:hidden"); finish(); });
+  expect(read).toHaveBeenCalledOnce();
+  expect(document.documentElement.dataset.pickerHidden).toBe("");
+});
+
+test.each(["shown", "hidden"])("picker:%s wins over a stale picker visibility read", async (event) => {
+  let finish!: (visible: boolean) => void;
+  const read = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+  backend({ "plugin:window|is_visible": read });
+  render(<App />);
+  await waitFor(() => expect(read).toHaveBeenCalledOnce());
+  await act(async () => { await emit(`picker:${event}`); });
+  await act(async () => { finish(event === "hidden"); });
+  expect(document.documentElement.dataset.pickerHidden).toBe(event === "hidden" ? "" : undefined);
+});
+
+test("a failed picker visibility read preserves the latest event's animation flag", async () => {
+  let reject!: (error: Error) => void;
+  const read = vi.fn(() => new Promise<boolean>((_, fail) => { reject = fail; }));
+  backend({ "plugin:window|is_visible": read });
+  render(<App />);
+  await waitFor(() => expect(read).toHaveBeenCalledOnce());
+  await act(async () => { await emit("picker:hidden"); });
+  await act(async () => { reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
+  expect(document.documentElement.dataset.pickerHidden).toBe("");
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+});
+
+test("a picker visibility read completing after unmount cannot pause animations", async () => {
+  let finish!: (visible: boolean) => void;
+  const read = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+  backend({ "plugin:window|is_visible": read });
+  const view = render(<App />);
+  await waitFor(() => expect(read).toHaveBeenCalledOnce());
+  view.unmount();
+  await act(async () => { finish(false); });
+  expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
 });
