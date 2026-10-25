@@ -94,7 +94,10 @@ export const commands = {
 	 *  allow it, and there pinned means only that the picker stays open.
 	 */
 	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
-	/**  Fit the picker to `height` CSS px of content, or to the results height. */
+	/**
+	 *  Fit the picker to `height` CSS px of content, or to the results height.
+	 *  A synchronous command, so it runs on the main thread.
+	 */
 	fitPicker: (height: number | null, animate: boolean) => __TAURI_INVOKE<void>("fit_picker", { height, animate }),
 	/**
 	 *  End the app. Closing the window only hides it, so this is the way out on
