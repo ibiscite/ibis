@@ -10,6 +10,8 @@ Zotero stays the library: Ibis never changes it unless you turn that on, and the
 
 Ibis is open to every setup by reading open formats and writing through standard channels. It reads Zotero, BibTeX and BibLaTeX, and CSL-JSON; other reference managers reach it through their exports, never through their private databases or cloud accounts. It writes to the clipboard (plain text and HTML today, RTF from 0.3) and, from 0.4, to editors through a stable command line and a Cite as you Write endpoint. Where a document already has live Zotero citations (Word, LibreOffice, Google Docs), Zotero's own plugin is the right tool and Ibis says so. Formatting follows CSL 1.0.2 with citeproc-js, the engine Zotero uses. What works where is in [compatibility](docs/compatibility.md).
 
+**Only what Ibis can get right.** A plausible but wrong citation is worse than none. Where correctness needs the whole document (citation numbers, ibid., 2020a and 2020b), Ibis gives what is correct on its own instead, such as the reference entry, a full note or the key, and says why; numeric styles move to this in 0.2 ([#1129](https://github.com/ibiscite/ibis/issues/1129)). Every feature passes two questions: can Ibis get it right from what it knows, and does it save real work?
+
 **Core first (2026-10-25).** Each release has one theme and finishes it before the next starts. Until 1.0 the picker keeps the look it has: one shared design with the system accent, with Liquid Glass on supported macOS and Acrylic on supported Windows. Further per-platform depth, accents and metrics come after 1.0. Ideas outside the themes below wait in the Later milestone until people ask for them.
 
 | Release | Scope |
