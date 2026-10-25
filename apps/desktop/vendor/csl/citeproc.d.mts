@@ -19,8 +19,13 @@ declare class CslEngine {
   updateItems(ids: string[]): void;
   makeBibliography(): [Record<string, unknown>, string[]] | false;
   makeCitationCluster(cites: CslCite[]): string;
-  getTerm(term: string, form?: string): string;
 }
 
-declare const CSL: { Engine: typeof CslEngine };
+type CslName = { family?: unknown } | undefined;
+export interface CslNameOutput {
+  etal_use_last: boolean;
+  _imposeNameConstraints(lists: Record<string | number, CslName[]>, count: Record<string | number, number>, key: string | number, pos: number): void;
+}
+
+declare const CSL: { Engine: typeof CslEngine; NameOutput: { prototype: CslNameOutput } };
 export default CSL;

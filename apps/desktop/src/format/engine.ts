@@ -1,7 +1,7 @@
 // Formatted citations with Zotero's build of citeproc-js (ADR 0007). This
 // module runs anywhere, including the worker and tests; it never touches the
 // network, and styles are data, not code.
-import CSL from "../../vendor/csl/citeproc.mjs";
+import CSL, { type CslNameOutput } from "../../vendor/csl/citeproc.mjs";
 import enUS from "../../vendor/csl/locales/en-US.xml?raw";
 import apa from "../../vendor/csl/styles/apa.csl?raw";
 import chicago from "../../vendor/csl/styles/chicago-author-date.csl?raw";
@@ -132,7 +132,7 @@ export class Formatter {
         ? ""
         : this.attempt(style, loaded, format, (engine) => {
           engine.makeBibliography();
-          return etAl(engine.makeCitationCluster(chosen), engine, style, format);
+          return engine.makeCitationCluster(chosen);
         });
     let output: string;
     try {
@@ -162,7 +162,7 @@ export class Formatter {
           const ids = bibliography && bibliography[0].entry_ids;
           this.numbers = Array.isArray(ids) ? ids.map((group) =>
             Array.isArray(group) ? group.filter((id): id is string => typeof id === "string") : []) : [];
-          return etAl(engine.makeCitationCluster(found), engine, style, format);
+          return engine.makeCitationCluster(found);
         }, true);
         // Hooks can change punctuation or omit collapsed/unprinted entries.
         // Never replace canonical clipboard output with the annotated pass.
@@ -181,7 +181,7 @@ export class Formatter {
   bibliography(style: StyleId, items: CslItem[], format: OutputFormat): Formatted {
     const { keyed } = engineKeys(items);
     const run = (chosen: CslItem[]) =>
-      chosen.length === 0 ? [] : this.attempt(style, chosen, format, (engine) => entries(engine, style, format));
+      chosen.length === 0 ? [] : this.attempt(style, chosen, format, (engine) => entries(engine));
     try {
       return { output: wrap(run(keyed).join("\n"), format, "bibliography"), problems: [] };
     } catch {
@@ -242,16 +242,19 @@ function engineKeys(items: CslItem[]): { keyed: CslItem[]; keyOf: Map<string, st
 }
 
 /**
- * A name list that ends in "others" (BibTeX's "and others") is truncated.
- * The engine would print "others" as a name, so it gets a marker name that
- * `etAl` turns into the style's "et al." Counting the marker as a name keeps
- * the style's own et al. rule right: the real list is at least that long.
+ * A name list that ends in "others" (BibTeX's "and others") is truncated, and
+ * citeproc-js has no data form for that. The list ends in a marker name
+ * instead; once the style has chosen which names to show, the marker is
+ * dropped, so fewer names remain than the list holds and the style writes
+ * its own "et al.", with its own delimiter, term and formatting. Counting the
+ * marker as a name keeps the style's et al. rule right: the real list is at
+ * least that long.
  */
-const ET_AL = "Ibisetalmarker";
+const OTHERS = "\u2063ibis others\u2063";
 
 function truncated(value: unknown): unknown {
   if (!Array.isArray(value) || value.length < 2 || !isOthers(value[value.length - 1])) return value;
-  return [...value.slice(0, -1), { family: ET_AL }];
+  return [...value.slice(0, -1), { family: OTHERS }];
 }
 
 function isOthers(name: unknown): boolean {
@@ -261,27 +264,26 @@ function isOthers(name: unknown): boolean {
   return typeof text === "string" && text.trim().toLowerCase() === "others";
 }
 
-/** Replace the marker, and the "and" before it, with the style's "et al." */
-function etAl(text: string, engine: Engine, style: StyleId, format: OutputFormat): string {
-  if (!text.toLowerCase().includes(ET_AL.toLowerCase())) return text;
-  const term = engine.getTerm("et-al") || "et al.";
-  const italic = /<et-al\b[^>]*font-style="italic"/.test(STYLES[style].xml);
-  const shown = !italic || format === "text" ? term : format === "html" ? `<i>${term}</i>` : `{\\i{}${term}}`;
-  const and = [engine.getTerm("and"), "&#38;", "&amp;", "&"].filter(Boolean).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const before = new RegExp(`(,?)\\s*(?:(?<=\\s)(?:${and.join("|")})\\s+)?${ET_AL}(\\.?)`, "gi");
-  return text.replace(before, (_, comma: string, stop: string) => `${comma} ${shown}${term.endsWith(".") ? "" : stop}`);
-}
+const impose = CSL.NameOutput.prototype._imposeNameConstraints;
+CSL.NameOutput.prototype._imposeNameConstraints = function (this: CslNameOutput, lists, count, key, pos) {
+  impose.call(this, lists, count, key, pos);
+  const names = lists[key] ?? [];
+  if (!names.some((name) => name?.family === OTHERS)) return;
+  // Without its true last name, "et al." is all a style can write.
+  this.etal_use_last = false;
+  lists[key] = names.filter((name) => name?.family !== OTHERS);
+};
 
 function callerId(items: CslItem[], key: string): string {
   const id = items[Number(key.slice("ibis-".length))]?.id;
   return typeof id === "string" ? id : "";
 }
 
-function entries(engine: Engine, style: StyleId, format: OutputFormat): string[] {
+function entries(engine: Engine): string[] {
   const bibliography = engine.makeBibliography();
   if (!bibliography) throw new Error("the style has no bibliography");
   // One line per entry: a line break inside a field must not split it.
-  return bibliography[1].map((line) => etAl(oneLine(line), engine, style, format));
+  return bibliography[1].map(oneLine);
 }
 
 function oneLine(text: string): string {
