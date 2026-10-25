@@ -882,10 +882,13 @@ function opticalSpacing(block: TokenBlock, name: string, value: string) {
   if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
   if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
   const native: Record<string, string[]> = {
-    ".menu-popover padding": ["var(--menu-padding)"], ".menu-popover --menu-padding": ["var(--menu-pad)"],
-    ".menu-item padding-inline": ["10px"], ".menu-item gap": ["6px"], ".menu-header padding-inline": ["10px"],
-    ".toolbar-menu-button padding": ["0 8px 0 10px"], ".toolbar-menu-heading padding-inline": ["34px 10px"],
-    ".toolbar-menu-filter input padding-inline": ["34px 10px"],
+    // Native menu metrics (docs/design.md, Menus): one inset on the frame's
+    // ends and on the scrolling list's sides; 10 px item padding and 6 px gap.
+    ".menu-popover padding-block": ["var(--menu-padding)"], '.menu-popover [role="menu"] padding-inline': ["var(--menu-padding)"],
+    ".menu-popover --menu-padding": ["var(--menu-pad)"], ".menu-popover --menu-item-gap": ["6px"],
+    ".menu-item padding-inline": ["var(--menu-item-pad)"], ".menu-item gap": ["var(--menu-item-gap)"], ".menu-header padding-inline": ["var(--menu-item-pad)"],
+    ".toolbar-menu-button padding": ["0 8px 0 10px"], ".toolbar-menu-heading padding-inline": ["var(--menu-label-start) var(--menu-item-pad)"],
+    ".toolbar-menu-filter input padding-inline": ["var(--menu-label-start) var(--menu-item-pad)"],
     ".copied-notice-mark padding": [".2rem"],
   };
   return native[`${block.selector} ${name}`]?.some(same) || (block.file === "notice.css" && /^\.copied-notice\[data-platform="(?:macos|linux)"\]$/.test(block.selector) && name === "padding" && same("0 1.125rem 0 .5rem"));

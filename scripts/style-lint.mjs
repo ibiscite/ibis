@@ -102,8 +102,8 @@ export const ALLOWLIST = {
   "apps/desktop/src/ui/Menu.css": { reason, values: {
     "28px": 1, "rgb(246 246 248 / 94%)": 1, "rgb(40 40 44 / 94%)": 1, "#f9f9f9": 1, "#2c2c2c": 1, "rgb(0 0 0 / 5.6%)": 1,
     "rgb(255 255 255 / 8%)": 1, "#fff": 1, "#38383c": 1, "rgb(0 0 6 / 8%)": 1, "rgb(255 255 255 / 10%)": 1, "30px": 2,
-    "32px": 2, "-8px": 1, "8px": 1, "16px": 3, "4px": 1, "10px": 3, "6px": 1, "18px": 1 } },
-  "apps/desktop/src/ui/ToolbarMenu.css": { reason, values: { "264px": 1, "8px": 1, "4px": 2, "34px": 2, "10px": 3, "30px": 1 } },
+    "32px": 2, "-8px": 1, "8px": 1, "16px": 3, "4px": 1, "10px": 1, "6px": 1, "18px": 1 } },
+  "apps/desktop/src/ui/ToolbarMenu.css": { reason, values: { "8px": 1, "4px": 2, "30px": 1 } },
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
