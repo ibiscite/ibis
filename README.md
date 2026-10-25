@@ -73,7 +73,7 @@ Better BibTeX rewrites the file whenever your library changes, and Ibis reloads 
 
 ## Help and feedback
 
-Ask questions in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions). Report a problem or suggest an idea through [the issue forms](https://github.com/ibiscite/ibis/issues/new/choose), or with **Report a Problem** and **Suggest an Idea** in the app's menu.
+Ask questions and suggest ideas in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions). Report a problem through [the issue forms](https://github.com/ibiscite/ibis/issues/new/choose). The app's menu has **Report a Problem** and **Suggest an Idea** too.
 
 ## Try the command line tool (developers)
 

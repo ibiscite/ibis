@@ -20,8 +20,8 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 | Type | `type:bug`, `type:feature`, `type:task`, `type:docs` | Exactly one on every issue. `task` covers tests, CI, build, performance, refactoring and maintenance. |
 | Area | `area:core`, `area:desktop`, `area:cli`, `area:formatting`, `area:zotero`, `area:infra`, `area:a11y`, `area:security` | Only when it narrows the issue down. `infra` is CI, test harnesses, packaging and release tooling; `security` includes privacy. |
 | Platform | `platform:linux`, `platform:macos`, `platform:windows` | Only when it affects some platforms, not all. |
-| Status | `status:needs-design`, `status:blocked`, `status:needs-maintainer` | Exceptions only. `needs-design`: a short plan is reviewed before code. `needs-maintainer`: a reserved decision or the maintainer's own hands. |
-| Other | `tracking`, `upstream`, `good first issue` | |
+| Status | `status:accepted`, `status:needs-info`, `status:needs-design`, `status:blocked`, `status:needs-maintainer` | `accepted`: an outside contributor may open a pull request for it. `needs-info`: waiting on the reporter; closed after 30 days without an answer. `needs-design`: a short plan is reviewed before code. `needs-maintainer`: a reserved decision or the maintainer's own hands. |
+| Other | `tracking`, `upstream`, `good first issue`, `help wanted` | `good first issue`: small, with the outcome and the files named, for people new to the code; solve it yourself, without an AI tool. |
 | Bots | `autorelease: pending`, `autorelease: tagged`, `dependencies` | Added by Release Please and Dependabot; leave them alone. |
 
 No other labels; each family has one colour. Pull requests need no labels: the title's type says it. There are no priority labels: the milestone and the order of the tracking issue's Queue say what comes first.

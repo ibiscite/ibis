@@ -15,8 +15,8 @@ export const LABELS = new Set([
   "type:bug", "type:feature", "type:task", "type:docs",
   "area:core", "area:desktop", "area:cli", "area:formatting", "area:zotero", "area:infra", "area:a11y", "area:security",
   "platform:linux", "platform:macos", "platform:windows",
-  "status:needs-design", "status:blocked", "status:needs-maintainer",
-  "tracking", "upstream", "good first issue",
+  "status:accepted", "status:needs-info", "status:needs-design", "status:blocked", "status:needs-maintainer",
+  "tracking", "upstream", "good first issue", "help wanted",
   "autorelease: pending", "autorelease: tagged", "dependencies",
 ]);
 const KEEP_BRANCH = /^(main|nightly|stable|evidence|release-please--.*|dependabot\/.*)$/;

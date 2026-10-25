@@ -38,4 +38,4 @@ body:
     id: source
     attributes:
       label: Library source
-      placeholder: "Zotero 10.0.6 (open/closed), BibTeX file from Better BibTeX, RIS from ..."
+      placeholder: "Zotero 10 (running), a .bib file exported by Better BibTeX, JabRef ..."
