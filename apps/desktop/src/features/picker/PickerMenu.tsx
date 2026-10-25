@@ -10,7 +10,7 @@ const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** The More button and menu: the library and its Zotero scope, view settings,
  * starting at login, the keys overlay and Quit. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, zotero, density, largerText, showPastePreview, pinned, startAtLogin, actions }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, zotero, density, largerText, searchMark, showPastePreview, pinned, startAtLogin, actions }: {
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
   library: LibraryStatus | null | undefined;
@@ -20,11 +20,12 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   zotero: { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number; name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void } | null;
   density: Density;
   largerText: boolean;
+  searchMark: boolean;
   showPastePreview: boolean;
   pinned: boolean;
   /** Offered when the system supports it. */
   startAtLogin: { item: LoginItem; toggle: () => void } | null;
-  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; preview: () => void; pin: () => void; keys: () => void; quit: () => void };
+  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; quit: () => void };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -63,6 +64,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         <MenuItem id="pin" label={pinned ? pickerText.stopKeepingOpen : pickerText.keepOpenMenu} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />
         <MenuItem id="paste-preview" label={pickerText.showPastePreview} keys={label(keysFor("preview"))} checked={showPastePreview} onAction={actions.preview} />
         <MenuItem id="larger-text" label={pickerText.largerText} checked={largerText} onAction={actions.largerText} />
+        <MenuItem id="search-mark" label={pickerText.searchMark} checked={searchMark} onAction={actions.searchMark} />
         {startAtLogin && (
           <MenuItem id="start-at-login" label={loginItemText.label(currentPlatform())} title={loginItemText.title(currentPlatform())} checked={startAtLogin.item.enabled} onAction={startAtLogin.toggle} />
         )}

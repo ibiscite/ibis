@@ -74,7 +74,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
   const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
-  const { format, density, largerText, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, quitAfterSaving } = preferences;
+  const { format, density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   // The formatted preview, tagged with the style, choice and library it was
   // made for, so Enter never copies a preview of an earlier choice.
@@ -723,7 +723,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         </p>
       )}
       <PickerHeader
-        pinned={pinned} onTogglePin={() => { togglePin(); input.current?.focus(); }}
+        pinned={pinned} mark={searchMark} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         inputRef={input}
         query={query}
         onQueryChange={(value) => {
@@ -846,7 +846,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               name: (choice) => (typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary),
               toggle: toggleLibrary,
             } : null}
-            density={density} largerText={largerText} showPastePreview={showPastePreview} pinned={pinned}
+            density={density} largerText={largerText} searchMark={searchMark} showPastePreview={showPastePreview} pinned={pinned}
             startAtLogin={loginItemOffered && startAtLogin ? { item: startAtLogin, toggle: toggleStartAtLogin } : null}
             actions={{
               choose: () => runFromMenu("choose", chooseLibrary),
@@ -854,6 +854,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               reload: () => runFromMenu("reload", reloadLibrary),
               density: changeDensity,
               largerText: toggleLargerText,
+              searchMark: toggleSearchMark,
               preview: togglePastePreview,
               pin: togglePin,
               keys: openKeys,

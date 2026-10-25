@@ -296,6 +296,8 @@ export type PickerPreferences = {
 	density: Density,
 	larger_text: boolean,
 	show_paste_preview: boolean,
+	/**  The Ibis mark in place of the search glyph; off by default. */
+	search_mark: boolean,
 };
 
 export type PreviewSegment = {

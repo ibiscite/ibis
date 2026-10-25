@@ -160,6 +160,7 @@ export const pickerText = {
   density: (name: string) => `Rows: ${name}`,
   densityTitle: "Show less or more of each reference",
   largerText: "Larger text",
+  searchMark: "Ibis mark in search",
   zoteroLibraries: "Zotero libraries",
   myLibrary: "My Library",
   groupLibrary: (id: number) => `Group ${id}`,

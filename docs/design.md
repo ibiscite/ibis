@@ -113,7 +113,9 @@ keeps S to the edge, top and bottom.
 **Two columns** [C3]. Icons, the search glyph, the status dot and type tiles
 centre on the 32 px tile column; text starts on the title column: row titles,
 the search query, the status text and the shelf citation. The search glyph sits
-6 px inside the tile column on each side.
+6 px inside the tile column on each side. It is the magnifier unless "Ibis mark
+in search" in More (`search_mark`, ADR 0020) swaps in the brand mark, drawn
+from `brand/` at the same size and colour.
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
