@@ -716,7 +716,7 @@ means not decided yet.
 | Action registry (0.4) | Every action in More with its `keys.ts` key; picker keys editable in Settings › Shortcuts |
 | Open in Zotero, PDF at the page (0.4) | More and the row's right-click menu; the attachment chip opens the preview [C17] |
 | Recently cited and added (0.4) | Compact start [C11] and browsing tabs; local history that can be turned off and cleared |
-| `ibis toggle` for Wayland (0.4, #782) | No picker UI; Settings › Shortcuts explains it |
+| `ibis toggle` for Wayland (0.2, #1091) | Picker shortcut warning explains the system binding; [instructions](compatibility.md#bind-a-system-shortcut) |
 | Online mode (0.5) | Its own section after local rows, never reordering them; needs its ADR and the maintainer's yes |
 
 ## How the design changes

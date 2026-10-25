@@ -260,8 +260,10 @@ status: an icon and words, never colour alone.
   "Change in System Settings" and where.
 - The trigger belongs to the desktop and is **never** written to
   `settings.json`.
-- Without the portal: today's explanation, and from 0.4 `ibis toggle` with a
-  Copy button and "Open Keyboard Settings". On X11, record directly.
+- Without the portal: `ibis toggle` is the 0.2 fallback (#1091), explained in
+  the picker's shortcut warning and [binding instructions](../compatibility.md#bind-a-system-shortcut).
+  The future Settings window adds a Copy button and "Open Keyboard Settings".
+  On X11, record directly.
 - Verify on real sessions before claiming support (KDE Plasma 5.27+,
   xdg-desktop-portal-gnome 48+, Hyprland) and record results in
   [compatibility.md](../compatibility.md). Tracked in #782.

@@ -4,7 +4,7 @@
 //! scripts; csl always emits JSON. Exit codes: 0 success, 1 error, 2 problems found
 //! (by `check`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Result, bail};
@@ -24,6 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Show or hide the desktop picker, starting Ibis if needed.
+    Toggle,
     /// Search references by words from the title, authors, year, key, keywords or abstract.
     Search {
         /// What to look for, e.g. "garcia sleep 2022".
@@ -201,6 +203,23 @@ fn print_json(value: &impl serde::Serialize) -> Result<()> {
 
 fn run(cli: Cli) -> Result<ExitCode> {
     match cli.command {
+        Command::Toggle => {
+            let sibling = std::env::current_exe()
+                .ok()
+                .map(|exe| exe.with_file_name(format!("ibis-desktop{}", std::env::consts::EXE_SUFFIX)))
+                .filter(|path| path.is_file());
+            let mut command = desktop_command(sibling.as_deref());
+            let failed =
+                || anyhow::anyhow!("could not start Ibis; install the desktop app or run its executable with toggle");
+            if cfg!(target_os = "macos") && sibling.is_none() {
+                if !command.status().map_err(|_| failed())?.success() {
+                    return Err(failed());
+                }
+            } else {
+                command.spawn().map_err(|_| failed())?;
+            }
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Search {
             query,
             bib,
@@ -374,5 +393,51 @@ fn run(cli: Cli) -> Result<ExitCode> {
             print_json(&items)?;
             Ok(ExitCode::SUCCESS)
         }
+    }
+}
+
+/// Launch the same desktop binary again; its single-instance plugin forwards
+/// `toggle` to the running copy. A sibling supports source builds and Windows
+/// installs; otherwise use PATH, or Launch Services for the macOS app bundle.
+fn desktop_command(sibling: Option<&Path>) -> std::process::Command {
+    let mut command = if let Some(path) = sibling {
+        std::process::Command::new(path)
+    } else if cfg!(target_os = "macos") {
+        let mut open = std::process::Command::new("open");
+        // A new process is required for single-instance arguments to arrive.
+        open.args(["-n", "-a", "Ibis", "--args"]);
+        open
+    } else {
+        std::process::Command::new(format!("ibis-desktop{}", std::env::consts::EXE_SUFFIX))
+    };
+    command.arg("toggle");
+    command
+}
+
+#[cfg(test)]
+mod toggle_tests {
+    use super::*;
+
+    #[test]
+    fn toggle_is_a_standalone_command() {
+        assert!(Cli::try_parse_from(["ibis", "toggle"]).is_ok());
+        for args in [vec!["ibis", "toggle", "extra"], vec!["ibis", "toggle", "--at-login"]] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+    }
+
+    #[test]
+    fn toggle_launches_the_desktop_with_one_literal_argument() {
+        let path = Path::new("/synthetic/Ibis app/ibis-desktop");
+        let command = desktop_command(Some(path));
+        assert_eq!(command.get_program(), path);
+        assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
+        let command = desktop_command(None);
+        let expected = if cfg!(target_os = "macos") {
+            vec!["-n", "-a", "Ibis", "--args", "toggle"]
+        } else {
+            vec!["toggle"]
+        };
+        assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
     }
 }

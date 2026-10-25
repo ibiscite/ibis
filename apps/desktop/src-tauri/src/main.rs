@@ -52,6 +52,34 @@ use crate::placement::place_on_active_display;
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
 
+#[derive(Debug, PartialEq, Eq)]
+enum InstanceAction {
+    Show,
+    Hide,
+    Ignore,
+}
+
+fn instance_action(args: &[String], visible: impl FnOnce() -> Option<bool>) -> InstanceAction {
+    if args.iter().skip(1).any(|arg| arg == login_item::AT_LOGIN_ARG) {
+        InstanceAction::Ignore
+    } else if matches!(args, [_, command] if command == "toggle") && visible() == Some(true) {
+        InstanceAction::Hide
+    } else {
+        InstanceAction::Show
+    }
+}
+
+fn shortcut_registration(
+    wayland: bool,
+    register: impl FnOnce() -> Result<(), &'static str>,
+) -> Result<(), &'static str> {
+    if wayland {
+        Err("On Wayland, bind ibis toggle (or ibis-desktop toggle) in your desktop's keyboard settings")
+    } else {
+        register()
+    }
+}
+
 fn main() {
     let mut context = tauri::generate_context!();
     native_feel::configure(&mut context);
@@ -74,9 +102,23 @@ fn main() {
         // Must be registered first: a second launch brings the running picker forward.
         // A login entry starting a second copy leaves the running picker alone.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if !args.iter().skip(1).any(|arg| arg == login_item::AT_LOGIN_ARG) {
-                show_picker(app);
-            }
+            // Decide and act together, so concurrent requests see each other's
+            // visibility changes even when callbacks arrive on worker threads.
+            let handle = app.clone();
+            report(
+                app.run_on_main_thread(move || {
+                    match instance_action(&args, || {
+                        handle
+                            .get_webview_window("main")
+                            .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
+                    }) {
+                        InstanceAction::Show => show_picker(&handle),
+                        InstanceAction::Hide => dismiss_picker(&handle),
+                        InstanceAction::Ignore => {}
+                    }
+                }),
+                NativeIssue::PickerEvent,
+            );
         }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -212,7 +254,12 @@ fn main() {
                 }
             }
             let (shortcut, label, setting_error) = configured_shortcut(loaded.settings.shortcut.as_deref());
-            let registration_error = register_shortcut(app.handle(), shortcut).err().map(str::to_string);
+            let wayland = cfg!(target_os = "linux")
+                && (std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
+                    || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()));
+            let registration_error = shortcut_registration(wayland, || register_shortcut(app.handle(), shortcut))
+                .err()
+                .map(str::to_string);
             let status = ShortcutStatus {
                 shortcut: label,
                 registered: registration_error.is_none(),
@@ -278,6 +325,68 @@ fn main() {
             report(Err::<(), _>(err), NativeIssue::Startup);
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod toggle_tests {
+    use super::*;
+
+    #[test]
+    fn wayland_explains_the_system_binding_even_if_xwayland_registration_would_succeed() {
+        let error = shortcut_registration(true, || panic!("XWayland cannot provide a session-wide shortcut"));
+        assert!(error.is_err_and(|message| message.contains("Wayland") && message.contains("ibis toggle")));
+        assert_eq!(shortcut_registration(false, || Ok(())), Ok(()));
+        assert_eq!(shortcut_registration(false, || Err("unavailable")), Err("unavailable"));
+    }
+
+    #[test]
+    fn toggle_hides_a_visible_picker_and_shows_a_hidden_or_missing_one() {
+        for executable in [
+            "ibis-desktop",
+            "/synthetic/Ibis app/ibis-desktop",
+            "C:\\Ibis app\\ibis-desktop.exe",
+        ] {
+            let args = [executable.into(), "toggle".into()];
+            assert_eq!(instance_action(&args, || Some(true)), InstanceAction::Hide);
+            assert_eq!(instance_action(&args, || Some(false)), InstanceAction::Show);
+            assert_eq!(instance_action(&args, || None), InstanceAction::Show);
+        }
+    }
+
+    #[test]
+    fn ordinary_launches_show_and_login_launches_leave_the_picker_alone() {
+        for args in [
+            vec![],
+            vec!["toggle"],
+            vec!["ibis-desktop"],
+            vec!["ibis-desktop", "--toggle"],
+            vec!["ibis-desktop", "Toggle"],
+            vec!["ibis-desktop", "toggle", "extra"],
+            vec!["ibis-desktop", "", "toggle"],
+            vec!["ibis-desktop", "切り替え"],
+        ] {
+            let args: Vec<String> = args.into_iter().map(String::from).collect();
+            assert_eq!(
+                instance_action(&args, || panic!("no toggle requested")),
+                InstanceAction::Show
+            );
+        }
+        for args in [
+            vec!["ibis-desktop", "--at-login"],
+            vec!["ibis-desktop", "toggle", "--at-login"],
+        ] {
+            let args: Vec<String> = args.into_iter().map(String::from).collect();
+            assert_eq!(
+                instance_action(&args, || panic!("login must stay hidden")),
+                InstanceAction::Ignore
+            );
+        }
+        let huge = ["ibis-desktop".into(), "toggle".repeat(100_000)];
+        assert_eq!(
+            instance_action(&huge, || panic!("exact command only")),
+            InstanceAction::Show
+        );
     }
 }
 
