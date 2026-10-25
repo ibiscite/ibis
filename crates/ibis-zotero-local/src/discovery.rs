@@ -15,7 +15,13 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 mod preferences;
-#[cfg(all(test, unix))]
+#[cfg(all(
+    test,
+    any(
+        target_os = "macos",
+        all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))
+    )
+))]
 mod regular_file_tests;
 
 const MAX_REGISTRY_BYTES: u64 = 64 * 1024;
@@ -266,12 +272,21 @@ fn open_configuration(path: &Path) -> Result<File, Warning> {
         const O_NOFOLLOW: i32 = 0x100;
         options.custom_flags(O_NONBLOCK | O_NOFOLLOW);
     }
-    // Linux asm-generic/fcntl.h, used by the supported x86-64/ARM64 targets.
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    // Linux x86-64: include/uapi/asm-generic/fcntl.h.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         use std::os::unix::fs::OpenOptionsExt;
         const O_NONBLOCK: i32 = 0x800;
         const O_NOFOLLOW: i32 = 0x20000;
+        options.custom_flags(O_NONBLOCK | O_NOFOLLOW);
+    }
+    // Linux ARM64 overrides O_NOFOLLOW; 0x20000 is O_LARGEFILE there.
+    // arch/arm64/include/uapi/asm/fcntl.h, including Linux v6.12.
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        const O_NONBLOCK: i32 = 0x800;
+        const O_NOFOLLOW: i32 = 0x8000;
         options.custom_flags(O_NONBLOCK | O_NOFOLLOW);
     }
     #[cfg(windows)]
