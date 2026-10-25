@@ -35,7 +35,14 @@ function git(args, allowFailure = false) {
 
 export function previousBaseline() {
   const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
-  const sha = event.pull_request?.base?.sha ?? event.merge_group?.base_sha ?? event.before;
+  // PR base metadata can lag behind main; never resurrect an older limit.
+  if (event.pull_request) {
+    git(["fetch", "--no-tags", "--depth=1", "origin", "refs/heads/main"]);
+    const current = git(["rev-parse", "FETCH_HEAD"]).trim();
+    if (!/^[a-f0-9]{40}$/.test(current)) throw new Error("File-size check needs the current main commit; fetch origin main.");
+    return git(["ls-tree", "--name-only", current, "--", baselinePath]).trim() ? JSON.parse(git(["show", `${current}:${baselinePath}`])) : null;
+  }
+  const sha = event.merge_group?.base_sha ?? event.before;
   if (sha != null && !/^[a-f0-9]{40}$/.test(sha)) throw new Error("File-size check needs a valid base SHA; rerun CI.");
   const reference = sha ?? "origin/main";
   if (git(["cat-file", "-e", `${reference}^{commit}`], true) === null) {
