@@ -62,9 +62,11 @@ main {
 .results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; margin-block: var(--inset); padding-inline: var(--inset); scrollbar-width: thin; }
 .results-heading { display: flex; justify-content: space-between; padding: var(--heading-padding); color: var(--muted); font-size: var(--heading-size); line-height: var(--type-label-line); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
 #results { list-style: none; padding: 0; margin: 0; }
-/* Rows are exactly --row-height and touch; the clear border (an edge only in
-   increased contrast) is taken from the side padding so titles stay aligned. */
+/* Rows are exactly --row-height and --row-spacing apart in every list of
+   options (C4); the clear border (an edge only in increased contrast) is
+   taken from the side padding so titles stay aligned. */
 [role="option"] { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid var(--clear); }
+[role="option"] + [role="option"] { margin-top: var(--row-spacing); }
 .result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
 /* The leading tile (docs/design.md, "List and row"): the type icon on a quiet
    fill. On hover and on the active row the icon gives way to the add control in
@@ -95,14 +97,14 @@ main {
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--title-size); font-weight: var(--title-weight); line-height: var(--title-line-height); letter-spacing: var(--title-tracking); }
 .result-year, .result-meta, .result-why { color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
 .result-year { flex-shrink: 0; align-self: center; font-variant-numeric: tabular-nums; }
-/* The meta line wraps only when the byline, type, key and badge cannot all
-   fit at their sizes; then they move under the byline. A body at least 25em
-   wide (after reserving the tile and year columns) keeps one line, and its
-   key and badge shorten towards their minimums instead. */
+/* The meta line wraps only when the byline, type and library badge cannot
+   all fit at their sizes; then they move under the byline. A body at least
+   25em wide (after reserving the tile and year columns) keeps one line, and
+   its badge shortens towards its minimum instead. */
 .result-meta { margin-top: var(--metadata-gap); flex-wrap: wrap; row-gap: 0; }
 @container (min-width: 25em) { .result-meta { flex-wrap: nowrap; } }
-/* The byline (authors · container) fills the line; the key and library badge
-   give way first, down to a few letters (their shrink factor is far larger),
+/* The byline (authors · container) fills the line; the library badge gives
+   way first, down to a few letters (its shrink factor is far larger),
    and the type word never shrinks. Inside the byline each part is only as
    wide as its text, so in a right-to-left row a Latin journal sits beside its
    separator. The authors keep their width up to 60% of the byline and the
@@ -113,15 +115,16 @@ main {
 .result-container { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-separator { flex: none; white-space: pre; }
 .result-authors, .result-container { unicode-bidi: isolate; }
-.result-key { flex: 0 1000 auto; min-width: min(6ch, 100%); max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--key-size); }
 .result-why { font-style: italic; }
-.result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The selected (active) row follows the platform: filled accent on macOS,
-   soft grey with an accent pill on Windows, the GTK selection colour on Linux. Fill only:
-   no border or ring, as in each platform's own lists. */
+.result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: var(--meta-part-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The selected (active) row is a full accent fill with its paired text on
+   every platform (C4, D7): the system accent on macOS and Windows, the GTK
+   selection colour on Linux. Fill only: no border, ring or side pill. */
 [role="option"][data-active] { background: var(--row-active-background); color: var(--row-active-text); }
 [data-active] .result-meta, [data-active] .result-year, [data-active] .result-why { color: var(--row-active-muted); }
-:root[data-platform="windows"] [role="option"][data-active]::before { content: ""; position: absolute; inset-inline-start: 0; top: 50%; width: var(--pill-width); height: var(--pill-height); margin-top: calc(var(--pill-height) / -2); border-radius: var(--pill-width); background: var(--accent); }
+/* An added row that is also selected keeps its tile apart from any accent,
+   red and orange included (D9): the selected text colour with a scarlet check. */
+[role="option"][data-active][data-citation-selected] .result-tile { background: var(--row-active-text); color: var(--citation-tile); }
 .empty-hint { font-size: var(--metadata-size); }
 
 .notices:empty { display: none; }
@@ -200,7 +203,7 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   /* The 3 px edge comes out of the side padding, so the text stays put. */
   [role="option"][data-active] { border-color: var(--active-edge); border-width: var(--contrast-border-width); padding-inline: calc(var(--row-pad) - var(--contrast-border-width)); }
   /* The tile carries the citation state as an inverted square with its check. */
-  [data-active][data-citation-selected] .result-tile { background: var(--row-active-text); color: var(--row-active-background); }
+  [role="option"][data-active][data-citation-selected] .result-tile { background: var(--row-active-text); color: var(--row-active-background); }
   :root[data-platform] #search { border-color: var(--line); }
   #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-search-offset); }
 }
@@ -219,7 +222,6 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   .search-bar:focus-within { outline: var(--focus-ring-width) solid var(--selected-background); outline-offset: var(--forced-search-offset); }
   .search-clear::before { forced-color-adjust: none; background: ButtonText; }
   #search:focus-visible, :root[data-platform] #search:focus { outline: var(--focus-ring-width) solid CanvasText; outline-offset: var(--focus-ring-search-offset); }
-  :root[data-platform="windows"] [role="option"][data-active]::before { background: HighlightText; }
 }
 @media (max-width: 460px) {
   /* Reflow into one vertical scroller instead of squeezing large text between
@@ -273,7 +275,7 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
    rows show shortened authors and the container on one line; Spacious adds
    the item type; Compact puts the first author after the title. */
 .result-type { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.result-first-author { flex: none; max-width: var(--key-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
+.result-first-author { flex: none; max-width: var(--meta-part-max-width); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
 [data-active] .result-first-author { color: var(--row-active-muted); }
 :root[data-density="compact"] .result-title { flex: 0 1 auto; }
 /* In a very narrow Compact row (large text in a small window) the title takes

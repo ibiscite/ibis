@@ -25,10 +25,6 @@
     :root[data-native-accent="true"][data-platform="macos"]:not([data-gallery-theme]):not(.notice-window) .ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) {
       color: light-dark(var(--native-accent-on-pressed-light), var(--native-accent-on-pressed-dark));
     }
-    /* Separate the citation tile from red/orange selected-row accents (D9). */
-    :root[data-native-accent="true"][data-platform="macos"]:not([data-gallery-theme]):not(.notice-window) [role="option"][data-active][data-citation-selected] .result-tile {
-      background: var(--row-active-text); color: var(--citation-tile);
-    }
   }
 }
 @media (prefers-contrast: more), (forced-colors: active) {

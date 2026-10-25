@@ -1,11 +1,11 @@
-/* Choice screens [C12] reuse the result row: the global [role="option"] rule
+/* Choice screens [C12] reuse the result row: the global [role="option"] rules
    gives height, padding and radius, and .result-tile/.result-body/.result-year
    give the tile, text and trailing tag. Only the choice-specific parts live here. */
 .choice-screen { display: flex; flex-direction: column; text-align: start; }
 .choice-title, .choice-line { padding-inline: var(--row-pad); margin: 0; overflow-wrap: anywhere; }
 .choice-title { color: var(--text); font-size: var(--title-size); line-height: var(--title-line-height); font-weight: var(--type-strong-weight); }
 .choice-line { margin-top: var(--space-1); color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
-.choice-list { display: flex; flex-direction: column; gap: var(--row-spacing); margin-top: var(--space-3); outline: none; }
+.choice-list { display: flex; flex-direction: column; margin-top: var(--space-3); outline: none; }
 .choice-footnote { margin-top: var(--space-3); }
 .choice-row { outline: none; }
 .choice-help { margin-top: var(--metadata-gap); }

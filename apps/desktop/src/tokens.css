@@ -34,7 +34,7 @@
   --field-h: 2.25rem;           /* tallest header control: macOS pin */
   --row-pad: var(--space-3);    /* row side padding */
   --row-gap: var(--space-3);    /* tile to text */
-  --row-spacing: 2px;          /* between rows in results, Recently added and choice lists [C4] */
+  --row-spacing: 2px; /* between rows in results, Recently added and choice lists [C4] */
   --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* band only; divider outside */
   --footer-height: 2.5rem;
   --control-min-size: 2rem;
@@ -158,8 +158,7 @@
   --metadata-size: var(--type-meta-size);
   --metadata-line-height: var(--type-meta-line);
   --metadata-gap: var(--space-1);
-  --key-size: var(--type-citation-size);
-  --key-max-width: 30%;
+  --meta-part-max-width: 30%; /* library badge and Compact first author */
   --empty-padding: 2rem 1rem;
   --notice-padding: 0 calc(var(--inset) + var(--row-pad));
   --notice-margin: var(--space-3) 0;
@@ -198,9 +197,7 @@
   --tile-background: color-mix(in srgb, var(--text) 5%, transparent);
   --tile-active-background: color-mix(in srgb, var(--row-active-text) 22%, transparent);
   --on-citation: #fff;
-  --pill-width: 3px;
-  --pill-height: 1rem;
-  /* The selected (active) row; macOS fills it with the accent. */
+  /* The selected (active) row: the accent with its paired text on every OS. */
   --row-active-background: var(--selected-background);
   --row-active-text: var(--selected-text);
   --row-active-muted: currentColor;
@@ -237,6 +234,14 @@
       --fill-control-hover: light-dark(rgb(249 249 249 / 50%), rgb(255 255 255 / 8%));
       --fill-subtle-hover: light-dark(rgb(0 0 0 / 4%), rgb(255 255 255 / 6%));
       --field-active-background: light-dark(#ffffff, #1e1e1e);
+      /* AccentFillColorDefault and TextOnAccentFillColorPrimary: the default
+         Windows accent until the system's own reaches the webview (#918).
+         Chromium's AccentColor is a fixed #0075FF in both themes, not the
+         user's accent, so it is not used here. */
+      --accent: light-dark(#005FB8, #60CDFF); --text-on-accent: light-dark(#fff, #000);
+      /* A full row of the light dark-mode accent is loud; selection uses the
+         deeper accent shade (SystemAccentColorDark1) with white text instead. */
+      --selected-background: light-dark(#005FB8, #0067C0); --selected-text: #fff;
     }
     /* GNOME (libadwaita): window_bg and window_fg; buttons and the entry on
        the control fill (the text colour at 8%). */
@@ -277,8 +282,6 @@
   --shadow-dialog: 0 0 8px rgb(0 0 0 / 12%), 0 32px 64px rgb(0 0 0 / 14%);
   --shadow-toast: 0 4px 16px rgb(0 0 0 / 22%);
   --r-control: 4px; --chip-radius: var(--r-control);
-  --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
-  --tile-active-background: light-dark(#fff, rgb(255 255 255 / 10%));
   /* Fluent's focus visual: an outer stroke in the text colour (black in light
      mode, white in dark) around an inner stroke in the surface colour. */
   --focus-ring-color: var(--text); --focus-ring-shadow: 0 0 0 1px var(--surface);

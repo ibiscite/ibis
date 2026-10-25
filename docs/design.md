@@ -209,10 +209,10 @@ fields show words and an icon, never a red ring.
 | Switch | No change | Accent track | Ring |
 | Search box | None | None | None: the caret (Windows: its accent underline) |
 
-- **Selection is a fill** [D7]. macOS and GNOME: the full accent with paired
-  text (a tint reaches only about 1.2:1 beside other rows). Windows: a subtle
-  fill and a 3 × 16 px accent pill. A kept-open picker without focus uses
-  `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
+- **Selection is a fill** [D7]. Every OS: the full accent with paired text (a
+  tint reaches only about 1.2:1 beside other rows), no side pill. On the
+  selected row an added tile is the paired text colour with a scarlet check
+  [D9]. A kept-open picker without focus uses `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
   Windows and GNOME.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
   click, and **drawn inside the item it marks**, so no scroll area clips it and
@@ -276,7 +276,7 @@ column, it does not hyphenate.
 wrap, also at Larger text: the layout widens, or the label truncates with a
 tooltip. Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical
-properties (pill, tile, year and chevron mirror; key caps keep platform order);
+properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
 
 **Icons.** Ibis's own drawings on every platform: 20 px grid, 1.5 px rounded
@@ -434,7 +434,7 @@ and visible labels match accessible names.
 |---|---|---|---|
 | Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass | Desktop Acrylic (build 22621+), content directly on it; footer band with a top divider | Opaque `window_bg`, no blur; footer band with a divider |
 | Accent fallback [C14] (light / dark) | #007AFF / #0A84FF | #005FB8 / #60CDFF | #3584E4 / #78AEED |
-| Selected row [C4] | Accent fill, paired selected-content text | Subtle fill, 3 × 16 px accent pill | Full accent with its paired text |
+| Selected row [C4] | Accent fill, paired selected-content text | Accent fill (#005FB8 light, the deeper #0067C0 dark) with white text | Full accent with its paired text |
 | Search box | Frameless, large | Text box whose underline turns accent on focus | Framed entry |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule | ComboBox, chevron | Drop-down, `pan-down-symbolic`, bold label |
 | Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |
