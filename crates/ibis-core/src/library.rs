@@ -7,10 +7,59 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::cite::{CiteItem, Locator};
 use crate::model::{RecordId, Reference};
+
+/// One transient citation choice, resolved by full source identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(deny_unknown_fields)]
+pub struct CitationSelection {
+    pub id: RecordId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locator: Option<Locator>,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum CitationSelectionError {
+    #[error("a selected reference is no longer in the library")]
+    NotFound,
+    #[error("\"{0}\" has no citation key, so it cannot be cited in this format")]
+    NoCitationKey(String),
+}
+
+/// Resolve canonical citation keys while keeping order, repetitions and locators.
+/// Values are validated by the chosen key formatter, not during record lookup.
+pub fn citation_items(
+    references: &[Reference],
+    selections: &[CitationSelection],
+) -> Result<Vec<CiteItem>, CitationSelectionError> {
+    selections
+        .iter()
+        .map(|selection| {
+            let reference = references
+                .iter()
+                .find(|reference| reference.id == selection.id)
+                .ok_or(CitationSelectionError::NotFound)?;
+            let key = reference.citekey.clone().ok_or_else(|| {
+                CitationSelectionError::NoCitationKey(
+                    reference
+                        .title_plain()
+                        .unwrap_or_else(|| selection.id.native_key.clone()),
+                )
+            })?;
+            Ok(CiteItem {
+                key,
+                locator: selection.locator.clone(),
+                ..CiteItem::default()
+            })
+        })
+        .collect()
+}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SelectError {
@@ -86,13 +135,55 @@ mod tests {
         use crate::cite::{KeyFormat, Locator, LocatorLabel, render};
         let references = refs();
         let selected = [
-            CitationSelection { id: references[2].id.clone(), locator: Some(Locator { label: LocatorLabel::Chapter, value: "3".into() }) },
-            CitationSelection { id: references[0].id.clone(), locator: Some(Locator { label: LocatorLabel::Page, value: "12".into() }) },
+            CitationSelection {
+                id: references[2].id.clone(),
+                locator: Some(Locator {
+                    label: LocatorLabel::Chapter,
+                    value: "3".into(),
+                }),
+            },
+            CitationSelection {
+                id: references[0].id.clone(),
+                locator: Some(Locator {
+                    label: LocatorLabel::Page,
+                    value: "12".into(),
+                }),
+            },
         ];
         let items = citation_items(&references, &selected).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(render(KeyFormat::Pandoc, &items).unwrap_or_else(|e| panic!("{e}")).text, "[@same, chap. 3; @same, p. 12]");
+        assert_eq!(
+            render(KeyFormat::Pandoc, &items).unwrap_or_else(|e| panic!("{e}")).text,
+            "[@same, chap. 3; @same, p. 12]"
+        );
         assert_eq!(selected[0].id.source, "b.bib");
         assert_eq!(selected[1].id.source, "a.bib");
+    }
+
+    #[test]
+    fn selection_requests_are_strict_and_keep_missing_key_metadata_usable() {
+        let json = r#"{"id":{"source":"synthetic","native_key":"a"}}"#;
+        let selected: CitationSelection = serde_json::from_str(json).unwrap_or_else(|error| panic!("{error}"));
+        assert!(selected.locator.is_none());
+        for json in [
+            r#"{"id":{"source":"synthetic","native_key":"a"},"key":"forged"}"#,
+            r#"{"id":{"source":"synthetic","native_key":"a"},"locator":{"label":"timestamp","value":"01:23"}}"#,
+            r#"{"id":{"source":"synthetic","native_key":"a"},"locator":{"label":"page","value":"1","extra":true}}"#,
+            r#"{"id":{"source":"synthetic","native_key":"a"},"locator":null,"locator":null}"#,
+        ] {
+            assert!(serde_json::from_str::<CitationSelection>(json).is_err());
+        }
+        let mut references = load_str("synthetic", "@misc{a,title={Synthetic title}}").references;
+        assert_eq!(
+            citation_items(&references, &[selected.clone(), selected.clone()]).map(|items| items.len()),
+            Ok(2)
+        );
+        references[0].citekey = None;
+        assert_eq!(
+            citation_items(&references, std::slice::from_ref(&selected)),
+            Err(CitationSelectionError::NoCitationKey("Synthetic title".into()))
+        );
+        assert!(csl_items(&references).is_ok());
+        assert_eq!(citation_items(&[], &[selected]), Err(CitationSelectionError::NotFound));
     }
 
     #[test]

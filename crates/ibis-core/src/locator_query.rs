@@ -8,10 +8,13 @@
 //! `smith, 2020, 45` keeps `smith, 2020` as the search. The caller shows what
 //! was read (`typed`) so the person can undo it.
 
+use serde::Serialize;
+
 use crate::cite::{Locator, LocatorLabel};
 
 /// A search with a locator split off its end.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub struct LocatorQuery {
     /// What remains to search for.
     pub search: String,
@@ -120,6 +123,7 @@ fn label(text: &str) -> Option<(LocatorLabel, &str)> {
     }
     let end = text.find(|c: char| !c.is_alphabetic()).unwrap_or(text.len());
     let kind = match text[..end].to_lowercase().as_str() {
+        "s" if text[end..].starts_with('.') => LocatorLabel::Page,
         "p" | "pp" | "pg" | "pgs" | "page" | "pages" => LocatorLabel::Page,
         "ch" | "chap" | "chaps" | "chapter" | "chapters" => LocatorLabel::Chapter,
         "sec" | "sect" | "secs" | "section" | "sections" => LocatorLabel::Section,
@@ -234,6 +238,43 @@ mod tests {
 
     fn page(search: &str, value: &str) -> Option<(String, LocatorLabel, String)> {
         Some((search.into(), LocatorLabel::Page, value.into()))
+    }
+
+    #[test]
+    fn shared_locator_queries_preserve_literal_searches_and_typed_intent() {
+        #[derive(serde::Deserialize)]
+        struct Case {
+            query: String,
+            search: String,
+            locator: Option<Locator>,
+        }
+        let cases: Vec<Case> = serde_json::from_str(include_str!("../../../fixtures/locator-queries.json"))
+            .unwrap_or_else(|error| panic!("{error}"));
+        for case in cases {
+            let interpreted = split(&case.query);
+            assert_eq!(
+                interpreted.as_ref().map(|query| &query.locator),
+                case.locator.as_ref(),
+                "{}",
+                case.query
+            );
+            assert_eq!(
+                interpreted.as_ref().map_or(case.query.as_str(), |query| &query.search),
+                case.search
+            );
+            if let Some(interpreted) = interpreted {
+                assert!(case.query.ends_with(&interpreted.typed));
+                assert!(interpreted.typed.len() <= MAX_LOCATOR_LEN);
+            }
+        }
+        for query in [
+            "reference S 12",
+            "reference s 12",
+            "reference s. civil",
+            "reference at 01:23",
+        ] {
+            assert_eq!(split(query), None, "{query}");
+        }
     }
 
     #[test]
