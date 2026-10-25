@@ -138,7 +138,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             "problem" => open_in_browser(app, problem_url(&app.package_info().version.to_string())),
             "idea" => open_in_browser(app, idea_url()),
             "update_now" => updater::check_now(app),
-            "update_auto" => updater::toggle_automatic(app),
+            "update_auto" => updater::setting::toggle_automatic(app),
             "login" => login_item::toggle_from_menu(app),
             "quit" => app.exit(0),
             _ => {}

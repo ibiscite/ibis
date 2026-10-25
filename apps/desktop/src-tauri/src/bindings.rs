@@ -30,9 +30,9 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::notice::copied_notice,
             crate::native_feel::native_appearance,
             crate::row_context::row_context,
-            crate::update_controls::update_checks,
-            crate::update_controls::set_update_checks,
-            crate::update_controls::check_for_updates
+            crate::updater::setting::update_checks,
+            crate::updater::setting::set_update_checks,
+            crate::updater::setting::check_for_updates
         ])
         // Match Tauri's existing Promise rejection behavior.
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
