@@ -123,12 +123,6 @@ main {
 [data-active] .result-meta, [data-active] .result-year, [data-active] .result-why { color: var(--row-active-muted); }
 :root[data-platform="windows"] [role="option"][data-active]::before { content: ""; position: absolute; inset-inline-start: 0; top: 50%; width: var(--pill-width); height: var(--pill-height); margin-top: calc(var(--pill-height) / -2); border-radius: var(--pill-width); background: var(--accent); }
 .empty-hint { font-size: var(--metadata-size); }
-.library-setup .setup-choices { display: flex; gap: var(--metadata-gap); justify-content: center; flex-wrap: wrap; }
-.found-files button { max-width: 100%; overflow-wrap: anywhere; }
-.found-files ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--metadata-gap); justify-items: center; }
-.found-folder { color: var(--muted); font-size: var(--metadata-size); }
-.setup-login { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-min-size); cursor: default; }
-.setup-login input { margin: 0; accent-color: var(--accent); }
 
 .notices:empty { display: none; }
 .notices { padding: var(--notice-padding); overflow-wrap: anywhere; }

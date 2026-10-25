@@ -857,6 +857,8 @@ function gridPixels(value: string): number | null {
 function opticalSpacing(block: TokenBlock, name: string, value: string) {
   const normalized = (text: string) => text.replace(/(^|[^\d.])0(?:px|rem)(?=$|[^\w.])/g, (_, lead: string) => lead + "0").replace(/(?<![\d.])\.(\d+)/g, "0.$1").replace(/\s/g, "");
   const same = (expected: string) => normalized(value) === normalized(expected);
+  // [C4] rows are 2 px apart in every list, off the 4 px grid by design.
+  if (same("var(--row-spacing)")) return true;
   if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
   // Centre the 24 px fill in a 32/44 px target: the coarse inset is 10 px.
   if (block.selector === ".shelf .shelf-chips[data-expanded]" && name === "padding-block") return same("calc((var(--chip-hit-size) - var(--chip-height)) / 2)");

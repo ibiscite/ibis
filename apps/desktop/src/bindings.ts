@@ -192,6 +192,17 @@ export type KeyFormat =
 /**  Bare keys separated by commas. */
 "keys";
 
+/**  A library failure grouped by what the person can do about it. */
+export type LibraryProblem =
+/**  The file is not there: moved, renamed or on a disconnected drive. */
+"missing" |
+/**  The file is there but cannot be used as a library. */
+"unreadable" |
+/**  Zotero did not answer: it is closed or still starting. */
+"zotero_closed" |
+/**  Zotero answered but does not let other apps read it. */
+"zotero_access_off" | "other";
+
 export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error";
 
 /**  Sent to the interface with the `library:changed` event. */
@@ -213,6 +224,8 @@ export type LibraryStatus = {
 	source_counts: { [key in string]: number },
 	warnings: number,
 	error: string | null,
+	/**  What kind of failure `error` is, so the picker can offer the fix. */
+	problem: LibraryProblem | null,
 	/**  Something to tell the user that is not a failure to open. */
 	note: string | null,
 	/**  Startup settings recovery, separate from transient library status. */

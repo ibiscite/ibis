@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { LibraryStatus } from "../../api";
+import { ChoiceIcon } from "../../icons";
 import { keysFor } from "../../keys";
-import { keyText, libraryMessages, pickerText } from "../../messages";
+import { keyText, libraryMessages, pickerText, setupText } from "../../messages";
+import { ChoiceList, type Choice } from "../../ui/ChoiceList";
 import { KeyHint } from "../../ui/KeyCaps";
 import { IndeterminateProgress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
@@ -37,8 +39,42 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
   </IndeterminateProgress></div>;
 }
 
+/** A library that could not be opened and has no earlier snapshot to search:
+ * say what happened in plain words and offer the fix as choice rows [C12]. */
+function Recovery({ library, onFind, onReload, setup }: {
+  library: LibraryStatus;
+  onFind: () => void;
+  onReload: () => void;
+  setup: ReactNode;
+}) {
+  const [switching, setSwitching] = useState(false);
+  if (switching) return <div className="empty-state">{setup}</div>;
+  const name = shortName(library.name) ?? (library.zotero ? setupText.zotero : setupText.theLibrary);
+  const reason = library.error ? setupText.sentence(library.error) : undefined;
+  const problem = library.problem ?? "other";
+  const [title, line] = library.zotero && problem === "zotero_closed" ? [setupText.zoteroClosedTitle, setupText.zoteroClosedLine]
+    : library.zotero && problem === "zotero_access_off" ? [setupText.zoteroAccessOffTitle, setupText.zoteroAccessOff]
+    : problem === "missing" ? [setupText.missingTitle(name), setupText.missingLine]
+    : problem === "unreadable" ? [setupText.unreadableTitle(name), reason]
+    : [setupText.otherTitle(name), reason];
+  const tryAgain: Choice = { id: "retry", title: setupText.tryAgain, help: setupText.tryAgainHelp, icon: <ChoiceIcon name="retry" /> };
+  const another: Choice = { id: "another", title: setupText.another, help: setupText.anotherHelp, icon: <ChoiceIcon name="swap" /> };
+  const choices: Choice[] = problem === "missing" && !library.zotero
+    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true }, another, tryAgain]
+    : [{ ...tryAgain, suggested: true }, another];
+  return (
+    <div className="empty-state">
+      {/* Announced once, as the footer's live region does for other states. */}
+      <p className="visually-hidden" role="alert">{line ? `${title}. ${line}` : title}</p>
+      <ChoiceList title={title} line={line} choices={choices}
+        onChoose={(id) => id === "find" ? onFind() : id === "retry" ? onReload() : setSwitching(true)} />
+    </div>
+  );
+}
+
 /** What the result list says when it has no rows: an empty library, no
- * matches and what to try next, a hint to type, or first-run setup. */
+ * matches and what to try next, a hint to type, first-run setup, or how to
+ * recover a library that could not be opened. */
 export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearSearch, onSearchAll, onReload, setup }: {
   library: LibraryStatus | null;
   query: string;
@@ -54,6 +90,9 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   if (!library) return <div className="empty-state" />;
   const loading = library.state === "loading" || library.state === "reloading";
   if (loading) return <LibraryProgress key={`${library.state}\u0000${library.name}`} library={library} />;
+  if (library.state === "error" && !library.has_snapshot) {
+    return <Recovery key={`${library.name}\u0000${library.problem}`} library={library} onFind={onChooseLibrary} onReload={onReload} setup={setup} />;
+  }
   if (!library.name) return <div className="empty-state">{library.state === "none" ? setup : null}</div>;
   const empty = library.has_snapshot && library.references === 0;
   const fullTitle = libraryMessages.emptyTitle(library.snapshot_name || null);

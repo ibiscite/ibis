@@ -34,6 +34,7 @@
   --field-h: 2.25rem;           /* tallest header control: macOS pin */
   --row-pad: var(--space-3);    /* row side padding */
   --row-gap: var(--space-3);    /* tile to text */
+  --row-spacing: 2px;          /* between rows in results, Recently added and choice lists [C4] */
   --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* band only; divider outside */
   --footer-height: 2.5rem;
   --control-min-size: 2rem;

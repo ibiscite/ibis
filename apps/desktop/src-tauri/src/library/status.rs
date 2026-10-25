@@ -30,6 +30,8 @@ pub(crate) struct LibraryStatus {
     pub(crate) source_counts: BTreeMap<String, usize>,
     pub(crate) warnings: usize,
     pub(crate) error: Option<String>,
+    /// What kind of failure `error` is, so the picker can offer the fix.
+    pub(crate) problem: Option<LibraryProblem>,
     // Native presentation facts do not alter the serialized picker contract.
     #[serde(skip)]
     pub(crate) error_reason: Option<LoadError>,
@@ -53,6 +55,39 @@ pub(crate) struct LibraryStatus {
     /// When the library was last read or found unchanged, in the same unit;
     /// when `stale`, the time of the copy still being searched.
     pub(crate) checked_at: Option<f64>,
+}
+
+/// A library failure grouped by what the person can do about it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum LibraryProblem {
+    /// The file is not there: moved, renamed or on a disconnected drive.
+    Missing,
+    /// The file is there but cannot be used as a library.
+    Unreadable,
+    /// Zotero did not answer: it is closed or still starting.
+    ZoteroClosed,
+    /// Zotero answered but does not let other apps read it.
+    ZoteroAccessOff,
+    Other,
+}
+
+impl From<LoadError> for LibraryProblem {
+    fn from(error: LoadError) -> Self {
+        use ibis_core::source::SourceError;
+        use ibis_core::zotero::api::{TransportError, ZoteroError};
+        match error {
+            LoadError::Source(SourceError::Unavailable) => LibraryProblem::Missing,
+            LoadError::Source(
+                SourceError::NotRegular | SourceError::TooLarge | SourceError::Unreadable | SourceError::Incomplete,
+            ) => LibraryProblem::Unreadable,
+            LoadError::Zotero(ZoteroError::Transport(TransportError::Unreachable | TransportError::TimedOut)) => {
+                LibraryProblem::ZoteroClosed
+            }
+            LoadError::Zotero(ZoteroError::NotAllowed) => LibraryProblem::ZoteroAccessOff,
+            _ => LibraryProblem::Other,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
@@ -109,6 +144,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             let zotero = matches!(library.source, Some(Source::Zotero(_)));
             error_with_snapshot_context(error, !library.index.references().is_empty(), zotero)
         }),
+        problem: library.error.map(LibraryProblem::from),
         error_reason: library.error,
         kept_references: library.error.is_some_and(|error| {
             retains(
@@ -213,6 +249,7 @@ mod tests {
             "source_counts",
             "warnings",
             "error",
+            "problem",
             "note",
             "settings_notice",
             "snapshot_zotero",
@@ -228,6 +265,23 @@ mod tests {
             "the library file is unavailable; keeping the last loaded references"
         );
         assert_eq!(payload["note"], "the choice could not be saved");
+        assert_eq!(payload["problem"], "missing");
+    }
+
+    #[test]
+    fn problems_group_failures_by_the_fix_they_need() {
+        use ibis_core::zotero::api::ZoteroError;
+        let cases: [(LoadError, LibraryProblem); 6] = [
+            (SourceError::Unavailable.into(), LibraryProblem::Missing),
+            (SourceError::Unreadable.into(), LibraryProblem::Unreadable),
+            (SourceError::TooLarge.into(), LibraryProblem::Unreadable),
+            (ZOTERO_OFFLINE, LibraryProblem::ZoteroClosed),
+            (ZoteroError::NotAllowed.into(), LibraryProblem::ZoteroAccessOff),
+            (LoadError::Stopped, LibraryProblem::Other),
+        ];
+        for (error, problem) in cases {
+            assert_eq!(LibraryProblem::from(error), problem, "{error}");
+        }
     }
 
     #[test]
