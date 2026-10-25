@@ -1,6 +1,6 @@
 .empty-state { color: var(--muted); text-align: center; padding: var(--empty-padding); }
 .empty-state p:first-child { color: var(--text); font-weight: var(--type-strong-weight); }
-.empty-template { padding-block-start: calc(3 * var(--space-4) - var(--inset)); }
+.empty-template { padding-block: calc(3 * var(--space-4) - var(--inset)); }
 .empty-icon { display: block; width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin: 0 auto var(--space-3); color: var(--text-tertiary, var(--muted)); }
 .empty-title { margin: 0; color: var(--text); font-size: var(--title-size); line-height: var(--title-line-height); font-weight: var(--type-strong-weight); overflow-wrap: anywhere; }
 .empty-description { max-width: 40ch; margin: var(--space-2) auto 0; font-size: var(--metadata-size); line-height: var(--metadata-line-height); overflow-wrap: anywhere; }
@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: calc(3 * var(--space-4) - var(--inset)) 0 var(--space-4);
+  padding: calc(3 * var(--space-4) - var(--inset)) 0;
   color: var(--muted);
   font-size: var(--metadata-size);
   line-height: var(--metadata-line-height);

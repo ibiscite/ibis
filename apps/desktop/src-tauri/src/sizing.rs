@@ -24,8 +24,6 @@ pub(crate) struct Sizing {
     state: Mutex<State>,
     /// A newer request or a hide stops a growing animation.
     generation: AtomicU64,
-    /// Orders our resizes, so a hide's compact height is the last one.
-    resizing: Mutex<()>,
 }
 
 #[derive(Default)]
@@ -68,7 +66,8 @@ fn steps(from: f64, to: f64, animate: bool) -> Vec<f64> {
 
 /// Whether a resize to `height` came from the user rather than from us.
 fn by_user(ours: Option<(f64, Instant)>, height: f64, now: Instant) -> bool {
-    ours.is_none_or(|(set, until)| now > until && (height - set).abs() > 1.0)
+    // Before our first resize, a size change is the system placing the window.
+    ours.is_some_and(|(set, until)| now > until && (height - set).abs() > 1.0)
 }
 
 struct Frame {
@@ -109,16 +108,15 @@ fn resize(window: &WebviewWindow, at: &Frame, height: f64) {
     report(window.set_position(at.top_left), NativeIssue::Position);
 }
 
-/// One resize of ours, unless a newer request or a hide replaced `generation`.
-/// Window reads happen before any lock: from another thread they wait for the
-/// main thread, which takes the state lock for resize events.
+/// One resize of ours, unless a newer request or a hide replaced
+/// `generation`. Every resize runs on the main thread, so they keep their
+/// order and no lock is held while the window answers.
 fn step(app: &AppHandle, window: &WebviewWindow, generation: u64, height: f64) {
-    let Some(at) = frame(window) else { return };
     let sizing = app.state::<Sizing>();
-    let Ok(_order) = sizing.resizing.lock() else { return };
     if sizing.generation.load(Ordering::SeqCst) != generation {
         return;
     }
+    let Some(at) = frame(window) else { return };
     if let Ok(mut state) = sizing.state.lock() {
         state.ours = Some((height, Instant::now() + SETTLE));
     }
@@ -126,6 +124,7 @@ fn step(app: &AppHandle, window: &WebviewWindow, generation: u64, height: f64) {
 }
 
 /// Fit the picker to `height` CSS px of content, or to the results height.
+/// A synchronous command, so it runs on the main thread.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn fit_picker(app: AppHandle, height: Option<f64>, animate: bool) {
@@ -133,6 +132,8 @@ pub(crate) fn fit_picker(app: AppHandle, height: Option<f64>, animate: bool) {
         return;
     };
     let Some(at) = frame(&window) else { return };
+    // A hidden picker changes size at once; only a visible one animates.
+    let animate = animate && window.is_visible().unwrap_or(false);
     let sizing = app.state::<Sizing>();
     let height = height.filter(|h| h.is_finite());
     let frames = {
@@ -154,7 +155,13 @@ pub(crate) fn fit_picker(app: AppHandle, height: Option<f64>, animate: bool) {
     }
     std::thread::spawn(move || {
         for height in frames {
-            step(&app, &window, generation, height);
+            let (app_, window) = (app.clone(), window.clone());
+            if app
+                .run_on_main_thread(move || step(&app_, &window, generation, height))
+                .is_err()
+            {
+                return;
+            }
             std::thread::sleep(FRAME);
         }
     });
@@ -162,27 +169,24 @@ pub(crate) fn fit_picker(app: AppHandle, height: Option<f64>, animate: bool) {
 
 /// After a hide: forget this opening's height and start compact next time.
 pub(crate) fn reset(app: &AppHandle, window: &WebviewWindow) {
-    let at = frame(window);
-    let sizing = app.state::<Sizing>();
-    let Ok(_order) = sizing.resizing.lock() else { return };
-    // Stops a growing animation before its next frame.
-    sizing.generation.fetch_add(1, Ordering::SeqCst);
-    let to = {
-        let Ok(mut state) = sizing.state.lock() else { return };
-        state.floor = 0.0;
-        let (Some(compact), Some(at)) = (state.compact, at.as_ref()) else {
-            return;
-        };
-        let to = target(Some(compact), None, 0.0, at.room);
-        if (to - at.height).abs() < 1.0 {
-            return;
-        }
-        state.ours = Some((to, Instant::now() + SETTLE));
-        to
-    };
-    if let Some(at) = at {
-        resize(window, &at, to);
-    }
+    let (app_, window) = (app.clone(), window.clone());
+    report(
+        app.run_on_main_thread(move || {
+            let sizing = app_.state::<Sizing>();
+            // Stops a growing animation before its next frame.
+            let generation = sizing.generation.fetch_add(1, Ordering::SeqCst) + 1;
+            let compact = sizing.state.lock().ok().and_then(|mut state| {
+                state.floor = 0.0;
+                state.compact
+            });
+            let Some(at) = frame(&window) else { return };
+            let to = target(Some(compact.unwrap_or(SMALLEST)), None, 0.0, at.room);
+            if (to - at.height).abs() >= 1.0 {
+                step(&app_, &window, generation, to);
+            }
+        }),
+        NativeIssue::Resize,
+    );
 }
 
 /// A drag to a new height becomes the results height from now on.
@@ -250,7 +254,7 @@ mod tests {
     fn only_a_resize_we_did_not_make_is_remembered() {
         let now = Instant::now();
         let later = now + SETTLE * 2;
-        assert!(by_user(None, 500.0, now));
+        assert!(!by_user(None, 500.0, now), "the first size is the system's");
         assert!(
             !by_user(Some((480.0, now + SETTLE)), 300.0, now),
             "our animation's frames are ours"

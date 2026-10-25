@@ -17,7 +17,6 @@ import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
 import { EmptyState } from "./features/picker/EmptyState";
-import { CompactStart } from "./features/picker/CompactStart";
 import { useFitWindow } from "./features/picker/useFitWindow";
 import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
@@ -667,9 +666,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (highlighted) toggle(highlighted);
     input.current?.focus();
   };
-  // With an empty query a ready library starts compact: a tip (C11).
-  const compactStart = Boolean(library?.name) && !busy && !query && !(library?.has_snapshot && library.references === 0);
-  const emptyState = library !== undefined && (busy || results.length === 0 && !error && !library?.error) ? compactStart ? <CompactStart /> : (
+  const emptyState = library !== undefined && (busy || results.length === 0 && !error && !library?.error) ? (
     <EmptyState library={library} query={query} narrowed={narrowed}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); setInterpretLocators(true); input.current?.focus(); }}
@@ -792,13 +789,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>}
       <div className="results-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
-          <span>{query ? pickerText.bestMatches : pickerText.recentlyAdded}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
+          <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {announcement}
         </p>
         {busy && emptyState}
-        <ResultList results={results} active={active} selected={selected} density={query ? density : "compact"} hoverAllowed={pointer.hoverAllowed}
+        <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
           libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
           onChoose={(i, r, action) => {
             // Rows of an earlier query, still shown while a newer search

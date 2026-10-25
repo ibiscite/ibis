@@ -89,7 +89,7 @@ export const densityNames = {
 
 export const pickerText = {
   searchLabel: "Search references",
-  searchPlaceholder: "Search by title, author, year or key",
+  searchPlaceholder: "Search references…",
   dragSearchBar: "Drag the search bar edge to move the picker",
   searchError: "Ibis could not search your library. Use Reload, then try again.",
   copyError: "Nothing was copied. Try again, or use Reload.",
@@ -121,7 +121,7 @@ export const pickerText = {
   citationSelection: "Citation selection",
   selectedReferences: "Selected references",
   remove: "Remove",
-  recentlyAdded: "Recently added",
+  references: "References",
   searchResults: "Search results",
   results: "Results",
   noDate: "No date",
@@ -175,20 +175,6 @@ export const pickerText = {
 } as const;
 
 /** The keys overlay and the footer's key hints; see keys.ts for the bindings. */
-/** Compact start (docs/design.md, C11): one tip at a time, label then keys. */
-export const startText = {
-  tips: [
-    { label: "Add several references to one citation", action: "add" },
-    { label: "Keep the picker open beside your document", action: "pin" },
-    { label: "Show what will be pasted", action: "preview" },
-    { label: "Libraries, row size and larger text are in More", action: "more" },
-    { label: "See every key", action: "keys" },
-    { label: "Step back, then hide Ibis", action: "escape" },
-  ],
-  tipCount: (n: number, total: number) => `${n} of ${total}`,
-  nextTip: (n: number, total: number) => `Next tip (${n} of ${total})`,
-} as const;
-
 export const keyText = {
   title: "Keyboard shortcuts",
   close: "Close",

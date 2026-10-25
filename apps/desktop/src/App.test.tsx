@@ -262,7 +262,7 @@ test.each(["", "unmatched"])("result headings only name actual rows, preserving 
   backend();
   render(<App />);
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
-  const title = await screen.findByText(query ? "No matching references" : /^Add several references|^Keep the picker|^Show what|^Libraries|^See every|^Step back/);
+  const title = await screen.findByText(query ? "No matching references" : "Type to find a reference");
   expect(screen.getByRole("listbox").compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   if (!query) {
     expect(screen.queryByRole("button", { name: "Search references" })).toBeNull();
@@ -2471,7 +2471,7 @@ test("a search cleared by Escape stays cleared once something else is typed or c
   await screen.findByText("First");
   fireEvent.keyDown(box, { key: "Escape" });
   // Browsing the empty search after Escape, then copying from it.
-  await waitFor(() => expect(screen.getByText("Recently added")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("References")).toBeTruthy());
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByText("Copied", { selector: ".copy-notice p" });
@@ -2721,7 +2721,7 @@ test("when nothing matches, the picker offers to clear the search", async () => 
   fireEvent.click(within(document.querySelector(".empty-state") as HTMLElement).getByRole("button", { name: "Clear search" }));
   expect(box.value).toBe("");
   expect(document.activeElement).toBe(box);
-  expect(await screen.findByRole("button", { name: /^Next tip/ })).toBeTruthy();
+  expect(await screen.findByText("Type to find a reference")).toBeTruthy();
 });
 
 test("when nothing matches in some Zotero libraries, the picker offers to search them all", async () => {
