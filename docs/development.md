@@ -20,8 +20,8 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 | Type | `type:bug`, `type:feature`, `type:task`, `type:docs` | Exactly one on every issue. `task` covers tests, CI, build, performance, refactoring and maintenance. |
 | Area | `area:core`, `area:desktop`, `area:cli`, `area:formatting`, `area:zotero`, `area:infra`, `area:a11y`, `area:security` | Only when it narrows the issue down. `infra` is CI, test harnesses, packaging and release tooling; `security` includes privacy. |
 | Platform | `platform:linux`, `platform:macos`, `platform:windows` | Only when it affects some platforms, not all. |
-| Status | `status:needs-design`, `status:blocked`, `status:needs-maintainer` | Exceptions only. `needs-design`: a short plan is reviewed before code. `needs-maintainer`: a reserved decision or the maintainer's own hands. |
-| Other | `tracking`, `upstream`, `good first issue` | |
+| Status | `status:accepted`, `status:needs-info`, `status:needs-design`, `status:blocked`, `status:needs-maintainer` | `accepted`: an outside contributor may open a pull request for it. `needs-info`: waiting on the reporter; closed after 30 days without an answer. `needs-design`: a short plan is reviewed before code. `needs-maintainer`: a reserved decision or the maintainer's own hands. |
+| Other | `tracking`, `upstream`, `good first issue`, `help wanted` | `good first issue`: small, with the outcome and the files named, for people new to the code; solve it yourself, without an AI tool. |
 | Bots | `autorelease: pending`, `autorelease: tagged`, `dependencies` | Added by Release Please and Dependabot; leave them alone. |
 
 No other labels; each family has one colour. Pull requests need no labels: the title's type says it. There are no priority labels: the milestone and the order of the tracking issue's Queue say what comes first.
@@ -92,15 +92,11 @@ The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci
 
 #### Free-first review tools
 
-Ibis uses only free review services, before and after the CodeRabbit trial ends on **2026-11-06**. Never add payment details, start a paid plan, buy or use credits, enable overages or paid products, or turn on Codex's use-credits option; losing a trial feature is no reason to upgrade. Avoid duplicate passes within plan limits.
+Ibis uses only free review services, before and after the CodeRabbit trial ends on **2026-11-06**. Never add payment details, start a paid plan, use credits or enable overages; losing a trial feature is no reason to upgrade.
 
-1. On settled, meaningful code changes (features, correctness, platform integration, cross-component work), request `@coderabbitai full review` once, while CI and the independent review run and before the merge queue. Skip it for routine cosmetic, documentation or asset changes unless there is a concrete concern.
-2. CodeRabbit stays quiet, manual and advisory: no autonomous fixes, approvals or metadata changes, and no run on every push, an unchanged head or a base-only update. Request `@coderabbitai review` again only after a material fix.
-3. Request `@codex review` only for a concrete unresolved correctness question, and `@codex security review` for untrusted parsing or loading, persistence or migrations, permissions, network endpoints, updater trust or another security-sensitive path. Automatic Codex reviews stay off.
-4. Check each finding against the code with a triggering case. Fix every P1/P2 with a test; explain rejected findings with evidence; investigate disagreement rather than vote; make no change only to silence a bot. Report real issues, fixes, verification and uncertainty to the maintainer briefly.
-5. A free limit, outage or stale bot review adds no merge gate or retry loop. A bot report, empty or not, never replaces the independent exact-head review, and a concrete P1/P2 must still be resolved before merging.
-
-Setup evidence is in [#1008](https://github.com/ibiscite/ibis/issues/1008).
+- Request `@coderabbitai full review` once on a settled, meaningful code change, while CI and the independent review run. Skip it for cosmetic, documentation or asset changes. CodeRabbit stays manual and advisory: no automatic fixes, approvals or runs on every push.
+- Request `@codex review` only for a concrete open correctness question, and `@codex security review` for untrusted input, persistence, permissions, network, updater trust or other security-sensitive code. Automatic Codex reviews stay off.
+- Check each finding against the code with a triggering case: fix every P1 and P2 with a test, and answer rejected findings with evidence. A bot report never replaces the independent exact-head review, and a free limit or outage adds no merge gate.
 
 ### Versions and releases
 
@@ -108,25 +104,16 @@ Version numbers, release and nightly titles, tags and download links follow [REL
 
 ## Checking a change
 
-The full check is the required "CI result" on the exact head commit, then the merge queue, which always validates the complete app. Run focused tests locally while editing; run `node scripts/check.mjs` locally to diagnose a CI failure or before changing the check itself. It checks GitHub Actions expressions with actionlint before the Rust and desktop checks, and runs every desktop crate test (`cargo test -p ibis-desktop`), which plain `cargo test` skips because the desktop crate is not a default workspace member. A failing check exits 1; a missing tool reports incomplete (exit 2) on every platform. It does not run the web builds that CI's Web interface job checks (`pnpm build`, and `pnpm exec vite build --mode evidence` for the screenshot gallery); run those in `apps/desktop` when you change the build setup.
+The full check is the required "CI result" on the exact head commit, then the merge queue, which always validates the complete app. While editing, run the focused tests; run `node scripts/check.mjs` locally to diagnose a CI failure or when changing the check itself. It exits 1 when a check fails and 2 when a tool is missing. It skips the web builds; run `pnpm build` in `apps/desktop` when you change the build setup. Which jobs a pull request needs is decided by `scripts/ci-paths.mjs`.
 
-Interface-only pull requests run script tests, TypeScript, interface tests and both web builds, without native app builds or GUI checks. `scripts/ci-paths.mjs` lists those browser inputs, including the gallery geometry JSON fixture; native, build and unknown paths retain native validation. Both names of a rename count. Missing, incomplete or changed API metadata enables every check. Documentation keeps its existing fast path; main and the merge queue always validate the complete app.
+To verify a commit without stale build output ([#387](https://github.com/ibiscite/ibis/issues/387)), check it out in a clean detached worktree with its own Cargo target, and confirm the intended tests actually ran, because exit 0 alone does not prove it:
 
-## Working quickly and safely
-
-- **Verify the exact commit locally when you need to** in a clean detached worktree with its own Cargo target, with incremental compilation off and the four app packages cleaned, so stale test binaries cannot hide a change ([#387](https://github.com/ibiscite/ibis/issues/387)). Keep the output and check that the intended tests actually ran (names, counts, ignored status), because exit 0 alone did not prove it in #387. Remove the worktree afterwards; never force-remove a dirty one. On Windows, use Git Bash.
-
-  ```sh
-  dir=$(mktemp -d) sha=$(git rev-parse HEAD)
-  git worktree add --detach "$dir/source" "$sha" && (cd "$dir/source" &&
-    export CARGO_TARGET_DIR="$dir/target" CARGO_INCREMENTAL=0 &&
-    cargo clean --locked -p ibis -p ibis-core -p ibis-desktop -p ibis-zotero-local &&
-    node scripts/check.mjs --expect-commit "$sha")
-  git worktree remove "$dir/source"
-  ```
-
-- **Branch from `main`, never from another branch.** Stacked branches merged by squash have silently reverted changes on `main`. After merging `main` into a branch, `git diff origin/main` must show only that branch's change.
-- **Review while CI runs**, and record each finding in the pull request as fixed, filed or rejected with a reason.
+```sh
+dir=$(mktemp -d) sha=$(git rev-parse HEAD)
+git worktree add --detach "$dir/source" "$sha" && (cd "$dir/source" &&
+  CARGO_TARGET_DIR="$dir/target" CARGO_INCREMENTAL=0 node scripts/check.mjs --expect-commit "$sha")
+git worktree remove "$dir/source"
+```
 
 ## Setting up a computer
 
@@ -136,7 +123,7 @@ First install the build tools for your platform (below). Then every platform nee
 - [Node.js](https://nodejs.org/) 22 or newer; CI uses 22.
 - pnpm 11.25.0, pinned in `apps/desktop/package.json` (`packageManager`). Install it with `npm install --global pnpm@11.25.0` (or `corepack enable pnpm` on Node.js 22–24; newer Node.js no longer bundles Corepack).
 - cargo-deny: `cargo install --locked cargo-deny`.
-- actionlint 1.7.12 on `PATH` (see "Workflow linting").
+- [actionlint](https://github.com/rhysd/actionlint/blob/v1.7.12/docs/install.md) 1.7.12 on `PATH` (for example `brew install actionlint`). The full check runs `actionlint -shellcheck= -pyflakes=`; CI uses the official image pinned by digest.
 - Optional: [Pandoc](https://pandoc.org/installing.html), for the citation fidelity test. Without it the test is skipped; `IBIS_REQUIRE_PANDOC=1` makes it fail instead, as in CI. `cargo install --locked cargo-insta` for `cargo insta review`.
 
 Then, from the clone, run the full check:
@@ -177,7 +164,7 @@ CI runs every check on Windows too. Install, in this order:
 3. WebView2. It is part of Windows 11; on Windows 10 install the Evergreen runtime. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
 4. rustup, accepting the default MSVC host (`x86_64-pc-windows-msvc`, or `aarch64-pc-windows-msvc` on Arm).
 5. Node.js, pnpm, cargo-deny and, optionally, Pandoc and cargo-insta, as listed above. Prefer `npm install --global pnpm@11.25.0`; `corepack enable pnpm` may be refused for lack of permissions.
-6. [actionlint 1.7.12](https://github.com/rhysd/actionlint/blob/v1.7.12/docs/install.md): install the official binary for your architecture in a per-user executable folder and add it to `PATH`. Verify its SHA-256 against the official release checksum manifest before extracting or running it; no administrator terminal is needed.
+6. actionlint 1.7.12: the official binary in a per-user folder on `PATH`, after checking its SHA-256 against the release checksums.
 
 Open a new terminal so the `PATH` changes apply, then, in `C:\src\ibis`:
 
@@ -221,12 +208,6 @@ The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Y on W
 For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it. A development build registers for start at login as "Ibis (development)", so it never replaces an installed Ibis's entry. For a debug preview on a particular display, pass Tauri's `--config` with finite `x` and `y` and `center: false` on the `main` window.
 
 How the picker behaves (keys, pinning, the footer, More, placement) is in [design.md](design.md) and the user guide in [README.md](../README.md); `?` or Ctrl/⌘ / in the app lists every key from `apps/desktop/src/keys.ts`.
-
-## Workflow linting
-
-Install [actionlint](https://github.com/rhysd/actionlint/blob/v1.7.12/docs/install.md) and make it available on `PATH`. Standard options include `brew install actionlint` on macOS, `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12` with Go installed, or the official release binaries for Linux, macOS and Windows. CI uses the official 1.7.12 Docker image pinned by digest in the required Dependency policy job; updates should review the release and refresh that pin together.
-
-Run `actionlint -shellcheck= -pyflakes=` to validate every workflow's GitHub-specific contexts, expressions and action usage. The full check uses the same flags; optional shellcheck and pyflakes integrations are disabled so installed auxiliary tools do not change the result. Workflow checks read files without editing them.
 
 ## Dependencies
 

@@ -41,6 +41,23 @@ export function nightlyVersion(base, commitTime) {
   return `${match[1]}.${match[2]}.${Number(match[3]) + 1}-nightly.${commitTime}`;
 }
 
+/** Ibis Nightly's own update public key (minisign, base64), separate from the
+ * stable key in tauri.conf.json, so a key used on every push to main can never
+ * sign a stable update (ADR 0019). */
+export const NIGHTLY_PUBKEY = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc4NTA5QzM1QzM2NDdEQjkKUldTNWZXVEROWnhRZUJ2RnlScnkvT09BTmFHek1yS21GNWRaWWQzSmpMYUtSMlJYWlNuM3RzdzIK";
+
+/** The public key whose signatures a feed for `version` must carry. */
+export function feedPublicKey(version, stablePubkey) {
+  return version.includes("-nightly.") ? NIGHTLY_PUBKEY : stablePubkey;
+}
+
+/** The key ID that signed a feed's packages; one key signs a whole feed. */
+export function feedKeyId(feed) {
+  const ids = new Set(Object.values(feed.platforms ?? {}).map((p) => keyId(p.signature)));
+  if (ids.size !== 1) throw new Error(`expected one signing key in the feed, found ${ids.size}`);
+  return [...ids][0];
+}
+
 /** Ibis Nightly: a separate app with its own settings and update feed. No MSI
  * (Windows Installer versions cannot carry "nightly") and no .rpm (RPM
  * versions cannot contain "-"). */
@@ -50,7 +67,9 @@ export function nightlyConfig(version) {
     version,
     identifier: "io.github.ibiscite.ibis.nightly",
     bundle: { targets: ["app", "dmg", "nsis", "deb", "appimage"] },
-    plugins: { updater: { endpoints: ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"] } },
+    plugins: {
+      updater: { endpoints: ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"], pubkey: NIGHTLY_PUBKEY },
+    },
   };
 }
 
@@ -125,7 +144,10 @@ function main([command, ...args]) {
   } else if (command === "release") {
     console.log(workspaceVersion());
   } else if (command === "config" && args.length === 1) {
+    keyId(NIGHTLY_PUBKEY); // refuses to build Ibis Nightly without a real key
     console.log(JSON.stringify(nightlyConfig(args[0])));
+  } else if (command === "feed-key" && args.length === 1) {
+    console.log(feedKeyId(JSON.parse(readFileSync(args[0], "utf8"))));
   } else if (command === "manifest" && args.length === 4) {
     const [dir, base, version, notes] = args;
     const config = JSON.parse(readFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));
@@ -138,11 +160,11 @@ function main([command, ...args]) {
       date: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
       base,
       signatures,
-      publicKey: config.plugins.updater.pubkey,
+      publicKey: feedPublicKey(version, config.plugins.updater.pubkey),
     });
     writeFileSync(join(dir, "latest.json"), `${JSON.stringify(feed, null, 2)}\n`);
   } else {
-    throw new Error("usage: update-feed.mjs version | release | newer <version> <than> | config <version> | manifest <dir> <download-base> <version> <notes>");
+    throw new Error("usage: update-feed.mjs version | release | newer <version> <than> | config <version> | feed-key <latest.json> | manifest <dir> <download-base> <version> <notes>");
   }
 }
 

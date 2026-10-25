@@ -1,6 +1,7 @@
 // UI conveniences around the generated Rust command contract.
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands, type CommandError, type KeyFormat, type LibraryStatus, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
@@ -47,6 +48,11 @@ export function search(query: string, limit = 20, scope: string[] | null = null,
   return commands.search({ text: query, interpret_locators: interpretLocators }, limit, searchPage, searchRequest, scope);
 }
 
+/** Read visibility after subscribing, including hidden startup without an event. */
+export function pickerVisible(): Promise<boolean> {
+  return getCurrentWindow().isVisible();
+}
+
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
 export function onPickerShown(handler: () => void): Promise<UnlistenFn> {
   return listen("picker:shown", handler);
@@ -81,4 +87,16 @@ export function sharedCitationKey(error: unknown): string | null {
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
 export function isSnapshotChanged(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
+}
+
+export type UpdateProgress = { attempt: number; revision: number; received: number; total: number | null; phase: "downloading" | "installing" | "failed" };
+
+export function newerUpdate(old: UpdateProgress | null, next: UpdateProgress): UpdateProgress {
+  const distance = old ? (next.revision - old.revision) >>> 0 : 1;
+  return !old || next.attempt > old.attempt ||
+    (next.attempt === old.attempt && distance > 0 && distance < 0x80000000) ? next : old;
+}
+
+export function onUpdateProgress(handler: (progress: UpdateProgress) => void): Promise<UnlistenFn> {
+  return listen<UpdateProgress>("update:progress", (event) => handler(event.payload));
 }

@@ -6,7 +6,6 @@ import { LibrarySetup, WritingSetup } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
-import { formatCitation, type FormattedCitation } from "./format/formatted";
 import { afterCopy } from "./copyFeedback";
 import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
@@ -24,6 +23,7 @@ import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
+import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { usePin } from "./features/picker/usePin";
 import {
@@ -46,17 +46,18 @@ const noLibrary = () => null;
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
-  "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onShortcutStatus">>;
+  "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
-    hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
+    hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, onShortcutStatus } = api;
+  const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -67,12 +68,23 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
+  useEffect(() => {
+    let mounted = true;
+    setFailures((old) => old.updateEvents ? { ...old, updateEvents: false } : old);
+    const subscription = api.onUpdateProgress?.((next) => {
+      if (mounted) setUpdateProgress((old) => nativeApi.newerUpdate(old, next));
+    }).catch(() => {
+      if (mounted) setFailures((old) => ({ ...old, updateEvents: true }));
+      return null;
+    });
+    return () => {
+      mounted = false;
+      void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
+    };
+  }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
   const { format, density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;
-  // The formatted preview, tagged with the style, choice and library it was
-  // made for, so Enter never copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale"; problem?: string } | null>(null);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
@@ -94,6 +106,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot });
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
+  // The selection, or the highlighted result when nothing is selected.
+  const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+  const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
+    useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, cslItems, citationText, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
   const output = useRef<HTMLElement | null>(null);
   const outputRef = useCallback((node: HTMLElement | null) => {
@@ -183,6 +199,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   useEffect(() => {
     let acceptInitialStatus = true;
     let mounted = true;
+    let visibilityEvents = 0;
     const subscriptionFailure = (operation: Operation) => {
       if (mounted) report(operation);
       else console.error(FAILURE_MESSAGES[operation]);
@@ -218,6 +235,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
+      visibilityEvents += 1;
+      // A hidden native window may not throttle the web view: pause looping animations.
+      document.documentElement.dataset.pickerHidden = "";
       resetPointer();
       copyVisibility.current += 1;
       hiddenAt.current = performance.now();
@@ -226,7 +246,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setPendingCopy(null);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
-    const unlisten = onPickerShown(focusSearch).catch(() => subscriptionFailure("pickerEvents"));
+    const unlisten = onPickerShown(() => {
+      visibilityEvents += 1;
+      delete document.documentElement.dataset.pickerHidden;
+      focusSearch();
+    }).catch(() => subscriptionFailure("pickerEvents"));
+    void Promise.all([unlistenHidden, unlisten]).then(async () => {
+      if (!mounted) return;
+      const events = visibilityEvents;
+      const visible = await pickerVisible();
+      // A newer event wins over this read; failed reads leave the flag alone.
+      if (!mounted || events !== visibilityEvents) return;
+      if (visible) delete document.documentElement.dataset.pickerHidden;
+      else document.documentElement.dataset.pickerHidden = "";
+    }).catch(() => undefined);
     const unlistenLibrary = onLibraryChanged((status) => {
       statusReads.current += 1;
       acceptInitialStatus = false;
@@ -340,46 +373,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const latestRowScope = useRef(rowScope);
   latestRowScope.current = rowScope;
   const contextRequest = useRef(0);
-  // The selection, or the highlighted result when nothing is selected.
-  const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
-  const chosenKey = choiceKey(chosen);
-  const chosenRevision = chosen[0]?.revision;
-  const staleSelection = chosen.length > 0 && (!chosenRevision || chosen.some((record) => record.revision !== chosenRevision) || chosenRevision !== library?.revision);
-  // A key syntax is previewed by the backend without touching the clipboard.
-  const keyFormat = styleOf(format) === null && citationText ? (format as CopyFormat) : null;
-  // A hidden key preview is never fetched: key copying asks the backend itself.
-  const keyPreview = showPastePreview ? keyFormat : null;
-  const previewKey = `${style ?? keyPreview}\u0002${libraryVersion}\u0002${chosenKey}`;
-  // What Enter would copy now; null while it is being formatted.
-  const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
-  // Why the preview failed, when the user can fix it.
-  const previewProblem = shown === "failed" ? formatted?.problem : undefined;
-  // Visibility changes presentation only. Key copying also survives a failed
-  // preview, unless the failure is one copying would meet too.
-  const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && (shown !== "failed" || previewProblem))) ? shown : undefined;
-  // Format the preview again whenever the choice or the style changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, revision and the style or key format, so it is the only trigger.
-  useEffect(() => {
-    if (chosen.length === 0 || staleSelection || !chosenRevision) return;
-    let live = true;
-    const key = previewKey;
-    const replaced = new AbortController();
-    const ids = chosen.map((r) => r.id);
-    const items = chosen.map((r) => ({ id: r.id, locator: r.locator ?? null }));
-    let made: Promise<FormattedCitation>;
-    if (style && cslItems) made = cslItems(ids, chosenRevision).then((csl) => formatCitation(csl, style, { signal: replaced.signal, cites: chosen.map((r) => r.locator ? { locator: r.locator.value, label: r.locator.label } : {}) }));
-    else if (keyPreview && citationText) made = citationText(items, keyPreview, chosenRevision).then(({ text, warnings }) => ({ markup: [], text, html: "", warnings }));
-    else return;
-    made
-      .then((result) => { if (live) setFormatted({ key, result }); })
-      .catch((error) => { if (live) {
-        const stale = nativeApi.isSnapshotChanged(error);
-        const shared = nativeApi.sharedCitationKey(error);
-        setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : undefined });
-        if (stale) refreshSnapshot();
-      } });
-    return () => { live = false; replaced.abort(); };
-  }, [previewKey]);
 
   // Copy the chosen references in the chosen format.
   const copy = async () => {
@@ -714,7 +707,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         }}
       />
       <div className="picker-content">
-      <Notices library={library} failures={failures} startAtLogin={startAtLogin}
+      <Notices updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => setCopied(null)} />

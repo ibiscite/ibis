@@ -18,6 +18,7 @@ const syntheticApi: PickerApi = {
   useZotero: async () => undefined,
   reloadLibrary: async () => undefined,
   hidePicker: async () => undefined,
+  pickerVisible: async () => true,
   setPinned: async () => undefined,
   quit: async () => undefined,
   onLibraryChanged: async () => () => undefined,
@@ -115,7 +116,8 @@ test.each([
   expect(state).toBeTruthy();
   render(<App {...galleryProvider(state!)} />);
   await screen.findByText(message, { selector: ":not(.visually-hidden)" });
-  if (id === "first-run") expect(screen.getByRole("option", { name: /^Look for libraries on this computer/ })).toBeTruthy();
+  // The choice list renders after the title, so wait for it rather than reading it at once.
+  if (id === "first-run") expect(await screen.findByRole("option", { name: /^Look for libraries on this computer/ })).toBeTruthy();
   expect(nativeCalls).toEqual([]);
 });
 
@@ -585,4 +587,14 @@ test("warning captures wait until the whole dismissal target fits above the noti
     size.mockRestore();
     document.documentElement.style.removeProperty("font-size");
   }
+});
+
+test("the update preset shows progress without any native update commands", async () => {
+  const nativeCalls: string[] = [];
+  mockIPC((command) => { nativeCalls.push(command); throw new Error("No native update"); });
+  const state = galleryStates.find((candidate) => candidate.id === "update-downloading");
+  expect(state).toBeTruthy();
+  render(<App {...galleryProvider(state!)} />);
+  expect((await screen.findByRole("progressbar")).getAttribute("aria-valuenow")).toBe("25");
+  expect(nativeCalls).toEqual([]);
 });
