@@ -25,6 +25,7 @@ export type GalleryState = {
   density?: Density;
   /** The picker's own Larger text setting (×1.15), unlike `largeText`, which doubles the system text size. */
   largerTextSetting?: boolean;
+  searchMark?: boolean;
   /** Seeded once the picker has rendered: pin it, open More, choose this many results, open All keys. */
   pinned?: boolean;
   menuOpen?: boolean;
@@ -183,6 +184,7 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "file-kept-menu", label: "Retained file details in More", library: library({ state: "error", name: "example.bib", snapshot_name: "example.bib", stale: true,
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
+  { id: "search-mark", label: "Ibis mark in search", library: library(), query: "", searchMark: true },
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
   ...[false, true].flatMap((formatted) => [true, false].map((showPastePreview) => ({
     id: `preview-${formatted ? "apa" : "keys"}-${showPastePreview ? "on" : "off"}`,
@@ -236,7 +238,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
         copyFormatted: async () => null,
       } : {}),
       copyFormat: async () => "pandoc",
-      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true }),
+      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true, search_mark: state.searchMark ?? false }),
       setPickerPreferences: async () => null,
       shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       chooseLibrary: async () => undefined,

@@ -25,6 +25,7 @@ export function usePickerPreferences(
   // file to defaults.
   const [density, setDensity] = useState<Density>("comfortable");
   const [largerText, setLargerText] = useState(false);
+  const [searchMark, setSearchMark] = useState(false);
   const [showPastePreview, setShowPastePreview] = useState(true);
   const previewVisibility = useRef(true);
   const savedPreferences = useRef<PickerPreferences | null>(null);
@@ -76,6 +77,10 @@ export function usePickerPreferences(
     setLargerText(!largerText);
     savePreferences({ larger_text: !largerText });
   };
+  const toggleSearchMark = () => {
+    setSearchMark(!searchMark);
+    savePreferences({ search_mark: !searchMark });
+  };
   const togglePastePreview = () => {
     const next = !previewVisibility.current;
     previewVisibility.current = next;
@@ -108,6 +113,7 @@ export function usePickerPreferences(
       savedPreferences.current = saved.value;
       setDensity(loaded.density);
       setLargerText(loaded.larger_text);
+      setSearchMark(loaded.search_mark ?? false);
       previewVisibility.current = loaded.show_paste_preview;
       setShowPastePreview(loaded.show_paste_preview);
       const chosen = pending.current.citation_style !== undefined;
@@ -118,5 +124,5 @@ export function usePickerPreferences(
       else if (key.status === "fulfilled") setFormat(key.value);
     });
   };
-  return { format, density, largerText, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
+  return { format, density, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
 }
