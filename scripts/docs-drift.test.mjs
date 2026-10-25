@@ -88,3 +88,12 @@ test("ordinary unmatched glob sets retain their individual diagnostics", () => {
   assert.equal(docProblems("AGENTS.md", text, paths, []).length, 20);
   assert.throws(() => docProblems("AGENTS.md", text.repeat(100), paths, []), /glob matching budget exceeded/);
 });
+
+test("component-relative glob sets retain diagnostics without unbounded scans", () => {
+  const paths = Array.from({ length: 600 }, (_, i) => `apps/desktop/src/ui/components/unrelated-file-${i}.tsx`);
+  const text = Array.from({ length: 20 }, (_, i) => "`picker/missing-" + i + "-*.rs`").join("\n");
+  assert.equal(docProblems("AGENTS.md", text, paths, []).length, 20);
+  assert.deepEqual(docProblems("AGENTS.md", "`picker/*.rs`", ["src/picker/found.rs"], []), []);
+  assert.equal(docProblems("AGENTS.md", "`picker/*.rs`", ["src/otherpicker/found.rs"], []).length, 1);
+  assert.throws(() => docProblems("AGENTS.md", text.repeat(100), paths, []), /glob matching budget exceeded/);
+});
