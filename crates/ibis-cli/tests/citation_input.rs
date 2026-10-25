@@ -138,3 +138,34 @@ fn structured_input_still_checks_library_membership() {
         }
     }
 }
+
+#[test]
+fn structured_diagnostics_redact_keys_after_parsing() {
+    let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("structured-private-key-synthetic.bib");
+    let duplicate = path.with_file_name("structured-private-key-duplicate.bib");
+    let data = "@book{private-duplicate-key,title={Synthetic reference}}\n";
+    std::fs::write(&path, data).unwrap_or_else(|e| panic!("{e}"));
+    std::fs::write(&duplicate, data).unwrap_or_else(|e| panic!("{e}"));
+    let bib = path.to_str().unwrap_or_else(|| panic!("non-UTF-8 test path"));
+    let duplicate_bib = duplicate.to_str().unwrap_or_else(|| panic!("non-UTF-8 test path"));
+    for (args, input) in [
+        (vec!["--items"], r#"[{"key":"private synthetic text"}]"#),
+        (
+            vec!["--items", "--json", "--format", "autocite"],
+            r#"[{"key":"private-synthetic%key"}]"#,
+        ),
+        (
+            vec!["--items", "--json", "--bib", bib],
+            r#"[{"key":"private-synthetic-key"}]"#,
+        ),
+        (
+            vec!["--items", "--bib", bib, "--bib", duplicate_bib],
+            r#"[{"key":"private-duplicate-key"}]"#,
+        ),
+    ] {
+        let out = cite(&args, input);
+        assert_eq!(out.status.code(), Some(1));
+        assert!(out.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&out.stderr).contains("private"));
+    }
+}

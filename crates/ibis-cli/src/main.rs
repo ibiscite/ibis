@@ -278,7 +278,18 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 load_warnings = all_warnings(&loaded);
                 let references = take_references(&mut loaded);
                 for item in &items {
-                    resolve(&item.key, &references)?;
+                    if structured {
+                        library::find_by_key(&references, &item.key).map_err(|error| match error {
+                            SelectError::NotFound(_) => {
+                                anyhow::anyhow!("a requested citation key was not found in the given files")
+                            }
+                            SelectError::Ambiguous { .. } | SelectError::DuplicateKeys { .. } => anyhow::anyhow!(
+                                "a requested citation key is ambiguous; pass only one matching library with --bib"
+                            ),
+                        })?;
+                    } else {
+                        resolve(&item.key, &references)?;
+                    }
                 }
             }
             for spec in &pages {
@@ -293,7 +304,15 @@ fn run(cli: Cli) -> Result<ExitCode> {
                     value: value.to_string(),
                 });
             }
-            let rendered = cite::render(format.into(), &items)?;
+            let rendered = cite::render(format.into(), &items).map_err(|error| match error {
+                cite::CiteError::InvalidKey(_) if structured => {
+                    anyhow::anyhow!("a citation key in the request is invalid")
+                }
+                cite::CiteError::KeyNotValidFor(_, syntax) if structured => {
+                    anyhow::anyhow!("a citation key cannot be used in {syntax}")
+                }
+                other => other.into(),
+            })?;
             if json {
                 print_json(&serde_json::json!({
                     "text": rendered.text,

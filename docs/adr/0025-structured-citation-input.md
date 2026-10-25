@@ -26,6 +26,8 @@ The implementation scope and input contract are recorded in #24 and tracking #10
 - `--bib` still checks every requested key. `--format` and `--json` retain their
   existing meaning and output schema. Invalid input produces no partial output;
   request errors exit 1 and argument conflicts use Clap's argument-error status.
+- Structured request errors identify invalid, missing or ambiguous keys without
+  echoing keys or source identities. Positional requests retain their diagnostics.
 
 ## Consequences
 
