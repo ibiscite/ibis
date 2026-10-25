@@ -1,0 +1,126 @@
+{
+  "oracle": {"processor_source_sha256":"4e717cb27c1d66024bbaa578604203c178af04e789c6244a722df44d70631466","node":"22.20.0","icu":"77.1","cldr":"47.0","description":"Synthetic records; direct pinned citeproc with explicit semantic IDs. Bibliography entries use current one-line normalization; RTF uses current complete-document wrapper."},
+  "cases": [
+    {
+      "name": "rich-five-style",
+      "works": [{"oracle_id":"semantic-rich","identity":{"source":"synthetic:one","native_key":"rich"},"csl":{"id":"shared-citekey","type":"book","title":"A <i>synthetic</i> café study 😀","author":[{"family":"Guérin","given":"Zoë"}],"issued":{"date-parts":[[2021]]},"publisher":"Example Press"}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"rich"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"apa","output":"text","bibliography":false,"value":"(Guérin, 2021)"},
+        {"style":"apa","output":"text","bibliography":true,"value":"Guérin, Z. (2021). A synthetic café study 😀. Example Press."},
+        {"style":"apa","output":"html","bibliography":false,"value":"(Guérin, 2021)"},
+        {"style":"apa","output":"html","bibliography":true,"value":"<div class=\"csl-entry\">Guérin, Z. (2021). <i>A <span style=\"font-style:normal;\">synthetic</span> café study 😀</i>. Example Press.</div>"},
+        {"style":"apa","output":"rtf","bibliography":false,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(Gu\\uc0\\u233{}rin, 2021)\n}"},
+        {"style":"apa","output":"rtf","bibliography":true,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nGu\\uc0\\u233{}rin, Z. (2021). {\\i{}A {\\i0{}synthetic} caf\\uc0\\u233{} study \\uc0\\u55357{}\\uc0\\u56832{}}. Example Press.\n}"},
+        {"style":"chicago-author-date","output":"text","bibliography":false,"value":"(Guérin 2021)"},
+        {"style":"chicago-author-date","output":"text","bibliography":true,"value":"Guérin, Zoë. 2021. A Synthetic Café Study 😀. Example Press."},
+        {"style":"chicago-author-date","output":"html","bibliography":false,"value":"(Guérin 2021)"},
+        {"style":"chicago-author-date","output":"html","bibliography":true,"value":"<div class=\"csl-entry\">Guérin, Zoë. 2021. <i>A <span style=\"font-style:normal;\">Synthetic</span> Café Study 😀</i>. Example Press.</div>"},
+        {"style":"chicago-author-date","output":"rtf","bibliography":false,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(Gu\\uc0\\u233{}rin 2021)\n}"},
+        {"style":"chicago-author-date","output":"rtf","bibliography":true,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nGu\\uc0\\u233{}rin, Zo\\uc0\\u235{}. 2021. {\\i{}A {\\i0{}Synthetic} Caf\\uc0\\u233{} Study \\uc0\\u55357{}\\uc0\\u56832{}}. Example Press.\n}"},
+        {"style":"harvard-cite-them-right","output":"text","bibliography":false,"value":"(Guérin, 2021)"},
+        {"style":"harvard-cite-them-right","output":"text","bibliography":true,"value":"Guérin, Z. (2021) A synthetic café study 😀. Example Press."},
+        {"style":"harvard-cite-them-right","output":"html","bibliography":false,"value":"(Guérin, 2021)"},
+        {"style":"harvard-cite-them-right","output":"html","bibliography":true,"value":"<div class=\"csl-entry\">Guérin, Z. (2021) <i>A <span style=\"font-style:normal;\">synthetic</span> café study 😀</i>. Example Press.</div>"},
+        {"style":"harvard-cite-them-right","output":"rtf","bibliography":false,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(Gu\\uc0\\u233{}rin, 2021)\n}"},
+        {"style":"harvard-cite-them-right","output":"rtf","bibliography":true,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nGu\\uc0\\u233{}rin, Z. (2021) {\\i{}A {\\i0{}synthetic} caf\\uc0\\u233{} study \\uc0\\u55357{}\\uc0\\u56832{}}. Example Press.\n}"},
+        {"style":"ieee","output":"text","bibliography":false,"value":"[1]"},
+        {"style":"ieee","output":"text","bibliography":true,"value":"[1] Z. Guérin, A synthetic café study 😀. Example Press, 2021."},
+        {"style":"ieee","output":"html","bibliography":false,"value":"[1]"},
+        {"style":"ieee","output":"html","bibliography":true,"value":"<div class=\"csl-entry\"> <div class=\"csl-left-margin\">[1]</div><div class=\"csl-right-inline\">Z. Guérin, <i>A <span style=\"font-style:normal;\">synthetic</span> café study 😀</i>. Example Press, 2021.</div> </div>"},
+        {"style":"ieee","output":"rtf","bibliography":false,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n[1]\n}"},
+        {"style":"ieee","output":"rtf","bibliography":true,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n[1]\\tab Z. Gu\\uc0\\u233{}rin, {\\i{}A {\\i0{}synthetic} caf\\uc0\\u233{} study \\uc0\\u55357{}\\uc0\\u56832{}}. Example Press, 2021.\n}"},
+        {"style":"modern-language-association","output":"text","bibliography":false,"value":"(Guérin)"},
+        {"style":"modern-language-association","output":"text","bibliography":true,"value":"Guérin, Zoë. A Synthetic Café Study 😀. Example Press, 2021."},
+        {"style":"modern-language-association","output":"html","bibliography":false,"value":"(Guérin)"},
+        {"style":"modern-language-association","output":"html","bibliography":true,"value":"<div class=\"csl-entry\">Guérin, Zoë. <i>A <span style=\"font-style:normal;\">Synthetic</span> Café Study 😀</i>. Example Press, 2021.</div>"},
+        {"style":"modern-language-association","output":"rtf","bibliography":false,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(Gu\\uc0\\u233{}rin)\n}"},
+        {"style":"modern-language-association","output":"rtf","bibliography":true,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nGu\\uc0\\u233{}rin, Zo\\uc0\\u235{}. {\\i{}A {\\i0{}Synthetic} Caf\\uc0\\u233{} Study \\uc0\\u55357{}\\uc0\\u56832{}}. Example Press, 2021.\n}"}
+      ]
+    },
+    {
+      "name": "repeat-one-record",
+      "works": [{"oracle_id":"semantic-a","identity":{"source":"synthetic:one","native_key":"a"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic first study","author":[{"literal":"Garcia"}],"issued":{"date-parts":[[2021]]}}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"a"},"intent":{"key":"shared-citekey","locator":{"label":"page","value":"12"}}},{"identity":{"source":"synthetic:one","native_key":"a"},"intent":{"key":"shared-citekey","locator":{"label":"page","value":"33"}}}],
+      "expected": [
+        {"style":"apa","output":"text","bibliography":false,"value":"(Garcia, 2021, p. 12, 2021, p. 33)"},
+        {"style":"apa","output":"text","bibliography":true,"value":"Garcia. (2021). Synthetic first study."},
+        {"style":"ieee","output":"text","bibliography":false,"value":"[1, p. 12], [1, p. 33]"},
+        {"style":"ieee","output":"text","bibliography":true,"value":"[1] Garcia, Synthetic first study. 2021."}
+      ]
+    },
+    {
+      "name": "distinct-shared-key",
+      "works": [{"oracle_id":"semantic-a","identity":{"source":"synthetic:one","native_key":"a"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic first study","author":[{"literal":"Garcia"}],"issued":{"date-parts":[[2021]]}}},{"oracle_id":"semantic-b","identity":{"source":"synthetic:two","native_key":"a"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic second study","author":[{"literal":"Garcia"}],"issued":{"date-parts":[[2021]]}}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"a"},"intent":{"key":"shared-citekey"}},{"identity":{"source":"synthetic:two","native_key":"a"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"apa","output":"text","bibliography":false,"value":"(Garcia, 2021a, 2021b)"},
+        {"style":"apa","output":"text","bibliography":true,"value":"Garcia. (2021a). Synthetic first study.\nGarcia. (2021b). Synthetic second study."},
+        {"style":"ieee","output":"text","bibliography":false,"value":"[1], [2]"},
+        {"style":"ieee","output":"text","bibliography":true,"value":"[1] Garcia, Synthetic first study. 2021.\n[2] Garcia, Synthetic second study. 2021."}
+      ]
+    },
+    {
+      "name": "accent-order",
+      "works": [{"oracle_id":"semantic-z","identity":{"source":"synthetic:one","native_key":"z"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic study","author":[{"literal":"Zed"}],"issued":{"date-parts":[[2021]]}}},{"oracle_id":"semantic-e","identity":{"source":"synthetic:one","native_key":"e"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic study","author":[{"literal":"Éclair"}],"issued":{"date-parts":[[2021]]}}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"z"},"intent":{"key":"shared-citekey"}},{"identity":{"source":"synthetic:one","native_key":"e"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"apa","output":"text","bibliography":false,"value":"(Éclair, 2021; Zed, 2021)"},
+        {"style":"apa","output":"text","bibliography":true,"value":"Éclair. (2021). Synthetic study.\nZed. (2021). Synthetic study."}
+      ]
+    },
+    {
+      "name": "numeric-order",
+      "works": [{"oracle_id":"semantic-ten","identity":{"source":"synthetic:one","native_key":"ten"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic study","author":[{"literal":"Maker 10"}],"issued":{"date-parts":[[2021]]}}},{"oracle_id":"semantic-two","identity":{"source":"synthetic:one","native_key":"two"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic study","author":[{"literal":"Maker 2"}],"issued":{"date-parts":[[2021]]}}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"ten"},"intent":{"key":"shared-citekey"}},{"identity":{"source":"synthetic:one","native_key":"two"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"apa","output":"text","bibliography":false,"value":"(Maker 2, 2021; Maker 10, 2021)"},
+        {"style":"apa","output":"text","bibliography":true,"value":"Maker 2. (2021). Synthetic study.\nMaker 10. (2021). Synthetic study."}
+      ]
+    },
+    {
+      "name": "punctuation-order",
+      "works": [{"oracle_id":"semantic-hyphen","identity":{"source":"synthetic:one","native_key":"hyphen"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic study","author":[{"literal":"A-b"}],"issued":{"date-parts":[[2021]]}}},{"oracle_id":"semantic-plain","identity":{"source":"synthetic:one","native_key":"plain"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic study","author":[{"literal":"Aa"}],"issued":{"date-parts":[[2021]]}}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"hyphen"},"intent":{"key":"shared-citekey"}},{"identity":{"source":"synthetic:one","native_key":"plain"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"apa","output":"text","bibliography":false,"value":"(Aa, 2021; A-b, 2021)"},
+        {"style":"apa","output":"text","bibliography":true,"value":"Aa. (2021). Synthetic study.\nA-b. (2021). Synthetic study."}
+      ]
+    },
+    {
+      "name": "soft-hyphen-equality",
+      "works": [{"oracle_id":"semantic-plain","identity":{"source":"synthetic:one","native_key":"plain"},"csl":{"id":"shared-citekey","type":"book","title":"A title","author":[{"literal":"Ab"}],"issued":{"date-parts":[[2021]]}}},{"oracle_id":"semantic-soft","identity":{"source":"synthetic:one","native_key":"soft"},"csl":{"id":"shared-citekey","type":"book","title":"B title","author":[{"literal":"A­b"}],"issued":{"date-parts":[[2021]]}}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"plain"},"intent":{"key":"shared-citekey"}},{"identity":{"source":"synthetic:one","native_key":"soft"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"modern-language-association","output":"text","bibliography":false,"value":"(Ab; A­b)"},
+        {"style":"modern-language-association","output":"text","bibliography":true,"value":"Ab. A Title. 2021.\n———. B Title. 2021."}
+      ]
+    },
+    {
+      "name": "turkish-genre",
+      "works": [{"oracle_id":"semantic-tr","identity":{"source":"synthetic:one","native_key":"tr"},"csl":{"id":"shared-citekey","type":"thesis","title":"istanbul study","author":[{"family":"Maker"}],"issued":{"date-parts":[[2021]]},"genre":"istanbul","language":"tr"}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"tr"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"chicago-author-date","output":"text","bibliography":false,"value":"(Maker 2021)"},
+        {"style":"chicago-author-date","output":"text","bibliography":true,"value":"Maker. 2021. “istanbul study.” İstanbul."},
+        {"style":"chicago-author-date","output":"html","bibliography":false,"value":"(Maker 2021)"},
+        {"style":"chicago-author-date","output":"html","bibliography":true,"value":"<div class=\"csl-entry\">Maker. 2021. “istanbul study.” İstanbul.</div>"},
+        {"style":"chicago-author-date","output":"rtf","bibliography":false,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(Maker 2021)\n}"},
+        {"style":"chicago-author-date","output":"rtf","bibliography":true,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nMaker. 2021. \\uc0\\u8220{}istanbul study.\\uc0\\u8221{} \\uc0\\u304{}stanbul.\n}"}
+      ]
+    },
+    {
+      "name": "mixed-intent",
+      "works": [{"oracle_id":"semantic-a","identity":{"source":"synthetic:one","native_key":"a"},"csl":{"id":"shared-citekey","type":"book","title":"Synthetic first study","author":[{"literal":"Garcia"}],"issued":{"date-parts":[[2021]]}}},{"oracle_id":"semantic-tr","identity":{"source":"synthetic:one","native_key":"tr"},"csl":{"id":"shared-citekey","type":"thesis","title":"istanbul study","author":[{"family":"Maker"}],"issued":{"date-parts":[[2021]]},"genre":"istanbul","language":"tr"}}],
+      "occurrences": [{"identity":{"source":"synthetic:one","native_key":"a"},"intent":{"key":"shared-citekey","prefix":"see ","locator":{"label":"page","value":"12–14"}}},{"identity":{"source":"synthetic:one","native_key":"a"},"intent":{"key":"shared-citekey","suffix":" emphasis added","locator":{"label":"chapter","value":"3"},"suppress_author":true}},{"identity":{"source":"synthetic:one","native_key":"tr"},"intent":{"key":"shared-citekey"}}],
+      "expected": [
+        {"style":"apa","output":"text","bibliography":false,"value":"(see Garcia, 2021, pp. 12–14, 2021, Chapter 3 emphasis added; Maker, 2021)"},
+        {"style":"apa","output":"text","bibliography":true,"value":"Garcia. (2021). Synthetic first study.\nMaker. (2021). istanbul study [İstanbul]."},
+        {"style":"apa","output":"html","bibliography":false,"value":"(see Garcia, 2021, pp. 12–14, 2021, Chapter 3 emphasis added; Maker, 2021)"},
+        {"style":"apa","output":"html","bibliography":true,"value":"<div class=\"csl-entry\">Garcia. (2021). <i>Synthetic first study</i>.</div>\n<div class=\"csl-entry\">Maker. (2021). <i>istanbul study</i> [İstanbul].</div>"},
+        {"style":"apa","output":"rtf","bibliography":false,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(see Garcia, 2021, pp. 12\\uc0\\u8211{}14, 2021, Chapter 3 emphasis added; Maker, 2021)\n}"},
+        {"style":"apa","output":"rtf","bibliography":true,"value":"{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nGarcia. (2021). {\\i{}Synthetic first study}.\\par\nMaker. (2021). {\\i{}istanbul study} [\\uc0\\u304{}stanbul].\n}"}
+      ]
+    }
+  ]
+}
