@@ -41,7 +41,7 @@ its path on another machine. An unavailable path produces a load error; **Choose
 library** selects that machine's file. The same path on two machines may name
 different libraries. Roaming preferences are not library synchronization.
 
-A missing primary file gives defaults immediately. An unreadable, invalid or
+A missing primary file loads a valid `settings.json.bak` if there is one, otherwise defaults, and the next save restores the primary from what loaded without touching the backup ([#1104](https://github.com/ibiscite/ibis/issues/1104), 2026-10-25). An unreadable, invalid or
 newer primary reports its problem and tries `settings.json.bak`, then defaults.
 Loading a backup does not repair or replace the primary. Desktop updates reread
 the primary. **Recovery amendment ([#1088](https://github.com/ibiscite/ibis/issues/1088),

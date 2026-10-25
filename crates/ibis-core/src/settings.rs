@@ -193,7 +193,7 @@ pub enum SettingsError {
 /// This is in-memory provenance, never a persisted setting or raw diagnostic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PrimaryRead {
-    /// The read returned NotFound; normal loading immediately used defaults.
+    /// The read returned NotFound; the backup was tried before using defaults.
     Missing,
     /// UTF-8 contents were read; `Loaded::problem` says whether they were valid.
     Present,
@@ -259,19 +259,12 @@ fn v1_to_v2(mut value: Value) -> Value {
     value
 }
 
-/// Load settings. A missing file gives defaults. An unreadable or invalid file
-/// falls back to the backup, then to defaults, and reports the problem.
+/// Load settings, falling back to the backup, then to defaults. Report a missing
+/// primary when a backup is recovered, and other primary problems unconditionally.
 pub fn load(path: &Path) -> Loaded {
     let (primary_read, primary) = match read_regular(path) {
         Ok(text) => (PrimaryRead::Present, parse(&text)),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Loaded {
-                settings: Settings::default(),
-                problem: None,
-                primary_read: PrimaryRead::Missing,
-                from_backup: false,
-            };
-        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => (PrimaryRead::Missing, Err(SettingsError::Unreadable(e))),
         Err(e) => (PrimaryRead::Unreadable, Err(SettingsError::Unreadable(e))),
     };
     match primary {
@@ -286,7 +279,7 @@ pub fn load(path: &Path) -> Loaded {
             let from_backup = backup.is_some();
             Loaded {
                 settings: backup.unwrap_or_default(),
-                problem: Some(problem),
+                problem: (primary_read != PrimaryRead::Missing || from_backup).then_some(problem),
                 primary_read,
                 from_backup,
             }
@@ -348,7 +341,17 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
 /// may alias the primary. Exclusive creation never overwrites an occupied name
 /// and works on filesystems without hard links.
 fn preserve_invalid(path: &Path) -> io::Result<()> {
-    let bytes = fs::read(path)?;
+    let bytes = match fs::read(path) {
+        // A missing primary has no damaged bytes to preserve. Refuse a dangling
+        // symlink rather than discarding an existing entry during recovery.
+        Err(error)
+            if error.kind() == io::ErrorKind::NotFound
+                && fs::symlink_metadata(path).is_err_and(|e| e.kind() == io::ErrorKind::NotFound) =>
+        {
+            return Ok(());
+        }
+        other => other?,
+    };
     for number in 1..=1000 {
         let invalid = path.with_extension(format!("json.invalid-{number}"));
         let mut options = fs::OpenOptions::new();
@@ -389,14 +392,16 @@ fn sync_directory(path: &Path) {
 /// Change settings on disk: read the file as it is now, apply `change` and
 /// save the result. Edits made to the file since it was loaded are kept. Invalid
 /// settings with a valid backup are preserved as `settings.json.invalid-N` on
-/// save; the backup is kept. Invalid UTF-8 can recover too; other read errors,
-/// newer versions and files without a valid backup are refused.
+/// save; the backup is kept. Missing primaries and invalid UTF-8 can recover too;
+/// other read errors, newer versions and invalid files without a valid backup are refused.
 pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Settings, SettingsError> {
     let loaded = load(path);
     let recovering = loaded.from_backup
         && match &loaded.problem {
             Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
-            Some(SettingsError::Unreadable(error)) => error.kind() == io::ErrorKind::InvalidData,
+            Some(SettingsError::Unreadable(error)) => {
+                matches!(error.kind(), io::ErrorKind::InvalidData | io::ErrorKind::NotFound)
+            }
             _ => false,
         };
     if let Some(problem) = loaded.problem
@@ -479,17 +484,87 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_primary_still_ignores_an_existing_backup() {
+    fn a_missing_primary_loads_an_existing_backup_and_reports_recovery() {
         let directory = dir("missing-with-backup");
         let path = directory.path().join("settings.json");
         let backup = r#"{"shortcut":"Alt+Space"}"#;
         fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
         let loaded = load(&path);
         assert_eq!(loaded.primary_read, PrimaryRead::Missing);
-        assert_eq!(loaded.settings, Settings::default());
-        assert!(loaded.problem.is_none());
-        assert!(!loaded.from_backup);
+        assert_eq!(loaded.settings.shortcut.as_deref(), Some("Alt+Space"));
+        assert!(matches!(loaded.problem, Some(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::NotFound));
+        assert!(loaded.from_backup);
+        assert!(!path.exists());
         assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
+    }
+
+    #[test]
+    fn missing_primary_recovery_keeps_real_settings_after_two_saves() {
+        for backup in [
+            "{}",
+            r#"{"library":"参考.bib","shortcut":"Alt+Space","future_choice":{"kept":[true,null,"参考"]}}"#,
+        ] {
+            for change_first in [false, true] {
+                let directory = dir("missing-recover-save");
+                let path = directory.path().join("settings.json");
+                fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
+                let mut expected = parse(backup).unwrap_or_else(|e| panic!("{e}"));
+                if change_first {
+                    expected.copy_format = Some(KeyFormat::Typst);
+                }
+                let first = update(&path, |s| {
+                    if change_first {
+                        s.copy_format = Some(KeyFormat::Typst);
+                    }
+                })
+                .unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(first, expected);
+                let restored = load(&path);
+                assert_eq!(restored.primary_read, PrimaryRead::Present);
+                assert!(!restored.from_backup);
+                assert!(restored.problem.is_none());
+                assert_eq!(restored.settings, expected);
+                assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
+                assert!(!path.with_extension("json.invalid-1").exists());
+                expected.copy_format = Some(KeyFormat::Keys);
+                let second = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(second, expected);
+                assert_eq!(load(&path).settings, expected);
+                let saved_backup = fs::read_to_string(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(parse(&saved_backup).unwrap_or_else(|e| panic!("{e}")), first);
+            }
+        }
+    }
+
+    #[test]
+    fn missing_primary_recovery_refuses_a_blocked_temporary_without_touching_the_backup() {
+        let directory = dir("missing-blocked-save");
+        let path = directory.path().join("settings.json");
+        let backup = r#"{"shortcut":"Alt+Space"}"#;
+        fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
+        fs::create_dir(path.with_extension("json.tmp")).unwrap_or_else(|e| panic!("{e}"));
+        assert!(update(&path, |s| s.larger_text = Some(true)).is_err());
+        assert!(!path.exists());
+        assert!(path.with_extension("json.tmp").is_dir());
+        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
+        assert!(load(&path).from_backup);
+        assert!(!path.with_extension("json.invalid-1").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn missing_primary_recovery_preserves_a_dangling_primary_symlink() {
+        let directory = dir("missing-primary-link");
+        let path = directory.path().join("settings.json");
+        let target = directory.path().join("absent.json");
+        std::os::unix::fs::symlink(&target, &path).unwrap_or_else(|e| panic!("{e}"));
+        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+        assert!(load(&path).from_backup);
+        assert!(update(&path, |_| {}).is_err());
+        assert_eq!(fs::read_link(&path).unwrap_or_else(|e| panic!("{e}")), target);
+        assert!(!target.exists());
+        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
+        assert!(!path.with_extension("json.tmp").exists());
     }
 
     #[test]
