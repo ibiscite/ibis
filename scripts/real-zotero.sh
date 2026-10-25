@@ -4,8 +4,8 @@
 # with a fresh, throwaway profile and data directory and the local API
 # turned on, then runs the test. Linux only; needs xvfb-run and network
 # access to zotero.org. Zotero listens on a port of its own (not 23119), so a
-# Zotero you have open is never touched; nothing outside a temporary
-# directory is written.
+# Zotero you have open is never touched. The ordinary run writes only to a
+# temporary directory; --capture retains a synthetic bundle in fresh output.
 #
 #   scripts/real-zotero.sh
 set -euo pipefail
@@ -151,7 +151,7 @@ def file_info(path):
     return {"sha256": digest.hexdigest(), "bytes": path.stat().st_size}
 
 
-# Native ABI references: Xlib/XTEST official manuals; helper stays inside this private display.
+# Linux subreaper plus bounded xdotool on the private display; no custom Xlib ABI.
 _SUBREAPER_ENABLED = False
 _FAILURE = "Zotero did not complete an owned clean shutdown."
 
@@ -336,24 +336,64 @@ def finish_capture(app, data, output, keys):
     return copy_bundle(data, output, keys)
 
 
+def generator_revision(root):
+    try:
+        revision = subprocess.run(["git", "-c", "core.fsmonitor=false", "rev-parse", "HEAD"], cwd=root,
+                                  check=True, capture_output=True, text=True, timeout=5).stdout.strip()
+        if not re.fullmatch(r"[a-f0-9]{40}", revision):
+            raise ValueError()
+        # Seed tests and compiled crates are generator inputs too. Untracked
+        # private notes/build outputs are neither read nor included.
+        subprocess.run(["git", "-c", "core.fsmonitor=false", "diff", "--quiet", "HEAD"],
+                       cwd=root, check=True, capture_output=True, timeout=5)
+        return revision
+    except Exception:
+        raise RuntimeError("capture requires a clean committed generator tree") from None
+
+
+def abort_owned(app, timeout=5):
+    """Failure cleanup only; direct children stay PID-pinned until we reap them."""
+    deadline = time.monotonic() + timeout
+    try:
+        if app is not None and app.poll() is None:
+            os.killpg(app.pid, signal.SIGKILL)
+            app.wait(timeout=max(0.01, deadline - time.monotonic()))
+        while time.monotonic() < deadline:
+            children = Path(f"/proc/self/task/{os.getpid()}/children").read_text().split()
+            if len(children) > 256:
+                return False
+            for child in children:
+                pid = int(child)
+                try:
+                    if _process(pid)[0] == os.getpid():
+                        os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, FileNotFoundError):
+                    pass
+            for _ in range(256):
+                try:
+                    pid, _ = os.waitpid(-1, os.WNOHANG)
+                except ChildProcessError:
+                    return True
+                if not pid:
+                    break
+            time.sleep(0.01)
+    except Exception:
+        return False
+    return False
+
+
 def run_capture(root, version, output):
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise RuntimeError("capture requires the isolated Linux x86-64 entrypoint")
     prepare_output(version, output)
     app = None
-    work_handle = None
+    work, quiet, phase = None, True, "generator provenance"
     try:
-        revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True,
-                                  capture_output=True, text=True, timeout=5).stdout.strip()
-        if not re.fullmatch(r"[a-f0-9]{40}", revision):
-            raise RuntimeError("capture generator revision is unavailable")
-        subprocess.run(["git", "diff", "--quiet", "HEAD", "--", "scripts/real-zotero.sh"],
-                       cwd=root, check=True, capture_output=True, timeout=5)
+        revision = generator_revision(root)
         enable_subreaper()
         port = 23129
-        work_handle = tempfile.TemporaryDirectory()
-        temporary = work_handle.name
-        work = Path(temporary)
+        work = Path(tempfile.mkdtemp())
+        phase = "pinned archive"
         archive = work / "zotero.tar"
         url = "https://www.zotero.org/download/client/dl?channel=release&platform=linux-x86_64&version=" + version
         downloaded = subprocess.run(["curl", "-fsSL", "--retry", "3", "--max-time", "180", "--max-filesize", str(MAX_ARCHIVE_BYTES), "-o", str(archive), "-w", "%{url_effective}", url],
@@ -378,6 +418,7 @@ def run_capture(root, version, output):
             raise RuntimeError("download does not contain one Zotero launcher")
         program = programs[0]
         provenance = application_info(program.parent, version)
+        phase = "synthetic profile"
         profile, data = work / "profile", work / "data"
         profile.mkdir(mode=0o700)
         data.mkdir(mode=0o700)
@@ -396,6 +437,7 @@ def run_capture(root, version, output):
                     raise RuntimeError("capture port is already occupied")
             app = subprocess.Popen([str(program), "-no-remote", "-profile", str(profile)],
                                    stdout=log, stderr=log, start_new_session=True)
+            phase = "owned startup"
             deadline = time.monotonic() + 120
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
             while True:
@@ -408,13 +450,18 @@ def run_capture(root, version, output):
                 except Exception:
                     time.sleep(0.25)
             time.sleep(10)
-            environment = dict(os.environ, IBIS_ZOTERO_PORT=str(port), IBIS_THROWAWAY_ZOTERO="1")
+            phase = "owned synthetic seeding"
+            environment = dict(os.environ, IBIS_ZOTERO_PORT=str(port), IBIS_THROWAWAY_ZOTERO="1",
+                               IBIS_ZOTERO_CAPTURE_PID=str(app.pid), IBIS_ZOTERO_CAPTURE_START=str(_process(app.pid)[1]))
             with (work / "seed.log").open("wb") as seed_log:
                 subprocess.run(["cargo", "test", "-p", "ibis-zotero-local", "--locked", "--test", "real_zotero", "--", "--ignored"],
                                cwd=root, env=environment, stdout=seed_log, stderr=seed_log, check=True, timeout=600)
+            phase = "paired API pages"
             keys, pages = capture_api(port, output, opener)
+            phase = "owned Quit and copied-bundle validation"
             metadata = finish_capture(app, data, output, keys)
             app = None
+        phase = "capture manifest"
         manifest = {"coverage": "partial: personal library, two articles, one book and one report; not a supported-version declaration",
                     "generator_commit": revision, "application": provenance,
                     "platform": "linux-x86_64", "archive": dict(archive_info, url=resolved),
@@ -423,23 +470,21 @@ def run_capture(root, version, output):
         manifest["files"] = {path.name: file_info(path) for path in output.iterdir()}
         (output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     except BaseException:
-        if app is not None:
-            try:
-                if app.poll() is None:
-                    os.killpg(app.pid, signal.SIGKILL)  # Failure cleanup never yields a manifest.
-                    app.wait(timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+        quiet = abort_owned(app)
         shutil.rmtree(output)
-        raise RuntimeError("synthetic capture failed; no bundle was published") from None
+        cleanup = "" if quiet else "; owned cleanup incomplete, temporary profile quarantined"
+        raise RuntimeError("synthetic capture failed during " + phase + cleanup + "; no bundle was published") from None
     finally:
-        if work_handle is not None:
-            work_handle.cleanup()
+        if work is not None and quiet:
+            shutil.rmtree(work)
 
 
 if __name__ == "__main__":
     try:
         run_capture(Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]))
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)  # Only fixed/allowlisted capture phases reach here.
+        sys.exit(1)
     except Exception:
         print("synthetic capture failed; no bundle was published", file=sys.stderr)
         sys.exit(1)

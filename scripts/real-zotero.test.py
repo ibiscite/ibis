@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import tempfile
 import types
 import unittest
@@ -75,9 +76,13 @@ class CaptureTests(unittest.TestCase):
     def test_copied_bundle_is_integrity_checked_and_matches_captured_keys(self):
         data = self.root / "data"
         data.mkdir()
-        with sqlite3.connect(data / "zotero.sqlite") as db:
+        db = sqlite3.connect(data / "zotero.sqlite")
+        try:
             db.executescript("CREATE TABLE version(schema TEXT, version INT); INSERT INTO version VALUES('userdata',123); CREATE TABLE items(key TEXT); CREATE TABLE deletedItems(itemID INT);")
             db.executemany("INSERT INTO items VALUES(?)", [(f"SYNTH00{i}",) for i in range(1, 5)])
+            db.commit()
+        finally:
+            db.close()
         output = self.root / "bundle"
         output.mkdir()
         metadata = self.capture.copy_bundle(data, output, {f"SYNTH00{i}" for i in range(1, 5)})
@@ -144,6 +149,36 @@ class CaptureTests(unittest.TestCase):
         with patch.object(self.capture, "MAX_DATABASE_BYTES", 1):
             with self.assertRaisesRegex(RuntimeError, "oversized"):
                 self.capture.copy_bundle(data, output, set())
+
+    def test_adopted_helper_is_stopped_even_after_root_application_exit(self):
+        app = unittest.mock.Mock()
+        app.poll.return_value = 0
+        parent = os.getpid()
+        with patch.object(self.capture.Path, "read_text", return_value="123"):
+            with patch.object(self.capture, "_process", return_value=(parent, 1)):
+                with patch.object(self.capture.os, "kill") as killed:
+                    with patch.object(self.capture.os, "killpg") as group:
+                        with patch.object(self.capture.os, "waitpid", side_effect=[(123, 9), ChildProcessError]):
+                            self.assertTrue(self.capture.abort_owned(app))
+        killed.assert_called_once_with(123, self.capture.signal.SIGKILL)
+        group.assert_not_called()  # A reaped root PID/group could have been reused.
+
+    def test_uncommitted_seed_change_refuses_generator_provenance(self):
+        generator = self.root / "generator"
+        generator.mkdir()
+        def git(*args):
+            return subprocess.run(["git", "-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid",
+                                   "-c", "commit.gpgsign=false", "-c", "core.fsmonitor=false", *args],
+                                  cwd=generator, check=True, capture_output=True)
+        git("init", "-q")
+        (generator / "seed.rs").write_text("synthetic seed\n")
+        git("add", "seed.rs")
+        git("commit", "-qm", "synthetic generator")
+        self.assertEqual(len(self.capture.generator_revision(generator)), 40)
+        (generator / "seed.rs").write_text("changed seed\n")
+        with self.assertRaisesRegex(RuntimeError, "clean committed generator"):
+            self.capture.generator_revision(generator)
+
 
 
 if __name__ == "__main__":
