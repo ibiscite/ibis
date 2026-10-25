@@ -30,9 +30,11 @@
     "allow-set-login-item",
     "allow-hide-picker",
     "allow-set-pinned",
+    "allow-fit-picker",
     "allow-quit",
     "allow-shortcut-status",
     "allow-show-copied-notice",
-    "allow-native-appearance"
+    "allow-native-appearance",
+    "allow-row-context"
   ]
 }

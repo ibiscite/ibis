@@ -19,24 +19,43 @@ pub(super) fn accent() -> Option<[f64; 3]> {
 
 pub(super) fn material() -> Appearance {
     #[cfg(target_os = "macos")]
-    return Appearance::Vibrancy;
+    return Appearance::LiquidGlass;
     #[cfg(target_os = "windows")]
-    return Appearance::Mica;
+    {
+        let version = windows::System::Profile::AnalyticsInfo::VersionInfo()
+            .and_then(|info| info.DeviceFamilyVersion())
+            .ok();
+        super::policy::windows_material(version.as_ref().map(|v| v.to_string()).as_deref())
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     Appearance::Opaque
 }
 
-pub(super) fn apply(window: &WebviewWindow) -> Result<(), ()> {
+pub(super) fn apply(window: &WebviewWindow) -> Result<Appearance, ()> {
     #[cfg(target_os = "macos")]
-    return window_vibrancy::apply_vibrancy(
-        window,
-        window_vibrancy::NSVisualEffectMaterial::Popover,
-        Some(window_vibrancy::NSVisualEffectState::Active),
-        None,
-    )
-    .map_err(|_| ());
+    return super::policy::macos_material(
+        window_vibrancy::apply_liquid_glass(
+            window,
+            window_vibrancy::LiquidGlassOptions::default().radius(crate::native_corners::CORNER_RADIUS_POINTS),
+        )
+        .map_err(|error| match error {
+            window_vibrancy::Error::UnsupportedPlatformVersion(_) => super::policy::GlassFailure::Unsupported,
+            _ => super::policy::GlassFailure::Failed,
+        }),
+        || {
+            window_vibrancy::apply_vibrancy(
+                window,
+                window_vibrancy::NSVisualEffectMaterial::Popover,
+                Some(window_vibrancy::NSVisualEffectState::Active),
+                None,
+            )
+            .map_err(|_| ())
+        },
+    );
     #[cfg(target_os = "windows")]
-    return window_vibrancy::apply_mica(window, None).map_err(|_| ());
+    return window_vibrancy::apply_acrylic(window, None)
+        .map(|()| Appearance::Acrylic)
+        .map_err(|_| ());
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = window;
@@ -44,14 +63,20 @@ pub(super) fn apply(window: &WebviewWindow) -> Result<(), ()> {
     }
 }
 
-pub(super) fn clear(window: &WebviewWindow) -> Result<(), ()> {
+pub(super) fn clear(window: &WebviewWindow, applied: Appearance) -> Result<(), ()> {
     #[cfg(target_os = "macos")]
-    return window_vibrancy::clear_vibrancy(window).map(|_| ()).map_err(|_| ());
+    return match applied {
+        Appearance::LiquidGlass => window_vibrancy::clear_liquid_glass(window).map(|_| ()).map_err(|_| ()),
+        _ => window_vibrancy::clear_vibrancy(window).map(|_| ()).map_err(|_| ()),
+    };
     #[cfg(target_os = "windows")]
-    return window_vibrancy::clear_mica(window).map_err(|_| ());
+    {
+        let _ = applied;
+        window_vibrancy::clear_acrylic(window).map_err(|_| ())
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        let _ = window;
+        let _ = (window, applied);
         Ok(())
     }
 }
@@ -80,7 +105,10 @@ pub(super) fn preferences(app: &AppHandle) -> Option<Preferences> {
         };
         Some(Preferences {
             high_contrast: contrast.HighContrast().ok()?,
-            reduce_transparency: !effects.AdvancedEffectsEnabled().ok()?,
+            reduce_transparency: !effects.AdvancedEffectsEnabled().ok()?
+                || !super::policy::energy_saver_allows_effects(
+                    windows::System::Power::PowerManager::EnergySaverStatus().ok()?.0,
+                )?,
         })
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -160,6 +188,7 @@ struct WindowsPreferences {
     effects: windows::UI::ViewManagement::UISettings,
     contrast_token: i64,
     effects_token: i64,
+    energy_token: Option<i64>,
 }
 
 #[cfg(target_os = "windows")]
@@ -167,7 +196,11 @@ impl Drop for WindowsPreferences {
     fn drop(&mut self) {
         let contrast = self.contrast.RemoveHighContrastChanged(self.contrast_token);
         let effects = self.effects.RemoveAdvancedEffectsEnabledChanged(self.effects_token);
-        if contrast.is_err() || effects.is_err() {
+        let energy = self
+            .energy_token
+            .map(windows::System::Power::PowerManager::RemoveEnergySaverStatusChanged)
+            .transpose();
+        if contrast.is_err() || effects.is_err() || energy.is_err() {
             super::warning();
         }
     }
@@ -176,7 +209,8 @@ impl Drop for WindowsPreferences {
 #[cfg(target_os = "windows")]
 fn windows_watch(app: &AppHandle) -> Option<WindowsPreferences> {
     use windows::{
-        Foundation::TypedEventHandler,
+        Foundation::{EventHandler, TypedEventHandler},
+        System::Power::PowerManager,
         UI::ViewManagement::{AccessibilitySettings, UISettings},
     };
     let setup = || -> windows::core::Result<WindowsPreferences> {
@@ -204,12 +238,23 @@ fn windows_watch(app: &AppHandle) -> Option<WindowsPreferences> {
                 return Err(error);
             }
         };
-        Ok(WindowsPreferences {
+        // Own both existing registrations before adding the static observer:
+        // any later setup error drops them, and no theme refresh installs more.
+        let mut observers = WindowsPreferences {
             contrast,
             effects,
             contrast_token,
             effects_token,
-        })
+            energy_token: None,
+        };
+        let handle = app.clone();
+        observers.energy_token = Some(PowerManager::EnergySaverStatusChanged(&EventHandler::<
+            windows::core::IInspectable,
+        >::new(move |_, _| {
+            super::schedule(&handle);
+            Ok(())
+        }))?);
+        Ok(observers)
     };
     match setup() {
         Ok(observers) => Some(observers),

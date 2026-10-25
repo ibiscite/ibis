@@ -9,8 +9,12 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod input;
+pub use input::{InputError, MAX_INPUT_BYTES, MAX_INPUT_ITEMS, read_items};
+
 /// Kind of locator ("p. 12", "chap. 3").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum LocatorLabel {
     Page,
@@ -45,6 +49,8 @@ impl LocatorLabel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(deny_unknown_fields)]
 pub struct Locator {
     pub label: LocatorLabel,
     /// As typed by the user, e.g. "12", "24-26", "3, 7".
@@ -53,6 +59,7 @@ pub struct Locator {
 
 /// One cited reference inside a citation.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CiteItem {
     pub key: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,6 +103,15 @@ pub struct Rendered {
     pub warnings: Vec<String>,
 }
 
+/// Transient preview ownership, in input order. Literal shared syntax has no
+/// owner; indices identify choices even when their citation keys repeat.
+/// This metadata is not part of the serialized citation or clipboard output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CitationSegment {
+    pub item: Option<usize>,
+    pub text: String,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CiteError {
     #[error("no references selected")]
@@ -104,12 +120,24 @@ pub enum CiteError {
     InvalidKey(String),
     #[error("text contains a control character")]
     ControlCharacter,
+    #[error("a locator must contain non-whitespace text")]
+    EmptyLocator,
     #[error("citation key `{0}` contains characters that cannot be used in {1}; rename the key in the library")]
     KeyNotValidFor(String, &'static str),
 }
 
 /// Render a citation in the requested key syntax.
 pub fn render(format: KeyFormat, items: &[CiteItem]) -> Result<Rendered, CiteError> {
+    render_with_segments(format, items).map(|(rendered, _)| rendered)
+}
+
+/// Render once, retaining the per-reference pieces made by the syntax itself.
+/// Concatenating their text exactly reproduces `Rendered::text`; callers must
+/// never add markers to input keys or infer ownership from the resulting text.
+pub fn render_with_segments(
+    format: KeyFormat,
+    items: &[CiteItem],
+) -> Result<(Rendered, Vec<CitationSegment>), CiteError> {
     if items.is_empty() {
         return Err(CiteError::Empty);
     }
@@ -119,6 +147,13 @@ pub fn render(format: KeyFormat, items: &[CiteItem]) -> Result<Rendered, CiteErr
     );
     for item in items {
         validate_key(&item.key)?;
+        if item
+            .locator
+            .as_ref()
+            .is_some_and(|locator| locator.value.trim().is_empty())
+        {
+            return Err(CiteError::EmptyLocator);
+        }
         // These characters change meaning inside a LaTeX argument (comment,
         // parameter, command, active character) and cannot be escaped in a key.
         if latex && item.key.contains(['%', '#', '\\', '~', '^', '$', '&']) {
@@ -134,7 +169,7 @@ pub fn render(format: KeyFormat, items: &[CiteItem]) -> Result<Rendered, CiteErr
         }
     }
     let mut warnings = Vec::new();
-    let text = match format {
+    let segments = match format {
         KeyFormat::Pandoc => pandoc(items),
         KeyFormat::Autocite => biblatex("autocite", items, &mut warnings),
         KeyFormat::Parencite => biblatex("parencite", items, &mut warnings),
@@ -148,10 +183,45 @@ pub fn render(format: KeyFormat, items: &[CiteItem]) -> Result<Rendered, CiteErr
             {
                 warnings.push("bare keys cannot carry page numbers or notes; they were left out".to_string());
             }
-            items.iter().map(|i| i.key.as_str()).collect::<Vec<_>>().join(", ")
+            segments("", items.iter().map(|i| i.key.clone()), ", ", "")
         }
     };
-    Ok(Rendered { text, warnings })
+    let text = segments.iter().map(|part| part.text.as_str()).collect();
+    Ok((Rendered { text, warnings }, segments))
+}
+
+fn segments(
+    prefix: &str,
+    parts: impl IntoIterator<Item = String>,
+    separator: &str,
+    suffix: &str,
+) -> Vec<CitationSegment> {
+    let mut out = Vec::new();
+    if !prefix.is_empty() {
+        out.push(CitationSegment {
+            item: None,
+            text: prefix.into(),
+        });
+    }
+    for (index, text) in parts.into_iter().enumerate() {
+        if index > 0 && !separator.is_empty() {
+            out.push(CitationSegment {
+                item: None,
+                text: separator.into(),
+            });
+        }
+        out.push(CitationSegment {
+            item: Some(index),
+            text,
+        });
+    }
+    if !suffix.is_empty() {
+        out.push(CitationSegment {
+            item: None,
+            text: suffix.into(),
+        });
+    }
+    out
 }
 
 fn validate_key(key: &str) -> Result<(), CiteError> {
@@ -194,7 +264,7 @@ fn normalize_dashes(value: &str, dash: &str) -> String {
 
 // ---------- Pandoc ----------
 
-fn pandoc(items: &[CiteItem]) -> String {
+fn pandoc(items: &[CiteItem]) -> Vec<CitationSegment> {
     let parts: Vec<String> = items
         .iter()
         .map(|item| {
@@ -219,7 +289,7 @@ fn pandoc(items: &[CiteItem]) -> String {
             s
         })
         .collect();
-    format!("[{}]", parts.join("; "))
+    segments("[", parts, "; ", "]")
 }
 
 /// Pandoc accepts simple keys bare; anything else is wrapped as `@{key}`.
@@ -304,7 +374,7 @@ fn biblatex_notes(item: &CiteItem) -> String {
     }
 }
 
-fn biblatex(command: &str, items: &[CiteItem], warnings: &mut Vec<String>) -> String {
+fn biblatex(command: &str, items: &[CiteItem], warnings: &mut Vec<String>) -> Vec<CitationSegment> {
     if let [item] = items {
         // BibLaTeX's starred \autocite* and \parencite* omit the author;
         // \textcite has no such form because the author is the point of it.
@@ -316,21 +386,26 @@ fn biblatex(command: &str, items: &[CiteItem], warnings: &mut Vec<String>) -> St
             (true, _) => "*",
             (false, _) => "",
         };
-        return format!("\\{command}{star}{}{{{}}}", biblatex_notes(item), item.key);
+        return segments(
+            "",
+            [format!("\\{command}{star}{}{{{}}}", biblatex_notes(item), item.key)],
+            "",
+            "",
+        );
     }
     if items.iter().any(|i| i.suppress_author) {
         warnings.push(format!(
             "\\{command}s cannot hide the author of one reference; author shown"
         ));
     }
-    let body: String = items
+    let parts = items
         .iter()
         .map(|i| format!("{}{{{}}}", biblatex_notes(i), i.key))
-        .collect();
-    format!("\\{command}s{body}")
+        .collect::<Vec<_>>();
+    segments(&format!("\\{command}s"), parts, "", "")
 }
 
-fn plain_cite(items: &[CiteItem], warnings: &mut Vec<String>) -> String {
+fn plain_cite(items: &[CiteItem], warnings: &mut Vec<String>) -> Vec<CitationSegment> {
     if items.iter().any(|i| i.suppress_author) {
         warnings.push("plain \\cite has no author-suppressing form; author shown".to_string());
     }
@@ -338,13 +413,12 @@ fn plain_cite(items: &[CiteItem], warnings: &mut Vec<String>) -> String {
         .iter()
         .any(|i| i.locator.is_some() || i.prefix.is_some() || i.suffix.is_some());
     if !annotated {
-        let keys: Vec<&str> = items.iter().map(|i| i.key.as_str()).collect();
-        return format!("\\cite{{{}}}", keys.join(","));
+        return segments("\\cite{", items.iter().map(|i| i.key.clone()), ",", "}");
     }
     if items.len() > 1 {
         warnings.push("plain \\cite holds one note per command; one \\cite per reference was used".to_string());
     }
-    items
+    let parts = items
         .iter()
         .map(|item| {
             let locator = item.locator.as_ref().map(latex_locator);
@@ -363,17 +437,17 @@ fn plain_cite(items: &[CiteItem], warnings: &mut Vec<String>) -> String {
                 format!("\\cite[{note}]{{{}}}", item.key)
             }
         })
-        .collect::<Vec<_>>()
-        .join(", ")
+        .collect::<Vec<_>>();
+    segments("", parts, ", ", "")
 }
 
 // ---------- Typst ----------
 
-fn typst(items: &[CiteItem], warnings: &mut Vec<String>) -> String {
+fn typst(items: &[CiteItem], warnings: &mut Vec<String>) -> Vec<CitationSegment> {
     if items.iter().any(|i| i.prefix.is_some()) {
         warnings.push("Typst citations have no prefix; prefix placed before the citation as plain text".to_string());
     }
-    items
+    let parts = items
         .iter()
         .map(|item| {
             let supplement = [
@@ -412,8 +486,8 @@ fn typst(items: &[CiteItem], warnings: &mut Vec<String>) -> String {
             };
             format!("{prefix}{body}")
         })
-        .collect::<Vec<_>>()
-        .join(" ")
+        .collect::<Vec<_>>();
+    segments("", parts, " ", "")
 }
 
 /// Keys usable directly as `@key` in Typst markup.

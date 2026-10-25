@@ -10,6 +10,13 @@
       --selected-background: var(--accent); --selected-text: var(--text-on-accent);
       --focus-ring-color: var(--accent-text);
     }
+    /* Selection keeps WebKit's paired white text: the contrast pick above is
+       black on the default blues, which native lists never show. */
+    @supports (color: -apple-system-alternate-selected-text) {
+      :root[data-native-accent="true"][data-platform="macos"]:not([data-gallery-theme]):not(.notice-window) {
+        --selected-text: -apple-system-alternate-selected-text;
+      }
+    }
     @media (hover: hover) {
       :root[data-native-accent="true"][data-platform="macos"]:not([data-gallery-theme]):not(.notice-window) .ui-button[data-variant="primary"][data-hovered]:not([data-disabled], [aria-disabled="true"]) {
         color: light-dark(var(--native-accent-on-hover-light), var(--native-accent-on-hover-dark));
@@ -17,10 +24,6 @@
     }
     :root[data-native-accent="true"][data-platform="macos"]:not([data-gallery-theme]):not(.notice-window) .ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) {
       color: light-dark(var(--native-accent-on-pressed-light), var(--native-accent-on-pressed-dark));
-    }
-    /* Separate the citation tile from red/orange selected-row accents (D9). */
-    :root[data-native-accent="true"][data-platform="macos"]:not([data-gallery-theme]):not(.notice-window) [role="option"][data-active][data-citation-selected] .result-tile {
-      background: var(--text-on-accent); color: var(--citation-tile);
     }
   }
 }

@@ -1,4 +1,4 @@
-import { keyText } from "./messages";
+import type { keyText } from "./messages";
 
 export type KeyRegion = keyof typeof keyText.regions;
 export type KeyAction = keyof typeof keyText.actions;
@@ -34,15 +34,25 @@ const NAMED: Record<string, [mac: string, other: string]> = {
   home: ["Home", "Home"], end: ["End", "End"], tab: ["Tab", "Tab"], space: ["Space", "Space"],
 };
 
+/** Display order only; accelerator matching retains the original binding. */
+function joinKeyLabels(keys: string[], mac: boolean): string {
+  if (!mac) return keys.join("+");
+  const order = (key: string) => {
+    const index = key.length === 1 ? "⌃⌥⇧⌘".indexOf(key) : -1;
+    return index < 0 ? 4 : index;
+  };
+  return keys.sort((a, b) => order(a) - order(b)).join("");
+}
+
 /** A key label in the platform's own words: ⌘ ⌥ ⇧ on macOS, Ctrl Alt Shift elsewhere. */
 export function keyLabel(accelerator: string, mac: boolean): string {
   // "+" separates keys, so a lone "+" or a trailing one is the key itself.
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
-  return parts.map((part) => {
+  return joinKeyLabels(parts.map((part) => {
     const named = NAMED[part.toLowerCase()];
     if (named) return mac ? named[0] : named[1];
     return part.length === 1 ? part.toUpperCase() : shortcutLabel(part, mac);
-  }).join(mac ? "" : "+");
+  }), mac);
 }
 
 /** The aria-keyshortcuts value for an accelerator. */
@@ -69,7 +79,7 @@ export function shortcutLabel(shortcut: string, mac: boolean): string {
     const plain = /^(?:Key|Digit)(.)$/i.exec(key)?.[1] ?? key;
     return plain.length === 1 ? plain.toUpperCase() : plain;
   });
-  return keys.join(mac ? "" : "+");
+  return joinKeyLabels(keys, mac);
 }
 
 /** The parts of a key press a shortcut depends on. */
@@ -81,10 +91,15 @@ export function commandKey(e: KeyPress, mac: boolean): boolean {
   return mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
 }
 
+/** ASCII punctuation that non-Latin layouts type on letter keys: Greek ; and
+ * Hebrew / on Q, Hebrew ' on W. Dvorak types ' on Q too, so only these pairs count. */
+const NON_LATIN_PUNCTUATION: Record<string, string> = { KeyQ: ";/", KeyW: "'" };
+
 /** Whether a key press is an accelerator from the key table, such as `CmdOrCtrl+Q`.
- * Letters match in any case (Caps Lock). When the key types anything but a
- * Latin letter (Cyrillic й, Greek ;, Hebrew /), the physical key decides
- * instead; a Latin layout matches what it types, so AZERTY's Q key is A. */
+ * Letters match in any case (Caps Lock). When a letter key types anything
+ * non-ASCII (Cyrillic й, Hindi ौ, Arabic ؛) or a non-Latin layout's ASCII
+ * punctuation (Greek ;, Hebrew /), the physical key decides instead; a Latin
+ * layout matches what it types, so AZERTY's Q key is A and Dvorak's Q key is '. */
 export function matchesAccelerator(e: KeyPress, accelerator: string, mac: boolean): boolean {
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
   const key = parts[parts.length - 1] ?? "";
@@ -92,6 +107,8 @@ export function matchesAccelerator(e: KeyPress, accelerator: string, mac: boolea
   const command = modifiers.has("cmdorctrl") ? commandKey(e, mac) : !e.ctrlKey && !e.metaKey;
   if (!command || e.altKey !== modifiers.has("alt") || e.shiftKey !== modifiers.has("shift")) return false;
   if (e.key.toLowerCase() === key.toLowerCase()) return true;
-  const physical = /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : /^\d$/.test(key) ? `Digit${key}` : null;
-  return physical !== null && e.code === physical && e.key.length === 1 && !/^[a-z]$/i.test(e.key);
+  if (e.key.length !== 1 || /^[a-z]$/i.test(e.key)) return false;
+  if (/^\d$/.test(key)) return e.code === `Digit${key}`;
+  if (!/^[a-z]$/i.test(key) || e.code !== `Key${key.toUpperCase()}`) return false;
+  return /[^\x00-\x7f]/.test(e.key) || (NON_LATIN_PUNCTUATION[e.code] ?? "").includes(e.key);
 }

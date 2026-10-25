@@ -147,6 +147,9 @@ pub struct Settings {
     /// Whether to show the citation output. `None` means shown (ADR 0020).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_paste_preview: Option<bool>,
+    /// The Ibis mark in place of the search glyph. `None` means the magnifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_mark: Option<bool>,
     /// Fields this build does not know, written by another version of Ibis
     /// or by hand. Kept as they are and written back on save.
     #[serde(flatten)]
@@ -165,6 +168,7 @@ impl Default for Settings {
             density: None,
             larger_text: None,
             show_paste_preview: None,
+            search_mark: None,
             unknown: serde_json::Map::new(),
         }
     }
@@ -479,13 +483,20 @@ mod tests {
             assert_eq!(parse(text).map(|settings| settings.show_paste_preview).ok(), Some(None));
         }
         let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
-        for field in ["citation_style", "density", "larger_text", "show_paste_preview"] {
+        for field in [
+            "citation_style",
+            "density",
+            "larger_text",
+            "show_paste_preview",
+            "search_mark",
+        ] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(
-            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false}"#,
+            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false, "search_mark": true}"#,
         )
         .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(settings.search_mark, Some(true));
         assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
         assert_eq!(settings.density, Some(Density::Compact));
         assert_eq!(settings.larger_text, Some(true));

@@ -45,7 +45,7 @@ test("an accelerator matches whatever the case, with Cmd on macOS and Ctrl elsew
   expect(matchesAccelerator(press("w", { ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(false);
 });
 
-test("an accelerator falls back to the physical key only when the layout types a non-Latin letter", () => {
+test("an accelerator falls back to the physical key only for non-Latin letters and their layout punctuation", () => {
   // Russian and Greek layouts type й and ; on the Q key.
   expect(matchesAccelerator(press("й", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
   expect(matchesAccelerator(press("Й", { code: "KeyQ", metaKey: true }), "CmdOrCtrl+Q", true)).toBe(true);
@@ -63,6 +63,16 @@ test("an accelerator falls back to the physical key only when the layout types a
   expect(matchesAccelerator(press("q", { code: "KeyA", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
   expect(matchesAccelerator(press("q", { code: "KeyX", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
   expect(matchesAccelerator(press("x", { code: "KeyB", ctrlKey: true }), "CmdOrCtrl+B", false)).toBe(false);
+  // Dvorak's Q key types ', so Ctrl+' is not Quit (#742); Hebrew types ' on W.
+  expect(matchesAccelerator(press("'", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(false);
+  expect(matchesAccelerator(press("'", { code: "KeyQ", metaKey: true }), "CmdOrCtrl+Q", true)).toBe(false);
+  expect(matchesAccelerator(press(",", { code: "KeyW", ctrlKey: true }), "CmdOrCtrl+W", false)).toBe(false);
+  expect(matchesAccelerator(press("'", { code: "KeyW", ctrlKey: true }), "CmdOrCtrl+W", false)).toBe(true);
+  // Vowel signs and non-ASCII punctuation on letter keys count too: Hindi ौ on Q, Arabic ؛ on Shift+P.
+  expect(matchesAccelerator(press("ौ", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
+  expect(matchesAccelerator(press("؛", { code: "KeyP", ctrlKey: true, shiftKey: true }), "CmdOrCtrl+Shift+P", false)).toBe(true);
+  // Digits still follow the physical key, as on AZERTY's digit row.
+  expect(matchesAccelerator(press("&", { code: "Digit1", ctrlKey: true }), "CmdOrCtrl+1", false)).toBe(true);
 });
 
 test("every letter accelerator in the table can be matched", () => {
@@ -80,7 +90,7 @@ test("keep-open uses its own shifted command on both platform key models", () =>
   const keys = keysFor("pin");
   expect(keys).toBe("CmdOrCtrl+Shift+P");
   expect(KEY_TABLE.filter((binding) => binding.keys.includes(keys))).toHaveLength(1);
-  expect(keyLabel(keys, true)).toBe("⌘⇧P");
+  expect(keyLabel(keys, true)).toBe("⇧⌘P");
   expect(keyLabel(keys, false)).toBe("Ctrl+Shift+P");
   for (const mac of [false, true]) {
     const modifier = mac ? { metaKey: true } : { ctrlKey: true };
@@ -94,4 +104,12 @@ test("keep-open uses its own shifted command on both platform key models", () =>
 test("shortcut labels read settings in any case and alias", () => {
   expect(shortcutLabel("Control+Command+R", true)).toBe("⌃⌘R");
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
+});
+
+test("macOS displays modifiers in native order without changing other platforms", () => {
+  expect(keyLabel("CmdOrCtrl+Shift+Alt+C", true)).toBe("⌥⇧⌘C");
+  expect(shortcutLabel("super+shift+ctrl+option+KeyC", true)).toBe("⌃⌥⇧⌘C");
+  expect(shortcutLabel("super+shift+ctrl+option+KeyC", false)).toBe("Super+Shift+Ctrl+Alt+C");
+  expect(keyLabel("CmdOrCtrl++", true)).toBe("⌘+");
+  expect(ariaKeys("CmdOrCtrl+Shift+P", true)).toBe("Meta+Shift+P");
 });

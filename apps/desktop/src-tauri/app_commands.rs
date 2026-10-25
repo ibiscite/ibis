@@ -20,9 +20,11 @@ pub const APP_COMMANDS: &[&str] = &[
     "set_login_item",
     "hide_picker",
     "set_pinned",
+    "fit_picker",
     "quit",
     "shortcut_status",
     "show_copied_notice",
     "copied_notice",
     "native_appearance",
+    "row_context",
 ];

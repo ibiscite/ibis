@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Measures the picker in the evidence gallery against the geometry in
-// docs/design-geometry.json (the numbers in docs/design.md): row height per
+// apps/desktop/src/tokens.css, and docs/design-geometry.json for the numbers
+// without a token (together, the numbers in docs/design.md): row height per
 // density, footer, search band, search glyph over the tile column, typed text
 // at the row title's x, and the corner chain, for each look at normal and
 // Larger text.
@@ -21,22 +22,61 @@ import { PLATFORM_NAMES, Unavailable, VIEWPORT, openGallery } from "./gallery-co
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const SPEC_FILE = path.join(repo, "docs", "design-geometry.json");
+export const TOKENS_FILE = path.join(repo, "apps", "desktop", "src", "tokens.css");
 // The gallery state that shows each density with rows on screen.
 const DENSITY_STATES = { compact: "compact", comfortable: "many-results", spacious: "spacious" };
 const LARGER_TEXT = 1.15;
 // States whose regions must stay separate: chosen references, a preview, none.
 const LAYOUT_STATES = ["tray-preview", "tray-20", "tray", "compact", "many-results"];
 
+/** A token's value in CSS px for one look: its top-level `:root[data-platform]`
+ * rule over `:root`, the last declaration winning. Follows var() and rem (16 px);
+ * anything else (calc, max, rules inside @media or @supports) reads as NaN. */
+export function tokenPx(css, name, platform) {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const own = `:root[data-platform="${platform}"]`;
+  let value, depth = 0, start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{" && depth++ === 0) {
+      const selectors = text.slice(start, i).split(",").map((selector) => selector.trim());
+      const body = text.slice(i + 1, text.indexOf("}", i));
+      if (body.includes("{") || !(selectors.includes(":root") || selectors.includes(own))) continue;
+      for (const [, key, raw] of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+)/g))
+        if (key === name && (selectors.includes(own) || !value?.own)) value = { raw: raw.trim(), own: selectors.includes(own) };
+    } else if (text[i] === "}" && --depth === 0) start = i + 1;
+  }
+  const alias = value?.raw.match(/^var\((--[\w-]+)\)$/);
+  if (alias) return tokenPx(css, alias[1], platform);
+  const number = value?.raw.match(/^(\d*\.?\d+)(rem|px)$/);
+  return number ? Number(number[1]) * (number[2] === "rem" ? 16 : 1) : NaN;
+}
+
+/** The geometry spec: sizes from tokens.css where a token holds them, the rest from docs/design-geometry.json. */
+export function loadSpec(css = readFileSync(TOKENS_FILE, "utf8"), json = JSON.parse(readFileSync(SPEC_FILE, "utf8"))) {
+  const px = (name, platform) => tokenPx(css, name, platform);
+  const spec = { ...json, rowHeight: {}, footer: px("--footer-height"), headerDivider: px("--border-width"), rowPad: px("--row-pad"),
+    rowGap: px("--row-gap"), tile: px("--tile-size"), icon: px("--icon-glyph-size"), platforms: {} };
+  for (const density of ["compact", "comfortable", "spacious"]) spec.rowHeight[density] = px(`--row-${density}`);
+  for (const [platform, look] of Object.entries(json.platforms)) {
+    const inset = px("--inset", platform), headerControl = px("--field-h", platform);
+    // --search-bar-height is calc(var(--field-h) + 2 * var(--inset)).
+    spec.platforms[platform] = { ...look, inset, rWin: px("--r-win", platform), rMin: px("--r-min", platform),
+      controlRadius: px("--r-control", platform), headerControl, searchBand: headerControl + 2 * inset };
+  }
+  return spec;
+}
+
 /** The per-platform values docs/design.md derives from its tokens. */
 export function derive(spec, platform, scale = 1) {
   const look = spec.platforms[platform];
-  const rRow = Math.max(look.rMin, look.rWin - look.inset * scale);
+  const rRow = Math.max(look.rMin, look.rWin - spec.shapeInsets.window);
   return {
     searchBand: look.searchBand * scale,
+    tileCentre: (look.inset + spec.rowPad + spec.tile / 2) * scale,
     textX: (look.inset + spec.rowPad + spec.tile + spec.rowGap) * scale,
     rWin: look.rWin,
     rRow,
-    rTile: Math.max(look.rMin, rRow - spec.rowPad * scale),
+    rTile: Math.max(look.rMin, rRow - spec.shapeInsets.row),
   };
 }
 
@@ -45,10 +85,17 @@ export function compare(spec, platform, text, density, measured) {
   const scale = text === "large" ? LARGER_TEXT : 1;
   const expected = derive(spec, platform, scale);
   const rows = [];
-  const check = (name, want, got) => rows.push({ name, platform, text, density, expected: want, measured: got,
+  const check = (name, want, got) => rows.push({ name: measured.direction === "rtl" ? `${name} (RTL)` : name, platform, text, density, expected: want, measured: got,
     pass: Number.isFinite(got) && Math.abs(got - want) <= spec.tolerance });
-  // Larger text scales rem sizes and insets; window corners and radius floors stay fixed.
+  // Larger text scales layout; all C15 radii remain fixed CSS pixels.
   check(`row height (${density})`, spec.rowHeight[density] * scale, measured.rowHeight);
+  // Coordinates are logical-start distances from the picker, not physical left edges.
+  for (const [name, value] of [["tile centre x", "tileCentre"], ["search glyph centre x", "glyphCentre"], ["status dot centre x", "statusDotCentre"]])
+    check(name, expected.tileCentre, measured[value]);
+  for (const [name, value] of [["row title x", "titleX"], ["typed text x", "textX"], ["status text x", "statusTextX"], ["shelf citation x", "shelfTextX"]])
+    check(name, expected.textX, measured[value]);
+  check("search glyph centre x = tile centre x", measured.tileCentre, measured.glyphCentre);
+  check("typed text x = row title x", measured.titleX, measured.textX);
   if (density !== "comfortable") return rows;
   const look = spec.platforms[platform];
   check("footer height", spec.footer * scale + look.footerDivider, measured.footer);
@@ -59,13 +106,11 @@ export function compare(spec, platform, text, density, measured) {
   check("footer action height", spec.footerAction * scale, measured.footerAction);
   check("footer divider", look.footerDivider, measured.footerDivider);
   for (const name of ["pinTopGap", "pinBottomGap", "pinEndGap", "footerTopGap", "footerBottomGap"]) check(name, look.inset * scale, measured[name]);
-  check("search glyph centre x = tile centre x", measured.tileCentre, measured.glyphCentre);
-  check("typed text x = row title x", measured.titleX, measured.textX);
-  check("typed text x", expected.textX, measured.textX);
   check("window radius", expected.rWin, measured.rWin);
   check("row radius", expected.rRow, measured.rRow);
   check("search field radius", expected.rRow, measured.rField);
   check("tile radius", expected.rTile, measured.rTile);
+  for (const name of ["rControl", "rPopup"]) check(name === "rControl" ? "control radius" : "popup radius", look.controlRadius, measured[name]);
   return rows;
 }
 
@@ -123,9 +168,13 @@ function measureLayout() {
 }
 
 /** Runs in the page: boxes and radii of the first row, the search band and the footer. */
-function measure() {
+export function measure() {
   const box = (selector) => document.querySelector(selector)?.getBoundingClientRect();
   const px = (element, property) => element ? parseFloat(getComputedStyle(element)[property]) : NaN;
+  const picker = document.querySelector("main").getBoundingClientRect();
+  const rtl = getComputedStyle(document.querySelector("main")).direction === "rtl";
+  const start = b => b ? (rtl ? picker.right - b.right : b.left - picker.left) : NaN;
+  const centre = b => b ? start(b) + b.width / 2 : NaN;
   const row = document.querySelector('#results [role="option"]');
   const tile = row?.querySelector(".result-tile")?.getBoundingClientRect();
   const glyph = box(".search-bar > svg");
@@ -149,14 +198,18 @@ function measure() {
     pinEndGap: pin ? (document.documentElement.dir === "rtl" ? pin.left - headerBox.left : headerBox.right - pin.right) : NaN,
     footerTopGap: action ? action.top - footerBox.top - footerDivider : NaN,
     footerBottomGap: action ? footerBox.bottom - action.bottom : NaN,
-    glyphCentre: glyph ? glyph.left + glyph.width / 2 : NaN,
-    tileCentre: tile ? tile.left + tile.width / 2 : NaN,
-    textX: inputBox ? inputBox.left + px(input, "borderLeftWidth") + px(input, "paddingLeft") : NaN,
-    titleX: row?.querySelector("strong")?.getBoundingClientRect().left ?? NaN,
+    direction: rtl ? "rtl" : "ltr",
+    glyphCentre: centre(glyph), tileCentre: centre(tile),
+    textX: start(inputBox) + px(input, "borderInlineStartWidth") + px(input, "paddingInlineStart"),
+    titleX: start(row?.querySelector("strong")?.getBoundingClientRect()),
+    statusDotCentre: centre(box(".status-dot")), statusTextX: start(box(".library-words")),
+    shelfTextX: start(box(".shelf-output .preview-text, .shelf-output > p")),
     rWin,
     rRow: px(row, "borderTopLeftRadius"),
     rField: px(input, "borderTopLeftRadius"),
     rTile: px(row?.querySelector(".result-tile"), "borderTopLeftRadius"),
+    rControl: px(document.querySelector(".pin-button"), "borderTopLeftRadius"),
+    rPopup: px(document.querySelector(".toolbar-menu-button"), "borderTopLeftRadius"),
   };
 }
 
@@ -182,7 +235,7 @@ function parse(argv) {
 
 async function main() {
   const options = parse(process.argv.slice(2));
-  const spec = JSON.parse(readFileSync(SPEC_FILE, "utf8"));
+  const spec = loadSpec();
   const { browser, server } = await openGallery(options);
   const base = `http://127.0.0.1:${server.address().port}`;
   const rows = [];
@@ -190,7 +243,7 @@ async function main() {
   try {
     const context = await browser.newContext({ viewport: VIEWPORT, colorScheme: "light", reducedMotion: "reduce" });
     const jobs = Object.keys(spec.platforms).flatMap((platform) => ["normal", "large"].flatMap((text) => [
-      ...Object.entries(DENSITY_STATES).map(([density, state]) => ({ platform, text, density, state })),
+      ...Object.entries(DENSITY_STATES).flatMap(([density, state]) => ["ltr", "rtl"].map(direction => ({ platform, text, density, state, direction }))),
       ...LAYOUT_STATES.map((state) => ({ platform, text, state, layout: true }))]));
     let next = 0;
     const worker = async () => {
@@ -205,6 +258,7 @@ async function main() {
           const query = new URLSearchParams({ state: job.state, platform: job.platform, theme: "light", text: job.text });
           await page.goto(`${base}/gallery.html?${query}`);
           await page.waitForFunction((id) => document.documentElement.dataset.galleryRendered === id, job.state, { timeout: 60_000 });
+          if (job.direction) await page.evaluate(direction => { document.documentElement.dir = direction; }, job.direction);
           rows.push(...(job.layout ? layout(job.platform, job.text, job.state, await page.evaluate(measureLayout))
             : compare(spec, job.platform, job.text, job.density, await page.evaluate(measure))));
           if (job.layout) {

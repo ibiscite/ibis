@@ -8,7 +8,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
 import { App, type PickerApi } from "./App";
 import { SHELF_CHIPS } from "./features/picker/CitationShelf";
-import { libraryMessages, pickerText, setupText } from "./messages";
+import { libraryMessages, pickerText } from "./messages";
 import { hasRetainedFreshnessProblem } from "./LibraryStatusLine";
 import { setPlatform } from "./nativeAppearance";
 import "./styles.css";
@@ -26,9 +26,13 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
   const rows = [...root.querySelectorAll('#results [role="option"]')];
   const results = state.results ?? [];
   const label = libraryMessages.summary(library);
-  const alerts = [library.settings_notice, library.error && !hasRetainedFreshnessProblem(library) ? libraryMessages.openError(library.name, library.error, library.zotero) : null]
+  // A library that could not be opened at all shows a recovery choice screen, which announces itself.
+  const blocked = library.state === "error" && !library.has_snapshot;
+  const recovery = root.querySelector(".choice-screen h2")?.textContent ?? null;
+  const alerts = [library.settings_notice, library.error && !blocked && !hasRetainedFreshnessProblem(library) ? libraryMessages.openError(library.name, library.error, library.zotero) : null]
     .filter((text): text is string => text !== null);
-  const actualAlerts = [...root.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
+  const actualAlerts = [...root.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent)
+    .filter((text) => !blocked || recovery === null || !text?.startsWith(recovery));
   const searched = library.state !== "none" && library.state !== "loading" && !(library.state === "error" && !library.has_snapshot);
   const announcement = searched ? `${results.length} ${results.length === 1 ? "result" : "results"}` : "";
   const busy = library.state === "loading" ? `Opening ${library.name ?? "library"}…`
@@ -41,7 +45,8 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
       && row.querySelector(".result-key")?.textContent === results[index]?.key)
     && JSON.stringify(actualAlerts) === JSON.stringify(alerts)
     && (root.querySelector('.empty-loading[role="progressbar"]')?.getAttribute("aria-label") ?? null) === busy
-    && (root.querySelector('[aria-label="Choose library to get started"]') !== null) === (library.state === "none")
+    && (root.querySelector(".library-setup .choice-list") !== null) === (library.state === "none")
+    && (recovery !== null) === (blocked || library.state === "none")
     && (state.copied ? root.querySelector(".copy-notice") !== null
       && (root.querySelector(".copy-notice code")?.textContent ?? root.querySelector(".shelf-output .preview-text")?.textContent) === state.copied.text
       : root.querySelector(".copy-notice") === null)
@@ -59,8 +64,7 @@ function press(target: Element | null, key: string, init: KeyboardEventInit = {}
 function seedSteps(root: HTMLElement, state: GalleryState): (() => void)[] {
   const steps: (() => void)[] = [];
   const search = () => root.querySelector("#search");
-  if (state.sources) steps.push(() => [...root.querySelectorAll<HTMLButtonElement>(".library-setup button")]
-    .find((button) => button.textContent === setupText.findLibraries)?.click());
+  if (state.sources) steps.push(() => root.querySelector<HTMLElement>('.library-setup [role="option"][data-key="find"]')?.click());
   for (let i = 0; i < (state.tray ?? 0); i++) {
     if (i > 0) steps.push(() => press(search(), "ArrowDown"));
     steps.push(() => press(search(), "Enter", { shiftKey: true }));
@@ -177,7 +181,7 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (state.showPastePreview === false ? root.querySelector(".shelf-output") === null
       && root.querySelector('footer [aria-keyshortcuts="Enter"]') !== null
       : !(state.formatted || state.showPastePreview) || root.querySelector(".shelf-output .preview-text") !== null)
-    && (!state.sources || root.querySelectorAll(".found-files li").length === state.sources.files.length)
+    && (!state.sources || root.querySelectorAll('.library-setup [role="option"][data-key^="found-"]').length === state.sources.files.length)
     && selectionContained(root, state) && shelfTargetsContained(root) && warningTargetContained(root);
 }
 
@@ -238,7 +242,7 @@ export function renderGalleryState(
     copyFormat: () => track(() => provider.api.copyFormat()),
     pickerPreferences: () => track(() => provider.api.pickerPreferences()),
     setPinned: (on) => track(() => provider.api.setPinned(on)),
-    search: (query, limit) => track(() => provider.api.search(query, limit)),
+    search: (...args) => track(() => provider.api.search(...args)),
     findSources: provider.api.findSources ? () => track(() => provider.api.findSources!()) : undefined,
     onLibraryChanged: (handler) => track(() => provider.api.onLibraryChanged(handler)),
     onPickerShown: (handler) => track(() => provider.api.onPickerShown(handler)),

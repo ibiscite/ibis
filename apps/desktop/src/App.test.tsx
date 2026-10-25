@@ -30,10 +30,10 @@ afterEach(async () => {
 test("the shelf shows what Enter pastes in a key syntax, without copying, and leaves out a failed key preview", async () => {
   let fail = false;
   const calls = backend({
-    search: ({ query }) => [query === "again" ? result("b", "Second") : result("a", "First")],
-    citation_text: ({ ids }) => {
+    search: ({ query: { text: query } }) => [query === "again" ? result("b", "Second") : result("a", "First")],
+    citation_text: ({ items }) => {
       if (fail) throw new Error("synthetic preview failure");
-      return { text: `[@${(ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] };
+      return { text: `[@${items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] };
     },
   });
   render(<App />);
@@ -53,8 +53,8 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
 
 test("a hidden key preview is never fetched, and showing it fetches the current choice", async () => {
   const calls = backend({
-    search: ({ query }) => [query === "again" ? result("b", "Second") : result("a", "First")],
-    citation_text: ({ ids }) => ({ text: `[@${(ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] }),
+    search: ({ query: { text: query } }) => [query === "again" ? result("b", "Second") : result("a", "First")],
+    citation_text: ({ items }) => ({ text: `[@${items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] }),
   });
   const previews = () => calls.filter((c) => c === "citation_text").length;
   render(<App />);
@@ -106,6 +106,16 @@ test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain u
   expect(actions()).toEqual(previousActions);
 });
 
+const selections = (ids: api.RecordId[]) => ids.map((id) => ({ id, locator: null }));
+
+/** A choice row (first run, setup, recovery), chosen from the keyboard as people do. */
+const choiceRow = (name: string | RegExp) => screen.getByRole("option", { name });
+function pressRow(row: HTMLElement) {
+  act(() => row.focus());
+  fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
+  fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
+}
+const FILE_ROW = /^BibTeX or BibLaTeX file/;
 const formatButton = (name: string | RegExp = /^Copy as /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });
 
 /** Picks a format in the header's format menu, as a click would. */
@@ -141,7 +151,7 @@ function result(key: string, title: string, source = "refs.bib") {
   };
 }
 
-type Handler = (args: Record<string, unknown>) => unknown;
+type Handler = (args: Record<string, unknown> & { query: api.SearchQuery; items: api.CitationSelection[]; ids: api.RecordId[] }) => unknown;
 
 test("the borderless picker has a permitted drag region around its editable search input", async () => {
   backend();
@@ -170,20 +180,20 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     set_pinned: () => null,
     copy_format: () => "pandoc",
     // The shelf previews key syntaxes without touching the clipboard.
-    citation_text: ({ ids }) => ({ text: (ids as { native_key: string }[]).map((id) => `@${id.native_key}`).join("; "), warnings: [] }),
+    citation_text: ({ items }) => ({ text: items.map(({ id }) => `@${id.native_key}`).join("; "), warnings: [] }),
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
     set_picker_preferences: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
-    library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };
   mockIPC(
     (cmd, args) => {
       calls.push(cmd);
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);
-      const value = handler((args ?? {}) as Record<string, unknown>);
+      const value = handler((args ?? {}) as Parameters<Handler>[0]);
       if (cmd === "library_status") return Promise.resolve(value).then((status) => ({ revision: "1", ...status as object }));
       if (cmd === "search") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
       return value;
@@ -193,9 +203,61 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
   return calls;
 }
 
+test("C5 click selects without copying and double-click copies the highlighted citation", async () => {
+  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], copy_citation: copied });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Second"), { detail: 1 });
+  expect(screen.getByRole("option", { name: /Second/ }).getAttribute("aria-selected")).toBe("true");
+  await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain("@b"));
+  expect(copied).not.toHaveBeenCalled();
+  expect(calls).not.toContain("hide_picker");
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
+  fireEvent.click(screen.getByText("Second"), { detail: 2 });
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+});
+
+test.each([null, "toggle", "copy"])("C5 native context completion %s uses the current row without a browser menu", async (action) => {
+  const context = vi.fn(() => action);
+  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")], row_context: context, copy_citation: copied });
+  render(<App />);
+  const row = await screen.findByText("Second");
+  fireEvent.contextMenu(row);
+  await waitFor(() => expect(context).toHaveBeenCalledOnce());
+  expect(context).toHaveBeenCalledWith({ added: false });
+  if (action === "copy") await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  else expect(copied).not.toHaveBeenCalled();
+  if (action === "toggle") await waitFor(() => expect(chipKeys()).toEqual(["b"]));
+  else expect(chipKeys()).toEqual([]);
+  if (action !== "copy") expect(calls).not.toContain("hide_picker");
+});
+
+test.each(["query", "hide", "selection", "revision", "highlight", "failure"])("C5 context result cannot outlive its %s owner", async (change) => {
+  let finish: (value: string | null) => void = () => undefined;
+  const pending = new Promise<string | null>((resolve) => { finish = resolve; });
+  const copied = vi.fn(() => ({ text: "unexpected", warnings: [] }));
+  const calls = backend({ search: () => [result("a", "First"), result("b", "Second")],
+    row_context: () => change === "failure" ? Promise.reject(new Error("SYNTHETIC_PRIVATE_PAYLOAD")) : pending, copy_citation: copied });
+  render(<App />);
+  fireEvent.contextMenu(await screen.findByText("Second"));
+  if (change === "query") fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "new" } });
+  if (change === "hide") await act(async () => { await emit("picker:hidden"); });
+  if (change === "highlight") fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowUp" });
+  if (change === "revision") await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, revision: "2", references: 2 }); });
+  if (change === "selection") fireEvent.click(screen.getByText("First"), { shiftKey: true });
+  if (change === "failure") {
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The reference menu could not open. Use Enter to copy or Shift+Enter to add.");
+    expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+  } else await act(async () => { finish(change === "highlight" ? "toggle" : "copy"); await pending; });
+  expect(copied).not.toHaveBeenCalled();
+  if (change === "highlight") expect(chipKeys()).toEqual([]);
+  expect(calls).not.toContain("hide_picker");
+});
+
 test("typing a query shows results from the search command", async () => {
   backend({
-    search: ({ query }) =>
+    search: ({ query: { text: query } }) =>
       query ? [result("smith2020", "Sleep and memory")] : [],
   });
   render(<App />);
@@ -239,8 +301,8 @@ test("first launch waits for library status and offers a chooser without a searc
   await act(async () => { await Promise.resolve(); });
   expect(screen.queryByRole("alert")).toBeNull();
   expect(calls).not.toContain("search");
-  await act(async () => { status({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }); });
-  fireEvent.click(await screen.findByRole("button", { name: "Choose library to get started" }));
+  await act(async () => { status({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null }); });
+  pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(calls).not.toContain("search");
@@ -248,17 +310,17 @@ test("first launch waits for library status and offers a chooser without a searc
 
 test("first-run setup has no result section heading", async () => {
   backend({ library_status: () => ({ state: "none", name: null, snapshot_name: null, has_snapshot: false,
-    zotero: false, references: 0, warnings: 0, error: null, note: null }) });
+    zotero: false, references: 0, warnings: 0, error: null, problem: null, note: null }) });
   render(<App />);
-  await screen.findByText("Choose a library to get started");
+  await screen.findByRole("listbox", { name: "Where do your references live?" });
   expect(document.querySelector(".results-heading")).toBeNull();
 });
 
 test("first-run setup keeps the copy-format question out of the header", async () => {
   backend({ library_status: () => ({ state: "none", name: null, snapshot_name: null, has_snapshot: false,
-    zotero: false, references: 0, warnings: 0, error: null, note: null }) });
+    zotero: false, references: 0, warnings: 0, error: null, problem: null, note: null }) });
   render(<App />);
-  await screen.findByText("Choose a library to get started");
+  await screen.findByRole("listbox", { name: "Where do your references live?" });
   expect(within(screen.getByLabelText("Search references").closest("header")!).queryByRole("button", { name: /^Copy as / })).toBeNull();
 });
 
@@ -268,58 +330,62 @@ test("typing after a library load failure keeps its single explanation visible",
     search: () => { throw new Error("no library is open"); },
   });
   render(<App />);
-  expect((await screen.findByText(/The library could not be opened/)).textContent).toContain("synthetic library is unreadable");
+  expect(await screen.findByRole("heading", { name: "Can't open the library" })).toBeTruthy();
+  expect(screen.getByText("The synthetic library is unreadable.")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(screen.queryByText("Ibis could not search your library. Use Reload, then try again.")).toBeNull();
   expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(choiceRow(/^Try again/)).toBeTruthy();
 });
 
 test("the empty-state chooser opens the existing dialog and remains available after cancellation", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null }),
     choose_library: () => null,
   });
   render(<App />);
-  const chooser = await screen.findByRole("button", { name: "Choose library to get started" });
-  fireEvent.click(chooser);
+  const chooser = await screen.findByRole("option", { name: FILE_ROW });
+  pressRow(chooser);
   await waitFor(() => expect(calls).toContain("choose_library"));
-  expect(screen.getByRole("button", { name: "Choose library to get started" })).toBe(chooser);
+  expect(choiceRow(FILE_ROW)).toBe(chooser);
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   expect(screen.getByRole("menuitem", { name: "Choose library…" })).toBeTruthy();
 });
 
 test("typing and clearing before choosing a library keeps the calm hint and chooser", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null }),
     search: () => { throw new Error("no library is open"); },
     choose_library: () => null,
   });
   render(<App />);
-  const chooser = await screen.findByRole("button", { name: "Choose library to get started" });
+  const chooser = await screen.findByRole("option", { name: FILE_ROW });
   const box = screen.getByLabelText("Search references");
   for (const value of ["sleep", ""]) {
     await act(async () => { fireEvent.change(box, { target: { value } }); });
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Choose a library to get started")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Choose library to get started" })).toBe(chooser);
+    expect(screen.getByRole("listbox", { name: "Where do your references live?" })).toBeTruthy();
+    expect(choiceRow(FILE_ROW)).toBe(chooser);
   }
   expect(calls).not.toContain("search");
-  fireEvent.click(chooser);
+  pressRow(chooser);
   await waitFor(() => expect(calls).toContain("choose_library"));
-  expect(screen.getByRole("button", { name: "Choose library to get started" })).toBe(chooser);
+  expect(choiceRow(FILE_ROW)).toBe(chooser);
 });
 
 test("opening the first library searches the untouched empty query", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null }),
     search: () => [result("first", "First reference")],
   });
   render(<App />);
-  await screen.findByRole("button", { name: "Choose library to get started" });
+  await screen.findByRole("option", { name: FILE_ROW });
   expect(calls).not.toContain("search");
-  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
+  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null });
+  // The first library asks where you write once, then shows what it found.
+  pressRow(await screen.findByRole("option", { name: /^LaTeX/ }));
   expect(await screen.findByText("First reference")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Choose library to get started" })).toBeNull();
+  expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
 });
 
 test("a failed status request does not suppress search errors", async () => {
@@ -356,11 +422,11 @@ test.each([
   else await screen.findByText("New library reference");
   await act(async () => {
     if (outcome === "resolves") {
-      resolveStatus({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null });
+      resolveStatus({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null });
     } else rejectStatus(new Error("stale status unavailable"));
   });
   expect(screen.getByRole("region", { name: "Library" }).textContent).toContain("new.bib");
-  expect(screen.queryByRole("button", { name: "Choose library to get started" })).toBeNull();
+  expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
   if (failed) expect(screen.getByText(/synthetic load failed/)).toBeTruthy();
   else expect(screen.getByText("New library reference")).toBeTruthy();
 });
@@ -382,7 +448,7 @@ test("a shortcut that could not be registered is explained", async () => {
 
 test("a failed search clears the results of the previous query", async () => {
   backend({
-    search: ({ query }) => {
+    search: ({ query: { text: query } }) => {
       if (query === "diet") throw new Error("SYNTHETIC_PRIVATE_PAYLOAD");
       return query ? [result("smith2020", "Sleep and memory")] : [];
     },
@@ -443,7 +509,7 @@ test("a rejected shortcut setting is explained even when the default works", asy
 test("the query is searched again when a library finishes opening", async () => {
   let open = false;
   backend({
-    search: ({ query }) => {
+    search: ({ query: { text: query } }) => {
       if (!open) throw new Error("no library is open");
       return query ? [result("smith2020", "Sleep and memory")] : [];
     },
@@ -452,7 +518,7 @@ test("the query is searched again when a library finishes opening", async () => 
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
   open = true;
-  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null });
+  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -461,7 +527,7 @@ test("Enter copies the highlighted result in the remembered format and hides the
   const copies: unknown[] = [];
   const calls = backend({
     copy_format: () => "typst",
-    search: ({ query }) => (query ? [result("a", "First"), result("b", "Second")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("a", "First"), result("b", "Second")] : []),
     copy_citation: (args) => {
       copies.push(args);
       return { text: "@b", warnings: [] };
@@ -475,14 +541,14 @@ test("Enter copies the highlighted result in the remembered format and hides the
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
-  expect(copies).toEqual([{ ids: [{ source: "refs.bib", native_key: "b" }], format: "typst", expectedRevision: "1" }]);
+  expect(copies).toEqual([{ items: selections([{ source: "refs.bib", native_key: "b" }]), format: "typst", expectedRevision: "1" }]);
   expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
 });
 
 test("the selection is kept by record identity across queries and copied in order", async () => {
   const copies: unknown[] = [];
   backend({
-    search: ({ query }) =>
+    search: ({ query: { text: query } }) =>
       query === "one" ? [result("same", "One", "a.bib")] : query === "two" ? [result("same", "Two", "b.bib")] : [],
     copy_citation: (args) => {
       copies.push(args);
@@ -500,10 +566,10 @@ test("the selection is kept by record identity across queries and copied in orde
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(copies[0]).toEqual({
-    ids: [
+    items: selections([
       { source: "a.bib", native_key: "same" },
       { source: "b.bib", native_key: "same" },
-    ],
+    ]),
     format: "pandoc",
     expectedRevision: "1",
   });
@@ -523,7 +589,7 @@ test.each([
       search: () => records,
       copy_citation: (args) => {
         copies.push(args);
-        return { text: `[@${(args.ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] };
+        return { text: `[@${args.items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] };
       },
     });
     render(<App />);
@@ -561,7 +627,7 @@ test.each([
     expect(box.getAttribute("aria-activedescendant")).toBe("result-1");
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     await waitFor(() => expect(copies).toHaveLength(1));
-    expect(copies[0]).toEqual({ ids: (remaining.length ? remaining : [records[1]!]).map((record) => record.id), format: "pandoc", expectedRevision: "1" });
+    expect(copies[0]).toEqual({ items: selections((remaining.length ? remaining : [records[1]!]).map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
     expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
   },
 );
@@ -598,7 +664,7 @@ test.each([false, true])("removal ignores queued Enter repeats and waits for a f
   }
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]!.ids).toEqual((shiftKey ? ["b", "a"] : ["b"]).map((key) => ({ source: "refs.bib", native_key: key })));
+  expect(copies[0]!.items).toEqual(selections((shiftKey ? ["b", "a"] : ["b"]).map((key) => ({ source: "refs.bib", native_key: key }))));
 });
 
 test("hovering Remove keeps focus and menu keys unchanged", async () => {
@@ -626,10 +692,10 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
   const records = Array.from({ length: count }, (_, i) => result(`synthetic_${i}_${"long_key_".repeat(5)}`, `Selection reference ${i}`));
   const copies: Record<string, unknown>[] = [];
   backend({
-    search: ({ query }) => query === "" ? [] : records.slice(Number(query) * 20, (Number(query) + 1) * 20),
+    search: ({ query: { text: query } }) => query === "" ? [] : records.slice(Number(query) * 20, (Number(query) + 1) * 20),
     copy_citation: (args) => {
       copies.push(args);
-      return { text: `[@${(args.ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] };
+      return { text: `[@${args.items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] };
     },
   });
   render(<App />);
@@ -654,7 +720,7 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
   box.focus();
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toEqual({ ids: expected.map((record) => record.id), format: "pandoc", expectedRevision: "1" });
+  expect(copies[0]).toEqual({ items: selections(expected.map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
   await screen.findByText(`[@${expected.map((record) => record.key).join("; @")}]`);
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
 });
@@ -662,7 +728,7 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
 test("warnings keep the picker open and failures say nothing was copied", async () => {
   let fail = false;
   const calls = backend({
-    search: ({ query }) => (query ? [result("a", "First")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("a", "First")] : []),
     copy_citation: () => {
       if (fail) throw new Error("SYNTHETIC_PRIVATE_PAYLOAD");
       return { text: "a", warnings: ["bare keys cannot carry page numbers"] };
@@ -682,7 +748,7 @@ test("warnings keep the picker open and failures say nothing was copied", async 
 });
 
 test("Enter while composing text with an input method copies nothing", async () => {
-  const calls = backend({ search: ({ query }) => (query ? [result("a", "First")] : []) });
+  const calls = backend({ search: ({ query: { text: query } }) => (query ? [result("a", "First")] : []) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "f" } });
@@ -696,7 +762,7 @@ test("Enter while composing text with an input method copies nothing", async () 
 test("Enter never copies a result left over from the previous query", async () => {
   let release: (value: unknown) => void = () => undefined;
   const calls = backend({
-    search: ({ query }) =>
+    search: ({ query: { text: query } }) =>
       query === "old" ? [result("old", "Old result")] : query ? new Promise((resolve) => (release = resolve)) : [],
     copy_citation: () => ({ text: "x", warnings: [] }),
   });
@@ -716,7 +782,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   const pending: Record<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }> = {};
   const copied: unknown[] = [];
   backend({
-    search: ({ query }) => query === "kept" ? [result("kept", "Kept result")]
+    search: ({ query: { text: query } }) => query === "kept" ? [result("kept", "Kept result")]
       : query === "old" ? [result("old", "Old result")]
       : query ? new Promise((resolve, reject) => { pending[query as string] = { resolve, reject }; }) : [],
     copy_citation: (args) => { copied.push(args); return { text: "x", warnings: [] }; },
@@ -744,7 +810,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(chosenKeys()).not.toContain("old");
-  expect(copied).toEqual([{ ids: [{ source: "refs.bib", native_key: "kept" }], format: "pandoc", expectedRevision: "1" }]);
+  expect(copied).toEqual([{ items: selections([{ source: "refs.bib", native_key: "kept" }]), format: "pandoc", expectedRevision: "1" }]);
   await act(async () => { pending.pending!.resolve([result("new", "New result")]); });
   await screen.findByText("New result");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -763,7 +829,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
 
 test("the library is shown, can be chosen and reloaded, and failures are explained", async () => {
   const calls = backend({
-    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null }),
     choose_library: () => null,
     reload_library: () => null,
   });
@@ -772,7 +838,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   await waitFor(() => expect(bar.textContent).toContain("No library chosen"));
   await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
-  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, note: null });
+  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, problem: null, note: null });
   await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 reading notice"));
   await chooseFromMore("Reload");
   await waitFor(() => expect(calls).toContain("reload_library"));
@@ -792,20 +858,21 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
 test("opening the first library searches the query typed before choosing it", async () => {
   const queries: unknown[] = [];
   backend({
-    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
-    search: ({ query }) => { queries.push(query); return [result("first", "Matching reference")]; },
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null }),
+    search: ({ query: { text: query } }) => { queries.push(query); return [result("first", "Matching reference")]; },
   });
   render(<App />);
-  await screen.findByRole("button", { name: "Choose library to get started" });
+  await screen.findByRole("option", { name: FILE_ROW });
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
-  await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }); });
+  await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
+  // A typed search goes straight to results; the writing question waits for an empty box.
   await screen.findByText("Matching reference");
   expect(queries).toEqual(["sleep"]);
 });
 
 test("counts use singular and plural and announce only settled current searches", async () => {
   let release: (value: unknown) => void = () => undefined;
-  backend({ search: ({ query }) => query === "one" ? [result("a", "Single")]
+  backend({ search: ({ query: { text: query } }) => query === "one" ? [result("a", "Single")]
     : query === "pending" ? new Promise((resolve) => { release = resolve; })
     : query === "two" ? [result("a", "First"), result("b", "Second")] : [] });
   vi.useFakeTimers();
@@ -857,7 +924,7 @@ test("the Windows focus ring contrasts with both themes independent of the syste
   // macOS and Linux draw the ring in the system accent, as their own controls do
   // (docs/design.md); increased contrast and forced colours make it CanvasText.
   // Windows uses Fluent's ink ring, which must reach 3:1 on every row fill.
-  expect(styles).toMatch(/:focus-visible:not\(\.ui-button\)\s*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
+  expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
   const focusToken = tokens.match(/:root\[data-platform="windows"\]\s*\{[^}]*--focus-ring-color:\s*var\((--[\w-]+)\)/)?.[1];
   expect(focusToken).toBe("--text");
   const theme = (token: string) => {
@@ -878,7 +945,7 @@ test("the Windows focus ring contrasts with both themes independent of the syste
 });
 
 test("combobox focus is separate from citation selection and only additions/removals are announced", async () => {
-  backend({ search: ({ query }) => query === "reorder"
+  backend({ search: ({ query: { text: query } }) => query === "reorder"
     ? [result("same", "Second", "b.bib"), result("same", "First", "a.bib")]
     : [result("same", "First", "a.bib"), result("same", "Second", "b.bib")] });
   render(<App />);
@@ -989,12 +1056,12 @@ test("web plugin permissions grant only event subscriptions and drag-region boot
 
 test.each([false, true])("axe checks picker structure (library open: %s) and detects a broken combobox", async (open) => {
   backend({
-    library_status: () => ({ state: open ? "loaded" : "none", has_snapshot: open, zotero: false, name: open ? "refs.bib" : null, snapshot_name: open ? "refs.bib" : null, references: open ? 1 : 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: open ? "loaded" : "none", has_snapshot: open, zotero: false, name: open ? "refs.bib" : null, snapshot_name: open ? "refs.bib" : null, references: open ? 1 : 0, warnings: 0, error: null, problem: null, note: null }),
     search: () => [result("synthetic", "Synthetic reference")],
   });
   render(<App />);
   if (open) await screen.findByText("Synthetic reference");
-  else await screen.findByRole("button", { name: "Choose library to get started" });
+  else await screen.findByRole("option", { name: FILE_ROW });
   const options: axe.RunOptions = {
     runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
     // JSDOM has no layout/canvas: theme contrast has its own numeric test above.
@@ -1017,30 +1084,30 @@ test("a pending library check does not offer first-run setup", async () => {
   backend({ library_status: () => new Promise(() => undefined) });
   render(<App />);
   await screen.findByText("Checking library…");
-  expect(screen.queryByText("Choose a library to get started")).toBeNull();
+  expect(screen.queryByRole("listbox", { name: "Where do your references live?" })).toBeNull();
 });
 
 test("opening a chosen library shows its name and searches only when ready", async () => {
   const calls = backend({
-    library_status: () => ({ state: "loading", has_snapshot: false, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 0, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "loading", has_snapshot: false, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 0, warnings: 0, error: null, problem: null, note: null }),
     choose_library: () => null,
   });
   render(<App />);
   await screen.findByText("Opening 研究 refs.bib…");
   expect(document.querySelector(".results-heading")).toBeNull();
-  expect(screen.queryByText("Choose a library to get started")).toBeNull();
+  expect(screen.queryByRole("listbox", { name: "Where do your references live?" })).toBeNull();
   expect(document.body.textContent).not.toContain("No library chosen");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(calls).not.toContain("search");
   await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
-  await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 1, warnings: 0, error: null, note: null }); });
+  await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
   await waitFor(() => expect(calls).toContain("search"));
 });
 
 test("a reload keeps the previous library searchable and announces the reload", async () => {
   backend({
-    library_status: () => ({ state: "reloading", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null }),
+    library_status: () => ({ state: "reloading", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
     search: () => [result("kept", "Kept reference")],
   });
   render(<App />);
@@ -1072,14 +1139,18 @@ test("an unavailable initial library is named once without a duplicate search er
   render(<App />);
   const notice = await screen.findByRole("alert");
   expect(document.querySelector(".results-heading")).toBeNull();
-  expect(notice.textContent).toContain("研究 refs.bib");
-  expect(notice.textContent).toContain("Choose it again");
+  expect(notice.textContent).toBe("Can't open 研究 refs.bib. The library file is unavailable.");
+  expect(choiceRow(/^Try again/)).toBeTruthy();
+  expect(choiceRow(/^Use another library/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(screen.getAllByRole("alert")).toHaveLength(1);
   expect(document.body.textContent).not.toContain("No library chosen");
   expect(document.body.textContent).not.toContain("keeping the last");
   expect(document.body.textContent).not.toContain("No matching references");
   expect(calls).not.toContain("search");
+  // The chosen row goes away, so the list that replaces it keeps the keyboard.
+  pressRow(choiceRow(/^Use another library/));
+  await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Zotero/)));
   await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
 });
@@ -1098,16 +1169,16 @@ test("a failed reload reports one file error while kept references remain search
 
 test.each(["backup", "defaults"])("settings recovery from %s stays visible through a library reload", async (fallback) => {
   const notice = `settings.json could not be read. Using ${fallback}. Changes are not being saved. Repair /synthetic/settings.json and restart Ibis.`;
-  backend({ library_status: () => ({ state: "loading", has_snapshot: false, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 0, warnings: 0, error: null, note: null, settings_notice: notice }) });
+  backend({ library_status: () => ({ state: "loading", has_snapshot: false, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 0, warnings: 0, error: null, problem: null, note: null, settings_notice: notice }) });
   render(<App />);
   expect((await screen.findByText(notice)).getAttribute("role")).toBe("alert");
-  await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, note: null, settings_notice: notice }); });
+  await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null, settings_notice: notice }); });
   expect(screen.getByText(notice).getAttribute("role")).toBe("alert");
   expect(screen.getAllByText(notice)).toHaveLength(1);
 });
 
 test.each(["", "sleep"])("an empty loaded library is explained even for query %s", async (query) => {
-  backend({ library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "empty 研究.bib", snapshot_name: "empty 研究.bib", references: 0, warnings: 0, error: null, note: null }) });
+  backend({ library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "empty 研究.bib", snapshot_name: "empty 研究.bib", references: 0, warnings: 0, error: null, problem: null, note: null }) });
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("empty 研究.bib · no references"));
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
@@ -1307,7 +1378,7 @@ test.each(["output", "elsewhere"].flatMap((destination) => ["saved", "keyboard"]
 test("preview visibility keeps ordered chips and exact key copying", async () => {
   const copies: unknown[] = [];
   backend({ search: () => [result("a", "First"), result("b", "Second")],
-    copy_citation: ({ ids }) => { copies.push(ids); return { text: "@a; @b", warnings: [] }; } });
+    copy_citation: ({ items }) => { copies.push(items); return { text: "@a; @b", warnings: [] }; } });
   render(<App />);
   await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
@@ -1320,7 +1391,7 @@ test("preview visibility keeps ordered chips and exact key copying", async () =>
   expect(chipKeys()).toEqual(["a", "b"]);
   expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy 2 as Pandoc");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copies).toEqual([[result("a", "First").id, result("b", "Second").id]]));
+  await waitFor(() => expect(copies).toEqual([selections([result("a", "First").id, result("b", "Second").id])]));
   expect(screen.getByText("@a; @b", { selector: ".copy-notice code" })).toBeTruthy();
 });
 
@@ -1465,7 +1536,7 @@ test("rows with the same first author and year are told apart by their container
   // container is only as wide as its text, so it sits beside its separator.
   expect(styles).not.toMatch(/match-parent/);
   // It keeps its own width beside a long title, as in the prototype, capped and ellipsized.
-  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--key-max-width\);[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--meta-part-max-width\);[^}]*text-overflow: ellipsis/);
   // A very narrow Compact row gives the title its own line instead.
   expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ flex-wrap: wrap; row-gap: 0; \}\s*:root\[data-density="compact"\] \.result-title \{ flex-basis: 100%; \}/);
   expect(line?.textContent).toBe("Sleep spindlesGarcía et al.");
@@ -1476,7 +1547,7 @@ test("rows with the same first author and year are told apart by their container
   expect(rows[1]?.textContent).toContain("Matched in");
 });
 
-test("rows shorten the authors and keep the journal, key and library label visible", async () => {
+test("rows shorten the authors and keep the journal and library label visible", async () => {
   backend({ search: () => [
     { ...result("a", "Six authors"), authors: "García, Okafor, Lima, Chen, Novak, Haddad", first_author: "García", author_count: 6, container: "Journal of Sleep Research" },
     // Two creators are both named; the core counts an organisation with a comma as one.
@@ -1506,10 +1577,10 @@ test("rows shorten the authors and keep the journal, key and library label visib
   expect(styles).toMatch(/\.result-byline \{[^}]*flex: 1 1 auto; min-width: min\(12em, 60%\)/);
   expect(styles).toMatch(/\.result-authors \{ flex: none; max-width: 60%;[^}]*text-overflow: ellipsis/);
   expect(styles).toMatch(/\.result-container \{ flex: 0 1 auto; min-width: 0;[^}]*text-overflow: ellipsis/);
-  expect(styles).toMatch(/\.result-key \{ flex: 0 1000 auto; min-width: min\(6ch, 100%\);[^}]*text-overflow: ellipsis/);
+  expect(styles).not.toMatch(/\.result-key \{/);
   expect(styles).toMatch(/\.result-library \{ flex: 0 1000 auto; min-width: min\(5em, 100%\);[^}]*text-overflow: ellipsis/);
   expect(styles).toMatch(/\.result-type \{ flex: none; max-width: 100%;[^}]*text-overflow: ellipsis/);
-  for (const name of ["key", "library"]) expect(styles).not.toMatch(new RegExp(`\\.result-${name} \\{[^}]*min-width: 0`));
+  expect(styles).not.toMatch(/\.result-library \{[^}]*min-width: 0/);
 });
 
 test("Escape clears the search before it hides the picker, keeping chosen references", async () => {
@@ -1873,7 +1944,7 @@ test("unreadable saved choices are reported and never overwritten with defaults"
   expect(calls).not.toContain("set_picker_preferences");
 });
 
-const NO_LIBRARY = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null };
+const NO_LIBRARY = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
 
 test("first-run setup lists found .bib files by name and folder, and opens one by its list number", async () => {
   const opened: unknown[] = [];
@@ -1888,12 +1959,13 @@ test("first-run setup lists found .bib files by name and folder, and opens one b
     open_found_library: (args) => { opened.push(args); return null; },
   });
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
-  const found = await screen.findByRole("region", { name: "Found on this computer" });
-  expect(within(found).getAllByRole("button").map((b) => b.textContent)).toEqual(["thesis.bib in PhD", "refs.bib in Downloads"]);
+  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
+  await screen.findByRole("option", { name: /^thesis\.bib/ });
+  const found = [...document.querySelectorAll<HTMLElement>("[data-key^='found-']")];
+  expect(found.map((row) => row.querySelector(".choice-tag")?.textContent)).toEqual(["PhD", "Downloads"]);
   expect(screen.getByText(/turn on “Allow other applications on this computer to communicate with Zotero”/)).toBeTruthy();
   expect(screen.getByText(/Some folders were too large/)).toBeTruthy();
-  fireEvent.click(within(found).getByRole("button", { name: "refs.bib in Downloads" }));
+  pressRow(found[1]!);
   await waitFor(() => expect(opened).toEqual([{ list: 7, index: 1 }]));
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -1909,9 +1981,10 @@ test("a refused choice from an older list looks again and shows the new list", a
     open_found_library: () => { throw new Error("That file is no longer offered"); },
   });
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
-  fireEvent.click(await screen.findByRole("button", { name: "v1.bib in Documents" }));
-  expect(await screen.findByRole("button", { name: "v2.bib in Documents" })).toBeTruthy();
+  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^v1\.bib/ }));
+  expect(await screen.findByRole("option", { name: /^v2\.bib/ })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /^v1\.bib/ })).toBeNull();
   expect(screen.getByText("That file could not be opened from the list. Pick it again from the new list.")).toBeTruthy();
 });
 
@@ -1921,11 +1994,12 @@ test("when looking for libraries fails, setup still offers the file chooser and 
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
+  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
   expect(await screen.findByText("Ibis could not look for libraries on this computer. Choose a file instead.")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Choose library to get started" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Use Zotero" })).toBeTruthy();
-  expect(screen.queryByRole("region", { name: "Found on this computer" })).toBeNull();
+  expect(choiceRow(FILE_ROW).getAttribute("aria-disabled")).toBeNull();
+  expect(choiceRow(/^Zotero/).getAttribute("aria-disabled")).toBeNull();
+  expect(choiceRow(/^Look again/).getAttribute("aria-disabled")).toBeNull();
+  expect(document.querySelector("[data-key^='found-']")).toBeNull();
 });
 
 test("setup failures go away once a library is chosen", async () => {
@@ -1935,7 +2009,7 @@ test("setup failures go away once a library is chosen", async () => {
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
+  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
   const failure = "Ibis could not look for libraries on this computer. Choose a file instead.";
   await screen.findByText(failure);
   status = { ...NO_LIBRARY, state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
@@ -1947,22 +2021,22 @@ test("setup says what it found, says when it found nothing, and Look again keeps
   let answer: unknown = { zotero: "available", list: 1, files: [{ name: "refs.bib", folder: "" }], cut_short: false };
   backend({ library_status: () => NO_LIBRARY, find_sources: () => answer });
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
-  expect((await screen.findByText(/Zotero is open/)).textContent).toBe("Zotero is open, so Use Zotero can read your library. 1 .bib file found.");
-  expect(screen.getByRole("button", { name: "refs.bib" })).toBeTruthy();
+  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
+  await waitFor(() => expect(choiceRow(/^Look again/).textContent).toContain("Zotero is open. 1 .bib file found."));
+  expect(choiceRow(/^Zotero/).textContent).toContain("Found on this");
+  expect(choiceRow(/^refs\.bib/)).toBeTruthy();
   answer = { zotero: "absent", list: 2, files: [], cut_short: false };
-  const again = screen.getByRole("button", { name: "Look again" });
-  again.focus();
-  fireEvent.click(again);
-  expect(await screen.findByText("No Zotero or .bib files found nearby. Use Choose library… to pick a file.")).toBeTruthy();
-  expect(document.activeElement).toBe(again);
-  expect(screen.queryByRole("region", { name: "Found on this computer" })).toBeNull();
+  const again = choiceRow(/^Look again/);
+  pressRow(again);
+  await waitFor(() => expect(choiceRow(/^Look again/).textContent).toContain("No Zotero or .bib files found nearby. Choose the file yourself."));
+  expect(document.activeElement).toBe(choiceRow(/^Look again/));
+  expect(document.querySelector("[data-key^='found-']")).toBeNull();
 });
 
 function zoteroStatus(libraries: unknown[]) {
   return { revision: "1", state: "loaded", has_snapshot: true, zotero: true, zotero_libraries: libraries,
     name: libraries.length > 1 ? `${libraries.length} Zotero libraries` : "Zotero library",
-    snapshot_name: "Zotero library", references: 2, warnings: 0, error: null, note: null };
+    snapshot_name: "Zotero library", references: 2, warnings: 0, error: null, problem: null, note: null };
 }
 
 test("More lists Zotero libraries as checkboxes and turning one on reads them together", async () => {
@@ -1995,7 +2069,7 @@ test("with several Zotero libraries each result names its library, and a left gr
   backend({
     library_status: () => zoteroStatus(["user", { group: 42 }, { group: 9 }]),
     zotero_groups: () => [{ id: 42, name: "Synthetic lab" }],
-    search: ({ query }) => (query ? [result("a", "Mine", "zotero:user"), result("b", "Shared", "zotero:group:42")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("a", "Mine", "zotero:user"), result("b", "Shared", "zotero:group:42")] : []),
     use_zotero_libraries: ({ libraries }) => { chosen.push(libraries as unknown[]); return null; },
   });
   render(<App />);
@@ -2011,7 +2085,7 @@ test("removing one of two chosen references with the same key names its library"
   backend({
     library_status: () => zoteroStatus(["user", { group: 42 }]),
     zotero_groups: () => [{ id: 42, name: "Synthetic lab" }],
-    search: ({ query }) => (query ? [result("garcia2021", "Mine", "zotero:user"), result("garcia2021", "Shared", "zotero:group:42"), result("other", "Other", "zotero:user")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("garcia2021", "Mine", "zotero:user"), result("garcia2021", "Shared", "zotero:group:42"), result("other", "Other", "zotero:user")] : []),
   });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "x" } });
@@ -2137,7 +2211,7 @@ test("switching to a file removes a previous Zotero group-list failure", async (
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   await screen.findByText(/could not list your Zotero groups/);
   await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false,
-    name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, note: null }); });
+    name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
   expect(screen.queryByRole("group", { name: "Zotero libraries" })).toBeNull();
   expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
 });
@@ -2174,55 +2248,76 @@ test("two Zotero libraries turned on before the first is reported are both kept,
 test("when Zotero refuses other apps and no files are found, setup explains Zotero without saying nothing was found", async () => {
   backend({ library_status: () => NO_LIBRARY, find_sources: () => ({ zotero: "access_off", list: 1, files: [], cut_short: false }) });
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Find libraries" }));
+  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
   expect(await screen.findByText(/does not let other apps read it yet/)).toBeTruthy();
   expect(screen.queryByText(/No Zotero or .bib files found/)).toBeNull();
 });
 
-test("setup asks where you write, sets Copy as to match, and shows the shortcut", async () => {
-  backend({ library_status: () => NO_LIBRARY });
+const FIRST_LIBRARY = { ...NO_LIBRARY, revision: "1", state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
+
+test("the first library asks where you write, sets Copy as to match, then shows results", async () => {
+  backend({ library_status: () => NO_LIBRARY, search: () => [result("first", "First reference")] });
   render(<App />);
-  const places = await screen.findByRole("region", { name: "Where do you write?" });
-  fireEvent.click(within(places).getByRole("button", { name: "LaTeX" }));
-  await waitFor(() => expect(within(places).getByRole("button", { name: "LaTeX" }).getAttribute("aria-pressed")).toBe("true"));
-  expect(within(screen.getByLabelText("Search references").closest("header")!).queryByRole("button", { name: /^Copy as / })).toBeNull();
-  fireEvent.click(within(places).getByRole("button", { name: "Word or Google Docs" }));
-  await waitFor(() => expect(within(places).getByRole("button", { name: "Word or Google Docs" }).getAttribute("aria-pressed")).toBe("true"));
-  expect(screen.getByText("Citations copy as APA.")).toBeTruthy();
+  await screen.findByRole("option", { name: FILE_ROW });
+  expect(screen.queryByRole("listbox", { name: "What do you write in?" })).toBeNull();
+  await act(async () => { await emit("library:changed", FIRST_LIBRARY); });
+  const places = await screen.findByRole("listbox", { name: "What do you write in?" });
+  // Nothing behind the question can be copied or announced as a result.
+  expect(screen.queryByText("First reference")).toBeNull();
+  expect(document.querySelector(".results-heading")).toBeNull();
+  expect(screen.getByLabelText("Search references").getAttribute("aria-expanded")).toBe("false");
+  await act(async () => { await new Promise((done) => setTimeout(done, 350)); });
+  expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe("");
+  fireEvent.keyDown(window, { key: "Alt", altKey: true });
+  expect(screen.queryByRole("button", { name: /Add to citation/ })).toBeNull();
+  fireEvent.keyUp(window, { key: "Alt" });
+  expect(within(places).getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent))
+    .toEqual(["Markdown (Pandoc)", "LaTeX", "Typst"]);
   expect(screen.getByText(/^Open Ibis from any app with /)).toBeTruthy();
-  await act(async () => { await emit("library:changed", { ...NO_LIBRARY, revision: "1", state: "loaded", has_snapshot: true,
-    name: "refs.bib", snapshot_name: "refs.bib", references: 1 }); });
-  await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  chooseFormat("style:ieee");
-  await waitFor(() => expect(formatValue()).toBe("style:ieee"));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowDown" });
+  expect(document.activeElement).toBe(within(places).getAllByRole("option")[0]);
+  pressRow(within(places).getByRole("option", { name: /^LaTeX/ }));
+  await waitFor(() => expect(formatValue()).toBe("cite"));
+  expect(await screen.findByText("First reference")).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
+  expect(screen.queryByRole("listbox", { name: "What do you write in?" })).toBeNull();
+});
+
+test("a library that was already open never asks where you write", async () => {
+  backend({ library_status: () => FIRST_LIBRARY, search: () => [result("first", "First reference")] });
+  render(<App />);
+  await screen.findByText("First reference");
+  expect(screen.queryByRole("listbox", { name: "What do you write in?" })).toBeNull();
 });
 
 test("shortcuts read as people type them on each system", async () => {
   const { shortcutLabel } = await import("./LibrarySetup");
   expect(shortcutLabel("Control+Command+R", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Control+Shift+Y", false)).toBe("Ctrl+Shift+Y");
-  expect(shortcutLabel("CmdOrCtrl+Shift+KeyR", true)).toBe("⌘⇧R");
+  expect(shortcutLabel("CmdOrCtrl+Shift+KeyR", true)).toBe("⇧⌘R");
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
   expect(shortcutLabel("control+command+r", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Alt+Space", false)).toBe("Alt+Space");
 });
 
-test("first-run writing choices save the key and style together before copying", async () => {
+test("the writing choice saves the copy format once and copies nothing", async () => {
   const saved: unknown[] = [];
   const calls = backend({
     library_status: () => NO_LIBRARY,
+    search: () => [result("first", "First reference")],
     set_picker_preferences: ({ preferences, copyFormat }) => {
       saved.push({ style: (preferences as { citation_style: unknown }).citation_style, key: copyFormat });
       return null;
     },
   });
   render(<App />);
-  const places = await screen.findByRole("region", { name: "Where do you write?" });
-  fireEvent.click(within(places).getByRole("button", { name: "Typst" }));
+  await screen.findByRole("option", { name: FILE_ROW });
+  await act(async () => { await emit("library:changed", FIRST_LIBRARY); });
+  const places = await screen.findByRole("listbox", { name: "What do you write in?" });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  pressRow(within(places).getByRole("option", { name: /^Typst/ }));
   await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }]));
-  fireEvent.click(within(places).getByRole("button", { name: "Word or Google Docs" }));
-  await waitFor(() => expect(within(places).getByRole("button", { name: "Word or Google Docs" }).getAttribute("aria-pressed")).toBe("true"));
-  await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }, { style: "apa", key: null }]));
+  await screen.findByText("First reference");
   expect(calls).not.toContain("copy_citation");
 });
 
@@ -2282,7 +2377,7 @@ test("a failed Copied notice never undoes the copy or the hide", async () => {
   } finally { log.mockRestore(); }
 });
 
-test("clicking a row copies it like Enter, and Shift+click adds it like Shift+Enter", async () => {
+test("double-clicking a row copies it like Enter, and Shift+click adds it like Shift+Enter", async () => {
   const copies: unknown[] = [];
   const calls = backend({
     search: () => [result("a", "First"), result("b", "Second")],
@@ -2296,13 +2391,13 @@ test("clicking a row copies it like Enter, and Shift+click adds it like Shift+En
   fireEvent.click(second, { shiftKey: true });
   expect(second.hasAttribute("data-citation-selected")).toBe(false);
   expect(copies).toEqual([]);
-  fireEvent.click(second);
+  fireEvent.click(second, { detail: 2 });
   await waitFor(() => expect(calls).toContain("hide_picker"));
-  expect(copies).toEqual([{ ids: [{ source: "refs.bib", native_key: "b" }], format: "pandoc", expectedRevision: "1" }]);
+  expect(copies).toEqual([{ items: selections([{ source: "refs.bib", native_key: "b" }]), format: "pandoc", expectedRevision: "1" }]);
   expect(second.getAttribute("aria-selected")).toBe("true");
 });
 
-test("with sources in the citation, a click copies the citation like Enter", async () => {
+test("with sources in the citation, a double-click copies the citation like Enter", async () => {
   const copies: unknown[] = [];
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
@@ -2310,12 +2405,12 @@ test("with sources in the citation, a click copies the citation like Enter", asy
   });
   render(<App />);
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
-  fireEvent.click(screen.getByText("Second"));
+  fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toEqual({ ids: [{ source: "refs.bib", native_key: "a" }], format: "pandoc", expectedRevision: "1" });
+  expect(copies[0]).toEqual({ items: selections([{ source: "refs.bib", native_key: "a" }]), format: "pandoc", expectedRevision: "1" });
 });
 
-test("a drag, a double click's second click or a modified click on a row copies nothing", async () => {
+test("a drag, a third click or an unsupported modified row click copies nothing", async () => {
   const calls = backend({
     search: () => [result("a", "First")],
     copy_citation: () => ({ text: "@a", warnings: [] }),
@@ -2324,18 +2419,18 @@ test("a drag, a double click's second click or a modified click on a row copies 
   const row = (await screen.findByText("First")).closest('[role="option"]')!;
   fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
   fireEvent.click(row, { clientX: 60, clientY: 12 });
-  fireEvent.click(row, { detail: 2 });
-  fireEvent.click(row, { ctrlKey: true });
+  fireEvent.click(row, { detail: 3 });
+  fireEvent.click(row, { metaKey: true });
   fireEvent.click(row, { altKey: true });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(calls).not.toContain("copy_citation");
   expect(row.hasAttribute("data-citation-selected")).toBe(false);
   fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
-  fireEvent.click(row, { clientX: 12, clientY: 11 });
+  fireEvent.click(row, { clientX: 12, clientY: 11, detail: 2 });
   await waitFor(() => expect(calls).toContain("copy_citation"));
 });
 
-test("a click on a row waits for its formatted preview before copying it", async () => {
+test("a double-click on a row waits for its formatted preview before copying it", async () => {
   const { InlineWorker } = await import("./format/inline-worker");
   vi.stubGlobal("Worker", InlineWorker);
   const copies: unknown[] = [];
@@ -2350,7 +2445,7 @@ test("a click on a row waits for its formatted preview before copying it", async
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  fireEvent.click(await screen.findByText("Second"));
+  fireEvent.click(await screen.findByText("Second"), { detail: 2 });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(String((copies[0] as { text: string }).text)).toContain("Smith");
   expect(screen.queryByText("The preview is still being made. Try again in a moment.")).toBeNull();
@@ -2381,7 +2476,7 @@ test.each([[30_000, "first"], [61_000, ""]])(
   });
 
 test("Search Clear preserves citations and invalidates an escaped query before reopening", async () => {
-  const calls = backend({ search: ({ query }) => [result("a", query ? `First ${String(query)}` : "First")] });
+  const calls = backend({ search: ({ query: { text: query } }) => [result("a", query ? `First ${String(query)}` : "First")] });
   render(<App />);
   const box = screen.getByRole("combobox", { name: "Search references" }) as HTMLInputElement;
   await screen.findByText("First");
@@ -2442,7 +2537,7 @@ test.each(["Escape", "hidden"])("a click waiting for its preview never copies af
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  fireEvent.click(await screen.findByText("Second"));
+  fireEvent.click(await screen.findByText("Second"), { detail: 2 });
   if (leave === "Escape") {
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Escape" });
     await waitFor(() => expect(calls).toContain("hide_picker"));
@@ -2462,7 +2557,7 @@ const footerKeys = () => [...screen.getByRole("group", { name: "Keys" }).childre
   .map((hint) => `${hint.querySelector(".key-hint-label")?.textContent} ${hint.querySelector(".key-caps")?.textContent}`).join(" · ");
 
 test("the footer says what Enter will copy, and holding Alt shows the other keys", async () => {
-  backend({ search: ({ query }) => (query ? [result("a", "First"), result("b", "Second")] : []) });
+  backend({ search: ({ query: { text: query } }) => (query ? [result("a", "First"), result("b", "Second")] : []) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   // Nothing to copy yet, so Enter is not advertised.
@@ -2501,7 +2596,7 @@ test("More reads like the hints beside it: its name first, then its keys", async
 
 test("footer actions copy and open shortcuts without using a keyboard shortcut", async () => {
   let copied: unknown;
-  backend({ search: () => [result("a", "First")], copy_citation: (args) => { copied = args.ids; return { text: "@a", warnings: [] }; } });
+  backend({ search: () => [result("a", "First")], copy_citation: (args) => { copied = args.items; return { text: "@a", warnings: [] }; } });
   render(<App />);
   await screen.findByText("First");
   const copy = within(screen.getByRole("group", { name: "Keys" })).getByRole("button", { name: "Copy as Pandoc" });
@@ -2513,7 +2608,7 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   expect(copy.querySelector(".key-caps")?.getAttribute("aria-hidden")).toBe("true");
   fireEvent.pointerUp(copy, { button: 0, pointerType: "mouse" });
   fireEvent.click(copy);
-  await waitFor(() => expect(copied).toEqual([{ source: "refs.bib", native_key: "a" }]));
+  await waitFor(() => expect(copied).toEqual(selections([{ source: "refs.bib", native_key: "a" }])));
   const shortcuts = screen.getByRole("button", { name: "Shortcuts" });
   act(() => shortcuts.focus());
   fireEvent.click(shortcuts);
@@ -2570,7 +2665,7 @@ test("the footer names the source and count, the age only when it matters, and t
   const plain = (text: string | null | undefined) => text?.replace(/[\u2068\u2069]/g, "");
   let status: Record<string, unknown> = { state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true, stale: false,
     zotero_libraries: ["user", { group: 7 }], name: "2 Zotero libraries", snapshot_name: "2 Zotero libraries", references: 1204, warnings: 0,
-    error: null, note: null, updated_at: null, checked_at: Date.now() - 3 * 3_600_000 };
+    error: null, problem: null, note: null, updated_at: null, checked_at: Date.now() - 3 * 3_600_000 };
   backend({ library_status: () => status, zotero_groups: () => [{ id: 7, name: "Lab group" }] });
   render(<App />);
   const live = await screen.findByRole("status", { name: "Library status" });
@@ -2612,14 +2707,17 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(dialog.getAttribute("aria-modal")).toBe("true");
   const close = within(dialog).getByRole("button", { name: "Close" });
   expect(document.activeElement).toBe(close);
-  const rows = within(dialog).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell").map((cell) => cell.textContent));
-  expect(rows).toContainEqual(["Enter", "Copy the highlighted reference, or the ones added to the citation, in the Copy as format", "Search box"]);
-  expect(rows).toContainEqual(["Shift+Enter", "Add the highlighted reference to the citation, or remove it", "Search box"]);
-  expect(rows).toContainEqual(["Ctrl+K", "Open or close More", "Anywhere in Ibis"]);
-  expect(rows).toContainEqual(["Ctrl+/ or ?", "Show this list (? works outside the search box)", "Anywhere in Ibis"]);
-  expect(rows).toContainEqual(["Home or End", "Go to the first or last item", "More menu"]);
+  // Each group's heading names where its keys work; each row is action, then keys.
+  const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
+  expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["In a menu"], ["From any app"]].slice(0, groups.length));
+  const rows = groups.flatMap((group) => group.slice(1));
+  expect(groups[0]).toContainEqual(["Copy the highlighted reference, or the ones added to the citation, in the Copy as format", "Enter"]);
+  expect(groups[0]).toContainEqual(["Add the highlighted reference to the citation, or remove it", "Shift+Enter"]);
+  expect(groups[1]).toContainEqual(["Open or close More", "Ctrl+K"]);
+  expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);
+  expect(groups[2]).toContainEqual(["Go to the first or last item", "Home or End"]);
   // The global shortcut, labelled for this platform, is listed once it works.
-  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Ctrl+Super+ROpen IbisAny app"));
+  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Open IbisCtrl+Super+R"));
   // Focus stays in the dialog, and the picker's keys wait until it closes.
   fireEvent.keyDown(close, { key: "Tab" });
   expect(dialog.contains(document.activeElement)).toBe(true);
@@ -2785,22 +2883,11 @@ test("systems without login items, and pickers without the commands, offer no ch
   expect(screen.queryByRole("menuitemcheckbox", { name: "Start on Login" })).toBeNull();
 });
 
-test("first-run setup offers starting at login beside the shortcut, off until chosen", async () => {
-  let system = false;
-  backend({
-    library_status: () => NO_LIBRARY,
-    login_item: () => ({ name: "Ibis", enabled: system, problem: null }),
-    set_login_item: ({ enabled }) => { system = Boolean(enabled); return { enabled: system, problem: null }; },
-  });
-  const { container } = render(<App />);
-  const box = await screen.findByRole("checkbox", { name: "Start Ibis when you log in" }) as HTMLInputElement;
-  expect(box.checked).toBe(false);
-  expect(system).toBe(false);
-  fireEvent.click(box);
-  await waitFor(() => expect(box.checked).toBe(true));
-  expect(system).toBe(true);
-  const results = await axe.run(container);
-  expect(results.violations.map((v) => v.id)).toEqual([]);
+test("first run leaves starting at login to More", async () => {
+  backend({ library_status: () => NO_LIBRARY, login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
+  render(<App />);
+  await screen.findByRole("option", { name: FILE_ROW });
+  expect(screen.queryByRole("checkbox", { name: /when you (log|sign) in/ })).toBeNull();
 });
 
 test("each system's login item is in its own words, and its problems name where to look", async () => {
@@ -2882,7 +2969,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("style:apa"));
-  fireEvent.click(await screen.findByText("Second"));
+  fireEvent.click(await screen.findByText("Second"), { detail: 2 });
   // Returning to APA must not revive the earlier click either.
   if (next === "style:apa") chooseFormat("style:ieee");
   chooseFormat(next);
@@ -2891,10 +2978,10 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   expect(output).toEqual([]);
   expect(calls).not.toContain("hide_picker");
   expect(calls).not.toContain("show_copied_notice");
-  fireEvent.click(screen.getByText("Second"));
+  fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(output).toHaveLength(1));
   expect(output[0]).toMatchObject(next === "pandoc"
-    ? { format: "pandoc", ids: [{ source: "refs.bib", native_key: "b" }] }
+    ? { format: "pandoc", items: selections([{ source: "refs.bib", native_key: "b" }]) }
     : { text: next === "style:ieee" ? "[1]" : "(Smith, 2020)" });
   expect(calls).toContain(next === "pandoc" ? "copy_citation" : "copy_formatted");
 });
@@ -2903,7 +2990,7 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   let replacement = false;
   let release: (value: unknown) => void = () => undefined;
   const copied: unknown[] = [];
-  const status = (revision: string) => ({ state: "loaded", has_snapshot: true, zotero: true, zotero_libraries: ["user"], snapshot_zotero: true, stale: false, updated_at: null, checked_at: null, settings_notice: null, name: "Zotero library", snapshot_name: "Zotero library", references: 1, warnings: 0, error: null, note: null, revision });
+  const status = (revision: string) => ({ state: "loaded", has_snapshot: true, zotero: true, zotero_libraries: ["user"], snapshot_zotero: true, stale: false, updated_at: null, checked_at: null, settings_notice: null, name: "Zotero library", snapshot_name: "Zotero library", references: 1, warnings: 0, error: null, problem: null, note: null, revision });
   const old = { ...result("ITEM0001", "Old title and key", "zotero:user"), key: "oldkey", revision: "snapshot-1" };
   const fresh = { ...result("ITEM0001", "Replacement title and key", "zotero:user"), key: "newkey", revision: "snapshot-2" };
   const calls = backend({
@@ -2915,14 +3002,14 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   await screen.findByText("Old title and key");
   replacement = true;
   await act(async () => { await emit("library:changed", status("snapshot-2")); });
-  if (action === "click") fireEvent.click(screen.getByText("Old title and key"));
+  if (action === "click") fireEvent.click(screen.getByText("Old title and key"), { detail: 2 });
   else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter", shiftKey: action === "Shift+Enter" });
   await act(async () => { await Promise.resolve(); });
   expect(copied).toEqual([]);
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
   expect(calls).not.toContain("hide_picker");
   await act(async () => { release([fresh]); });
-  fireEvent.click(await screen.findByText("Replacement title and key"));
+  fireEvent.click(await screen.findByText("Replacement title and key"), { detail: 2 });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(copied[0]).toMatchObject({ expectedRevision: "snapshot-2" });
 });
@@ -2938,7 +3025,7 @@ test("a newer search revision refreshes status even before its event arrives", a
   render(<App />);
   await screen.findByText("Fresh before event");
   await waitFor(() => expect(reads).toBeGreaterThan(1));
-  fireEvent.click(screen.getByText("Fresh before event"));
+  fireEvent.click(screen.getByText("Fresh before event"), { detail: 2 });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(copied[0]).toMatchObject({ expectedRevision: "2" });
 });
@@ -2974,13 +3061,13 @@ test("a pre-event copy rejection recovers without copying or hiding until a fres
   render(<App />);
   await screen.findByText("Snapshot 1");
   revision = "2";
-  fireEvent.click(screen.getByText("Snapshot 1"));
+  fireEvent.click(screen.getByText("Snapshot 1"), { detail: 2 });
   await screen.findByText("The library changed. Search again and reselect the references before copying.");
   await screen.findByText("Snapshot 2");
   expect(attempts).toEqual(["1"]);
   expect(writes).toEqual([]);
   expect(calls).not.toContain("hide_picker");
-  fireEvent.click(screen.getByText("Snapshot 2"));
+  fireEvent.click(screen.getByText("Snapshot 2"), { detail: 2 });
   await waitFor(() => expect(writes).toEqual(["2"]));
   expect(attempts).toEqual(["1", "2"]);
 });
@@ -3015,7 +3102,7 @@ test.each(["resolve", "reject"])("an older recovery status cannot override a new
     copy_citation: () => { throw { code: "snapshot_changed" }; },
   });
   render(<App />);
-  fireEvent.click(await screen.findByText("Recovery 1"));
+  fireEvent.click(await screen.findByText("Recovery 1"), { detail: 2 });
   await waitFor(() => expect(reads).toBe(2));
   revision = "3";
   await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
@@ -3097,7 +3184,7 @@ test("a late search reply cannot replace rows from the newer snapshot", async ()
   await screen.findByText("Late 3");
   await act(async () => { pending["2"]!({ revision: "2", results: [{ ...result("a", "Late 2"), revision: "2" }] }); });
   expect(screen.queryByText("Late 2")).toBeNull();
-  fireEvent.click(screen.getByText("Late 3"));
+  fireEvent.click(screen.getByText("Late 3"), { detail: 2 });
   await waitFor(() => expect(copied).toEqual(["3"]));
 });
 
@@ -3198,7 +3285,7 @@ test("a delayed hide cannot show an old copy notice after reopening", async () =
     hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
   });
   render(<App />);
-  fireEvent.click(await screen.findByText("First"));
+  fireEvent.click(await screen.findByText("First"), { detail: 2 });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   await act(async () => { await emit("picker:shown"); releaseHide(); });
   expect(calls).not.toContain("show_copied_notice");
@@ -3212,7 +3299,7 @@ test("a delayed hide cannot show an old notice over a newer selection", async ()
     hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
   });
   render(<App />);
-  fireEvent.click(await screen.findByText("First"));
+  fireEvent.click(await screen.findByText("First"), { detail: 2 });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   fireEvent.click(screen.getByText("Second"), { shiftKey: true });
   await act(async () => { releaseHide(); });
@@ -3260,7 +3347,7 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
     expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remove a from the selection" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove b from the selection" }));
-    fireEvent.click(screen.getByText("Second revision 2"));
+    fireEvent.click(screen.getByText("Second revision 2"), { detail: 2 });
     await waitFor(() => expect(attempts).toEqual(["1", "2"]));
   } else {
     expect(screen.queryByText("Keep the newer warning")).not.toBeNull();
@@ -3302,7 +3389,7 @@ test.each([
   await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
   await screen.findByText("Pending 2 b");
   fireEvent.click(screen.getByRole("button", { name: "Remove a from the selection" }));
-  fireEvent.click(screen.getByText("Pending 2 b"), { shiftKey: selectedCopy });
+  fireEvent.click(screen.getByText("Pending 2 b"), { shiftKey: selectedCopy, detail: selectedCopy ? 1 : 2 });
   if (selectedCopy) fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(attempts).toEqual(["1", "2"]));
   revision = refreshedRevision;
@@ -3324,7 +3411,7 @@ test.each(["warning", "notice"])("a search started before a selected copy preser
   let finishCopy: (value: unknown) => void = () => undefined;
   const notices: unknown[] = [];
   const calls = backend({
-    search: ({ query }) => query === "pending"
+    search: ({ query: { text: query } }) => query === "pending"
       ? new Promise((resolve) => { releaseSearch = resolve; })
       : [result("a", "Selected before search")],
     copy_citation: () => new Promise((resolve) => { finishCopy = resolve; }),
@@ -3384,7 +3471,7 @@ test("retained stale freshness does not hide settings or copy failures", async (
   await screen.findByText("Retained reference with errors");
   expect(screen.getAllByRole("alert")).toHaveLength(1);
   expect(screen.getByRole("alert").textContent).toContain(notice);
-  fireEvent.click(screen.getByText("Retained reference with errors"));
+  fireEvent.click(screen.getByText("Retained reference with errors"), { detail: 2 });
   await screen.findByText("Nothing was copied. Try again, or use Reload.");
   expect(screen.getAllByRole("alert")).toHaveLength(2);
 });
@@ -3622,6 +3709,23 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
   } finally { format.mockRestore(); }
 });
 
+test("the Ibis mark can replace the search glyph and is remembered", async () => {
+  let mark = false;
+  backend({
+    search: () => [],
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark }),
+    set_picker_preferences: ({ preferences }) => { mark = (preferences as api.PickerPreferences).search_mark; return null; },
+  });
+  const first = render(<App />);
+  expect(document.querySelector(".search-mark")).toBeNull();
+  await chooseFromMore("Ibis mark in search", "menuitemcheckbox");
+  await waitFor(() => expect(mark).toBe(true));
+  expect(document.querySelector(".search-mark")).toBeTruthy();
+  first.unmount();
+  render(<App />);
+  await waitFor(() => expect(document.querySelector(".search-mark")).toBeTruthy());
+});
+
 
 test("preview choices made during a delayed read and rapid queued saves drain in order before Quit", async () => {
   let loaded!: () => void, saved!: () => void;
@@ -3813,4 +3917,323 @@ test("unavailable update events show a fixed notice, retain typing and discard r
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(document.activeElement).toBe(search);
   } finally { listen.mockRestore(); }
+});
+
+test("typed locators stay with selected references across later searches", async () => {
+  let second = false;
+  const copies: unknown[] = [];
+  backend({
+    search: () => ({ revision: "1", results: [result(second ? "b" : "a", second ? "Second locator" : "First locator")],
+      interpretation: { search: second ? "B" : "A", locator: { label: "page", value: second ? "9" : "12" }, typed: second ? "p.9" : "p.12" } }),
+    copy_citation: (args) => { copies.push(args); return { text: "selected pages", warnings: [] }; },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "A p.12" } });
+  fireEvent.click(await screen.findByText("First locator"), { ctrlKey: true });
+  second = true;
+  fireEvent.change(box, { target: { value: "B p.9" } });
+  fireEvent.click(await screen.findByText("Second locator"), { ctrlKey: true });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copies).toEqual([{ items: [
+    { id: { source: "refs.bib", native_key: "a" }, locator: { label: "page", value: "12" } },
+    { id: { source: "refs.bib", native_key: "b" }, locator: { label: "page", value: "9" } },
+  ], format: "pandoc", expectedRevision: "1" }]));
+});
+
+
+function locatorReply(value = "12", label: api.Locator["label"] = "page") {
+  return { revision: "1", results: [result("a", "Locator reference")],
+    interpretation: { search: "Smith", locator: { label, value }, typed: `p.${value}` } };
+}
+
+test("a selected locator changes only through Apply or Remove, which retains the reference", async () => {
+  const copies: unknown[] = [];
+  backend({
+    search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
+    copy_citation: (args) => { copies.push(args); return { text: "copied locator", warnings: [] }; },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "Smith p.12" } });
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  fireEvent.change(box, { target: { value: "Smith p.9" } });
+  await screen.findByText("Using page 9");
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
+  expect(screen.queryByRole("button", { name: "Remove page 12 from a" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Remove page 9 from a" }));
+  expect(chipKeys()).toEqual(["a"]);
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copies).toEqual([{ items: selections([result("a", "").id]), format: "pandoc", expectedRevision: "1" }]));
+});
+
+test("Search as typed preserves the full query and every edit restores interpretation", async () => {
+  const searched: api.SearchQuery[] = [];
+  let finish: (value: unknown) => void = () => undefined;
+  backend({ search: ({ query }) => {
+    searched.push(query);
+    return query.interpret_locators ? locatorReply() : new Promise((resolve) => { finish = resolve; });
+  } });
+  render(<App />);
+  const box = screen.getByLabelText("Search references") as HTMLInputElement;
+  fireEvent.change(box, { target: { value: "Smith p.12" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Search as typed" }));
+  await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12", interpret_locators: false }));
+  expect(box.value).toBe("Smith p.12");
+  expect(screen.queryByText("Using page 12")).toBeNull();
+  fireEvent.change(box, { target: { value: "Smith p.12 " } });
+  await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12 ", interpret_locators: true }));
+  await screen.findByText("Using page 12");
+  await act(async () => { finish({ revision: "1", results: [result("literal", "Late literal result")], interpretation: null }); });
+  expect(screen.queryByText("Late literal result")).toBeNull();
+  expect(screen.getByText("Using page 12")).toBeTruthy();
+});
+
+
+test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search preserves or resets its mode on %s", async (change) => {
+  const searched: api.SearchQuery[] = [];
+  const calls = backend({ search: ({ query }) => {
+    searched.push(query);
+    return { ...locatorReply(), interpretation: query.text && query.interpret_locators ? locatorReply().interpretation : null };
+  }, copy_citation: () => ({ text: "copied literal result", warnings: [] }) });
+  const now = vi.spyOn(performance, "now").mockReturnValue(1_000_000);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText("Search references") as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "Reference p 12" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Search as typed" }));
+    await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Reference p 12", interpret_locators: false }));
+    fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() => expect(searched.at(-1)).toEqual({ text: "", interpret_locators: true }));
+    expect(box.value).toBe("");
+    if (change === "edit") {
+      fireEvent.change(box, { target: { value: "Edited p 12" } });
+      await screen.findByText("Using page 12");
+      expect(searched.at(-1)).toEqual({ text: "Edited p 12", interpret_locators: true });
+      fireEvent.change(box, { target: { value: "" } });
+    }
+    if (change === "copy") {
+      await screen.findByText("References");
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      fireEvent.keyDown(box, { key: "Enter" });
+      await screen.findByText("Copied", { selector: ".copy-notice p" });
+    } else fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() => expect(calls).toContain("hide_picker"));
+    await act(async () => { await emit("picker:hidden"); });
+    now.mockReturnValue(1_000_000 + (change === "expiry" ? 61_000 : 30_000));
+    await act(async () => { await emit("picker:shown"); });
+    const text = change === "reopen" ? "Reference p 12" : "";
+    await waitFor(() => expect(box.value).toBe(text));
+    await waitFor(() => expect(searched.at(-1)).toEqual({ text, interpret_locators: change !== "reopen" }));
+    expect(screen.queryByText("Using page 12")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
+    expect(document.activeElement).toBe(box);
+    expect([box.selectionStart, box.selectionEnd]).toEqual([0, text.length]);
+    // A real edit always starts interpreting again, including after restoration.
+    fireEvent.change(box, { target: { value: "Reference p 12 " } });
+    await screen.findByText("Using page 12");
+    expect(searched.at(-1)).toEqual({ text: "Reference p 12 ", interpret_locators: true });
+  } finally { now.mockRestore(); }
+});
+
+test.each(Object.keys(copyFormatNames) as api.CopyFormat[])("%s previews and copies the captured locator, including with output hidden", async (format) => {
+  const preview = vi.fn(() => ({ text: "key with locator", warnings: [] }));
+  const copy = vi.fn(() => ({ text: "key with locator", warnings: [] }));
+  backend({ search: () => locatorReply(), copy_format: () => format, citation_text: preview, copy_citation: copy });
+  render(<App />);
+  await screen.findByText("Locator reference");
+  await waitFor(() => expect(preview).toHaveBeenLastCalledWith({ items: [
+    { id: result("a", "").id, locator: { label: "page", value: "12" } },
+  ], format, expectedRevision: "1" }));
+  const box = screen.getByLabelText("Search references");
+  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
+  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ items: [
+    { id: result("a", "").id, locator: { label: "page", value: "12" } },
+  ], format, expectedRevision: "1" }));
+});
+
+test("applying a locator to the same identity retires a pending key preview", async () => {
+  const pending: Record<string, (value: unknown) => void> = {};
+  backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
+    citation_text: ({ items }) => new Promise((resolve) => { pending[items[0]!.locator!.value] = resolve; }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  await waitFor(() => expect(pending["12"]).toBeTypeOf("function"));
+  fireEvent.change(box, { target: { value: "Smith p.9" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Apply locator to a" }));
+  await waitFor(() => expect(pending["9"]).toBeTypeOf("function"));
+  await act(async () => { pending["9"]!({ text: "current page 9", warnings: [] }); });
+  await screen.findByText("current page 9");
+  await act(async () => { pending["12"]!({ text: "retired page 12", warnings: [] }); });
+  expect(screen.queryByText("retired page 12")).toBeNull();
+  expect(screen.getByText("current page 9")).toBeTruthy();
+});
+
+test.each(["copy", "context"])("applying a locator retires a pending native %s completion", async (operation) => {
+  let finish: (value: unknown) => void = () => undefined;
+  const calls = backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
+    copy_citation: () => new Promise((resolve) => { finish = resolve; }),
+    row_context: () => new Promise((resolve) => { finish = resolve; }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  fireEvent.change(box, { target: { value: "Smith p.9" } });
+  await screen.findByRole("button", { name: "Apply locator to a" });
+  if (operation === "copy") fireEvent.keyDown(box, { key: "Enter" });
+  else fireEvent.contextMenu(screen.getByText("Locator reference"));
+  fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
+  await act(async () => { finish(operation === "copy" ? { text: "retired locator receipt", warnings: [] } : "toggle"); });
+  expect(screen.getByRole("button", { name: "Remove page 9 from a" })).toBeTruthy();
+  expect(screen.queryByText("retired locator receipt")).toBeNull();
+  expect(calls).not.toContain("hide_picker");
+});
+
+test.each(["copy", "context"])("literal search mode retires a pending native %s completion without changing prepared locators", async (operation) => {
+  let finish: (value: unknown) => void = () => undefined;
+  const calls = backend({ search: ({ query }) => query.interpret_locators ? locatorReply() : new Promise(() => undefined),
+    copy_citation: () => new Promise((resolve) => { finish = resolve; }),
+    row_context: () => new Promise((resolve) => { finish = resolve; }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  if (operation === "copy") fireEvent.keyDown(box, { key: "Enter" });
+  else fireEvent.contextMenu(screen.getByText("Locator reference"));
+  fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
+  await act(async () => { finish(operation === "copy" ? { text: "retired mode receipt", warnings: [] } : "toggle"); });
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  expect(screen.queryByText("retired mode receipt")).toBeNull();
+  expect(calls).not.toContain("hide_picker");
+});
+
+
+test("a same-identity locator edit cancels a waiting CSL click and its formatter", async () => {
+  const formatter = await import("./format/formatted");
+  const pending: Record<string, () => void> = {};
+  const signals: (AbortSignal | undefined)[] = [];
+  const contexts: unknown[] = [];
+  const format = vi.spyOn(formatter, "formatCitation").mockImplementation((_csl, _style, options) => {
+    contexts.push(options?.cites);
+    signals.push(options?.signal);
+    const value = options?.cites?.[0]?.locator;
+    return new Promise((resolve) => { pending[value!] = () => resolve({ markup: [], text: `CSL page ${value}`, html: "", warnings: [] }); });
+  });
+  const copies = vi.fn(() => null);
+  backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"), csl_items: () => "[]", copy_formatted: copies,
+    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true }) });
+  try {
+    render(<App />);
+    const box = screen.getByLabelText("Search references");
+    fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+    await waitFor(() => expect(pending["12"]).toBeTypeOf("function"));
+    fireEvent.change(box, { target: { value: "Smith p.9" } });
+    await screen.findByRole("button", { name: "Apply locator to a" });
+    fireEvent.click(screen.getByText("Locator reference"), { detail: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
+    await waitFor(() => expect(pending["9"]).toBeTypeOf("function"));
+    expect(signals[0]?.aborted).toBe(true);
+    expect(contexts).toEqual([[{ locator: "12", label: "page" }], [{ locator: "9", label: "page" }]]);
+    await act(async () => { pending["12"]!(); pending["9"]!(); });
+    await screen.findByText("CSL page 9");
+    expect(copies).not.toHaveBeenCalled();
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(copies).toHaveBeenCalledExactlyOnceWith({ text: "CSL page 9", html: "", expectedRevision: "1" }));
+  } finally { format.mockRestore(); }
+});
+
+test("CSL receives ordered locator contexts and an empty context for a record without a citation key", async () => {
+  const formatter = await import("./format/formatted");
+  const format = vi.spyOn(formatter, "formatCitation").mockResolvedValue({ markup: [], text: "formatted selection", html: "", warnings: [] });
+  const csl = vi.fn(() => "[]");
+  backend({ search: ({ query }) => {
+    const key = query.text.startsWith("B") ? "b" : query.text.startsWith("C") ? "c" : "a";
+    return { revision: "1", results: [{ ...result(key, `CSL reference ${key}`), key: key === "c" ? "" : key }],
+      interpretation: key === "c" ? null : { search: key, locator: { label: key === "b" ? "section" : "page", value: key === "b" ? "9" : "12" }, typed: "synthetic" } };
+  }, csl_items: csl,
+  picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true }) });
+  try {
+    render(<App />);
+    const box = screen.getByLabelText("Search references");
+    fireEvent.click(await screen.findByText("CSL reference a"), { ctrlKey: true });
+    fireEvent.change(box, { target: { value: "B sec.9" } });
+    fireEvent.click(await screen.findByText("CSL reference b"), { ctrlKey: true });
+    fireEvent.change(box, { target: { value: "C" } });
+    fireEvent.click(await screen.findByText("CSL reference c"), { ctrlKey: true });
+    await waitFor(() => expect(format.mock.lastCall?.[2]?.cites).toEqual([
+      { locator: "12", label: "page" }, { locator: "9", label: "section" }, {},
+    ]));
+    expect(csl).toHaveBeenLastCalledWith({ ids: ["a", "b", "c"].map((key) => result(key, "").id), expectedRevision: "1" });
+  } finally { format.mockRestore(); }
+});
+
+
+test("a failed replacement search clears the earlier locator interpretation", async () => {
+  backend({ search: ({ query }) => {
+    if (query.text === "failed") throw new Error("synthetic search failure");
+    return locatorReply();
+  } });
+  render(<App />);
+  await screen.findByText("Using page 12");
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "failed" } });
+  await screen.findByText("Ibis could not search your library. Use Reload, then try again.");
+  expect(screen.queryByText("Using page 12")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
+});
+
+
+test("literal mode cancels a waiting CSL row click while keeping the prepared locator", async () => {
+  const formatter = await import("./format/formatted");
+  let finish: () => void = () => undefined;
+  const format = vi.spyOn(formatter, "formatCitation").mockImplementation(() => new Promise((resolve) => {
+    finish = () => resolve({ markup: [], text: "prepared page 12", html: "", warnings: [] });
+  }));
+  const copies = vi.fn(() => null);
+  backend({ search: ({ query }) => ({ ...locatorReply(), interpretation: query.interpret_locators ? locatorReply().interpretation : null }),
+    csl_items: () => "[]", copy_formatted: copies,
+    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true }) });
+  try {
+    render(<App />);
+    fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+    await waitFor(() => expect(format).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByText("Locator reference"), { detail: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
+    await act(async () => { finish(); });
+    await screen.findByText("prepared page 12");
+    expect(copies).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  } finally { format.mockRestore(); }
+});
+
+test("removing and re-adding a selected identity captures the newer query locator", async () => {
+  backend({ search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12") });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "Smith p.9" } });
+  await screen.findByText("Using page 9");
+  fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
+  fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
+  expect(screen.getByRole("button", { name: "Remove page 9 from a" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Remove page 12 from a" })).toBeNull();
+});
+
+test("a locator cannot update or copy a prepared reference from a retired snapshot", async () => {
+  let revision = "1";
+  const copy = vi.fn(() => ({ text: "unexpected", warnings: [] }));
+  backend({ library_status: () => ({ ...zoteroStatus(["user"]), revision }),
+    search: () => ({ ...locatorReply(revision === "1" ? "12" : "9"), revision,
+    results: [{ ...result("a", `Snapshot locator ${revision}`), revision }] }), copy_citation: copy });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Snapshot locator 1"), { ctrlKey: true });
+  revision = "2";
+  await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
+  await screen.findByText("Snapshot locator 2");
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Apply locator to a" })).toBeNull();
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(copy).not.toHaveBeenCalled();
+  await screen.findByText("The library changed. Search again and reselect the references before copying.");
 });

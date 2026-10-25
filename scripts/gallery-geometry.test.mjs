@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { SPEC_FILE, compare, derive, layout, table } from "./gallery-geometry.mjs";
+import { compare, derive, layout, loadSpec, table, tokenPx } from "./gallery-geometry.mjs";
 
-const spec = JSON.parse(readFileSync(SPEC_FILE, "utf8"));
+const spec = loadSpec();
 const design = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "docs", "design.md"), "utf8");
 const LOOKS = ["macos", "windows", "linux"];
 
@@ -24,6 +24,10 @@ test("the geometry spec derives the corner chain and text x that docs/design.md 
   assert.equal(windows, macos);
   assert.match(design, new RegExp(`text x .*${macos} px on every OS`));
   assert.equal(derive(spec, "linux").textX, macos);
+  for (const look of LOOKS) {
+    assert.equal(derive(spec, look).tileCentre, spec.columns.tileCentre);
+    assert.equal(derive(spec, look).textX, spec.columns.titleStart);
+  }
 });
 
 test("the geometry spec's row heights, footer and search band are the ones docs/design.md states", () => {
@@ -41,31 +45,36 @@ test("the geometry spec's row heights, footer and search band are the ones docs/
 
 const onSpec = { rowHeight: 58, footer: 41, searchBand: 48, glyphCentre: 36, tileCentre: 36, textX: 64, titleX: 64, rWin: 8, rRow: 4, rField: 4, rTile: 4,
   headerDivider: 1, fieldHeight: 32, pinHeight: 32, popupHeight: 32, footerAction: 24, footerDivider: 1,
-  pinTopGap: 8, pinBottomGap: 8, pinEndGap: 8, footerTopGap: 8, footerBottomGap: 8 };
+  pinTopGap: 8, pinBottomGap: 8, pinEndGap: 8, footerTopGap: 8, footerBottomGap: 8, rControl: 4, rPopup: 4,
+  statusDotCentre: 36, statusTextX: 64, shelfTextX: 64 };
 
 test("a frame on spec passes every check, within the tolerance", () => {
   const rows = compare(spec, "windows", "normal", "comfortable", { ...onSpec, textX: 64.4 });
-  assert.equal(rows.length, 21);
+  assert.equal(rows.length, 29);
   assert.ok(rows.every((row) => row.pass), table(rows));
 });
 
-test("Larger text scales nested insets but keeps window corners and radius floors fixed", () => {
-  const scaled = derive(spec, "macos", 1.15);
-  assert.equal(scaled.rWin, 28);
-  assert.ok(Math.abs(scaled.rRow - 18.8) < 1e-9);
-  assert.equal(scaled.rTile, 6);
-  assert.ok(Math.abs(scaled.textX - 73.6) < 1e-9);
+test("C15 radii stay fixed while Larger text scales layout", () => {
+  for (const [look, radii] of [["macos", [16, 8, 6]], ["windows", [8, 4, 4]], ["linux", [15, 7, 6]]]) {
+    for (const scale of [1, 1.15, 2]) {
+      const sized = derive(spec, look, scale);
+      assert.deepEqual([sized.rWin, sized.rRow, sized.rTile], radii, `${look} at ${scale}`);
+      assert.ok(Math.abs(sized.textX - 64 * scale) < 1e-9);
+    }
+  }
+  const changedLayout = { ...spec, rowPad: 16, platforms: { ...spec.platforms, macos: { ...spec.platforms.macos, inset: 4 } } };
+  assert.equal(derive(changedLayout, "macos", 1.15).rRow, 8, "layout inputs never resize the shape");
 });
 
 test("a Larger text frame with scaled insets passes without hiding radius drift", () => {
   const fixture = { ...spec, platforms: { ...spec.platforms, windows: { ...spec.platforms.windows, inset: 4, rWin: 8, rMin: 2 } } };
   const measured = { ...onSpec, rowHeight: 66.7, footer: 47, searchBand: 55.2,
-    glyphCentre: 46, tileCentre: 46, textX: 69, titleX: 69, rRow: 3.4, rField: 3.4, rTile: 2,
+    glyphCentre: 36.8, tileCentre: 36.8, textX: 69, titleX: 69, statusDotCentre: 36.8, statusTextX: 69, shelfTextX: 69, rRow: 2, rField: 2, rTile: 2,
     fieldHeight: 36.8, pinHeight: 36.8, popupHeight: 36.8, footerAction: 27.6,
     pinTopGap: 4.6, pinBottomGap: 4.6, pinEndGap: 4.6, footerTopGap: 4.6, footerBottomGap: 4.6 };
   const rows = compare(fixture, "windows", "large", "comfortable", measured);
   assert.ok(rows.every((row) => row.pass), table(rows));
-  const drifted = compare(fixture, "windows", "large", "comfortable", { ...measured, rRow: 4.1 });
+  const drifted = compare(fixture, "windows", "large", "comfortable", { ...measured, rRow: 2.6 });
   assert.deepEqual(drifted.filter((row) => !row.pass).map((row) => row.name), ["row radius"]);
 });
 
@@ -73,12 +82,12 @@ test("drift, a missing element and Larger text scaling are reported", () => {
   const rows = compare(spec, "windows", "normal", "comfortable", { ...onSpec, footer: 52, rTile: Number.NaN });
   assert.deepEqual(rows.filter((row) => !row.pass).map((row) => row.name), ["footer height", "tile radius"]);
   assert.match(table(rows), /tile radius +windows +normal +4 +— +MISMATCH/);
-  const large = compare(spec, "macos", "large", "compact", { rowHeight: 46 });
-  assert.deepEqual(large.map((row) => [row.name, row.pass]), [["row height (compact)", true]]);
+  const large = compare(spec, "macos", "large", "compact", { ...onSpec, rowHeight: 46, glyphCentre: 41.4, tileCentre: 41.4, textX: 73.6, titleX: 73.6, statusDotCentre: 41.4, statusTextX: 73.6, shelfTextX: 73.6 });
+  assert.ok(large.every(row => row.pass), table(large));
 });
 
-test("header/footer fills, outside dividers and each eight-pixel gap are measured", () => {
-  for (const name of ["searchBand", "headerDivider", "fieldHeight", "pinHeight", "popupHeight", "footerAction", "footerDivider", "pinTopGap", "pinBottomGap", "pinEndGap", "footerTopGap", "footerBottomGap"]) {
+test("header/footer fills, control radii, outside dividers and each eight-pixel gap are measured", () => {
+  for (const name of ["searchBand", "headerDivider", "fieldHeight", "pinHeight", "popupHeight", "footerAction", "footerDivider", "pinTopGap", "pinBottomGap", "pinEndGap", "footerTopGap", "footerBottomGap", "rControl", "rPopup"]) {
     const failed = compare(spec, "windows", "normal", "comfortable", { ...onSpec, [name]: onSpec[name] - 1 }).filter(row => !row.pass);
     assert.equal(failed.length, 1, `${name} drift must be visible`);
   }
@@ -125,4 +134,24 @@ test("overlapping regions, a half chip and a list without its own scroll fail (#
   assert.equal(rows[0].measured, 2);
   // Without a tray only regions and the list are checked, and a missing list fails.
   assert.deepEqual(layout("linux", "large", "many-results", { regions: [], tray: null, list: null }).map((row) => row.pass), [true, false]);
+});
+
+
+test("absolute columns reject equally misplaced pairs and every existing text consumer", () => {
+  const frame = { ...onSpec, glyphCentre: 40, tileCentre: 40, textX: 68, titleX: 68,
+    statusDotCentre: 24, statusTextX: 36, shelfTextX: 65 };
+  const failures = compare(spec, "windows", "normal", "comfortable", frame).filter(row => !row.pass).map(row => row.name);
+  for (const name of ["tile centre x", "search glyph centre x", "row title x", "status dot centre x", "status text x", "shelf citation x"])
+    assert.ok(failures.includes(name), `${name} must be checked against its absolute column`);
+});
+
+test("token sizes come from tokens.css: a look's own rule, var() and rem, never a rule inside @media", () => {
+  const css = `:root { --space-2: .5rem; --inset: var(--space-2); --r-win: 16px; /* --r-win: 99px */ }
+    :root[data-platform="windows"], :root[data-platform="linux"] { --r-win: 8px; }
+    @media (prefers-contrast: more) { :root { --r-win: 2px; } }
+    :root { --r-win: 12px; --odd: calc(1px + 2px); }`;
+  assert.deepEqual(["macos", "windows"].map(look => tokenPx(css, "--r-win", look)), [12, 8]);
+  assert.equal(tokenPx(css, "--inset", "linux"), 8);
+  assert.ok(Number.isNaN(tokenPx(css, "--odd", "macos")) && Number.isNaN(tokenPx(css, "--missing", "macos")));
+  for (const look of LOOKS) assert.ok(Object.values(spec.platforms[look]).every(Number.isFinite), `${look} has every size`);
 });

@@ -186,6 +186,7 @@ mod tests {
             source_counts: Default::default(),
             warnings,
             error: error.map(String::from),
+            problem: None,
             error_reason: None,
             kept_references: false,
             choice_not_saved: false,

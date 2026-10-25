@@ -45,14 +45,14 @@ export const commands = {
 	 *  it belongs to an outdated query. `scope` contains exact loaded source IDs:
 	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
-	search: (query: string, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply>("search", { query, limit, page, request, scope }),
+	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
 	/**
 	 *  Copy the selected records as a citation to the clipboard. Format choices
 	 *  are saved separately when selected, even if no citation is copied.
 	 */
-	copyCitation: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { ids, format, expectedRevision }),
+	copyCitation: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { items, format, expectedRevision }),
 	/**  Preview a key citation without writing the clipboard or saving a choice. */
-	citationText: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("citation_text", { ids, format, expectedRevision }),
+	citationText: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<CitationPreview>("citation_text", { items, format, expectedRevision }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**
@@ -95,6 +95,11 @@ export const commands = {
 	 */
 	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
 	/**
+	 *  Fit the picker to `height` CSS px of content, or to the results height.
+	 *  A synchronous command, so it runs on the main thread.
+	 */
+	fitPicker: (height: number | null, animate: boolean) => __TAURI_INVOKE<void>("fit_picker", { height, animate }),
+	/**
 	 *  End the app. Closing the window only hides it, so this is the way out on
 	 *  Windows and Linux, which have no application menu with Quit.
 	 */
@@ -115,9 +120,33 @@ export const commands = {
 	copiedNotice: () => __TAURI_INVOKE<string | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
+	/**  Show only native Copy and Add/Remove actions. Cancellation returns no action. */
+	rowContext: (added: boolean) => __TAURI_INVOKE<"copy" | "toggle" | null>("row_context", { added }),
 };
 
 /* Types */
+/**  Request-local display pieces; copied output keeps its existing payload. */
+export type CitationPreview = {
+	text: string,
+	warnings: string[],
+	segments: PreviewSegment[],
+};
+
+/**  One transient citation choice, resolved by full source identity. */
+export type CitationSelection = CitationSelection_Serialize | CitationSelection_Deserialize;
+
+/**  One transient citation choice, resolved by full source identity. */
+export type CitationSelection_Deserialize = {
+	id: RecordId,
+	locator?: Locator | null,
+};
+
+/**  One transient citation choice, resolved by full source identity. */
+export type CitationSelection_Serialize = {
+	id: RecordId,
+	locator?: Locator | null,
+};
+
 /**  A bundled citation style the picker can format with (ADR 0020). */
 export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
 
@@ -168,6 +197,17 @@ export type KeyFormat =
 /**  Bare keys separated by commas. */
 "keys";
 
+/**  A library failure grouped by what the person can do about it. */
+export type LibraryProblem =
+/**  The file is not there: moved, renamed or on a disconnected drive. */
+"missing" |
+/**  The file is there but cannot be used as a library. */
+"unreadable" |
+/**  Zotero did not answer: it is closed or still starting. */
+"zotero_closed" |
+/**  Zotero answered but does not let other apps read it. */
+"zotero_access_off" | "other";
+
 export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error";
 
 /**  Sent to the interface with the `library:changed` event. */
@@ -189,6 +229,8 @@ export type LibraryStatus = {
 	source_counts: { [key in string]: number },
 	warnings: number,
 	error: string | null,
+	/**  What kind of failure `error` is, so the picker can offer the fix. */
+	problem: LibraryProblem | null,
 	/**  Something to tell the user that is not a failure to open. */
 	note: string | null,
 	/**  Startup settings recovery, separate from transient library status. */
@@ -213,6 +255,24 @@ export type LibraryStatus = {
 	 *  when `stale`, the time of the copy still being searched.
 	 */
 	checked_at: number | null,
+};
+
+export type Locator = {
+	label: LocatorLabel,
+	/**  As typed by the user, e.g. "12", "24-26", "3, 7". */
+	value: string,
+};
+
+/**  Kind of locator ("p. 12", "chap. 3"). */
+export type LocatorLabel = "page" | "chapter" | "section" | "paragraph" | "figure" | "line" | "note" | "volume" | "verse";
+
+/**  A search with a locator split off its end. */
+export type LocatorQuery = {
+	/**  What remains to search for. */
+	search: string,
+	locator: Locator,
+	/**  The text read as the locator, exactly as typed. */
+	typed: string,
 };
 
 /**  Whether Ibis starts when the person logs in, as the system reports it. */
@@ -249,6 +309,13 @@ export type PickerPreferences = {
 	density: Density,
 	larger_text: boolean,
 	show_paste_preview: boolean,
+	/**  The Ibis mark in place of the search glyph; off by default. */
+	search_mark: boolean,
+};
+
+export type PreviewSegment = {
+	item: number | null,
+	text: string,
 };
 
 /**  Stable identity of a record: which source it came from and its key there. */
@@ -259,10 +326,29 @@ export type RecordId = {
 	native_key: string,
 };
 
+export type RowAction = "copy" | "toggle";
+
+/**  Query text and the explicit choice to read a trailing locator. */
+export type SearchQuery = {
+	text: string,
+	interpret_locators: boolean,
+};
+
 /**  A search keeps its snapshot identity even when no references match. */
-export type SearchReply = {
+export type SearchReply = SearchReply_Serialize | SearchReply_Deserialize;
+
+/**  A search keeps its snapshot identity even when no references match. */
+export type SearchReply_Deserialize = {
 	revision: string,
 	results: SearchResult[],
+	interpretation?: LocatorQuery | null,
+};
+
+/**  A search keeps its snapshot identity even when no references match. */
+export type SearchReply_Serialize = {
+	revision: string,
+	results: SearchResult[],
+	interpretation?: LocatorQuery | null,
 };
 
 export type SearchResult = {

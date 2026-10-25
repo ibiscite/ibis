@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject, type ComponentPropsWithRef } from "react";
+import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { Button } from "./Button";
-import { MenuCheck, useMenuBoundary } from "./Menu";
+import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
 import { currentPlatform } from "../platform";
+import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
 export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean }[] };
@@ -21,34 +23,20 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   const [internalOpen, setOpen] = useState(false);
   const [skipExit, setSkipExit] = useState(false);
   const open = isOpen ?? internalOpen;
-  const boundary = useMenuBoundary(open, returnFocusRef);
-  const list = useRef<HTMLDivElement | null>(null);
-  const closingList = useRef<HTMLDivElement | null>(null);
-  const [opening, setOpening] = useState(0);
-  const listRef = useCallback((node: HTMLDivElement | null) => {
-    list.current = node;
-    if (!node) closingList.current = null;
-  }, []);
-  useLayoutEffect(() => {
-    if (!open) closingList.current = list.current;
-    else {
-      // Restart reused content after an overlapping reopen, so the collection
-      // and optional filter run their normal autofocus again.
-      if (closingList.current && closingList.current === list.current) setOpening((value) => value + 1);
-      closingList.current = null;
-    }
-  }, [open]);
-  const composing = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
+  const boundary = useMenuBoundary(open, returnFocusRef, button);
+  const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(open);
+  const wholeRows = useWholeRows(list);
+  const composing = useRef(false);
+  const renderedPlacement = useMenuPlacement(open, button, "bottom end");
   const popover = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
   const pending = useRef<{ target: HTMLElement; closing: HTMLElement | null; token: number; command?: ToolbarMenuCommand } | null>(null);
-  const focusFrame = useRef(0);
   const cancel = useCallback(() => {
     generation.current += 1;
     pending.current = null;
-    cancelAnimationFrame(focusFrame.current);
-  }, []);
+    cancelFocusRetry();
+  }, [cancelFocusRetry]);
   const restoreFocus = useCallback(() => {
     const request = pending.current;
     if (!request || popover.current || request.closing?.isConnected) return;
@@ -61,8 +49,9 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   }, []);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
-    if (!node && pending.current) focusFrame.current = requestAnimationFrame(restoreFocus);
-  }, [restoreFocus]);
+    wholeRows(node);
+    if (!node && pending.current) retryFocus(restoreFocus);
+  }, [restoreFocus, retryFocus, wholeRows]);
   useLayoutEffect(() => { if (open) { setSkipExit(false); cancel(); } }, [open, cancel]);
   useEffect(() => {
     const hidden = () => { if (document.hidden) cancel(); };
@@ -109,7 +98,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       <Header className="toolbar-menu-heading">{section.label}</Header>
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={false}
-        render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-disabled={item.disabled || undefined} />}>
+        render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={item.disabled || undefined} />}>
         {({ isSelected }) => <><MenuCheck checked={isSelected} />
           <Text slot="label" className="menu-label">{item.label}</Text><Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined}>{item.sample}</Text></>}
       </MenuItem>)}
@@ -117,7 +106,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   </Menu>;
   return <span className="toolbar-menu-control" onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
     onKeyDownCapture={(event) => {
-      if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) event.stopPropagation();
+      if (isComposing(event, composing.current)) event.stopPropagation();
       else if (open || popover.current) {
         const command = onKeyCommand?.(event);
         if (command || event.key === "Escape" || event.key === "Tab") { event.preventDefault(); event.stopPropagation(); changeOpen(false, command); }
@@ -126,7 +115,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
       <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<PopupIndicator /></Button>
-      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement="bottom end" offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>

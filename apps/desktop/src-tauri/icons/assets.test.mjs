@@ -12,15 +12,24 @@ const pngSize = (bytes) => {
   return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
 };
 
-test("bundle icons are the approved B/G1 sources and have their declared sizes", () => {
+test("desktop art uses the final brand kit rather than the retired B/G1 design", () => {
+  expect(read("source/full.svg").toString()).toBe(
+    readFileSync(new URL("../../../../brand/exports/ibis-app-icon.svg", import.meta.url), "utf8"));
+  expect(read("source/windows.svg").toString()).toBe(
+    readFileSync(new URL("../../../../brand/exports/ibis-mark.svg", import.meta.url), "utf8"));
+});
+
+test("bundle icons have valid shared depth, small-size art and declared sizes", () => {
   const svg = read("source/full.svg").toString();
-  expect(svg).toContain('viewBox="0 0 100 100"');
-  expect(svg).toContain('translate(-2.74 -2.83) scale(1.025)');
-  expect(svg).toContain("M36 80C35 70 30 62 32 52 33.5 45 36.5 40.5 41 38");
-  expect(svg).toContain("M41 25C62 25.5 77 39 84.5 69 75 50 63 41.5 43 43.2z");
-  expect(svg).toContain("#e5532d");
-  expect(svg).toContain("#c0361a");
-  expect(svg).not.toMatch(/filter=|rx=/);
+  expect(svg).toContain('viewBox="0 0 1024 1024"');
+  for (const name of ["full.svg", "macos.svg", "windows.svg", "gnome.svg"]) {
+    const source = read(`source/${name}`).toString();
+    expect(source.match(/<filter /g)).toHaveLength(1);
+    expect(source).toContain('mask="url(#');
+    const ids = [...source.matchAll(/ id="([^"]+)"/g)].map((match) => match[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z_][\w.-]*$/);
+  }
   const sizes = { "32x32.png": 32, "128x128.png": 128, "128x128@2x.png": 256 };
   expect(config.bundle.icon).toEqual([
     ...Object.keys(sizes).map((name) => `icons/${name}`), "icons/icon.icns", "icons/icon.ico",
@@ -29,19 +38,18 @@ test("bundle icons are the approved B/G1 sources and have their declared sizes",
   for (const [name, size] of Object.entries({ ...sizes, "source.png": 1024, "icon.png": 1024 })) {
     expect(pngSize(read(name))).toEqual([size, size]);
   }
-  const small = read("source/small.svg").toString();
-  expect(small).toContain('stroke-width="11"');
-  expect(small).not.toContain('r="2.1"');
-  for (const name of ["windows.svg", "windows-small.svg"]) {
-    expect(read(`source/${name}`).toString()).toContain('viewBox="20 19 70 70"');
+  for (const name of ["small.svg", "macos-small.svg", "windows-small.svg"]) {
+    const small = read(`source/${name}`).toString();
+    expect(small).toContain('stroke-width="10.5"');
+    expect(small).not.toMatch(/<filter|<mask/);
   }
   const symbolic = read("source/io.github.ibiscite.ibis-symbolic.svg").toString();
-  expect(symbolic).toContain('viewBox="0 0 16 16"');
-  expect(symbolic).toContain('stroke-width="1.75"');
-  expect(symbolic).not.toMatch(/gradient|r="2.1"/i);
+  expect(symbolic).toContain('width="16" height="16"');
+  expect(symbolic).toContain('stroke="currentColor"');
+  expect(symbolic).not.toMatch(/gradient|<filter|#[0-9a-f]{3,6}\b/i);
 });
 
-test("both Linux packages install named app and symbolic icons, and macOS retains layers", () => {
+test("both Linux packages install named icons and macOS ships only its reviewed ICNS", () => {
   for (const platform of ["deb", "appimage"]) {
     const files = config.bundle.linux[platform].files;
     for (const size of [128, 256, 512]) {
@@ -53,18 +61,7 @@ test("both Linux packages install named app and symbolic icons, and macOS retain
   }
   expect(read(config.bundle.linux.deb.desktopTemplate.replace("icons/", "")).toString())
     .toContain("Icon=io.github.ibiscite.ibis");
-  const layered = JSON.parse(read("source/Ibis.icon/icon.json"));
-  // Icon Composer lists groups front to back: the eye must cover the head.
-  expect(layered.groups.map((group) => group.name)).toEqual(["Eye", "Bird"]);
-  expect(layered["fill-specializations"].find((entry) => entry.appearance === "dark").value)
-    .toEqual(layered["fill-specializations"].find((entry) => !entry.appearance).value);
-  expect(layered.groups.find((group) => group.name === "Bird").layers[0]["fill-specializations"])
-    .toContainEqual({ appearance: "dark", value: { solid: "srgb:1,1,1,1" } });
-  for (const group of layered.groups) {
-    for (const layer of group.layers) {
-      expect(read(`source/Ibis.icon/Assets/${layer["image-name"]}`).toString()).toContain("<svg");
-    }
-  }
+  expect(config.bundle.icon).not.toContain("icons/source/Ibis.icon");
 });
 
 test("Windows and macOS containers hold actual images at every required size", () => {

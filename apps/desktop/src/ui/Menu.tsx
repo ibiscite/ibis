@@ -1,12 +1,26 @@
-import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
-import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { mergeProps, setInteractionModality } from "react-aria";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Button } from "./Button";
+import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
 
+/** Align to the rendered trailing edge even when the browser locale differs. */
+export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement | null>, placement: "top end" | "bottom end") {
+  const [rtl, setRtl] = useState(false);
+  useLayoutEffect(() => {
+    if (open && trigger.current) setRtl(getComputedStyle(trigger.current).direction === "rtl");
+  }, [open, trigger]);
+  return `${placement === "top end" ? "top" : "bottom"} ${rtl ? "left" : "right"}` as const;
+}
+
 /** Keep React Aria's placement boundary inside the viewport and below the
- * return field. A wrapped picker can put its footer trigger below the window. */
-export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>) {
+ * return field. A wrapped picker can put its footer trigger below the window.
+ * A menu opened from above the `[data-menu-floor]` region (the footer) also
+ * ends above it, so it never covers the footer's actions. */
+export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>) {
   const [boundary, setBoundary] = useState<HTMLElement>();
   const [clearBottom, setClearBottom] = useState(0);
   useLayoutEffect(() => {
@@ -15,9 +29,13 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     node.dataset.menuBoundary = "";
     node.setAttribute("aria-hidden", "true");
     Object.assign(node.style, { position: "fixed", inset: "0", pointerEvents: "none" });
+    const floor = document.querySelector<HTMLElement>("[data-menu-floor]");
+    const above = floor && trigger?.current && !floor.contains(trigger.current) ? floor : null;
     const update = () => {
       const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
       node.style.top = `${bottom}px`;
+      // Never above the top edge, even in a window too short for both.
+      if (above) node.style.bottom = `${Math.max(0, window.innerHeight - Math.max(bottom, above.getBoundingClientRect().top))}px`;
       setClearBottom(bottom);
     };
     update();
@@ -25,6 +43,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     setBoundary(node);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     if (returnRef?.current) observer?.observe(returnRef.current);
+    if (above) observer?.observe(above);
     window.addEventListener("resize", update);
     window.visualViewport?.addEventListener("resize", update);
     return () => {
@@ -33,38 +52,107 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
       window.visualViewport?.removeEventListener("resize", update);
       node.remove();
     };
-  }, [open, returnRef]);
+  }, [open, returnRef, trigger]);
   const getTargetRect = useCallback((target: Element) => {
     const rect = target.getBoundingClientRect();
     if (!boundary?.isConnected) return rect;
     const bounds = boundary.getBoundingClientRect();
     // Preserve the real anchor when visible; shift an off-window trigger into
     // the boundary so placement can still flip and cap against usable space.
+    if (rect.top >= 8 && rect.bottom <= bounds.bottom - 8) return rect;
     const top = Math.max(clearBottom + 8 - 6 - rect.height, Math.min(rect.top, bounds.bottom - 8));
     return new DOMRect(rect.x, top, rect.width, rect.height);
   }, [boundary, clearBottom]);
   return { boundaryElement: boundary, getTargetRect };
 }
 
+/** A scrolling menu ends on a whole row, never a cut one (#1031). Pass the
+ * returned callback the popover node; it refits whenever React Aria resizes
+ * the popover or the rows change, as when filtering. */
+export function useWholeRows(list: RefObject<HTMLElement | null>) {
+  const stop = useRef<(() => void) | null>(null);
+  return useCallback((frame: HTMLElement | null) => {
+    stop.current?.();
+    stop.current = null;
+    if (!frame) return;
+    // Marks the edges with rows beyond them, which Menu.css fades.
+    const edges = () => {
+      const node = list.current;
+      if (!node) return;
+      node.toggleAttribute("data-more-above", node.scrollTop > 0);
+      node.toggleAttribute("data-more-below", node.scrollHeight - node.clientHeight - node.scrollTop >= 1);
+    };
+    const fit = () => {
+      const node = list.current;
+      if (!node) return;
+      node.style.maxHeight = "";
+      const height = node.clientHeight;
+      if (node.scrollHeight > height) {
+        const top = node.getBoundingClientRect().top + node.clientTop;
+        let end = 0;
+        for (const row of node.querySelectorAll('[role^="menuitem"]')) {
+          const bottom = row.getBoundingClientRect().bottom - top;
+          if (bottom <= height && bottom > end) end = bottom;
+        }
+        if (end > 0) node.style.maxHeight = `${Math.floor(end)}px`;
+      }
+      edges();
+    };
+    // The frame's own style (React Aria's max-height) and the rows, never the
+    // list's style or edges, which fit() itself sets.
+    const resized = new MutationObserver(fit);
+    const rows = new MutationObserver(fit);
+    resized.observe(frame, { attributes: true, attributeFilter: ["style"] });
+    rows.observe(frame, { childList: true, subtree: true });
+    // Scrolling does not bubble; the capture sees the list's, also once it is remounted.
+    frame.addEventListener("scroll", edges, true);
+    fit();
+    stop.current = () => { resized.disconnect(); rows.disconnect(); frame.removeEventListener("scroll", edges, true); };
+  }, [list]);
+}
+
+let lastPointer = "";
+
+/** A menu item's row. Any pointer movement over it highlights it, as in
+ * native menus: React Aria moves the highlight only when the pointer enters an
+ * item, and not at all while arrow keys are in use (#1031). Rendered by the
+ * item, so it reads the menu's own state. */
+export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { itemId: string }) {
+  const state = useContext(MenuStateContext);
+  const onPointerMove = (event: PointerEvent) => {
+    // A pointer at rest gets a synthetic move when arrow keys scroll rows
+    // under it; only a real movement takes the highlight.
+    const at = `${event.clientX},${event.clientY}`;
+    if (at === lastPointer) return;
+    lastPointer = at;
+    const manager = state?.selectionManager;
+    if (event.pointerType === "touch" || !manager || (manager.isFocused && manager.focusedKey === itemId)) return;
+    setInteractionModality("pointer");
+    manager.setFocused(true);
+    manager.setFocusedKey(itemId);
+  };
+  return <div {...mergeProps(props, { onPointerMove })} />;
+}
+
 const ActionFocusContext = createContext<(() => void) | null>(null);
 
 type ItemProps = {
   id: string; label: string; title?: string; keys?: string;
-  /** A toggle: shows a check in the leading column and is a menuitemcheckbox. */
+  /** A toggle: shows a check and is a menuitemcheckbox. */
   checked?: boolean;
   /** Stays focusable and is announced as unavailable, but does nothing (ADR 0021). */
   disabled?: boolean;
   onAction: () => void;
 };
 
-/** The leading check column; a drawn check, so it adds no text to the row. */
+/** A drawn check, so it adds no text to the row; Menu.css places it per platform. */
 export function MenuCheck({ checked }: { checked: boolean }) {
   return <span className="menu-check" aria-hidden="true">
     {checked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m2.5 6.5 2.5 2.5 4.5-6" /></svg>}
   </span>;
 }
 
-/** One row: a leading check column, the label, and an optional shortcut. */
+/** An action row: label, optional shortcut and a check for toggles. */
 export function MenuItem({ id, label, title, keys, checked, disabled, onAction }: ItemProps) {
   const requestActionFocus = useContext(ActionFocusContext);
   return <AriaMenuItem id={id} className="menu-item" textValue={label}
@@ -75,11 +163,11 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
       if (checked === undefined) requestActionFocus?.();
       onAction();
     }}
-    render={(props) => <div {...props as ComponentPropsWithRef<"div">} title={title} aria-disabled={disabled || undefined} />}>
+    render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
-      <MenuCheck checked={isSelected} />
+      {checked !== undefined && <MenuCheck checked={isSelected} />}
       <span className="menu-label">{label}</span>
-      {keys && <span className="menu-keys" aria-hidden="true">{keys}</span>}
+      {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
     </>}
   </AriaMenuItem>;
 }
@@ -124,31 +212,16 @@ type MenuProps = {
  * item is highlighted, as in native menus.
  */
 export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerTitle, triggerKeys, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
-  const boundary = useMenuBoundary(isOpen, tabFocusRef);
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
-  const list = useRef<HTMLDivElement>(null);
+  const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
+  const renderedPlacement = useMenuPlacement(isOpen, button, placement);
+  const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(isOpen);
   const popover = useRef<HTMLElement | null>(null);
+  const wholeRows = useWholeRows(list);
   const pendingFocus = useRef<HTMLElement | null>(null);
-  const focusFrame = useRef(0);
-  const closingList = useRef<HTMLDivElement | null>(null);
-  const [opening, setOpening] = useState(0);
   const [skipExit, setSkipExit] = useState(false);
-  const listRef = useCallback((node: HTMLDivElement | null) => {
-    list.current = node;
-    if (!node) closingList.current = null;
-  }, []);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
-  useLayoutEffect(() => {
-    if (!isOpen) closingList.current = list.current;
-    else {
-      // An overlapping reopen retains the popover, but its collection has
-      // already autofocused. Restart that collection so React Aria applies
-      // the new pointer/keyboard focus strategy, including clearing old rows.
-      if (closingList.current && closingList.current === list.current) setOpening((value) => value + 1);
-      closingList.current = null;
-    }
-  }, [isOpen]);
   useEffect(() => {
     if (!isOpen) return;
     // A smaller window shrinks the menu; keep the highlighted row in view.
@@ -175,13 +248,13 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   }, []);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
-    if (!node && pendingFocus.current) focusFrame.current = requestAnimationFrame(restoreFocus);
-  }, [restoreFocus]);
+    wholeRows(node);
+    if (!node && pendingFocus.current) retryFocus(restoreFocus);
+  }, [restoreFocus, retryFocus, wholeRows]);
   useLayoutEffect(() => {
     if (isOpen) {
       setSkipExit(false);
       pendingFocus.current = null;
-      cancelAnimationFrame(focusFrame.current);
     } else restoreFocus();
   }, [isOpen, restoreFocus]);
   useEffect(() => {
@@ -191,7 +264,6 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     document.addEventListener("keydown", cancel, true);
     return () => {
       cancel();
-      cancelAnimationFrame(focusFrame.current);
       document.removeEventListener("pointerdown", cancel, true);
       document.removeEventListener("keydown", cancel, true);
     };
@@ -202,7 +274,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       // reject focus, losing any typing before its animation finishes.
       const previous = document.activeElement;
       pendingFocus.current = null;
-      cancelAnimationFrame(focusFrame.current);
+      cancelFocusRetry();
       flushSync(() => { setSkipExit(true); onOpenChange(false); });
       const active = document.activeElement;
       if (to?.isConnected && (active === previous || active === document.body || active === button.current || active === to)) to.focus();
@@ -218,15 +290,15 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
-    <Popover ref={popoverRef} className="menu-popover" placement={placement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+    <Popover ref={popoverRef} className="menu-popover" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
-        if (event.nativeEvent.isComposing) return;
+        if (isComposing(event)) { event.stopPropagation(); return; }
         const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;
         if (to === undefined) return;
         event.preventDefault();
         event.stopPropagation();
         leave(to, event.key === "Tab");
-      }}>
+      }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
         <AriaMenu key={opening} ref={listRef} id={id} className="menu" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
           <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
             {children}

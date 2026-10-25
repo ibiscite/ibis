@@ -1,4 +1,5 @@
 import type React from "react";
+import { mark as ibisMark } from "../../brand";
 import { Button, ToggleButton } from "../../ui/Button";
 import { composing } from "./shortcuts";
 import { pickerText } from "../../messages";
@@ -10,9 +11,11 @@ import type { ToolbarMenuCommand } from "../../ui/ToolbarMenu";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin }: {
+export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
   inputRef: React.RefObject<HTMLInputElement | null>;
   pinned: boolean;
+  /** The Ibis mark in place of the magnifier, a person's choice in More. */
+  mark?: boolean;
   onTogglePin: () => void;
   query: string;
   onQueryChange: (query: string) => void;
@@ -30,10 +33,11 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
 }) {
   return (
     <header className="search-bar" data-tauri-drag-region title={pickerText.dragSearchBar}>
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <circle cx="10.5" cy="10.5" r="6.5" />
-        <path d="m16 16 5 5" />
-      </svg>
+      {mark ? <svg className="search-mark" aria-hidden="true" viewBox={ibisMark.viewBox} fill="currentColor" dangerouslySetInnerHTML={{ __html: ibisMark.body }} />
+        : <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 5 5" />
+        </svg>}
       <label className="visually-hidden" htmlFor="search">
         {pickerText.searchLabel}
       </label>
@@ -55,7 +59,7 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onSearchKeyDown}
         />
-        {query !== "" && <Button variant="icon" className="search-clear" aria-label={pickerText.clearSearch}
+        {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}
           onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
       </div>
       {showFormat && <FormatMenu format={format} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}

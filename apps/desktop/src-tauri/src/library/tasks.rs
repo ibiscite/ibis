@@ -25,7 +25,7 @@ use super::state::{
     Library, LoadRequests, begin_open, candidate, dialog_path_error, install_automatic, install_loaded,
     take_watch_source,
 };
-use super::status::{LibraryState, LibraryStatus, status};
+use super::status::{LibraryProblem, LibraryState, LibraryStatus, status};
 
 /// The platform watcher and its worker stop when replaced or the app exits.
 #[derive(Default)]
@@ -368,6 +368,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             source_counts: BTreeMap::new(),
             warnings: 0,
             error: Some("library state is unavailable".to_string()),
+            problem: Some(LibraryProblem::Other),
             error_reason: None,
             kept_references: false,
             choice_not_saved: false,

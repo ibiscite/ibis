@@ -9,6 +9,20 @@ import { fileURLToPath } from "node:url";
 const checker = fileURLToPath(new URL("./check.mjs", import.meta.url));
 const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
 
+test("brand-only checks rebuild without starting Rust or changing source files", { skip: process.platform === "win32" }, (t) => {
+  const root = mkdtempSync(join(tmpdir(), "ibis-brand-check-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "scripts")); mkdirSync(join(root, "bin"));
+  writeFileSync(join(root, "scripts/check.mjs"), readFileSync(checker));
+  writeFileSync(join(root, "bin/python3"), '#!/bin/sh\nprintf "%s\\n" "$*"\nexit 0\n', { mode: 0o755 });
+  const result = spawnSync(process.execPath, [join(root, "scripts/check.mjs"), "--brand-assets"], {
+    cwd: root, env: { ...process.env, [pathKey]: `${join(root, "bin")}${delimiter}${process.env[pathKey] ?? ""}` }, encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /brand\/build\.py --check/);
+  assert.doesNotMatch(result.stdout, /== Format:|== Desktop:|== Workflow/);
+});
+
 test("script-only discovery covers Node and Python names without starting build tools", (t) => {
   const root = mkdtempSync(join(tmpdir(), "ibis-script-discovery-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));

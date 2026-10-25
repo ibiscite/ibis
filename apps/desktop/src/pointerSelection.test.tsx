@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App } from "./App";
+import type { SearchQuery } from "./api";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -28,13 +29,13 @@ function backend(search: (query: string) => ReturnType<typeof result>[]) {
   mockIPC((cmd, args) => {
     const handlers: Record<string, () => unknown> = {
       shortcut_status: () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
-      search: () => ({ revision: "1", results: search(String((args as { query?: string } | undefined)?.query ?? "")) }),
+      search: () => ({ revision: "1", results: search((args as { query: SearchQuery }).query.text), parsed_locator: null }),
       hide_picker: () => null,
       set_pinned: () => null,
       copy_format: () => "pandoc",
       picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
       set_picker_preferences: () => null,
-      library_status: () => ({ revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 0, error: null, note: null }),
+      library_status: () => ({ revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 0, error: null, problem: null, note: null }),
     };
     const handler = handlers[cmd];
     if (!handler) throw new Error(`unexpected command ${cmd}`);

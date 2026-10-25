@@ -11,7 +11,7 @@ const now = new Date(2026, 9, 20, 12, 0).getTime();
 const hour = 3_600_000;
 const file = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
   revision: "1", state: "loaded", zotero: false, zotero_libraries: [], has_snapshot: true, name: "thesis.bib", snapshot_name: "thesis.bib",
-  references: 1204, source_counts: { "synthetic-file": 1204 }, warnings: 0, error: null, note: null, settings_notice: null, snapshot_zotero: false, stale: false,
+  references: 1204, source_counts: { "synthetic-file": 1204 }, warnings: 0, error: null, problem: null, note: null, settings_notice: null, snapshot_zotero: false, stale: false,
   updated_at: null, checked_at: now - 3 * hour, ...overrides,
 });
 const zotero = (overrides: Partial<LibraryStatus> = {}) => file({
@@ -213,4 +213,12 @@ test("the visible age is hidden from screen readers, which read the detail inste
   }));
   const heard = strip(kept.container.querySelector(".library-detail")?.textContent ?? null) ?? "";
   expect(heard.match(/checked 2 hours ago/g)).toHaveLength(1);
+});
+
+test("the status dot sits at the footer edge, 12 px before the text and centred on its x-height", () => {
+  const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+  expect(styles).toMatch(/^\.library-status \{[^}]*align-items: baseline; gap: var\(--space-3\);/m);
+  const dot = styles.match(/^\.status-dot \{([^}]*)\}/m)?.[1];
+  expect(dot).not.toMatch(/margin/);
+  expect(dot).toMatch(/translate: 0 calc\(var\(--status-dot-size\) \/ 2 - \.5ex\);/);
 });

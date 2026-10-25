@@ -9,9 +9,10 @@ import { readdirSync } from "node:fs";
 
 const args = process.argv.slice(2);
 const scriptsOnly = args.length === 1 && ["--script-tests", "--platform-script-tests"].includes(args[0]);
-if (args.length > 0 && !scriptsOnly) {
+const brandOnly = args.length === 1 && args[0] === "--brand-assets";
+if (args.length > 0 && !scriptsOnly && !brandOnly) {
   if (args.length !== 2 || args[0] !== "--expect-commit" || args[1].length !== 40 || !/^[a-f0-9]{40}$/i.test(args[1])) {
-    console.error("Usage: node scripts/check.mjs [--expect-commit FULL_SHA | --script-tests | --platform-script-tests]");
+    console.error("Usage: node scripts/check.mjs [--expect-commit FULL_SHA | --script-tests | --platform-script-tests | --brand-assets]");
     process.exit(1);
   }
   verifyCommit(args[1].toLowerCase());
@@ -31,8 +32,10 @@ const scriptSteps = [
     `Python script tests: ${name}`, process.platform === "win32" ? "python" : "python3", ["-B", `scripts/${name}`],
   ]),
 ];
+const brandSteps = [["Brand assets", process.platform === "win32" ? "python" : "python3", ["brand/build.py", "--check"]]];
 const steps = [
   ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
+  ...brandSteps,
   ["Format", "cargo", ["fmt", "--all", "--check"]],
   ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
   ["Test", "cargo", ["test", "--locked"]],
@@ -40,6 +43,7 @@ const steps = [
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
   ...scriptSteps,
   ["Desktop: UI import boundary", "node", ["scripts/ui-imports.mjs"]],
+  ["Desktop: style tokens", "node", ["scripts/style-lint.mjs"]],
   // All desktop unit tests, including the generated-contract freshness check.
   ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"]],
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],
@@ -53,12 +57,12 @@ const steps = [
 // missing and the run is incomplete rather than failed.
 const shell = process.platform === "win32";
 const skipped = [];
-for (const [name, cmd, args, options = {}] of scriptsOnly ? scriptSteps : steps) {
+for (const [name, cmd, args, options = {}] of scriptsOnly ? scriptSteps : brandOnly ? brandSteps : steps) {
   console.log(`\n== ${name}: ${cmd} ${args.join(" ")}`);
   const result = spawnSync(cmd, args, { stdio: "inherit", shell, ...options });
   if (result.status === 0) continue;
   const probe = cmd === "actionlint" ? ["-version"] : args[0] === "deny" ? ["deny", "--version"] : ["--version"];
-  if (result.error?.code === "ENOENT" || !hasCommand(cmd, probe)) {
+  if (result.error?.code === "ENOENT" || !hasCommand(cmd, probe) || name === "Brand assets" && result.status === 2) {
     console.log(`${name} could not run: the tool is not installed.`);
     skipped.push(name);
     continue;

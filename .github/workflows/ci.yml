@@ -12,6 +12,12 @@ on:
   # that "CI result" needs runs in full here; nothing is filtered by path.
   merge_group:
   workflow_dispatch:
+    inputs:
+      zotero_capture_version:
+        description: "Exact Zotero release for an opt-in synthetic capture (empty keeps the ordinary smoke test)"
+        required: false
+        type: string
+        default: ""
   # Weekly drift check of the pinned Nix inputs. That run also does the Linux
   # checks but skips the native app build (see the changes job).
   schedule:
@@ -221,11 +227,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Every script test, as scripts/check.mjs runs them locally.
-      - name: Script tests and UI import boundary
+      - name: Script tests, UI import boundary and style tokens
         working-directory: .
         run: |
           node scripts/check.mjs --script-tests
           node scripts/ui-imports.mjs
+          node scripts/style-lint.mjs
 
       - name: Type check and test the interface
         if: env.WEB == 'true'
@@ -324,7 +331,11 @@ jobs:
           # Match runner-images' acquire bounds even on images with older defaults (#857).
           ibis_apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15)
           sudo apt-get "${ibis_apt_options[@]}" update
-          sudo apt-get "${ibis_apt_options[@]}" install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
+          sudo apt-get "${ibis_apt_options[@]}" install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev librsvg2-bin fonts-inter libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
+
+      - name: Check generated brand assets (Linux)
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        run: node scripts/check.mjs --brand-assets
 
       - name: Cache Rust build
         if: env.NATIVE == 'true'
@@ -716,10 +727,28 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Zotero's system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
 
       - name: Run the real-Zotero test
+        if: github.event_name != 'workflow_dispatch' || inputs.zotero_capture_version == ''
         run: scripts/real-zotero.sh
+
+      - name: Capture a pinned synthetic Zotero database and API pair
+        if: github.event_name == 'workflow_dispatch' && inputs.zotero_capture_version != ''
+        env:
+          ZOTERO_CAPTURE_VERSION: ${{ inputs.zotero_capture_version }}
+          ZOTERO_CAPTURE_OUTPUT: ${{ runner.temp }}/zotero-synthetic-capture
+        run: scripts/real-zotero.sh --capture "$ZOTERO_CAPTURE_VERSION" "$ZOTERO_CAPTURE_OUTPUT"
+
+      # These are unreviewed test artifacts, not committed/version-support fixtures.
+      - name: Keep the synthetic capture for fixture review
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.zotero_capture_version != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zotero-synthetic-capture-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/zotero-synthetic-capture/*
+          if-no-files-found: error
+          retention-days: 14
 
   dependencies:
     name: Dependency policy

@@ -39,6 +39,10 @@ Any agent (Claude, Codex or another tool) or human can do any part of the work u
 7. **Review and merge.** Code needs an independent review of the exact head commit by another session, preferably another model, with every P1 and P2 fixed (filing them as issues does not count). The independent code review comment starts `Independent review of <full SHA> by <tool and model>` and states its verdict and P1/P2 findings. Documentation-only, or tests and synthetic fixtures only, need only your recorded step 5 (ADR 0017). Squash-merge when all required checks pass on that commit. Never use `--admin` or another bypass. When the merge queue is enabled, the release pull request merges like any other; until then, nobody merges to `main` while a release hold is announced on the tracking issue.
 8. **Close the loop.** Check "CI result" is green on `main` and keep the tracking issue body current (Now and Queue). Comment on the tracking issue only for decisions and handoffs. Keep other issue and pull request comments under about 150 words; reviews and evidence may be longer. State results plainly, including what did not run.
 
+## Review tools
+
+Follow the [free-first review procedure](docs/development.md#free-first-review-tools) on every change: use free CodeRabbit selectively, keep Codex code/security reviews on demand, and retain the independent exact-head P1/P2 review and required CI. The CodeRabbit trial ends **2026-11-06**; the free-only policy continues afterward. Do not enable paid plans, credits, overages or automatic bot fixes/reviews to retain trial features or bypass a limit. Agents triage findings and report real issues, fixes, verification and uncertainty without waiting for maintainer reminders.
+
 ## Pausing and resuming
 
 All state lives on GitHub, so any agent can stop at any point and any other can continue.
@@ -58,10 +62,17 @@ All state lives on GitHub, so any agent can stop at any point and any other can 
 - Hard-to-reverse decisions (license, persisted data formats, public CLI or API contracts, network use, security boundaries) need an ADR.
 - When an agent repeats a mistake, add a check to `scripts/check.mjs` or `scripts/pr-lint.mjs` (preferred) or one line here; remove lines that no longer matter.
 - Before reading or invoking an unfamiliar repository file, locate it with `rg --files`; do not guess its path.
+- Use a distinct Cargo target directory per source worktree, or clean `ibis-core`, `ibis-zotero-local` and `ibis-desktop` before reusing one; stale cross-worktree artifacts can hide source changes.
 
 ## Code, privacy and security
 
 Follow the [architecture principles](docs/architecture.md#principles), including privacy, escaping and endpoints, and the contract documented with each component. No real library data, document text, paths or credentials in code, tests, logs, issues or pull requests.
+
+The website demo (`website/demo.js`) mirrors the app: a change to the picker, its keys or its styles updates the demo in the same pull request ([design](docs/design.md)).
+
+UI changes edit `apps/desktop/src/tokens.css`, a shared component in `apps/desktop/src/ui/`, or `docs/design.md`; never style one screen on its own. Fix a visual bug in the rule or component that allowed it, with a check.
+
+Logos and icons come only from `brand/`. Change `settings.json` or `master.svg`, run `python3 brand/build.py`, and never edit generated files by hand.
 
 ## Version control safety
 

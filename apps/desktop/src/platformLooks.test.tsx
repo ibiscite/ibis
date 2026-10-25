@@ -12,6 +12,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
+const toolbar = readFileSync(new FileURL("./ui/ToolbarMenu.css", import.meta.url), "utf8");
 const gallery = readFileSync(new FileURL("./gallery.css", import.meta.url), "utf8");
 const corners = readFileSync(new FileURL("../src-tauri/src/native_corners.rs", import.meta.url), "utf8");
 
@@ -51,7 +52,7 @@ test("the search header is the 48–56 px search bar, not an 80 px block", () =>
 test("Windows and Linux search in a 16 px framed box; macOS stays frameless and large", () => {
   const framed = rules(tokens, ':root[data-platform="windows"], :root[data-platform="linux"]');
   expect(framed).toMatch(/--search-size:\s*1rem/);
-  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/border:/);
+  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/box-shadow:\s*inset/);
   expect(rules(styles, ':root[data-platform="windows"] #search:focus')).toMatch(/var\(--accent\)/);
   expect(rules(styles, ':root[data-platform="linux"] #search')).toMatch(/border-radius:/);
   expect(tokens).toMatch(/--search-size:\s*var\(--type-search-size\)/);
@@ -80,14 +81,31 @@ test("the selected row follows each platform", () => {
   expect(tokens).toMatch(/--row-active-background:\s*var\(--selected-background\)/);
   expect(tokens).toMatch(/--selected-background:\s*AccentColor/);
   expect(tokens).toMatch(/--selected-text:\s*AccentColorText/);
-  // Windows: soft grey with an accent pill; Linux: GTK's selection colour (the Highlight pair).
-  expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--row-active-background:\s*color-mix\(in srgb, var\(--text\)/);
-  expect(rules(styles, ':root[data-platform="windows"] [role="option"][data-active]::before')).toMatch(/background:\s*var\(--accent\)/);
+  // Windows: the full Fluent accent with its paired text, no side pill (#1020);
+  // Linux: GTK's selection colour (the Highlight pair).
+  expect(rules(tokens, ':root[data-platform="windows"]')).not.toMatch(/--row-active-|--tile-active-/);
+  const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
+  expect(windows).toMatch(/--accent:\s*light-dark\(#005FB8, #60CDFF\);\s*--text-on-accent:\s*light-dark\(#fff, #000\);/);
+  // Selection takes the deeper accent shade with white text, calm in dark mode.
+  expect(windows).toMatch(/--selected-background:\s*light-dark\(#005FB8, #0067C0\);\s*--selected-text:\s*#fff;/);
+  expect(styles).not.toMatch(/::before[^{]*\{[^}]*--pill|--pill-/);
+  expect(tokens).not.toMatch(/--pill-/);
   const linux = rules(tokens, ':root[data-platform="linux"]');
   expect(linux).toMatch(/--row-active-background:\s*Highlight;/);
   expect(linux).toMatch(/--row-active-text:\s*HighlightText;/);
   // No later Linux rule turns it back into a faint tint or neutral fill.
   expect(linux.slice(linux.indexOf("Highlight;"))).not.toMatch(/--row-active-background/);
+});
+
+test("rows are 40, 58 or 76 px and 2 px apart on every look and density (C4)", () => {
+  expect(tokens).toMatch(/--row-spacing: 2px;/);
+  expect(rules(styles, '[role="option"] + [role="option"]')).toMatch(/^\s*margin-top: var\(--row-spacing\);\s*$/);
+  for (const [token, px] of [["--row-compact", 40], ["--row-comfortable", 58], ["--row-spacious", 76]] as const) {
+    expect(Number(tokens.match(new RegExp(`${token}: ([\\d.]+)rem`))?.[1]) * 16).toBe(px);
+  }
+  // No look or density changes the spacing or the heights.
+  expect(tokens.match(/--row-spacing:/g)).toHaveLength(1);
+  for (const platform of ["macos", "windows", "linux"]) expect(rules(tokens, `:root[data-platform="${platform}"]`)).not.toMatch(/--row-(spacing|compact|comfortable|spacious|height):/);
 });
 
 test("high contrast keeps a non-colour edge on the active row", () => {
@@ -119,14 +137,14 @@ function geometry(platform?: string): Record<string, number> {
 test("every inner radius follows one concentric chain per platform", () => {
   // The formulas are written once in the base layer; looks set only their inputs.
   const base = rules(tokens, ":root");
-  expect(base).toMatch(/--r-row:\s*max\(var\(--r-min\), calc\(var\(--r-win\) - var\(--inset\)\)\);/);
-  expect(base).toMatch(/--r-tile:\s*max\(var\(--r-min\), calc\(var\(--r-row\) - var\(--row-pad\)\)\);/);
+  expect(base).toMatch(/--r-row:\s*max\(var\(--r-min\), calc\(var\(--r-win\) - 8px\)\);/);
+  expect(base).toMatch(/--r-tile:\s*max\(var\(--r-min\), calc\(var\(--r-row\) - 12px\)\);/);
   expect(base).toMatch(/--r-mi:\s*max\(var\(--r-min\), calc\(var\(--r-menu\) - var\(--menu-pad\)\)\);/);
   for (const name of ["--r-row", "--r-tile", "--r-mi"]) {
     for (const platform of ["windows", "linux"]) expect(rules(tokens, `:root[data-platform="${platform}"]`), `${platform} ${name}`).not.toContain(`${name}:`);
   }
-  // docs/design.md, Corners: macOS before 26 (the native 12 pt corner), Windows 11, GNOME.
-  const expected = { macos: [12, 8, 6, 6, 12, 6], windows: [8, 8, 4, 4, 8, 4], linux: [15, 8, 7, 6, 12, 6] };
+  // Canvas C15: all macOS versions, Windows 11 and GNOME share fixed shapes.
+  const expected = { macos: [16, 8, 8, 6, 12, 6], windows: [8, 8, 4, 4, 8, 4], linux: [15, 8, 7, 6, 12, 6] };
   for (const [platform, [win, inset, row, tile, menu, item]] of Object.entries(expected)) {
     const g = geometry(platform === "macos" ? undefined : platform);
     const rRow = Math.max(g["--r-min"]!, g["--r-win"]! - g["--inset"]!);
@@ -153,8 +171,9 @@ test("the search text starts where row titles start, with the glyph over the til
   expect(rules(styles, '[role="option"]')).toMatch(/padding:\s*0 calc\(var\(--row-pad\) - var\(--border-width\)\)/);
   expect(rules(styles, '[role="option"]')).toMatch(/gap:\s*var\(--row-gap\)/);
   expect(rules(styles, ".results-area")).toMatch(/margin-block:\s*var\(--inset\);\s*padding-inline:\s*var\(--inset\)/);
-  // The framed box's text start pays for its 1 px border.
-  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\) - var\(--border-width\)\)/);
+  // Windows draws its edge inside the field; Linux compensates its entry border.
+  expect(rules(styles, ':root[data-platform="windows"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\)\)/);
+  expect(rules(styles, ':root[data-platform="linux"] #search')).toMatch(/padding-inline-start:\s*calc\(var\(--lead\) \+ var\(--search-icon-width\) \+ var\(--lead-gap\) - var\(--border-width\)\)/);
   // Logical sides only, so a right-to-left picker mirrors.
   expect(rules(styles, "footer")).toMatch(/padding-inline:\s*var\(--footer-padding\)/);
 });
@@ -165,12 +184,18 @@ test("tile targets stay centred when Compact shrinks the visible tile", () => {
 });
 
 test("window radius follows each platform and macOS matches the native corner", () => {
-  // macOS keeps the natively verified 12 pt corner until macOS 26 detection lands; the token must agree with it.
   const native = corners.match(/CORNER_RADIUS_POINTS: f64 = ([\d.]+);/)?.[1];
+  expect(Number(native)).toBe(16);
   expect(rules(tokens, ":root")).toMatch(new RegExp(`--r-win:\\s*${Number(native)}px`));
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-win:\s*8px/);
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--r-control:\s*4px/);
   expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-win:\s*15px/);
+});
+
+test("C15 controls use the same per-OS shape in every palette", () => {
+  expect(rules(tokens, ":root")).toMatch(/--r-control:\s*8px/);
+  expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--r-control:\s*6px/);
+  expect(rules(toolbar, ':root[data-platform="macos"] .toolbar-menu-button')).toMatch(/border-radius:\s*var\(--r-control\)/);
 });
 
 test("per-OS overlay roles keep their shapes, easing, scrims and shadow-free contrast", () => {
@@ -221,7 +246,7 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
   for (const target of [".copy-notice code", ".shelf-mark"]) {
     expect(scarlet, target).toContain(target);
   }
-  // The shelf's output and chips use text colours (docs/design/preview.md).
+  // The shelf's output and chips use text colours (docs/design.md, "Shelf").
   expect(scarlet).not.toMatch(/preview-text|\.chip/);
   // Selection, the pin and the main controls keep the system accent.
   expect(scarlet).not.toMatch(/button|\.search-bar|::before|\[role="option"\]\[data-active\]\s*(,|$)/);
@@ -231,20 +256,19 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
   }
 });
 
-test.each(["windows"])("meta text on the %s grey row stays at 4.5:1 in both themes", (platform) => {
-  const hex = (value: string) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16) / 255);
-  const luminance = (rgb: number[]) => rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4)
-    .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
-  // The look's own neutrals when it has them, otherwise the shared ones.
-  const look = tokens.slice(tokens.indexOf(`:root[data-platform="${platform}"]:not([data-gallery-theme="contrast"]) {`));
-  const pair = (token: string) => (look.slice(0, look.indexOf("}")).match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`))
-    ?? tokens.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`)))!.slice(1, 3).map(hex);
-  const tint = Number(rules(tokens, `:root[data-platform="${platform}"]`).match(/--row-active-background:\s*color-mix\(in srgb, var\(--text\) (\d+)%/)?.[1]) / 100;
-  const [surface, text, muted] = [pair("--surface"), pair("--text"), pair("--muted")];
+test("the Windows selected row keeps 4.5:1 text and the added tile 3:1 in both themes", () => {
+  const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
+  const pair = (token: string) => windows.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`, "i"))!.slice(1, 3);
+  const full = (hex: string) => hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join("")}` : hex;
+  const fill = pair("--selected-background");
+  const text = ["#fff", "#fff"];
+  const tiles = tokens.match(/--citation-tile:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/)!.slice(1, 3);
   for (const mode of [0, 1]) {
-    const row = surface[mode]!.map((c: number, i: number) => c * (1 - tint) + text[mode]![i]! * tint);
-    const [lighter, darker] = [luminance(muted[mode]!), luminance(row)].sort((a, b) => b - a);
-    expect((lighter! + .05) / (darker! + .05)).toBeGreaterThanOrEqual(4.5);
+    // The meta line uses currentColor on the accent, so the same pair covers it.
+    expect(contrast(full(fill[mode]!), full(text[mode]!))).toBeGreaterThanOrEqual(4.5);
+    // D9: on the selected row the added tile is the paired text with a scarlet check.
+    expect(contrast(full(text[mode]!), full(fill[mode]!))).toBeGreaterThanOrEqual(3);
+    expect(contrast(full(text[mode]!), tiles[mode]!)).toBeGreaterThanOrEqual(3);
   }
 });
 
@@ -264,9 +288,12 @@ test("an added row shows only its scarlet tile with a check: no wash, ring or sc
     }
   }
   expect(styles).not.toMatch(/data-citation-selected[^{]*\.result-key/);
+  // On the selected row the tile is the paired text with a scarlet check on
+  // every look, so no accent (red and orange included) swallows it (D9).
+  expect(rules(outside, '[role="option"][data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\);\s*color:\s*var\(--citation-tile\)/);
   // High contrast inverts the tile on the active row instead of drawing a ring.
   const contrast = styles.slice(styles.indexOf("@media (prefers-contrast: more)"));
-  expect(rules(contrast, "[data-active][data-citation-selected] .result-tile")).toMatch(/background:\s*var\(--row-active-text\)/);
+  expect(rules(contrast, '[role="option"][data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\);\s*color:\s*var\(--row-active-background\)/);
   expect(rules(gallery, ':root[data-gallery-theme="contrast"] [data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\)/);
 });
 
@@ -367,8 +394,17 @@ test("the framed-box icon overlap moves only the search glyph, never the pin ico
 });
 
 
+test("menu items show their highlight fill without the global focus ring", () => {
+  // A ring around a menu row is clipped by the scrolling list and crosses the rows beside it (#1024).
+  const menuCss = readFileSync(new FileURL("./ui/Menu.css", import.meta.url), "utf8");
+  expect(styles).toMatch(/^:focus-visible:not\(\.ui-button, \.menu-item\) \{/m);
+  expect(styles).not.toMatch(/^:focus-visible:not\(\.ui-button\) \{/m);
+  // Increased contrast keeps a 1 px ring drawn inside the row.
+  expect(menuCss).toMatch(/@media \(prefers-contrast: more\) \{ \.menu-item\[data-focused\] \{ outline: 1px solid currentColor; outline-offset: -1px; \} \}/);
+});
+
 test("focus rings are keyboard-only, 2 px with a gap, in each platform's colour", () => {
-  expect(rules(styles, ":focus-visible:not(.ui-button)")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
+  expect(rules(styles, ":focus-visible:not(.ui-button, .menu-item)")).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\);\s*outline-offset:\s*var\(--focus-ring-offset\);\s*box-shadow:\s*var\(--focus-ring-shadow\)/);
   // No ring is drawn on plain :focus or :focus-within, which a click also triggers.
   for (const [, head, body] of styles.slice(0, styles.indexOf("@media (prefers-contrast: more)")).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (/:focus(-within)?\b(?!-visible)/.test(head!)) expect(body, head).not.toMatch(/outline:\s*var/);
@@ -395,7 +431,7 @@ test("the search box never shows a ring, except with contrast or forced colours"
   expect(rules(outside, "#search:focus-visible")).toMatch(/outline:\s*none/);
   const windows = rules(outside, ':root[data-platform="windows"] #search:focus');
   expect(windows).toMatch(/outline:\s*none/);
-  expect(windows).toMatch(/border-bottom-color:\s*var\(--accent\)/);
+  expect(windows).toMatch(/box-shadow:\s*inset 0 calc\(-2 \* var\(--border-width\)\) var\(--accent\)/);
   for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
     const block = styles.slice(styles.indexOf(media), styles.indexOf("\n}\n", styles.indexOf(media)));
     expect(rules(block, "#search:focus-visible"), media).toMatch(/outline:\s*var\(--focus-ring-width\) solid/);
@@ -452,19 +488,21 @@ function probeColor(name: string): HTMLElement {
   return probe;
 }
 
-test("the search has a quiet clear glyph, and contrast restores its ring", () => {
+test("close and clear buttons share one drawn glyph, and contrast restores the search ring", () => {
   expect(tokens).toMatch(/--focus-ring-width:\s*2px/);
   const clear = rules(styles, "#search::-webkit-search-cancel-button");
   expect(clear).toMatch(/appearance:\s*none/);
   expect(clear).toMatch(/display:\s*none/);
-  const glyph = rules(styles, ".search-clear::before");
+  const glyph = rules(buttons, '.ui-button[data-glyph="close"]::before');
   expect(glyph).toMatch(/width:\s*var\(--icon-size\)/);
   expect(glyph).toMatch(/background:\s*currentColor/);
   expect(glyph).toMatch(/mask:\s*var\(--clear-glyph\)/);
   expect(tokens).toMatch(/--control-min-size:\s*2rem/);
   expect(tokens).toMatch(/--icon-size:\s*1rem/);
-  const forced = styles.slice(styles.indexOf("@media (forced-colors: active)"));
-  expect(rules(forced, ".search-clear::before")).toMatch(/background:\s*ButtonText/);
+  const forced = buttons.slice(buttons.indexOf("@media (forced-colors: active)"));
+  expect(rules(forced, '.ui-button[data-glyph="close"]::before')).toMatch(/background:\s*ButtonText/);
+  // No screen draws its own copy of the glyph.
+  expect(styles).not.toMatch(/\.search-clear::before/);
   // The gallery's contrast preview restores the ring as prefers-contrast does.
   expect(rules(gallery, ':root[data-gallery-theme="contrast"] #search:focus-visible'))
     .toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
@@ -482,7 +520,6 @@ test("under forced colours the active row opts out of the backplate so Highlight
   expect(forcedTokens).toMatch(/--row-active-text:\s*HighlightText;/);
   expect(rules(forced, '[role="option"][data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*HighlightText/);
   expect(rules(forced, ".result-tile")).toMatch(/forced-color-adjust:\s*none/);
-  expect(rules(forced, ':root[data-platform="windows"] [role="option"][data-active]::before')).toMatch(/background:\s*HighlightText/);
 });
 
 // Contrast against the surface (WCAG 1.4.11) with each platform's default
@@ -551,6 +588,8 @@ test("spacing tokens, direct gaps/padding and resolved formulas keep the 4 px gr
   for (const platform of ["macos", "windows", "linux"]) for (const mode of ["normal", "more", "forced", "gallery"]) for (const coarse of [false, true]) {
     const blocks = tokenBlocks(appSheets, platform, mode, true, false, false, coarse), scopes = tokenScopes(blocks);
     for (const block of blocks) for (const [name, value] of block.values) {
+      // Website prose follows its own approved rhythm, not the native 4 px grid.
+      if (name.startsWith("--website-")) continue;
       if (/^padding-(top|right|bottom|left)$/.test(name) && block.values.some(([key]) => key === "padding")) continue;
       if (!/^(--[\w-]*(padding|gap|inset)|gap|row-gap|column-gap|padding[\w-]*)$/.test(name) || opticalSpacing(block, name, value)) continue;
       const resolved = resolveToken(value, scopes.get(block.scope)!);
@@ -562,6 +601,13 @@ test("spacing tokens, direct gaps/padding and resolved formulas keep the 4 px gr
     }
   }
   expect([...new Set(off)]).toEqual([]);
+});
+
+test("website rhythm tokens cannot bypass the native spacing grid", () => {
+  for (const [file, css] of Object.entries(appSheets)) {
+    if (file === "tokens.css") continue;
+    expect(css, file).not.toMatch(/var\(\s*--website-/);
+  }
 });
 
 test("unused tokens are gone and the spec's line heights apply", () => {
@@ -624,7 +670,7 @@ test("the shelf is two 40 px lines of 24 px chips and one output line above the 
   const contrast = styles.slice(edge);
   expect(rules(contrast, ".shelf, .chip")).toMatch(/border:\s*var\(--border-width\) solid CanvasText/);
   // Windows draws a layer card with a stroke; GNOME a flat band under one separator.
-  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/border:\s*var\(--border-width\) solid var\(--stroke-control\)/);
+  expect(rules(styles, ':root[data-platform="windows"] .shelf')).toMatch(/box-shadow:\s*inset 0 0 0 var\(--border-width\) var\(--stroke-control\)/);
   expect(rules(styles, ':root[data-platform="linux"] .shelf')).toMatch(/border-top:\s*var\(--border-width\) solid var\(--separator\)/);
   const shelf = readFileSync(new FileURL("./features/picker/CitationShelf.css", import.meta.url), "utf8");
   const forced = shelf.slice(shelf.indexOf("@media (forced-colors: active)"));
@@ -666,7 +712,7 @@ test("the alias-only migration exposes the complete design-system role inventory
   }
 });
 
-// CSSOM audits the live root, menu, notice and shelf scopes. Synthetic local
+// CSSOM audits the live root, menu, notice, shelf and nested locator scopes. Synthetic local
 // fixtures also exercise inheritance and pointer modes without pooling declarations.
 // This bounded dependency audit is not a CSS cascade/specificity interpreter;
 // browser comparisons verify the actual winning values and rendered appearance.
@@ -702,7 +748,7 @@ function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = 
         return (!prefix || doc.documentElement.matches(prefix)) && (!look || look === platform);
       });
       if (!active) continue;
-      const scope = /\.ui-button\[data-pointer-only\]/.test(selector) ? "pointer-button" : /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
+      const scope = /\.ui-button\[data-pointer-only\]/.test(selector) ? "pointer-button" : /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.locator-token(?:\b|-)/.test(selector) ? "locator-token" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
       const values: [string, string][] = Array.from(styled.style).map((name) => [name, styled.style.getPropertyValue(name)]);
       if (scope === "root" && values.some(([name]) => name.startsWith("--")) && !selector.split(/,(?![^()]*\))/).every((part) => /^:root\S*$/.test(part.trim()))) throw new Error(`Unmodeled token scope: ${selector}`);
       blocks.push({ file, selector, scope, values });
@@ -739,8 +785,12 @@ function tokenScopes(blocks: TokenBlock[]) {
   const raw = (scope: string) => new Map(blocks.filter((block) => block.scope === scope).flatMap((block) => block.values.filter(([name]) => name.startsWith("--"))));
   const root = raw("root");
   // Inherited custom properties resolve on the parent, before child overrides.
-  const inherited = [...root].map(([name, value]) => [name, resolveToken(value, root) ?? value] as [string, string]);
-  return new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search", "pointer-button"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+  const inherit = (parent: Map<string, string>) => [...parent].map(([name, value]) => [name, resolveToken(value, parent) ?? value] as [string, string]);
+  const inherited = inherit(root);
+  const scopes = new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search", "pointer-button"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+  // Locator controls live inside shelf chips and inherit its fine/coarse target.
+  scopes.set("locator-token", new Map([...inherit(scopes.get("shelf")!), ...raw("locator-token")]));
+  return scopes;
 }
 
 test.each(["macos", "windows", "linux"])("every application var resolves on %s in its active mode, without alias cycles", (platform) => {
@@ -783,6 +833,21 @@ test("the var audit distinguishes fallbacks, inactive definitions and cycles inc
   // values such as --vibrancy-tint and --notice-from must carry real fallbacks.
 });
 
+test("locator tokens inherit resolved shelf values without leaking their local aliases", () => {
+  const scopes = tokenScopes(tokenBlocks({ fixture: `:root { --value: 4px; --control-min-size: 2rem; }
+    .shelf { --value: 8px; --parent-alias: var(--value); --chip-hit-size: 2.75rem; }
+    .shelf .locator-token { --value: 12px; --local-only: 16px; --locator-token-hit-size: var(--chip-hit-size, var(--control-min-size)); }` }));
+  const locator = scopes.get("locator-token")!;
+  expect(resolveToken("var(--value)", scopes.get("root")!)).toBe("4px");
+  expect(resolveToken("var(--value)", scopes.get("shelf")!)).toBe("8px");
+  expect(resolveToken("var(--value)", locator)).toBe("12px");
+  expect(resolveToken("var(--parent-alias)", locator)).toBe("8px");
+  expect(resolveToken("var(--locator-token-hit-size)", locator)).toBe("2.75rem");
+  for (const scope of ["root", "shelf"]) expect(resolveToken("var(--local-only)", scopes.get(scope)!)).toBeNull();
+  const standalone = tokenScopes(tokenBlocks({ fixture: ":root { --control-min-size: 2rem; } .locator-token { --locator-token-hit-size: var(--chip-hit-size, var(--control-min-size)); }" }));
+  expect(resolveToken("var(--locator-token-hit-size)", standalone.get("locator-token")!)).toBe("2rem");
+});
+
 /** Only arithmetic used by spacing declarations; 16 px/rem is the unscaled grid. */
 function gridPixels(value: string): number | null {
   if (value === "auto" || value.includes("%")) return null;
@@ -807,11 +872,13 @@ function gridPixels(value: string): number | null {
   return result;
 }
 
-// Native menus retain 6/10 px metrics and check-column alignment; the notice's
+// Canvas menus retain 10 px metrics and check-column alignment; the notice's
 // inset check and pill tail are optical. Each exception names its exact value.
 function opticalSpacing(block: TokenBlock, name: string, value: string) {
   const normalized = (text: string) => text.replace(/(^|[^\d.])0(?:px|rem)(?=$|[^\w.])/g, (_, lead: string) => lead + "0").replace(/(?<![\d.])\.(\d+)/g, "0.$1").replace(/\s/g, "");
   const same = (expected: string) => normalized(value) === normalized(expected);
+  // [C4] rows are 2 px apart in every list, off the 4 px grid by design.
+  if (same("var(--row-spacing)")) return true;
   if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
   // Centre the 24 px fill in a 32/44 px target: the coarse inset is 10 px.
   if (block.selector === ".shelf .shelf-chips[data-expanded]" && name === "padding-block") return same("calc((var(--chip-hit-size) - var(--chip-height)) / 2)");
@@ -819,9 +886,13 @@ function opticalSpacing(block: TokenBlock, name: string, value: string) {
   if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
   if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
   const native: Record<string, string[]> = {
-    ".menu-popover padding": ["var(--menu-padding)"], ".menu-popover --menu-padding": ["var(--menu-pad)"],
-    ".menu-item padding": ["0 10px 0 6px"], ".menu-item gap": ["6px"], ".menu-header padding-inline-start": ["22px"],
-    ".toolbar-menu-button padding": ["0 8px 0 10px"], ".toolbar-menu-heading padding": ["8px 8px 4px 30px"],
+    // Native menu metrics (docs/design.md, Menus): one inset on the frame's
+    // ends and on the scrolling list's sides; 10 px item padding and 6 px gap.
+    ".menu-popover padding-block": ["var(--menu-padding)"], '.menu-popover [role="menu"] padding-inline': ["var(--menu-padding)"],
+    ".menu-popover --menu-padding": ["var(--menu-pad)"], ".menu-popover --menu-item-gap": ["6px"],
+    ".menu-item padding-inline": ["var(--menu-item-pad)"], ".menu-item gap": ["var(--menu-item-gap)"], ".menu-header padding-inline": ["var(--menu-item-pad)"],
+    ".toolbar-menu-button padding": ["0 8px 0 10px"], ".toolbar-menu-heading padding-inline": ["var(--menu-label-start) var(--menu-item-pad)"],
+    ".toolbar-menu-filter input padding-inline": ["var(--menu-label-start) var(--menu-item-pad)"],
     ".copied-notice-mark padding": [".2rem"],
   };
   return native[`${block.selector} ${name}`]?.some(same) || (block.file === "notice.css" && /^\.copied-notice\[data-platform="(?:macos|linux)"\]$/.test(block.selector) && name === "padding" && same("0 1.125rem 0 .5rem"));
@@ -837,9 +908,17 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
     const scope = tokenScopes(tokenBlocks(local, "windows", "normal", true, false, false, coarse)).get("chip-group")!;
     expect(gridPixels(resolveToken("var(--chip-group-target)", scope)!)).toBe(target);
     expect(gridPixels(resolveToken("max(var(--space-1), calc(var(--chip-group-target) - var(--chip-height)))", scope)!)).toBe(gap);
-    const shelf = tokenScopes(tokenBlocks(appSheets, "windows", "normal", true, false, false, coarse)).get("shelf")!;
+    const scopes = tokenScopes(tokenBlocks(appSheets, "windows", "normal", true, false, false, coarse));
+    const shelf = scopes.get("shelf")!;
     expect(gridPixels(resolveToken("var(--chip-hit-size)", shelf)!)).toBe(target);
     expect(gridPixels(resolveToken("calc((var(--chip-hit-size) - var(--chip-height)) / 2)", shelf)!)).toBe(gap / 2);
+    const locator = scopes.get("locator-token")!;
+    expect(gridPixels(resolveToken("var(--locator-token-hit-size)", locator)!)).toBe(target);
+    const locatorCss = appSheets["ui/LocatorToken.css"]!;
+    const reserve = rules(locatorCss, ".locator-token").match(/padding-inline-end:\s*([^;]+)/)![1]!;
+    const inset = rules(locatorCss, ".locator-token .locator-token-remove::after").match(/inset:\s*([^;]+)/)![1]!;
+    expect(gridPixels(resolveToken(reserve, locator)!)).toBe(gap);
+    expect(gridPixels(resolveToken(inset, locator)!)).toBe(-gap / 2);
   }
   expect(opticalSpacing({ file: "fixture", selector: ".other", scope: "root", values: [] }, "padding", "1px")).toBeFalsy();
 });

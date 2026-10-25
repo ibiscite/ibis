@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { KeyCaps, KeyHint } from "./KeyCaps";
 import { PickerFooter } from "../features/picker/PickerFooter";
 import { MoreMenu } from "../features/picker/MoreMenu";
+import { KeysDialog } from "../features/picker/KeysDialog";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
@@ -84,4 +85,17 @@ test("a hint names the action first and its keys after", () => {
 test("keys read left to right in a right-to-left page, as the systems print them", () => {
   const css = readFileSync(new FileURL("./KeyCaps.css", import.meta.url), "utf8");
   expect(css).toMatch(/\.key-caps \{ direction: ltr; unicode-bidi: isolate; \}/);
+});
+
+test("the shortcuts list keeps native chords unbroken and left-to-right in a wrapping cell", () => {
+  const styles = readFileSync(new FileURL("../styles.css", import.meta.url), "utf8");
+  const capRule = styles.match(/\.keys-scroll kbd \{[^}]*\}/)?.[0] ?? "";
+  const { container } = render(<><style>{capRule}</style><div dir="rtl" style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}><KeysDialog bindings={[
+    { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
+  ]} isMac onClose={vi.fn()} /></div></>);
+  const cap = container.querySelector("kbd")!;
+  expect(cap.textContent).toBe("⇧⌘P");
+  expect(cap.getAttribute("dir")).toBe("ltr");
+  expect(cap.getAttribute("aria-keyshortcuts")).toBe("Meta+Shift+P");
+  expect(getComputedStyle(cap).whiteSpace).toBe("nowrap");
 });

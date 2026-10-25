@@ -6,6 +6,7 @@ import type { Platform } from "./platform";
  * arrive as English strings from Rust; translating those needs structured codes.
  */
 export const operationFailures = {
+  rowContext: "The reference menu could not open. Use Enter to copy or Shift+Enter to add.",
   status: "Ibis could not check your library. Choose the file again.",
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
   shortcut: "Ibis could not check the shortcut. Open Ibis from the menu bar or tray.",
@@ -60,25 +61,51 @@ function signIn(platform: Platform) {
   return platform === "windows" ? "sign in" : "log in";
 }
 
+/** Choice screens [C12]: first run, no library, and a library that cannot be opened. */
 export const setupText = {
-  findLibraries: "Find libraries",
+  sourcesTitle: "Where do your references live?",
+  sourcesLine: "Ibis reads your library and never changes it.",
+  zotero: "Zotero",
+  zoteroHelp: "Reads your library while Zotero is open",
+  foundOn: (platform: Platform) => `Found on this ${platform === "macos" ? "Mac" : platform === "windows" ? "PC" : "computer"}`,
+  file: "BibTeX or BibLaTeX file",
+  fileHelp: "Choose a .bib file",
+  findLibraries: "Look for libraries on this computer",
+  findHelp: "Zotero and .bib files in your usual folders",
+  lookAgain: "Look again",
   looking: "Looking for Zotero and .bib files…",
   zoteroAccessOff:
     "Zotero is open, but it does not let other apps read it yet. In Zotero, open Settings, then Advanced, and turn on " +
     "“Allow other applications on this computer to communicate with Zotero”.",
-  foundFiles: "Found on this computer",
-  inFolder: "in",
-  openFound: (name: string, folder: string) => (folder ? `Use ${name} in ${folder}` : `Use ${name}`),
-  cutShort: "Some folders were too large to search fully. Use Choose library… if your file is not listed.",
-  lookAgain: "Look again",
-  whereYouWrite: "Where do you write?",
-  places: { markdown: "Markdown or Pandoc", latex: "LaTeX", typst: "Typst", word: "Word or Google Docs" },
-  styleHint: (style: string) => `Citations copy as ${style}.`,
-  shortcut: (keys: string) => `Open Ibis from any app with ${keys}.`,
-  nothingFound: "No Zotero or .bib files found nearby. Use Choose library… to pick a file.",
+  cutShort: "Some folders were too large to search fully. Choose the file yourself if it is not listed.",
+  nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
   found: (files: number, zotero: boolean) =>
-    [zotero ? "Zotero is open, so Use Zotero can read your library." : "",
-      files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
+    [zotero ? "Zotero is open." : "", files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
+  writingTitle: "What do you write in?",
+  writingLine: "Citations copy in the format that suits it. The menu beside search changes it any time.",
+  places: { markdown: "Markdown (Pandoc)", latex: "LaTeX", typst: "Typst" },
+  placeExamples: { markdown: "[@smith2020]", latex: "\\cite{smith2020}", typst: "@smith2020" },
+  current: "Now",
+  shortcut: (keys: string) => `Open Ibis from any app with ${keys}.`,
+  missingTitle: (name: string) => `Can't find ${name}`,
+  missingLine: "It may have moved, or its drive is disconnected.",
+  find: (name: string) => `Find ${name}`,
+  findFileHelp: "Choose where it is now",
+  unreadableTitle: (name: string) => `Can't read ${name}`,
+  zoteroClosedTitle: "Zotero isn't open",
+  zoteroClosedLine: "Open Zotero, then try again.",
+  zoteroAccessOffTitle: "Zotero isn't sharing your library",
+  otherTitle: (name: string) => `Can't open ${name}`,
+  theLibrary: "the library",
+  tryAgain: "Try again",
+  tryAgainHelp: "Read the library again",
+  another: "Use another library",
+  anotherHelp: "Zotero or another .bib file",
+  /** A backend reason as a sentence: capitalised, with a full stop. */
+  sentence: (reason: string) => {
+    const text = reason.charAt(0).toUpperCase() + reason.slice(1);
+    return /[.!?]$/.test(text) ? text : `${text}.`;
+  },
 } as const;
 
 export const densityNames = {
@@ -94,6 +121,10 @@ export const pickerText = {
   searchError: "Ibis could not search your library. Use Reload, then try again.",
   copyError: "Nothing was copied. Try again, or use Reload.",
   snapshotChanged: "The library changed. Search again and reselect the references before copying.",
+  usingLocator: (label: string, value: string) => `Using ${label} ${value}`,
+  searchAsTyped: "Search as typed",
+  applyLocator: (key: string) => `Apply locator to ${key}`,
+  removeLocator: (label: string, value: string, key: string) => `Remove ${label} ${value} from ${key}`,
   copied: "Copied",
   keyFormats: "Key formats",
   formattedStyles: "Citation styles",
@@ -139,8 +170,6 @@ export const pickerText = {
   stopKeepingOpen: "Stop keeping open",
   showPastePreview: "Show what will be pasted",
   moreTitle: (keys: string) => `More actions (${keys})`,
-  firstRun: "Choose a library to get started",
-  firstRunChoose: "Choose library to get started",
   chooseLibrary: "Choose library…",
   chooseTitle: "Choose a library",
   chooseShort: "Choose…",
@@ -156,6 +185,7 @@ export const pickerText = {
   density: (name: string) => `Rows: ${name}`,
   densityTitle: "Show less or more of each reference",
   largerText: "Larger text",
+  searchMark: "Ibis mark in search",
   zoteroLibraries: "Zotero libraries",
   myLibrary: "My Library",
   groupLibrary: (id: number) => `Group ${id}`,
@@ -176,13 +206,12 @@ export const keyText = {
   close: "Close",
   keyColumn: "Keys",
   actionColumn: "Action",
-  regionColumn: "Where",
   or: "or",
   regions: {
-    search: "Search box",
+    search: "In the search box",
     picker: "Anywhere in Ibis",
-    menu: "More menu",
-    system: "Any app",
+    menu: "In a menu",
+    system: "From any app",
   },
   actions: {
     preview: "Show what will be pasted",

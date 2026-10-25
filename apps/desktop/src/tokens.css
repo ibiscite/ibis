@@ -12,17 +12,29 @@
   --type-strong-weight: 600;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
+  /* Website reading and rhythm; page composition stays in website/style.css. */
+  --font-reading: "Iowan Old Style", Charter, "Palatino Linotype", Cambria, Georgia, serif;
+  --type-reading-size: 1rem; --type-heading-size: 1.25rem;
+  --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
+  --website-pad: clamp(1.25rem, 3.5vw, 3.5rem);
+  --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;
+  --website-section-pad: clamp(2rem, 4vw, 2.75rem);
+  --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
+  --website-button-height: 2.25rem;
+  --website-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 5%);
+
   /* Space and size on a 4 px grid. */
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
-  /* One geometry chain (docs/design.md, "Space and size" and "Corners"):
-     the look layers below set only --r-win, --inset and --r-min; every inner
-     radius and the search band follow from them. Radii are px (they follow the
-     native window corner); sizes are rem, so Larger text keeps edges aligned. */
+  /* One geometry chain (docs/design.md, "Layout and geometry" and "Corners"):
+     looks set the outer radius and floor; inner radii use fixed shape insets.
+     Radii stay px, matching the native corner; layout sizes and spacing are
+     rem, so Larger text keeps edges aligned without changing the shape. */
   --inset: var(--space-2);      /* window edge to the field, the list and the footer */
   --field-h: 2.25rem;           /* tallest header control: macOS pin */
   --row-pad: var(--space-3);    /* row side padding */
   --row-gap: var(--space-3);    /* tile to text */
+  --row-spacing: 2px; /* between rows in results, Recently added and choice lists [C4] */
   --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* band only; divider outside */
   --footer-height: 2.5rem;
   --control-min-size: 2rem;
@@ -34,12 +46,12 @@
   --row-spacious: 4.75rem;     /* three lines */
   --row-height: var(--row-comfortable);
   --larger-text-scale: 1.15;
-  /* macOS: the native 12 pt panel corner (native_corners.rs). macOS 26 moves
-     it to 28 (#576), which gives rows 20 and tiles 8 through the chain. */
-  --r-win: 12px;
+  /* C15 shapes stay fixed as text grows; these are the 8/12 px baseline
+     shape insets, independent of the rem spacing used for layout. */
+  --r-win: 16px; /* matches native_corners.rs on every macOS version */
   --r-min: 6px;
-  --r-row: max(var(--r-min), calc(var(--r-win) - var(--inset)));     /* rows, search field */
-  --r-tile: max(var(--r-min), calc(var(--r-row) - var(--row-pad)));  /* type tile */
+  --r-row: max(var(--r-min), calc(var(--r-win) - 8px));  /* rows, search field */
+  --r-tile: max(var(--r-min), calc(var(--r-row) - 12px)); /* type tile */
   --r-menu: 12px;
   --menu-pad: 6px;
   --r-mi: max(var(--r-min), calc(var(--r-menu) - var(--menu-pad)));  /* menu items */
@@ -115,7 +127,7 @@
   --focus-ring-shadow: none;
   --alert-color: CanvasText;
   --alert-border-width: 3px;
-  --r-control: 6px;
+  --r-control: 8px;
   --hint-radius: 4px;
   --picker-height: 100dvh;
   /* Between the field and the header's controls. The search glyph sits over
@@ -146,15 +158,14 @@
   --metadata-size: var(--type-meta-size);
   --metadata-line-height: var(--type-meta-line);
   --metadata-gap: var(--space-1);
-  --key-size: var(--type-citation-size);
-  --key-max-width: 30%;
+  --meta-part-max-width: 30%; /* library badge and Compact first author */
   --empty-padding: 2rem 1rem;
   --notice-padding: 0 calc(var(--inset) + var(--row-pad));
   --notice-margin: var(--space-3) 0;
   --copy-padding: .5rem;
   --dismiss-margin: .5rem 0 .5rem .5rem;
   --alert-padding: var(--space-3);
-  /* The citation shelf (docs/design/preview.md): two 40 px lines, 24 px chips
+  /* The citation shelf (docs/design.md, "Shelf"): two 40 px lines, 24 px chips
      with a quieter fill than the card under them. */
   --shelf-line: 2.5rem;
   --shelf-fill: var(--tile-background);
@@ -186,9 +197,7 @@
   --tile-background: color-mix(in srgb, var(--text) 5%, transparent);
   --tile-active-background: color-mix(in srgb, var(--row-active-text) 22%, transparent);
   --on-citation: #fff;
-  --pill-width: 3px;
-  --pill-height: 1rem;
-  /* The selected (active) row; macOS fills it with the accent. */
+  /* The selected (active) row: the accent with its paired text on every OS. */
   --row-active-background: var(--selected-background);
   --row-active-text: var(--selected-text);
   --row-active-muted: currentColor;
@@ -225,6 +234,14 @@
       --fill-control-hover: light-dark(rgb(249 249 249 / 50%), rgb(255 255 255 / 8%));
       --fill-subtle-hover: light-dark(rgb(0 0 0 / 4%), rgb(255 255 255 / 6%));
       --field-active-background: light-dark(#ffffff, #1e1e1e);
+      /* AccentFillColorDefault and TextOnAccentFillColorPrimary: the default
+         Windows accent until the system's own reaches the webview (#918).
+         Chromium's AccentColor is a fixed #0075FF in both themes, not the
+         user's accent, so it is not used here. */
+      --accent: light-dark(#005FB8, #60CDFF); --text-on-accent: light-dark(#fff, #000);
+      /* A full row of the light dark-mode accent is loud; selection uses the
+         deeper accent shade (SystemAccentColorDark1) with white text instead. */
+      --selected-background: light-dark(#005FB8, #0067C0); --selected-text: #fff;
     }
     /* GNOME (libadwaita): window_bg and window_fg; buttons and the entry on
        the control fill (the text colour at 8%). */
@@ -239,6 +256,10 @@
 @supports (color: AccentColor) { :root { --accent: AccentColor; } }
 /* Filled accent with its paired text colour, so any system accent stays legible. */
 @supports (color: AccentColorText) { :root { --selected-background: AccentColor; --selected-text: AccentColorText; } }
+
+/* With no desktop platform (the website on a phone), WebKit's AccentColorText
+   is black even on a dark accent; use the macOS list pair instead. */
+:root:not([data-platform]) { --selected-background: light-dark(#0064E1, #0058D0); --selected-text: #FFFFFF; }
 
 /* WKWebView accepts AccentColorText but resolves it to black. Use the paired
    native list colours on macOS; contrast overrides below still take priority. */
@@ -261,16 +282,13 @@
   --shadow-dialog: 0 0 8px rgb(0 0 0 / 12%), 0 32px 64px rgb(0 0 0 / 14%);
   --shadow-toast: 0 4px 16px rgb(0 0 0 / 22%);
   --r-control: 4px; --chip-radius: var(--r-control);
-  --row-active-background: color-mix(in srgb, var(--text) 6%, var(--surface)); --row-active-text: var(--text); --row-active-muted: var(--muted);
-  --tile-active-background: light-dark(#fff, rgb(255 255 255 / 10%));
   /* Fluent's focus visual: an outer stroke in the text colour (black in light
      mode, white in dark) around an inner stroke in the surface colour. */
   --focus-ring-color: var(--text); --focus-ring-shadow: 0 0 0 1px var(--surface);
 }
 :root[data-platform="linux"] {
-  /* libadwaita 1.8+: the 15 px window derives 7 px rows at the 8 px inset;
-     tiles and larger-text rows keep the 6 px floor. Popovers stay separate. */
-  --r-win: 15px; --field-h: 2.125rem; --r-min: 6px;
+  /* libadwaita 1.8+: fixed 7 px rows and 6 px tiles/controls (Canvas C15). */
+  --r-win: 15px; --field-h: 2.125rem; --r-min: 6px; --r-control: 6px;
   --r-dialog: var(--r-menu); --ease-out: cubic-bezier(.33, 1, .68, 1);
   --shadow-card: 0 0 0 1px rgb(0 0 6 / 3%), 0 1px 3px 1px rgb(0 0 6 / 7%), 0 2px 6px 2px rgb(0 0 6 / 3%);
   --shadow-raised: none;
@@ -307,7 +325,8 @@
     }
     /* Over the veiled material, colour roles one step deeper (lighter in dark
        mode) keep 4.5:1; the opaque surface keeps Ibis scarlet as it is. */
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window):not([data-gallery-theme="contrast"]),
+    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
       --citation: light-dark(#982d16, #ff9d87);
       --status-done: light-dark(#135f29, #6fca81);
       --status-look: light-dark(#734b00, #f0c25a);
@@ -388,3 +407,26 @@
 :root[data-platform="linux"] { --fill-control-pressed: color-mix(in srgb, var(--text) 30%, transparent); }
 
 @media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
+
+/* BEGIN generated website palette: brand/build.py */
+:root {
+  --website-bg: Canvas;
+  --website-surface: Canvas;
+  --website-line: GrayText;
+  --website-text: CanvasText;
+  --website-muted: CanvasText;
+  --website-accent-soft: Canvas;
+}
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) {
+    :root {
+      --website-bg: light-dark(#FFFFFF, #111111);
+      --website-surface: light-dark(#F5F5F5, #1C1C1C);
+      --website-line: light-dark(#E5E5E5, #2E2E2E);
+      --website-text: light-dark(#171717, #F2F2F2);
+      --website-muted: light-dark(#525252, #B5B5B5);
+      --website-accent-soft: light-dark(rgb(194 58 28 / .08), rgb(255 122 92 / .13));
+    }
+  }
+}
+/* END generated website palette */

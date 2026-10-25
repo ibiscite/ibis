@@ -70,7 +70,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     if (document.activeElement === document.body || shortcut.current?.contains(document.activeElement)) menu.current?.querySelector("button")?.focus({ preventScroll: true });
   }, [fit.shortcuts]);
   return (
-    <footer>
+    <footer data-menu-floor>
       <section ref={bar} aria-label={pickerText.libraryRegion} className="library-bar" data-shortcuts-folded={fit.shortcuts || undefined} data-status-compact={fit.status || undefined}>
         <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /></span>
         <LibraryStatusLine library={library} groupName={groupName} />

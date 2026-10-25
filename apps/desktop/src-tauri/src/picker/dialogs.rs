@@ -1,4 +1,4 @@
-//! Picker-owned file choosers, macOS update consent/recovery and visible macOS login
+//! Picker-owned native context menus, file choosers, macOS update consent/recovery and visible macOS login
 //! reapproval sheets prevent hiding on blur.
 
 use std::sync::Arc;

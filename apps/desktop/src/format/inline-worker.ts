@@ -9,7 +9,7 @@ export class InlineWorker implements WorkerLike {
   private formatter = new Formatter();
   postMessage(request: FormatRequest) {
     const result = request.kind === "citation"
-      ? this.formatter.citation(request.style, request.items, request.cites, request.format)
+      ? this.formatter.citation(request.style, request.items, request.cites, request.format, request.segments)
       : this.formatter.bibliography(request.style, request.items, request.format);
     queueMicrotask(() => this.onmessage?.({ data: { id: request.id, result } } as MessageEvent<FormatReply>));
   }

@@ -36,6 +36,9 @@ class Unavailable(RuntimeError):
 # never the picker, so picker visibility checks skip it.
 NOTICE_TITLE = "Ibis notice"
 
+# Hang guard, not a budget: a cold pwsh C# compile has exceeded 20 s on CI (#903).
+CONTRACT_TIMEOUT = 120
+
 
 def run(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.PIPE, timeout=20).strip()
@@ -1343,6 +1346,9 @@ def quit_normally(native, app):
     return round(10 - remaining(), 3)
 
 
+NO_MATCH = "zzqx no such reference"
+
+
 def first_run_preferences_main(args):
     args.output.mkdir(parents=True, exist_ok=True)
     system = platform.system()
@@ -1403,16 +1409,21 @@ def first_run_preferences_main(args):
             print(f"PASS {name}", flush=True)
 
         launch("first-run")
-        wait_for(lambda: visible_text("Choose library to get started"), "native first-run setup")
-        native.click("Typst")
-        wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
-        passed("first-run Typst choice is saved before any copy")
+        wait_for(lambda: visible_text("Where do your references live?"), "native first-run setup")
         report["first_quit_seconds"] = quit_normally(native, app)
         passed("settled first-run More/Quit exits zero within ten seconds")
-        assert saved_typst(settings), "Normal Quit lost the saved Typst choice"
         launch("relaunch", with_library=True)
         wait_for(lambda: visible_text("3 references"), "synthetic references after relaunch")
         wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
+        # The writing question needs a library chosen in the app; Copy as sets the same preference.
+        # With no match the footer offers no "Copy as Pandoc", so the name is the header's alone.
+        type_query(native, snapshot, NO_MATCH, "super+a" if system == "Darwin" else "ctrl+a")
+        wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
+        native.click("Copy as Pandoc")
+        wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
+        native.click("Typst")
+        wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
+        passed("Typst choice is saved before any copy")
         type_query(native, snapshot, "smoke000001", "super+a" if system == "Darwin" else "ctrl+a")
         wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
         prime_clipboard(native)
@@ -1425,7 +1436,7 @@ def first_run_preferences_main(args):
             assert time.monotonic() < copy_deadline, "Native copy exceeded its clipboard-read budget"
             return value == "@smoke000001"
         wait_for(copied, "saved Typst output on the OS clipboard")
-        passed("relaunch uses saved Typst without choosing a format again")
+        passed("copy uses the saved Typst format")
         wait_for(lambda: not snapshot()["visible"], "Typst copy hides picker")
         native.key(shortcut)
         # AT-SPI can focus the active result while the combobox retains input.
@@ -1433,6 +1444,7 @@ def first_run_preferences_main(args):
         wait_for(picker_ready, "picker available for normal Quit")
         report["second_quit_seconds"] = quit_normally(native, app)
         passed("restarted More/Quit exits zero within ten seconds")
+        assert saved_typst(settings), "Normal Quit lost the saved Typst choice"
         report["status"], exit_code = "passed", 0
     except Unavailable as error:
         report.update(status="unavailable", reason=str(error))
@@ -2185,6 +2197,9 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
+            elif name == "Copy as Pandoc":
+                # The footer's Copy action shares this name while a result is highlighted.
+                self.assertEqual(native.query, NO_MATCH, "Copy as Pandoc was ambiguous")
 
         def key(chord):
             actions.append((chord, len(launches)))
@@ -2205,10 +2220,11 @@ class ContractTests(unittest.TestCase):
                 clock[0] += 8
             names = ["More", "Quit Ibis"]
             if len(launches) == 1:
-                names += ["Choose library to get started", "Typst"]
+                names += ["Where do your references live?"]
             else:
-                names += ["3 references", "1 result" if clock[0] >= native.query_ready_at else "3 results",
-                          "Ibis smoke reference 000001"]
+                names += ["Copy as Pandoc", "Typst", "3 references"]
+                names += ["No matching references"] if native.query == NO_MATCH else [
+                    "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
             result_focus = failure == "active-result-reopen" and native.reopened
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
                 {"name": name, "role": "button"} for name in names] + [
@@ -2286,7 +2302,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
         self.assertTrue(all("IBIS_GALLERY" not in env and "IBIS_GALLERY_STATE" not in env for env in launches))
-        self.assertEqual([action for action in actions if action[0] == "Typst"], [("Typst", 1)])
+        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
@@ -3082,7 +3098,7 @@ class ContractTests(unittest.TestCase):
             (phases[0] + "\n" + "private" * 100000 + "\n" + phases[-1], None, phases[:1]),
             ("\n".join(phases * 100), "\n".join(phases), phases),
         ]:
-            error = subprocess.TimeoutExpired(["private-command"], 20, output=stdout, stderr=stderr)
+            error = subprocess.TimeoutExpired(["private-command"], CONTRACT_TIMEOUT, output=stdout, stderr=stderr)
             with patch("subprocess.run", side_effect=error) as helper, patch("builtins.print") as output:
                 with self.assertRaises(subprocess.TimeoutExpired) as caught:
                     self.test_global_macos_hid_event_contracts_without_native_execution()
@@ -3091,7 +3107,7 @@ class ContractTests(unittest.TestCase):
                 self.assertIs(error.stderr, stderr)
                 self.assertEqual(helper.call_count, 1)
                 self.assertEqual(helper.call_args.kwargs, {
-                    "check": True, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "timeout": 20,
+                    "check": True, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "timeout": CONTRACT_TIMEOUT,
                 })
                 self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
                 self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
@@ -3145,7 +3161,7 @@ class ContractTests(unittest.TestCase):
     def test_global_macos_hid_event_contracts_without_native_execution(self):
         try:
             subprocess.run(["node", str(Path(__file__).with_name("smoke-macos.test.cjs"))], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=CONTRACT_TIMEOUT)
         except subprocess.TimeoutExpired as error:
             allowed = {f"MACOS HID CONTRACT {phase}" for phase in (
                 "start", "source-ready", "fullscreen-cases", "key-plan-cases", "permission-cases",
@@ -3402,7 +3418,7 @@ Reject
             test.write_text(script, encoding="utf-8")
             result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                      "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                    capture_output=True, text=True, timeout=20)
+                                    capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
@@ -3830,7 +3846,7 @@ foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
             test.write_text(script, encoding="utf-8")
             result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                      "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                    capture_output=True, text=True, timeout=20)
+                                    capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         facts = [json.loads(line.removeprefix("NATIVE EDITOR FOCUS ")) for line in result.stderr.splitlines()]
         self.assertTrue(facts)
@@ -3984,7 +4000,7 @@ try {
                 with self.subTest(scenario=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                              "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
-                                             "-Scenario", scenario], capture_output=True, text=True, timeout=20)
+                                             "-Scenario", scenario], capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                     facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
                              for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
@@ -3997,7 +4013,7 @@ try {
                 with self.subTest(success=pattern):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                              "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
-                                             "-Scenario", f"success-{pattern}"], capture_output=True, text=True, timeout=20)
+                                             "-Scenario", f"success-{pattern}"], capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     facts = json.loads(result.stdout)
                     self.assertEqual(facts["tree"], {"nodes": [{"role": "ControlType.Edit", "name": "Synthetic node",
@@ -4032,14 +4048,14 @@ try {
         dirty = "\n".join([phases[0], "private-output", phases[1], phases[0], "WINDOWS CLICK CONTRACT private-command"])
         for stderr, expected in [(dirty, phases), (dirty.encode() + b'\n\xffprivate', phases), (None, []),
                                  (phases[0] + '\n' + 'private' * 100000 + '\nWINDOWS CLICK CONTRACT complete', phases[:1])]:
-            error = subprocess.TimeoutExpired(["private-command"], 20, stderr=stderr)
+            error = subprocess.TimeoutExpired(["private-command"], CONTRACT_TIMEOUT, stderr=stderr)
             with patch("shutil.which", return_value="synthetic-pwsh"), patch("subprocess.run", side_effect=error) as helper, patch("builtins.print") as output:
                 with self.assertRaises(subprocess.TimeoutExpired) as caught:
                     method(self)
                 self.assertIs(caught.exception, error)
                 self.assertIs(error.stderr, stderr)
                 self.assertEqual(helper.call_count, 1)
-                self.assertEqual(helper.call_args.kwargs["timeout"], 20)
+                self.assertEqual(helper.call_args.kwargs["timeout"], CONTRACT_TIMEOUT)
                 self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
                 self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
 
@@ -4193,7 +4209,7 @@ try {
             try:
                 result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                          "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                        capture_output=True, text=True, timeout=20)
+                                        capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
             except subprocess.TimeoutExpired as error:
                 allowed = {f"WINDOWS CLICK CONTRACT {phase}" for phase in (
                     "parse-start", "parse-ready", "compile-start", "compile-ready", "pattern-cases",

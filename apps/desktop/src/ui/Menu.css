@@ -4,6 +4,9 @@
    ADR 0021 §5). These are the look-layer tokens for menus. */
 .menu-popover {
   --menu-radius: var(--r-menu); --menu-padding: var(--menu-pad); --menu-item-radius: var(--r-mi); --menu-item-height: 28px;
+  /* Labels start after the 10 px item padding, an 18 px check column and the 6 px gap. */
+  --menu-item-pad: 10px; --menu-check-width: 18px; --menu-item-gap: 6px;
+  --menu-label-start: calc(var(--menu-item-pad) + var(--menu-check-width) + var(--menu-item-gap));
   --menu-background: Canvas; --menu-highlight: var(--selected-background); --menu-highlight-text: var(--selected-text);
   --menu-enter-transform: none;
   --menu-open-duration: 90ms;
@@ -33,7 +36,7 @@
 :root[data-platform="windows"] .menu-popover[data-placement="top"] { --menu-enter-transform: translateY(8px); }
 /* libadwaita popover menu: 12 px, 6 px rows, 32 px high. */
 :root[data-platform="linux"] .menu-popover {
-  --menu-item-height: 32px; --menu-highlight-text: var(--text);
+  --menu-item-height: 32px; --menu-highlight-text: var(--text); --menu-label-start: var(--menu-item-pad);
   --menu-enter-transform: scale(.96); --menu-open-duration: 150ms;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -46,7 +49,7 @@
 
 .menu-popover {
   box-sizing: border-box; min-width: min(var(--menu-min-width), calc(100vw - 16px)); max-width: calc(100vw - 16px);
-  display: flex; flex-direction: column; padding: var(--menu-padding); overflow: hidden; overflow-wrap: anywhere;
+  display: flex; flex-direction: column; padding-block: var(--menu-padding); overflow: hidden; overflow-wrap: anywhere;
   border: 1px solid var(--field-edge); border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
   background: var(--menu-background); color: var(--text); font: var(--metadata-size) var(--font-family);
 }
@@ -56,17 +59,37 @@
 @keyframes menu-exit { to { opacity: 0; } }
 .menu-frame { display: contents; }
 /* The menu and its rows never show a focus ring: the highlight is a fill. */
-.menu-popover [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; outline: none; overflow: auto; }
+/* The side padding is on the scrolling list, so a classic scroll bar sits
+   outside it and rows keep equal insets on both sides (#1031). */
+.menu-popover [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: var(--menu-padding); outline: none; overflow: auto; }
+.menu-popover > :not([role="menu"]) { margin-inline: var(--menu-padding); }
+/* Outranks the global ring, which the list would clip into lines at its top and bottom. */
+.menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
+/* A scrolling list fades at an edge with more rows beyond it, so a menu that
+   ends on a whole row still shows there is more (#1031). A mask reads only
+   alpha, so the opaque text colour serves. */
+.menu-popover [role="menu"]:is([data-more-above], [data-more-below]) {
+  --menu-fade: linear-gradient(transparent, currentColor var(--menu-fade-top, 0%), currentColor calc(100% - var(--menu-fade-bottom, 0%)), transparent);
+  -webkit-mask-image: var(--menu-fade); mask-image: var(--menu-fade);
+}
+.menu-popover [role="menu"][data-more-above] { --menu-fade-top: var(--space-4); }
+.menu-popover [role="menu"][data-more-below] { --menu-fade-bottom: var(--space-4); }
 .menu-section { display: flex; flex: none; flex-direction: column; }
-.menu-separator { height: 1px; margin: 4px 8px; border: 0; background: var(--separator); }
-/* A line above a section, aligned with the labels after the check column. */
-.menu-header { padding-inline-start: 22px; }
+.menu-separator { height: 1px; margin: 4px var(--menu-item-pad); border: 0; background: var(--separator); }
+.menu-header { padding-inline: var(--menu-item-pad); }
 .menu-item {
-  display: flex; align-items: center; min-height: var(--menu-item-height); padding: 0 10px 0 6px; gap: 6px;
+  display: flex; align-items: center; min-height: var(--menu-item-height); padding-block: 0; padding-inline: var(--menu-item-pad); gap: var(--menu-item-gap);
   border-radius: var(--menu-item-radius); outline: none; cursor: default; text-align: start;
 }
-.menu-check { flex: 0 0 18px; display: inline-flex; justify-content: center; }
-.menu-label { flex: 1 1 auto; min-width: 0; }
+/* Checks sit where each system puts them: in a leading column on macOS and
+   Windows, which a menu with any toggle keeps for every row so labels share
+   one start, and after the label on GNOME. */
+.menu-check { flex: 0 0 var(--menu-check-width); display: inline-flex; justify-content: center; }
+:root:not([data-platform="linux"]) .menu:has([role="menuitemcheckbox"]) :is(.menu-item:not([role="menuitemcheckbox"]), .menu-header) { padding-inline-start: var(--menu-label-start); }
+:root[data-platform="linux"] .menu-check { order: 1; }
+/* Labels never wrap, also at Larger text: the menu widens up to the window,
+   then the label ends with an ellipsis (#1031). */
+.menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-keys { flex: none; white-space: nowrap; margin-inline-start: 16px; color: var(--muted); font: inherit; }
 .menu-item[data-focused] { background: var(--menu-highlight); color: var(--menu-highlight-text); }
 .menu-item[data-focused] .menu-keys { color: inherit; }

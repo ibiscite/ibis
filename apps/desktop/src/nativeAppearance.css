@@ -2,9 +2,22 @@
    On macOS a light veil (--vibrancy-tint, tokens.css; the surface at 55% in
    webviews without light-dark()) keeps text legible over the material. Webviews
    with neither light-dark() nor color-mix() show the material bare, as before.
-   Windows Mica already supplies its own tint. */
-:root[data-native-appearance="mica"] { background: transparent; }
-:root[data-native-appearance="vibrancy"] { background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 55%, transparent)); }
+   Windows Acrylic has a guarded veil and text roles over any backdrop. */
+:root[data-native-appearance="acrylic"] { background: var(--acrylic-tint, var(--surface)); }
+:root[data-native-appearance="vibrancy"],
+:root[data-native-appearance="liquid-glass"] { background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 55%, transparent)); }
+
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) and (prefers-contrast: no-preference) {
+    :root[data-platform="windows"][data-native-appearance="acrylic"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+      --acrylic-tint: light-dark(rgb(249 249 249 / 92%), rgb(40 40 40 / 92%));
+      --citation: light-dark(#982d16, #ff9d87);
+      --status-done: light-dark(#135f29, #6fca81);
+      --status-look: light-dark(#734b00, #f0c25a);
+      --status-stop: light-dark(#9b273b, #ff9c9c);
+    }
+  }
+}
 
 /* Defensive overrides also cover preferences changed before native refresh. */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
@@ -24,17 +37,34 @@
 
   /* With the native material: a hairline edge as on a native panel (no rim or
      glow), and menus of the same glass that blur the list beneath them. */
-  :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) body::after {
+  :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) body::after,
+  :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not([data-gallery-theme="contrast"]) body::after {
     content: ""; position: fixed; inset: 0; z-index: 3; pointer-events: none;
     border-radius: var(--r-win);
     box-shadow: inset 0 0 0 var(--border-width) var(--glass-edge, transparent);
   }
-  :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog) {
+  :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog),
+  :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog) {
     background: color-mix(in srgb, var(--surface) 94%, transparent);
     -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
   }
   /* Without a backdrop blur, list text would show through: keep menus opaque. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog) { background: var(--surface); }
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog),
+    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not([data-gallery-theme="contrast"]) :is(.menu-popover, .keys-dialog) { background: var(--surface); }
+  }
+}
+
+/* Native failure/unknown preferences must not leave a web-only glass menu. */
+:root[data-platform="macos"]:not(.notice-window):not([data-native-appearance="vibrancy"]):not([data-native-appearance="liquid-glass"]) :is(.menu-popover, .keys-dialog),
+:root[data-platform][data-gallery-theme="contrast"]:not(.notice-window) :is(.menu-popover, .keys-dialog) {
+  background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+
+/* Include the applied-mode specificity while a native preference refresh waits. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  :root[data-platform]:not(.notice-window) :is(.menu-popover, .keys-dialog),
+  :root[data-platform][data-native-appearance]:not(.notice-window) :is(.menu-popover, .keys-dialog) {
+    background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
   }
 }

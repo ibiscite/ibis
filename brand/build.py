@@ -9,16 +9,23 @@ Sizes and spacing follow brand/README.md. M is the bird's height.
 """
 
 from pathlib import Path
+import argparse
 import json
 import math
+import os
 import re
+import shutil
 import struct
 import subprocess
+import sys
+import tempfile
 import zlib
 from xml.sax.saxutils import escape
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "exports"
+# Match fc-match and Linux CI on every host; macOS otherwise chooses CoreText.
+RENDER_ENV = {**os.environ, "PANGOCAIRO_BACKEND": "fc"}
 
 # The values people tune (colours, sizes, depth, motion, words) live in settings.json;
 # these names keep the code readable.
@@ -51,7 +58,7 @@ def ratio(name):
 
 def rasterize(svg):
     """Render SVG text with rsvg-convert; return (width, height, alpha rows)."""
-    data = subprocess.run(["rsvg-convert"], input=svg.encode(), capture_output=True, check=True).stdout
+    data = subprocess.run(["rsvg-convert"], input=svg.encode(), capture_output=True, check=True, env=RENDER_ENV).stdout
     pos, chunks, width = 8, [], 0
     while pos < len(data):
         size, kind = struct.unpack(">I4s", data[pos:pos + 8])
@@ -145,16 +152,22 @@ def depth_filter(fid, box):
 
 
 def draw(name, k, tx, ty, paint, uid, depth=False, neck=None):
-    """The symbol in its own units, scaled by k, with its unit origin moved to (tx, ty)."""
+    """The symbol in its own units, scaled by k, with its unit origin moved to (tx, ty).
+
+    `depth` True adds the gradient, rims and shadows; "gradient" keeps only the gradient, for
+    transparent exports whose background is unknown, where a shadow shows as a dark halo.
+    """
     (_, by, _, bh), body = SYM[name]
     defs, attr = "", ""
     if depth:
         top, bottom = paint
         # Gradient and filter work in the symbol's units, so depth scales with size.
         defs = (f'<linearGradient id="{uid}g" gradientUnits="userSpaceOnUse" x1="0" y1="{by - 1}" x2="0" y2="{by + bh}">'
-                f'<stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
-                + depth_filter(f"{uid}f", SYM[name][0]))
-        paint, attr = f"url(#{uid}g)", f' filter="url(#{uid}f)"'
+                f'<stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>')
+        paint = f"url(#{uid}g)"
+    if depth is True:
+        defs += depth_filter(f"{uid}f", SYM[name][0])
+        attr = f' filter="url(#{uid}f)"'
     if neck:
         body = thicken(body, neck)       # favicon sizes: no eye, as in the app's small icon
     body = body.replace("currentColor", paint)
@@ -225,7 +238,7 @@ def mark(paint, uid, depth=True):
     return doc(side, side, defs, body, (512, 512))
 
 
-def logo(dark, uid):
+def logo(dark, uid, depth="gradient"):
     m = 100
     pad = PAD * m
     mark_w = m * ratio("mark")
@@ -236,7 +249,7 @@ def logo(dark, uid):
     baseline = pad + m / 2 + cap / 2        # cap height centred on the bird
     w = pad + mark_w + WORD_GAP * m + word_w + pad
     h = m + 2 * pad
-    d1, b1 = place("mark", pad, pad, m, GRADIENT_DARK if dark else GRADIENT, uid, True)
+    d1, b1 = place("mark", pad, pad, m, GRADIENT_DARK if dark else GRADIENT, uid, depth)
     d2, b2 = place("wordmark", pad + mark_w + WORD_GAP * m, baseline + wy * cap / 100, word_h,
                    INK_DARK if dark else INK, uid + "w")
     return doc(w, h, d1 + d2, b1 + b2, (round(w * 200 / h), 200))
@@ -280,7 +293,7 @@ def favicon(paint, style=""):
 def card(w, h, uid):
     """The social card: logo, lead line and status line, centred as one block."""
     m = 184 * h / 640
-    logo_svg = logo(False, uid)
+    logo_svg = logo(False, uid, True)
     lw, lh = (float(v) for v in re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', logo_svg).groups())
     k = m * (1 + 2 * PAD) / lh
     inner = re.search(r"<defs>(.*)</defs>(.*)</svg>", logo_svg, re.S)
@@ -298,7 +311,7 @@ def card(w, h, uid):
 def beak():
     m = 100
     w, h = m * ratio("beak") + 2 * PAD * m, m * (1 + 2 * PAD)
-    defs, body = place("beak", PAD * m, PAD * m, m, GRADIENT, "bk", True)
+    defs, body = place("beak", PAD * m, PAD * m, m, GRADIENT, "bk", "gradient")
     return doc(w, h, defs, body, (round(256 * w / h), 256))
 
 
@@ -324,20 +337,23 @@ def palette():
     steps = {50: (0.97, 0.02), 100: (0.94, 0.04), 200: (0.88, 0.08), 300: (0.81, 0.13), 400: SCARLET_DARK,
              500: (0.64, 0.18), 600: SCARLET, 700: (0.47, 0.155), 800: (0.39, 0.125), 900: (0.30, 0.09)}
     scarlet = {k: v if isinstance(v, str) else oklch(v[0], v[1], 34) for k, v in steps.items()}
-    # Gray leans faintly toward the ink's cool blue, more in the darks than the lights.
-    grays = {50: (0.975, 0.004), 100: (0.955, 0.005), 200: (0.91, 0.007), 300: (0.85, 0.009), 400: (0.72, 0.012),
-             500: (0.58, 0.014), 600: (0.47, 0.016), 700: (0.38, 0.016), 800: (0.29, 0.013), 850: (0.25, 0.011),
-             900: (0.21, 0.010), 950: (0.16, 0.008)}
-    gray = {k: oklch(v[0], v[1], 268) for k, v in grays.items()}
+    # Neutral sRGB stops; converting through OKLCH with chroma 0 keeps R=G=B.
+    grays = {50: 245, 100: 240, 200: 229, 300: 181, 400: 163, 500: 115,
+             600: 82, 700: 64, 800: 46, 850: 38, 900: 28, 950: 17}
+    def neutral_stop(channel):
+        value = channel / 255
+        linear = value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+        return oklch(linear ** (1 / 3), 0, 0)
+    gray = {k: neutral_stop(v) for k, v in grays.items()}
     neutral = {"ink": INK, "slate": SLATE, "mist": MIST, "paper": "#FFFFFF",
                "warm-paper": PAPER[1], "snow": INK_DARK}
     themes = {
         "light": {"bg": "#FFFFFF", "surface": gray[50], "line": gray[200], "text": INK, "muted": SLATE,
-                  "accent": SCARLET, "accent-soft": scarlet[50]},
+                  "accent": SCARLET, "accent-soft": "rgb(194 58 28 / .08)"},
         "dark": {"bg": gray[950], "surface": gray[900], "line": gray[800], "text": INK_DARK, "muted": gray[300],
-                 "accent": SCARLET_DARK, "accent-soft": scarlet[900]},
+                 "accent": SCARLET_DARK, "accent-soft": "rgb(255 122 92 / .13)"},
         "dim": {"bg": gray[850], "surface": gray[800], "line": gray[700], "text": INK_DARK, "muted": gray[300],
-                "accent": SCARLET_DARK, "accent-soft": scarlet[900]},
+                "accent": SCARLET_DARK, "accent-soft": "rgb(255 122 92 / .13)"},
     }
     return {"scarlet": scarlet, "gray": gray, "neutral": neutral, "themes": themes}
 
@@ -360,12 +376,37 @@ def write_palette():
     (OUT / "colors.css").write_text(css, encoding="utf-8")
 
 
+PALETTE_START = "/* BEGIN generated website palette: brand/build.py */"
+PALETTE_END = "/* END generated website palette */"
+
+
+def website_tokens(root):
+    source = HERE.parent / "apps/desktop/src/tokens.css"
+    tokens = source.read_text(encoding="utf-8")
+    if PALETTE_START in tokens:
+        before, rest = tokens.split(PALETTE_START, 1)
+        _, after = rest.split(PALETTE_END, 1)
+        tokens = before.rstrip() + after
+    themes = palette()["themes"]
+    roles = {"bg": "Canvas", "surface": "Canvas", "line": "GrayText",
+             "text": "CanvasText", "muted": "CanvasText", "accent-soft": "Canvas"}
+    lines = [PALETTE_START, ":root {" ]
+    lines += [f"  --website-{key}: {fallback};" for key, fallback in roles.items()]
+    lines += ["}", "@supports (color: light-dark(white, black)) {",
+              "  @media (forced-colors: none) {", "    :root {"]
+    lines += [f"      --website-{key}: light-dark({themes['light'][key]}, {themes['dark'][key]});" for key in roles]
+    lines += ["    }", "  }", "}", PALETTE_END]
+    target = root / "apps/desktop/src/tokens.css"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(tokens.rstrip() + "\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
+
+
 def png(svg_name, out_name, width, height=None):
     """Render at `width`; `height` defaults to square, and "auto" keeps the file's own proportions."""
     args = ["rsvg-convert", "--width", str(width)]
     if height != "auto":
         args += ["--height", str(height or width)]
-    subprocess.run(args + ["--output", str(OUT / "png" / out_name), str(OUT / svg_name)], check=True)
+    subprocess.run(args + ["--output", str(OUT / "png" / out_name), str(OUT / svg_name)], check=True, env=RENDER_ENV)
 
 
 def ico(svg_name, sizes):
@@ -416,6 +457,12 @@ def animated_logo(dark, uid):
     return animate(head + '<g class="word"><g transform=' + word.replace("</svg>", "</g></svg>"))
 
 
+def bird_animated_logo(dark, uid):
+    """The logo with only the bird drawing itself and the wordmark already in place: website headers,
+    where the name should be readable at once and the bird can redraw when the home link is used."""
+    return animate(logo(dark, uid))
+
+
 def animated_mark(dark, uid):
     """The bird alone drawing itself, for splash screens, avatars in videos and loading states."""
     return animate(mark(GRADIENT_DARK if dark else GRADIENT, uid))
@@ -424,7 +471,7 @@ def animated_mark(dark, uid):
 def video_card(w, h, dark, uid, lines, logo_size=0.2):
     """A full-frame card for video and social: the logo above one or two lines of text, centred as a block."""
     m = h * logo_size
-    logo_svg = logo(dark, uid)
+    logo_svg = logo(dark, uid, True)      # a known background, so the full depth is safe
     lw, lh = (float(v) for v in re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', logo_svg).groups())
     k = m * (1 + 2 * PAD) / lh
     inner = re.search(r"<defs>(.*)</defs>(.*)</svg>", logo_svg, re.S)
@@ -444,7 +491,7 @@ def video_card(w, h, dark, uid, lines, logo_size=0.2):
 
 
 def thumbnail(uid):
-    """A YouTube thumbnail template: edit the two text lines in the SVG, then export at 1280 x 720."""
+    """A YouTube thumbnail made from the two text lines in settings.json."""
     w, h = 1280, 720
     d1, body = background(w, h, NIGHT, uid)
     d2, bird = centred("mark", 440, 300, GRADIENT_DARK, uid + "m", True)
@@ -466,7 +513,9 @@ MANIFEST = {
 }
 
 
-def main():
+def main(root=HERE.parent):
+    global OUT
+    OUT = root / "brand/exports"
     (OUT / "png").mkdir(parents=True, exist_ok=True)
     dark_style = f"<style>svg{{color:{SCARLET}}}@media (prefers-color-scheme:dark){{svg{{color:{SCARLET_DARK}}}}}</style>"
     files = {
@@ -487,6 +536,8 @@ def main():
         "favicon-png.svg": favicon(SCARLET_MID),
         "ibis-logo-animated.svg": animated_logo(False, "la"),
         "ibis-logo-animated-on-dark.svg": animated_logo(True, "lad"),
+        "ibis-logo-bird-animated.svg": bird_animated_logo(False, "lb"),
+        "ibis-logo-bird-animated-on-dark.svg": bird_animated_logo(True, "lbd"),
         "ibis-mark-animated.svg": animated_mark(False, "ma"),
         "ibis-mark-animated-on-dark.svg": animated_mark(True, "mad"),
         "video/title-card.svg": video_card(1920, 1080, False, "vt", [TAGLINE, SUBLINE]),
@@ -520,7 +571,88 @@ def main():
     (OUT / "favicon-png.svg").unlink()
     (OUT / "site.webmanifest").write_text(json.dumps(MANIFEST, indent=2) + "\n", encoding="utf-8")
     write_palette()
+    website_tokens(root)
+    # The small in-app mark is generated too: no copied geometry in the UI.
+    box, body = SYM["beak"]
+    ui = root / "apps/desktop/src/brand.ts"
+    ui.parent.mkdir(parents=True, exist_ok=True)
+    # The bird for the search field: one colour, eye cut out, filling three
+    # quarters of a square box, as the magnifier fills its 24 px box.
+    (mx, my, mw, mh), bird = SYM["mark"]
+    side = max(mw, mh) * 4 / 3
+    mbox = (mx - (side - mw) / 2, my - (side - mh) / 2, side, side)
+    eye = SYM["eye"][1].replace("currentColor", "#000")
+    rect = f'x="{mbox[0]:g}" y="{mbox[1]:g}" width="{side:g}" height="{side:g}"'
+    mark_body = (f'<mask id="ibis-mark-eye" maskUnits="userSpaceOnUse" {rect}><rect {rect} fill="#fff"/>{eye}</mask>'
+                 f'<g mask="url(#ibis-mark-eye)">{bird}</g>')
+    ui.write_text('// Generated by brand/build.py; do not edit.\nexport const beak = '
+                  + json.dumps({"viewBox": " ".join(f"{v:g}" for v in box), "body": body})
+                  + ';\nexport const mark = '
+                  + json.dumps({"viewBox": " ".join(f"{v:g}" for v in mbox), "body": mark_body})
+                  + ';\n', encoding="utf-8")
+    subprocess.run([sys.executable, str(HERE.parent / "apps/desktop/src-tauri/icons/source/generate.py"),
+                    "--output", str(root / "apps/desktop/src-tauri/icons")], check=True)
+
+
+def generated_files(root):
+    files = set()
+    for directory in ("brand/exports", "apps/desktop/src-tauri/icons"):
+        for path in (root / directory).rglob("*"):
+            if (path.is_file() or path.is_symlink()) and (directory == "brand/exports" or path.suffix in {".svg", ".png", ".ico", ".icns", ".json"}):
+                files.add(path.relative_to(root))
+    for name in ("apps/desktop/src/brand.ts", "apps/desktop/src/tokens.css"):
+        path = root / name
+        if path.exists() or path.is_symlink():
+            files.add(Path(name))
+    return files
+
+
+def drift(source, generated):
+    changed = []
+    for name in sorted(generated_files(source) | generated_files(generated)):
+        before, after = source / name, generated / name
+        if before.is_symlink() or after.is_symlink() or not before.is_file() or not after.is_file() or before.read_bytes() != after.read_bytes():
+            changed.append(name.as_posix())
+    return changed
+
+
+def publish(generated, root):
+    fresh = generated_files(generated)
+    for name in fresh:
+        for path in (root / name, *(root / name).parents):
+            if path == root:
+                break
+            if path.is_symlink():
+                raise SystemExit(f"Refusing generated output through a symlink: {name.as_posix()}")
+    for name in generated_files(root) - fresh:
+        (root / name).unlink()
+    for name in fresh:
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(generated / name, target)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="rebuild in a temporary folder and report stale assets")
+    parser.add_argument("--output", type=Path, default=HERE.parent, help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    try:
+        font = subprocess.run(["fc-match", "-f", "%{family}", "Inter Display"], capture_output=True, text=True, check=True)
+        if "Inter Display" not in font.stdout.split(","):
+            raise SystemExit("Install Inter Display before rebuilding the brand (Ubuntu: fonts-inter).")
+        # Build completely before touching the checkout, even for an ordinary run.
+        with tempfile.TemporaryDirectory(prefix="ibis-brand-") as directory:
+            output = Path(directory)
+            main(output)
+            if args.check:
+                changed = drift(args.output, output)
+                if changed:
+                    print("Generated brand files differ; run python3 brand/build.py:", *changed, sep="\n", file=sys.stderr)
+                    raise SystemExit(1)
+                print("Brand exports, desktop icons and UI artwork are current.")
+            else:
+                publish(output, args.output)
+    except FileNotFoundError as error:
+        print(f"Brand build tool is missing: {error.filename}", file=sys.stderr)
+        raise SystemExit(2)

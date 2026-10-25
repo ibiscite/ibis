@@ -8,6 +8,7 @@ type Tag = "i" | "b" | "sup" | "sub" | "span";
 type Block = "entry" | "margin" | "inline" | "block" | "indent";
 
 export type Markup = string | { tag: Tag; style?: Style; children: Markup[] } | { block: Block; children: Markup[] };
+export type CitationPart = { item: number | null; markup: Markup[] };
 
 /** The only CSS declarations kept, each written as the engine writes it. */
 const STYLES = {
@@ -43,6 +44,61 @@ export function parse(html: string): Markup[] {
   return children(document.body);
 }
 
+/** Display-only ownership from the engine's byte-neutral annotated pass. */
+export function parseSegments(html: string, count: number): CitationPart[] | null {
+  if (!Number.isSafeInteger(count) || count < 0 || count > 1000 || html.length > 1024 * 1024) return null;
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const parts: CitationPart[] = [];
+  let visited = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (++visited > 10000) return null;
+    let item: number | null = null;
+    let markup: Markup[] = node.textContent ? [node.textContent] : [];
+    let depth = 0;
+    for (let parent = node.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      if (++depth > 256) return null;
+      const name = parent.localName;
+      if (["script", "style", "template"].includes(name)) { markup = []; break; }
+      if (name === "ibis-reference") {
+        const value = parent.getAttribute("data-item") ?? "";
+        const owner = Number(value);
+        if (!/^(0|[1-9]\d*)$/.test(value) || parent.attributes.length !== 1 || owner >= count
+          || (item !== null && item !== owner)) return null;
+        item = owner;
+      } else markup = wrapElement(parent, markup);
+    }
+    if (markup.length) parts.push({ item, markup });
+  }
+  // A reference may wrap several variables. Coalesce only its uninterrupted
+  // interval; overlapping owners cannot safely become individually removable.
+  const ranges = new Map<number, [number, number]>();
+  parts.forEach((part, index) => {
+    if (part.item !== null) ranges.set(part.item, [ranges.get(part.item)?.[0] ?? index, index]);
+  });
+  const ambiguous = new Set<number>();
+  let cluster: number[] = [];
+  let end = -1;
+  const finish = () => { if (cluster.length > 1) for (const item of cluster) ambiguous.add(item); };
+  for (const [item, [first, last]] of ranges) {
+    if (first > end) { finish(); cluster = []; }
+    cluster.push(item);
+    end = Math.max(first > end ? -1 : end, last);
+  }
+  finish();
+  for (const [item, [first, last]] of ranges) {
+    if (!ambiguous.has(item)) for (let index = first; index <= last; index++) parts[index]!.item = item;
+  }
+  const merged: CitationPart[] = [];
+  for (const part of parts) {
+    if (part.item !== null && ambiguous.has(part.item)) part.item = null;
+    const last = merged.at(-1);
+    if (last?.item === part.item) for (const node of part.markup) last.markup.push(node);
+    else merged.push(part);
+  }
+  return merged;
+}
+
 function children(node: Node): Markup[] {
   const out: Markup[] = [];
   for (const child of node.childNodes) {
@@ -60,6 +116,11 @@ function element(node: Element): Markup[] {
   // Never show the text of code or style sheets.
   if (name === "script" || name === "style" || name === "template") return [];
   const inner = children(node);
+  return wrapElement(node, inner);
+}
+
+function wrapElement(node: Element, inner: Markup[]): Markup[] {
+  const name = node.tagName.toLowerCase();
   if (name === "div") {
     const block = [...node.classList].filter((name) => Object.hasOwn(BLOCKS, name)).map((name) => BLOCKS[name])[0];
     return block ? [{ block, children: inner }] : inner;

@@ -4,11 +4,14 @@ import { provisional, type FormattedCitation } from "../../format/formatted";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
+import type { CitationReference } from "./choice";
+import { LocatorToken } from "../../ui/LocatorToken";
 import { Button } from "../../ui/Button";
+import { beak } from "../../brand";
 import "./CitationShelf.css";
 
 /** The shelf shows at most this many chips; the rest fold into "+N"
- * (docs/design/preview.md, "Chips before the count"). */
+ * (docs/design.md, "Shelf"). */
 export const SHELF_CHIPS = 6;
 
 /** "García 2021": the first author's family name and the year, or the key
@@ -25,15 +28,16 @@ export function chipLabels(records: SearchResult[]): string[] {
     labels.indexOf(label) !== labels.lastIndexOf(label) && label !== records[i]!.key ? `${label} · ${records[i]!.key}` : label);
 }
 
-/** What Enter pastes, above the footer's Copy action (docs/design/preview.md):
+/** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, removeLabel, onRemove, style, keys, shown, focusable, outputRef }: {
+export function CitationShelf({ announce, selected, removeLabel, onRemove, onRemoveLocator, style, keys, shown, focusable, outputRef }: {
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
-  selected: Map<string, SearchResult>;
+  selected: Map<string, CitationReference>;
   removeLabel: (r: SearchResult) => string;
   onRemove: (r: SearchResult) => void;
+  onRemoveLocator?: (r: CitationReference) => void;
   /** The citation style, when one is chosen. */
   style: StyleId | null;
   /** True for a citation-key syntax, which is shown in monospace. */
@@ -106,6 +110,8 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
               {shownChips.map((r, i) => (
                 <li key={keysOf[i]} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
                   <bdi className="chip-label">{labels[i]}</bdi>
+                  {r.locator && onRemoveLocator && <LocatorToken text={`${r.locator.label} ${r.locator.value}`}
+                    removeLabel={pickerText.removeLocator(r.locator.label, r.locator.value, r.key)} onRemove={() => onRemoveLocator(r)} />}
                   <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
                 </li>
               ))}
@@ -123,13 +129,9 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
             <section ref={outputRef} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
               data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
               tabIndex={focusable && shown && typeof shown === "object" ? 0 : undefined}>
-              <svg className="shelf-mark" viewBox="23 25 58 51" fill="currentColor" aria-hidden="true" focusable="false"
-                preserveAspectRatio="xMaxYMid meet">
-                <g transform="rotate(180 50 50)">
-                  <g transform="rotate(60 30 36)"><circle cx="30" cy="36" r="10" /><path d="M30 26C44 26 55 38 58 62 51 48 43 42 35 44.5z" /></g>
-                  <g transform="rotate(60 64 36)"><circle cx="64" cy="36" r="10" /><path d="M64 26C78 26 89 38 92 62 85 48 77 42 69 44.5z" /></g>
-                </g>
-              </svg>
+              {/* Static generated artwork, never user or library markup. */}
+              <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
+                preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />
               {shown === null && <p role="status">{pickerText.previewPending}</p>}
               {shown === "failed" && <p role="alert">{pickerText.previewError}</p>}
               {shown === "stale" && <p role="status">{pickerText.shelfStale}</p>}

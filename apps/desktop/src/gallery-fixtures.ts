@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import type { Copied, Density, LibraryStatus, SearchResult, UpdateProgress } from "./api";
+import type { Copied, Density, LibraryStatus, LocatorQuery, SearchResult, UpdateProgress } from "./api";
 import type { Sources } from "./bindings";
 import type { PickerApi, PickerPreview } from "./App";
 import type { Platform } from "./nativeAppearance";
@@ -13,6 +13,8 @@ export type GalleryState = {
   sources?: Sources;
   results?: SearchResult[];
   query?: string;
+  /** Exact synthetic backend replies for interaction captures, never a query parser. */
+  locatorQueries?: Readonly<Record<string, LocatorQuery>>;
   copied?: Copied;
   updateProgress?: UpdateProgress;
   theme?: "light" | "dark" | "contrast";
@@ -24,6 +26,7 @@ export type GalleryState = {
   density?: Density;
   /** The picker's own Larger text setting (×1.15), unlike `largeText`, which doubles the system text size. */
   largerTextSetting?: boolean;
+  searchMark?: boolean;
   /** Seeded once the picker has rendered: pin it, open More, choose this many results, open All keys. */
   pinned?: boolean;
   menuOpen?: boolean;
@@ -97,7 +100,7 @@ if (typeof window !== "undefined") {
 
 function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
   return { revision: "gallery", state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false, zotero_libraries: [],
-    references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-gallery": overrides.references ?? 24 } : {}, warnings: 0, error: null, note: null, settings_notice: null,
+    references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-gallery": overrides.references ?? 24 } : {}, warnings: 0, error: null, problem: null, note: null, settings_notice: null,
     snapshot_zotero: false, stale: false, updated_at: null, checked_at: hoursAgo(3), ...overrides };
 }
 
@@ -129,6 +132,8 @@ const largeSelection = Array.from({ length: 50 }, (_, i) => reference(
   `synthetic_${String(i + 1).padStart(2, "0")}_${"long_key_".repeat(5)}`,
   `Selection study ${i + 1}: a synthetic reference`, "Example, Sample", "Journal of Synthetic Studies"));
 
+const longLocator = `${"12-14, ".repeat(8)}16`;
+
 export const galleryStates: readonly GalleryState[] = [
   { id: "update-downloading", label: "Agreed update download (synthetic)", library: library(), query: "memory", results: examples,
     updateProgress: { attempt: 1, revision: 1, received: 25, total: 100, phase: "downloading" } },
@@ -140,6 +145,13 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "idle", label: "Nothing typed", library: library(), query: "" },
   { id: "no-results", label: "No matching references", library: library(), query: "unmatched phrase" },
   { id: "many-results", label: "Many results", library: library(), query: "memory", results: many },
+  { id: "typed-locator", label: "Typed locator and prepared reference", library: library(), query: "memory p 45", results: examples, tray: 1, pinned: true,
+    locatorQueries: {
+      "memory p 45": { search: "memory", typed: "p 45", locator: { label: "page", value: "45" } },
+      "memory p 84": { search: "memory", typed: "p 84", locator: { label: "page", value: "84" } },
+      "memory section 3": { search: "memory", typed: "section 3", locator: { label: "section", value: "3" } },
+      [`memory pp ${longLocator}`]: { search: "memory", typed: `pp ${longLocator}`, locator: { label: "page", value: longLocator } },
+    } },
   { id: "long-titles", label: "Long and non-Latin titles", library: library(), query: "research", results: [
     reference("long2026", "An intentionally long synthetic title about research across languages, with enough words to wrap across several lines at larger text sizes and in narrow picker windows"),
     examples[1]!, reference("학습2026", "언어와 기억에 관한 가상의 연구", "가상 저자", null, "chapter"),
@@ -152,7 +164,7 @@ export const galleryStates: readonly GalleryState[] = [
     library: library({ name: "מקורות.bib", snapshot_name: "מקורות.bib", stale: true, state: "error", checked_at: hoursAgo(2),
       error: "The library file is unavailable; keeping the last loaded references" }),
     results: [reference("memory2026", "מחקר דמיוני על זיכרון ושפות", "מחבר לדוגמה", "Synthetic Studies", "book")] },
-  { id: "missing-file", label: "Missing library file", library: library({ state: "error", name: "missing.bib", snapshot_name: null, has_snapshot: false, zotero: false, references: 0, error: "The library file is unavailable." }) },
+  { id: "missing-file", label: "Missing library file", library: library({ state: "error", name: "missing.bib", snapshot_name: null, has_snapshot: false, zotero: false, references: 0, error: "The library file is unavailable.", problem: "missing" }) },
   { id: "invalid-settings", label: "Invalid settings", library: library({ settings_notice: "settings.json could not be read. Ibis is using the backup. Changes are not being saved. Repair the synthetic settings file and restart Ibis." }) },
   { id: "damaged-library", label: "Damaged library", library: library({ references: 3, warnings: 2, note: "Some references could not be read. Export the library again to restore them." }), query: "memory", results: examples },
   { id: "copy-confirmation", label: "Copy confirmation", library: library(), query: "memory", results: examples, copied: { text: "[@example2026]", warnings: [] } },
@@ -171,10 +183,11 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "empty-zotero", label: "Empty Zotero library", library: library({ name: "My Library", snapshot_name: "My Library", zotero: true, snapshot_zotero: true, references: 0 }) },
   { id: "reloading", label: "Reloading with retained references", library: library({ state: "reloading", references: 2 }), query: "memory", results: examples.slice(0, 2) },
   { id: "zotero-unavailable", label: "Zotero unavailable without a snapshot", library: library({ state: "error", name: "Zotero library", snapshot_name: null, has_snapshot: false, zotero: true, references: 0,
-    error: "Zotero is not running, or it is not accepting connections." }) },
+    error: "Zotero is not running, or it is not accepting connections.", problem: "zotero_closed" }) },
   { id: "file-kept-menu", label: "Retained file details in More", library: library({ state: "error", name: "example.bib", snapshot_name: "example.bib", stale: true,
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
+  { id: "search-mark", label: "Ibis mark in search", library: library(), query: "", searchMark: true },
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
   ...[false, true].flatMap((formatted) => [true, false].map((showPastePreview) => ({
     id: `preview-${formatted ? "apa" : "keys"}-${showPastePreview ? "on" : "off"}`,
@@ -202,6 +215,8 @@ export const galleryStates: readonly GalleryState[] = [
 
 export function galleryProvider(state: GalleryState): { api: PickerApi; preview: PickerPreview } {
   const sources = state.sources;
+  const citation = (items: Parameters<PickerApi["copyCitation"]>[0]) => `[${items.map(({ id, locator }) =>
+    `@${id.native_key}${locator ? `, ${locator.label === "page" ? "p." : locator.label} ${locator.value}` : ""}`).join("; ")}]`;
   return {
     preview: { query: state.query, copied: state.copied },
     api: {
@@ -212,17 +227,24 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       ...(sources || state.library.state === "none" ? {
         findSources: async () => sources ?? { zotero: "absent", list: 0, files: [], cut_short: false }, openFoundLibrary: async () => null,
       } : {}),
-      search: async () => ({ revision: state.library.revision, results: state.results ?? [] }),
-      citationText: async (ids) => ({ text: `[${ids.map((id) => `@${id.native_key}`).join("; ")}]`, warnings: [] }),
-      copyCitation: async (ids) => ({ text: (state.tray ?? 0) >= 20 ? `[@${ids.map((id) => id.native_key).join("; @")}]` : "[@example2026]", warnings: [] }),
-      ...((state.tray ?? 0) >= 20 || state.formatted ? {
+      search: async (query, _limit, _scope, interpretLocators = true) => ({
+        revision: state.library.revision,
+        results: state.locatorQueries?.[query] && !interpretLocators ? [] : state.results ?? [],
+        interpretation: interpretLocators ? state.locatorQueries?.[query] ?? null : null,
+      }),
+      citationText: async (items) => {
+        const text = citation(items);
+        return { text, warnings: [], segments: [{ item: null, text }] };
+      },
+      copyCitation: async (items) => ({ text: state.locatorQueries || (state.tray ?? 0) >= 20 ? citation(items) : "[@example2026]", warnings: [] }),
+      ...((state.tray ?? 0) >= 20 || state.formatted || state.locatorQueries ? {
         cslItems: async (ids: Parameters<NonNullable<PickerApi["cslItems"]>>[0]) => JSON.stringify(ids.map((id) => ({
           id: id.native_key, type: "book", title: "Synthetic preview pressure", author: [{ family: id.native_key }], issued: { "date-parts": [[2026]] },
         }))),
         copyFormatted: async () => null,
       } : {}),
       copyFormat: async () => "pandoc",
-      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true }),
+      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true, search_mark: state.searchMark ?? false }),
       setPickerPreferences: async () => null,
       shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       chooseLibrary: async () => undefined,

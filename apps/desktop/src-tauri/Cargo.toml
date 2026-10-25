@@ -67,4 +67,4 @@ window-vibrancy = "=0.8.1"
 auto-launch = "0.6.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.62.2", features = ["Foundation", "UI_ViewManagement"] }
+windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement"] }

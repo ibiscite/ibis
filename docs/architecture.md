@@ -50,7 +50,33 @@ Keyword search is instant, case- and accent-insensitive, works in every script a
 
 ## Formatting
 
+Desktop search passes transient text and an explicit interpretation flag to the
+Rust trailing-locator parser. Replies retain the normal revision/results and add
+an optional interpretation; literal search uses the complete input. Prepared
+references capture their own locator with record identity and revision, so later
+searches cannot rewrite a citation. Query mode and locator contents invalidate
+pending previews and copy actions. See ADR 0026.
+
 Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. For now this runs in the desktop web interface (`apps/desktop/src/format/`), not in the core, so the command line cannot format with styles; moving it into the core is planned for 0.5 (#366). Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
+
+The core's structured citation reader bounds JSON input to 1 MiB and 1,000
+items before formatting. It preserves order and per-reference intent, rejects
+unknown fields and emits fixed input diagnostics without request text. The CLI
+uses it through `cite --items` on stdin; keys, locators, notes and author omission
+reach the same formatter as positional requests (ADR 0025). This is transient
+input, without persisted state or an additional process.
+
+Desktop key output resolves ordered `CitationSelection {id, locator}` requests
+under the expected-revision snapshot lock, then uses the core formatter. CSL
+retrieval retains its existing identity/revision contract, including references
+without keys. Its adapter receives one context per ordered reference for both
+canonical and segmented output, assigns canonical position IDs itself and rejects
+context-count mismatches. Clipboard output always uses the canonical result.
+
+Optional formatted-preview ownership uses a separate processor pass. Generated
+wrappers must erase to the canonical output; bounded, sanitized markup must also
+retain its plain text. Missing or ambiguous ownership keeps an aggregate preview
+and reports unrepresented references. Clipboard output never uses annotations.
 
 ## Insertion
 
@@ -58,7 +84,7 @@ Planned for 0.4; today the picker copies. Every insertion will end in one visibl
 
 ## Desktop process model
 
-The desktop app (`apps/desktop`) is a Tauri 2 shell: a React and TypeScript interface in the system web view, and a thin Rust layer that calls `ibis-core`. The web interface has no file system, shell or network plugin permissions. An application command manifest enforces the per-window capabilities (ADR 0024): `main` can call the 24 picker commands; `notice` can call only `copied_notice` and subscribe to events. A second small window shows that "Copied" notice after a clean copy hides the picker; it never takes focus and is left out of the taskbar, Dock and Alt+Tab. Neither capability allows remote origins. The debug gallery shares `main` and its permissions; the boundary does not isolate pages within one window.
+The desktop app (`apps/desktop`) is a Tauri 2 shell: a React and TypeScript interface in the system web view, and a thin Rust layer that calls `ibis-core`. The web interface has no file system, shell or network plugin permissions. An application command manifest enforces the per-window capabilities (ADR 0024): `main` can call the 25 picker commands, including a native row context menu returning only Copy/Add intent (never references or clipboard writes); `notice` can call only `copied_notice` and subscribe to events. A second small window shows that "Copied" notice after a clean copy hides the picker; it never takes focus and is left out of the taskbar, Dock and Alt+Tab. Neither capability allows remote origins. The debug gallery shares `main` and its permissions; the boundary does not isolate pages within one window.
 
 Until measurements justify more, the app is a single process that keeps the library index in memory and hides its window between uses (ADR 0012). The original plan of a small background engine plus an on-demand picker process (ADR 0004) remains the option if idle memory or wakeups exceed the budgets in `scripts/smoke-budgets.json`.
 
@@ -125,3 +151,9 @@ clipboard writes follow after unlocking. Stale or mixed choices
 are refused with a fixed refresh/reselection explanation, rather than resolving
 old visible identities against new metadata. This does not change core/CLI
 search types or persisted settings.
+
+Key previews include transient, request-local ownership segments. The core
+records item positions while emitting syntax, keeping literal delimiters apart
+from references, including adjacent BibLaTeX commands. Preview metadata does not
+change canonical citation text, the clipboard response, CLI JSON or persisted
+data. The removable shelf consumes these segments separately.

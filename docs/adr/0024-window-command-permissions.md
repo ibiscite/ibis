@@ -12,7 +12,7 @@ Issue #520 requests an enforced window boundary.
 ## Decision
 
 Declare every registered Ibis command in a Tauri `AppManifest`. Grant the
-`main` picker window its 24 commands explicitly. Grant the `notice` window
+`main` picker window its 25 commands explicitly. Grant the `notice` window
 only `copied_notice`, alongside its existing event subscriptions. Neither
 capability grants remote origins access. Other windows have no Ibis commands.
 

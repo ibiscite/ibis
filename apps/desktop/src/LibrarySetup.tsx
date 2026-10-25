@@ -1,10 +1,10 @@
-import { useEffect, useId, useState } from "react";
-import type { Choice } from "./features/picker/choice";
+import { useEffect, useState } from "react";
+import type { Choice as Format } from "./features/picker/choice";
 import type { Sources } from "./bindings";
-import { loginItemText, pickerText, setupText } from "./messages";
+import { ChoiceIcon } from "./icons";
+import { setupText } from "./messages";
 import { currentPlatform } from "./platform";
-import { Button, ToggleButton } from "./ui/Button";
-import { STYLE_NAMES, type StyleId } from "./format/styles";
+import { ChoiceList, type Choice } from "./ui/ChoiceList";
 
 type SetupApi = {
   chooseLibrary: () => Promise<unknown>;
@@ -15,35 +15,29 @@ type SetupApi = {
 
 type Action = "choose" | "zotero" | "findSources" | "openFound";
 
-/** Where people write, and the copy format that suits each. */
-const WRITING_PLACES: { name: string; choice: Choice; formatted?: true }[] = [
-  { name: setupText.places.markdown, choice: "pandoc" },
-  { name: setupText.places.latex, choice: "cite" },
-  { name: setupText.places.typst, choice: "typst" },
-  { name: setupText.places.word, choice: "style:apa", formatted: true },
-];
-
 // Kept here for imports written before the label moved to keys.ts.
 export { shortcutLabel } from "./keys";
 
-// First-run setup while no library is chosen: Zotero if it is open, `.bib`
-// files found nearby, or any file through the system chooser. Only names are
-// shown; nothing is read until one is picked.
-export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: {
+/** Where people write, and the copy format that suits each (first run, step 2). */
+const WRITING_PLACES = [
+  { id: "markdown", choice: "pandoc" },
+  { id: "latex", choice: "cite" },
+  { id: "typst", choice: "typst" },
+] as const satisfies readonly { id: keyof typeof setupText.places; choice: Format }[];
+
+/** First run, step 1, and the screen while no library is chosen: Zotero, a
+ * .bib file through the system chooser, and, only when asked, libraries found
+ * nearby. Only names are shown; nothing is read until one is picked (#998). */
+export function LibrarySetup({ api, perform, autoFocus = false }: {
   api: SetupApi;
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
-  /** The copy format now, whether formatted styles are offered, and how to change it. */
-  writing?: { format: Choice; formatted: boolean; choose: (choice: Choice) => void };
-  /** The shortcut that opens Ibis, when it is registered. */
-  shortcut?: string | null;
-  /** Starting at login, offered once here and kept in More; off until chosen. */
-  startAtLogin?: { name: string; enabled: boolean; toggle: () => void };
+  /** Focus the first row on mount, when the row that led here is gone. */
+  autoFocus?: boolean;
 }) {
   const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
   // Undefined while looking; null before an explicit search or after failure.
   const [sources, setSources] = useState<Sources | null | undefined>(null);
   const [search, setSearch] = useState(0);
-  const heading = useId();
 
   useEffect(() => {
     if (!findSources || search === 0) { setSources(null); return; }
@@ -63,74 +57,59 @@ export function LibrarySetup({ api, perform, writing, shortcut, startAtLogin }: 
   const lookAgain = () => { setSources(undefined); setSearch((n) => n + 1); };
   const outcome = looking ? setupText.looking
     : sources && files.length === 0 && zotero === "absent" ? setupText.nothingFound
-    : sources ? setupText.found(files.length, zotero === "available") : "";
+    : sources ? setupText.found(files.length, zotero === "available") : setupText.findHelp;
 
+  const choices: Choice[] = [
+    { id: "zotero", title: setupText.zotero, help: setupText.zoteroHelp, icon: <ChoiceIcon name="library" />,
+      tag: zotero === "available" ? setupText.foundOn(currentPlatform()) : undefined },
+    { id: "file", title: setupText.file, help: setupText.fileHelp, icon: <ChoiceIcon name="file" /> },
+    ...files.map((file, index): Choice => ({
+      id: `found-${index}`, title: file.name, tag: file.folder || undefined, icon: <ChoiceIcon name="file" />,
+    })),
+    ...(findSources ? [{
+      id: "find", title: search === 0 ? setupText.findLibraries : setupText.lookAgain, help: outcome,
+      // Stays enabled while looking so keyboard focus stays on it; presses wait.
+      icon: <ChoiceIcon name="find" />,
+    }] : []),
+  ];
+  const choose = (id: string) => {
+    if (id === "zotero") void perform("zotero", useZotero);
+    else if (id === "file") void perform("choose", chooseLibrary);
+    else if (id === "find") { if (!looking) lookAgain(); }
+    else if (id.startsWith("found-") && sources && openFoundLibrary) {
+      const index = Number(id.slice("found-".length));
+      void perform("openFound", () => openFoundLibrary(sources.list, index).catch((error: unknown) => {
+        // The list was replaced since it was shown: show the new one.
+        lookAgain();
+        throw error;
+      }));
+    }
+  };
+  const notes = [zotero === "access_off" && setupText.zoteroAccessOff, sources?.cut_short && setupText.cutShort].filter(Boolean);
   return (
     <div className="library-setup">
-      <p>{pickerText.firstRun}</p>
-      <div className="setup-choices">
-        <Button variant={zotero === "available" ? "secondary" : "primary"}
-          aria-label={pickerText.firstRunChoose} onPress={() => void perform("choose", chooseLibrary)}>
-          {pickerText.chooseLibrary}
-        </Button>
-        <Button variant={zotero === "available" ? "primary" : "secondary"} title={pickerText.useZoteroTitle}
-          onPress={() => void perform("zotero", useZotero)}>
-          {pickerText.useZotero}
-        </Button>
-      </div>
-      {findSources && <p className="empty-hint" role="status">{outcome}</p>}
-      {zotero === "access_off" && <p className="empty-hint">{setupText.zoteroAccessOff}</p>}
-      {files.length > 0 && sources && (
-        <section aria-labelledby={heading} className="found-files">
-          <p className="empty-hint" id={heading}>{setupText.foundFiles}</p>
-          <ul>
-            {files.map((file, index) => (
-              <li key={`${sources.list}-${index}`}>
-                <Button title={setupText.openFound(file.name, file.folder)}
-                  onPress={() => void perform("openFound", () => openFoundLibrary!(sources.list, index).catch((error: unknown) => {
-                    // The list was replaced since it was shown: show the new one.
-                    lookAgain();
-                    throw error;
-                  }))}>
-                  <bdi className="found-name">{file.name}</bdi>
-                  {file.folder && <>{" "}<span className="found-folder">{setupText.inFolder}{" "}<bdi>{file.folder}</bdi></span></>}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {sources?.cut_short && <p className="empty-hint">{setupText.cutShort}</p>}
-      {findSources && (
-        // Stays focusable while looking; the outcome status announces progress.
-        <Button aria-disabled={looking || undefined} onPress={() => { if (!looking) lookAgain(); }}>
-          {search === 0 ? setupText.findLibraries : setupText.lookAgain}
-        </Button>
-      )}
-      {writing && (
-        <section aria-labelledby={`${heading}-writing`} className="setup-writing">
-          <p className="empty-hint" id={`${heading}-writing`}>{setupText.whereYouWrite}</p>
-          <div className="setup-choices">
-            {WRITING_PLACES.filter((place) => !place.formatted || writing.formatted).map((place) => (
-              <ToggleButton key={place.name} isSelected={writing.format === place.choice}
-                onChange={() => writing.choose(place.choice)}>
-                {place.name}
-              </ToggleButton>
-            ))}
-          </div>
-          {writing.format.startsWith("style:") && (
-            <p className="empty-hint">{setupText.styleHint(STYLE_NAMES[writing.format.slice("style:".length) as StyleId] ?? "")}</p>
-          )}
-        </section>
-      )}
-      {shortcut && <p className="empty-hint">{setupText.shortcut(shortcut)}</p>}
-      {startAtLogin && (
-        // The shortcut works only while Ibis runs, so this sits beside it.
-        <label className="setup-login empty-hint" title={loginItemText.title(currentPlatform())}>
-          <input type="checkbox" checked={startAtLogin.enabled} onChange={startAtLogin.toggle} />
-          {loginItemText.sentence(startAtLogin.name, currentPlatform())}
-        </label>
-      )}
+      <ChoiceList title={setupText.sourcesTitle} line={setupText.sourcesLine} choices={choices} onChoose={choose} autoFocus={autoFocus}
+        footnote={notes.length > 0 ? notes.join(" ") : undefined} />
+      {/* Search progress and outcome, announced once; the row shows the same words. */}
+      {findSources && search > 0 && <p className="visually-hidden" role="status">{outcome}</p>}
     </div>
+  );
+}
+
+/** First run, step 2: where the person writes picks the copy format. */
+export function WritingSetup({ format, choose, shortcut }: {
+  format: Format;
+  choose: (choice: Format) => void;
+  /** The shortcut that opens Ibis, when it is registered. */
+  shortcut?: string | null;
+}) {
+  const choices: Choice[] = WRITING_PLACES.map((place) => ({
+    id: place.id, title: setupText.places[place.id], help: setupText.placeExamples[place.id],
+    icon: <ChoiceIcon name="write" />, tag: format === place.choice ? setupText.current : undefined,
+  }));
+  return (
+    <ChoiceList title={setupText.writingTitle} line={setupText.writingLine} choices={choices}
+      onChoose={(id) => choose(WRITING_PLACES.find((place) => place.id === id)!.choice)}
+      footnote={shortcut ? setupText.shortcut(shortcut) : undefined} />
   );
 }

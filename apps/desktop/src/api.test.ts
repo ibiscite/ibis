@@ -12,12 +12,12 @@ it("sends scope changes as fresh requests on the same interface page", async () 
   expect(calls).toHaveLength(3);
   const args = calls.map(([command, args]) => {
     expect(command).toBe("search");
-    return args as { query: string; limit: number; scope: string[] | null; page: number; request: number };
+    return args as { query: { text: string; interpret_locators: boolean }; limit: number; scope: string[] | null; page: number; request: number };
   });
   expect(args.map(({ query, limit, scope }) => ({ query, limit, scope }))).toEqual([
-    { query: "研究", limit: 7, scope: null },
-    { query: "研究", limit: 7, scope: [] },
-    { query: "研究", limit: 7, scope: ["zotero:group:7"] },
+    { query: { text: "研究", interpret_locators: true }, limit: 7, scope: null },
+    { query: { text: "研究", interpret_locators: true }, limit: 7, scope: [] },
+    { query: { text: "研究", interpret_locators: true }, limit: 7, scope: ["zotero:group:7"] },
   ]);
   expect(new Set(args.map(({ page }) => page)).size).toBe(1);
   expect(args.map(({ request }) => request)).toEqual([1, 2, 3]);
@@ -40,4 +40,11 @@ it("retains only newer update attempts and serial revisions, including rollover"
   expect(newerUpdate(old, wrapped)).toBe(wrapped);
   expect(newerUpdate(wrapped, old)).toBe(wrapped);
   expect(newerUpdate(old, { ...old, attempt: 3, revision: 1 }).attempt).toBe(3);
+});
+
+it("can search the original query literally without interpreting locators", async () => {
+  await search("Smith p.12", 20, null, false);
+  expect(vi.mocked(invoke).mock.lastCall).toEqual(["search", expect.objectContaining({
+    query: { text: "Smith p.12", interpret_locators: false },
+  })]);
 });

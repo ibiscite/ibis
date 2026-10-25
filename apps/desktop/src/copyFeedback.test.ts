@@ -11,18 +11,26 @@ test("only a clean copy from an unpinned picker hides it and says Copied", () =>
 
 const click: RowClick = { shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, detail: 1, moved: 0, onControl: false, selectedText: false };
 
-test("a click copies, Shift+click adds or removes, and drags or controls do nothing", () => {
-  expect(rowClickAction(click)).toBe("copy");
+test("C5 single-click selects without copying; double-click copies", () => {
+  expect(rowClickAction(click)).toBe("select");
+  expect(rowClickAction({ ...click, detail: 2 })).toBe("copy");
+});
+
+test("single clicks select, modifiers toggle, and drags or controls do nothing", () => {
+  expect(rowClickAction(click)).toBe("select");
   // Screen readers and keyboards activate with a click of detail 0.
-  expect(rowClickAction({ ...click, detail: 0 })).toBe("copy");
+  expect(rowClickAction({ ...click, detail: 0 })).toBe("select");
   expect(rowClickAction({ ...click, shiftKey: true })).toBe("toggle");
-  expect(rowClickAction({ ...click, moved: DRAG_DISTANCE })).toBe("copy");
+  expect(rowClickAction({ ...click, moved: DRAG_DISTANCE })).toBe("select");
   expect(rowClickAction({ ...click, moved: DRAG_DISTANCE + 0.5 })).toBe("none");
   expect(rowClickAction({ ...click, shiftKey: true, moved: 40 })).toBe("none");
   expect(rowClickAction({ ...click, onControl: true })).toBe("none");
   expect(rowClickAction({ ...click, selectedText: true })).toBe("none");
-  expect(rowClickAction({ ...click, detail: 2 })).toBe("none");
-  for (const modifier of ["ctrlKey", "metaKey", "altKey"] as const) {
+  expect(rowClickAction({ ...click, detail: 2 })).toBe("copy");
+  expect(rowClickAction({ ...click, ctrlKey: true })).toBe("toggle");
+  expect(rowClickAction({ ...click, metaKey: true }, true)).toBe("toggle");
+  expect(rowClickAction({ ...click, ctrlKey: true }, true)).toBe("none");
+  for (const modifier of ["metaKey", "altKey"] as const) {
     expect(rowClickAction({ ...click, [modifier]: true })).toBe("none");
   }
 });
