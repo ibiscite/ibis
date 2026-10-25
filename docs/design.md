@@ -717,7 +717,6 @@ scheduled.
 |---|---|
 | Page numbers and locators (0.2, #354; other locator types 0.3, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
 | Any CSL style, prefix, suffix, author omission (0.3) | Styles in the format pop-up (filter, leading checks), listed per Settings › Citations; prefix, suffix and omission controls: open |
-| Multiple references (0.3) | Shelf segments [C7], added with ⌘/Ctrl-click, Shift+Enter or the tile + |
 | Zotero while closed (0.3, #14), changed keys, cloud-synced data | Footer status with words and a Look or Stop dot; detail in the tooltip and More |
 | "Is this in my library?" (0.4, #701) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
 | Settings window (0.3, #776) | **Settings**; General, Shortcuts and Libraries first |
