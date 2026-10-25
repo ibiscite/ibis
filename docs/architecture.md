@@ -52,6 +52,13 @@ Keyword search is instant, case- and accent-insensitive, works in every script a
 
 Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. For now this runs in the desktop web interface (`apps/desktop/src/format/`), not in the core, so the command line cannot format with styles; moving it into the core is planned for 0.5 (#366). Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
 
+The core's structured citation reader bounds JSON input to 1 MiB and 1,000
+items before formatting. It preserves order and per-reference intent, rejects
+unknown fields and emits fixed input diagnostics without request text. The CLI
+uses it through `cite --items` on stdin; keys, locators, notes and author omission
+reach the same formatter as positional requests (ADR 0025). This is transient
+input, without persisted state or an additional process.
+
 Optional formatted-preview ownership uses a separate processor pass. Generated
 wrappers must erase to the canonical output; bounded, sanitized markup must also
 retain its plain text. Missing or ambiguous ownership keeps an aggregate preview

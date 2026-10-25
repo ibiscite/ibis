@@ -6,6 +6,12 @@ Each release is usable on its own. Dates are not promised; scope is. Work is tra
 
 Ibis is meant to be the base layer for everyone who handles references, the way FFmpeg is for media: one engine (`ibis-core`) with a stable interface, and thin front ends on it, first the picker and the `ibis` command line, later an editor language server, an MCP server and extensions. Every ability is an action on a search result or on what is on the clipboard, never a new screen. Ibis works offline first: online features are opt-in, show their results in their own section after the local ones, and cache what they fetch so they keep working offline. Zotero stays the library. Ibis never changes it unless you turn that on, and then only through official APIs. Extensions start as a curated set shipped by the project and open up later. Writing to Zotero, the online mode and extensions each need an accepted ADR (`docs/adr/`) before code.
 
+Development now prioritizes complete Rust engine, CLI and backend workflows.
+The next core batch exposes structured citation intent to scripts, then connects
+typed locators through the picker. Design refinement follows functional coverage;
+the existing 0.2 acceptance remains tracked separately. This changes implementation
+order, without nominating a release or changing the scopes below.
+
 | Release | Scope |
 | --- | --- |
 | **0.0 Foundation** | Core library, `ibis` command line tool (search, cite, check, CSL-JSON export), BibTeX/BibLaTeX reading that survives damaged files, key-based outputs (Pandoc, BibLaTeX, LaTeX, Typst), fixture corpus, CI on Windows, macOS and Linux. |

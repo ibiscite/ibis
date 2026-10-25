@@ -28,3 +28,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0022 | Keep unknown settings fields and flush settings before replacing them | accepted (amends 0016) |
 | 0023 | Use the owned domain for the app identity and preserve channel settings | accepted (supersedes location in 0016) |
 | 0024 | Restrict desktop commands by window | accepted |
+| 0025 | Structured citation input for the engine and CLI | accepted |
