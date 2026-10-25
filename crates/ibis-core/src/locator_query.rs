@@ -77,7 +77,10 @@ fn continues_before(q: &str, start: usize, floor: usize) -> bool {
             }
         }
     }
-    let word = before.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+    let word = before
+        .char_indices()
+        .rfind(|(_, c)| c.is_whitespace())
+        .map_or(0, |(i, c)| i + c.len_utf8());
     word < floor && label(&format!("{} ", &before[word..])).is_some()
 }
 
@@ -380,6 +383,26 @@ mod tests {
         assert_eq!(split(&long_search).map(|q| q.locator.value), Some("45".into()));
         let long_list_search = format!("{}smith, 2020, 45", "1, ".repeat(30));
         assert_eq!(split(&long_list_search).map(|q| q.locator.value), Some("45".into()));
+    }
+
+    #[test]
+    fn unicode_whitespace_before_long_words_keeps_utf8_boundaries_and_locator_limits() {
+        for space in [
+            '\u{2003}', '\u{0085}', '\u{00a0}', '\u{1680}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}', '\u{3000}',
+        ] {
+            for (prefix, token) in [
+                ("x", "a".repeat(70)),
+                ("研究", "界".repeat(24)),
+                ("بحث", "س".repeat(4096)),
+            ] {
+                let search = format!("{prefix}{space}{token}");
+                assert_eq!(read(&format!("{search} p 12")), page(&search, "12"));
+                assert_eq!(read(&format!("{search}{space}p{space}12")), page(&search, "12"));
+            }
+            // A long labelled list remains literal even when its last value fits.
+            let overlong = format!("研究{space}pp{space}{}12", "1, ".repeat(30));
+            assert_eq!(split(&overlong), None);
+        }
     }
 
     #[test]

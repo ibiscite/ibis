@@ -213,6 +213,37 @@ mod tests {
     }
 
     #[test]
+    fn interpreted_unicode_queries_with_long_words_keep_search_and_snapshot_intact() {
+        for space in [
+            '\u{2003}', '\u{0085}', '\u{00a0}', '\u{1680}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}', '\u{3000}',
+        ] {
+            for (prefix, token) in [("x", "a".repeat(70)), ("研究", "界".repeat(24))] {
+                let search = format!("{prefix}{space}{token}");
+                let source = format!("@misc{{a,title={{{search}}}}}");
+                let index = OwnedIndex::new(ibis_core::bibtex::load_str("synthetic", &source).references);
+                for interpret_locators in [true, false] {
+                    let query = SearchQuery {
+                        text: format!("{search} p 12"),
+                        interpret_locators,
+                    };
+                    let reply = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &AtomicU32::default(), None);
+                    assert_eq!(reply.revision, "snapshot");
+                    assert_eq!(reply.results.len(), usize::from(interpret_locators));
+                    if interpret_locators {
+                        let interpreted = reply.interpretation.unwrap_or_else(|| panic!("expected locator"));
+                        assert_eq!(interpreted.search, search);
+                        assert_eq!(interpreted.typed, "p 12");
+                        assert_eq!(interpreted.locator.value, "12");
+                        assert_eq!(reply.results[0].revision, reply.revision);
+                    } else {
+                        assert!(reply.interpretation.is_none());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn separate_searches_keep_each_selected_locator_through_preview_and_copy() {
         use ibis_core::cite::KeyFormat;
         use ibis_core::library::CitationSelection;
