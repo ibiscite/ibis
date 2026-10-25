@@ -2,7 +2,7 @@
 // preview and copy, in a background worker (see client.ts).
 import { FormatClient } from "./client";
 import type { CiteItem, CslItem } from "./engine";
-import { STYLE_NAMES, STYLE_TITLES, type StyleId } from "./styles";
+import { copiesEntry, STYLE_NAMES, STYLE_TITLES, type StyleId } from "./styles";
 import { pickerText } from "../messages";
 import { clipboardHtml, parse, parseSegments, plainText, type CitationPart, type Markup } from "./markup";
 
@@ -14,15 +14,6 @@ export interface FormattedCitation {
   warnings: string[];
   segments?: CitationPart[];
   unrepresented?: number[];
-}
-
-/**
- * A numeric style's number depends on every reference the document cites,
- * which one copy cannot see, so these styles copy the reference entry
- * instead, without its number (#1129).
- */
-export function copiesEntry(style: StyleId): boolean {
-  return style === "ieee";
 }
 
 export const FORMATTED_STYLES = (Object.keys(STYLE_TITLES) as StyleId[]).map((id) => ({ id, title: STYLE_TITLES[id] }));

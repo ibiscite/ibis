@@ -12,6 +12,15 @@ export const STYLE_TITLES = {
 
 export type StyleId = keyof typeof STYLE_TITLES;
 
+/**
+ * A numeric style's number depends on every reference the document cites,
+ * which one copy cannot see, so these styles copy the reference entry
+ * instead, without its number (#1129).
+ */
+export function copiesEntry(style: StyleId): boolean {
+  return style === "ieee";
+}
+
 // The settings file stores a style by the same id (ADR 0020); fail the type
 // check if the Rust list and this one ever differ.
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;

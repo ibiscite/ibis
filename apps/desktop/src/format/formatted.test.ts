@@ -1,9 +1,9 @@
 import { CANCELLED, FormatClient } from "./client";
 import { InlineWorker } from "./inline-worker";
-import { copiesEntry, formatCitation } from "./formatted";
+import { formatCitation } from "./formatted";
 import type { CiteItem } from "./engine";
 import { plainText } from "./markup";
-import { STYLE_TITLES, type StyleId } from "./styles";
+import { copiesEntry, STYLE_TITLES, type StyleId } from "./styles";
 
 // Synthetic references; both share a citation key, as two sources can.
 const csl = JSON.stringify([

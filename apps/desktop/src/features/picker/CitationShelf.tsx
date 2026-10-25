@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type Ref } from "react";
 import type { SearchResult } from "../../api";
-import { copiesEntry, type FormattedCitation } from "../../format/formatted";
+import type { FormattedCitation } from "../../format/formatted";
+import { copiesEntry } from "../../format/styles";
 import { STYLE_NAMES } from "../../format/styles";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
