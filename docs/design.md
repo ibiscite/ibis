@@ -495,7 +495,8 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
 - **Clicking outside** hides Ibis and the click reaches its target, unless
   pinned or while a page number, picker dialog, file chooser, drag or sign-in
   is in progress.
-- **Hover** selects only under a moving pointer; the wheel never selects.
+- **Hover** only tints a row, and only under a moving pointer; a click selects
+  [C5], so reaching across rows for Copy never changes what is copied.
 - **After a copy** Ibis hides, focus returns to the previous window and the
   notice appears; a failed insert leaves the citation on the clipboard and
   says why. Pinned, Ibis stays. Escape never asks or unpins.
