@@ -12,7 +12,7 @@ export async function content(html) {
   const plans = [
     ["Page numbers and locators", "Add page numbers to a citation"],
     ["Zotero while closed", "Find references even when Zotero is closed"],
-    ["Insertion", "Insert a citation into the app you’re writing in"],
+    ["Bibliography export", "Export the bibliography your document cites"],
   ].map(([name, label]) => {
     const row = rows.find(value => value.startsWith(name));
     const version = row?.match(/\((0\.\d)/)?.[1];

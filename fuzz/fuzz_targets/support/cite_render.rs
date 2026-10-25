@@ -64,6 +64,9 @@ fn expected_error(format: KeyFormat, items: &[CiteItem]) -> Option<CiteError> {
         {
             return Some(CiteError::InvalidKey(i.key.clone()));
         }
+        if i.locator.as_ref().is_some_and(|l| l.value.trim().is_empty()) {
+            return Some(CiteError::EmptyLocator);
+        }
         if latex && i.key.contains(['%', '#', '\\', '~', '^', '$', '&']) {
             return Some(CiteError::KeyNotValidFor(i.key.clone(), "LaTeX"));
         }

@@ -238,6 +238,7 @@ jobs:
         if: env.WEB == 'true'
         run: |
           pnpm typecheck
+          pnpm lint
           pnpm test
           pnpm build
           test ! -e dist/gallery.html
