@@ -366,7 +366,8 @@ def run_capture(root, version, output):
             time.sleep(10)
             phase = "owned synthetic seeding"
             environment = dict(os.environ, IBIS_ZOTERO_PORT=str(port), IBIS_THROWAWAY_ZOTERO="1",
-                               IBIS_ZOTERO_CAPTURE_PID=str(app.pid), IBIS_ZOTERO_CAPTURE_START=str(_process(app.pid)[1]))
+                               IBIS_ZOTERO_CAPTURE_PID=str(app.pid), IBIS_ZOTERO_CAPTURE_START=str(_process(app.pid)[1]),
+                               CARGO_TARGET_DIR=str(work / "cargo-target"), CARGO_INCREMENTAL="0")
             with (work / "seed.log").open("wb") as seed_log:
                 subprocess.run(["cargo", "test", "-p", "ibis-zotero-local", "--locked", "--test", "real_zotero", "--", "--ignored"],
                                cwd=root, env=environment, stdout=seed_log, stderr=seed_log, check=True, timeout=600)
