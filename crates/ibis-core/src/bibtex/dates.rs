@@ -2,6 +2,7 @@
 //! and `day` merged across inheritance into the fields the converter reads.
 
 use super::resolve::MONTHS;
+use crate::model::days_in_month;
 
 /// The publication-date fields handled together by [`merge_dates`].
 pub(super) const DATE_PARTS: [&str; 4] = ["date", "year", "month", "day"];
@@ -61,15 +62,17 @@ fn compose(
     problems: &mut Vec<String>,
 ) -> Vec<(String, String)> {
     let day = day.and_then(|text| {
-        let Some(day) = text.parse::<u8>().ok().filter(|d| (1..=31).contains(d)) else {
-            problems.push(format!("`day` `{text}` is not a day of the month; it is ignored"));
-            return None;
-        };
-        if month.is_none() {
+        let Some(m) = month.as_deref().and_then(|m| m.parse::<u8>().ok()) else {
             problems.push(format!("`day` `{text}` has no month; it is ignored"));
             return None;
+        };
+        // A year that does not parse could be a leap year; allow its 29 February.
+        let last = days_in_month(year.trim_start_matches('+').parse().unwrap_or(2000), m);
+        let day = text.parse::<u8>().ok().filter(|d| (1..=last).contains(d));
+        if day.is_none() {
+            problems.push(format!("`day` `{text}` is not a day of that month; it is ignored"));
         }
-        Some(day)
+        day
     });
     match month {
         Some(m) if is_digits(&year, 4) => {
