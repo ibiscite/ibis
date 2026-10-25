@@ -315,8 +315,8 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
    one line. */
 .keys-scroll th, .keys-scroll td { padding: var(--space-1) 0; vertical-align: baseline; overflow-wrap: break-word; border-bottom: var(--border-width) solid var(--line); }
 .keys-scroll th { text-align: start; font-weight: inherit; }
-.keys-scroll th[scope="colgroup"] { padding-block: var(--space-4) var(--space-1); color: var(--muted); font-weight: var(--type-strong-weight); }
-.keys-scroll tbody:first-of-type th[scope="colgroup"] { padding-top: var(--space-1); }
+.keys-scroll th[scope="rowgroup"] { padding-block: var(--space-4) var(--space-1); color: var(--muted); font-weight: var(--type-strong-weight); }
+.keys-scroll tbody:first-of-type th[scope="rowgroup"] { padding-top: var(--space-1); }
 .keys-scroll td { width: 1%; padding-inline-start: var(--space-4); text-align: end; white-space: nowrap; }
 .keys-scroll kbd { margin-inline-start: 0; white-space: nowrap; }
 @media (forced-colors: active) {

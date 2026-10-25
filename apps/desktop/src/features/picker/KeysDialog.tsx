@@ -44,7 +44,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
             </thead>
             {regions.map((region) => (
               <tbody key={region}>
-                <tr><th scope="colgroup" colSpan={2}>{keyText.regions[region]}</th></tr>
+                <tr><th scope="rowgroup" colSpan={2}>{keyText.regions[region]}</th></tr>
                 {bindings.filter((binding) => binding.region === region).map((binding) => (
                   <tr key={binding.action}>
                     <th scope="row">{keyText.actions[binding.action]}</th>

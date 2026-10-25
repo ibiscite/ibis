@@ -459,3 +459,9 @@ test("the shortcuts table breaks actions only between words and keeps keys on on
   expect(styles).toMatch(/\.keys-scroll th, \.keys-scroll td \{[^}]*overflow-wrap: break-word;/);
   expect(styles).toMatch(/\.keys-scroll td \{[^}]*text-align: end; white-space: nowrap; \}/);
 });
+
+test("the scroll-edge fade stays valid with one edge marked", () => {
+  const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
+  // calc(100% - 0) is invalid and would drop the whole mask.
+  expect(menuCss).toMatch(/var\(--menu-fade-top, 0%\)[^;]*calc\(100% - var\(--menu-fade-bottom, 0%\)\)/);
+});

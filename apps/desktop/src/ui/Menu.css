@@ -69,7 +69,7 @@
    ends on a whole row still shows there is more (#1031). A mask reads only
    alpha, so the opaque text colour serves. */
 .menu-popover [role="menu"]:is([data-more-above], [data-more-below]) {
-  --menu-fade: linear-gradient(transparent, currentColor var(--menu-fade-top, 0), currentColor calc(100% - var(--menu-fade-bottom, 0)), transparent);
+  --menu-fade: linear-gradient(transparent, currentColor var(--menu-fade-top, 0%), currentColor calc(100% - var(--menu-fade-bottom, 0%)), transparent);
   -webkit-mask-image: var(--menu-fade); mask-image: var(--menu-fade);
 }
 .menu-popover [role="menu"][data-more-above] { --menu-fade-top: var(--space-4); }
