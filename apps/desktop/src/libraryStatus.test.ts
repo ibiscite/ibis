@@ -214,3 +214,11 @@ test("the visible age is hidden from screen readers, which read the detail inste
   const heard = strip(kept.container.querySelector(".library-detail")?.textContent ?? null) ?? "";
   expect(heard.match(/checked 2 hours ago/g)).toHaveLength(1);
 });
+
+test("the status dot sits at the footer edge, 12 px before the text and centred on its x-height", () => {
+  const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+  expect(styles).toMatch(/^\.library-status \{[^}]*align-items: baseline; gap: var\(--space-3\);/m);
+  const dot = styles.match(/^\.status-dot \{([^}]*)\}/m)?.[1];
+  expect(dot).not.toMatch(/margin/);
+  expect(dot).toMatch(/translate: 0 calc\(var\(--status-dot-size\) \/ 2 - \.5ex\);/);
+});
