@@ -1346,6 +1346,9 @@ def quit_normally(native, app):
     return round(10 - remaining(), 3)
 
 
+NO_MATCH = "zzqx no such reference"
+
+
 def first_run_preferences_main(args):
     args.output.mkdir(parents=True, exist_ok=True)
     system = platform.system()
@@ -1413,6 +1416,9 @@ def first_run_preferences_main(args):
         wait_for(lambda: visible_text("3 references"), "synthetic references after relaunch")
         wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
         # The writing question needs a library chosen in the app; Copy as sets the same preference.
+        # With no match the footer offers no "Copy as Pandoc", so the name is the header's alone.
+        type_query(native, snapshot, NO_MATCH, "super+a" if system == "Darwin" else "ctrl+a")
+        wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
         native.click("Copy as Pandoc")
         native.click("Typst")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
@@ -2190,6 +2196,9 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
+            elif name == "Copy as Pandoc":
+                # The footer's Copy action shares this name while a result is highlighted.
+                self.assertEqual(native.query, NO_MATCH, "Copy as Pandoc was ambiguous")
 
         def key(chord):
             actions.append((chord, len(launches)))
@@ -2212,8 +2221,9 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += ["Copy as Pandoc", "Typst", "3 references", "1 result" if clock[0] >= native.query_ready_at else "3 results",
-                          "Ibis smoke reference 000001"]
+                names += ["Copy as Pandoc", "Typst", "3 references"]
+                names += ["No matching references"] if native.query == NO_MATCH else [
+                    "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
             result_focus = failure == "active-result-reopen" and native.reopened
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
                 {"name": name, "role": "button"} for name in names] + [
