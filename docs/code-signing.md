@@ -31,31 +31,25 @@ does not authorize signing or publication.
   [development.md](development.md#review-and-merge). Authorized agents may merge
   changes under those rules; AI assistance does not bypass them.
 - **The maintainer** has final responsibility for the project and explicitly
-  authorizes releases, tags and publication. The maintainer will also approve
-  each stable Windows signing request if SignPath Foundation accepts Ibis.
-  Agents cannot grant themselves those release or signing approvals.
+  authorizes releases, tags and publication. Agents cannot grant themselves release
+  or signing approvals.
 
 ## Privacy
 
 [PRIVACY.md](../PRIVACY.md) describes local library access, optional update checks
 and installer network use. Ibis does not track users or upload their libraries.
 
-## Planned Windows signing
+## Planned signing
 
-[Issue #299](https://github.com/ibiscite/ibis/issues/299) tracks the application
-to SignPath Foundation and the later build integration. Acceptance is pending;
-this policy does not claim that SignPath currently signs Ibis.
+SignPath Foundation declined Ibis's application for free Windows signing in
+October 2026 ([#299](https://github.com/ibiscite/ibis/issues/299)); Ibis may
+apply again once it is established. Until 1.0, installers on Windows and macOS
+stay unsigned and the [README](../README.md) gives first-launch steps. Signing is part of 1.0
+([ROADMAP.md](../ROADMAP.md)); choosing a signing service is the maintainer's
+decision because it may cost money.
 
-If accepted, stable Windows releases will use free code signing provided by
-[SignPath.io](https://signpath.io), with a certificate provided by
-[SignPath Foundation](https://signpath.org). Release notes will link this policy
-and include that credit. Ibis Nightly will remain unsigned by Windows.
-
-Signing will use installers built by the public GitHub Actions release workflow,
-after the checks and release approval described in
-[RELEASING.md](../RELEASING.md). The Windows code signature must be applied
-before creating the Ibis updater signature, so the updater verifies the exact
-installer that will run. The [Foundation's conditions](https://signpath.org/terms)
-also require multi-factor authentication for team access and enforced product
-name/version metadata. Confirming those requirements, applying and integrating
-signing remain unfinished work in #299; this page does not assert compliance.
+Whichever service signs, it signs installers built by the public GitHub Actions
+release workflow after the checks and release approval in
+[RELEASING.md](../RELEASING.md), and the operating-system signature is applied
+before the Ibis updater signature, so the updater verifies the exact installer
+that will run. Ibis Nightly stays unsigned.

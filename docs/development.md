@@ -28,7 +28,8 @@ No other labels; each family has one colour. Pull requests need no labels: the t
 
 ### Milestones
 
-- Release milestones are named `0.N Name` to match `ROADMAP.md`, plus `1.0`; `Later` holds anything not scheduled. A milestone closes when its release ships.
+- Milestones are releases, named as in `ROADMAP.md` (`0.2 Cite anywhere, trust the key`, `1.0 Stable`); `Later` holds anything not scheduled. A milestone closes when its release ships.
+- Closed work is filed in the release that shipped it: every merged pull request and every issue closed as completed carries that release's milestone. Issues closed as not planned or duplicate, and pull requests closed without merging, carry none.
 - A release milestone holds only work that blocks that release. If it would not stop the release, move it to the next milestone or `Later`.
 - **An open issue without a milestone is untriaged.** Triage means: fix the title and labels, then set a milestone or close the issue.
 
@@ -91,15 +92,15 @@ The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci
 
 #### Free-first review tools
 
-This procedure applies before and after the CodeRabbit Advanced trial ends on **2026-11-06**. Use the public repository's available free OSS service after the trial, within its then-current limits. Losing a trial feature is no reason to upgrade. Do not add payment details, start a paid plan, buy/use paid credits, enable usage continuation/overages or paid Agent/Deep Scan products. Keep Codex's use-credits option off. Existing plan usage is limited too: avoid duplicate passes.
+Ibis uses only free review services, before and after the CodeRabbit trial ends on **2026-11-06**. Never add payment details, start a paid plan, buy or use credits, enable overages or paid products, or turn on Codex's use-credits option; losing a trial feature is no reason to upgrade. Avoid duplicate passes within plan limits.
 
-1. Start focused tests and CI. On settled, meaningful code changes (features, correctness, platform integration or cross-component work), request `@coderabbitai full review` once while validation and the required independent review proceed, before entering the merge queue. Skip the supplemental bot pass for routine cosmetic, documentation or asset changes unless there is a concrete concern. Small cosmetic code still needs independent review; ADR 0017's documentation/tests-and-synthetic-fixtures-only exception is unchanged.
-2. Keep CodeRabbit quiet, manual and advisory, with no autonomous fixes, approvals or metadata changes. Read AGENTS.md, the contribution/testing/architecture guides and accepted ADRs when assessing its findings. Use an explicit mention for a focused follow-up; request `@coderabbitai review` only after a material fix needs another look. Do not request a run on every push, an unchanged head or a base-only update.
-3. Request a focused `@codex review` only for a concrete unresolved correctness question or risk needing another pass. Request `@codex security review` for changes affecting untrusted parsing/loading, persistence corruption or migrations, permissions/security boundaries, network endpoints, updater trust or another concrete security-sensitive path. Keep automatic Codex code and security reviews off; do not routinely schedule both bots on every PR or enable exhaustive review.
-4. Validate findings against the code and contracts, with a triggering case and evidence. Fix every P1/P2 regression with a test under the existing rules; explain rejected findings with evidence. Investigate reviewer disagreement rather than vote, and avoid speculative/style changes solely to clear bot comments. Agents handle technical triage and give the maintainer a short account of real issues, fixes, verification and remaining uncertainty.
-5. A free limit, delay, outage or cancelled/stale review adds no merge gate or retry loop. Continue useful work and the normal independent review/CI process; use an additional Codex pass only when the risk above warrants it, within available plan usage. Never buy capacity. A concrete P1/P2 finding still must be resolved before merging. An empty bot report is not proof of safety; a bot response alone does not establish the required independent exact-head P1/P2 review record.
+1. On settled, meaningful code changes (features, correctness, platform integration, cross-component work), request `@coderabbitai full review` once, while CI and the independent review run and before the merge queue. Skip it for routine cosmetic, documentation or asset changes unless there is a concrete concern.
+2. CodeRabbit stays quiet, manual and advisory: no autonomous fixes, approvals or metadata changes, and no run on every push, an unchanged head or a base-only update. Request `@coderabbitai review` again only after a material fix.
+3. Request `@codex review` only for a concrete unresolved correctness question, and `@codex security review` for untrusted parsing or loading, persistence or migrations, permissions, network endpoints, updater trust or another security-sensitive path. Automatic Codex reviews stay off.
+4. Check each finding against the code with a triggering case. Fix every P1/P2 with a test; explain rejected findings with evidence; investigate disagreement rather than vote; make no change only to silence a bot. Report real issues, fixes, verification and uncertainty to the maintainer briefly.
+5. A free limit, outage or stale bot review adds no merge gate or retry loop. A bot report, empty or not, never replaces the independent exact-head review, and a concrete P1/P2 must still be resolved before merging.
 
-The independent review rule above, its ADR 0017 exception, required CI and protected squash merge queue remain authoritative. No trial expiry, reviewer unavailability or exhausted allowance relaxes them. Setup evidence is in [#1008](https://github.com/ibiscite/ibis/issues/1008).
+Setup evidence is in [#1008](https://github.com/ibiscite/ibis/issues/1008).
 
 ### Versions and releases
 
@@ -113,38 +114,16 @@ Interface-only pull requests run script tests, TypeScript, interface tests and b
 
 ## Working quickly and safely
 
-- **Verify the exact commit locally when you need to.** Run the full check in a clean checkout of the commit. Allocate one verification target per agent/session and keep exclusive ownership through package cleanup, checking and inspection of its captured output. Serialize runs; never let another worktree build into that target meanwhile. [#387](https://github.com/ibiscite/ibis/issues/387) observed stale project test binaries even with serialized shared-target builds.
-
-  Allocate this directory once, then retain it for successive verification runs:
+- **Verify the exact commit locally when you need to** in a clean detached worktree with its own Cargo target, with incremental compilation off and the four app packages cleaned, so stale test binaries cannot hide a change ([#387](https://github.com/ibiscite/ibis/issues/387)). Keep the output and check that the intended tests actually ran (names, counts, ignored status), because exit 0 alone did not prove it in #387. Remove the worktree afterwards; never force-remove a dirty one. On Windows, use Git Bash.
 
   ```sh
-  verification_dir=$(mktemp -d)
+  dir=$(mktemp -d) sha=$(git rev-parse HEAD)
+  git worktree add --detach "$dir/source" "$sha" && (cd "$dir/source" &&
+    export CARGO_TARGET_DIR="$dir/target" CARGO_INCREMENTAL=0 &&
+    cargo clean --locked -p ibis -p ibis-core -p ibis-desktop -p ibis-zotero-local &&
+    node scripts/check.mjs --expect-commit "$sha")
+  git worktree remove "$dir/source"
   ```
-
-  For each commit, use a clean detached worktree, disable incremental compilation and invalidate the four checked application packages before checking. The observed #387 remedy preserved dependency artifacts; disabling incremental compilation alone is not the recipe.
-
-  ```sh
-  sha=$(git rev-parse HEAD)
-  git worktree add --detach "$verification_dir/source" "$sha" &&
-    (
-      cd "$verification_dir/source" &&
-      export CARGO_TARGET_DIR="$verification_dir/target" CARGO_INCREMENTAL=0 &&
-      cargo clean --locked -p ibis -p ibis-core -p ibis-desktop -p ibis-zotero-local &&
-      node scripts/check.mjs --expect-commit "$sha"
-    )
-  ```
-
-  The guarded preflight gives each Git command five seconds, then kills it and reports a fixed refusal without raw diagnostics. It disables configured filesystem monitors for these calls, because terminating Git does not terminate a monitor's descendants. The repository's configuration is unchanged. Filesystem waits that the operating system cannot interrupt can still delay termination.
-
-  Retain the output from this run while the target is still exclusively owned. Check that the intended enabled regressions actually ran, including their names, counts and ignored status; exit 0 alone did not establish that in #387. Inspecting a later mutable shared binary is not evidence about this run. This procedure records the observed remedy, not a newly measured speedup or a Cargo correctness guarantee. Use a fresh target if ownership or invalidation is uncertain.
-
-  Keep failed output for diagnosis. After inspecting the result, remove the detached source worktree before reusing its path; retain the target:
-
-  ```sh
-  git worktree remove "$verification_dir/source"
-  ```
-
-  Do not force removal of a dirty worktree. When finished with the session, remove only its owned verification directory. This is POSIX shell; on Windows, run it in Git Bash.
 
 - **Branch from `main`, never from another branch.** Stacked branches merged by squash have silently reverted changes on `main`. After merging `main` into a branch, `git diff origin/main` must show only that branch's change.
 - **Review while CI runs**, and record each finding in the pull request as fixed, filed or rejected with a reason.
@@ -239,19 +218,9 @@ Ibis makes no update check until the person opts in (ADR 0019).
 
 The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Y on Windows and Linux. For layout limitations, conflicts and custom shortcuts, see [compatibility.md](compatibility.md#picker-shortcuts).
 
-For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it.
+For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it. A development build registers for start at login as "Ibis (development)", so it never replaces an installed Ibis's entry. For a debug preview on a particular display, pass Tauri's `--config` with finite `x` and `y` and `center: false` on the `main` window.
 
-The picker opens without a title bar near the top of the usable area of the display with the pointer (the nearest display when the pointer is between displays, and where the pointer position is unavailable, such as on Wayland, the display it was on or the primary one). If you move it, it keeps that place on that display while it remains fully visible. Drag the search bar edge or search icon to move it; the input remains editable. This uses Tauri's built-in drag region and grants only the window drag permission. Its system colours follow light/dark mode and high contrast; text and controls wrap at larger text sizes.
-
-For a debug preview on a particular display, use Tauri's existing `--config`
-input with finite `x` and `y` coordinates and `center: false` on the `main`
-window. Initial show and later summons keep that window's display, with the
-usual offscreen recovery. Ordinary debug and release builds still follow the
-pointer; this does not save a display preference or change OS settings.
-
-Enter in the search box copies; a clean, unpinned copy hides the picker. Shift+Enter adds or removes the highlighted reference from the citation. Escape closes an open menu or keyboard dialog first, then clears the search, then hides; chosen references survive clearing and hiding. Search and selection are kept in memory until the picker reopens after more than a minute hidden. A search cleared by Escape also returns on an earlier reopening unless new typing or a completed copy replaced it. Keep Window Open in the header and More (⇧⌘P on macOS, Ctrl+Shift+P elsewhere) keeps the picker open and on top beside your document (on Wayland it only stays open); either control turns it off. Unpinned, the picker hides when you click elsewhere or after a clean copy. Copy confirmations expire after 2.4 seconds; copy warnings stay until dismissed.
-
-The output format sits beside the search box; the footer names the library source and reference count, shows freshness or recovery details when they matter, and says what Enter will copy (holding Alt shows what Shift+Enter and Escape do instead). More (Ctrl/⌘ K) holds Choose library, Use Zotero, Reload, Rows (compact, comfortable or spacious), Keep Window Open, Larger text, start at login ("Open at Login", "Start when you sign in" or "Start on Login", as in the menu bar or tray), Keyboard shortcuts and Quit. Starting at login is stored by the system, not in `settings.json` (see [design.md](design.md#settings)); a development build registers as "Ibis (development)", so it never replaces an installed Ibis's entry. `?` outside the search box, or Ctrl/⌘ / anywhere, lists every key in one table built from `apps/desktop/src/keys.ts`. When nothing matches, the picker offers to clear the search, and to search all Zotero libraries when only some are on. The chosen citation style, rows and text size are remembered across restarts (ADR 0020).
+How the picker behaves (keys, pinning, the footer, More, placement) is in [design.md](design.md) and the user guide in [README.md](../README.md); `?` or Ctrl/⌘ / in the app lists every key from `apps/desktop/src/keys.ts`.
 
 ## Workflow linting
 
@@ -267,4 +236,5 @@ Run `actionlint -shellcheck= -pyflakes=` to validate every workflow's GitHub-spe
 
 - Acceptance criteria are covered by automated tests (or, for platform behaviour that cannot be automated yet, a recorded manual check in the pull request).
 - Documentation, `ROADMAP.md` and snapshots are updated.
+- Integration changes (Zotero, citation styles, operating-system behaviour) are checked against current upstream documentation and release notes, and test failure as well as success.
 - No private data in code, tests, logs or text.
