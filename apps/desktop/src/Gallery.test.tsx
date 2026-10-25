@@ -18,6 +18,7 @@ const syntheticApi: PickerApi = {
   useZotero: async () => undefined,
   reloadLibrary: async () => undefined,
   hidePicker: async () => undefined,
+  pickerVisible: async () => true,
   setPinned: async () => undefined,
   quit: async () => undefined,
   onLibraryChanged: async () => () => undefined,

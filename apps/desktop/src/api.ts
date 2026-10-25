@@ -1,6 +1,7 @@
 // UI conveniences around the generated Rust command contract.
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands, type CommandError, type KeyFormat, type LibraryStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
@@ -45,6 +46,11 @@ let searchRequest = 0;
 export function search(query: string, limit = 20, scope: string[] | null = null, interpretLocators = true) {
   searchRequest += 1;
   return commands.search({ text: query, interpret_locators: interpretLocators }, limit, searchPage, searchRequest, scope);
+}
+
+/** Read visibility after subscribing, including hidden startup without an event. */
+export function pickerVisible(): Promise<boolean> {
+  return getCurrentWindow().isVisible();
 }
 
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
