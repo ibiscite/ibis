@@ -5,11 +5,13 @@ import "./Button.css";
 
 type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-keyshortcuts" | "aria-hidden" | "inert"> & {
   variant?: "primary" | "secondary" | "quiet" | "icon"; size?: "default" | "small"; className?: string;
+  /** A drawn glyph from Button.css; the caller still names the button with aria-label. */
+  glyph?: "close";
 };
 
 /** Shared pointer, keyboard, touch and disabled states; callers own the action. */
-export function Button({ variant = "secondary", size = "default", className = "", ...props }: Omit<ButtonProps, "className"> & Look) {
-  return <AriaButton {...props} className={`ui-button ${className}`} data-variant={variant} data-size={size}
+export function Button({ variant = "secondary", size = "default", className = "", glyph, ...props }: Omit<ButtonProps, "className"> & Look) {
+  return <AriaButton {...props} className={`ui-button ${className}`} data-variant={variant} data-size={size} data-glyph={glyph}
     render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-keyshortcuts={props["aria-keyshortcuts"]} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)} />;
 }
 
