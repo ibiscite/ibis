@@ -7,10 +7,23 @@ import { pathToFileURL } from "node:url";
 const baselinePath = "scripts/docs-drift-baseline.json";
 const normalize = (value) => value.replaceAll("\\", "/");
 const placeholder = (value) => /[<$…]|\.\.\.|^[a-z][a-z+.-]*:|^\//i.test(value);
-const glob = (value) => new RegExp("^" + value.split(/(\*\*|\*|\?)/).map((part) => part === "**" ? ".*" : part === "*" ? "[^/]*" : part === "?" ? "[^/]" : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("") + "$");
+function glob(pattern, value) {
+  const tokens = pattern.match(/\*{2,}|\*|\?|[^*?]/gu) ?? [], chars = [...value];
+  let row = new Uint8Array(chars.length + 1); row[0] = 1;
+  for (const token of tokens) {
+    const next = new Uint8Array(chars.length + 1), star = token.startsWith("*");
+    if (star) next[0] = row[0];
+    for (let i = 1; i <= chars.length; i++) next[i] = star
+      ? Number(Boolean(row[i] || next[i - 1] && (token.length > 1 || chars[i - 1] !== "/")))
+      : Number(Boolean(row[i - 1] && (token === "?" ? chars[i - 1] !== "/" : token === chars[i - 1])));
+    row = next;
+  }
+  return Boolean(row[chars.length]);
+}
 
 export function docProblems(doc, text, files, crates) {
   doc = normalize(doc);
+  text = text.replace(/\\\r?\n[ \t]*/g, " ");
   const paths = new Set(files.map(normalize));
   for (const file of [...paths]) {
     let parent = posix.dirname(file);
@@ -18,32 +31,39 @@ export function docProblems(doc, text, files, crates) {
   }
   const roots = new Set([...paths].map((name) => name.split("/")[0]));
   const problems = [];
+  let budget = 10000000;
+  const matches = (pattern, value) => {
+    budget -= pattern.length * value.length;
+    if (budget < 0) throw new Error(`${doc}: glob matching budget exceeded; replace broad globs with short, concrete repository paths.`);
+    return glob(pattern, value);
+  };
   function exists(value, link) {
     value = normalize(value).replace(/\/$/, "");
     const candidates = link ? [posix.normalize(posix.join(posix.dirname(doc), value))] : [posix.normalize(value), posix.normalize(posix.join(posix.dirname(doc), value))];
-    if (candidates.some((candidate) => paths.has(candidate) || /[*?]/.test(candidate) && [...paths].some((path) => glob(candidate).test(path)))) return true;
+    if (candidates.some((candidate) => paths.has(candidate) || /[*?]/.test(candidate) && [...paths].some((path) => matches(candidate, path)))) return true;
     // Component-relative prose (e.g. picker/dialogs.rs) and bare filenames.
-    return !link && !roots.has(value.split("/")[0]) && !value.startsWith(".") && [...paths].some((path) => path.endsWith("/" + value) || /\/(?:ui|features)\//.test(path) && path.replace(/\.[^.]+$/, "").endsWith("/" + value));
+    return !link && !roots.has(value.split("/")[0]) && !value.startsWith(".") && [...paths].some((path) => path.endsWith("/" + value) || /[*?]/.test(value) && matches("**/" + value, path) || /\/(?:ui|features)\//.test(path) && path.replace(/\.[^.]+$/, "").endsWith("/" + value));
   }
   function path(value, kind, link = false) {
     if (placeholder(value) || value.startsWith("#") || /^(?:(?:origin|claude|dependabot)\/|(?:feat|fix|perf|docs|test|ci|build|refactor|chore|revert)\/\d+-)/.test(value) || /^[~%]|^[A-Z_]+=/.test(value)) return;
     let name;
-    try { name = decodeURIComponent(value.split(/[?#]/)[0]); }
+    try { name = decodeURIComponent(value.split(link ? /[?#]/ : /#/)[0]); }
     catch { problems.push(`${doc}: ${kind} ${value}`); return; }
     if (name && !exists(name, link)) problems.push(`${doc}: ${kind} ${value}`);
   }
-  for (const match of text.matchAll(/(?<!`)`([^`\n]+)`(?!`)/g)) {
-    const value = normalize(match[1]);
+  for (const match of text.matchAll(/(?<!`)(`+)([\s\S]*?)\1(?!`)/g)) {
+    if (match[1].length > 2) continue;
+    const value = normalize(match[2].replace(/\r?\n/g, " "));
     if (/^(?:node|cargo|pnpm|python\d*)\s/.test(value) || /^[-#]|\s--/.test(value) || value.startsWith(".local/")) continue;
     if (/\s/.test(value) && (!/^(?:\.\.?\/|[\w.-]+\/)/.test(value) || /[=;()"']/.test(value))) continue;
     if (/\//.test(value) || /^[\w.-]+\.(?:md|[cm]?js|rs|tsx?|css|json|toml|ya?ml|py|sh|ps1)$/.test(value)) path(value, "path");
   }
   for (const match of text.matchAll(/\[[^\]\n]*\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+[^)]*)?\)/g)) path(match[1].replace(/^<|>$/g, ""), "link", true);
-  for (const match of text.matchAll(/^\s*\[[^\]]+\]:\s*(\S+)/gm)) path(match[1], "link", true);
-  for (const match of text.matchAll(/\bnode\s+(scripts[\\/][^\s`;'"|)]+)/g)) path(normalize(match[1]), "node script");
+  for (const match of text.matchAll(/^\s*\[[^\]]+\]:\s*(\S+)/gm)) path(match[1].replace(/^<|>$/g, ""), "link", true);
+  for (const match of text.matchAll(/\bnode\s+(?:"(scripts[\\/][^"\r\n]+)"|'(scripts[\\/][^'\r\n]+)'|(scripts[\\/][^\s`;'"|)]+))/g)) path(normalize(match[1] ?? match[2] ?? match[3]), "node script");
   for (const command of text.matchAll(/\bcargo(?:\s+\+[^\s`]+)?\s+([^\r\n`]+)/g)) {
-    for (const match of command[1].matchAll(/(?:^|\s)(?:-p(?:=|\s+)?|--package(?:=|\s+))([^\s`;'"|)]+)/g)) {
-      if (!placeholder(match[1]) && !crates.includes(match[1])) problems.push(`${doc}: cargo package ${match[1]}`);
+    for (const match of command[1].split(/\s--(?:\s|$)/)[0].matchAll(/(?:^|\s)(?:-p(?:=|\s+)?|--package(?:=|\s+))(['"]?)([^\s`;'"|)]+)\1/g)) {
+      if (!placeholder(match[2]) && !crates.includes(match[2])) problems.push(`${doc}: cargo package ${match[2]}`);
     }
   }
   return problems;

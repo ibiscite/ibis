@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { docProblems, baselineErrors } from "./check-docs-drift.mjs";
 const files = ["AGENTS.md", "CONTRIBUTING.md", "docs/guide.md", "docs/next page.md", "scripts/check.mjs", "crates/core/Cargo.toml", "apps/desktop/src/ui/Button.tsx"];
@@ -41,4 +42,21 @@ test("paths with spaces and every package flag are checked, while branch and use
   assert.equal(check("`docs/missing page.md`").length, 1);
   assert.equal(check("`cargo test -p ibis-core -p missing`").length, 1);
   assert.deepEqual(check("`origin/main` `feat/22-example` `%APPDATA%/example/` `~/.config/example/` `IBIS_LIBRARY=/path/to/file.bib`"), []);
+});
+
+
+test("Markdown delimiter variants, quoted commands and continued commands remain checked", () => {
+  assert.equal(check("``scripts/missing.mjs``").length, 1);
+  assert.equal(check("[missing][target]\n[target]: <missing.md>").length, 1);
+  assert.equal(check("cargo test \\\n  -p missing").length, 1);
+  assert.equal(check("cargo test -p 'missing'").length, 1);
+  assert.equal(check('node "scripts/missing.mjs"').length, 1);
+  assert.deepEqual(docProblems("docs/guide.md", "`ui/*.tsx` `scripts/check?.mjs`", [...files, "scripts/check1.mjs"], []), []);
+});
+
+
+test("hostile glob matching is bounded", () => {
+  const code = `import {docProblems} from ${JSON.stringify(new URL("./check-docs-drift.mjs", import.meta.url).href)}; const result = docProblems("docs/guide.md", "\u0060scripts/" + "*".repeat(40) + "missing.mjs\u0060", ["scripts/" + "a".repeat(40) + ".mjs"], []); if(result.length !== 1) process.exitCode = 1;`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { timeout: 1500, killSignal: "SIGKILL", encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
 });
