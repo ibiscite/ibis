@@ -40,9 +40,10 @@ export function useUpdateChecks({ updateChecks, setUpdateChecks, perform, menuOp
   const toggle = () => {
     const before = wanted.current;
     if (!setUpdateChecks || before === null) return;
-    // Shown at once; the saved answer replaces it.
-    show(!before);
-    ask("updateChecksChange", () => setUpdateChecks(!before), () => show(before));
+    // Shown only once saved, so the menu never shows a choice that a quit
+    // could still lose.
+    wanted.current = !before;
+    ask("updateChecksChange", () => setUpdateChecks(!before), () => { wanted.current = before; });
   };
   // The More menu's items, given how "Check for Updates…" runs there.
   return (check: (() => void) | undefined) =>

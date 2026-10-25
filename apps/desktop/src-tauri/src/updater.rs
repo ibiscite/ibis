@@ -363,7 +363,7 @@ async fn install_update(app: &AppHandle, update: Update) {
         .await;
     drop(refresh);
     match result {
-        Ok(()) => setting::restart(app).await,
+        Ok(()) => app.restart(),
         Err(_) => {
             change_progress(app, attempt, None, "failed");
             publish_progress(app);

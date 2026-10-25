@@ -109,10 +109,10 @@ test("slow update saves keep quick clicks and reopening More in order", async ()
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   const box = () => screen.getByRole("menuitemcheckbox", { name: "Check for updates automatically" });
   await screen.findByRole("menuitemcheckbox", { name: "Check for updates automatically" });
-  fireEvent.click(box());
-  expect(box().getAttribute("aria-checked")).toBe("true");
+  // Nothing shows as changed until it is saved.
   fireEvent.click(box());
   expect(box().getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(box());
   fireEvent.click(box());
   // Reopened while the saves are still waiting: the read waits behind them.
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });

@@ -1,11 +1,11 @@
 //! Whether update checks run on their own. First launch, the tray and the
 //! picker's More menu (#1130) all change it through one worker, so changes
 //! are saved in the order they were asked for and never on the main thread.
+//! A change is saved before it is applied or shown.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
@@ -22,7 +22,7 @@ pub(crate) fn automatic(app: &AppHandle) -> bool {
     app.state::<Updates>().automatic.load(Ordering::SeqCst)
 }
 
-/// Apply a saved choice at start, without saving it again.
+/// Apply a saved choice, or put the tray tick back after a failed change.
 pub(super) fn set_automatic(app: &AppHandle, on: bool) {
     app.state::<Updates>().automatic.store(on, Ordering::SeqCst);
     // Queued, never awaited, so the worker never waits on the main thread.
@@ -38,25 +38,19 @@ pub(crate) fn toggle_automatic(app: &AppHandle) {
     change(app, None);
 }
 
-/// The worker's queue and how many changes in it are not saved yet.
+/// The worker's queue, started on first use and again after a failure.
 #[derive(Default)]
-pub(super) struct Saver {
-    queue: Mutex<Option<Sender<Change>>>,
-    pending: AtomicUsize,
-    leaving: AtomicBool,
-}
+pub(super) struct Saver(Mutex<Option<Sender<Change>>>);
 
 /// Queue a change; the receiver gets what applies once it is saved. If the
-/// worker cannot run, nothing is saved, the person is told, and the receiver
+/// worker cannot run, nothing changes, the person is told, and the receiver
 /// gets no answer.
 pub(super) fn change(app: &AppHandle, on: Option<bool>) -> Receiver<bool> {
     let (answer, answered) = mpsc::channel();
     let updates = app.state::<Updates>();
-    let saver = &updates.saver;
-    let Ok(mut queue) = saver.queue.lock() else {
+    let Ok(mut queue) = updates.saver.0.lock() else {
         return answered;
     };
-    saver.pending.fetch_add(1, Ordering::SeqCst);
     if queue.is_none() {
         *queue = start(app).ok();
     }
@@ -64,9 +58,9 @@ pub(super) fn change(app: &AppHandle, on: Option<bool>) -> Receiver<bool> {
         .as_ref()
         .map_or(Err(()), |changes| changes.send((on, answer)).map_err(drop));
     if sent.is_err() {
-        // A worker that failed or stopped is started again next time.
         *queue = None;
-        saver.pending.fetch_sub(1, Ordering::SeqCst);
+        // The tray ticks its item itself; put it back.
+        set_automatic(app, automatic(app));
         tell(app, "Ibis could not change whether it checks for updates. Try again.");
     }
     answered
@@ -77,80 +71,36 @@ fn start(app: &AppHandle) -> Result<Sender<Change>, ()> {
     let handle = app.clone();
     let worker = std::thread::Builder::new()
         .name("update-setting".to_owned())
-        .spawn(move || {
-            serve(
-                queue,
-                || automatic(&handle),
-                |on| {
-                    save(&handle, on);
-                    handle.state::<Updates>().saver.pending.fetch_sub(1, Ordering::SeqCst);
-                },
-            );
-        });
+        .spawn(move || serve(queue, || automatic(&handle), |on| save(&handle, on)));
     report(worker.as_ref().map(drop), NativeIssue::AutomaticMenuUpdate);
     worker.map(|_| changes).map_err(drop)
 }
 
-/// Before quitting or restarting, give queued changes a moment to be saved,
-/// so a choice the menus already show is not lost.
-async fn drain(app: &AppHandle) {
-    let handle = app.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || {
-        let saver = &handle.state::<Updates>().saver;
-        for _ in 0..DRAIN_STEPS {
-            if saver.pending.load(Ordering::SeqCst) == 0 {
-                return;
-            }
-            std::thread::sleep(DRAIN_STEP);
-        }
-    })
-    .await;
-}
-
-/// Restart into an installed update once queued changes are saved; a
-/// restart cannot be held like a quit.
-pub(super) async fn restart(app: &AppHandle) -> ! {
-    drain(app).await;
-    app.restart()
-}
-
-/// Quitting while a change waits to be saved: hold the exit until it is
-/// saved (or a few seconds pass), keeping the event loop running meanwhile.
-pub(crate) fn hold_exit(app: &AppHandle, code: i32) -> bool {
-    let saver = &app.state::<Updates>().saver;
-    if saver.pending.load(Ordering::SeqCst) == 0 || saver.leaving.swap(true, Ordering::SeqCst) {
-        return false;
-    }
-    let handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        drain(&handle).await;
-        handle.exit(code);
-    });
-    true
-}
-
-const DRAIN_STEP: Duration = Duration::from_millis(20);
-const DRAIN_STEPS: u32 = 250;
-
-/// Apply each change in turn; a flip reads the state the changes before it left.
-fn serve(queue: Receiver<Change>, current: impl Fn() -> bool, mut save: impl FnMut(bool)) {
+/// Apply each change in turn; a flip reads the state the changes before it
+/// left. `save` answers what applies afterwards.
+fn serve(queue: Receiver<Change>, current: impl Fn() -> bool, mut save: impl FnMut(bool) -> bool) {
     for (on, answer) in queue {
-        let on = on.unwrap_or_else(|| !current());
-        save(on);
+        let on = save(on.unwrap_or_else(|| !current()));
         let _ = answer.send(on);
     }
 }
 
-fn save(app: &AppHandle, on: bool) {
-    set_automatic(app, on);
+/// Saved first, then applied: the menus and the running app change only once
+/// the choice is on disk, so quitting at any moment never loses a choice that
+/// was shown as made.
+fn save(app: &AppHandle, on: bool) -> bool {
     if let Err(problem) = app.state::<SettingsFile>().update(|s| s.update_checks = Some(on)) {
+        let before = automatic(app);
+        set_automatic(app, before);
         tell(
             app,
-            &format!("Your choice applies until Ibis quits, but it could not be saved: {problem}."),
+            &format!("Your choice could not be saved, so nothing changed: {problem}."),
         );
-    } else {
-        crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());
+        return before;
     }
+    set_automatic(app, on);
+    crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());
+    on
 }
 
 /// Whether update checks run on their own; `None` when this build has no updates.
@@ -190,28 +140,32 @@ mod tests {
     use std::cell::RefCell;
 
     #[test]
-    fn changes_are_saved_in_order_and_flips_follow_the_one_before() -> Result<(), Box<dyn std::error::Error>> {
+    fn changes_are_saved_in_order_and_a_failed_save_changes_nothing() -> Result<(), Box<dyn std::error::Error>> {
         let (changes, queue) = mpsc::channel();
         let mut answers = Vec::new();
-        for on in [Some(true), None, Some(false), None, None] {
+        for on in [Some(true), None, Some(true), None] {
             let (answer, answered) = mpsc::channel();
             changes.send((on, answer))?;
             answers.push(answered);
         }
         drop(changes);
         let state = RefCell::new(false);
-        let saved = RefCell::new(Vec::new());
+        let tried = RefCell::new(Vec::new());
         serve(
             queue,
             || *state.borrow(),
             |on| {
-                *state.borrow_mut() = on;
-                saved.borrow_mut().push(on);
+                tried.borrow_mut().push(on);
+                // The third save fails: nothing is applied.
+                if tried.borrow().len() != 3 {
+                    *state.borrow_mut() = on;
+                }
+                *state.borrow()
             },
         );
-        assert_eq!(saved.into_inner(), [true, false, false, true, false]);
+        assert_eq!(tried.into_inner(), [true, false, true, true]);
         let answers = answers.iter().map(Receiver::recv).collect::<Result<Vec<_>, _>>()?;
-        assert_eq!(answers, [true, false, false, true, false]);
+        assert_eq!(answers, [true, false, false, true]);
         Ok(())
     }
 }

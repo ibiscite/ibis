@@ -332,18 +332,13 @@ fn main() {
     let app = builder.build(context);
     match app {
         Ok(app) => app.run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = &event
-                && updater::setting::hold_exit(app, code.unwrap_or(0))
-            {
-                api.prevent_exit();
-            }
             // macOS: a repeated OS open request brings back the hidden picker.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 show_picker(app);
             }
             #[cfg(not(target_os = "macos"))]
-            let _ = event;
+            let _ = (app, event);
         }),
         Err(err) => {
             report(Err::<(), _>(err), NativeIssue::Startup);
