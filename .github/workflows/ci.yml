@@ -12,6 +12,12 @@ on:
   # that "CI result" needs runs in full here; nothing is filtered by path.
   merge_group:
   workflow_dispatch:
+    inputs:
+      zotero_capture_version:
+        description: "Exact Zotero release for an opt-in synthetic capture (empty keeps the ordinary smoke test)"
+        required: false
+        type: string
+        default: ""
   # Weekly drift check of the pinned Nix inputs. That run also does the Linux
   # checks but skips the native app build (see the changes job).
   schedule:
@@ -721,10 +727,28 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Zotero's system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
 
       - name: Run the real-Zotero test
+        if: github.event_name != 'workflow_dispatch' || inputs.zotero_capture_version == ''
         run: scripts/real-zotero.sh
+
+      - name: Capture a pinned synthetic Zotero database and API pair
+        if: github.event_name == 'workflow_dispatch' && inputs.zotero_capture_version != ''
+        env:
+          ZOTERO_CAPTURE_VERSION: ${{ inputs.zotero_capture_version }}
+          ZOTERO_CAPTURE_OUTPUT: ${{ runner.temp }}/zotero-synthetic-capture
+        run: scripts/real-zotero.sh --capture "$ZOTERO_CAPTURE_VERSION" "$ZOTERO_CAPTURE_OUTPUT"
+
+      # These are unreviewed test artifacts, not committed/version-support fixtures.
+      - name: Keep the synthetic capture for fixture review
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.zotero_capture_version != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zotero-synthetic-capture-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/zotero-synthetic-capture/*
+          if-no-files-found: error
+          retention-days: 14
 
   dependencies:
     name: Dependency policy
