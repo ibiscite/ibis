@@ -1140,7 +1140,8 @@ test("an unavailable initial library is named once without a duplicate search er
   const notice = await screen.findByRole("alert");
   expect(document.querySelector(".results-heading")).toBeNull();
   expect(notice.textContent).toBe("Can't open 研究 refs.bib. The library file is unavailable.");
-  expect(choiceRow(/^Try again/)).toBeTruthy();
+  // The choice list fills its rows after the notice renders.
+  expect(await screen.findByRole("option", { name: /^Try again/ })).toBeTruthy();
   expect(choiceRow(/^Use another library/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(screen.getAllByRole("alert")).toHaveLength(1);
