@@ -51,6 +51,13 @@ export function feedPublicKey(version, stablePubkey) {
   return version.includes("-nightly.") ? NIGHTLY_PUBKEY : stablePubkey;
 }
 
+/** The key ID that signed a feed's packages; one key signs a whole feed. */
+export function feedKeyId(feed) {
+  const ids = new Set(Object.values(feed.platforms ?? {}).map((p) => keyId(p.signature)));
+  if (ids.size !== 1) throw new Error(`expected one signing key in the feed, found ${ids.size}`);
+  return [...ids][0];
+}
+
 /** Ibis Nightly: a separate app with its own settings and update feed. No MSI
  * (Windows Installer versions cannot carry "nightly") and no .rpm (RPM
  * versions cannot contain "-"). */
@@ -139,6 +146,8 @@ function main([command, ...args]) {
   } else if (command === "config" && args.length === 1) {
     keyId(NIGHTLY_PUBKEY); // refuses to build Ibis Nightly without a real key
     console.log(JSON.stringify(nightlyConfig(args[0])));
+  } else if (command === "feed-key" && args.length === 1) {
+    console.log(feedKeyId(JSON.parse(readFileSync(args[0], "utf8"))));
   } else if (command === "manifest" && args.length === 4) {
     const [dir, base, version, notes] = args;
     const config = JSON.parse(readFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));
@@ -155,7 +164,7 @@ function main([command, ...args]) {
     });
     writeFileSync(join(dir, "latest.json"), `${JSON.stringify(feed, null, 2)}\n`);
   } else {
-    throw new Error("usage: update-feed.mjs version | release | newer <version> <than> | config <version> | manifest <dir> <download-base> <version> <notes>");
+    throw new Error("usage: update-feed.mjs version | release | newer <version> <than> | config <version> | feed-key <latest.json> | manifest <dir> <download-base> <version> <notes>");
   }
 }
 

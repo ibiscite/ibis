@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion } from "./update-feed.mjs";
+import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, feedKeyId, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion } from "./update-feed.mjs";
 
 const fixture = (name) => readFileSync(new URL(`../fixtures/updates/${name}`, import.meta.url), "utf8");
 const testKey = fixture("test-key.pub");
@@ -109,4 +109,12 @@ test("versions compare as the updater does, so the stable feed never moves back"
   assert.equal(compareVersions("0.1.0-alpha", "0.1.0-alpha.1"), -1);
   assert.equal(compareVersions("0.1.0", "0.1.0"), 0);
   assert.throws(() => compareVersions("v0.1.0", "0.1.0"));
+});
+
+test("a feed names the one key that signed it, so the update test can see a key change", () => {
+  const feed = (sig) => ({ platforms: { "linux-x86_64": { signature: sig }, "windows-x86_64": { signature: sig } } });
+  assert.equal(feedKeyId(feed(signature)), keyId(testKey));
+  assert.throws(() => feedKeyId({ platforms: {} }));
+  const mixed = { platforms: { a: { signature }, b: { signature: fixture("package-stable.bin.sig") } } };
+  if (keyId(signature) !== keyId(fixture("package-stable.bin.sig"))) assert.throws(() => feedKeyId(mixed));
 });

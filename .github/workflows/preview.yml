@@ -824,9 +824,14 @@ jobs:
           set -euo pipefail
           version=$(node scripts/update-feed.mjs version)
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          published=$(curl -fsSL "https://github.com/$REPO/releases/download/nightly/latest.json" | jq -r .version)
+          curl -fsSL "https://github.com/$REPO/releases/download/nightly/latest.json" -o published.json
+          published=$(jq -r .version published.json)
           if [ ! -f previous/latest.json ] || [ ! -f "previous/$PACKAGE" ]; then
             echo "::notice::Update test skipped: the previous nightly had no update feed or no $PACKAGE."
+          elif [ "$(node scripts/update-feed.mjs feed-key previous/latest.json)" != "$(node scripts/update-feed.mjs feed-key published.json)" ]; then
+            # Once, when the nightly key changes (ADR 0019): the previous nightly
+            # rightly refuses the new key, and testers reinstall by hand.
+            echo "::notice::Update test skipped: the previous nightly was signed with another key."
           elif [ "$published" != "$version" ]; then
             echo "::notice::Update test skipped: the published nightly is $published, not this build ($version)."
           elif [ "$(jq -r .version previous/latest.json)" = "$version" ]; then
