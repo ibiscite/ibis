@@ -2666,14 +2666,17 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(dialog.getAttribute("aria-modal")).toBe("true");
   const close = within(dialog).getByRole("button", { name: "Close" });
   expect(document.activeElement).toBe(close);
-  const rows = within(dialog).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell").map((cell) => cell.textContent));
-  expect(rows).toContainEqual(["Enter", "Copy the highlighted reference, or the ones added to the citation, in the Copy as format", "Search box"]);
-  expect(rows).toContainEqual(["Shift+Enter", "Add the highlighted reference to the citation, or remove it", "Search box"]);
-  expect(rows).toContainEqual(["Ctrl+K", "Open or close More", "Anywhere in Ibis"]);
-  expect(rows).toContainEqual(["Ctrl+/ or ?", "Show this list (? works outside the search box)", "Anywhere in Ibis"]);
-  expect(rows).toContainEqual(["Home or End", "Go to the first or last item", "More menu"]);
+  // Each group's heading names where its keys work; each row is action, then keys.
+  const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
+  expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["In a menu"], ["From any app"]].slice(0, groups.length));
+  const rows = groups.flatMap((group) => group.slice(1));
+  expect(groups[0]).toContainEqual(["Copy the highlighted reference, or the ones added to the citation, in the Copy as format", "Enter"]);
+  expect(groups[0]).toContainEqual(["Add the highlighted reference to the citation, or remove it", "Shift+Enter"]);
+  expect(groups[1]).toContainEqual(["Open or close More", "Ctrl+K"]);
+  expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);
+  expect(groups[2]).toContainEqual(["Go to the first or last item", "Home or End"]);
   // The global shortcut, labelled for this platform, is listed once it works.
-  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Ctrl+Super+ROpen IbisAny app"));
+  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Open IbisCtrl+Super+R"));
   // Focus stays in the dialog, and the picker's keys wait until it closes.
   fireEvent.keyDown(close, { key: "Tab" });
   expect(dialog.contains(document.activeElement)).toBe(true);

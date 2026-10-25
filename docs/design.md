@@ -202,7 +202,7 @@ fields show words and an icon, never a red ring.
 | | Pointer over it | Chosen or current | Keyboard focus |
 |---|---|---|---|
 | Result row | Quiet tint | The selected-row fill | The same fill; never a ring |
-| Menu item | The menu highlight | Leading check (format) or trailing check (More toggles) | The menu highlight; never a ring |
+| Menu item | The menu highlight | Check in a leading column on macOS and Windows, after the label on GNOME | The menu highlight; never a ring |
 | Segmented choice | Quiet tint | Raised thumb on a recessed track | Ring around the group |
 | Pop-up button, More | Quiet fill | Pressed fill while open | Ring |
 | Buttons | One step darker | Primary: accent fill with `--text-on-accent` | Ring |
@@ -235,14 +235,16 @@ them: menu bar, tray and native right-click (ADR 0021). In-window menus (format,
 library scope, More) are Ibis's but match native metrics: `--r-menu`,
 `--menu-pad`, items padded 10 px on both sides, `--menu-item-height` high (28 px macOS, 32 px Windows and GNOME),
 separators inset 10 px with 4 px above and below, native open and close motion.
-A leading check column only in a menu whose items are a choice (the format
-menu). More starts at its labels; its toggles are `menuitemcheckbox` items with
-a trailing check. The format menu's filter field aligns with the item
+Checks sit where each system puts them: on macOS and Windows a menu with any
+choice or toggle keeps a leading check column for every row, so labels share one
+start and shortcuts line up at the end; on GNOME the check follows the label.
+More's toggles are `menuitemcheckbox` items; a menu without them starts at its
+labels. The format menu's filter field aligns with the item
 labels; menus with more than seven items get one. Format opens 4 px below its
 pop-up, aligned to its trailing edge; header menus open `bottom end`, footer
 menus `top end`, flipping then shifting within 8 px of the window; a menu opened
 above the footer ends at least 8 px above it. A menu that scrolls ends on a
-whole row; its side inset sits on the scrolling list, so a scroll bar never
+whole row and fades at an edge with more rows beyond it; its side inset sits on the scrolling list, so a scroll bar never
 takes it. Any pointer movement over an item highlights it, also after arrow
 keys. Labels never wrap: the menu widens, then the label ends with an
 ellipsis. A shortcut in
@@ -386,7 +388,9 @@ Overlays close when the picker hides and do not reopen.
 One table for every input. [`apps/desktop/src/keys.ts`](../apps/desktop/src/keys.ts)
 (`KEY_TABLE`) is the code source of keyboard shortcuts: the keys overlay, the
 footer hints and the More menu read their labels from it. A key is added there
-only together with the code that handles it.
+only together with the code that handles it. The keys overlay groups them under
+where they work (search box, anywhere in Ibis, a menu, any app), with the action
+first and its keys at the end of the row, as system shortcut lists do.
 
 | Input | Does |
 |---|---|

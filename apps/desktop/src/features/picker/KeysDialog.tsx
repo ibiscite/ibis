@@ -3,8 +3,10 @@ import { keyText } from "../../messages";
 import { ariaKeys, keyLabel, shortcutLabel, type KeyBinding } from "../../keys";
 import { Button } from "../../ui/Button";
 
-/** Every key in one table, as a modal dialog: Escape or Close returns focus. */
+/** Every key in one table grouped by where it works, as a modal dialog:
+    Escape or Close returns focus. */
 export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly KeyBinding[]; isMac: boolean; onClose: () => void }) {
+  const regions = [...new Set(bindings.map((binding) => binding.region))];
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => { dialog.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
   return (
@@ -37,20 +39,22 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
         </div>
         <div className="keys-scroll" tabIndex={0} role="group" aria-labelledby="keys-title">
           <table>
-            <thead>
-              <tr><th scope="col">{keyText.keyColumn}</th><th scope="col">{keyText.actionColumn}</th><th scope="col">{keyText.regionColumn}</th></tr>
+            <thead className="visually-hidden">
+              <tr><th scope="col">{keyText.actionColumn}</th><th scope="col">{keyText.keyColumn}</th></tr>
             </thead>
-            <tbody>
-              {bindings.map((binding) => (
-                <tr key={`${binding.region}:${binding.action}`}>
-                  <td>{binding.keys.map((keys, i) => (
-                    <span key={keys}>{i > 0 && ` ${keyText.or} `}<kbd dir="ltr" aria-keyshortcuts={ariaKeys(keys, isMac)}>{binding.action === "open" ? shortcutLabel(keys, isMac) : keyLabel(keys, isMac)}</kbd></span>
-                  ))}</td>
-                  <td>{keyText.actions[binding.action]}</td>
-                  <td>{keyText.regions[binding.region]}</td>
-                </tr>
-              ))}
-            </tbody>
+            {regions.map((region) => (
+              <tbody key={region}>
+                <tr><th scope="colgroup" colSpan={2}>{keyText.regions[region]}</th></tr>
+                {bindings.filter((binding) => binding.region === region).map((binding) => (
+                  <tr key={binding.action}>
+                    <th scope="row">{keyText.actions[binding.action]}</th>
+                    <td>{binding.keys.map((keys, i) => (
+                      <span key={keys}>{i > 0 && ` ${keyText.or} `}<kbd dir="ltr" aria-keyshortcuts={ariaKeys(keys, isMac)}>{binding.action === "open" ? shortcutLabel(keys, isMac) : keyLabel(keys, isMac)}</kbd></span>
+                    ))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            ))}
           </table>
         </div>
       </div>

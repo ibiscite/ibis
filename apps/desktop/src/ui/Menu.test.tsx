@@ -82,14 +82,16 @@ test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highl
   expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Open" }));
 });
 
-test("action rows start with labels; toggles keep trailing checks and shortcuts stay out of names", async () => {
+test("toggles carry a check placed per platform, and shortcuts stay out of names", async () => {
   const { trigger } = mount();
   fireEvent.click(trigger);
   const menu = await screen.findByRole("menu");
   const rows = [...menu.querySelectorAll("[role^=menuitem]")];
-  expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-label", "menu-label"]);
-  expect(rows[0]!.querySelector(".menu-check")).toBeNull();
-  expect(rows.slice(1).map((row) => row.lastElementChild?.className)).toEqual(["menu-check", "menu-check"]);
+  expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-check", "menu-check"]);
+  // macOS and Windows keep a leading check column for every row; GNOME puts the check last.
+  const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
+  expect(menuCss).toMatch(/:root:not\(\[data-platform="linux"\]\) \.menu:has\(\[role="menuitemcheckbox"\]\) :is\(\.menu-item:not\(\[role="menuitemcheckbox"\]\), \.menu-header\) \{ padding-inline-start: var\(--menu-label-start\); \}/);
+  expect(menuCss).toMatch(/:root\[data-platform="linux"\] \.menu-check \{ order: 1; \}/);
   expect(screen.getByRole("menuitem", { name: "Open" }).textContent).toBe("OpenCtrl+O");
   // Menu shortcuts are trailing text, so global kbd cap styles cannot apply.
   const shortcut = screen.getByRole("menuitem", { name: "Open" }).querySelector(".menu-keys")!;
@@ -296,6 +298,8 @@ test("menus highlight with a fill, never a ring, and the picker sheet has no men
   expect(menuCss).toMatch(/\.menu-item\[data-focused\] \{ background: var\(--menu-highlight\); color: var\(--menu-highlight-text\); \}/);
   expect(menuCss).toMatch(/\.menu-item \{[^}]*outline: none/);
   expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*outline: none/);
+  // The global :focus-visible ring would otherwise win on the list itself.
+  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\]:focus-visible \{ outline: none; \}/);
   expect(styles).not.toMatch(/role="menu|menuitem/);
 });
 
@@ -391,6 +395,12 @@ test("a scrolling menu shortens to its last whole row and refits when the popove
   act(() => hook.result.current(frame));
   // 70 px would cut the third 28 px row in half; two whole rows remain.
   expect(list.style.maxHeight).toBe("56px");
+  // More rows wait below; scrolled to the end, only those above remain.
+  expect([list.hasAttribute("data-more-above"), list.hasAttribute("data-more-below")]).toEqual([false, true]);
+  list.scrollTop = 56;
+  fireEvent.scroll(list);
+  expect([list.hasAttribute("data-more-above"), list.hasAttribute("data-more-below")]).toEqual([true, false]);
+  list.scrollTop = 0;
   height = 100;
   frame.style.maxHeight = "200px";
   await act(async () => { await Promise.resolve(); });
@@ -399,6 +409,7 @@ test("a scrolling menu shortens to its last whole row and refits when the popove
   frame.style.maxHeight = "300px";
   await act(async () => { await Promise.resolve(); });
   expect(list.style.maxHeight).toBe("");
+  expect(list.hasAttribute("data-more-below")).toBe(false);
   act(() => hook.result.current(null));
   frame.remove();
 });
@@ -443,8 +454,8 @@ test("rows keep equal insets beside a scroll bar, labels never wrap, and metrics
   expect(`${menuCss}${toolbar}`.match(/\b(10|18|34)px\b/g)).toEqual(["10px", "18px"]);
 });
 
-test("the shortcuts table breaks only between words", () => {
+test("the shortcuts table breaks actions only between words and keeps keys on one line at the end", () => {
   expect(styles).not.toMatch(/\.keys-scroll[^{]*\{[^}]*overflow-wrap: anywhere/);
   expect(styles).toMatch(/\.keys-scroll th, \.keys-scroll td \{[^}]*overflow-wrap: break-word;/);
-  expect(styles).toMatch(/\.keys-scroll td:first-child, \.keys-scroll th:last-child, \.keys-scroll td:last-child \{ white-space: nowrap; \}/);
+  expect(styles).toMatch(/\.keys-scroll td \{[^}]*text-align: end; white-space: nowrap; \}/);
 });

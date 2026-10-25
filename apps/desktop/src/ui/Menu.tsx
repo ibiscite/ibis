@@ -75,28 +75,39 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
     stop.current?.();
     stop.current = null;
     if (!frame) return;
+    // Marks the edges with rows beyond them, which Menu.css fades.
+    const edges = () => {
+      const node = list.current;
+      if (!node) return;
+      node.toggleAttribute("data-more-above", node.scrollTop > 0);
+      node.toggleAttribute("data-more-below", node.scrollHeight - node.clientHeight - node.scrollTop >= 1);
+    };
     const fit = () => {
       const node = list.current;
       if (!node) return;
       node.style.maxHeight = "";
       const height = node.clientHeight;
-      if (node.scrollHeight <= height) return;
-      const top = node.getBoundingClientRect().top + node.clientTop;
-      let end = 0;
-      for (const row of node.querySelectorAll('[role^="menuitem"]')) {
-        const bottom = row.getBoundingClientRect().bottom - top;
-        if (bottom <= height && bottom > end) end = bottom;
+      if (node.scrollHeight > height) {
+        const top = node.getBoundingClientRect().top + node.clientTop;
+        let end = 0;
+        for (const row of node.querySelectorAll('[role^="menuitem"]')) {
+          const bottom = row.getBoundingClientRect().bottom - top;
+          if (bottom <= height && bottom > end) end = bottom;
+        }
+        if (end > 0) node.style.maxHeight = `${Math.floor(end)}px`;
       }
-      if (end > 0) node.style.maxHeight = `${Math.floor(end)}px`;
+      edges();
     };
     // The frame's own style (React Aria's max-height) and the rows, never the
-    // list's style, which fit() itself sets.
+    // list's style or edges, which fit() itself sets.
     const resized = new MutationObserver(fit);
     const rows = new MutationObserver(fit);
     resized.observe(frame, { attributes: true, attributeFilter: ["style"] });
     rows.observe(frame, { childList: true, subtree: true });
+    // Scrolling does not bubble; the capture sees the list's, also once it is remounted.
+    frame.addEventListener("scroll", edges, true);
     fit();
-    stop.current = () => { resized.disconnect(); rows.disconnect(); };
+    stop.current = () => { resized.disconnect(); rows.disconnect(); frame.removeEventListener("scroll", edges, true); };
   }, [list]);
 }
 
@@ -127,21 +138,21 @@ const ActionFocusContext = createContext<(() => void) | null>(null);
 
 type ItemProps = {
   id: string; label: string; title?: string; keys?: string;
-  /** A toggle: shows a trailing check and is a menuitemcheckbox. */
+  /** A toggle: shows a check and is a menuitemcheckbox. */
   checked?: boolean;
   /** Stays focusable and is announced as unavailable, but does nothing (ADR 0021). */
   disabled?: boolean;
   onAction: () => void;
 };
 
-/** A drawn check, so it adds no text to the row. Format reserves its leading column. */
+/** A drawn check, so it adds no text to the row; Menu.css places it per platform. */
 export function MenuCheck({ checked }: { checked: boolean }) {
   return <span className="menu-check" aria-hidden="true">
     {checked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m2.5 6.5 2.5 2.5 4.5-6" /></svg>}
   </span>;
 }
 
-/** An action row: label, optional shortcut and a trailing check for toggles. */
+/** An action row: label, optional shortcut and a check for toggles. */
 export function MenuItem({ id, label, title, keys, checked, disabled, onAction }: ItemProps) {
   const requestActionFocus = useContext(ActionFocusContext);
   return <AriaMenuItem id={id} className="menu-item" textValue={label}
@@ -154,9 +165,9 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
     }}
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
+      {checked !== undefined && <MenuCheck checked={isSelected} />}
       <span className="menu-label">{label}</span>
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
-      {checked !== undefined && <MenuCheck checked={isSelected} />}
     </>}
   </AriaMenuItem>;
 }

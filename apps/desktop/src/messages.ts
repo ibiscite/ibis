@@ -180,13 +180,12 @@ export const keyText = {
   close: "Close",
   keyColumn: "Keys",
   actionColumn: "Action",
-  regionColumn: "Where",
   or: "or",
   regions: {
-    search: "Search box",
+    search: "In the search box",
     picker: "Anywhere in Ibis",
-    menu: "More menu",
-    system: "Any app",
+    menu: "In a menu",
+    system: "From any app",
   },
   actions: {
     preview: "Show what will be pasted",
