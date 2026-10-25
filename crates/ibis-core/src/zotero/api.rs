@@ -19,6 +19,7 @@
 //! fails closed if later ranges would leave unread items between the pages.
 
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use thiserror::Error;
@@ -35,6 +36,12 @@ const MAX_REQUESTS: usize = 12_000;
 const MAX_SKIPPED: usize = 100;
 /// Scans restarted because the library changed underneath them.
 const MAX_ATTEMPTS: usize = 3;
+/// Aggregate response bodies across attempts, including failed exports and
+/// key lookups. This bounds serialized input/work, not parsed heap size.
+const MAX_SCAN_BYTES: usize = 512 * 1024 * 1024;
+/// Cooperative limit: a synchronous transport or mapping call already in
+/// progress cannot be interrupted, but a late result is never published.
+const MAX_SCAN_ELAPSED: Duration = Duration::from_secs(10 * 60);
 /// The listing order of every page: oldest first. Editing an item never
 /// moves it, unlike Zotero's default `dateModified` order, and Zotero 7.0
 /// changes neither the version nor the total on a local edit.
@@ -98,7 +105,7 @@ pub enum ZoteroError {
     Incomplete,
     #[error("the library kept changing while it was read; Ibis will try again")]
     Changing,
-    #[error("the library is larger than Ibis can read at once")]
+    #[error("reading Zotero exceeded Ibis's size limit")]
     TooLarge,
 }
 
@@ -175,41 +182,108 @@ pub fn refresh(
     library: Library,
     previous: Option<&Snapshot>,
 ) -> Result<Refresh, ZoteroError> {
+    refresh_with_budget(transport, library, previous, &mut ScanBudget::default())
+}
+
+pub(super) fn refresh_with_budget(
+    transport: &mut impl Transport,
+    library: Library,
+    previous: Option<&Snapshot>,
+    budget: &mut ScanBudget,
+) -> Result<Refresh, ZoteroError> {
     if let Some(previous) = previous {
-        let probe = request(
-            transport,
+        let probe = checked(
+            budget.get(
+                transport,
+                &format!(
+                    "{}?format=versions&includeTrashed=1&since={}",
+                    items_path(library),
+                    previous.version
+                ),
+            )?,
             library,
-            &format!(
-                "{}?format=versions&includeTrashed=1&since={}",
-                items_path(library),
-                previous.version
-            ),
         )?;
         let unchanged = snapshot(&probe)?.same_as(previous)
             && serde_json::from_slice::<serde_json::Map<String, Value>>(&probe.body)
                 .map_err(|_| ZoteroError::Incomplete)?
                 .is_empty();
+        budget.check(Instant::now())?;
         if unchanged {
             return Ok(Refresh::Unchanged);
         }
     }
-    let (result, snapshot) = scan(transport, library)?;
+    let (result, snapshot) = scan_with_budget(transport, library, budget)?;
     Ok(Refresh::Loaded { result, snapshot })
 }
 
 /// Read every item of the library at one version. If the library changes
 /// between pages, or its pages disagree on the item count, the scan starts
-/// again, at most a few times.
+/// again, at most a few times. All attempts share a 512 MiB response-body
+/// budget and a ten-minute cooperative elapsed limit. These do not bound
+/// parsed heap size or interrupt a transport/mapping call already underway.
 pub fn scan(transport: &mut impl Transport, library: Library) -> Result<(LoadResult, Snapshot), ZoteroError> {
+    scan_with_budget(transport, library, &mut ScanBudget::default())
+}
+
+pub(super) struct ScanBudget {
+    // None means a response exceeded the quota; later libraries must not
+    // restart I/O. Some(0) still accepts an exact fit or an empty body.
+    bytes_left: Option<usize>,
+    started: Instant,
+    elapsed: Duration,
+}
+
+impl Default for ScanBudget {
+    fn default() -> Self {
+        Self::new(MAX_SCAN_BYTES, MAX_SCAN_ELAPSED)
+    }
+}
+
+impl ScanBudget {
+    pub(super) fn new(bytes_left: usize, elapsed: Duration) -> Self {
+        Self {
+            bytes_left: Some(bytes_left),
+            started: Instant::now(),
+            elapsed,
+        }
+    }
+
+    fn check(&self, now: Instant) -> Result<(), ZoteroError> {
+        if now.saturating_duration_since(self.started) >= self.elapsed {
+            return Err(TransportError::TimedOut.into());
+        }
+        Ok(())
+    }
+
+    fn get(&mut self, transport: &mut impl Transport, path: &str) -> Result<Response, ZoteroError> {
+        self.check(Instant::now())?;
+        self.bytes_left.ok_or(ZoteroError::TooLarge)?;
+        let response = transport.get(path)?;
+        self.check(Instant::now())?;
+        self.bytes_left = self.bytes_left.and_then(|left| left.checked_sub(response.body.len()));
+        self.bytes_left.ok_or(ZoteroError::TooLarge)?;
+        Ok(response)
+    }
+}
+
+pub(super) fn scan_with_budget(
+    transport: &mut impl Transport,
+    library: Library,
+    budget: &mut ScanBudget,
+) -> Result<(LoadResult, Snapshot), ZoteroError> {
     for _ in 0..MAX_ATTEMPTS {
-        if let Some(done) = scan_once(transport, library)? {
+        if let Some(done) = scan_once(transport, library, budget)? {
             return Ok(done);
         }
     }
     Err(ZoteroError::Changing)
 }
 
-fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<(LoadResult, Snapshot)>, ZoteroError> {
+fn scan_once(
+    transport: &mut impl Transport,
+    library: Library,
+    budget: &mut ScanBudget,
+) -> Result<Option<(LoadResult, Snapshot)>, ZoteroError> {
     let mut items: Vec<Value> = Vec::new();
     let mut first: Option<Snapshot> = None;
     let mut total: Option<usize> = None;
@@ -228,7 +302,7 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
             "{}?format=json&include=data,csljson&{ORDER}&limit={limit}&start={start}",
             top_items_path(library)
         );
-        let response = transport.get(&path)?;
+        let response = budget.get(transport, &path)?;
         if response.status == 500 {
             if limit > 1 {
                 ranges.push((start + limit / 2, limit - limit / 2));
@@ -236,7 +310,7 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
             } else {
                 // A failed export carries no library version, so the skipped
                 // item is tied to one through the key lookup's answer.
-                let (warning, keys) = unexported(transport, library, start)?;
+                let (warning, keys) = unexported(transport, library, start, budget)?;
                 if !consistent(&keys, &mut first, &mut total)? {
                     return Ok(None);
                 }
@@ -293,7 +367,9 @@ fn scan_once(transport: &mut impl Transport, library: Library) -> Result<Option<
                 return Err(ZoteroError::Status(500));
             }
             let snapshot = first.ok_or(ZoteroError::Incomplete)?;
+            budget.check(Instant::now())?;
             let mut result = load_items(library, &items);
+            budget.check(Instant::now())?;
             result.warnings.extend(skipped);
             return Ok(Some((result, snapshot)));
         }
@@ -333,14 +409,17 @@ fn unexported(
     transport: &mut impl Transport,
     library: Library,
     position: usize,
+    budget: &mut ScanBudget,
 ) -> Result<(LoadWarning, Response), ZoteroError> {
-    let response = request(
-        transport,
+    let response = checked(
+        budget.get(
+            transport,
+            &format!(
+                "{}?format=keys&{ORDER}&limit=1&start={position}",
+                top_items_path(library)
+            ),
+        )?,
         library,
-        &format!(
-            "{}?format=keys&{ORDER}&limit=1&start={position}",
-            top_items_path(library)
-        ),
     )?;
     let key = std::str::from_utf8(&response.body)
         .ok()
@@ -436,6 +515,131 @@ mod tests {
 
     fn many(prefix: &str, n: usize) -> Vec<String> {
         (0..n).map(|i| format!("{prefix}{i}")).collect()
+    }
+
+    fn limited(
+        transport: &mut impl Transport,
+        bytes: usize,
+        elapsed: Duration,
+    ) -> Result<(LoadResult, Snapshot), ZoteroError> {
+        scan_with_budget(transport, Library::User, &mut ScanBudget::new(bytes, elapsed))
+    }
+
+    #[test]
+    fn cumulative_scan_bytes_accept_the_exact_boundary_and_refuse_one_more() {
+        let first = page(1, 2, &["A"]);
+        let last = page(1, 2, &["B"]);
+        let bytes = first.body.len() + last.body.len();
+        for (limit, succeeds) in [(bytes, true), (bytes - 1, false)] {
+            let mut fake = Fake::default().answer(first.clone()).answer(last.clone());
+            let result = limited(&mut fake, limit, Duration::from_secs(60));
+            if succeeds {
+                assert_eq!(keys(&result.unwrap_or_else(|e| panic!("{e}")).0), ["A", "B"]);
+            } else {
+                assert_eq!(result, Err(ZoteroError::TooLarge));
+            }
+            assert_eq!(fake.asked.len(), 2);
+        }
+        let mut malformed = page(1, 0, &[]);
+        malformed.body = b"not JSON".to_vec();
+        let mut fake = Fake::default().answer(malformed);
+        assert_eq!(
+            limited(&mut fake, 7, Duration::from_secs(60)),
+            Err(ZoteroError::TooLarge)
+        );
+    }
+
+    #[test]
+    fn consistency_restarts_do_not_reset_the_scan_byte_budget() {
+        let first = page(1, 2, &["A"]);
+        let changed = page(2, 2, &["B"]);
+        let retry = page(2, 2, &["A"]);
+        let bytes = first.body.len() + changed.body.len() + retry.body.len() - 1;
+        let mut fake = Fake::default()
+            .answer(first)
+            .answer(changed.clone())
+            .answer(retry)
+            .answer(changed);
+        assert_eq!(
+            limited(&mut fake, bytes, Duration::from_secs(60)),
+            Err(ZoteroError::TooLarge)
+        );
+        assert_eq!(fake.asked.len(), 3);
+    }
+
+    #[test]
+    fn failed_exports_and_auxiliary_key_lookups_consume_the_same_budget() {
+        for (limit, requests) in [(0, 1), (7, 8)] {
+            let mut fake = Fake::default();
+            for _ in 0..7 {
+                fake = fake.answer(Response {
+                    status: 500,
+                    body: vec![b'x'],
+                    ..Response::default()
+                });
+            }
+            let mut lookup = page(1, 1, &[]);
+            lookup.body = b"K".to_vec();
+            fake = fake.answer(lookup);
+            assert_eq!(
+                limited(&mut fake, limit, Duration::from_secs(60)),
+                Err(ZoteroError::TooLarge)
+            );
+            assert_eq!(fake.asked.len(), requests);
+            if requests == 8 {
+                assert!(fake.asked.last().is_some_and(|path| path.contains("format=keys")));
+            }
+        }
+    }
+
+    #[test]
+    fn expired_elapsed_budget_refuses_before_making_a_request() {
+        let mut fake = Fake::default().answer(page(1, 0, &[]));
+        assert_eq!(
+            limited(&mut fake, 100, Duration::ZERO),
+            Err(TransportError::TimedOut.into())
+        );
+        assert!(fake.asked.is_empty());
+    }
+
+    #[test]
+    fn exact_fit_allows_empty_bodies_but_refusal_prevents_further_io() {
+        let body = Response {
+            body: vec![b'x'],
+            ..Response::default()
+        };
+        let mut fake = Fake::default()
+            .answer(body.clone())
+            .answer(Response::default())
+            .answer(body)
+            .answer(Response::default());
+        let mut budget = ScanBudget::new(1, Duration::from_secs(60));
+        assert!(budget.get(&mut fake, "").is_ok());
+        assert!(budget.get(&mut fake, "").is_ok());
+        assert_eq!(budget.get(&mut fake, ""), Err(ZoteroError::TooLarge));
+        assert_eq!(budget.get(&mut fake, ""), Err(ZoteroError::TooLarge));
+        assert_eq!(fake.asked.len(), 3);
+    }
+
+    #[test]
+    fn elapsed_budget_refuses_the_boundary_and_a_late_success() {
+        let budget = ScanBudget::new(100, Duration::from_secs(60));
+        assert!(budget.check(budget.started + Duration::from_secs(59)).is_ok());
+        assert_eq!(
+            budget.check(budget.started + Duration::from_secs(60)),
+            Err(TransportError::TimedOut.into())
+        );
+        struct Late;
+        impl Transport for Late {
+            fn get(&mut self, _: &str) -> Result<Response, TransportError> {
+                std::thread::sleep(Duration::from_millis(20));
+                Ok(page(1, 0, &[]))
+            }
+        }
+        assert_eq!(
+            limited(&mut Late, 100, Duration::from_millis(10)),
+            Err(TransportError::TimedOut.into())
+        );
     }
 
     /// A Zotero whose export fails for the items at `bad` positions, answering
