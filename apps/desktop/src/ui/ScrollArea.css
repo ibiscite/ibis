@@ -2,8 +2,9 @@
    system's own scroll bars, overlay where the system uses them, and Fluent's
    thin bar on Windows (tokens.css). An edge with more content beyond it fades,
    so a list that ends on a whole row still shows there is more. A mask reads
-   only alpha, so the opaque text colour serves. */
-.scroll-area { overflow: auto; overscroll-behavior: contain; scrollbar-width: var(--scrollbar-width); scrollbar-color: var(--scrollbar-color); }
+   only alpha, so the opaque text colour serves. Scrolling still chains to the
+   picker, which scrolls as a whole when Larger text leaves it short. */
+.scroll-area { overflow: auto; scrollbar-width: var(--scrollbar-width); scrollbar-color: var(--scrollbar-color); }
 .scroll-area[data-more-above] {
   -webkit-mask-image: linear-gradient(transparent, currentColor var(--scroll-fade-size));
   mask-image: linear-gradient(transparent, currentColor var(--scroll-fade-size));

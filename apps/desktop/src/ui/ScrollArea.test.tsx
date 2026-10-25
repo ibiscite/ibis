@@ -60,7 +60,7 @@ test("the results, menus, Shortcuts and notices share the scroll area, and no sc
 
 test("the fade is valid at one edge or both, and only Windows draws its own thin bar", () => {
   const area = css("./ScrollArea.css");
-  expect(area).toMatch(/\.scroll-area \{ overflow: auto; overscroll-behavior: contain; scrollbar-width: var\(--scrollbar-width\); scrollbar-color: var\(--scrollbar-color\); \}/);
+  expect(area).toMatch(/\.scroll-area \{ overflow: auto; scrollbar-width: var\(--scrollbar-width\); scrollbar-color: var\(--scrollbar-color\); \}/);
   for (const edge of ["\\[data-more-above\\]", "\\[data-more-below\\]", "\\[data-more-above\\]\\[data-more-below\\]"]) {
     const rule = area.match(new RegExp(`\\.scroll-area${edge} \\{([^}]*)\\}`))?.[1] ?? "";
     expect(rule).toMatch(/-webkit-mask-image: linear-gradient\(/);
