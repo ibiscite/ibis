@@ -1,5 +1,7 @@
 import type { Copied, LibraryStatus, LoginItem } from "../../api";
+import { useRef } from "react";
 import { Button } from "../../ui/Button";
+import { useScrollEdges } from "../../ui/ScrollArea";
 import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
 import { libraryMessages, loginItemText, operationFailures, pickerText } from "../../messages";
 import { currentPlatform } from "../../platform";
@@ -19,8 +21,10 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
   showCopiedText: boolean;
   onDismissCopied: () => void;
 }) {
+  const scroll = useRef<HTMLDivElement>(null);
+  useScrollEdges(scroll);
   return (
-    <div className="notices">
+    <div ref={scroll} className="notices scroll-area">
       {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
       {/* A library that could not be opened at all gets the recovery screen instead. */}
       {library?.error && !(library.state === "error" && !library.has_snapshot) && !hasRetainedFreshnessProblem(library) && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}

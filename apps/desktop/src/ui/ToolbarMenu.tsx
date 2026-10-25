@@ -89,7 +89,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   }
   // aria-disabled keeps unavailable choices in the arrow-key order (ADR 0021).
   // Controlled selection and the action guard prevent picking them.
-  const menu = <Menu key={opening} ref={listRef} className="toolbar-menu" aria-label={label} selectionMode="single" selectedKeys={[selectedKey]}
+  const menu = <Menu key={opening} ref={listRef} className="toolbar-menu scroll-area" aria-label={label} selectionMode="single" selectedKeys={[selectedKey]}
     onAction={(key) => {
       if (sections.flatMap((section) => section.items).find((item) => item.id === key)?.disabled) return;
       changeOpen(false, undefined, true);
