@@ -115,6 +115,10 @@ test("a feed names the one key that signed it, so the update test can see a key 
   const feed = (sig) => ({ platforms: { "linux-x86_64": { signature: sig }, "windows-x86_64": { signature: sig } } });
   assert.equal(feedKeyId(feed(signature)), keyId(testKey));
   assert.throws(() => feedKeyId({ platforms: {} }));
-  const mixed = { platforms: { a: { signature }, b: { signature: fixture("package-stable.bin.sig") } } };
-  if (keyId(signature) !== keyId(fixture("package-stable.bin.sig"))) assert.throws(() => feedKeyId(mixed));
+  // A synthetic signature that names the other key: keyId reads only its key ID.
+  const otherId = Buffer.from(keyId(fixture("other-key.pub")), "hex");
+  const line = Buffer.concat([Buffer.from("Ed"), otherId, Buffer.alloc(64)]).toString("base64");
+  const other = Buffer.from(`untrusted comment: synthetic\n${line}\n`).toString("base64");
+  assert.notEqual(keyId(other), keyId(signature));
+  assert.throws(() => feedKeyId({ platforms: { a: { signature }, b: { signature: other } } }));
 });

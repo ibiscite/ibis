@@ -828,7 +828,12 @@ jobs:
           published=$(jq -r .version published.json)
           if [ ! -f previous/latest.json ] || [ ! -f "previous/$PACKAGE" ]; then
             echo "::notice::Update test skipped: the previous nightly had no update feed or no $PACKAGE."
-          elif [ "$(node scripts/update-feed.mjs feed-key previous/latest.json)" != "$(node scripts/update-feed.mjs feed-key published.json)" ]; then
+            exit 0
+          fi
+          # Standalone, so an unreadable feed fails the step instead of comparing empty strings.
+          previous_key=$(node scripts/update-feed.mjs feed-key previous/latest.json)
+          published_key=$(node scripts/update-feed.mjs feed-key published.json)
+          if [ "$previous_key" != "$published_key" ]; then
             # Once, when the nightly key changes (ADR 0019): the previous nightly
             # rightly refuses the new key, and testers reinstall by hand.
             echo "::notice::Update test skipped: the previous nightly was signed with another key."
