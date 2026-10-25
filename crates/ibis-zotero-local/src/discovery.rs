@@ -8,6 +8,8 @@
 //! data and interrupted migrations require manual override; no database or
 //! migration marker is inspected here. See Zotero's directory selection:
 //! <https://github.com/zotero/zotero/blob/main/chrome/content/zotero/xpcom/dataDirectory.js>.
+//! Guarded configuration opens support macOS, Windows and Linux x86-64/ARM64.
+//! Other native targets refuse configuration opens; manual override still works.
 
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -260,6 +262,16 @@ fn read_text(path: &Path, limit: u64) -> Result<Option<String>, Warning> {
 }
 
 fn open_configuration(path: &Path) -> Result<File, Warning> {
+    if cfg!(not(any(
+        target_os = "macos",
+        windows,
+        all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )
+    ))) {
+        return Err(Warning::UnreadableConfiguration);
+    }
     let mut options = OpenOptions::new();
     options.read(true);
     // Do not follow a replaced final symlink, or wait for a FIFO writer between
