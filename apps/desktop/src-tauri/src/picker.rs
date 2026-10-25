@@ -150,7 +150,8 @@ pub(crate) fn follow_layout(app: &AppHandle) {
 
 #[cfg(target_os = "macos")]
 fn relayout(app: &AppHandle) {
-    let Ok(mut registered) = app.state::<Registered>().0.lock() else {
+    let state = app.state::<Registered>();
+    let Ok(mut registered) = state.0.lock() else {
         return;
     };
     let Some((requested, current)) = *registered else {
