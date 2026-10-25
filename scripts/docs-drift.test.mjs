@@ -24,6 +24,7 @@ test("empty, large, renamed, Windows and Unicode references are deterministic", 
   assert.deepEqual(check(""), []);
   assert.deepEqual(check("`scripts\\check.mjs`\r\n"), []);
   assert.equal(check("`scripts/資料.mjs`").length, 1);
+  assert.equal(check("`資料/missing file.mjs`").length, 1);
   assert.equal(check("[relative](../AGENTS.md)", "docs/nested/moved.md").length, 1);
   assert.equal(check("ordinary text\n".repeat(100000) + "[bad](missing.md)").length, 1);
 });

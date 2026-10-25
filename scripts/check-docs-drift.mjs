@@ -100,7 +100,7 @@ export function docProblems(doc, text, files, crates) {
   for (const span of codeSpans(text)) {
     const value = normalize(span);
     if (/^(?:node|cargo|pnpm|python\d*)\s/.test(value) || /^[-#]|\s--/.test(value) || value.startsWith(".local/")) continue;
-    if (/\s/.test(value) && (!/^(?:\.\.?\/|[\w.-]+\/)/.test(value) || /[=;()"']/.test(value))) continue;
+    if (/\s/.test(value) && (!/^(?:\.\.?\/|[^\s/]+\/)/.test(value) || /[=;()"']/.test(value))) continue;
     if (/\//.test(value) || /^[\w.-]+\.(?:md|[cm]?js|rs|tsx?|css|json|toml|ya?ml|py|sh|ps1)$/.test(value)) path(value, "path");
   }
   for (const link of inlineLinks(text)) path(link, "link", true);
