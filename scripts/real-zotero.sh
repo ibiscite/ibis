@@ -169,18 +169,6 @@ def enable_subreaper() -> None:
         raise RuntimeError(_FAILURE) from None
 
 
-class _Attributes(C.Structure):
-    # XWindowAttributes, including native-long and pointer alignment on LP64.
-    _fields_ = [(name, kind) for names, kind in [
-        ("x y width height border_width depth", C.c_int), ("visual", C.c_void_p),
-        ("root", C.c_ulong), ("window_class bit_gravity win_gravity backing_store", C.c_int),
-        ("backing_planes backing_pixel", C.c_ulong), ("save_under", C.c_int),
-        ("colormap", C.c_ulong), ("map_installed map_state", C.c_int),
-        ("all_event_masks your_event_mask do_not_propagate_mask", C.c_long),
-        ("override_redirect", C.c_int), ("screen", C.c_void_p),
-    ] for name in names.split()]
-
-
 def _process(pid):
     # Linux stat fields 4/22; rsplit tolerates spaces and ')' in comm.
     fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
@@ -197,124 +185,50 @@ def _owned(pid, root):
     return False
 
 
-def _request_quit(pid, started):
-    if _process(pid)[1] != started:
-        raise RuntimeError()
-    x, xt = C.CDLL("libX11.so.6"), C.CDLL("libXtst.so.6")
-    D, W, I, U, P = C.c_void_p, C.c_ulong, C.c_int, C.c_uint, C.POINTER
-    for library, name, result, args in [
-        (x, "XOpenDisplay", D, [C.c_char_p]), (x, "XDefaultRootWindow", W, [D]),
-        (x, "XQueryTree", I, [D, W, P(W), P(W), P(P(W)), P(U)]),
-        (x, "XGetWindowAttributes", I, [D, W, P(_Attributes)]),
-        (x, "XInternAtom", W, [D, C.c_char_p, I]),
-        (x, "XGetWindowProperty", I, [D, W, W, C.c_long, C.c_long, I, W,
-                                      P(W), P(I), P(W), P(W), P(D)]),
-        (x, "XFree", I, [D]), (x, "XSetInputFocus", I, [D, W, I, W]),
-        (x, "XGetInputFocus", I, [D, P(W), P(I)]), (x, "XSync", I, [D, I]),
-        (x, "XStringToKeysym", W, [C.c_char_p]),
-        (x, "XKeysymToKeycode", C.c_ubyte, [D, W]),
-        (xt, "XTestQueryExtension", I, [D, P(I), P(I), P(I), P(I)]),
-        (xt, "XTestFakeKeyEvent", I, [D, U, I, W]),
-        (x, "XCloseDisplay", I, [D]),
-    ]:
-        function = getattr(library, name)
-        function.restype, function.argtypes = result, args
-    display = x.XOpenDisplay(None)
-    if not display:
-        raise RuntimeError()
-
-    def property_value(window, name, expected_type, expected_format):
-        actual, count, remaining, form, value = W(), W(), W(), I(), D()
-        atom = x.XInternAtom(display, name, 1)
-        if not atom:
-            return None
-        status = x.XGetWindowProperty(display, window, atom, 0, 64, 0, expected_type,
-                                      C.byref(actual), C.byref(form), C.byref(count),
-                                      C.byref(remaining), C.byref(value))
-        try:
-            if status or not value or actual.value != expected_type or form.value != expected_format or remaining.value:
-                return None
-            if expected_format == 32:
-                return C.cast(value, P(W))[0] if count.value == 1 else None
-            return C.string_at(value, count.value)
-        finally:
-            if value:
-                x.XFree(value)
-
+def _xdo(deadline, *arguments):
+    remaining = min(5, deadline - time.monotonic())
+    if remaining <= 0:
+        raise RuntimeError(_FAILURE)
     try:
-        values = [I() for _ in range(4)]
-        if not xt.XTestQueryExtension(display, *(C.byref(value) for value in values)):
-            raise RuntimeError()
-        pending, seen, candidates = [x.XDefaultRootWindow(display)], set(), []
-        while pending:
-            window = pending.pop()
-            if window in seen:
-                continue
-            seen.add(window)
-            if len(seen) > 512:
-                raise RuntimeError()
-            owner = property_value(window, b"_NET_WM_PID", 6, 32)  # XA_CARDINAL
-            wm_class = property_value(window, b"WM_CLASS", 31, 8)  # XA_STRING
-            attributes = _Attributes()
-            if owner and wm_class and b"zotero" in wm_class.lower().split(b"\0") and _owned(owner, pid):
-                if x.XGetWindowAttributes(display, window, C.byref(attributes)) and attributes.map_state == 2 and not attributes.override_redirect:
-                    candidates.append((window, owner))
-            root, parent, children, count = W(), W(), P(W)(), U()
-            if not x.XQueryTree(display, window, C.byref(root), C.byref(parent), C.byref(children), C.byref(count)):
-                raise RuntimeError()
-            try:
-                if count.value > 512 or len(pending) + count.value > 512:
-                    raise RuntimeError()
-                pending.extend(children[index] for index in range(count.value))
-            finally:
-                if children:
-                    x.XFree(children)
-        if len(candidates) != 1:
-            raise RuntimeError()
-        window, owner = candidates[0]
-        x.XSetInputFocus(display, window, 2, 0)  # RevertToParent, CurrentTime
-        x.XSync(display, 0)
-        focus, revert = W(), I()
-        x.XGetInputFocus(display, C.byref(focus), C.byref(revert))
-        if focus.value != window or not _owned(owner, pid) or _process(pid)[1] != started:
-            raise RuntimeError()
-        keys = [x.XKeysymToKeycode(display, x.XStringToKeysym(key)) for key in (b"Control_L", b"q")]
-        if not all(keys):
-            raise RuntimeError()
-        for key, pressed in [(keys[0], 1), (keys[1], 1), (keys[1], 0), (keys[0], 0)]:
-            if not xt.XTestFakeKeyEvent(display, key, pressed, 0):
-                raise RuntimeError()
-        x.XSync(display, 0)
-    finally:
-        x.XCloseDisplay(display)
+        result = subprocess.run(["xdotool", *arguments], check=True, capture_output=True,
+                                text=True, timeout=remaining)
+        if len(result.stdout) > 16384:
+            raise ValueError()
+        return result.stdout.strip()
+    except Exception:
+        raise RuntimeError(_FAILURE) from None
 
 
-def graceful_quit(app: subprocess.Popen, timeout=30) -> None:
+def _request_quit(pid, started, deadline):
+    # Reuse the repository's maintained XTEST tool on this private Xvfb display.
+    # Omitting --window from key delivery uses XTEST rather than XSendEvent.
+    windows = _xdo(deadline, "search", "--onlyvisible", "--limit", "512", "--class", "[Zz]otero").splitlines()
+    if not 0 < len(windows) <= 512 or any(not window.isdecimal() for window in windows):
+        raise RuntimeError(_FAILURE)
+    candidates = []
+    for window in windows:
+        owner = _xdo(deadline, "getwindowpid", window)
+        if not owner.isdecimal():
+            raise RuntimeError(_FAILURE)
+        if _owned(int(owner), pid):
+            candidates.append((window, owner))
+    if len(candidates) != 1:
+        raise RuntimeError(_FAILURE)
+    window, owner = candidates[0]
+    _xdo(deadline, "windowfocus", "--sync", window)
+    if _xdo(deadline, "getwindowfocus") != window or _xdo(deadline, "getwindowpid", window) != owner:
+        raise RuntimeError(_FAILURE)
+    if not _owned(int(owner), pid) or _process(pid)[1] != started:
+        raise RuntimeError(_FAILURE)
+    _xdo(deadline, "key", "--clearmodifiers", "ctrl+q")
+
+
+def graceful_quit(app, timeout=30):
     try:
         if not _SUBREAPER_ENABLED or timeout <= 0 or app.poll() is not None:
             raise RuntimeError()
-        deadline, started = time.monotonic() + timeout, _process(app.pid)[1]
-        worker = os.fork()
-        if worker == 0:
-            # Native Xlib errors/blocked server reads stay inside this bounded child.
-            try:
-                with open(os.devnull, "wb") as sink:
-                    os.dup2(sink.fileno(), 2)
-                signal.signal(signal.SIGALRM, signal.SIG_DFL)
-                signal.setitimer(signal.ITIMER_REAL, timeout)
-                _request_quit(app.pid, started)
-                os._exit(0)
-            except BaseException:
-                os._exit(1)
-        while True:
-            child, status = os.waitpid(worker, os.WNOHANG)
-            if child:
-                if not os.WIFEXITED(status) or os.WEXITSTATUS(status):
-                    raise RuntimeError()
-                break
-            if time.monotonic() >= deadline:
-                raise RuntimeError()
-            time.sleep(0.01)
+        deadline = time.monotonic() + timeout
+        _request_quit(app.pid, _process(app.pid)[1], deadline)
         remaining = deadline - time.monotonic()
         if remaining <= 0 or app.wait(timeout=remaining) != 0:
             raise RuntimeError()

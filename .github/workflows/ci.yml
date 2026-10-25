@@ -727,7 +727,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Zotero's system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
 
       - name: Run the real-Zotero test
         if: github.event_name != 'workflow_dispatch' || inputs.zotero_capture_version == ''

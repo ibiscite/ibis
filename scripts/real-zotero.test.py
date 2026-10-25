@@ -179,6 +179,35 @@ class CaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "clean committed generator"):
             self.capture.generator_revision(generator)
 
+    def test_quit_uses_verified_owned_focus_and_untargeted_xtest_keys(self):
+        commands = []
+        def xdo(_deadline, *args):
+            commands.append(args)
+            if args[0] == "search":
+                return "123"
+            if args[0] == "getwindowpid":
+                return "456"
+            if args[0] == "getwindowfocus":
+                return "123"
+            return ""
+        with patch.object(self.capture, "_xdo", side_effect=xdo):
+            with patch.object(self.capture, "_owned", return_value=True):
+                with patch.object(self.capture, "_process", return_value=(1, 789)):
+                    self.capture._request_quit(456, 789, 100)
+        self.assertEqual(commands[-1], ("key", "--clearmodifiers", "ctrl+q"))
+        self.assertIn(("windowfocus", "--sync", "123"), commands)
+
+    def test_wrong_owner_or_focus_never_receives_quit_keys(self):
+        for owned, focus in ((False, "123"), (True, "999")):
+            commands = []
+            def xdo(_deadline, *args):
+                commands.append(args)
+                return "456" if args[0] == "getwindowpid" else focus if args[0] == "getwindowfocus" else "123"
+            with patch.object(self.capture, "_xdo", side_effect=xdo):
+                with patch.object(self.capture, "_owned", return_value=owned):
+                    with self.assertRaises(RuntimeError):
+                        self.capture._request_quit(456, 789, 100)
+            self.assertFalse(any(args[0] == "key" for args in commands))
 
 
 if __name__ == "__main__":
