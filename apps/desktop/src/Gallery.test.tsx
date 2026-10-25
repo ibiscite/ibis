@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi, type TestContext } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App, type PickerApi } from "./App";
@@ -329,7 +329,7 @@ test("loading evidence waits for the delayed spinner instead of capturing a blan
   }
 });
 
-async function expectRenderedFixture(id: string): Promise<void> {
+async function expectRenderedFixture(id: string, { signal }: TestContext): Promise<void> {
   vi.useFakeTimers();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 16));
   vi.stubGlobal("cancelAnimationFrame", (frame: number) => window.clearTimeout(frame));
@@ -339,18 +339,27 @@ async function expectRenderedFixture(id: string): Promise<void> {
   const text = "Synthetic formatted preview pressure. ".repeat(50);
   const formatting = state.formatted ? vi.spyOn(await import("./format/formatted"), "formatCitation")
     .mockResolvedValue({ text, html: text, markup: [text], warnings: [] }) : null;
+  const initial = galleryProvider(state);
+  // Readiness needs the final preview, not a second shelf rebuild for every
+  // intermediate keyboard choice. Superseded requests deliberately stay pending.
+  const provider = (state.tray ?? 0) >= 20 && !state.formatted ? { ...initial, api: { ...initial.api,
+    citationText: ((...args) => args[0].length === state.tray ? initial.api.citationText!(...args) : new Promise(() => undefined)) as NonNullable<PickerApi["citationText"]>,
+  } } : initial;
   const acknowledge = vi.fn(async () => undefined);
   const container = document.createElement("div");
   document.body.append(container);
   let stop: () => void = () => undefined;
+  const abort = () => { const unmount = stop; stop = () => undefined; unmount(); container.remove(); };
+  signal.addEventListener("abort", abort, { once: true });
   try {
-    await act(async () => { stop = renderGalleryState(container, state, acknowledge); });
+    await act(async () => { stop = renderGalleryState(container, state, acknowledge, provider); });
     if ((state.tray ?? 0) >= 20) {
       // Include the initial results announcement, then commit every interaction
       // separately. Bulk clock advances can seed against an uncommitted tree.
-      for (let i = 0; i < state.tray! * 2 + 32 && acknowledge.mock.calls.length === 0; i++) {
+      for (let i = 0; i < state.tray! * 2 + 32 && !signal.aborted && acknowledge.mock.calls.length === 0; i++) {
         await act(() => vi.advanceTimersByTimeAsync(16));
       }
+      if (signal.aborted) return;
       // Every reference remains in the horizontally scrolling collection.
       expect(container.querySelectorAll('[aria-label="Selected references"] .chip-group-item')).toHaveLength(state.tray!);
       expect(container.querySelector("[data-active]")?.id).toBe(`result-${state.tray! - 1}`);
@@ -361,18 +370,19 @@ async function expectRenderedFixture(id: string): Promise<void> {
     }
     expect(acknowledge).toHaveBeenCalledExactlyOnceWith(id);
   } finally {
+    signal.removeEventListener("abort", abort);
     await act(async () => stop());
     container.remove();
     formatting?.mockRestore();
   }
 }
 
-test.each(galleryStates.filter((state) => (state.tray ?? 0) < 20).map((state) => state.id))(
+test.for(galleryStates.filter((state) => (state.tray ?? 0) < 20).map((state) => state.id))(
   "the rendered %s fixture acknowledges exactly that state", expectRenderedFixture,
 );
 // Up to 100 committed interactions and full 50-row DOM checks exceed the default
 // wall-clock limit on CI. Keep these bounded separately from app latency budgets.
-test.each(galleryStates.filter((state) => (state.tray ?? 0) >= 20).map((state) => state.id))(
+test.for(galleryStates.filter((state) => (state.tray ?? 0) >= 20).map((state) => state.id))(
   "the rendered %s fixture acknowledges exactly that state", { timeout: 15_000 }, expectRenderedFixture,
 );
 
