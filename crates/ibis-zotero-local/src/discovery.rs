@@ -211,11 +211,12 @@ fn absolute(path: &Path, platform: Platform) -> bool {
             let extended = text.starts_with("\\\\?\\");
             let text = text.strip_prefix("\\\\?\\").unwrap_or(text);
             let bytes = text.as_bytes();
-            if let Some(unc) = text
-                .strip_prefix("\\\\")
-                .or_else(|| text.strip_prefix("//"))
-                .or_else(|| text.strip_prefix("UNC\\"))
-            {
+            let unc = if extended {
+                text.strip_prefix("UNC\\")
+            } else {
+                text.strip_prefix("\\\\").or_else(|| text.strip_prefix("//"))
+            };
+            if let Some(unc) = unc {
                 let mut parts = unc.split(['\\', '/']);
                 let server = parts.next().unwrap_or_default();
                 return !matches!(server, "" | "." | "?") && parts.next().is_some_and(|share| !share.is_empty());

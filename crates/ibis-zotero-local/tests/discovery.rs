@@ -108,6 +108,7 @@ fn windows_manual_override_requires_a_full_drive_or_unc_path() {
         "\\rooted",
         "\\\\?\\Z:relative",
         "\\\\?\\UNC\\server",
+        "UNC\\server\\share",
     ] {
         let result = discover(&roots, Some(Path::new(text)));
         assert!(result.directories.is_empty());
