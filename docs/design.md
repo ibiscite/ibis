@@ -51,6 +51,7 @@ and the gallery contrast preview, in that order. Light and dark come from
 | Strokes | `--separator`, `--stroke-control`, `--stroke-field`, `--stroke-overlay`, `--line`, `--border-width`, `--contrast-border-width` | Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
 | Citation [D9] | `--citation`, `--citation-tile`, `--on-citation` | Scarlet; see **Colour roles**. |
 | Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
+| Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes and the gallery use Canvas with CanvasText fill and edge. |
 | Elevation [D11] | `--shadow-card`, `--shadow-raised`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
 | Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap`, `--row-spacing` | 4 px grid; 2 px only as an optical nudge or between rows. |
 | Shape [D2] | `--r-win`, `--r-min`, `--r-row`, `--r-tile`, `--r-menu`, `--menu-pad`, `--r-mi`, `--r-control`, `--r-key`, `--r-card`, `--r-dialog`, `--r-full` | See **Corners**. |
@@ -200,6 +201,12 @@ moves or resizes anything; pressed has no scale on Windows and GNOME. Disabled
 uses `--text-disabled`, `--fill-disabled` and `aria-disabled` (menu items stay
 focusable). Busy shows a 16 px spinner after 400 ms with `aria-busy`. Invalid
 fields show words and an icon, never a red ring.
+
+**Progress.** Known downloads show their percentage through completion. Unknown
+totals and checking/installing use a moving segment (`--progress-segment-width`,
+`--progress-travel`, `--progress-duration`) without `aria-valuenow`. Reduced
+motion replaces it with a static full-width dashed indicator, including in
+forced colours; it never resembles a partially completed download.
 
 **Selection and focus.**
 

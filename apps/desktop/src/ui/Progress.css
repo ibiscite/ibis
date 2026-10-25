@@ -1,4 +1,10 @@
 .update-progress { margin-block: var(--space-2); }
-.update-track { height: var(--space-1); background: var(--separator); border-radius: var(--r-control); overflow: hidden; margin-block-start: var(--space-1); }
-.update-track > div { height: 100%; background: var(--accent-text); }
-@media (forced-colors: active) { .update-track { border: 1px solid CanvasText; } .update-track > div { background: Highlight; } }
+.update-track { box-sizing: content-box; height: var(--space-1); background: var(--progress-track); border: var(--progress-border-width) solid var(--progress-border); border-radius: var(--r-control); overflow: hidden; margin-block-start: var(--space-1); }
+.update-track > div { height: 100%; background: var(--progress-fill); }
+.update-progress[data-indeterminate] .update-track > div { width: var(--progress-segment-width); animation: progress-slide var(--progress-duration) linear infinite alternate; }
+@keyframes progress-slide { to { transform: translateX(var(--progress-travel)); } }
+@media (prefers-reduced-motion: reduce) {
+  .update-progress[data-indeterminate] .update-track > div { animation: none; width: 100%; background: none; border-block-start: var(--space-1) dashed var(--progress-fill); }
+}
+/* Preserve the explicit system pair, including the dashed reduced-motion cue. */
+@media (forced-colors: active) { .update-track { forced-color-adjust: none; } }

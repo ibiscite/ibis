@@ -13,7 +13,9 @@ export function IndeterminateProgress({ label, className, children }: {
 
 /** Known percentages and honest indeterminate phases share the same wrapper. */
 export function Progress({ label, value }: { label: string; value?: number }) {
-  return <ProgressBar aria-label={label} value={value} isIndeterminate={value === undefined} className="update-progress">
-    <span>{label}{value !== undefined && ` ${Math.floor(value)}%`}</span><div className="update-track"><div style={{ width: `${value ?? 25}%` }} /></div>
+  const indeterminate = value === undefined;
+  return <ProgressBar aria-label={label} value={value} isIndeterminate={indeterminate} data-indeterminate={indeterminate || undefined} className="update-progress">
+    <span>{label}{!indeterminate && ` ${Math.floor(value)}%`}</span>
+    <div className="update-track" aria-hidden="true"><div style={indeterminate ? undefined : { width: `${value}%` }} /></div>
   </ProgressBar>;
 }
