@@ -2963,6 +2963,42 @@ test("More has the tray's update controls, in builds that have updates", async (
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
+test("slow update saves keep quick clicks and reopening More in order", async () => {
+  let saved = false;
+  const asked: boolean[] = [];
+  const waiting: (() => void)[] = [];
+  const finish = async () => {
+    await act(async () => { waiting.shift()?.(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  };
+  backend({
+    update_checks: () => saved,
+    set_update_checks: ({ enabled }) => new Promise((resolve) => {
+      asked.push(Boolean(enabled));
+      waiting.push(() => { saved = Boolean(enabled); resolve(saved); });
+    }),
+  });
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const box = () => screen.getByRole("menuitemcheckbox", { name: "Check for updates automatically" });
+  await screen.findByRole("menuitemcheckbox", { name: "Check for updates automatically" });
+  fireEvent.click(box());
+  expect(box().getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(box());
+  expect(box().getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(box());
+  // Reopened while the saves are still waiting: the read waits behind them.
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  // One save at a time, each flipping the click before it.
+  for (const step of [[true], [true, false], [true, false, true]]) {
+    await waitFor(() => expect(asked).toEqual(step));
+    await finish();
+  }
+  expect(saved).toBe(true);
+  await waitFor(() => expect(box().getAttribute("aria-checked")).toBe("true"));
+});
+
 test("builds without updates, and pickers without the commands, offer no update controls", async () => {
   backend();
   render(<App />);

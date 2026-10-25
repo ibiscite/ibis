@@ -14,14 +14,21 @@ export function useUpdateChecks({ updateChecks, setUpdateChecks, perform, menuOp
   menuOpen: boolean;
 }) {
   const [automatic, setAutomatic] = useState<boolean | null>(null);
-  // Only the newest answer is shown, so a slow read cannot undo a click.
+  // What the last click asked for, so quick clicks each flip the one before.
+  const wanted = useRef<boolean | null>(null);
+  const show = (on: boolean | null) => { wanted.current = on; setAutomatic(on); };
+  // Calls run one after another, so a read waits for the saves before it, and
+  // only the newest one's answer is shown.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   const request = useRef(0);
-  const ask = (operation: Operation, call: () => Promise<boolean | null>) => {
+  const ask = (operation: Operation, call: () => Promise<boolean | null>, failed?: () => void) => {
     const id = ++request.current;
-    void perform(operation, async () => {
-      const on = await call();
-      if (id === request.current) setAutomatic(on);
-    });
+    const run = queue.current.catch(() => undefined).then(call).then(
+      (on) => { if (id === request.current) show(on); },
+      (error: unknown) => { if (id === request.current) failed?.(); throw error; },
+    );
+    queue.current = run;
+    void perform(operation, () => run);
   };
   const read = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reads at start and each time More opens; ask is rebuilt every render.
@@ -31,7 +38,11 @@ export function useUpdateChecks({ updateChecks, setUpdateChecks, perform, menuOp
     ask("updateChecks", updateChecks);
   }, [menuOpen]);
   const toggle = () => {
-    if (setUpdateChecks && automatic !== null) ask("updateChecksChange", () => setUpdateChecks(!automatic));
+    const before = wanted.current;
+    if (!setUpdateChecks || before === null) return;
+    // Shown at once; the saved answer replaces it.
+    show(!before);
+    ask("updateChecksChange", () => setUpdateChecks(!before), () => show(before));
   };
   return { automatic: automatic ?? false, toggle, offered: Boolean(setUpdateChecks) && automatic !== null };
 }

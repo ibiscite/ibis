@@ -21,9 +21,19 @@ pub(crate) async fn set_update_checks(app: AppHandle, enabled: bool) -> Option<b
     if !updater::available(&app) {
         return None;
     }
-    // Saving writes the settings file; keep it off the async workers.
+    // The tray saves on the main thread; saving there too keeps the two in
+    // order, so a later choice is never overwritten by an earlier one.
+    let (answer, answered) = std::sync::mpsc::channel();
     let handle = app.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || updater::save_automatic(&handle, enabled)).await;
+    let queued = app.run_on_main_thread(move || {
+        updater::save_automatic(&handle, enabled);
+        let _ = answer.send(updater::automatic(&handle));
+    });
+    if queued.is_ok()
+        && let Ok(Ok(on)) = tauri::async_runtime::spawn_blocking(move || answered.recv()).await
+    {
+        return Some(on);
+    }
     Some(updater::automatic(&app))
 }
 
