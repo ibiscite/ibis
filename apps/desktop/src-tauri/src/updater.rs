@@ -5,8 +5,8 @@
 //! and installed only after the person agrees, and only if its signature
 //! matches the update key built into the app.
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::menu::CheckMenuItem;
@@ -26,6 +26,8 @@ const FIRST_CHECK: Duration = Duration::from_secs(30);
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 // Bound the small manifest request without shortening package downloads.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// What the first-launch question and the menu item explain.
 pub(crate) const QUESTION: &str = "Ibis can check GitHub for a newer version a few times a day. \
@@ -36,12 +38,26 @@ Nothing from your library is sent, and updates install only when you agree.";
 pub(crate) struct Updates {
     automatic: AtomicBool,
     /// One check or installation at a time.
-    busy: AtomicBool,
+    busy: Arc<AtomicBool>,
     /// A version the person chose not to install; automatic checks don't offer it again.
     declined: Mutex<Option<String>>,
     progress: Mutex<progress::Progress>,
     #[cfg(any(target_os = "macos", test))]
     installation_failure: InstallationFailure,
+}
+
+struct BusyGuard(Arc<AtomicBool>);
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Updates {
+    fn begin(&self) -> Option<BusyGuard> {
+        (!self.busy.swap(true, Ordering::SeqCst)).then(|| BusyGuard(Arc::clone(&self.busy)))
+    }
 }
 
 /// One fixed recovery notice, retained until positively dismissed. No timer:
@@ -162,15 +178,17 @@ pub(crate) fn user_agent<R: tauri::Runtime>(app: &AppHandle<R>) -> String {
 }
 
 fn updater<R: tauri::Runtime>(app: &AppHandle<R>, timeout: Duration) -> tauri_plugin_updater::Result<Updater> {
-    updater_builder(app)?.timeout(timeout).build()
+    updater_builder(app, DOWNLOAD_STALL_TIMEOUT)?.timeout(timeout).build()
 }
 
 fn updater_builder<R: tauri::Runtime>(
     app: &AppHandle<R>,
+    stall_timeout: Duration,
 ) -> tauri_plugin_updater::Result<tauri_plugin_updater::UpdaterBuilder> {
     Ok(app
         .updater_builder()
         .header("User-Agent", user_agent(app))?
+        .configure_client(move |client| client.read_timeout(stall_timeout))
         .version_comparator(|current, release| {
             // The shared signing key authenticates versions, not app identity.
             // Only plain releases or nightly prereleases in the same channel
@@ -182,9 +200,17 @@ fn updater_builder<R: tauri::Runtime>(
         }))
 }
 
+async fn find_update(client: &Updater, download_timeout: Duration) -> tauri_plugin_updater::Result<Option<Update>> {
+    Ok(client.check().await?.map(|mut update| {
+        // The plugin deliberately does not carry the manifest timeout over.
+        update.timeout = Some(download_timeout);
+        update
+    }))
+}
+
 async fn check(app: &AppHandle, asked: bool) {
     let updates = app.state::<Updates>();
-    if updates.busy.swap(true, Ordering::SeqCst) {
+    let Some(busy) = updates.begin() else {
         if asked {
             tell(
                 app,
@@ -192,9 +218,11 @@ async fn check(app: &AppHandle, asked: bool) {
             );
         }
         return;
-    }
+    };
     let found = match updater(app, CHECK_TIMEOUT) {
-        Ok(updater) => updater.check().await.map_err(|e| failure_kind(&e)),
+        Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
+            .await
+            .map_err(|e| failure_kind(&e)),
         Err(e) => Err(failure_kind(&e)),
     };
     if !asked {
@@ -204,9 +232,7 @@ async fn check(app: &AppHandle, asked: bool) {
         Ok(Some(update)) => {
             let declined = updates.declined.lock().ok().and_then(|d| d.clone());
             if asked || declined.as_deref() != Some(update.version.as_str()) {
-                offer(app, update);
-                // `offer` clears `busy` once the person has answered.
-                return;
+                offer(app, update, busy);
             }
         }
         Ok(None) if asked => tell(
@@ -220,7 +246,6 @@ async fn check(app: &AppHandle, asked: bool) {
         ),
         _ => {}
     }
-    updates.busy.store(false, Ordering::SeqCst);
 }
 
 /// Why a check failed, from a fixed list: the error text itself can carry
@@ -246,20 +271,19 @@ fn automatic_outcome(found: &Result<Option<Update>, &'static str>) -> String {
     }
 }
 
-fn offer(app: &AppHandle, update: Update) {
+fn offer(app: &AppHandle, update: Update, busy: BusyGuard) {
     let handle = app.clone();
     present_offer(
         app,
         offer_text(&app.package_info().version.to_string(), &update),
         move |install| {
             if install {
-                tauri::async_runtime::spawn(async move { install_update(&handle, update).await });
+                tauri::async_runtime::spawn(async move { install_update(&handle, update, busy).await });
             } else {
                 let updates = handle.state::<Updates>();
                 if let Ok(mut declined) = updates.declined.lock() {
                     *declined = Some(update.version.clone());
                 }
-                updates.busy.store(false, Ordering::SeqCst);
             }
         },
     );
@@ -279,11 +303,9 @@ fn present_offer(app: &AppHandle, text: String, answer: impl FnOnce(bool) + Send
     #[cfg(target_os = "macos")]
     let (dialog, owner) = {
         let Some(owner) = app.state::<crate::picker::ChooserOpen>().begin() else {
-            app.state::<Updates>().busy.store(false, Ordering::SeqCst);
             return;
         };
         let Some(parent) = offer_parent(app) else {
-            app.state::<Updates>().busy.store(false, Ordering::SeqCst);
             report(Err::<(), ()>(()), NativeIssue::Window);
             return;
         };
@@ -307,9 +329,6 @@ fn present_offer(app: &AppHandle, text: String, answer: impl FnOnce(bool) + Send
             drop(owner);
             answer(accepted);
         });
-        if result.is_err() {
-            handle.state::<Updates>().busy.store(false, Ordering::SeqCst);
-        }
         report(result, NativeIssue::Window);
     });
 }
@@ -353,11 +372,10 @@ fn shorten(text: &str, limit: usize) -> String {
 
 const INSTALL_FAILURE_MESSAGE: &str = "The update could not be installed. Try again later. If Ibis no longer opens, download and reinstall the newest version from GitHub.";
 
-async fn install_update(app: &AppHandle, update: Update) {
+async fn install_update(app: &AppHandle, update: Update, _busy: BusyGuard) {
     let attempt = app.state::<Updates>().progress.lock().ok().and_then(|mut p| p.begin());
     let Some(attempt) = attempt else {
         publish_progress(app);
-        app.state::<Updates>().busy.store(false, Ordering::SeqCst);
         installation_failed(app);
         return;
     };
@@ -389,7 +407,6 @@ async fn install_update(app: &AppHandle, update: Update) {
         Err(_) => {
             change_progress(app, attempt, None, "failed");
             publish_progress(app);
-            app.state::<Updates>().busy.store(false, Ordering::SeqCst);
             installation_failed(app);
         }
     }
@@ -497,6 +514,34 @@ fn tell(app: &AppHandle, text: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn busy_guard_releases_dropped_callbacks_unwinding_and_cancelled_futures() {
+        let updates = Updates::default();
+        let busy = updates.begin().unwrap_or_else(|| panic!("first check"));
+        assert!(updates.begin().is_none(), "concurrent checks must be refused");
+        let callback = move || drop(busy);
+        drop(callback);
+        assert!(!updates.busy.load(Ordering::SeqCst));
+
+        let unwound = std::panic::catch_unwind(|| {
+            let _busy = updates.begin().unwrap_or_else(|| panic!("later check"));
+            panic!("synthetic operation failure");
+        });
+        assert!(unwound.is_err());
+        assert!(!updates.busy.load(Ordering::SeqCst));
+
+        let busy = updates.begin().unwrap_or_else(|| panic!("later install"));
+        let mut operation = Box::pin(async move {
+            let _busy = busy;
+            std::future::pending::<()>().await;
+        });
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(std::future::Future::poll(operation.as_mut(), &mut context).is_pending());
+        assert!(updates.begin().is_none());
+        drop(operation);
+        assert!(updates.begin().is_some(), "cancellation must permit retry");
+    }
 
     #[test]
     fn installation_recovery_waits_for_an_exclusive_owner() {
@@ -714,6 +759,139 @@ mod tests {
         }
     }
 
+    #[test]
+    fn stalled_update_downloads_time_out_and_allow_a_later_check() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::time::Instant;
+        use tauri_plugin_updater::Error;
+
+        for mode in ["headers", "body", "trickle"] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|e| panic!("{e}"));
+            let base = format!("http://{}", listener.local_addr().unwrap_or_else(|e| panic!("{e}")));
+            let manifest = json!({
+                "version": "9.0.0", "url": format!("{base}/package.bin"), "signature": "synthetic"
+            })
+            .to_string();
+            listener.set_nonblocking(true).unwrap_or_else(|e| panic!("{e}"));
+            let (release, held) = std::sync::mpsc::channel();
+            let server = std::thread::spawn(move || {
+                for request in 0..3 {
+                    let deadline = Instant::now() + Duration::from_secs(3);
+                    let (mut stream, _) = loop {
+                        match listener.accept() {
+                            Ok(connection) => break connection,
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                            Err(e) => panic!("accept: {e}"),
+                        }
+                    };
+                    stream.set_nonblocking(false).unwrap_or_else(|e| panic!("{e}"));
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(2)))
+                        .unwrap_or_else(|e| panic!("{e}"));
+                    stream
+                        .set_write_timeout(Some(Duration::from_secs(2)))
+                        .unwrap_or_else(|e| panic!("{e}"));
+                    let mut reader = BufReader::new(&stream);
+                    let mut line = String::new();
+                    while reader.read_line(&mut line).unwrap_or_else(|e| panic!("{e}")) > 2 {
+                        line.clear();
+                    }
+                    match request {
+                        0 => write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{manifest}",
+                            manifest.len()
+                        )
+                        .unwrap_or_else(|e| panic!("{e}")),
+                        1 => {
+                            if mode != "headers" {
+                                stream
+                                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\nx")
+                                    .unwrap_or_else(|e| panic!("{e}"));
+                            }
+                            // Hold the response open; a finite fallback bounds pre-fix failures.
+                            let deadline = Instant::now() + Duration::from_secs(2);
+                            while Instant::now() < deadline {
+                                if held.recv_timeout(Duration::from_millis(40)).is_ok() {
+                                    break;
+                                }
+                                if mode == "trickle" && stream.write_all(b"x").is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                        _ => stream
+                            .write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+                            .unwrap_or_else(|e| panic!("{e}")),
+                    }
+                }
+            });
+            let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+            context.config_mut().plugins.0.insert(
+                "updater".into(),
+                json!({ "pubkey": "synthetic", "endpoints": [format!("{base}/latest.json")], "dangerousInsecureTransportProtocol": true }),
+            );
+            let app = tauri::test::mock_builder()
+                .plugin(tauri_plugin_updater::Builder::new().build())
+                .build(context)
+                .unwrap_or_else(|e| panic!("{e}"));
+            let client = updater_builder(app.handle(), Duration::from_millis(200))
+                .unwrap_or_else(|e| panic!("{e}"))
+                .timeout(Duration::from_millis(300))
+                .no_proxy()
+                .build()
+                .unwrap_or_else(|e| panic!("{e}"));
+            let download_timeout = if mode == "trickle" {
+                Duration::from_millis(300)
+            } else {
+                Duration::from_secs(2)
+            };
+            let update = tauri::async_runtime::block_on(find_update(&client, download_timeout))
+                .unwrap_or_else(|e| panic!("{e}"))
+                .unwrap_or_else(|| panic!("update offer"));
+            let finished = AtomicBool::new(false);
+            let chunks = std::sync::atomic::AtomicUsize::new(0);
+            let updates = Updates::default();
+            let busy = updates.begin().unwrap_or_else(|| panic!("installation"));
+            let started = Instant::now();
+            let stalled = tauri::async_runtime::block_on(async {
+                let _busy = busy;
+                update
+                    .download_and_install(
+                        |_, _| {
+                            chunks.fetch_add(1, Ordering::SeqCst);
+                        },
+                        || finished.store(true, Ordering::SeqCst),
+                    )
+                    .await
+            });
+            let elapsed = started.elapsed();
+            let _ = release.send(());
+            let _retry = updates.begin().unwrap_or_else(|| panic!("timeout must release busy"));
+            let recovered = tauri::async_runtime::block_on(client.check());
+            server.join().unwrap_or_else(|_| panic!("server thread panicked"));
+            assert!(
+                matches!(&stalled, Err(Error::Reqwest(e)) if e.is_timeout()),
+                "{mode}: expected download timeout"
+            );
+            assert!(elapsed < Duration::from_secs(1), "{mode}: exceeded download budget");
+            assert!(
+                !finished.load(Ordering::SeqCst),
+                "must not verify or install partial bytes"
+            );
+            if mode == "trickle" {
+                assert!(chunks.load(Ordering::SeqCst) > 1, "trickle must keep making progress");
+                assert!(
+                    elapsed >= Duration::from_millis(250),
+                    "progress must reset the stall timeout"
+                );
+            }
+            assert!(matches!(recovered, Ok(None)), "later check must complete");
+        }
+    }
+
     /// A real check and download against a local server: the manifest shape the
     /// release workflow publishes, a matching signature, and refusals.
     #[test]
@@ -844,7 +1022,7 @@ mod tests {
         let check = |pubkey: &str, feed: &str, current: &str, strict: bool| {
             let app = app_with_key(pubkey, current, strict);
             let url = format!("{base}/{feed}").parse().unwrap_or_else(|e| panic!("{e}"));
-            let updater = updater_builder(app.handle())
+            let updater = updater_builder(app.handle(), DOWNLOAD_STALL_TIMEOUT)
                 .unwrap_or_else(|e| panic!("{e}"))
                 .endpoints(vec![url])
                 .unwrap_or_else(|e| panic!("{e}"))
@@ -856,14 +1034,15 @@ mod tests {
                 .no_proxy()
                 .build()
                 .unwrap_or_else(|e| panic!("{e}"));
-            tauri::async_runtime::block_on(updater.check()).unwrap_or_else(|e| panic!("{e}"))
+            tauri::async_runtime::block_on(find_update(&updater, DOWNLOAD_TIMEOUT)).unwrap_or_else(|e| panic!("{e}"))
         };
         let fetch = |pubkey: &str, feed: &str| {
             let update = check(pubkey, feed, "0.1.1-nightly.20261019223000", true)
                 .unwrap_or_else(|| panic!("the newer synthetic version was not offered"));
             assert_eq!(
-                update.timeout, None,
-                "manifest budget must not limit the package download"
+                update.timeout,
+                Some(Duration::from_secs(15 * 60)),
+                "package downloads need their own overall deadline"
             );
             assert!(offer_text("0.1.0", &update).contains("Synthetic notes."));
             if cfg!(target_os = "windows") {
