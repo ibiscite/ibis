@@ -39,6 +39,7 @@ export function LibrarySetup({ api, perform, autoFocus = false }: {
   const [sources, setSources] = useState<Sources | null | undefined>(null);
   const [search, setSearch] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: perform only records the outcome; a new one must never start another search.
   useEffect(() => {
     if (!findSources || search === 0) { setSources(null); return; }
     let current = true;

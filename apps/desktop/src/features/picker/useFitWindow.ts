@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 export type FitPicker = (height: number | null, animate: boolean) => Promise<unknown>;
 
@@ -26,9 +26,9 @@ export function useFitWindow(main: RefObject<HTMLElement | null>, compact: boole
   };
   const resized = useRef<ResizeObserver | null>(null);
   // Watch the parts this render shows; observing a part twice is harmless.
-  const watch = () => {
+  const watch = useCallback(() => {
     for (const part of main.current?.querySelectorAll(":scope > *, :scope > .picker-content > *") ?? []) resized.current?.observe(part);
-  };
+  }, [main]);
   useLayoutEffect(() => {
     measure.current();
     watch();
@@ -48,5 +48,5 @@ export function useFitWindow(main: RefObject<HTMLElement | null>, compact: boole
       layers.disconnect();
       void shown?.then((stop) => stop()).catch(() => undefined);
     };
-  }, [onShown]);
+  }, [onShown, watch]);
 }

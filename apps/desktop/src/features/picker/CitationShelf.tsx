@@ -58,6 +58,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
   const chips = useRef<HTMLUListElement>(null);
   const more = useRef<HTMLLIElement>(null);
   const sizes = useRef<HTMLLIElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each of these changes which chips render, so the fit is measured again.
   useLayoutEffect(() => {
     const list = chips.current;
     if (!list) return;

@@ -41,7 +41,7 @@ cargo insta review                             # review changed snapshots
 
 `node scripts/check.mjs` runs the default workspace and every desktop crate test. CI also tests the core and command line with the Rust 1.90 minimum and the core in release mode. Pandoc comparisons are skipped when Pandoc is missing; `IBIS_REQUIRE_PANDOC=1` makes them required. Review changed snapshots like code.
 
-Script tests (`*.test.mjs`, `*.test.cjs`, `test_*.py`, `*.test.py`) run with `node scripts/check.mjs --script-tests` once UI dependencies are installed; native CI uses `--platform-script-tests`, which skips only the UI import-boundary suite. `node scripts/style-lint.mjs` fails on a raw colour or px size in desktop CSS outside `tokens.css` (existing ones are allowlisted for #1033).
+Script tests (`*.test.mjs`, `*.test.cjs`, `test_*.py`, `*.test.py`) run with `node scripts/check.mjs --script-tests` once UI dependencies are installed; native CI uses `--platform-script-tests`, which skips only the UI import-boundary suite. `node scripts/style-lint.mjs` fails on a raw colour or px size in desktop CSS outside `tokens.css` (existing ones are allowlisted for #1033). `pnpm -C apps/desktop lint` (in the full check and Web CI) runs Biome with only the React hook rules: complete effect dependencies and hooks at the top level; a deliberate trigger-only dependency list carries a `biome-ignore` comment that says why.
 
 ## Focused harnesses
 
