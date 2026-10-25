@@ -488,19 +488,21 @@ function probeColor(name: string): HTMLElement {
   return probe;
 }
 
-test("the search has a quiet clear glyph, and contrast restores its ring", () => {
+test("close and clear buttons share one drawn glyph, and contrast restores the search ring", () => {
   expect(tokens).toMatch(/--focus-ring-width:\s*2px/);
   const clear = rules(styles, "#search::-webkit-search-cancel-button");
   expect(clear).toMatch(/appearance:\s*none/);
   expect(clear).toMatch(/display:\s*none/);
-  const glyph = rules(styles, ".search-clear::before");
+  const glyph = rules(buttons, '.ui-button[data-glyph="close"]::before');
   expect(glyph).toMatch(/width:\s*var\(--icon-size\)/);
   expect(glyph).toMatch(/background:\s*currentColor/);
   expect(glyph).toMatch(/mask:\s*var\(--clear-glyph\)/);
   expect(tokens).toMatch(/--control-min-size:\s*2rem/);
   expect(tokens).toMatch(/--icon-size:\s*1rem/);
-  const forced = styles.slice(styles.indexOf("@media (forced-colors: active)"));
-  expect(rules(forced, ".search-clear::before")).toMatch(/background:\s*ButtonText/);
+  const forced = buttons.slice(buttons.indexOf("@media (forced-colors: active)"));
+  expect(rules(forced, '.ui-button[data-glyph="close"]::before')).toMatch(/background:\s*ButtonText/);
+  // No screen draws its own copy of the glyph.
+  expect(styles).not.toMatch(/\.search-clear::before/);
   // The gallery's contrast preview restores the ring as prefers-contrast does.
   expect(rules(gallery, ':root[data-gallery-theme="contrast"] #search:focus-visible'))
     .toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);

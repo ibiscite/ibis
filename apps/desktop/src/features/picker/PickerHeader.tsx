@@ -55,7 +55,7 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onSearchKeyDown}
         />
-        {query !== "" && <Button variant="icon" className="search-clear" aria-label={pickerText.clearSearch}
+        {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}
           onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
       </div>
       {showFormat && <FormatMenu format={format} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}

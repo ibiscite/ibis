@@ -35,7 +35,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
       >
         <div className="keys-heading">
           <h2 id="keys-title">{keyText.title}</h2>
-          <Button variant="quiet" onPress={onClose}>{keyText.close}</Button>
+          <Button variant="icon" glyph="close" aria-label={keyText.close} title={keyText.close} aria-keyshortcuts="Escape" onPress={onClose} />
         </div>
         <div className="keys-scroll" tabIndex={0} role="group" aria-labelledby="keys-title">
           <table>

@@ -27,6 +27,11 @@
 /* Presentational controls inherit their option's paired foreground. Darkening
    overlays preserve white checks on citation/selection fills. */
 .ui-button[data-pointer-only] { --control-icon-color: currentColor; --control-icon-hover-color: currentColor; --fill-subtle-hover: var(--fill-on-color-hover); --fill-subtle-pressed: var(--fill-on-color-pressed); }
+/* The one close glyph (×) for close and clear buttons. */
+.ui-button[data-glyph="close"]::before { content: ""; width: var(--icon-size); height: var(--icon-size); background: currentColor; -webkit-mask: var(--clear-glyph) center / contain no-repeat; mask: var(--clear-glyph) center / contain no-repeat; }
+@media (forced-colors: active) {
+  .ui-button[data-glyph="close"]::before { forced-color-adjust: none; background: ButtonText; }
+}
 @media (pointer: coarse) {
   .ui-button[data-variant] { min-width: 2.75rem; min-height: 2.75rem; }
   .ui-button[data-size="small"]::after { inset: 0; }
