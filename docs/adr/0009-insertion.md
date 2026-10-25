@@ -1,6 +1,6 @@
 # 0009. Insertion never fails silently; destination behaviour is data
 
-Status: accepted (2026-10-17)
+Status: accepted (2026-10-17); not scheduled: insertion waits until after 1.0 ([ROADMAP.md](../../ROADMAP.md), #326)
 
 Edge cases are catalogued in `docs/compatibility.md`.
 

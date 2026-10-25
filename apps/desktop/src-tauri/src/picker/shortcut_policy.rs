@@ -31,7 +31,7 @@ pub(super) fn defaults(platform: Platform) -> &'static [&'static str] {
     }
 }
 
-// settings.md §2.3; conservative suggestion exclusions, never custom settings.
+// Settings spec conflict rules (#776); conservative suggestion exclusions, never custom settings.
 #[rustfmt::skip]
 fn reserved(platform: Platform) -> &'static [&'static str] {
     match platform {
