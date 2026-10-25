@@ -402,6 +402,14 @@ only together with the code that handles it.
 the filled glyph on the pressed fill, never the accent; More says "Keep window
 open" / "Stop keeping open". Escape never unpins.
 
+**Typed locators** (#354/#24). A recognized trailing locator is shown beside
+search with **Search as typed** to undo interpretation. Adding a reference captures
+its locator; later searches keep prepared references unchanged. **Apply locator**
+updates only the highlighted, already added reference. A shared locator token
+names its type and value and offers an accessible remove action that keeps the
+reference. Both key and formatted previews/copies use these per-reference values.
+The nine existing types are supported; timestamp interpretation remains planned.
+
 **Focus order.** Tab: search box (Tab picks the first tag or author suggestion
 while they are open), header pop-ups, the pin, the browsing tabs while visible
 (one stop in a `tablist`; ← → choose, Home and End), the footer actions, More,
