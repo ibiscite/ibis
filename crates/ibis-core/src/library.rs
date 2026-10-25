@@ -82,6 +82,20 @@ mod tests {
     }
 
     #[test]
+    fn citation_selections_keep_locators_with_record_identity_and_order() {
+        use crate::cite::{KeyFormat, Locator, LocatorLabel, render};
+        let references = refs();
+        let selected = [
+            CitationSelection { id: references[2].id.clone(), locator: Some(Locator { label: LocatorLabel::Chapter, value: "3".into() }) },
+            CitationSelection { id: references[0].id.clone(), locator: Some(Locator { label: LocatorLabel::Page, value: "12".into() }) },
+        ];
+        let items = citation_items(&references, &selected).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(render(KeyFormat::Pandoc, &items).unwrap_or_else(|e| panic!("{e}")).text, "[@same, chap. 3; @same, p. 12]");
+        assert_eq!(selected[0].id.source, "b.bib");
+        assert_eq!(selected[1].id.source, "a.bib");
+    }
+
+    #[test]
     fn ambiguous_keys_are_reported_with_their_sources() {
         let refs = refs();
         assert_eq!(
