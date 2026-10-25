@@ -16,9 +16,9 @@ pub(super) const DATE_PARTS: [&str; 4] = ["date", "year", "month", "day"];
 /// entry's own year, month or day (own month `mar` with an inherited
 /// `2024-02-05` gives 2024-03-05). Ranges and approximate dates are kept
 /// whole. With `check` (the entry being read, not a parent it inherits
-/// from), a day that is not a day of the month, or has no month, is named in
-/// `problems` and left out; a parent's day is kept so the entry's own year
-/// or month decides.
+/// from), a day that is not a day of the month, or has no month or year, is
+/// named in `problems` and left out. A parent keeps its day as written, in
+/// its own field, so the inheriting entry's year and month decide.
 pub(super) fn merge_dates(
     sources: &[Vec<(String, String)>],
     check: bool,
@@ -42,23 +42,29 @@ pub(super) fn merge_dates(
         return compose(year, month, day, check, problems);
     }
     let month = inherited("month");
-    match (month.as_deref().map(month_number), inherited("year")) {
-        // A month that is not a number or abbreviation ("Spring") stays as written.
-        (Some(None), year) => {
-            if let Some(day) = inherited("day").filter(|_| check) {
-                problems.push(format!("`day` `{day}` has no month number; it is ignored"));
-            }
-            year.map(|y| ("year".to_string(), y))
+    let (year, day) = (inherited("year"), inherited("day"));
+    match (month.as_deref().map(month_number), year) {
+        (numeric, Some(year)) if numeric != Some(None) => compose(year, numeric.flatten(), day, check, problems),
+        // A month that is not a number or name ("Spring") stays as written.
+        (numeric, year) => {
+            let month = if numeric == Some(None) {
+                month
+            } else {
+                numeric.flatten()
+            };
+            let day = match day {
+                Some(day) if check => {
+                    let missing = if year.is_none() { "year" } else { "month number" };
+                    problems.push(format!("`day` `{day}` has no {missing}; it is ignored"));
+                    None
+                }
+                day => day,
+            };
+            [("year", year), ("month", month), ("day", day)]
                 .into_iter()
-                .chain(month.map(|m| ("month".to_string(), m)))
+                .filter_map(|(name, value)| Some((name.to_string(), value?)))
                 .collect()
         }
-        (numeric, Some(year)) => compose(year, numeric.flatten(), inherited("day"), check, problems),
-        (numeric, None) => numeric
-            .flatten()
-            .map(|m| ("month".to_string(), m))
-            .into_iter()
-            .collect(),
     }
 }
 
@@ -71,8 +77,13 @@ fn compose(
     problems: &mut Vec<String>,
 ) -> Vec<(String, String)> {
     if !check {
-        let day = day.and_then(|d| d.parse::<u8>().ok().filter(|d| (1..=31).contains(d)));
-        return fields(year, month, day);
+        if let Some(day) = day {
+            let mut out = vec![("year".to_string(), year)];
+            out.extend(month.map(|m| ("month".to_string(), m)));
+            out.push(("day".to_string(), day));
+            return out;
+        }
+        return fields(year, month, None);
     }
     let day = day.and_then(|text| {
         let Some(m) = month.as_deref().and_then(|m| m.parse::<u8>().ok()) else {
@@ -80,7 +91,8 @@ fn compose(
             return None;
         };
         let last = days_in_month(astronomical_year(&year), m);
-        let day = text.parse::<u8>().ok().filter(|d| (1..=last).contains(d));
+        let digits = text.trim_matches(|c: char| matches!(c, '{' | '}') || c.is_whitespace());
+        let day = digits.parse::<u8>().ok().filter(|d| (1..=last).contains(d));
         if day.is_none() {
             problems.push(format!("`day` `{text}` is not a day of that month; it is ignored"));
         }
@@ -111,6 +123,12 @@ fn fields(year: String, month: Option<String>, day: Option<u8>) -> Vec<(String, 
 /// -44), or a leap year when it cannot be read, so that an unreadable year
 /// never loses a 29 February.
 fn astronomical_year(year: &str) -> i32 {
+    let year: String = year.chars().filter(|c| !matches!(c, '{' | '}')).collect();
+    let year = year.trim();
+    // The parser panics on a sign followed by a space; conversion reads no date from it.
+    if year.starts_with(['+', '-']) && year[1..].starts_with(char::is_whitespace) {
+        return 2000;
+    }
     let chunks = [Spanned::detached(Chunk::Normal(year.to_string()))];
     match Date::parse_three_fields(&chunks, None, None) {
         Ok(Date {
@@ -144,10 +162,14 @@ fn simple_date(text: &str) -> Option<(String, Option<String>, Option<String>)> {
     Some((year, month.flatten(), day.flatten()))
 }
 
-/// Two-digit month for `3`, `03` or `mar`; `None` for anything else.
+/// Two-digit month for `3`, `03`, `mar` or `March`; `None` for anything else.
 fn month_number(text: &str) -> Option<String> {
-    let lower = text.trim().to_ascii_lowercase();
-    if let Some(i) = MONTHS.iter().position(|(abbr, _)| *abbr == lower) {
+    let lower: String = text.chars().filter(|c| !matches!(c, '{' | '}')).collect();
+    let lower = lower.trim().to_ascii_lowercase();
+    if let Some(i) = MONTHS
+        .iter()
+        .position(|(abbr, full)| *abbr == lower || full.eq_ignore_ascii_case(&lower))
+    {
         return Some(format!("{:02}", i + 1));
     }
     lower

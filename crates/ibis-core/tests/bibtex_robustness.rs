@@ -136,6 +136,13 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
          @article{era, title={T}, year={2024 BC}, month={2}, day={29}}\n\
          @xdata{plain, year={2023}, month={2}, day={29}}\n\
          @article{override, title={T}, year={2024}, xdata={plain}}\n\
+         @article{spaced, title={T}, year={- 2024}, month={2}, day={29}}\n\
+         @article{braced, title={T}, year={{2023}}, month={2}, day={29}}\n\
+         @article{named, title={T}, year={2024}, month={February}, day={5}}\n\
+         @xdata{wrong, year={2024}, month={3}, day={32}}\n\
+         @article{inherits, title={T}, xdata={wrong}}\n\
+         @xdata{dayonly, day={29}}\n\
+         @article{supplies, title={T}, year={2024}, month={2}, xdata={dayonly}}\n\
          @article{good, title={T}, year={2024}, month=mar, day={5}}",
     );
     let date = |key: &str| {
@@ -153,6 +160,13 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
     assert_eq!(date("leap"), Some((2024, Some(2), Some(29))));
     // The entry's own year decides whether its parent's 29 February exists.
     assert_eq!(date("override"), Some((2024, Some(2), Some(29))));
+    assert_eq!(date("named"), Some((2024, Some(2), Some(5))));
+    assert_eq!(date("supplies"), Some((2024, Some(2), Some(29))));
+    assert!(
+        loaded.references.iter().any(|r| r.id.native_key == "spaced"),
+        "{:?}",
+        loaded.warnings
+    );
     let warned = |key: &str| {
         loaded
             .warnings
@@ -170,11 +184,13 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
         loaded.warnings
     );
     assert!(
-        warned("short").is_empty() && warned("good").is_empty() && warned("override").is_empty(),
+        ["short", "good", "override", "named", "supplies"]
+            .iter()
+            .all(|k| warned(k).is_empty()),
         "{:?}",
         loaded.warnings
     );
-    for key in ["feb31", "signed", "child", "era"] {
+    for key in ["feb31", "signed", "child", "era", "braced", "inherits"] {
         assert_eq!(date(key).and_then(|(_, _, day)| day), None, "{key}");
         assert_eq!(warned(key).len(), 1, "{key}: {:?}", loaded.warnings);
     }
