@@ -3884,10 +3884,7 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
     if (mode !== "pointer") for (let i = 0; i < 19; i++) fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); toggleKeepOpen();
     await screen.findByRole("button", { name: "Keep Window Open", pressed: true });
-    if (mode === "pointer") {
-      fireEvent.mouseMove(document.getElementById("result-0")!, { screenX: 1, screenY: 1 });
-      fireEvent.mouseMove(document.getElementById("result-19")!, { screenX: 2, screenY: 2 });
-    }
+    if (mode === "pointer") fireEvent.click(document.getElementById("result-19")!, { detail: 1 });
     const owner = mode === "other focus" ? screen.getByRole("button", { name: /^More/ }) : search;
     act(() => owner.focus()); globalScroll.mockClear();
     const viewport = document.querySelector<HTMLElement>(".results-area")!;
