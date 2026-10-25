@@ -46,17 +46,18 @@ const noLibrary = () => null;
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
-  "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
+  "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
-    hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
+    hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker } = api;
+  const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -67,6 +68,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
+  useEffect(() => {
+    let mounted = true;
+    setFailures((old) => old.updateEvents ? { ...old, updateEvents: false } : old);
+    const subscription = api.onUpdateProgress?.((next) => {
+      if (mounted) setUpdateProgress((old) => nativeApi.newerUpdate(old, next));
+    }).catch(() => {
+      if (mounted) setFailures((old) => ({ ...old, updateEvents: true }));
+      return null;
+    });
+    return () => {
+      mounted = false;
+      void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
+    };
+  }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
   const { format, density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;
@@ -183,6 +198,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   useEffect(() => {
     let acceptInitialStatus = true;
     let mounted = true;
+    let visibilityEvents = 0;
     const subscriptionFailure = (operation: Operation) => {
       if (mounted) report(operation);
       else console.error(FAILURE_MESSAGES[operation]);
@@ -208,6 +224,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
+      visibilityEvents += 1;
+      // A hidden native window may not throttle the web view: pause looping animations.
+      document.documentElement.dataset.pickerHidden = "";
       resetPointer();
       copyVisibility.current += 1;
       hiddenAt.current = performance.now();
@@ -216,7 +235,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setPendingCopy(null);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
-    const unlisten = onPickerShown(focusSearch).catch(() => subscriptionFailure("pickerEvents"));
+    const unlisten = onPickerShown(() => {
+      visibilityEvents += 1;
+      delete document.documentElement.dataset.pickerHidden;
+      focusSearch();
+    }).catch(() => subscriptionFailure("pickerEvents"));
+    void Promise.all([unlistenHidden, unlisten]).then(async () => {
+      if (!mounted) return;
+      const events = visibilityEvents;
+      const visible = await pickerVisible();
+      // A newer event wins over this read; failed reads leave the flag alone.
+      if (!mounted || events !== visibilityEvents) return;
+      if (visible) delete document.documentElement.dataset.pickerHidden;
+      else document.documentElement.dataset.pickerHidden = "";
+    }).catch(() => undefined);
     const unlistenLibrary = onLibraryChanged((status) => {
       statusReads.current += 1;
       acceptInitialStatus = false;
@@ -700,7 +732,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         }}
       />
       <div className="picker-content">
-      <Notices library={library} failures={failures} startAtLogin={startAtLogin}
+      <Notices updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => setCopied(null)} />
