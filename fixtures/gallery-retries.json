@@ -1,0 +1,7 @@
+[
+  {"name":"page execution failure", "stage":"capture", "error":"Error", "messages":["synthetic page exception"], "retryable":false},
+  {"name":"console error during readiness timeout", "stage":"ready", "error":"TimeoutError", "messages":["synthetic console error"], "retryable":false},
+  {"name":"readiness timeout", "stage":"ready", "error":"TimeoutError", "messages":[], "retryable":true},
+  {"name":"navigation timeout", "stage":"navigation", "error":"TimeoutError", "messages":[], "retryable":false},
+  {"name":"generic execution failure", "stage":"ready", "error":"Error", "messages":[], "retryable":false}
+]
