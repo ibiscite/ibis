@@ -81,3 +81,10 @@ test("CRLF fences close before subsequent inline references", () => {
   assert.equal(check(lines.join("\r\n")).length, 1);
   assert.deepEqual(check(lines.join("\r\n")), check(lines.join("\n")));
 });
+
+test("ordinary unmatched glob sets retain their individual diagnostics", () => {
+  const paths = ["scripts/exists.mjs", ...Array.from({ length: 600 }, (_, i) => `src/tree/file-${i}.ts`)];
+  const text = Array.from({ length: 20 }, (_, i) => "`scripts/missing-" + i + "-*.mjs`").join("\n");
+  assert.equal(docProblems("AGENTS.md", text, paths, []).length, 20);
+  assert.throws(() => docProblems("AGENTS.md", text.repeat(100), paths, []), /glob matching budget exceeded/);
+});

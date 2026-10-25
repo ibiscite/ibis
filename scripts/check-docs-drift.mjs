@@ -78,9 +78,17 @@ export function docProblems(doc, text, files, crates) {
   const roots = new Set([...paths].map((name) => name.split("/")[0]));
   const problems = [];
   let budget = 10000000;
-  const matches = (pattern, value) => {
-    budget -= pattern.length * value.length;
+  const prefixes = new Map();
+  const charge = (cost) => {
+    budget -= cost;
     if (budget < 0) throw new Error(`${doc}: glob matching budget exceeded; replace broad globs with short, concrete repository paths.`);
+  };
+  const matches = (pattern, value) => {
+    if (!prefixes.has(pattern)) { charge(pattern.length); prefixes.set(pattern, pattern.split(/[*?]/, 1)[0]); }
+    const prefix = prefixes.get(pattern);
+    charge(1 + Math.min(prefix.length, value.length));
+    if (!value.startsWith(prefix)) return false;
+    charge(pattern.length * value.length);
     return glob(pattern, value);
   };
   function exists(value, link) {
