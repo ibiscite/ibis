@@ -59,3 +59,9 @@ test("indeterminate motion becomes a full-width dashed indicator with reduced mo
   expect(reduced).toContain("background: none");
   expect(reduced).toContain("border-block-start: var(--space-1) dashed var(--progress-fill)");
 });
+
+test("indeterminate progress and the spinner pause while the picker is hidden", () => {
+  const empty = readFileSync(new FileURL("../features/picker/EmptyState.css", import.meta.url), "utf8");
+  expect(css).toMatch(/:root\[data-picker-hidden\] \.update-progress\[data-indeterminate\][^{]*\{ animation-play-state: paused; \}/);
+  expect(empty).toMatch(/:root\[data-picker-hidden\] \.empty-spinner \{ animation-play-state: paused; \}/);
+});

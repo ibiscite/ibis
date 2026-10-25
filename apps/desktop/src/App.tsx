@@ -270,6 +270,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
+      // A hidden native window may not throttle the web view: pause looping animations.
+      document.documentElement.dataset.pickerHidden = "";
       resetPointer();
       copyVisibility.current += 1;
       hiddenAt.current = performance.now();
@@ -278,7 +280,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setPendingCopy(null);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
-    const unlisten = onPickerShown(focusSearch).catch(() => subscriptionFailure("pickerEvents"));
+    const unlisten = onPickerShown(() => {
+      delete document.documentElement.dataset.pickerHidden;
+      focusSearch();
+    }).catch(() => subscriptionFailure("pickerEvents"));
     const unlistenLibrary = onLibraryChanged((status) => {
       statusReads.current += 1;
       acceptInitialStatus = false;

@@ -4263,3 +4263,14 @@ test("a locator cannot update or copy a prepared reference from a retired snapsh
   expect(copy).not.toHaveBeenCalled();
   await screen.findByText("The library changed. Search again and reselect the references before copying.");
 });
+
+test("looping animations pause while the picker is hidden and resume when it is shown", async () => {
+  backend({ search: () => [result("a", "First")] });
+  render(<App />);
+  await screen.findByText("First");
+  expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
+  await act(async () => { await emit("picker:hidden"); });
+  expect(document.documentElement.dataset.pickerHidden).toBe("");
+  await act(async () => { await emit("picker:shown"); });
+  expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
+});
