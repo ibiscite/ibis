@@ -18,7 +18,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::csl_items,
             crate::copy::copy_formatted,
             crate::preferences::picker_preferences,
-            crate::preferences::set_picker_preferences,
+            crate::preferences::set_picker_preferences::<tauri::Wry>,
             crate::login_item::login_item,
             crate::login_item::set_login_item,
             crate::picker::hide_picker,

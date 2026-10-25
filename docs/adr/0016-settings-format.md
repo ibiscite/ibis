@@ -46,13 +46,16 @@ newer primary reports its problem and tries `settings.json.bak`, then defaults.
 Loading a backup does not repair or replace the primary. Desktop updates reread
 the primary. **Recovery amendment ([#1088](https://github.com/ibiscite/ibis/issues/1088),
 2026-10-25):** when an invalid primary (including invalid UTF-8) has a valid
-backup, the next save preserves the damaged file as `settings.json.invalid-N`
-under an unused name, then atomically replaces the primary using the recovered
-settings and the requested change, keeping unknown fields and applying any
-in-memory format migration. The valid backup stays unchanged. An unchanged save
+backup, the next save copies the damaged bytes to an exclusively created
+`settings.json.invalid-N` under an unused name and flushes it before opening
+the temporary output (with a best-effort directory flush), then atomically
+replaces the primary using the recovered settings and the requested change,
+keeping unknown fields and applying any in-memory format migration. The valid
+backup stays unchanged. An unchanged save
 completes recovery. Preservation failure leaves the primary and backup intact;
 archive-name search is bounded to 1–1000. Newer versions, other read errors and
 invalid files without a valid backup are still refused.
+After a successful save, the desktop refreshes and publishes its settings notice.
 
 Saving writes `settings.json.tmp`, copies an existing primary to
 `settings.json.bak`, then renames the temporary file over the primary. The

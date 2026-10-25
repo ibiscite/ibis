@@ -41,7 +41,7 @@ pub(crate) struct Library {
     pub(super) retained_error: Option<LoadError>,
     /// A failed choice save, separate from a retained-source refresh problem.
     pub(crate) choice_save_warning: Option<String>,
-    /// Persistent startup recovery notice; includes a path for the interface only.
+    /// Settings recovery notice, refreshed after saves; includes a path for the interface only.
     pub(crate) settings_notice: Option<String>,
     /// When a reread of the same source last brought different references
     /// during this run; `None` after the first read, so a launch or an

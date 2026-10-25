@@ -319,15 +319,16 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
         fs::create_dir_all(dir)?;
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| SettingsError::Invalid(e.to_string()))?;
+    if recovering {
+        preserve_invalid(path)?;
+    }
     // The new contents reach the disk before they replace the old file, so a
     // power cut leaves either file whole, never an empty one.
     let mut file = File::create(&temporary)?;
     file.write_all(format!("{json}\n").as_bytes())?;
     file.sync_all()?;
     drop(file);
-    if recovering {
-        preserve_invalid(path)?;
-    } else if path.exists() {
+    if !recovering && path.exists() {
         fs::copy(path, &backup)?;
         // Windows flushes only a handle opened for writing.
         fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
@@ -337,14 +338,17 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
     Ok(())
 }
 
-/// Keep the damaged primary before replacing it. A hard link reserves the name
-/// without overwriting anything, even if another writer claims it concurrently.
-/// The primary stays in place until the flushed replacement is ready to rename.
+/// Copy and flush the damaged bytes before opening the temporary output, which
+/// may alias the primary. Exclusive creation never overwrites an occupied name
+/// and works on filesystems without hard links.
 fn preserve_invalid(path: &Path) -> io::Result<()> {
+    let bytes = fs::read(path)?;
     for number in 1..=1000 {
         let invalid = path.with_extension(format!("json.invalid-{number}"));
-        match fs::hard_link(path, &invalid) {
-            Ok(()) => {
+        match fs::OpenOptions::new().write(true).create_new(true).open(&invalid) {
+            Ok(mut file) => {
+                file.write_all(&bytes)?;
+                file.sync_all()?;
                 sync_directory(&invalid);
                 return Ok(());
             }
@@ -633,6 +637,53 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn recovery_preserves_bytes_before_writing_through_a_primary_symlink_to_temporary() {
+        let directory = dir("symlink-recovery");
+        let path = directory.path().join("settings.json");
+        let temporary = path.with_extension("json.tmp");
+        let damaged = b"{ damaged\xff";
+        fs::write(&temporary, damaged).unwrap_or_else(|e| panic!("{e}"));
+        std::os::unix::fs::symlink(&temporary, &path).unwrap_or_else(|e| panic!("{e}"));
+        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+        let occupied = path.with_extension("json.invalid-1");
+        std::os::unix::fs::symlink("missing-synthetic-target", &occupied).unwrap_or_else(|e| panic!("{e}"));
+        fs::create_dir(path.with_extension("json.invalid-2")).unwrap_or_else(|e| panic!("{e}"));
+
+        let saved = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        let archive = path.with_extension("json.invalid-3");
+        assert_eq!(fs::read(&archive).unwrap_or_else(|e| panic!("{e}")), damaged);
+        assert!(
+            fs::symlink_metadata(&archive)
+                .unwrap_or_else(|e| panic!("{e}"))
+                .is_file()
+        );
+        assert_eq!(
+            fs::read_link(&occupied).unwrap_or_else(|e| panic!("{e}")),
+            Path::new("missing-synthetic-target")
+        );
+        assert!(path.with_extension("json.invalid-2").is_dir());
+        assert_eq!(load(&path).settings, saved);
+        assert!(load(&path).problem.is_none());
+        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
+    }
+
+    #[test]
+    fn damaged_settings_archive_is_an_independent_copy() {
+        let directory = dir("independent-archive");
+        let path = directory.path().join("settings.json");
+        let damaged = b"{ damaged\xff";
+        fs::write(&path, damaged).unwrap_or_else(|e| panic!("{e}"));
+        preserve_invalid(&path).unwrap_or_else(|e| panic!("{e}"));
+        // A later edit to the old file must never change the preserved bytes.
+        fs::write(&path, b"changed after preservation").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            fs::read(path.with_extension("json.invalid-1")).unwrap_or_else(|e| panic!("{e}")),
+            damaged
+        );
+    }
+
+    #[test]
     fn failed_recovery_preserves_the_primary_and_backup() {
         for blocked_temporary in [false, true] {
             let directory = dir("blocked-recovery");
@@ -642,6 +693,7 @@ mod tests {
             if blocked_temporary {
                 fs::create_dir(path.with_extension("json.tmp")).unwrap_or_else(|e| panic!("{e}"));
             } else {
+                fs::write(path.with_extension("json.tmp"), "unfinished save").unwrap_or_else(|e| panic!("{e}"));
                 for number in 1..=1000 {
                     fs::write(path.with_extension(format!("json.invalid-{number}")), "kept")
                         .unwrap_or_else(|e| panic!("{e}"));
@@ -652,6 +704,10 @@ mod tests {
             assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
             assert!(load(&path).from_backup);
             if !blocked_temporary {
+                assert_eq!(
+                    fs::read_to_string(path.with_extension("json.tmp")).unwrap_or_default(),
+                    "unfinished save"
+                );
                 for number in 1..=1000 {
                     assert_eq!(
                         fs::read_to_string(path.with_extension(format!("json.invalid-{number}"))).unwrap_or_default(),
