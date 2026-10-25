@@ -347,10 +347,10 @@ mod tests {
         let copied = crate::copy::prepare_snapshot(&library, &revision, |locked| {
             crate::copy::render_citation(locked.index.references(), &selected, KeyFormat::Pandoc)
         });
-        for error in [preview.err(), copied.err()] {
-            let error = serde_json::to_string(&error).unwrap_or_else(|error| panic!("{error}"));
-            assert!(error.contains("`same` belongs to more than one reference"), "{error}");
-        }
+        // The picker names the key from the code, never from the message text.
+        let shared = crate::library::CommandError::SharedCitationKey { key: "same".into() };
+        assert_eq!(preview.err(), Some(shared.clone()));
+        assert_eq!(copied.err(), Some(shared));
     }
 
     #[test]

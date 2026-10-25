@@ -67,6 +67,12 @@ export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]
   label,
 }));
 
+/** The citation key another record also has, when that is why citing by key failed. */
+export function sharedCitationKey(error: unknown): string | null {
+  const failed = typeof error === "object" && error !== null ? error as { code?: unknown; key?: unknown } : null;
+  return failed?.code === "shared_citation_key" && typeof failed.key === "string" ? failed.key : null;
+}
+
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
 export function isSnapshotChanged(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";

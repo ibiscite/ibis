@@ -80,7 +80,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   // The formatted preview, tagged with the style, choice and library it was
   // made for, so Enter never copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale" } | null>(null);
+  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale"; problem?: string } | null>(null);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [error, setError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -439,8 +439,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const previewKey = `${style ?? keyPreview}\u0002${libraryVersion}\u0002${chosenKey}`;
   // What Enter would copy now; null while it is being formatted.
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
-  // Visibility changes presentation only. Key copying also survives a failed preview.
-  const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined;
+  // Why the preview failed, when the user can fix it.
+  const previewProblem = shown === "failed" ? formatted?.problem : undefined;
+  // Visibility changes presentation only. Key copying also survives a failed
+  // preview, unless the failure is one copying would meet too.
+  const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && (shown !== "failed" || previewProblem))) ? shown : undefined;
   const refreshSnapshot = () => {
     const request = ++statusReads.current;
     void libraryStatus().then((status) => {
@@ -468,7 +471,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((result) => { if (live) setFormatted({ key, result }); })
       .catch((error) => { if (live) {
         const stale = nativeApi.isSnapshotChanged(error);
-        setFormatted({ key, result: stale ? "stale" : "failed" });
+        const shared = nativeApi.sharedCitationKey(error);
+        setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : undefined });
         if (stale) refreshSnapshot();
       } });
     return () => { live = false; replaced.abort(); };
@@ -508,7 +512,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }
     } catch (error) {
       const stale = nativeApi.isSnapshotChanged(error);
-      if (ownsCompletion()) setCopyError(stale ? pickerText.snapshotChanged : pickerText.copyError);
+      const shared = nativeApi.sharedCitationKey(error);
+      if (ownsCompletion()) setCopyError(stale ? pickerText.snapshotChanged : shared ? pickerText.sharedKey(shared) : pickerText.copyError);
       // A retired request can reveal a replacement after the user has moved on.
       if (stale) refreshSnapshot();
       return;
@@ -866,7 +871,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         toggle(r);
         input.current?.focus({ preventScroll: true });
       }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
-        shown={showWriting ? undefined : displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
+        shown={showWriting ? undefined : displayedOutput} problem={previewProblem} focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}

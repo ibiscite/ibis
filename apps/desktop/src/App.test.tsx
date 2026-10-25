@@ -51,6 +51,26 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
+test("a key another reference also has is named in the preview and when copying", async () => {
+  const shared = { code: "shared_citation_key", key: "same" };
+  const calls = backend({
+    search: () => [result("same", "First")],
+    citation_text: () => { throw shared; },
+    copy_citation: () => { throw shared; },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  const output = await screen.findByRole("region", { name: "Preview" });
+  const message = "More than one reference has the key same, so it can't be cited by key.";
+  await waitFor(() => expect(within(output).getByRole("alert").textContent).toContain(message));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_citation"));
+  await waitFor(() => expect(screen.getAllByRole("alert").filter((alert) => alert.textContent?.includes(message))).toHaveLength(2));
+  expect(document.body.textContent).not.toContain("Nothing was copied. Try again");
+  expect(calls).not.toContain("hide_picker");
+});
+
 test("a hidden key preview is never fetched, and showing it fetches the current choice", async () => {
   const calls = backend({
     search: ({ query: { text: query } }) => [query === "again" ? result("b", "Second") : result("a", "First")],
