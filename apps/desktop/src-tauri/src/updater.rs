@@ -40,7 +40,7 @@ pub(crate) struct Updates {
     /// A version the person chose not to install; automatic checks don't offer it again.
     declined: Mutex<Option<String>>,
     progress: Mutex<progress::Progress>,
-    saver: std::sync::OnceLock<std::sync::mpsc::Sender<setting::Change>>,
+    saver: setting::Saver,
     #[cfg(any(target_os = "macos", test))]
     installation_failure: InstallationFailure,
 }
@@ -363,7 +363,7 @@ async fn install_update(app: &AppHandle, update: Update) {
         .await;
     drop(refresh);
     match result {
-        Ok(()) => app.restart(),
+        Ok(()) => setting::restart(app).await,
         Err(_) => {
             change_progress(app, attempt, None, "failed");
             publish_progress(app);
