@@ -1,5 +1,5 @@
 // What the picker copies and which references it acts on. Pure; no React.
-import type { CopyFormat, RecordId, SearchResult, ZoteroLibrary } from "../../api";
+import type { CopyFormat, Locator, RecordId, SearchResult, ZoteroLibrary } from "../../api";
 import { copyFormatNames } from "../../messages";
 import { STYLE_NAMES, type StyleId } from "../../format/styles";
 
@@ -16,9 +16,12 @@ export function choiceName(choice: Choice): string {
   return style ? STYLE_NAMES[style] : copyFormatNames[choice as CopyFormat];
 }
 
+/** A prepared reference freezes its search locator independently of later queries. */
+export type CitationReference = SearchResult & { readonly locator?: Readonly<Locator> | null };
+
 /** Selection is keyed by record identity, never by list position or citation key. */
-export function choiceKey(records: SearchResult[]): string {
-  return JSON.stringify(records.map((record) => [record.id.source, record.id.native_key, record.revision]));
+export function choiceKey(records: readonly CitationReference[]): string {
+  return JSON.stringify(records.map((record) => [record.id.source, record.id.native_key, record.revision, record.locator?.label ?? null, record.locator?.value ?? null]));
 }
 
 export function idKey(id: RecordId): string {

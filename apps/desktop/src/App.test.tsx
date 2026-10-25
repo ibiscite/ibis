@@ -30,10 +30,10 @@ afterEach(async () => {
 test("the shelf shows what Enter pastes in a key syntax, without copying, and leaves out a failed key preview", async () => {
   let fail = false;
   const calls = backend({
-    search: ({ query }) => [query === "again" ? result("b", "Second") : result("a", "First")],
-    citation_text: ({ ids }) => {
+    search: ({ query: { text: query } }) => [query === "again" ? result("b", "Second") : result("a", "First")],
+    citation_text: ({ items }) => {
       if (fail) throw new Error("synthetic preview failure");
-      return { text: `[@${(ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] };
+      return { text: `[@${items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] };
     },
   });
   render(<App />);
@@ -53,8 +53,8 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
 
 test("a hidden key preview is never fetched, and showing it fetches the current choice", async () => {
   const calls = backend({
-    search: ({ query }) => [query === "again" ? result("b", "Second") : result("a", "First")],
-    citation_text: ({ ids }) => ({ text: `[@${(ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] }),
+    search: ({ query: { text: query } }) => [query === "again" ? result("b", "Second") : result("a", "First")],
+    citation_text: ({ items }) => ({ text: `[@${items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] }),
   });
   const previews = () => calls.filter((c) => c === "citation_text").length;
   render(<App />);
@@ -106,6 +106,8 @@ test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain u
   expect(actions()).toEqual(previousActions);
 });
 
+const selections = (ids: api.RecordId[]) => ids.map((id) => ({ id, locator: null }));
+
 const formatButton = (name: string | RegExp = /^Copy as /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });
 
 /** Picks a format in the header's format menu, as a click would. */
@@ -141,7 +143,7 @@ function result(key: string, title: string, source = "refs.bib") {
   };
 }
 
-type Handler = (args: Record<string, unknown>) => unknown;
+type Handler = (args: Record<string, unknown> & { query: api.SearchQuery; items: api.CitationSelection[]; ids: api.RecordId[] }) => unknown;
 
 test("the borderless picker has a permitted drag region around its editable search input", async () => {
   backend();
@@ -170,7 +172,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     set_pinned: () => null,
     copy_format: () => "pandoc",
     // The shelf previews key syntaxes without touching the clipboard.
-    citation_text: ({ ids }) => ({ text: (ids as { native_key: string }[]).map((id) => `@${id.native_key}`).join("; "), warnings: [] }),
+    citation_text: ({ items }) => ({ text: items.map(({ id }) => `@${id.native_key}`).join("; "), warnings: [] }),
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
     set_picker_preferences: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
@@ -183,7 +185,7 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
       calls.push(cmd);
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);
-      const value = handler((args ?? {}) as Record<string, unknown>);
+      const value = handler((args ?? {}) as Parameters<Handler>[0]);
       if (cmd === "library_status") return Promise.resolve(value).then((status) => ({ revision: "1", ...status as object }));
       if (cmd === "search") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
       return value;
@@ -247,7 +249,7 @@ test.each(["query", "hide", "selection", "revision", "highlight", "failure"])("C
 
 test("typing a query shows results from the search command", async () => {
   backend({
-    search: ({ query }) =>
+    search: ({ query: { text: query } }) =>
       query ? [result("smith2020", "Sleep and memory")] : [],
   });
   render(<App />);
@@ -434,7 +436,7 @@ test("a shortcut that could not be registered is explained", async () => {
 
 test("a failed search clears the results of the previous query", async () => {
   backend({
-    search: ({ query }) => {
+    search: ({ query: { text: query } }) => {
       if (query === "diet") throw new Error("SYNTHETIC_PRIVATE_PAYLOAD");
       return query ? [result("smith2020", "Sleep and memory")] : [];
     },
@@ -495,7 +497,7 @@ test("a rejected shortcut setting is explained even when the default works", asy
 test("the query is searched again when a library finishes opening", async () => {
   let open = false;
   backend({
-    search: ({ query }) => {
+    search: ({ query: { text: query } }) => {
       if (!open) throw new Error("no library is open");
       return query ? [result("smith2020", "Sleep and memory")] : [];
     },
@@ -513,7 +515,7 @@ test("Enter copies the highlighted result in the remembered format and hides the
   const copies: unknown[] = [];
   const calls = backend({
     copy_format: () => "typst",
-    search: ({ query }) => (query ? [result("a", "First"), result("b", "Second")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("a", "First"), result("b", "Second")] : []),
     copy_citation: (args) => {
       copies.push(args);
       return { text: "@b", warnings: [] };
@@ -527,14 +529,14 @@ test("Enter copies the highlighted result in the remembered format and hides the
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
-  expect(copies).toEqual([{ ids: [{ source: "refs.bib", native_key: "b" }], format: "typst", expectedRevision: "1" }]);
+  expect(copies).toEqual([{ items: selections([{ source: "refs.bib", native_key: "b" }]), format: "typst", expectedRevision: "1" }]);
   expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
 });
 
 test("the selection is kept by record identity across queries and copied in order", async () => {
   const copies: unknown[] = [];
   backend({
-    search: ({ query }) =>
+    search: ({ query: { text: query } }) =>
       query === "one" ? [result("same", "One", "a.bib")] : query === "two" ? [result("same", "Two", "b.bib")] : [],
     copy_citation: (args) => {
       copies.push(args);
@@ -552,10 +554,10 @@ test("the selection is kept by record identity across queries and copied in orde
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(copies[0]).toEqual({
-    ids: [
+    items: selections([
       { source: "a.bib", native_key: "same" },
       { source: "b.bib", native_key: "same" },
-    ],
+    ]),
     format: "pandoc",
     expectedRevision: "1",
   });
@@ -575,7 +577,7 @@ test.each([
       search: () => records,
       copy_citation: (args) => {
         copies.push(args);
-        return { text: `[@${(args.ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] };
+        return { text: `[@${args.items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] };
       },
     });
     render(<App />);
@@ -613,7 +615,7 @@ test.each([
     expect(box.getAttribute("aria-activedescendant")).toBe("result-1");
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     await waitFor(() => expect(copies).toHaveLength(1));
-    expect(copies[0]).toEqual({ ids: (remaining.length ? remaining : [records[1]!]).map((record) => record.id), format: "pandoc", expectedRevision: "1" });
+    expect(copies[0]).toEqual({ items: selections((remaining.length ? remaining : [records[1]!]).map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
     expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
   },
 );
@@ -650,7 +652,7 @@ test.each([false, true])("removal ignores queued Enter repeats and waits for a f
   }
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]!.ids).toEqual((shiftKey ? ["b", "a"] : ["b"]).map((key) => ({ source: "refs.bib", native_key: key })));
+  expect(copies[0]!.items).toEqual(selections((shiftKey ? ["b", "a"] : ["b"]).map((key) => ({ source: "refs.bib", native_key: key }))));
 });
 
 test("hovering Remove keeps focus and menu keys unchanged", async () => {
@@ -678,10 +680,10 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
   const records = Array.from({ length: count }, (_, i) => result(`synthetic_${i}_${"long_key_".repeat(5)}`, `Selection reference ${i}`));
   const copies: Record<string, unknown>[] = [];
   backend({
-    search: ({ query }) => query === "" ? [] : records.slice(Number(query) * 20, (Number(query) + 1) * 20),
+    search: ({ query: { text: query } }) => query === "" ? [] : records.slice(Number(query) * 20, (Number(query) + 1) * 20),
     copy_citation: (args) => {
       copies.push(args);
-      return { text: `[@${(args.ids as api.RecordId[]).map((id) => id.native_key).join("; @")}]`, warnings: [] };
+      return { text: `[@${args.items.map(({ id }) => id.native_key).join("; @")}]`, warnings: [] };
     },
   });
   render(<App />);
@@ -706,7 +708,7 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
   box.focus();
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toEqual({ ids: expected.map((record) => record.id), format: "pandoc", expectedRevision: "1" });
+  expect(copies[0]).toEqual({ items: selections(expected.map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
   await screen.findByText(`[@${expected.map((record) => record.key).join("; @")}]`);
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
 });
@@ -714,7 +716,7 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
 test("warnings keep the picker open and failures say nothing was copied", async () => {
   let fail = false;
   const calls = backend({
-    search: ({ query }) => (query ? [result("a", "First")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("a", "First")] : []),
     copy_citation: () => {
       if (fail) throw new Error("SYNTHETIC_PRIVATE_PAYLOAD");
       return { text: "a", warnings: ["bare keys cannot carry page numbers"] };
@@ -734,7 +736,7 @@ test("warnings keep the picker open and failures say nothing was copied", async 
 });
 
 test("Enter while composing text with an input method copies nothing", async () => {
-  const calls = backend({ search: ({ query }) => (query ? [result("a", "First")] : []) });
+  const calls = backend({ search: ({ query: { text: query } }) => (query ? [result("a", "First")] : []) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "f" } });
@@ -748,7 +750,7 @@ test("Enter while composing text with an input method copies nothing", async () 
 test("Enter never copies a result left over from the previous query", async () => {
   let release: (value: unknown) => void = () => undefined;
   const calls = backend({
-    search: ({ query }) =>
+    search: ({ query: { text: query } }) =>
       query === "old" ? [result("old", "Old result")] : query ? new Promise((resolve) => (release = resolve)) : [],
     copy_citation: () => ({ text: "x", warnings: [] }),
   });
@@ -768,7 +770,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   const pending: Record<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }> = {};
   const copied: unknown[] = [];
   backend({
-    search: ({ query }) => query === "kept" ? [result("kept", "Kept result")]
+    search: ({ query: { text: query } }) => query === "kept" ? [result("kept", "Kept result")]
       : query === "old" ? [result("old", "Old result")]
       : query ? new Promise((resolve, reject) => { pending[query as string] = { resolve, reject }; }) : [],
     copy_citation: (args) => { copied.push(args); return { text: "x", warnings: [] }; },
@@ -796,7 +798,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(chosenKeys()).not.toContain("old");
-  expect(copied).toEqual([{ ids: [{ source: "refs.bib", native_key: "kept" }], format: "pandoc", expectedRevision: "1" }]);
+  expect(copied).toEqual([{ items: selections([{ source: "refs.bib", native_key: "kept" }]), format: "pandoc", expectedRevision: "1" }]);
   await act(async () => { pending.pending!.resolve([result("new", "New result")]); });
   await screen.findByText("New result");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -845,7 +847,7 @@ test("opening the first library searches the query typed before choosing it", as
   const queries: unknown[] = [];
   backend({
     library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, note: null }),
-    search: ({ query }) => { queries.push(query); return [result("first", "Matching reference")]; },
+    search: ({ query: { text: query } }) => { queries.push(query); return [result("first", "Matching reference")]; },
   });
   render(<App />);
   await screen.findByRole("button", { name: "Choose library to get started" });
@@ -857,7 +859,7 @@ test("opening the first library searches the query typed before choosing it", as
 
 test("counts use singular and plural and announce only settled current searches", async () => {
   let release: (value: unknown) => void = () => undefined;
-  backend({ search: ({ query }) => query === "one" ? [result("a", "Single")]
+  backend({ search: ({ query: { text: query } }) => query === "one" ? [result("a", "Single")]
     : query === "pending" ? new Promise((resolve) => { release = resolve; })
     : query === "two" ? [result("a", "First"), result("b", "Second")] : [] });
   vi.useFakeTimers();
@@ -930,7 +932,7 @@ test("the Windows focus ring contrasts with both themes independent of the syste
 });
 
 test("combobox focus is separate from citation selection and only additions/removals are announced", async () => {
-  backend({ search: ({ query }) => query === "reorder"
+  backend({ search: ({ query: { text: query } }) => query === "reorder"
     ? [result("same", "Second", "b.bib"), result("same", "First", "a.bib")]
     : [result("same", "First", "a.bib"), result("same", "Second", "b.bib")] });
   render(<App />);
@@ -1359,7 +1361,7 @@ test.each(["output", "elsewhere"].flatMap((destination) => ["saved", "keyboard"]
 test("preview visibility keeps ordered chips and exact key copying", async () => {
   const copies: unknown[] = [];
   backend({ search: () => [result("a", "First"), result("b", "Second")],
-    copy_citation: ({ ids }) => { copies.push(ids); return { text: "@a; @b", warnings: [] }; } });
+    copy_citation: ({ items }) => { copies.push(items); return { text: "@a; @b", warnings: [] }; } });
   render(<App />);
   await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
@@ -1372,7 +1374,7 @@ test("preview visibility keeps ordered chips and exact key copying", async () =>
   expect(chipKeys()).toEqual(["a", "b"]);
   expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy 2 as Pandoc");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copies).toEqual([[result("a", "First").id, result("b", "Second").id]]));
+  await waitFor(() => expect(copies).toEqual([selections([result("a", "First").id, result("b", "Second").id])]));
   expect(screen.getByText("@a; @b", { selector: ".copy-notice code" })).toBeTruthy();
 });
 
@@ -2047,7 +2049,7 @@ test("with several Zotero libraries each result names its library, and a left gr
   backend({
     library_status: () => zoteroStatus(["user", { group: 42 }, { group: 9 }]),
     zotero_groups: () => [{ id: 42, name: "Synthetic lab" }],
-    search: ({ query }) => (query ? [result("a", "Mine", "zotero:user"), result("b", "Shared", "zotero:group:42")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("a", "Mine", "zotero:user"), result("b", "Shared", "zotero:group:42")] : []),
     use_zotero_libraries: ({ libraries }) => { chosen.push(libraries as unknown[]); return null; },
   });
   render(<App />);
@@ -2063,7 +2065,7 @@ test("removing one of two chosen references with the same key names its library"
   backend({
     library_status: () => zoteroStatus(["user", { group: 42 }]),
     zotero_groups: () => [{ id: 42, name: "Synthetic lab" }],
-    search: ({ query }) => (query ? [result("garcia2021", "Mine", "zotero:user"), result("garcia2021", "Shared", "zotero:group:42"), result("other", "Other", "zotero:user")] : []),
+    search: ({ query: { text: query } }) => (query ? [result("garcia2021", "Mine", "zotero:user"), result("garcia2021", "Shared", "zotero:group:42"), result("other", "Other", "zotero:user")] : []),
   });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "x" } });
@@ -2350,7 +2352,7 @@ test("double-clicking a row copies it like Enter, and Shift+click adds it like S
   expect(copies).toEqual([]);
   fireEvent.click(second, { detail: 2 });
   await waitFor(() => expect(calls).toContain("hide_picker"));
-  expect(copies).toEqual([{ ids: [{ source: "refs.bib", native_key: "b" }], format: "pandoc", expectedRevision: "1" }]);
+  expect(copies).toEqual([{ items: selections([{ source: "refs.bib", native_key: "b" }]), format: "pandoc", expectedRevision: "1" }]);
   expect(second.getAttribute("aria-selected")).toBe("true");
 });
 
@@ -2364,7 +2366,7 @@ test("with sources in the citation, a double-click copies the citation like Ente
   fireEvent.click(await screen.findByText("First"), { shiftKey: true });
   fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toEqual({ ids: [{ source: "refs.bib", native_key: "a" }], format: "pandoc", expectedRevision: "1" });
+  expect(copies[0]).toEqual({ items: selections([{ source: "refs.bib", native_key: "a" }]), format: "pandoc", expectedRevision: "1" });
 });
 
 test("a drag, a third click or an unsupported modified row click copies nothing", async () => {
@@ -2433,7 +2435,7 @@ test.each([[30_000, "first"], [61_000, ""]])(
   });
 
 test("Search Clear preserves citations and invalidates an escaped query before reopening", async () => {
-  const calls = backend({ search: ({ query }) => [result("a", query ? `First ${String(query)}` : "First")] });
+  const calls = backend({ search: ({ query: { text: query } }) => [result("a", query ? `First ${String(query)}` : "First")] });
   render(<App />);
   const box = screen.getByRole("combobox", { name: "Search references" }) as HTMLInputElement;
   await screen.findByText("First");
@@ -2514,7 +2516,7 @@ const footerKeys = () => [...screen.getByRole("group", { name: "Keys" }).childre
   .map((hint) => `${hint.querySelector(".key-hint-label")?.textContent} ${hint.querySelector(".key-caps")?.textContent}`).join(" · ");
 
 test("the footer says what Enter will copy, and holding Alt shows the other keys", async () => {
-  backend({ search: ({ query }) => (query ? [result("a", "First"), result("b", "Second")] : []) });
+  backend({ search: ({ query: { text: query } }) => (query ? [result("a", "First"), result("b", "Second")] : []) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   // Nothing to copy yet, so Enter is not advertised.
@@ -2553,7 +2555,7 @@ test("More reads like the hints beside it: its name first, then its keys", async
 
 test("footer actions copy and open shortcuts without using a keyboard shortcut", async () => {
   let copied: unknown;
-  backend({ search: () => [result("a", "First")], copy_citation: (args) => { copied = args.ids; return { text: "@a", warnings: [] }; } });
+  backend({ search: () => [result("a", "First")], copy_citation: (args) => { copied = args.items; return { text: "@a", warnings: [] }; } });
   render(<App />);
   await screen.findByText("First");
   const copy = within(screen.getByRole("group", { name: "Keys" })).getByRole("button", { name: "Copy as Pandoc" });
@@ -2565,7 +2567,7 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   expect(copy.querySelector(".key-caps")?.getAttribute("aria-hidden")).toBe("true");
   fireEvent.pointerUp(copy, { button: 0, pointerType: "mouse" });
   fireEvent.click(copy);
-  await waitFor(() => expect(copied).toEqual([{ source: "refs.bib", native_key: "a" }]));
+  await waitFor(() => expect(copied).toEqual(selections([{ source: "refs.bib", native_key: "a" }])));
   const shortcuts = screen.getByRole("button", { name: "Shortcuts" });
   act(() => shortcuts.focus());
   fireEvent.click(shortcuts);
@@ -2946,7 +2948,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(output).toHaveLength(1));
   expect(output[0]).toMatchObject(next === "pandoc"
-    ? { format: "pandoc", ids: [{ source: "refs.bib", native_key: "b" }] }
+    ? { format: "pandoc", items: selections([{ source: "refs.bib", native_key: "b" }]) }
     : { text: next === "style:ieee" ? "[1]" : "(Smith, 2020)" });
   expect(calls).toContain(next === "pandoc" ? "copy_citation" : "copy_formatted");
 });
@@ -3376,7 +3378,7 @@ test.each(["warning", "notice"])("a search started before a selected copy preser
   let finishCopy: (value: unknown) => void = () => undefined;
   const notices: unknown[] = [];
   const calls = backend({
-    search: ({ query }) => query === "pending"
+    search: ({ query: { text: query } }) => query === "pending"
       ? new Promise((resolve) => { releaseSearch = resolve; })
       : [result("a", "Selected before search")],
     copy_citation: () => new Promise((resolve) => { finishCopy = resolve; }),
@@ -3824,4 +3826,26 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
   } finally {
     HTMLElement.prototype.scrollIntoView = originalScroll; vi.restoreAllMocks(); vi.unstubAllGlobals();
   }
+});
+
+test("typed locators stay with selected references across later searches", async () => {
+  let second = false;
+  const copies: unknown[] = [];
+  backend({
+    search: () => ({ revision: "1", results: [result(second ? "b" : "a", second ? "Second locator" : "First locator")],
+      interpretation: { search: second ? "B" : "A", locator: { label: "page", value: second ? "9" : "12" }, typed: second ? "p.9" : "p.12" } }),
+    copy_citation: (args) => { copies.push(args); return { text: "selected pages", warnings: [] }; },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "A p.12" } });
+  fireEvent.click(await screen.findByText("First locator"), { ctrlKey: true });
+  second = true;
+  fireEvent.change(box, { target: { value: "B p.9" } });
+  fireEvent.click(await screen.findByText("Second locator"), { ctrlKey: true });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copies).toEqual([{ items: [
+    { id: { source: "refs.bib", native_key: "a" }, locator: { label: "page", value: "12" } },
+    { id: { source: "refs.bib", native_key: "b" }, locator: { label: "page", value: "9" } },
+  ], format: "pandoc", expectedRevision: "1" }]));
 });

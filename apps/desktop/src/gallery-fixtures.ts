@@ -207,11 +207,11 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
         findSources: async () => sources ?? { zotero: "absent", list: 0, files: [], cut_short: false }, openFoundLibrary: async () => null,
       } : {}),
       search: async () => ({ revision: state.library.revision, results: state.results ?? [] }),
-      citationText: async (ids) => {
-        const text = `[${ids.map((id) => `@${id.native_key}`).join("; ")}]`;
+      citationText: async (items) => {
+        const text = `[${items.map(({ id }) => `@${id.native_key}`).join("; ")}]`;
         return { text, warnings: [], segments: [{ item: null, text }] };
       },
-      copyCitation: async (ids) => ({ text: (state.tray ?? 0) >= 20 ? `[@${ids.map((id) => id.native_key).join("; @")}]` : "[@example2026]", warnings: [] }),
+      copyCitation: async (items) => ({ text: (state.tray ?? 0) >= 20 ? `[@${items.map(({ id }) => id.native_key).join("; @")}]` : "[@example2026]", warnings: [] }),
       ...((state.tray ?? 0) >= 20 || state.formatted ? {
         cslItems: async (ids: Parameters<NonNullable<PickerApi["cslItems"]>>[0]) => JSON.stringify(ids.map((id) => ({
           id: id.native_key, type: "book", title: "Synthetic preview pressure", author: [{ family: id.native_key }], issued: { "date-parts": [[2026]] },
