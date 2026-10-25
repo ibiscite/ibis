@@ -4,7 +4,7 @@
   "apps/desktop/src-tauri/src/library/state.rs": 999,
   "apps/desktop/src-tauri/src/login_item.rs": 817,
   "apps/desktop/src-tauri/src/login_item/linux.rs": 805,
-  "apps/desktop/src-tauri/src/picker.rs": 647,
+  "apps/desktop/src-tauri/src/picker.rs": 642,
   "apps/desktop/src-tauri/src/picker/portal.rs": 805,
   "apps/desktop/src-tauri/src/preferences.rs": 799,
   "apps/desktop/src-tauri/src/updater.rs": 942,
