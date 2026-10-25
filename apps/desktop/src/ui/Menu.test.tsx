@@ -412,15 +412,18 @@ test("any pointer movement over an item highlights it, also after arrow keys", a
   const second = screen.getByRole("menuitemcheckbox", { name: "Second" });
   expect(open.hasAttribute("data-focused")).toBe(true);
   // The pointer rests on Second while the keyboard moves the highlight.
-  fireEvent.pointerMove(second, { pointerType: "mouse" });
+  fireEvent.pointerMove(second, { pointerType: "mouse", clientX: 1 });
   expect(second.hasAttribute("data-focused")).toBe(true);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
   await waitFor(() => expect(second.hasAttribute("data-focused")).toBe(false));
+  // The synthetic move a resting pointer gets when rows scroll under it does not count.
+  fireEvent.pointerMove(second, { pointerType: "mouse", clientX: 1 });
+  expect(second.hasAttribute("data-focused")).toBe(false);
   fireEvent.pointerMove(second, { pointerType: "mouse", clientX: 3 });
   expect(second.hasAttribute("data-focused")).toBe(true);
   expect(document.activeElement).toBe(second);
   // Touch never moves the highlight.
-  fireEvent.pointerMove(open, { pointerType: "touch" });
+  fireEvent.pointerMove(open, { pointerType: "touch", clientX: 5 });
   expect(open.hasAttribute("data-focused")).toBe(false);
   expect(menu.isConnected).toBe(true);
 });

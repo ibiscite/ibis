@@ -34,7 +34,8 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     const update = () => {
       const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
       node.style.top = `${bottom}px`;
-      if (above) node.style.bottom = `${Math.max(0, window.innerHeight - above.getBoundingClientRect().top)}px`;
+      // Never above the top edge, even in a window too short for both.
+      if (above) node.style.bottom = `${Math.max(0, window.innerHeight - Math.max(bottom, above.getBoundingClientRect().top))}px`;
       setClearBottom(bottom);
     };
     update();
@@ -99,6 +100,8 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
   }, [list]);
 }
 
+let lastPointer = "";
+
 /** A menu item's row. Any pointer movement over it highlights it, as in
  * native menus: React Aria moves the highlight only when the pointer enters an
  * item, and not at all while arrow keys are in use (#1031). Rendered by the
@@ -106,6 +109,11 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
 export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { itemId: string }) {
   const state = useContext(MenuStateContext);
   const onPointerMove = (event: PointerEvent) => {
+    // A pointer at rest gets a synthetic move when arrow keys scroll rows
+    // under it; only a real movement takes the highlight.
+    const at = `${event.clientX},${event.clientY}`;
+    if (at === lastPointer) return;
+    lastPointer = at;
     const manager = state?.selectionManager;
     if (event.pointerType === "touch" || !manager || (manager.isFocused && manager.focusedKey === itemId)) return;
     setInteractionModality("pointer");
