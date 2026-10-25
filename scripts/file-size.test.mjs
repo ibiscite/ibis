@@ -73,3 +73,8 @@ test("CLI enforces and writes reductions against the committed base", (t) => {
   assert.match(run().stderr, /exceptions cannot be added or grow/);
   assert.equal(run("--write-baseline").status, 1, "write mode also refuses inflation");
 });
+
+
+test("colliding normalized filenames cannot overwrite a larger count", () => {
+  assert.ok(sizeErrors({ "src/a.ts": text(601), "src\\a.ts": text(1) }, {}, {}).length);
+});

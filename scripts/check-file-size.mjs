@@ -12,6 +12,12 @@ export const lineCount = (text) => text === "" ? 0 : text.split("\n").length - N
 
 export function sizeErrors(files, baseline, previous = null) {
   const errors = [];
+  const names = new Set();
+  for (const name of Object.keys(files).filter(sourceFile)) {
+    const key = normalized(name);
+    if (names.has(key)) errors.push(`${name}: normalized path collision; rename one file so each source has a distinct path.`);
+    names.add(key);
+  }
   const counts = Object.fromEntries(Object.entries(files).filter(([name]) => sourceFile(name)).map(([name, text]) => [normalized(name), lineCount(text)]));
   for (const [name, count] of Object.entries(counts)) {
     const limit = baseline[name] ?? 600;
