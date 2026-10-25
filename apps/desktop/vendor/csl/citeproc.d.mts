@@ -19,6 +19,7 @@ declare class CslEngine {
   updateItems(ids: string[]): void;
   makeBibliography(): [Record<string, unknown>, string[]] | false;
   makeCitationCluster(cites: CslCite[]): string;
+  getTerm(term: string, form?: string): string;
 }
 
 declare const CSL: { Engine: typeof CslEngine };

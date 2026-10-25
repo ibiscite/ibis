@@ -132,7 +132,7 @@ export class Formatter {
         ? ""
         : this.attempt(style, loaded, format, (engine) => {
           engine.makeBibliography();
-          return engine.makeCitationCluster(chosen);
+          return etAl(engine.makeCitationCluster(chosen), engine, style, format);
         });
     let output: string;
     try {
@@ -162,7 +162,7 @@ export class Formatter {
           const ids = bibliography && bibliography[0].entry_ids;
           this.numbers = Array.isArray(ids) ? ids.map((group) =>
             Array.isArray(group) ? group.filter((id): id is string => typeof id === "string") : []) : [];
-          return engine.makeCitationCluster(found);
+          return etAl(engine.makeCitationCluster(found), engine, style, format);
         }, true);
         // Hooks can change punctuation or omit collapsed/unprinted entries.
         // Never replace canonical clipboard output with the annotated pass.
@@ -181,7 +181,7 @@ export class Formatter {
   bibliography(style: StyleId, items: CslItem[], format: OutputFormat): Formatted {
     const { keyed } = engineKeys(items);
     const run = (chosen: CslItem[]) =>
-      chosen.length === 0 ? [] : this.attempt(style, chosen, format, (engine) => entries(engine));
+      chosen.length === 0 ? [] : this.attempt(style, chosen, format, (engine) => entries(engine, style, format));
     try {
       return { output: wrap(run(keyed).join("\n"), format, "bibliography"), problems: [] };
     } catch {
@@ -235,9 +235,41 @@ function engineKeys(items: CslItem[]): { keyed: CslItem[]; keyOf: Map<string, st
   const keyed = items.map((item, index) => {
     const key = `ibis-${index}`;
     if (typeof item.id === "string" && !keyOf.has(item.id)) keyOf.set(item.id, key);
-    return { ...item, id: key };
+    // fromEntries defines fields, so a "__proto__" field stays a plain field.
+    return { ...Object.fromEntries(Object.entries(item).map(([field, value]) => [field, truncated(value)])), id: key };
   });
   return { keyed, keyOf };
+}
+
+/**
+ * A name list that ends in "others" (BibTeX's "and others") is truncated.
+ * The engine would print "others" as a name, so it gets a marker name that
+ * `etAl` turns into the style's "et al." Counting the marker as a name keeps
+ * the style's own et al. rule right: the real list is at least that long.
+ */
+const ET_AL = "Ibisetalmarker";
+
+function truncated(value: unknown): unknown {
+  if (!Array.isArray(value) || value.length < 2 || !isOthers(value[value.length - 1])) return value;
+  return [...value.slice(0, -1), { family: ET_AL }];
+}
+
+function isOthers(name: unknown): boolean {
+  if (!name || typeof name !== "object") return false;
+  const { literal, family, given } = name as Record<string, unknown>;
+  const text = literal ?? (given === undefined || given === "" ? family : undefined);
+  return typeof text === "string" && text.trim().toLowerCase() === "others";
+}
+
+/** Replace the marker, and the "and" before it, with the style's "et al." */
+function etAl(text: string, engine: Engine, style: StyleId, format: OutputFormat): string {
+  if (!text.toLowerCase().includes(ET_AL.toLowerCase())) return text;
+  const term = engine.getTerm("et-al") || "et al.";
+  const italic = /<et-al\b[^>]*font-style="italic"/.test(STYLES[style].xml);
+  const shown = !italic || format === "text" ? term : format === "html" ? `<i>${term}</i>` : `{\\i{}${term}}`;
+  const and = [engine.getTerm("and"), "&#38;", "&amp;", "&"].filter(Boolean).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const before = new RegExp(`(,?)\\s*(?:(?<=\\s)(?:${and.join("|")})\\s+)?${ET_AL}(\\.?)`, "gi");
+  return text.replace(before, (_, comma: string, stop: string) => `${comma} ${shown}${term.endsWith(".") ? "" : stop}`);
 }
 
 function callerId(items: CslItem[], key: string): string {
@@ -245,11 +277,11 @@ function callerId(items: CslItem[], key: string): string {
   return typeof id === "string" ? id : "";
 }
 
-function entries(engine: Engine): string[] {
+function entries(engine: Engine, style: StyleId, format: OutputFormat): string[] {
   const bibliography = engine.makeBibliography();
   if (!bibliography) throw new Error("the style has no bibliography");
   // One line per entry: a line break inside a field must not split it.
-  return bibliography[1].map(oneLine);
+  return bibliography[1].map((line) => etAl(oneLine(line), engine, style, format));
 }
 
 function oneLine(text: string): string {

@@ -182,6 +182,38 @@ describe("formatted citations", () => {
     expect(formatter.bibliography("apa", [garcia, broken], "text").output.split("\n")).toHaveLength(2);
   });
 
+  it("writes a truncated author list as et al.", () => {
+    const truncated = (...names: object[]): CslItem => ({ ...garcia, author: names });
+    const smith = { family: "Smith", given: "Alex" };
+    const jones = { family: "Jones", given: "Bea" };
+    const others = { literal: "others" };
+    const cases: [keyof typeof STYLES, CslItem, string, string][] = [
+      ["apa", truncated(smith, others), "(Smith et al., 2021)", "Smith, A., et al. (2021)."],
+      ["chicago-author-date", truncated(smith, others), "(Smith et al. 2021)", "Smith, Alex, et al. 2021."],
+      ["chicago-author-date", truncated(smith, jones, { family: "Others" }), "(Smith et al. 2021)", "Smith, Alex, Bea Jones, et al. 2021."],
+      ["ieee", truncated(smith, others), "[1]", "[1] A. Smith et al., “Synthetic"],
+      ["ieee", truncated(smith, jones, others), "[1]", "[1] A. Smith, B. Jones, et al., “Synthetic"],
+      ["modern-language-association", truncated(smith, others), "(Smith et al.)", "Smith, Alex, et al. “Synthetic"],
+      ["harvard-cite-them-right", truncated(smith, others), "(Smith et al., 2021)", "Smith, A. et al. (2021)"],
+    ];
+    for (const [style, item, cite, entry] of cases) {
+      expect(formatter.citation(style, [item], [{ id: item.id }], "text").output).toBe(cite);
+      expect(formatter.bibliography(style, [item], "text").output.startsWith(entry)).toBe(true);
+    }
+    const item = truncated(smith, others);
+    expect(formatter.citation("apa", [item], [{ id: item.id }], "html").output).toBe("(Smith et al., 2021)");
+    expect(formatter.bibliography("apa", [item], "html").output).toContain(">Smith, A., et al. (2021).");
+    // Styles that italicize et al. do so in rich output.
+    expect(formatter.bibliography("ieee", [item], "html").output).toContain("A. Smith <i>et al.</i>, “Synthetic");
+    expect(formatter.bibliography("ieee", [item], "rtf").output).toContain("A. Smith {\\i{}et al.}, ");
+    // The canonical output stays, and the preview still matches it.
+    const preview = formatter.citation("apa", [item], [{ id: item.id }], "html", true);
+    expect(preview.preview && eraseOwnership(preview.preview)).toBe("(Smith et al., 2021)");
+    // A lone "others", or "others" in the middle, is a name like any other.
+    expect(formatter.citation("apa", [truncated(others)], [{ id: item.id }], "text").output).toBe("(others, 2021)");
+    expect(formatter.bibliography("apa", [truncated(others, smith)], "text").output).toMatch(/^others, & Smith, A\./);
+  });
+
   it("escapes fallback text for each output", () => {
     expect(escape("a & {b} 😀", "rtf")).toBe("a & \\{b\\} \\uc0\\u-10179{}\\uc0\\u-8704{}");
     expect(escape("a\u0000b\tc", "rtf")).toBe("a b c");
