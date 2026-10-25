@@ -4086,7 +4086,8 @@ test("removing and re-adding a selected identity captures the newer query locato
 test("a locator cannot update or copy a prepared reference from a retired snapshot", async () => {
   let revision = "1";
   const copy = vi.fn(() => ({ text: "unexpected", warnings: [] }));
-  backend({ search: () => ({ ...locatorReply(revision === "1" ? "12" : "9"), revision,
+  backend({ library_status: () => ({ ...zoteroStatus(["user"]), revision }),
+    search: () => ({ ...locatorReply(revision === "1" ? "12" : "9"), revision,
     results: [{ ...result("a", `Snapshot locator ${revision}`), revision }] }), copy_citation: copy });
   render(<App />);
   fireEvent.click(await screen.findByText("Snapshot locator 1"), { ctrlKey: true });
