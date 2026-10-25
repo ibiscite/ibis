@@ -261,6 +261,7 @@ fn v1_to_v2(mut value: Value) -> Value {
 
 /// Load settings, falling back to the backup, then to defaults. Report a missing
 /// primary when a backup is recovered, and other primary problems unconditionally.
+/// With no primary, a refused backup reports its own error instead of being treated as absent.
 pub fn load(path: &Path) -> Loaded {
     let (primary_read, primary) = match read_regular(path) {
         Ok(text) => (PrimaryRead::Present, parse(&text)),
@@ -275,11 +276,23 @@ pub fn load(path: &Path) -> Loaded {
             from_backup: false,
         },
         Err(problem) => {
-            let backup = read_regular(&backup_path(path)).ok().and_then(|text| parse(&text).ok());
-            let from_backup = backup.is_some();
+            let backup_path = backup_path(path);
+            let backup = read_regular(&backup_path)
+                .map_err(SettingsError::from)
+                .and_then(|text| parse(&text));
+            let from_backup = backup.is_ok();
+            let mut problem = Some(problem);
+            let settings = backup.unwrap_or_else(|error| {
+                if primary_read == PrimaryRead::Missing {
+                    let absent = matches!(&error, SettingsError::Unreadable(e) if e.kind() == io::ErrorKind::NotFound)
+                        && fs::symlink_metadata(&backup_path).is_err_and(|e| e.kind() == io::ErrorKind::NotFound);
+                    problem = (!absent).then_some(error);
+                }
+                Settings::default()
+            });
             Loaded {
-                settings: backup.unwrap_or_default(),
-                problem: (primary_read != PrimaryRead::Missing || from_backup).then_some(problem),
+                settings,
+                problem,
                 primary_read,
                 from_backup,
             }
@@ -294,18 +307,20 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
 }
 
 fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<(), SettingsError> {
-    if let Ok(text) = read_regular(path)
-        && let Err(SettingsError::NewerVersion(v)) = parse(&text)
-    {
+    if let Some(SettingsError::NewerVersion(v)) = load(path).problem {
         return Err(SettingsError::NewerVersion(v));
     }
     let temporary = path.with_extension("json.tmp");
     let backup = backup_path(path);
     for candidate in [path, temporary.as_path(), backup.as_path()] {
-        if let Err(error) = require_regular(candidate)
-            && error.kind() != io::ErrorKind::NotFound
-        {
-            return Err(SettingsError::Unreadable(error));
+        if let Err(error) = require_regular(candidate) {
+            // A dangling primary/backup may point to the fresh output name.
+            let absent = error.kind() == io::ErrorKind::NotFound
+                && (candidate == temporary.as_path()
+                    || fs::symlink_metadata(candidate).is_err_and(|e| e.kind() == io::ErrorKind::NotFound));
+            if !absent {
+                return Err(SettingsError::Unreadable(error));
+            }
         }
     }
     if let Some(dir) = path.parent() {
@@ -317,13 +332,8 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
     }
     // The new contents reach the disk before they replace the old file, so a
     // power cut leaves either file whole, never an empty one.
-    // A leftover temporary file, or a link planted in its place, is removed
-    // rather than followed, so writing it can never truncate another file.
-    match fs::remove_file(&temporary) {
-        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
-        _ => {}
-    }
-    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+    // Never remove an interrupted write: the primary or backup may point to it.
+    let (temporary, mut file) = create_temporary(path)?;
     file.write_all(format!("{json}\n").as_bytes())?;
     file.sync_all()?;
     drop(file);
@@ -337,9 +347,24 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
     Ok(())
 }
 
-/// Copy and flush the damaged bytes before opening the temporary output, which
-/// may alias the primary. Exclusive creation never overwrites an occupied name
-/// and works on filesystems without hard links.
+fn create_temporary(path: &Path) -> io::Result<(PathBuf, fs::File)> {
+    for number in 1..=1000 {
+        let temporary = path.with_extension(format!("json.tmp-{number}"));
+        match fs::OpenOptions::new().write(true).create_new(true).open(&temporary) {
+            Ok(file) => return Ok((temporary, file)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "settings temporary names are exhausted",
+    ))
+}
+
+/// Copy and flush the damaged bytes before opening the temporary output.
+/// Exclusive creation never overwrites an occupied name and works on
+/// filesystems without hard links.
 fn preserve_invalid(path: &Path) -> io::Result<()> {
     let bytes = match fs::read(path) {
         // A missing primary has no damaged bytes to preserve. Refuse a dangling
@@ -496,6 +521,120 @@ mod tests {
         assert!(loaded.from_backup);
         assert!(!path.exists());
         assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
+    }
+
+    #[test]
+    fn missing_primary_refuses_a_newer_backup_on_two_save_attempts() {
+        for direct_save in [false, true] {
+            let directory = dir("missing-newer-backup");
+            let path = directory.path().join("settings.json");
+            let bytes = r#"{"schema_version":99,"shortcut":{"future":"参考"}}"#.as_bytes();
+            fs::write(backup_path(&path), bytes).unwrap_or_else(|e| panic!("{e}"));
+            let attempts: Vec<_> = (0..2)
+                .map(|attempt| {
+                    if direct_save {
+                        save(&path, &Settings::default())
+                    } else {
+                        update(&path, |s| {
+                            s.copy_format = Some(if attempt == 0 {
+                                KeyFormat::Keys
+                            } else {
+                                KeyFormat::Typst
+                            })
+                        })
+                        .map(|_| ())
+                    }
+                })
+                .collect();
+            assert_eq!(fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")), bytes);
+            assert!(!path.exists());
+            assert!(
+                attempts
+                    .into_iter()
+                    .all(|result| matches!(result, Err(SettingsError::NewerVersion(99))))
+            );
+            assert!(matches!(load(&path).problem, Some(SettingsError::NewerVersion(99))));
+        }
+    }
+
+    #[test]
+    fn missing_primary_distinguishes_absent_backups_from_refused_backups() {
+        for bytes in [b"{".as_slice(), b"\xff"] {
+            let directory = dir("missing-refused-backup");
+            let path = directory.path().join("settings.json");
+            assert!(load(&path).problem.is_none());
+            fs::write(backup_path(&path), bytes).unwrap_or_else(|e| panic!("{e}"));
+            assert!(load(&path).problem.is_some());
+            assert!(update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).is_err());
+            assert!(!path.exists());
+            assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), bytes);
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn missing_primary_recovery_keeps_a_backup_symlinked_to_an_interrupted_write() {
+        let directory = dir("backup-temporary-alias");
+        let path = directory.path().join("settings.json");
+        let temporary = path.with_extension("json.tmp");
+        let bytes = br#"{"library":"refs.bib","future_choice":[true,null]}"#;
+        fs::write(&temporary, bytes).unwrap_or_else(|e| panic!("{e}"));
+        std::os::unix::fs::symlink(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+        // An occupied output name must never be followed or overwritten either.
+        let occupied = path.with_extension("json.tmp-1");
+        std::os::unix::fs::symlink(&temporary, &occupied).unwrap_or_else(|e| panic!("{e}"));
+        assert!(load(&path).from_backup);
+        let saved = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")), bytes);
+        assert_eq!(fs::read(&temporary).unwrap_or_else(|e| panic!("{e}")), bytes);
+        assert_eq!(fs::read_link(&occupied).unwrap_or_else(|e| panic!("{e}")), temporary);
+        assert_eq!(saved.unknown["future_choice"], serde_json::json!([true, null]));
+        assert_eq!(load(&path).settings, saved);
+        assert!(load(&path).problem.is_none());
+        assert!(!path.with_extension("json.invalid-1").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_dangling_backup_cannot_alias_a_fresh_temporary_output() {
+        let directory = dir("dangling-backup-output");
+        let path = directory.path().join("settings.json");
+        let temporary = path.with_extension("json.tmp-1");
+        fs::write(&path, b"{}").unwrap_or_else(|e| panic!("{e}"));
+        std::os::unix::fs::symlink(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+        assert!(update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).is_err());
+        assert_eq!(fs::read(&path).unwrap_or_default(), b"{}");
+        assert_eq!(
+            fs::read_link(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")),
+            temporary
+        );
+        assert!(!temporary.exists());
+    }
+
+    #[test]
+    fn missing_primary_recovery_preserves_hard_links_and_refuses_temporary_name_exhaustion() {
+        for exhausted in [false, true] {
+            let directory = dir("temporary-collisions");
+            let path = directory.path().join("settings.json");
+            let temporary = path.with_extension("json.tmp");
+            fs::write(&temporary, b"{}").unwrap_or_else(|e| panic!("{e}"));
+            fs::hard_link(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+            let count = if exhausted { 1000 } else { 1 };
+            for number in 1..=count {
+                fs::write(path.with_extension(format!("json.tmp-{number}")), b"occupied")
+                    .unwrap_or_else(|e| panic!("{e}"));
+            }
+            assert_eq!(update(&path, |_| {}).is_err(), exhausted);
+            assert_eq!(path.exists(), !exhausted);
+            assert_eq!(fs::read(&temporary).unwrap_or_default(), b"{}");
+            assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), b"{}");
+            for number in 1..=count {
+                assert_eq!(
+                    fs::read(path.with_extension(format!("json.tmp-{number}"))).unwrap_or_default(),
+                    b"occupied"
+                );
+            }
+        }
     }
 
     #[test]
@@ -724,7 +863,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn recovery_preserves_bytes_before_writing_through_a_primary_symlink_to_temporary() {
+    fn recovery_keeps_the_target_of_a_primary_symlink_to_an_interrupted_write() {
         let directory = dir("symlink-recovery");
         let path = directory.path().join("settings.json");
         let temporary = path.with_extension("json.tmp");
@@ -752,6 +891,7 @@ mod tests {
         assert_eq!(load(&path).settings, saved);
         assert!(load(&path).problem.is_none());
         assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
+        assert_eq!(fs::read(&temporary).unwrap_or_else(|e| panic!("{e}")), damaged);
     }
 
     #[test]
@@ -982,11 +1122,14 @@ mod tests {
         let directory = dir("interrupted");
         let path = directory.path().join("settings.json");
         let stale = format!("{{\"schema_version\": 2, \"shortcut\": \"{}\"}}", "x".repeat(4096));
-        fs::write(path.with_extension("json.tmp"), stale).unwrap_or_else(|e| panic!("{e}"));
+        fs::write(path.with_extension("json.tmp"), &stale).unwrap_or_else(|e| panic!("{e}"));
         save(&path, &Settings::default()).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, Settings::default());
         assert!(load(&path).problem.is_none());
-        assert!(!path.with_extension("json.tmp").exists());
+        assert_eq!(
+            fs::read_to_string(path.with_extension("json.tmp")).unwrap_or_default(),
+            stale
+        );
     }
 
     #[test]
