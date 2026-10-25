@@ -1,5 +1,7 @@
 # UI Automation reads/invokes controls; SendInput exercises the actual shortcut
 # and typing path. Called by smoke-native.py, not a test-mode application API.
+# smoke-native.py prebuilds the inline C# in a fresh temporary directory before
+# timing any action, then runs a copy that loads that assembly without compiling.
 param([string] $Action, [int] $AppId, [int] $EditorId, [string] $Text, [long] $PickerHandle,
       [switch] $TraceForeground, [long] $EditorStarted)
 $ErrorActionPreference = 'Stop'
