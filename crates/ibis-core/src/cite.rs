@@ -9,8 +9,12 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod input;
+pub use input::{InputError, MAX_INPUT_BYTES, MAX_INPUT_ITEMS, read_items};
+
 /// Kind of locator ("p. 12", "chap. 3").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum LocatorLabel {
     Page,
@@ -45,6 +49,8 @@ impl LocatorLabel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(deny_unknown_fields)]
 pub struct Locator {
     pub label: LocatorLabel,
     /// As typed by the user, e.g. "12", "24-26", "3, 7".
@@ -53,6 +59,7 @@ pub struct Locator {
 
 /// One cited reference inside a citation.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CiteItem {
     pub key: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -113,6 +120,8 @@ pub enum CiteError {
     InvalidKey(String),
     #[error("text contains a control character")]
     ControlCharacter,
+    #[error("a locator must contain non-whitespace text")]
+    EmptyLocator,
     #[error("citation key `{0}` contains characters that cannot be used in {1}; rename the key in the library")]
     KeyNotValidFor(String, &'static str),
 }
@@ -138,6 +147,13 @@ pub fn render_with_segments(
     );
     for item in items {
         validate_key(&item.key)?;
+        if item
+            .locator
+            .as_ref()
+            .is_some_and(|locator| locator.value.trim().is_empty())
+        {
+            return Err(CiteError::EmptyLocator);
+        }
         // These characters change meaning inside a LaTeX argument (comment,
         // parameter, command, active character) and cannot be escaped in a key.
         if latex && item.key.contains(['%', '#', '\\', '~', '^', '$', '&']) {

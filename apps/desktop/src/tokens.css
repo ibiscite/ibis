@@ -12,6 +12,17 @@
   --type-strong-weight: 600;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
+  /* Website reading and rhythm; page composition stays in website/style.css. */
+  --font-reading: "Iowan Old Style", Charter, "Palatino Linotype", Cambria, Georgia, serif;
+  --type-reading-size: 1rem; --type-heading-size: 1.25rem;
+  --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
+  --website-pad: clamp(1.25rem, 3.5vw, 3.5rem);
+  --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;
+  --website-section-pad: clamp(2rem, 4vw, 2.75rem);
+  --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
+  --website-button-height: 2.25rem;
+  --website-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 5%);
+
   /* Space and size on a 4 px grid. */
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
@@ -240,6 +251,10 @@
 /* Filled accent with its paired text colour, so any system accent stays legible. */
 @supports (color: AccentColorText) { :root { --selected-background: AccentColor; --selected-text: AccentColorText; } }
 
+/* With no desktop platform (the website on a phone), WebKit's AccentColorText
+   is black even on a dark accent; use the macOS list pair instead. */
+:root:not([data-platform]) { --selected-background: light-dark(#0064E1, #0058D0); --selected-text: #FFFFFF; }
+
 /* WKWebView accepts AccentColorText but resolves it to black. Use the paired
    native list colours on macOS; contrast overrides below still take priority. */
 @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
@@ -388,3 +403,26 @@
 :root[data-platform="linux"] { --fill-control-pressed: color-mix(in srgb, var(--text) 30%, transparent); }
 
 @media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
+
+/* BEGIN generated website palette: brand/build.py */
+:root {
+  --website-bg: Canvas;
+  --website-surface: Canvas;
+  --website-line: GrayText;
+  --website-text: CanvasText;
+  --website-muted: CanvasText;
+  --website-accent-soft: Canvas;
+}
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) {
+    :root {
+      --website-bg: light-dark(#FFFFFF, #111111);
+      --website-surface: light-dark(#F5F5F5, #1C1C1C);
+      --website-line: light-dark(#E5E5E5, #2E2E2E);
+      --website-text: light-dark(#171717, #F2F2F2);
+      --website-muted: light-dark(#525252, #B5B5B5);
+      --website-accent-soft: light-dark(rgb(194 58 28 / .08), rgb(255 122 92 / .13));
+    }
+  }
+}
+/* END generated website palette */

@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-<p align="center"><strong>Your next citation, a shortcut away.</strong><br>Search your libraries, copy a citation key or a formatted citation, and paste it where you write.</p>
+<p align="center"><strong>Your next citation, a shortcut away.</strong><br>Search your libraries, copy a citation key or a formatted citation, and paste it where you write.<br><a href="https://ibiscite.org">ibiscite.org</a></p>
 
 Ibis is free and open source. Searching and copying work offline after setup. Ibis adds no analytics and never changes your libraries. See [privacy and local storage](PRIVACY.md) for runtime data and optional update checks.
 
@@ -48,6 +48,14 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 
 Hide or show the citation output with **Show what will be pasted** in **More**, or **Ctrl+I** (**⌘I** on macOS). Ibis remembers this choice; the references you added stay selected.
 
+Add a locator at the end of a search, such as `memory p 12–14`, `memory ch. 3`
+or `memory S. 12`. Ibis shows how it interpreted the locator; **Search as typed**
+searches the complete text instead. Each reference you add keeps its own locator
+through later searches, preview and copy. To change an already added reference,
+highlight it and choose **Apply locator**; its locator's remove button clears
+only the locator. Pages, chapters, sections, paragraphs, figures, lines, notes,
+volumes and verses are supported. Times such as `01:23` stay literal search text.
+
 ## Use with Zotero
 
 With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. It never changes anything in Zotero.
@@ -74,6 +82,22 @@ cargo run -p ibis -- search "garcia sleep" --bib fixtures/bibtex/real-world.bib
 cargo run -p ibis -- cite mueller2021 vanderberg2019 --page mueller2021=12-14 --format autocite
 cargo run -p ibis -- check fixtures/bibtex/damaged.bib
 ```
+
+For scripts and agents, `cite --items` reads a UTF-8 JSON array from standard
+input. Each item has a `key`, optional `locator` (`label` and `value`), `prefix`,
+`suffix` and `suppress_author`. For example, in a POSIX shell:
+
+```sh
+printf '%s' '[{"key":"example","locator":{"label":"chapter","value":"3"},"prefix":"see"}]' |
+  cargo run -p ibis -- cite --items --json
+```
+
+Locator labels are page, chapter, section, paragraph, figure, line, note, volume
+and verse. Order and repeated keys are preserved. All seven key syntaxes work;
+warnings explain intent a syntax cannot carry. Input is limited to 1 MiB and
+1,000 items; unknown fields and empty locators are errors. Use `--bib` to check
+membership. `--items` cannot be combined with positional keys or `--page`.
+This formats key-based citations; CSL style formatting remains in the desktop app.
 
 ## Contributing
 

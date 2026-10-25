@@ -19,6 +19,35 @@ class BrandDrift(unittest.TestCase):
         self.assertTrue(headline in (root / "README.md").read_text(),
                         "README headline must match brand/settings.json words.tagline")
 
+    def test_website_palette_is_neutral_and_matches_the_review(self):
+        palette = BUILD["palette"]()
+        for colour in palette["gray"].values():
+            self.assertEqual(colour[1:3], colour[3:5])
+            self.assertEqual(colour[3:5], colour[5:7])
+        for theme, expected in {
+            "light": ["#FFFFFF", "#F5F5F5", "#E5E5E5", "#171717", "#525252"],
+            "dark": ["#111111", "#1C1C1C", "#2E2E2E", "#F2F2F2", "#B5B5B5"],
+        }.items():
+            self.assertEqual([palette["themes"][theme][k] for k in
+                              ["bg", "surface", "line", "text", "muted"]], expected)
+
+    def test_website_tokens_are_generated_without_changing_app_roles(self):
+        root = Path(__file__).resolve().parents[1]
+        original = (root / "apps/desktop/src/tokens.css").read_text()
+        prefix = original.split(BUILD["PALETTE_START"])[0].rstrip()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            BUILD["website_tokens"](output)
+            target = output / "apps/desktop/src/tokens.css"
+            result = target.read_text()
+            self.assertEqual(result.split(BUILD["PALETTE_START"])[0].rstrip(), prefix)
+            self.assertEqual(result.count(BUILD["PALETTE_START"]), 1)
+            self.assertIn("--website-bg: light-dark(#FFFFFF, #111111)", result)
+            self.assertIn("@media (forced-colors: none)", result)
+            self.assertIn(Path("apps/desktop/src/tokens.css"), BUILD["generated_files"](output))
+            BUILD["website_tokens"](output)
+            self.assertEqual(target.read_text(), result)
+
     def test_text_rendering_does_not_inherit_the_native_font_backend(self):
         with patch.dict(os.environ, {"PANGOCAIRO_BACKEND": "coretext"}), patch("subprocess.run") as render:
             BUILD["png"]("synthetic.svg", "synthetic.png", 32)

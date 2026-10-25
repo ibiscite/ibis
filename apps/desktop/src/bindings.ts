@@ -45,14 +45,14 @@ export const commands = {
 	 *  it belongs to an outdated query. `scope` contains exact loaded source IDs:
 	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
-	search: (query: string, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply>("search", { query, limit, page, request, scope }),
+	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
 	/**
 	 *  Copy the selected records as a citation to the clipboard. Format choices
 	 *  are saved separately when selected, even if no citation is copied.
 	 */
-	copyCitation: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { ids, format, expectedRevision }),
+	copyCitation: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { items, format, expectedRevision }),
 	/**  Preview a key citation without writing the clipboard or saving a choice. */
-	citationText: (ids: RecordId[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<CitationPreview>("citation_text", { ids, format, expectedRevision }),
+	citationText: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<CitationPreview>("citation_text", { items, format, expectedRevision }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**
@@ -127,6 +127,21 @@ export type CitationPreview = {
 	text: string,
 	warnings: string[],
 	segments: PreviewSegment[],
+};
+
+/**  One transient citation choice, resolved by full source identity. */
+export type CitationSelection = CitationSelection_Serialize | CitationSelection_Deserialize;
+
+/**  One transient citation choice, resolved by full source identity. */
+export type CitationSelection_Deserialize = {
+	id: RecordId,
+	locator?: Locator | null,
+};
+
+/**  One transient citation choice, resolved by full source identity. */
+export type CitationSelection_Serialize = {
+	id: RecordId,
+	locator?: Locator | null,
 };
 
 /**  A bundled citation style the picker can format with (ADR 0020). */
@@ -226,6 +241,24 @@ export type LibraryStatus = {
 	checked_at: number | null,
 };
 
+export type Locator = {
+	label: LocatorLabel,
+	/**  As typed by the user, e.g. "12", "24-26", "3, 7". */
+	value: string,
+};
+
+/**  Kind of locator ("p. 12", "chap. 3"). */
+export type LocatorLabel = "page" | "chapter" | "section" | "paragraph" | "figure" | "line" | "note" | "volume" | "verse";
+
+/**  A search with a locator split off its end. */
+export type LocatorQuery = {
+	/**  What remains to search for. */
+	search: string,
+	locator: Locator,
+	/**  The text read as the locator, exactly as typed. */
+	typed: string,
+};
+
 /**  Whether Ibis starts when the person logs in, as the system reports it. */
 export type LoginItem = {
 	/**  The app's name, such as "Ibis" or "Ibis Nightly", for the interface. */
@@ -277,10 +310,27 @@ export type RecordId = {
 
 export type RowAction = "copy" | "toggle";
 
+/**  Query text and the explicit choice to read a trailing locator. */
+export type SearchQuery = {
+	text: string,
+	interpret_locators: boolean,
+};
+
 /**  A search keeps its snapshot identity even when no references match. */
-export type SearchReply = {
+export type SearchReply = SearchReply_Serialize | SearchReply_Deserialize;
+
+/**  A search keeps its snapshot identity even when no references match. */
+export type SearchReply_Deserialize = {
 	revision: string,
 	results: SearchResult[],
+	interpretation?: LocatorQuery | null,
+};
+
+/**  A search keeps its snapshot identity even when no references match. */
+export type SearchReply_Serialize = {
+	revision: string,
+	results: SearchResult[],
+	interpretation?: LocatorQuery | null,
 };
 
 export type SearchResult = {

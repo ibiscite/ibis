@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use ibis_core::locator_query::{self, LocatorQuery};
 use ibis_core::model::{RecordId, Reference};
 use ibis_core::search::{MatchField, OwnedIndex};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The newest search each interface page has sent, so a search for a query
 /// the person has already typed past stops early instead of delaying the
@@ -88,24 +89,46 @@ impl SearchResult {
     }
 }
 
+/// Query text and the explicit choice to read a trailing locator.
+#[derive(Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SearchQuery {
+    pub(super) text: String,
+    pub(super) interpret_locators: bool,
+}
+
 /// A search keeps its snapshot identity even when no references match.
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchReply {
     pub(super) revision: String,
     pub(super) results: Vec<SearchResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) interpretation: Option<LocatorQuery>,
 }
 
 pub(super) fn search_snapshot(
     index: &OwnedIndex,
     revision: String,
-    query: &str,
+    query: &SearchQuery,
     limit: usize,
     request: u32,
     newest: &AtomicU32,
     scope: Option<&[String]>,
 ) -> SearchReply {
-    let results = search_newest(index, &revision, query, limit, request, newest, scope);
-    SearchReply { revision, results }
+    let interpretation = query
+        .interpret_locators
+        .then(|| locator_query::split(&query.text))
+        .flatten();
+    let text = interpretation
+        .as_ref()
+        .map_or(query.text.as_str(), |query| &query.search);
+    let results = search_newest(index, &revision, text, limit, request, newest, scope);
+    SearchReply {
+        revision,
+        results,
+        interpretation,
+    }
 }
 
 /// Run a search unless a newer request has started, stopping if one does.
@@ -142,6 +165,165 @@ mod tests {
     use crate::library::source::Source;
     use crate::library::state::{Library, candidate};
     use crate::library::status::status;
+
+    #[test]
+    fn locator_search_can_be_literal_scoped_cancelled_and_empty() {
+        let index = OwnedIndex::new(
+            ibis_core::bibtex::load_str(
+                "synthetic",
+                "@misc{plain,title={Reference}}\n@misc{literal,title={Reference p 12}}",
+            )
+            .references,
+        );
+        let newest = AtomicU32::default();
+        for interpret_locators in [true, false] {
+            let query = SearchQuery {
+                text: "Reference p 12".into(),
+                interpret_locators,
+            };
+            let reply = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &newest, None);
+            assert_eq!(reply.results.len(), if interpret_locators { 2 } else { 1 });
+            assert_eq!(reply.interpretation.is_some(), interpret_locators);
+            assert!(reply.results.iter().all(|result| result.revision == reply.revision));
+            let json = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(json.get("interpretation").is_some(), interpret_locators);
+            for scope in [&[][..], &["absent".into()][..]] {
+                let scoped = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &newest, Some(scope));
+                assert!(scoped.results.is_empty());
+                assert_eq!(scoped.revision, "snapshot");
+            }
+        }
+        newest.store(2, Ordering::SeqCst);
+        let query = SearchQuery {
+            text: "Reference p 12".into(),
+            interpret_locators: true,
+        };
+        let cancelled = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &newest, None);
+        assert!(cancelled.results.is_empty());
+        assert_eq!(cancelled.revision, "snapshot");
+        let empty = SearchQuery {
+            text: String::new(),
+            interpret_locators: true,
+        };
+        assert!(
+            search_snapshot(&index, "snapshot".into(), &empty, 20, 3, &newest, None)
+                .results
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn interpreted_unicode_queries_with_long_words_keep_search_and_snapshot_intact() {
+        for space in [
+            '\u{2003}', '\u{0085}', '\u{00a0}', '\u{1680}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}', '\u{3000}',
+        ] {
+            for (prefix, token) in [("x", "a".repeat(70)), ("研究", "界".repeat(24))] {
+                let search = format!("{prefix}{space}{token}");
+                let source = format!("@misc{{a,title={{{search}}}}}");
+                let index = OwnedIndex::new(ibis_core::bibtex::load_str("synthetic", &source).references);
+                for interpret_locators in [true, false] {
+                    let query = SearchQuery {
+                        text: format!("{search} p 12"),
+                        interpret_locators,
+                    };
+                    let reply = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &AtomicU32::default(), None);
+                    assert_eq!(reply.revision, "snapshot");
+                    assert_eq!(reply.results.len(), usize::from(interpret_locators));
+                    if interpret_locators {
+                        let interpreted = reply.interpretation.unwrap_or_else(|| panic!("expected locator"));
+                        assert_eq!(interpreted.search, search);
+                        assert_eq!(interpreted.typed, "p 12");
+                        assert_eq!(interpreted.locator.value, "12");
+                        assert_eq!(reply.results[0].revision, reply.revision);
+                    } else {
+                        assert!(reply.interpretation.is_none());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn separate_searches_keep_each_selected_locator_through_preview_and_copy() {
+        use ibis_core::cite::KeyFormat;
+        use ibis_core::library::CitationSelection;
+        let mut loaded = ibis_core::bibtex::load_str("a", "@misc{same,title={Alpha}}");
+        loaded
+            .references
+            .extend(ibis_core::bibtex::load_str("b", "@misc{same,title={Beta}}").references);
+        let library = Mutex::new(candidate(PathBuf::from("synthetic.bib"), loaded));
+        let (index, revision) = {
+            let locked = library.lock().unwrap_or_else(|error| panic!("{error}"));
+            (Arc::clone(&locked.index), locked.revision.to_string())
+        };
+        let mut selected = Vec::new();
+        for (request, text) in [(1, "Alpha p 12"), (2, "Beta ch. 3")] {
+            let query = SearchQuery {
+                text: text.into(),
+                interpret_locators: true,
+            };
+            let reply = search_snapshot(
+                &index,
+                revision.clone(),
+                &query,
+                20,
+                request,
+                &AtomicU32::default(),
+                None,
+            );
+            assert_eq!(reply.results.len(), 1);
+            selected.push(CitationSelection {
+                id: reply.results[0].id.clone(),
+                locator: reply.interpretation.map(|query| query.locator),
+            });
+        }
+        assert_ne!(selected[0].id.source, selected[1].id.source);
+        for (format, expected) in [
+            (KeyFormat::Pandoc, "[@same, p. 12; @same, chap. 3]"),
+            (KeyFormat::Autocite, r"\autocites[12]{same}[chap.~3]{same}"),
+            (KeyFormat::Parencite, r"\parencites[12]{same}[chap.~3]{same}"),
+            (KeyFormat::Textcite, r"\textcites[12]{same}[chap.~3]{same}"),
+            (KeyFormat::Cite, r"\cite[p.~12]{same}, \cite[chap.~3]{same}"),
+            (KeyFormat::Typst, "@same[p. 12] @same[chap. 3]"),
+            (KeyFormat::Keys, "same, same"),
+        ] {
+            let preview = crate::copy::prepare_citation(&library, &revision, &selected, format)
+                .unwrap_or_else(|error| panic!("{error}"));
+            let preview = serde_json::to_value(preview).unwrap_or_else(|error| panic!("{error}"));
+            let copied = crate::copy::prepare_snapshot(&library, &revision, |locked| {
+                crate::copy::render_citation(locked.index.references(), &selected, format)
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(copied.text, expected);
+            assert_eq!(preview["text"], copied.text);
+            assert_eq!(preview["warnings"], serde_json::json!(copied.warnings));
+            assert_eq!(
+                copied.warnings.is_empty(),
+                !matches!(format, KeyFormat::Cite | KeyFormat::Keys)
+            );
+            let segments = preview["segments"]
+                .as_array()
+                .unwrap_or_else(|| panic!("preview segments"));
+            assert_eq!(
+                segments
+                    .iter()
+                    .filter_map(|part| part["text"].as_str())
+                    .collect::<String>(),
+                expected
+            );
+            assert_eq!(
+                segments
+                    .iter()
+                    .filter_map(|part| part["item"].as_u64())
+                    .collect::<Vec<_>>(),
+                [0, 1]
+            );
+            assert!(matches!(
+                crate::copy::prepare_citation(&library, "retired", &selected, format),
+                Err(crate::library::CommandError::SnapshotChanged)
+            ));
+        }
+    }
 
     #[test]
     fn results_carry_what_tells_similar_references_apart() {
@@ -259,12 +441,34 @@ mod tests {
         let index = Arc::clone(&library.index);
         let scope = vec!["zotero:group:7".into()];
         let newest = AtomicU32::default();
-        let scoped = search_snapshot(&index, captured.revision.clone(), "研究", 20, 1, &newest, Some(&scope));
+        let scoped = search_snapshot(
+            &index,
+            captured.revision.clone(),
+            &SearchQuery {
+                text: "研究".into(),
+                interpret_locators: true,
+            },
+            20,
+            1,
+            &newest,
+            Some(&scope),
+        );
         assert_eq!(scoped.revision, captured.revision);
         assert_eq!(scoped.results.len(), 1);
         assert_eq!(scoped.results[0].id.source, "zotero:group:7");
         assert_eq!(scoped.results[0].revision, captured.revision);
-        let all = search_snapshot(&index, captured.revision.clone(), "研究", 20, 2, &newest, None);
+        let all = search_snapshot(
+            &index,
+            captured.revision.clone(),
+            &SearchQuery {
+                text: "研究".into(),
+                interpret_locators: true,
+            },
+            20,
+            2,
+            &newest,
+            None,
+        );
         assert_eq!(all.results.len(), 2);
         for (request, scope) in [
             (3, Vec::new()),
@@ -274,7 +478,10 @@ mod tests {
             let empty = search_snapshot(
                 &index,
                 captured.revision.clone(),
-                "研究",
+                &SearchQuery {
+                    text: "研究".into(),
+                    interpret_locators: true,
+                },
                 20,
                 request,
                 &newest,
@@ -283,7 +490,18 @@ mod tests {
             assert!(empty.results.is_empty());
             assert_eq!(empty.revision, captured.revision);
         }
-        let late = search_snapshot(&index, captured.revision.clone(), "研究", 20, 1, &newest, None);
+        let late = search_snapshot(
+            &index,
+            captured.revision.clone(),
+            &SearchQuery {
+                text: "研究".into(),
+                interpret_locators: true,
+            },
+            20,
+            1,
+            &newest,
+            None,
+        );
         assert!(late.results.is_empty());
         assert_eq!(late.revision, captured.revision);
         library.requested = Some(Source::Zotero(ZoteroLibrary::Group(99).into()));

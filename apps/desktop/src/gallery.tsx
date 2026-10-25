@@ -238,7 +238,7 @@ export function renderGalleryState(
     copyFormat: () => track(() => provider.api.copyFormat()),
     pickerPreferences: () => track(() => provider.api.pickerPreferences()),
     setPinned: (on) => track(() => provider.api.setPinned(on)),
-    search: (query, limit) => track(() => provider.api.search(query, limit)),
+    search: (...args) => track(() => provider.api.search(...args)),
     findSources: provider.api.findSources ? () => track(() => provider.api.findSources!()) : undefined,
     onLibraryChanged: (handler) => track(() => provider.api.onLibraryChanged(handler)),
     onPickerShown: (handler) => track(() => provider.api.onPickerShown(handler)),

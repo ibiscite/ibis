@@ -5,7 +5,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus } from 
 
 export type { Sources } from "./bindings";
 export type {
-  Copied, Density, LibraryStatus, LoginItem, LoginItemProblem, PickerPreferences, RecordId, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
+  CitationSelection, Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PickerPreferences, RecordId, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 
@@ -42,9 +42,9 @@ export const {
 const searchPage = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
 let searchRequest = 0;
 
-export function search(query: string, limit = 20, scope: string[] | null = null) {
+export function search(query: string, limit = 20, scope: string[] | null = null, interpretLocators = true) {
   searchRequest += 1;
-  return commands.search(query, limit, searchPage, searchRequest, scope);
+  return commands.search({ text: query, interpret_locators: interpretLocators }, limit, searchPage, searchRequest, scope);
 }
 
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
