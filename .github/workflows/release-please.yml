@@ -1,9 +1,12 @@
 name: Release Please
 
 # Keeps a release pull request up to date from Conventional Commits on main.
-# Merging that pull request creates a draft release, tag and changelog, then
-# dispatches packaging at the tag. GITHUB_TOKEN cannot trigger tag-push workflows,
-# but it can dispatch a workflow explicitly. Packaging verifies before publishing.
+# Merging that pull request creates a draft release, tag and changelog.
+# It runs with a token from the release GitHub App, not GITHUB_TOKEN, because
+# pushes made with GITHUB_TOKEN start no workflows: the release pull request
+# would get no "CI result" and the tag would build no packages. With the app's
+# token, CI runs on the release pull request and the tag push starts
+# preview.yml, which verifies the packages before publishing.
 #
 # Inactive until the repository variable RELEASE_PLEASE is set to "enabled"
 # (see RELEASING.md), so the job is skipped rather than failing before
@@ -26,32 +29,20 @@ jobs:
     if: vars.RELEASE_PLEASE == 'enabled'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: write
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+    # Everything is done with the app's token (Contents, Pull requests and
+    # Issues: read and write on this repository only).
+    permissions: {}
     steps:
+      - name: Mint the release app token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
       - name: Update the release pull request or create the release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
+          token: ${{ steps.app.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-  packages:
-    name: Dispatch tag-pinned preview build
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      actions: write
-    steps:
-      - name: Build and verify at the release tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
-          REPO: ${{ github.repository }}
-        run: gh workflow run preview.yml --repo "$REPO" --ref "$TAG" --field publish=true
