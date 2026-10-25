@@ -26,6 +26,7 @@ import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useLoginItem } from "./features/picker/useLoginItem";
+import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import {
   type Copied,
@@ -33,7 +34,6 @@ import {
   type LibraryStatus,
   type Locator,
   type SearchResult,
-  type ShortcutStatus,
 } from "./api";
 
 // A search comes back if the picker returns within a minute, as in Raycast.
@@ -67,6 +67,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
+  const { shortcut, readShortcut } = useShortcutStatus({ shortcutStatus, onShortcutStatus, report });
   useEffect(() => {
     let mounted = true;
     setFailures((old) => old.updateEvents ? { ...old, updateEvents: false } : old);
@@ -86,7 +87,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
   const [libraryVersion, setLibraryVersion] = useState(0);
   const statusReads = useRef(0);
@@ -204,15 +204,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       else console.error(FAILURE_MESSAGES[operation]);
       return () => undefined;
     };
-    // The shortcut can change while the picker is hidden (macOS follows the
-    // keyboard layout), so read it again each time the picker opens.
-    let shortcutReads = 0;
-    const readShortcut = () => {
-      const read = ++shortcutReads;
-      shortcutStatus()
-        .then((status) => { if (mounted && read === shortcutReads) setShortcut(status); })
-        .catch(() => { if (mounted && read === shortcutReads) { setShortcut(null); report("shortcut"); } });
-    };
     const focusSearch = () => {
       resetPointer();
       copyVisibility.current += 1;
@@ -270,19 +261,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
-    const unlistenShortcut = onShortcutStatus?.((status) => {
-      shortcutReads += 1;
-      if (mounted) setShortcut(status);
-    }).catch(() => subscriptionFailure("pickerEvents"));
-    // Read once the change listener is in place, so a change in between is not lost.
-    void (unlistenShortcut ?? Promise.resolve()).then(readShortcut);
     preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;
       mounted = false;
       copyVisibility.current += 1;
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
-      void unlistenShortcut?.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlistenLibrary.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
     };
