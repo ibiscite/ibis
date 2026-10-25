@@ -39,6 +39,8 @@ const steps = [
   ["Format", "cargo", ["fmt", "--all", "--check"]],
   ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
   ["Test", "cargo", ["test", "--locked"]],
+  ["Headless prototype: lint", "cargo", ["clippy", "-p", "ibis-core", "--all-targets", "--locked", "--features", "headless-csl-prototype", "--", "-D", "warnings"]],
+  ["Headless prototype: test", "cargo", ["test", "-p", "ibis-core", "--locked", "--features", "headless-csl-prototype"]],
   ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
   ...scriptSteps,

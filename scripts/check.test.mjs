@@ -60,6 +60,33 @@ test("script-only discovery covers Node and Python names without starting build 
   assert.equal(run("--platform-script-tests").status, 2, "unavailable Python must report incomplete");
 });
 
+test("prototype lint and tests cannot pass through feature-disabled checks", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "ibis-feature-check-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const bin = join(root, "bin");
+  mkdirSync(bin); mkdirSync(join(root, "scripts")); mkdirSync(join(root, "apps/desktop"), { recursive: true });
+  writeFileSync(join(root, "scripts/check.mjs"), readFileSync(checker));
+  const windows = process.platform === "win32";
+  for (const name of ["actionlint", "pnpm", windows ? "python" : "python3"]) {
+    writeFileSync(join(bin, name + (windows ? ".cmd" : "")), windows ? "@exit /b 0\r\n" : "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  }
+  const cargo = windows
+    ? '@echo off\r\nif "%~1"=="--version" exit /b 0\r\necho CARGO_CALL %*\r\nif not "%~1"=="%IBIS_TEST_FAIL_KIND%" exit /b 0\r\necho %* | findstr /c:"--features headless-csl-prototype" >nul\r\nif not errorlevel 1 exit /b 7\r\nexit /b 0\r\n'
+    : '#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\nprintf "CARGO_CALL %s\\n" "$*"\nif [ "$1" = "$IBIS_TEST_FAIL_KIND" ]; then case "$*" in *"--features headless-csl-prototype"*) exit 7;; esac; fi\nexit 0\n';
+  writeFileSync(join(bin, windows ? "cargo.cmd" : "cargo"), cargo, { mode: 0o755 });
+  for (const [kind, label] of [["clippy", "lint"], ["test", "test"]]) {
+    const result = spawnSync(process.execPath, [join(root, "scripts/check.mjs")], {
+      cwd: root, encoding: "utf8", timeout: 15_000,
+      env: { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}`, IBIS_TEST_FAIL_KIND: kind },
+    });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /CARGO_CALL test --locked/);
+    assert.match(result.stdout, /--features headless-csl-prototype/);
+    assert.match(result.stderr, new RegExp(`Headless prototype: ${label} failed`));
+    assert.doesNotMatch(result.stdout, /== Desktop:/);
+  }
+});
+
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "ibis-check-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
