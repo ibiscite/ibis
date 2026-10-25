@@ -7,11 +7,11 @@ import { libraryMessages } from "./messages";
 import { platformOf } from "./nativeAppearance";
 
 const syntheticApi: PickerApi = {
-  libraryStatus: async () => ({ revision: "gallery", state: "loaded", has_snapshot: true, zotero: false, zotero_libraries: [], name: "gallery.bib", snapshot_name: "gallery.bib", references: 1, source_counts: { "synthetic-gallery": 1 }, warnings: 0, error: null, note: null, settings_notice: null, snapshot_zotero: false, stale: false, updated_at: null, checked_at: null }),
+  libraryStatus: async () => ({ revision: "gallery", state: "loaded", has_snapshot: true, zotero: false, zotero_libraries: [], name: "gallery.bib", snapshot_name: "gallery.bib", references: 1, source_counts: { "synthetic-gallery": 1 }, warnings: 0, error: null, problem: null, note: null, settings_notice: null, snapshot_zotero: false, stale: false, updated_at: null, checked_at: null }),
   search: async () => ({ revision: "gallery", results: [{ revision: "gallery", id: { source: "synthetic-gallery", native_key: "example" }, key: "example", title: "Synthetic gallery reference", authors: "Example Author", year: 2026, matched: ["title"], first_author: "Example Author", author_count: 1, container: null, item_type: "book" }] }),
   copyCitation: async () => ({ text: "[@example]", warnings: [] }),
   copyFormat: async () => "pandoc",
-  pickerPreferences: async () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
+  pickerPreferences: async () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false }),
   setPickerPreferences: async () => null,
   shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
   chooseLibrary: async () => undefined,
@@ -90,7 +90,7 @@ test("first-run-found offers Zotero and two synthetic files without a chosen lib
     expect(findSources).not.toHaveBeenCalled();
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(findSources).toHaveBeenCalledOnce();
-    expect(container.querySelectorAll(".found-files li")).toHaveLength(2);
+    expect(container.querySelectorAll('.library-setup [role="option"][data-key^="found-"]')).toHaveLength(2);
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(acknowledge).toHaveBeenCalledExactlyOnceWith("first-run-found");
   } finally {
@@ -100,7 +100,9 @@ test("first-run-found offers Zotero and two synthetic files without a chosen lib
 });
 
 test.each([
-  ["first-run", "Choose a library to get started"],
+  ["first-run", "Where do your references live?"],
+  ["missing-file", "Can't find missing.bib"],
+  ["zotero-unavailable", "Zotero isn't open"],
   ["loading", "Opening example.bib…"],
   ["empty", "No references in empty.bib"],
   ["no-results", "No matching references"],
@@ -112,8 +114,8 @@ test.each([
   const state = galleryStates.find((candidate) => candidate.id === id);
   expect(state).toBeTruthy();
   render(<App {...galleryProvider(state!)} />);
-  await screen.findByText(message);
-  if (id === "first-run") expect(screen.getByRole("button", { name: "Find libraries" })).toBeTruthy();
+  await screen.findByText(message, { selector: ":not(.visually-hidden)" });
+  if (id === "first-run") expect(screen.getByRole("option", { name: /^Look for libraries on this computer/ })).toBeTruthy();
   expect(nativeCalls).toEqual([]);
 });
 
@@ -345,7 +347,7 @@ test("render acknowledgment waits for startup effects even after the first-run U
   try {
     await act(async () => { stop = renderGalleryState(container, state, acknowledge, provider); });
     await act(() => vi.advanceTimersByTimeAsync(1000));
-    expect(container.textContent).toContain("Choose a library to get started");
+    expect(container.textContent).toContain("Where do your references live?");
     expect(acknowledge).not.toHaveBeenCalled();
     await act(async () => resolveFormat());
     await act(() => vi.advanceTimersByTimeAsync(1000));

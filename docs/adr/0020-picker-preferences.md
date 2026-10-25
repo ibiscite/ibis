@@ -43,3 +43,14 @@ field. The choice controls the output line and wide pane only: citation chips,
 the chosen format and copy readiness stay unchanged. Other known and unknown
 settings remain preserved under ADR 0022; invalid types and newer settings
 files retain the existing rejection and recovery rules.
+
+## Agreed extension: Ibis mark in search (2026-10-25)
+
+The maintainer chose to let people pick the search glyph (#1075). The same
+commands carry one more optional field:
+
+| Field | Value | Absent or `null` means |
+| --- | --- | --- |
+| `search_mark` | `true` or `false` | `false` (the magnifier) |
+
+Choosing the mark writes `search_mark: true`; choosing the magnifier removes it.

@@ -48,3 +48,25 @@ export function AddGlyph({ added }: { added: boolean }) {
     </svg>
   );
 }
+
+/** Choice screen tiles, on the same 20 px grid: a library shelf, a file, a
+ * magnifier, a retry arrow, a swap and a pen. Zotero's own logo is never drawn. */
+const choicePaths = {
+  library: ["M4 3.5h2.5v13H4zM8.5 3.5H11v13H8.5z", "m13 4.2 2.4-.6 3 12.3-2.4.6z"],
+  file: ["M5 2.5h7l3 3v12H5z", "M12 2.5v3h3"],
+  find: ["M9 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z", "m13 13 4 4"],
+  retry: ["M16 10a6 6 0 1 1-1.8-4.3", "M16 3.5v3h-3"],
+  swap: ["M4 7h11l-3-3", "M16 13H5l3 3"],
+  write: ["M13.5 3.5l3 3-9 9H4.5v-3z"],
+} as const;
+
+export type ChoiceIconName = keyof typeof choicePaths;
+
+export function ChoiceIcon({ name }: { name: ChoiceIconName }) {
+  return (
+    <svg className="type-icon" aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none"
+      stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {choicePaths[name].map((d) => <path key={d} d={d} />)}
+    </svg>
+  );
+}

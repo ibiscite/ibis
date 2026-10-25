@@ -9,7 +9,7 @@ const loaded = galleryStates.find((state) => state.id === "no-results")!.library
 function mount(query = "", empty = false) {
   const choose = vi.fn(), clear = vi.fn(), searchAll = vi.fn();
   const { container } = render(<EmptyState library={empty ? { ...loaded, references: 0 } : loaded} query={query}
-    narrowed onChooseLibrary={choose} onClearSearch={clear} onSearchAll={searchAll} onReload={vi.fn()} setup={<p>Setup preserved</p>} />);
+    narrowed onChooseLibrary={choose} onClearSearch={clear} onSearchAll={searchAll} onReload={vi.fn()} setup={() => <p>Setup preserved</p>} />);
   return { container, choose, clear, searchAll };
 }
 
@@ -36,7 +36,7 @@ test("idle instructions show only the two decorative key hints without an action
 test.each(["loading", "reloading"] as const)("%s stays blank for 400 ms, then shows only a spinner and the filename", async (state) => {
   vi.useFakeTimers();
   const { container } = render(<EmptyState library={{ ...loaded, state }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
   expect(container.textContent).toBe("");
   await act(() => vi.advanceTimersByTimeAsync(399));
   expect(container.textContent).toBe("");
@@ -52,7 +52,7 @@ test.each(["loading", "reloading"] as const)("%s stays blank for 400 ms, then sh
 
 test("a fast open cancels its loader; another filename starts its own delay", async () => {
   vi.useFakeTimers();
-  const props = { query: "", narrowed: false, onChooseLibrary: vi.fn(), onClearSearch: vi.fn(), onSearchAll: vi.fn(), onReload: vi.fn(), setup: null };
+  const props = { query: "", narrowed: false, onChooseLibrary: vi.fn(), onClearSearch: vi.fn(), onSearchAll: vi.fn(), onReload: vi.fn(), setup: () => null };
   const { rerender } = render(<EmptyState {...props} library={{ ...loaded, state: "loading" }} />);
   await act(() => vi.advanceTimersByTimeAsync(200));
   rerender(<EmptyState {...props} library={loaded} />);
@@ -73,7 +73,7 @@ test("the delayed loader shortens mixed-script names visually and exposes the fu
   vi.useFakeTimers();
   const name = `دراسة-研究-${"🧑🏽‍🔬e\u0301".repeat(50)}-library.bib`;
   const { container } = render(<EmptyState library={{ ...loaded, state: "loading", name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
   await act(() => vi.advanceTimersByTimeAsync(400));
   const loader = screen.getByRole("progressbar", { name: `Opening ${name}…` });
   expect(loader.textContent).toMatch(/^Opening دراسة-研究-.*….*library\.bib…$/);
@@ -85,7 +85,7 @@ test("the delayed loader shortens mixed-script names visually and exposes the fu
 test.each([null, ""])("a missing loading name has the same visible and accessible fallback (%s)", async (name) => {
   vi.useFakeTimers();
   render(<EmptyState library={{ ...loaded, state: "loading", name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
   await act(() => vi.advanceTimersByTimeAsync(400));
   expect(screen.getByRole("progressbar", { name: "Opening library…" }).textContent).toBe("Opening library…");
 });
@@ -110,7 +110,7 @@ test("an empty file gets a separate title and recovery line, keeping the chooser
 test("an empty Zotero library offers reload as well as choosing another library", () => {
   const reload = vi.fn(), choose = vi.fn();
   render(<EmptyState library={{ ...loaded, zotero: true, references: 0 }} query="" narrowed={false}
-    onChooseLibrary={choose} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={reload} setup={null} />);
+    onChooseLibrary={choose} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={reload} setup={() => null} />);
   fireEvent.click(screen.getByRole("button", { name: "Reload" }));
   fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
   expect(reload).toHaveBeenCalledOnce();
@@ -121,7 +121,7 @@ test.each(["file", "zotero", "no-results"])("%s has exactly one enabled suggeste
   const empty = state !== "no-results";
   const { container } = render(<EmptyState library={{ ...loaded, references: empty ? 0 : 24, zotero: state === "zotero" }}
     query={empty ? "" : "unmatched"} narrowed onChooseLibrary={vi.fn()} onClearSearch={vi.fn()}
-    onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+    onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
   const actions = container.querySelectorAll<HTMLButtonElement>('.empty-actions .ui-button[data-variant="primary"]');
   expect(actions).toHaveLength(1);
   expect(actions.item(0).disabled).toBe(false);
@@ -143,7 +143,7 @@ test.each([
   const handlers = { choose: vi.fn(), reload: vi.fn(), clear: vi.fn(), searchAll: vi.fn() };
   render(<EmptyState library={{ ...loaded, references: state === "no-results" ? 24 : 0, zotero: state === "zotero" }}
     query={state === "no-results" ? "unmatched" : ""} narrowed onChooseLibrary={handlers.choose} onClearSearch={handlers.clear}
-    onSearchAll={handlers.searchAll} onReload={handlers.reload} setup={null} />);
+    onSearchAll={handlers.searchAll} onReload={handlers.reload} setup={() => null} />);
   const button = screen.getByRole("button", { name: label });
   button.focus();
   for (const key of ["Enter", " "]) {
@@ -159,7 +159,7 @@ test.each([
 test.each(["🧑🏽‍🔬", "e\u0301"])("a long empty-library name keeps its extension, full accessible text and graphemes (%s)", (unit) => {
   const name = `دراسة-研究-${unit.repeat(50)}-library.bib`;
   const { container } = render(<EmptyState library={{ ...loaded, references: 0, snapshot_name: name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
   const title = container.querySelector(".empty-title")!;
   const visual = title.querySelector('[aria-hidden="true"]')!;
   expect(visual).toBeTruthy();
@@ -173,14 +173,14 @@ test.each(["🧑🏽‍🔬", "e\u0301"])("a long empty-library name keeps its e
 
 test.each([null, ""])("a missing empty-library snapshot name keeps a meaningful title (%s)", (snapshot_name) => {
   const { container } = render(<EmptyState library={{ ...loaded, references: 0, snapshot_name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
   expect(container.querySelector(".empty-title")?.textContent).toBe("No references in this library");
 });
 
 test("markup in an empty-library name remains plain text", () => {
   const name = '<img src=x onerror="alert(1)">.bib';
   const { container } = render(<EmptyState library={{ ...loaded, references: 0, snapshot_name: name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
   expect(container.querySelector(".empty-title")?.textContent).toBe(`No references in ${name}`);
   expect(container.querySelector("img")).toBeNull();
 });
@@ -194,7 +194,7 @@ test("a webview without Segmenter can import and render the complete name", asyn
     const { EmptyState: LegacyEmptyState } = await import("./EmptyState");
     const name = `${"🧑🏽‍🔬e\u0301".repeat(50)}.bib`;
     const { container } = render(<LegacyEmptyState library={{ ...loaded, references: 0, snapshot_name: name }} query="" narrowed={false}
-      onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={null} />);
+      onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
     expect(container.querySelector(".empty-title")?.textContent).toBe(`No references in ${name}`);
     expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
   } finally {

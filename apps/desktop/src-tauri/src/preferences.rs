@@ -76,6 +76,8 @@ pub(crate) struct PickerPreferences {
     pub(crate) density: Density,
     pub(crate) larger_text: bool,
     pub(crate) show_paste_preview: bool,
+    /// The Ibis mark in place of the search glyph; off by default.
+    pub(crate) search_mark: bool,
 }
 
 impl PickerPreferences {
@@ -85,6 +87,7 @@ impl PickerPreferences {
             density: settings.density.unwrap_or(Density::Comfortable),
             larger_text: settings.larger_text.unwrap_or(false),
             show_paste_preview: settings.show_paste_preview.unwrap_or(true),
+            search_mark: settings.search_mark.unwrap_or(false),
         }
     }
 }
@@ -126,6 +129,7 @@ impl SettingsFile {
             s.density = Some(preferences.density).filter(|d| *d != Density::Comfortable);
             s.larger_text = Some(preferences.larger_text).filter(|larger| *larger);
             s.show_paste_preview = Some(preferences.show_paste_preview).filter(|shown| !shown);
+            s.search_mark = Some(preferences.search_mark).filter(|mark| *mark);
         })
     }
 }
@@ -183,6 +187,7 @@ mod tests {
             density: Density::Spacious,
             larger_text: true,
             show_paste_preview: false,
+            search_mark: false,
         };
         let (dispatched, dispatch) = mpsc::channel();
         let (responded, response) = mpsc::channel();
@@ -407,6 +412,7 @@ mod tests {
             density: Density::Spacious,
             larger_text: true,
             show_paste_preview: false,
+            search_mark: false,
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.copy_format, Some(KeyFormat::Typst));
@@ -416,6 +422,7 @@ mod tests {
             density: Density::Comfortable,
             larger_text: false,
             show_paste_preview: true,
+            search_mark: false,
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(PickerPreferences::from_settings(&saved), defaults);
@@ -473,6 +480,7 @@ mod tests {
             density: Density::Compact,
             larger_text: true,
             show_paste_preview: false,
+            search_mark: false,
         };
         for format in [
             KeyFormat::Pandoc,
@@ -511,6 +519,7 @@ mod tests {
             density: Density::Comfortable,
             larger_text: false,
             show_paste_preview: false,
+            search_mark: false,
         };
         for text in [
             r#"{"copy_format":"synthetic-private-value"}"#,

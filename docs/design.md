@@ -52,7 +52,7 @@ and the gallery contrast preview, in that order. Light and dark come from
 | Citation [D9] | `--citation`, `--citation-tile`, `--on-citation` | Scarlet; see **Colour roles**. |
 | Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
 | Elevation [D11] | `--shadow-card`, `--shadow-raised`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
-| Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap` | 4 px grid; 2 px only as an optical nudge. |
+| Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap`, `--row-spacing` | 4 px grid; 2 px only as an optical nudge or between rows. |
 | Shape [D2] | `--r-win`, `--r-min`, `--r-row`, `--r-tile`, `--r-menu`, `--menu-pad`, `--r-mi`, `--r-control`, `--r-key`, `--r-card`, `--r-dialog`, `--r-full` | See **Corners**. |
 | Type [D13] | `--type-*`, `--font-family`, `--font-mono` | See **Type**. |
 | Motion [D14] | `--motion-feedback/-panel/-layout/-exit`, `--ease-out`, `--ease-in` | See **Motion**. |
@@ -113,7 +113,9 @@ keeps S to the edge, top and bottom.
 **Two columns** [C3]. Icons, the search glyph, the status dot and type tiles
 centre on the 32 px tile column; text starts on the title column: row titles,
 the search query, the status text and the shelf citation. The search glyph sits
-6 px inside the tile column on each side.
+6 px inside the tile column on each side. It is the magnifier unless "Ibis mark
+in search" in More (`search_mark`, ADR 0020) swaps in the brand mark, drawn
+from `brand/` at the same size and colour.
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -331,8 +333,8 @@ that never takes focus: a pill near the top on macOS, bottom right on Windows,
 a bottom toast on GNOME. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.
 
-**Empty states.** Empty library, missing file and first run use the choice
-screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
+**Empty states.** First run, no library and a library that could not be opened
+use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
 `--text-tertiary`, a title (title type), one line of at most 40 characters
 (meta type, `--muted`, up to three rows), then one suggested action 16 px below;
 quieter text buttons for alternatives. No skeletons or illustrations; a spinner
@@ -512,19 +514,43 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
 
 ## First run and choice screens
 
-[C12] Empty library, missing file and first run share one pattern: a title and
+[C12] First run, no library and a library that could not be opened share one pattern: a title and
 one line on the tile column's edge, then result-style rows (tile, title, one
 line of help, optional trailing tag, chevron).
 
-- **Empty library:** Zotero ("Found on this Mac/PC/computer") and BibTeX or
-  BibLaTeX file; a CSL JSON or YAML row joins only when those sources ship (0.5);
-  "You can drop a file here too."
-- **Missing file:** "Find example.bib" (accent tile) and "Use another library".
+Rows are 2 px apart (`--row-spacing`) and are a list box: arrow keys move,
+Enter or a click chooses, and ↓ from search enters the list. The focused row
+fills as the active result row; one suggested row at most gets an accent tile.
+A choice screen hides the result heading, the shelf and the Copy hint.
+
+- **No library:** "Where do your references live?": Zotero ("Found on this
+  Mac/PC/computer" once looked for), BibTeX or BibLaTeX file, then "Look for
+  libraries on this computer". Nothing is searched until that row is chosen;
+  found .bib files join as rows above it (folder as the tag), and the row
+  becomes "Look again" with the outcome as its help line. Zotero refusing other
+  apps and folders too large to search are one quiet note below. A CSL JSON or
+  YAML row joins only when those sources ship (0.5).
+- **Could not open, nothing kept:** the title names the library and the fix;
+  the backend sorts each failure by `problem`:
+
+  | Problem | Title | Line | Rows (first suggested) |
+  |---|---|---|---|
+  | `missing` file | Can't find thesis.bib | It may have moved, or its drive is disconnected. | Find thesis.bib, Use another library, Try again |
+  | `unreadable` | Can't read thesis.bib | The reason, as a sentence | Try again, Use another library |
+  | `zotero_closed` | Zotero isn't open | Open Zotero, then try again. | Try again, Use another library |
+  | `zotero_access_off` | Zotero isn't sharing your library | Where to turn it on | Try again, Use another library |
+  | `other` | Can't open thesis.bib | The reason, as a sentence | Try again, Use another library |
+
+  The title and line are announced once; "Use another library" shows the no
+  library screen. A failure with references kept stays a notice above them.
 - **First run:** two steps of the same pattern: where your references live,
-  then what you write in (Markdown (Pandoc), LaTeX, Typst). The copy format has
-  one name everywhere ("Pandoc"); first run adds only "Markdown" in front. The
-  open shortcut and start at login live in Settings and the footer tip. No mark
-  in first run. The footer shows "No library chosen", Shortcuts and More.
+  then, once the first library opens with an empty search, "What do you write
+  in?" (Markdown (Pandoc), LaTeX, Typst; "Now" marks the current format). The
+  choice sets the copy format and returns to search; results appear only after
+  it. The copy format has one name everywhere ("Pandoc"); first run adds only
+  "Markdown" in front. The writing step's note names the open shortcut; start
+  at login lives in More (later Settings). No mark in first run. The footer
+  shows "No library chosen", Shortcuts and More.
 
 ## Settings
 

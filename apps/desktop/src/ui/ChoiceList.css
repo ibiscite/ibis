@@ -1,0 +1,25 @@
+/* Choice screens [C12] reuse the result row: the global [role="option"] rules
+   gives height, padding and radius, and .result-tile/.result-body/.result-year
+   give the tile, text and trailing tag. Only the choice-specific parts live here. */
+.choice-screen { display: flex; flex-direction: column; text-align: start; }
+.choice-title, .choice-line { padding-inline: var(--row-pad); margin: 0; overflow-wrap: anywhere; }
+.choice-title { color: var(--text); font-size: var(--title-size); line-height: var(--title-line-height); font-weight: var(--type-strong-weight); }
+.choice-line { margin-top: var(--space-1); color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); }
+.choice-list { display: flex; flex-direction: column; margin-top: var(--space-3); outline: none; }
+.choice-footnote { margin-top: var(--space-3); }
+.choice-row { outline: none; }
+.choice-help { margin-top: var(--metadata-gap); }
+.choice-tag { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-chevron { flex: none; color: var(--muted); }
+.choice-chevron:dir(rtl) { transform: scaleX(-1); }
+.choice-row[data-suggested] .choice-tile { background: var(--accent); color: var(--text-on-accent); }
+/* The focused row is the active one, filled as a selected result row. */
+.choice-row[data-focused] { background: var(--row-active-background); color: var(--row-active-text); }
+.choice-row[data-focused] .choice-help, .choice-row[data-focused] .choice-tag, .choice-row[data-focused] .choice-chevron { color: var(--row-active-muted); }
+.choice-row[data-focused]:not([data-suggested]) .choice-tile { background: var(--tile-active-background); color: inherit; }
+@media (hover: hover) {
+  .choice-row[data-hovered]:not([data-focused]) { background: var(--fill-subtle-hover); }
+}
+@media (forced-colors: active) {
+  .choice-row[data-focused] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}

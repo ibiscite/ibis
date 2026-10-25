@@ -25,6 +25,7 @@ export type GalleryState = {
   density?: Density;
   /** The picker's own Larger text setting (×1.15), unlike `largeText`, which doubles the system text size. */
   largerTextSetting?: boolean;
+  searchMark?: boolean;
   /** Seeded once the picker has rendered: pin it, open More, choose this many results, open All keys. */
   pinned?: boolean;
   menuOpen?: boolean;
@@ -98,7 +99,7 @@ if (typeof window !== "undefined") {
 
 function library(overrides: Partial<GalleryLibrary> = {}): GalleryLibrary {
   return { revision: "gallery", state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false, zotero_libraries: [],
-    references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-gallery": overrides.references ?? 24 } : {}, warnings: 0, error: null, note: null, settings_notice: null,
+    references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-gallery": overrides.references ?? 24 } : {}, warnings: 0, error: null, problem: null, note: null, settings_notice: null,
     snapshot_zotero: false, stale: false, updated_at: null, checked_at: hoursAgo(3), ...overrides };
 }
 
@@ -160,7 +161,7 @@ export const galleryStates: readonly GalleryState[] = [
     library: library({ name: "מקורות.bib", snapshot_name: "מקורות.bib", stale: true, state: "error", checked_at: hoursAgo(2),
       error: "The library file is unavailable; keeping the last loaded references" }),
     results: [reference("memory2026", "מחקר דמיוני על זיכרון ושפות", "מחבר לדוגמה", "Synthetic Studies", "book")] },
-  { id: "missing-file", label: "Missing library file", library: library({ state: "error", name: "missing.bib", snapshot_name: null, has_snapshot: false, zotero: false, references: 0, error: "The library file is unavailable." }) },
+  { id: "missing-file", label: "Missing library file", library: library({ state: "error", name: "missing.bib", snapshot_name: null, has_snapshot: false, zotero: false, references: 0, error: "The library file is unavailable.", problem: "missing" }) },
   { id: "invalid-settings", label: "Invalid settings", library: library({ settings_notice: "settings.json could not be read. Ibis is using the backup. Changes are not being saved. Repair the synthetic settings file and restart Ibis." }) },
   { id: "damaged-library", label: "Damaged library", library: library({ references: 3, warnings: 2, note: "Some references could not be read. Export the library again to restore them." }), query: "memory", results: examples },
   { id: "copy-confirmation", label: "Copy confirmation", library: library(), query: "memory", results: examples, copied: { text: "[@example2026]", warnings: [] } },
@@ -179,10 +180,11 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "empty-zotero", label: "Empty Zotero library", library: library({ name: "My Library", snapshot_name: "My Library", zotero: true, snapshot_zotero: true, references: 0 }) },
   { id: "reloading", label: "Reloading with retained references", library: library({ state: "reloading", references: 2 }), query: "memory", results: examples.slice(0, 2) },
   { id: "zotero-unavailable", label: "Zotero unavailable without a snapshot", library: library({ state: "error", name: "Zotero library", snapshot_name: null, has_snapshot: false, zotero: true, references: 0,
-    error: "Zotero is not running, or it is not accepting connections." }) },
+    error: "Zotero is not running, or it is not accepting connections.", problem: "zotero_closed" }) },
   { id: "file-kept-menu", label: "Retained file details in More", library: library({ state: "error", name: "example.bib", snapshot_name: "example.bib", stale: true,
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
+  { id: "search-mark", label: "Ibis mark in search", library: library(), query: "", searchMark: true },
   { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
   ...[false, true].flatMap((formatted) => [true, false].map((showPastePreview) => ({
     id: `preview-${formatted ? "apa" : "keys"}-${showPastePreview ? "on" : "off"}`,
@@ -236,7 +238,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
         copyFormatted: async () => null,
       } : {}),
       copyFormat: async () => "pandoc",
-      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true }),
+      pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true, search_mark: state.searchMark ?? false }),
       setPickerPreferences: async () => null,
       shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       chooseLibrary: async () => undefined,

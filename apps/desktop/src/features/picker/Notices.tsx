@@ -26,7 +26,8 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
   return (
     <div ref={scroll} className="notices scroll-area">
       {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
-      {library?.error && !hasRetainedFreshnessProblem(library) && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}
+      {/* A library that could not be opened at all gets the recovery screen instead. */}
+      {library?.error && !(library.state === "error" && !library.has_snapshot) && !hasRetainedFreshnessProblem(library) && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}
       {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
         <p role="alert" key={operation}>{operationFailures[operation]}</p>
       ))}
