@@ -1235,7 +1235,7 @@ test("a citation style shows a safe preview and copies rich text with its warnin
   }
 });
 
-test("Enter never copies a formatted preview of an earlier choice", async () => {
+test("Enter before the preview is ready copies the new choice once it is, never an earlier one", async () => {
   const { InlineWorker } = await import("./format/inline-worker");
   vi.stubGlobal("Worker", InlineWorker);
   const copies: Record<string, unknown>[] = [];
@@ -1253,14 +1253,41 @@ test("Enter never copies a formatted preview of an earlier choice", async () => 
     const preview = await screen.findByRole("region", { name: "Preview" });
     await within(preview).findByText("(Alpha, 2021)");
     const box = screen.getByLabelText("Search references");
-    // Enter after the choice changed but before its preview is ready.
+    // Enter after the choice changed but before its preview is ready waits for it.
     act(() => { fireEvent.keyDown(box, { key: "ArrowDown" }); });
     act(() => { fireEvent.keyDown(box, { key: "Enter" }); });
-    expect(await screen.findByText(/still being formatted/)).toBeTruthy();
-    await within(preview).findByText("(Beta, 2021)");
     expect(copies).toEqual([]);
-    fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => expect(copies.map((copy) => copy.text)).toEqual(["(Beta, 2021)"]));
+    expect(screen.queryByText(/still being formatted/)).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("moving before a waiting Enter's preview is ready cancels that copy", async () => {
+  const { InlineWorker } = await import("./format/inline-worker");
+  vi.stubGlobal("Worker", InlineWorker);
+  const copies: Record<string, unknown>[] = [];
+  const book = (key: string, family: string) => ({ id: key, type: "book", title: key, author: [{ family }], issued: { "date-parts": [[2021]] } });
+  backend({
+    search: () => [result("a", "First"), result("b", "Second")],
+    csl_items: (args) => JSON.stringify((args.ids as { native_key: string }[]).map((id) =>
+      id.native_key === "a" ? book("a", "Alpha") : book("b", "Beta"))),
+    copy_formatted: (args) => { copies.push(args); return null; },
+  });
+  try {
+    render(<App />);
+    await screen.findByText("First");
+    chooseFormat("style:apa");
+    const preview = await screen.findByRole("region", { name: "Preview" });
+    await within(preview).findByText("(Alpha, 2021)");
+    const box = screen.getByLabelText("Search references");
+    act(() => { fireEvent.keyDown(box, { key: "ArrowDown" }); });
+    act(() => { fireEvent.keyDown(box, { key: "Enter" }); });
+    act(() => { fireEvent.keyDown(box, { key: "ArrowUp" }); });
+    await within(preview).findByText("(Alpha, 2021)");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(copies).toEqual([]);
   } finally {
     vi.unstubAllGlobals();
   }
@@ -3689,12 +3716,11 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     act(() => box.focus());
     fireEvent.keyDown(box, { key: "Enter" });
     expect(copies).not.toHaveBeenCalled();
-    await screen.findByText(/still being formatted/);
+    // Enter waits for the hidden preview, then copies it without a second press.
     await act(async () => { finish(); await pending; });
-    await waitFor(() => expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy as APA"));
-    expect(format).toHaveBeenCalledOnce();
-    fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => expect(copies).toHaveBeenCalledOnce());
+    expect(format).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/still being formatted/)).toBeNull();
     expect(copies.mock.calls[0]).toEqual([{ text: output.text, html: output.html, expectedRevision: "1" }]);
     first.unmount();
     render(<App />);
