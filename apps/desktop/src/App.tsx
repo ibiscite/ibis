@@ -80,7 +80,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       mounted = false;
       void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
     };
-  }, [api]);
+  }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
   const { format, density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;
