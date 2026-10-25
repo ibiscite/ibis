@@ -1,0 +1,81 @@
+// The search for the current query in the open library, and which of its results may be acted on.
+import { useEffect, useState } from "react";
+import type * as nativeApi from "../../api";
+import type { LibraryStatus, LocatorQuery, SearchResult } from "../../api";
+import { pickerText } from "../../messages";
+import { choiceKey } from "./choice";
+
+export function useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot }: {
+  search: typeof nativeApi.search;
+  query: string;
+  interpretLocators: boolean;
+  /** Undefined while loading; null means the status request itself failed. */
+  library: LibraryStatus | null | undefined;
+  /** Changes whenever a library opens, so the current query is searched again. */
+  libraryVersion: number;
+  setActive: (index: number) => void;
+  /** Reads the library status again when a reply comes from a newer snapshot. */
+  refreshSnapshot: () => void;
+}) {
+  const queryKey = JSON.stringify([query, interpretLocators]);
+  const [interpretation, setInterpretation] = useState<LocatorQuery | null>(null);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [announcement, setAnnouncement] = useState("");
+  // The query the shown results belong to; differs while a search is pending.
+  const [resultsQuery, setResultsQuery] = useState<string | null>(null);
+  const [resultsRevision, setResultsRevision] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searches when the query (queryKey covers query and locator mode) or the library changes. The earlier results are read only to keep the user's row when a reply repeats them.
+  useEffect(() => {
+    setAnnouncement("");
+    // Typing before choosing a library is normal; preserve the query and
+    // chooser. Actual library/status failures still report search errors.
+    if (library === undefined || library?.state === "none" || library?.state === "loading" || (library?.state === "error" && !library.has_snapshot)) {
+      setResults([]);
+      setInterpretation(null);
+      setResultsQuery(queryKey);
+      setActive(0);
+      setError(null);
+      return;
+    }
+    let current = true;
+    let announcementTimer: number | undefined;
+    search(query, undefined, undefined, interpretLocators)
+      .then(({ revision, results: found, interpretation: interpreted }) => {
+        if (current) {
+          setResults(found);
+          setInterpretation(interpreted ?? null);
+          setResultsRevision(revision);
+          if (revision !== library?.revision) refreshSnapshot();
+          setResultsQuery(queryKey);
+          // An unchanged reply must not undo the user's newer row choice.
+          const sameResults = resultsQuery === queryKey && resultsRevision === revision && choiceKey(results) === choiceKey(found);
+          if (!sameResults) setActive(0);
+          setError(null);
+          announcementTimer = window.setTimeout(() => {
+            setAnnouncement(pickerText.resultCount(found.length));
+          }, 300);
+        }
+      })
+      .catch(() => {
+        // Results of an earlier query must not sit beside this query's error.
+        if (current) {
+          setResults([]);
+          setInterpretation(null);
+          setResultsQuery(queryKey);
+          setError(pickerText.searchError);
+        }
+      });
+    return () => {
+      current = false;
+      window.clearTimeout(announcementTimer);
+    };
+  }, [queryKey, library, libraryVersion]);
+
+  // Results belong to the query that produced them. While a newer search is
+  // pending, the rows still on screen are not acted on or offered by any key,
+  // click or footer hint; only these current results are.
+  const current = resultsQuery === queryKey && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
+  return { queryKey, results, current, interpretation, announcement, resultsQuery, error };
+}

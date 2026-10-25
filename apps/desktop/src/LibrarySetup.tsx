@@ -15,9 +15,6 @@ type SetupApi = {
 
 type Action = "choose" | "zotero" | "findSources" | "openFound";
 
-// Kept here for imports written before the label moved to keys.ts.
-export { shortcutLabel } from "./keys";
-
 /** Where people write, and the copy format that suits each (first run, step 2). */
 const WRITING_PLACES = [
   { id: "markdown", choice: "pandoc" },

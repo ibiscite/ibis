@@ -6,6 +6,6 @@ Do not open a public issue with vulnerability details. Use GitHub's private vuln
 
 Remove library contents, document text, clipboard contents, personal file paths and usernames from anything you attach. A synthetic example that reproduces the problem is ideal.
 
-Areas we especially want to hear about: malicious `.bib`/RIS/CSL input, output that escapes its syntax (LaTeX, HTML, RTF), insertion into the wrong window, local endpoints reachable from web pages, update or signature verification, and any unexpected network access.
+Areas we especially want to hear about: malicious `.bib` files or Zotero local API replies, output that escapes its syntax (LaTeX, Typst, HTML), clipboard contents other than the citation you chose, update or signature verification, and any unexpected network access.
 
 For ordinary bugs without security impact, use the public issue tracker.
