@@ -32,7 +32,13 @@ libraries, shortcuts and other migrated settings intact.
   the old files. Do not copy temporary files or unrelated directory contents.
 - An existing new primary or backup always wins, including an empty, invalid
   or newer file. Existing recovery and save-refusal rules remain unchanged.
-  A missing old primary means there are no active settings to migrate.
+  **Backup-only migration amendment (2026-10-25, #1104):** for both Stable and
+  Nightly, a missing legacy `settings.json` with an existing `settings.json.bak`
+  migrates the backup alone under the same staging, flush and destination rules.
+  Leave the legacy files unchanged; do not create a primary during migration.
+  Loading uses a valid migrated backup, and the next save restores the primary
+  without changing that backup. Refuse saves when the backup has a newer schema.
+  If both legacy files are missing, nothing migrates.
 - Stage and flush the complete copy before publishing it. An interrupted copy
   must not expose a partial new primary or lose the old recovery pair. Never
   replace an unrelated nonempty destination. On a failed migration, continue

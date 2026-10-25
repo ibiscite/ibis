@@ -41,7 +41,11 @@ its path on another machine. An unavailable path produces a load error; **Choose
 library** selects that machine's file. The same path on two machines may name
 different libraries. Roaming preferences are not library synchronization.
 
-A missing primary file gives defaults immediately. An unreadable, invalid or
+A missing primary file loads a valid `settings.json.bak` if there is one,
+otherwise defaults, and the next save restores the primary from what loaded
+without touching the backup ([#1104](https://github.com/ibiscite/ibis/issues/1104),
+2026-10-25). A refused backup reports its own error when the primary is missing;
+a newer backup refuses saves too. An unreadable, invalid or
 newer primary reports its problem and tries `settings.json.bak`, then defaults.
 Loading a backup does not repair or replace the primary. Desktop updates reread
 the primary. **Recovery amendment ([#1088](https://github.com/ibiscite/ibis/issues/1088),
@@ -57,9 +61,15 @@ archive-name search is bounded to 1–1000. Newer versions, other read errors an
 invalid files without a valid backup are still refused.
 After a successful save, the desktop refreshes and publishes its settings notice.
 
-Saving writes `settings.json.tmp`, copies an existing primary to
+Saving writes a fresh, exclusively created `settings.json.tmp-N` under an unused
+name (bounded to 1–1000), copies an existing primary to
 `settings.json.bak`, then renames the temporary file over the primary. The
-desktop's mutex serializes its own read/change/save operations. Rereading keeps
+temporary-name amendment ([#1104](https://github.com/ibiscite/ibis/issues/1104),
+2026-10-25) keeps pre-existing temporary files and links unchanged: a primary or
+backup may point to an interrupted write, so removing it could lose settings.
+Occupied names are skipped; exhaustion refuses the save. Dangling primary or
+backup links also refuse saves and remain unchanged.
+The desktop's mutex serializes its own read/change/save operations. Rereading keeps
 known-field edits made before an update; this is not locking against simultaneous
 external edits or a guarantee of durability after power loss.
 
