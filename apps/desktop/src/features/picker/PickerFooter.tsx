@@ -32,6 +32,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   const foldedFocus = useRef(false);
   const [fit, setFit] = useState({ shortcuts: false, status: false });
   const platform = currentPlatform();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the hint labels, Alt and the platform change the rendered widths, so the fit is measured again.
   useLayoutEffect(() => {
     const element = bar.current;
     if (!element) return;

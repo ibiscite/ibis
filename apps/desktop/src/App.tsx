@@ -54,7 +54,7 @@ export type PickerPreview = { query?: string; copied?: Copied };
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
-    useZoteroLibraries, zoteroGroups } = api;
+    useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
@@ -70,6 +70,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [active, setActive] = useState(0);
   const pointer = usePointerSelection(active, setActive);
   const { resetPointer } = pointer;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
   const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
@@ -139,7 +140,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
-  }, [setupDone]);
+  }, [setupDone, setFailures]);
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
   const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string } | null>(null);
   const requestCopy = (choice: string) => setPendingCopy({ choice, queryKey });
@@ -203,6 +204,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     setStartAtLogin({ ...before, enabled: on, problem: null });
     askLoginItem("loginItemChange", () => setLoginItem(on), () => setStartAtLogin({ ...before, problem: null }));
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reads once each time More opens; readLoginItem is rebuilt every render.
   useEffect(() => { if (menuOpen) readLoginItem(); }, [menuOpen]);
   const loginItemOffered = Boolean(setLoginItem) && startAtLogin !== null && startAtLogin.problem !== "unsupported";
 
@@ -227,6 +229,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
 
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribes once on mount. The handlers only call setters, refs and native calls that never change, so the first render's copies are current.
   useEffect(() => {
     let acceptInitialStatus = true;
     let mounted = true;
@@ -289,6 +292,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     };
   }, [resetPointer]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searches when the query (queryKey covers query and locator mode) or the library changes. The earlier results are read only to keep the user's row when a reply repeats them.
   useEffect(() => {
     setAnnouncement("");
     // Typing before choosing a library is normal; preserve the query and
@@ -346,6 +350,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const previousActive = useRef(active);
   const followKeyboard = useRef(true);
   const resultArea = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the conditional values are triggers: while references are chosen, a preview, format or focus change can move the row, so it is revealed again.
   useEffect(() => {
     const moved = previousActive.current !== active;
     previousActive.current = active;
@@ -447,6 +452,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   };
 
   // Format the preview again whenever the choice or the style changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, revision and the style or key format, so it is the only trigger.
   useEffect(() => {
     if (chosen.length === 0 || staleSelection || !chosenRevision) return;
     let live = true;
@@ -529,6 +535,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Enter, Copy or a click on a row copies what is chosen then (the row, or the
   // citation being built), once its preview is ready; anything changing first cancels it.
   const copyChosen = () => { if (chosen.length > 0) requestCopy(chosenKey); };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: copy is rebuilt every render; this runs when the waiting copy, the choice, its preview or the search changes.
   useEffect(() => {
     if (pendingCopy === null) return;
     if (chosenKey !== pendingCopy.choice || queryKey !== pendingCopy.queryKey) {
@@ -564,6 +571,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const reportedLibraries = library?.zotero_libraries ?? [];
   const sameChoice = (a: ZoteroLibrary[], b: ZoteroLibrary[]) =>
     a.length === b.length && a.every((choice, i) => sameLibrary(choice, b[i]!));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: library is the trigger: a new status report settles the pending choice.
   useEffect(() => {
     if (pendingLibraries && sameChoice(pendingLibraries, reportedLibraries)) setPendingLibraries(null);
   }, [library]);
@@ -572,6 +580,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const wantGroups = Boolean(zoteroGroups && library?.zotero && (menuOpen || severalLibraries || nothingMatched));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: libraryVersion is a trigger: a library change refreshes group names.
   useEffect(() => {
     // Group names can refresh in the background, but a failure belongs only
     // to this menu opening. Closing it also invalidates its pending request.
@@ -585,13 +594,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [wantGroups, menuOpen, libraryVersion]);
   const isChosen = (choice: ZoteroLibrary) => chosenLibraries.some((chosen) => sameLibrary(chosen, choice));
   const toggleLibrary = (choice: ZoteroLibrary) => {
-    if (!useZoteroLibraries) return;
+    if (!chooseZoteroLibraries) return;
     const next = isChosen(choice)
       ? chosenLibraries.filter((chosen) => !sameLibrary(chosen, choice))
       : [...chosenLibraries, choice];
     if (next.length === 0) return;
     setPendingLibraries(next);
-    void perform("zotero", () => useZoteroLibraries(next).catch((error: unknown) => {
+    void perform("zotero", () => chooseZoteroLibraries(next).catch((error: unknown) => {
       setPendingLibraries(null);
       throw error;
     }));
@@ -599,11 +608,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Every Zotero library on offer, once the group list is known.
   const allLibraries = (): ZoteroLibrary[] => ["user", ...offeredGroups.map((group) => ({ group }))];
   const searchAllLibraries = () => {
-    if (!useZoteroLibraries) return;
+    if (!chooseZoteroLibraries) return;
     const all = allLibraries();
     setPendingLibraries(all);
     input.current?.focus();
-    void perform("zotero", () => useZoteroLibraries(all).catch((error: unknown) => {
+    void perform("zotero", () => chooseZoteroLibraries(all).catch((error: unknown) => {
       setPendingLibraries(null);
       throw error;
     }));
@@ -638,7 +647,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus();
     void perform(operation, action);
   };
-  const narrowed = Boolean(library?.zotero && useZoteroLibraries && groups) && allLibraries().some((choice) => !isChosen(choice));
+  const narrowed = Boolean(library?.zotero && chooseZoteroLibraries && groups) && allLibraries().some((choice) => !isChosen(choice));
   const openKeys = () => {
     closeMenu(false);
     const focused = document.activeElement;
@@ -864,7 +873,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         more={
           <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMenu(false))}
             buttonRef={moreButton} searchRef={input} library={library} libraryDetail={libraryDetail}
-            zotero={library?.zotero && useZoteroLibraries ? {
+            zotero={library?.zotero && chooseZoteroLibraries ? {
               offered: ["user" as const, ...offeredGroups.map((id) => ({ group: id }))],
               isChosen, chosenCount: chosenLibraries.length,
               name: (choice) => (typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary),
