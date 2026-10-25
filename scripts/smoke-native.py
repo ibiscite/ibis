@@ -1425,7 +1425,8 @@ def first_run_preferences_main(args):
         # without a pattern the exact-name click helper accepts.
         wait_for(lambda: any(node.get("focused") for node in named(snapshot(), "Filter formats")), "Copy as filter focused")
         native.text("Typst")
-        wait_for(lambda: not named(snapshot(), "LaTeX"), "Copy as filter leaves only Typst")
+        # Exactly "Pandoc" names only that menu item; the header reads "Copy as Pandoc".
+        wait_for(lambda: not named(snapshot(), "Pandoc"), "Copy as filter leaves only Typst")
         native.key("Down")
         native.key("Return")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
@@ -2246,6 +2247,7 @@ class ContractTests(unittest.TestCase):
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
                 {"name": name, "role": "button"} for name in names] + [
                 {"name": "Filter formats", "role": "entry", "focused": True}] * menu_open + [
+                {"name": "Pandoc", "role": "menu item"}] * (native.format_filter == "") + [
                 {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus and not menu_open},
                 {"name": "private result payload", "role": "list item", "focused": result_focus}]}
 
