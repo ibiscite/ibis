@@ -73,45 +73,34 @@ also in **More**. Update controls require the tray menu.
 
 ### Bind a system shortcut
 
-**Nightly, until the next release:** `ibis toggle` starts Ibis if needed,
-shows a hidden picker, or hides a visible picker (including a pinned one).
-Ordinary application launches still bring the picker forward. The command
-uses the desktop app's existing single-instance channel; it opens no network
-port and needs no extra permission. On Wayland the picker explains this
-fallback on first run, even when XWayland could register the in-app shortcut.
+**Nightly, until the next release:** `ibis toggle` starts Ibis if needed, shows a hidden picker, or hides one (even pinned).
+Ordinary launches show the picker. This uses the existing single-instance channel without network ports or extra permissions.
+On Wayland it still attempts the in-app shortcut; if registration fails, the picker explains the system binding.
 
-The developer CLI `ibis` is separate from the desktop download. It first finds
-`ibis-desktop` beside itself; otherwise it uses PATH on Linux/Windows, or the
-installed **Ibis** app on macOS. Build the desktop app first when running from source.
-Without the CLI, bind `ibis-desktop toggle` directly. For an AppImage, use
-`"/path/to/Ibis-Linux.AppImage" toggle`. Use an absolute executable path if
-your desktop has a different PATH; quote paths containing spaces. Launch
-the same build/channel each time. On macOS and Windows you can also bind
-the app binary directly, for example
-`"/Applications/Ibis Nightly.app/Contents/MacOS/ibis-desktop" toggle` or
-`"C:\path\to\ibis-desktop.exe" toggle`.
+The developer CLI `ibis` is separate from the desktop download. It first finds `ibis-desktop` beside itself;
+otherwise it uses PATH on Linux, the installed **Ibis** app on macOS,
+or `%LOCALAPPDATA%\Ibis\ibis-desktop.exe` then PATH on Windows. Build the desktop app first when running from source.
+`--app` overrides discovery: on macOS use `ibis toggle --app "Ibis Nightly"` or
+`ibis toggle --app "/Applications/Ibis Nightly.app"` (passed to `open -n -a`); on Linux/Windows pass the desktop
+executable path, including for Nightly or custom installs. Without the CLI, bind `ibis-desktop toggle` directly.
+For an AppImage, use `"/path/to/Ibis-Linux.AppImage" toggle`. Use an absolute executable path if your desktop has
+a different PATH; quote paths containing spaces and launch the same build/channel each time.
 
 Choose an unused combination, for example Ctrl+Shift+Y:
 
-- **GNOME:** Settings > Keyboard > View and Customize Shortcuts > Custom
-  Shortcuts > Add Shortcut. Name it **Toggle Ibis**, set Command to
-  `ibis toggle` (or the direct command above), and assign the keys.
+- **GNOME:** Settings > Keyboard > View and Customize Shortcuts > Custom Shortcuts > Add Shortcut.
+  Name it **Toggle Ibis**, set Command to `ibis toggle` (or the direct command above), and assign the keys.
   See [GNOME's shortcut guide](https://help.gnome.org/gnome-help/keyboard-shortcuts-set).
-- **KDE Plasma:** System Settings > Keyboard > Shortcuts > Add New >
-  Command or Script. Enter the same command, name it **Toggle Ibis**, assign
-  the keys and Apply. Older Plasma versions call this **Add Command**.
-- **Sway:** add `bindsym --no-repeat Ctrl+Shift+y exec ibis toggle` to
-  `~/.config/sway/config`, then run `swaymsg reload`.
-- **Hyprland 0.55+:** add
-  `hl.bind("CTRL + SHIFT + Y", hl.dsp.exec_cmd("ibis toggle"))` to
-  `~/.config/hypr/hyprland.lua`. For older hyprlang configurations, add
+- **KDE Plasma:** System Settings > Keyboard > Shortcuts > Add New > Command or Script. Enter the same command,
+  name it **Toggle Ibis**, assign the keys and Apply. Older Plasma versions call this **Add Command**.
+- **Sway:** add `bindsym --no-repeat Ctrl+Shift+y exec ibis toggle` to `~/.config/sway/config`, then run `swaymsg reload`.
+- **Hyprland 0.55+:** add `hl.bind("CTRL + SHIFT + Y", hl.dsp.exec_cmd("ibis toggle"))`
+  to `~/.config/hypr/hyprland.lua`. For older hyprlang configurations, add
   `bind = CTRL SHIFT, Y, exec, ibis toggle` to `hyprland.conf`.
   See [Hyprland's binding guide](https://wiki.hypr.land/Configuring/Basics/Binds/).
 
-Test from a terminal, then from your shortcut: closed app → visible picker
-→ hidden picker → visible picker. Native Linux toggle smoke and real
-GNOME, KDE, Sway and Hyprland focus checks remain follow-ups; argument tests
-alone do not establish compositor behavior.
+Test from a terminal, then from your shortcut: closed app → visible picker → hidden picker → visible picker.
+Native Linux toggle smoke and real GNOME/KDE/Sway/Hyprland focus checks remain follow-ups; argument tests do not establish compositor behavior.
 
 ## Picker shortcuts
 

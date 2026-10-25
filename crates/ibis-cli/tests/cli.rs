@@ -34,18 +34,13 @@ fn toggle_forwards_to_a_sibling_and_reports_launch_failure() {
     let cli = desktop.with_file_name("ibis");
     std::fs::copy(env!("CARGO_BIN_EXE_ibis"), &cli).unwrap_or_else(|e| panic!("{e}"));
     std::fs::set_permissions(&desktop, std::fs::Permissions::from_mode(0o700)).unwrap_or_else(|e| panic!("{e}"));
-    let output = Command::new(&cli)
-        .arg("toggle")
-        .output()
-        .unwrap_or_else(|e| panic!("{e}"));
+    let run = || Command::new(&cli).arg("toggle").output();
+    let output = run().unwrap_or_else(|e| panic!("{e}"));
     assert!(output.status.success());
     assert_eq!(output.stdout, b"toggle\n");
     assert!(output.stderr.is_empty());
     std::fs::set_permissions(&desktop, std::fs::Permissions::from_mode(0o600)).unwrap_or_else(|e| panic!("{e}"));
-    let output = Command::new(cli)
-        .arg("toggle")
-        .output()
-        .unwrap_or_else(|e| panic!("{e}"));
+    let output = run().unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert_eq!(

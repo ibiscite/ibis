@@ -25,7 +25,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Show or hide the desktop picker, starting Ibis if needed.
-    Toggle,
+    Toggle {
+        /// Desktop app: macOS app name or .app path; executable path elsewhere.
+        #[arg(long, value_name = "NAME_OR_PATH")]
+        app: Option<PathBuf>,
+    },
     /// Search references by words from the title, authors, year, key, keywords or abstract.
     Search {
         /// What to look for, e.g. "garcia sleep 2022".
@@ -203,15 +207,22 @@ fn print_json(value: &impl serde::Serialize) -> Result<()> {
 
 fn run(cli: Cli) -> Result<ExitCode> {
     match cli.command {
-        Command::Toggle => {
+        Command::Toggle { app } => {
             let sibling = std::env::current_exe()
                 .ok()
                 .map(|exe| exe.with_file_name(format!("ibis-desktop{}", std::env::consts::EXE_SUFFIX)))
                 .filter(|path| path.is_file());
-            let mut command = desktop_command(sibling.as_deref());
+            let local_app_data = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+            let mut command = desktop_command(
+                std::env::consts::OS,
+                sibling.as_deref(),
+                app.as_deref(),
+                local_app_data.as_deref(),
+                Path::is_file,
+            );
             let failed =
                 || anyhow::anyhow!("could not start Ibis; install the desktop app or run its executable with toggle");
-            if cfg!(target_os = "macos") && sibling.is_none() {
+            if cfg!(target_os = "macos") && (app.is_some() || sibling.is_none()) {
                 if !command.status().map_err(|_| failed())?.success() {
                     return Err(failed());
                 }
@@ -397,18 +408,30 @@ fn run(cli: Cli) -> Result<ExitCode> {
 }
 
 /// Launch the same desktop binary again; its single-instance plugin forwards
-/// `toggle` to the running copy. A sibling supports source builds and Windows
-/// installs; otherwise use PATH, or Launch Services for the macOS app bundle.
-fn desktop_command(sibling: Option<&Path>) -> std::process::Command {
-    let mut command = if let Some(path) = sibling {
-        std::process::Command::new(path)
-    } else if cfg!(target_os = "macos") {
+/// `toggle` to the running copy. Overrides win over sibling, per-user Windows
+/// install and PATH discovery; macOS app selection uses Launch Services.
+fn desktop_command(
+    platform: &str,
+    sibling: Option<&Path>,
+    app: Option<&Path>,
+    local_app_data: Option<&Path>,
+    is_file: impl FnOnce(&Path) -> bool,
+) -> std::process::Command {
+    // Tauri NSIS currentUser: productName=Ibis; default binary=ibis-desktop.
+    let installed = local_app_data
+        .filter(|root| platform == "windows" && app.is_none() && sibling.is_none() && !root.as_os_str().is_empty())
+        .map(|root| root.join("Ibis").join("ibis-desktop.exe"))
+        .filter(|path| is_file(path));
+    let mut command = if platform == "macos" && (app.is_some() || sibling.is_none()) {
         let mut open = std::process::Command::new("open");
         // A new process is required for single-instance arguments to arrive.
-        open.args(["-n", "-a", "Ibis", "--args"]);
+        open.args(["-n", "-a"])
+            .arg(app.unwrap_or(Path::new("Ibis")))
+            .arg("--args");
         open
     } else {
-        std::process::Command::new(format!("ibis-desktop{}", std::env::consts::EXE_SUFFIX))
+        let binary = format!("ibis-desktop{}", if platform == "windows" { ".exe" } else { "" });
+        std::process::Command::new(app.or(sibling).or(installed.as_deref()).unwrap_or(Path::new(&binary)))
     };
     command.arg("toggle");
     command
@@ -419,25 +442,54 @@ mod toggle_tests {
     use super::*;
 
     #[test]
-    fn toggle_is_a_standalone_command() {
+    fn toggle_accepts_an_explicit_app() {
+        assert!(Cli::try_parse_from(["ibis", "toggle", "--app", "Ibis Nightly"]).is_ok());
         assert!(Cli::try_parse_from(["ibis", "toggle"]).is_ok());
-        for args in [vec!["ibis", "toggle", "extra"], vec!["ibis", "toggle", "--at-login"]] {
-            assert!(Cli::try_parse_from(args).is_err());
+        for extra in ["extra", "--at-login", "--app", "--app="] {
+            assert!(Cli::try_parse_from(["ibis", "toggle", extra]).is_err());
+        }
+        let sibling = Some(Path::new("/synthetic/sibling"));
+        for app in ["Ibis Nightly", "/synthetic/文献 $(x).app"] {
+            let command = desktop_command("macos", sibling, Some(Path::new(app)), None, |_| false);
+            assert_eq!(command.get_program(), "open");
+            let expected = ["-n", "-a", app, "--args", "toggle"];
+            assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
         }
     }
 
     #[test]
     fn toggle_launches_the_desktop_with_one_literal_argument() {
         let path = Path::new("/synthetic/Ibis app/ibis-desktop");
-        let command = desktop_command(Some(path));
+        let command = desktop_command("linux", Some(path), None, None, |_| false);
         assert_eq!(command.get_program(), path);
         assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
-        let command = desktop_command(None);
-        let expected = if cfg!(target_os = "macos") {
-            vec!["-n", "-a", "Ibis", "--args", "toggle"]
-        } else {
-            vec!["toggle"]
-        };
+        let command = desktop_command("macos", None, None, None, |_| false);
+        let expected = ["-n", "-a", "Ibis", "--args", "toggle"];
         assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
+    }
+
+    #[test]
+    fn toggle_windows_lookup_prefers_override_then_sibling_then_user_install_then_path() {
+        let root = Path::new("/synthetic/Local 文献");
+        let installed = root.join("Ibis").join("ibis-desktop.exe");
+        let explicit = Path::new("/synthetic/Nightly app.exe");
+        let sibling = Path::new("/synthetic/sibling.exe");
+        let fallback = Path::new("ibis-desktop.exe");
+        for (sibling, app, env, found, expected) in [
+            (None, None, Some(root), true, installed.as_path()),
+            (None, None, Some(root), false, fallback),
+            (None, None, None, true, fallback),
+            (None, None, Some(Path::new("")), true, fallback),
+            (Some(sibling), None, Some(root), true, sibling),
+            (Some(sibling), Some(explicit), Some(root), true, explicit),
+        ] {
+            let command = desktop_command("windows", sibling, app, env, |path| {
+                assert!(sibling.is_none() && app.is_none());
+                assert_eq!(path, installed);
+                found
+            });
+            assert_eq!(command.get_program(), expected);
+            assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
+        }
     }
 }

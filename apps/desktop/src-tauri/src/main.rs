@@ -73,11 +73,13 @@ fn shortcut_registration(
     wayland: bool,
     register: impl FnOnce() -> Result<(), &'static str>,
 ) -> Result<(), &'static str> {
-    if wayland {
-        Err("On Wayland, bind ibis toggle (or ibis-desktop toggle) in your desktop's keyboard settings")
-    } else {
-        register()
-    }
+    register().map_err(|error| {
+        if wayland {
+            "On Wayland, bind ibis toggle (or ibis-desktop toggle) in your desktop's keyboard settings"
+        } else {
+            error
+        }
+    })
 }
 
 fn main() {
@@ -333,8 +335,9 @@ mod toggle_tests {
     use super::*;
 
     #[test]
-    fn wayland_explains_the_system_binding_even_if_xwayland_registration_would_succeed() {
-        let error = shortcut_registration(true, || panic!("XWayland cannot provide a session-wide shortcut"));
+    fn wayland_toggle_guidance_preserves_working_shortcuts() {
+        assert_eq!(shortcut_registration(true, || Ok(())), Ok(()));
+        let error = shortcut_registration(true, || Err("unavailable"));
         assert!(error.is_err_and(|message| message.contains("Wayland") && message.contains("ibis toggle")));
         assert_eq!(shortcut_registration(false, || Ok(())), Ok(()));
         assert_eq!(shortcut_registration(false, || Err("unavailable")), Err("unavailable"));
@@ -342,16 +345,10 @@ mod toggle_tests {
 
     #[test]
     fn toggle_hides_a_visible_picker_and_shows_a_hidden_or_missing_one() {
-        for executable in [
-            "ibis-desktop",
-            "/synthetic/Ibis app/ibis-desktop",
-            "C:\\Ibis app\\ibis-desktop.exe",
-        ] {
-            let args = [executable.into(), "toggle".into()];
-            assert_eq!(instance_action(&args, || Some(true)), InstanceAction::Hide);
-            assert_eq!(instance_action(&args, || Some(false)), InstanceAction::Show);
-            assert_eq!(instance_action(&args, || None), InstanceAction::Show);
-        }
+        let args = ["/synthetic/Ibis 文献 app/ibis-desktop".into(), "toggle".into()];
+        assert_eq!(instance_action(&args, || Some(true)), InstanceAction::Hide);
+        assert_eq!(instance_action(&args, || Some(false)), InstanceAction::Show);
+        assert_eq!(instance_action(&args, || None), InstanceAction::Show);
     }
 
     #[test]
@@ -367,26 +364,20 @@ mod toggle_tests {
             vec!["ibis-desktop", "切り替え"],
         ] {
             let args: Vec<String> = args.into_iter().map(String::from).collect();
-            assert_eq!(
-                instance_action(&args, || panic!("no toggle requested")),
-                InstanceAction::Show
-            );
+            let action = instance_action(&args, || panic!("no toggle requested"));
+            assert_eq!(action, InstanceAction::Show);
         }
         for args in [
             vec!["ibis-desktop", "--at-login"],
             vec!["ibis-desktop", "toggle", "--at-login"],
         ] {
             let args: Vec<String> = args.into_iter().map(String::from).collect();
-            assert_eq!(
-                instance_action(&args, || panic!("login must stay hidden")),
-                InstanceAction::Ignore
-            );
+            let action = instance_action(&args, || panic!("login must stay hidden"));
+            assert_eq!(action, InstanceAction::Ignore);
         }
         let huge = ["ibis-desktop".into(), "toggle".repeat(100_000)];
-        assert_eq!(
-            instance_action(&huge, || panic!("exact command only")),
-            InstanceAction::Show
-        );
+        let action = instance_action(&huge, || panic!("exact command only"));
+        assert_eq!(action, InstanceAction::Show);
     }
 }
 
