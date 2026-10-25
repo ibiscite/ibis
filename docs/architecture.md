@@ -3,15 +3,15 @@
 ```
                       ┌─ Desktop picker (web UI in a Tauri shell; one process for now, ADR 0012)
                       ├─ Command line:  ibis search · ibis cite · ibis check · ibis csl
- ENGINE (Rust) ───────┼─ MCP server (read-only) for AI assistants            [planned]
- small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [planned]
+ ENGINE (Rust) ───────┼─ MCP server (read-only) for AI assistants            [after 1.0]
+ small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [0.4]
                       └─ Browser extension, launcher integrations, web build  [later]
    │
-   ├─ Sources: BibTeX/BibLaTeX · Zotero (open) · RIS, CSL-JSON, Zotero closed [planned]
-   ├─ Search index in memory · persistent store                     [planned]
+   ├─ Sources: BibTeX/BibLaTeX · Zotero (open) · Zotero closed [0.3] · RIS, CSL-JSON [after 1.0]
+   ├─ Search index in memory
    ├─ Key-based syntaxes in Rust (CSL styles: citeproc-js in the web UI for now)
-   ├─ Insertion: state machine + destination profiles              [planned]
-   └─ Health rules                                                  [planned]
+   ├─ Insertion: state machine + destination profiles              [after 1.0]
+   └─ Health rules                                                  [after 1.0]
 ```
 
 ## Principles

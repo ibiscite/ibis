@@ -23,12 +23,12 @@ import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
+import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import {
   type Copied,
   type CopyFormat,
   type LibraryStatus,
   type LoginItem,
-  type LocatorQuery,
   type Locator,
   type SearchResult,
   type ShortcutStatus,
@@ -61,18 +61,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
   const [interpretLocators, setInterpretLocators] = useState(true);
-  const queryKey = JSON.stringify([query, interpretLocators]);
-  const [interpretation, setInterpretation] = useState<LocatorQuery | null>(null);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [announcement, setAnnouncement] = useState("");
-  // The query the shown results belong to; differs while a search is pending.
-  const [resultsQuery, setResultsQuery] = useState<string | null>(null);
-  const [resultsRevision, setResultsRevision] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const pointer = usePointerSelection(active, setActive);
   const { resetPointer } = pointer;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
-  useEffect(resetPointer, [results, resetPointer]);
   const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
@@ -97,7 +88,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // made for, so Enter never copies a preview of an earlier choice.
   const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale" } | null>(null);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
-  const [error, setError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
@@ -105,6 +95,19 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const statusReads = useRef(0);
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
+  const refreshSnapshot = () => {
+    const request = ++statusReads.current;
+    void libraryStatus().then((status) => {
+      if (statusReads.current !== request) return;
+      setLibrary(status);
+      setLibraryVersion((version) => version + 1);
+      report("status", false);
+    }).catch(() => { if (statusReads.current === request) report("status"); });
+  };
+  const { queryKey, results, current, interpretation, announcement, resultsQuery, error } =
+    useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
+  useEffect(resetPointer, [results, resetPointer]);
   const input = useRef<HTMLInputElement>(null);
   const output = useRef<HTMLElement | null>(null);
   const outputRef = useCallback((node: HTMLElement | null) => {
@@ -324,53 +327,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     };
   }, [resetPointer]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searches when the query (queryKey covers query and locator mode) or the library changes. The earlier results are read only to keep the user's row when a reply repeats them.
-  useEffect(() => {
-    setAnnouncement("");
-    // Typing before choosing a library is normal; preserve the query and
-    // chooser. Actual library/status failures still report search errors.
-    if (library === undefined || library?.state === "none" || library?.state === "loading" || (library?.state === "error" && !library.has_snapshot)) {
-      setResults([]);
-      setInterpretation(null);
-      setResultsQuery(queryKey);
-      setActive(0);
-      setError(null);
-      return;
-    }
-    let current = true;
-    let announcementTimer: number | undefined;
-    search(query, undefined, undefined, interpretLocators)
-      .then(({ revision, results: found, interpretation: interpreted }) => {
-        if (current) {
-          setResults(found);
-          setInterpretation(interpreted ?? null);
-          setResultsRevision(revision);
-          if (revision !== library?.revision) refreshSnapshot();
-          setResultsQuery(queryKey);
-          // An unchanged reply must not undo the user's newer row choice.
-          const sameResults = resultsQuery === queryKey && resultsRevision === revision && choiceKey(results) === choiceKey(found);
-          if (!sameResults) setActive(0);
-          setError(null);
-          announcementTimer = window.setTimeout(() => {
-            setAnnouncement(pickerText.resultCount(found.length));
-          }, 300);
-        }
-      })
-      .catch(() => {
-        // Results of an earlier query must not sit beside this query's error.
-        if (current) {
-          setResults([]);
-          setInterpretation(null);
-          setResultsQuery(queryKey);
-          setError(pickerText.searchError);
-        }
-      });
-    return () => {
-      current = false;
-      window.clearTimeout(announcementTimer);
-    };
-  }, [queryKey, library, libraryVersion]);
-
   // A restored search is selected once it is back in the box, so typing replaces it.
   useEffect(() => {
     if (restored > 0) input.current?.select();
@@ -451,10 +407,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus({ preventScroll: true });
   };
 
-  // Results belong to the query that produced them. While a newer search is
-  // pending, the rows still on screen are not acted on or offered by any key,
-  // click or footer hint; only these current results are.
-  const current = resultsQuery === queryKey && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
   const rowScope = useMemo(() => ({ api, current, selected, queryKey, format, snapshotRevision }), [api, current, selected, queryKey, format, snapshotRevision]);
   const latestRowScope = useRef(rowScope);
   latestRowScope.current = rowScope;
@@ -473,16 +425,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
   // Visibility changes presentation only. Key copying also survives a failed preview.
   const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined;
-  const refreshSnapshot = () => {
-    const request = ++statusReads.current;
-    void libraryStatus().then((status) => {
-      if (statusReads.current !== request) return;
-      setLibrary(status);
-      setLibraryVersion((version) => version + 1);
-      report("status", false);
-    }).catch(() => { if (statusReads.current === request) report("status"); });
-  };
-
   // Format the preview again whenever the choice or the style changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, revision and the style or key format, so it is the only trigger.
   useEffect(() => {
