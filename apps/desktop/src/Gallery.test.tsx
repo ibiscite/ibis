@@ -510,6 +510,7 @@ test.each([
   ["compact", () => document.documentElement.dataset.density === "compact"],
   ["spacious", () => document.documentElement.dataset.density === "spacious"],
   ["larger-text", () => document.documentElement.dataset.textSize === "larger"],
+  ["shared-key", (root: HTMLElement) => /Give one of them a different key/.test(root.querySelector('.shelf-output [role="alert"]')?.textContent ?? "")],
 ])("the %s review state is on screen before it is acknowledged", async (id, shown) => {
   const run = await renderUntilAcknowledged(id);
   try {

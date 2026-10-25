@@ -155,6 +155,9 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .shelf-output .preview-text, .shelf-output p { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shelf-output p { color: var(--muted); }
 .shelf-output[data-state="failed"] p, .shelf-output[data-state="stale"] p { color: var(--text); border: 0; padding: 0; }
+/* A failure says what to fix, so it wraps and the band grows instead of clipping it. */
+.shelf-output[data-state="failed"] { height: auto; min-height: var(--shelf-line); padding-block: var(--space-2); }
+.shelf-output[data-state="failed"] p { white-space: normal; overflow-wrap: anywhere; }
 /* Monospace only for key syntaxes, where the syntax is the point. */
 .shelf-output[data-keys] .preview-text { font-family: var(--font-mono); }
 .shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); color: var(--muted); font-size: var(--metadata-size); line-height: var(--chip-height); white-space: nowrap; }

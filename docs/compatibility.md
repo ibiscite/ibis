@@ -60,12 +60,43 @@ An XWayland connection may pass the X11 check in a Wayland session. That does
 not establish shortcut activation while a native Wayland app has focus.
 The GlobalShortcuts portal work in [#782](https://github.com/ibiscite/ibis/issues/782)
 is scheduled for 0.2 but has not shipped. No native GNOME/KDE Wayland shortcut
-test is claimed, and `ibis toggle` has not shipped either.
+test is claimed.
 
 GNOME without a tray extension and some other desktops show no tray icon.
 The launcher and picker library controls still work. Use **More > Quit** to
 exit; closing the window only hides it. Nightly's start-at-login switch is
 also in **More**. Update controls require the tray menu.
+
+### Bind a system shortcut
+
+**Nightly, until the next release:** `ibis toggle` starts Ibis if needed, shows a hidden picker, or hides one (even pinned).
+Ordinary launches show the picker. This uses the existing single-instance channel without network ports or extra permissions.
+On Wayland it still attempts the in-app shortcut; if registration fails, the picker explains the system binding.
+
+The developer CLI `ibis` is separate from the desktop download. It first finds `ibis-desktop` beside itself;
+otherwise it uses PATH on Linux, the installed **Ibis** app on macOS,
+or `%LOCALAPPDATA%\Ibis\ibis-desktop.exe`, then `%ProgramFiles%\Ibis\ibis-desktop.exe`, then PATH on Windows. Build the desktop app first when running from source.
+`--app` overrides discovery: on macOS use `ibis toggle --app "Ibis Nightly"` or
+`ibis toggle --app "/Applications/Ibis Nightly.app"` (passed to `open -n -a`); on Linux/Windows pass the desktop
+executable path, including for Nightly or custom installs. Without the CLI, bind `ibis-desktop toggle` directly.
+For an AppImage, use `"/path/to/Ibis-Linux.AppImage" toggle`. Use an absolute executable path if your desktop has
+a different PATH; quote paths containing spaces and launch the same build/channel each time.
+
+Choose an unused combination, for example Ctrl+Shift+Y:
+
+- **GNOME:** Settings > Keyboard > View and Customize Shortcuts > Custom Shortcuts > Add Shortcut.
+  Name it **Toggle Ibis**, set Command to `ibis toggle` (or the direct command above), and assign the keys.
+  See [GNOME's shortcut guide](https://help.gnome.org/gnome-help/keyboard-shortcuts-set).
+- **KDE Plasma:** System Settings > Keyboard > Shortcuts > Add New > Command or Script. Enter the same command,
+  name it **Toggle Ibis**, assign the keys and Apply. Older Plasma versions call this **Add Command**.
+- **Sway:** add `bindsym --no-repeat Ctrl+Shift+y exec ibis toggle` to `~/.config/sway/config`, then run `swaymsg reload`.
+- **Hyprland 0.55+:** add `hl.bind("CTRL + SHIFT + Y", hl.dsp.exec_cmd("ibis toggle"))`
+  to `~/.config/hypr/hyprland.lua`. For older hyprlang configurations, add
+  `bind = CTRL SHIFT, Y, exec, ibis toggle` to `hyprland.conf`.
+  See [Hyprland's binding guide](https://wiki.hypr.land/Configuring/Basics/Binds/).
+
+Test from a terminal, then from your shortcut: closed app → visible picker → hidden picker → visible picker.
+Native Linux toggle smoke and real GNOME/KDE/Sway/Hyprland focus checks remain follow-ups; argument tests do not establish compositor behavior.
 
 ## Picker shortcuts
 

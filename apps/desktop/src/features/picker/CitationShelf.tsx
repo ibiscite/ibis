@@ -31,7 +31,7 @@ export function chipLabels(records: SearchResult[]): string[] {
 /** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, removeLabel, onRemove, onRemoveLocator, style, keys, shown, focusable, outputRef }: {
+export function CitationShelf({ announce, selected, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, outputRef }: {
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
   selected: Map<string, CitationReference>;
@@ -44,6 +44,8 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
   keys: boolean;
   /** What Enter would copy; null while it is being made, undefined when there is nothing to show. */
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
+  /** Why the citation failed, when there is something the user can fix. */
+  problem?: string;
   /** A built citation can be focused, to read it whole. */
   focusable: boolean;
   outputRef?: Ref<HTMLElement>;
@@ -134,7 +136,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
               <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
                 preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />
               {shown === null && <p role="status">{pickerText.previewPending}</p>}
-              {shown === "failed" && <p role="alert">{pickerText.previewError}</p>}
+              {shown === "failed" && <p role="alert">{problem ?? pickerText.previewError}</p>}
               {shown === "stale" && <p role="status">{pickerText.shelfStale}</p>}
               {shown && typeof shown === "object" && (
                 <>

@@ -18,9 +18,11 @@ node scripts/pr-lint.mjs --title "…" --branch "…" --body-file pr.md   # chec
 
 ## Authority
 
-Under the maintainer's standing authorization (ADR 0015), agents acting for Ibis make the engineering, security, testing, CI and documentation decisions. They branch, commit, push, open pull requests and merge their own when the merge rule is met. They triage issues against the agreed scope, manage labels, milestones, pull requests and the tracking issue, post independent reviews, close completed issues and remove merged branches. They may accept ADRs that record behaviour already agreed in the tracking issue, and decide versions and when to release; only Release Please creates tags. None of this needs another approval.
+Under the maintainer's standing authorization (ADR 0015), agents acting for Ibis make the engineering, security, testing, CI and documentation decisions. They branch, commit, push, open pull requests and merge their own when the merge rule is met. They triage issues against the agreed scope, manage labels, milestones, pull requests and the tracking issue, post independent reviews, close completed issues and remove merged branches. They may accept ADRs that record behaviour already agreed in the tracking issue, and decide versions and when to release; only Release Please creates tags, and a stable release publishes only after the maintainer approves its deployment in GitHub (one click). Nightly builds publish on their own. None of this needs another approval.
 
 Ask the maintainer **only** about licensing, new network use, repository or organization settings, anything that costs money or creates accounts, what goes into or out of a release, and anything needing the maintainer's own hands. Ask once, in plain words, with a recommendation and a one-word answer; label the issue `status:needs-maintainer` and list it under "Waiting on the maintainer". Never ask again for authorization already given. Defaults users notice (such as the shortcut) are chosen from evidence and stated in the tracking issue so the maintainer can overrule them; engineering choices are not asked.
+
+The maintainer owns the product and its look. When they say something looks, reads or behaves wrong, fix it and write the rule into `docs/design.md`, `ROADMAP.md` or a check in the same pull request, so it never needs saying twice.
 
 Without this authorization (for example an outside contributor's agent), do not commit, push, tag, release or publish unless your user asks for that exact action.
 

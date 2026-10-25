@@ -30,6 +30,10 @@ each beside its rule.
 8. **No glow, no edge rings.** Selection is a fill, never an outline. No
    coloured borders, outer glows or bright rims. A focus ring appears only when
    the keyboard moved focus.
+9. **Great defaults, then choice.** Every setting starts from one default that
+   works for most people on every platform, so most never open Settings.
+   Customising is there for those who want it, never required. No setting
+   exists because a choice was hard to make.
 
 ## Tokens
 
