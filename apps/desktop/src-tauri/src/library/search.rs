@@ -250,7 +250,7 @@ mod tests {
         let mut loaded = ibis_core::bibtex::load_str("a", "@misc{same,title={Alpha}}");
         loaded
             .references
-            .extend(ibis_core::bibtex::load_str("b", "@misc{same,title={Beta}}").references);
+            .extend(ibis_core::bibtex::load_str("b", "@misc{other,title={Beta}}").references);
         let library = Mutex::new(candidate(PathBuf::from("synthetic.bib"), loaded));
         let (index, revision) = {
             let locked = library.lock().unwrap_or_else(|error| panic!("{error}"));
@@ -279,13 +279,13 @@ mod tests {
         }
         assert_ne!(selected[0].id.source, selected[1].id.source);
         for (format, expected) in [
-            (KeyFormat::Pandoc, "[@same, p. 12; @same, chap. 3]"),
-            (KeyFormat::Autocite, r"\autocites[12]{same}[chap.~3]{same}"),
-            (KeyFormat::Parencite, r"\parencites[12]{same}[chap.~3]{same}"),
-            (KeyFormat::Textcite, r"\textcites[12]{same}[chap.~3]{same}"),
-            (KeyFormat::Cite, r"\cite[p.~12]{same}, \cite[chap.~3]{same}"),
-            (KeyFormat::Typst, "@same[p. 12] @same[chap. 3]"),
-            (KeyFormat::Keys, "same, same"),
+            (KeyFormat::Pandoc, "[@same, p. 12; @other, chap. 3]"),
+            (KeyFormat::Autocite, r"\autocites[12]{same}[chap.~3]{other}"),
+            (KeyFormat::Parencite, r"\parencites[12]{same}[chap.~3]{other}"),
+            (KeyFormat::Textcite, r"\textcites[12]{same}[chap.~3]{other}"),
+            (KeyFormat::Cite, r"\cite[p.~12]{same}, \cite[chap.~3]{other}"),
+            (KeyFormat::Typst, "@same[p. 12] @other[chap. 3]"),
+            (KeyFormat::Keys, "same, other"),
         ] {
             let preview = crate::copy::prepare_citation(&library, &revision, &selected, format)
                 .unwrap_or_else(|error| panic!("{error}"));
@@ -322,6 +322,34 @@ mod tests {
                 crate::copy::prepare_citation(&library, "retired", &selected, format),
                 Err(crate::library::CommandError::SnapshotChanged)
             ));
+        }
+    }
+
+    #[test]
+    fn a_key_shared_by_another_record_is_neither_previewed_nor_copied() {
+        use ibis_core::cite::KeyFormat;
+        use ibis_core::library::CitationSelection;
+        let mut loaded = ibis_core::bibtex::load_str("a", "@misc{same,title={Alpha}}");
+        loaded
+            .references
+            .extend(ibis_core::bibtex::load_str("b", "@misc{same,title={Beta}}").references);
+        let selected = [CitationSelection {
+            id: loaded.references[1].id.clone(),
+            locator: None,
+        }];
+        let library = Mutex::new(candidate(PathBuf::from("synthetic.bib"), loaded));
+        let revision = library
+            .lock()
+            .unwrap_or_else(|error| panic!("{error}"))
+            .revision
+            .to_string();
+        let preview = crate::copy::prepare_citation(&library, &revision, &selected, KeyFormat::Pandoc);
+        let copied = crate::copy::prepare_snapshot(&library, &revision, |locked| {
+            crate::copy::render_citation(locked.index.references(), &selected, KeyFormat::Pandoc)
+        });
+        for error in [preview.err(), copied.err()] {
+            let error = serde_json::to_string(&error).unwrap_or_else(|error| panic!("{error}"));
+            assert!(error.contains("`same` belongs to more than one reference"), "{error}");
         }
     }
 
