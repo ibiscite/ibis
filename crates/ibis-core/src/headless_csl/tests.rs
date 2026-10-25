@@ -36,7 +36,7 @@ struct Expected {
 
 fn corpus() -> Vec<Case> {
     serde_json::from_str::<Corpus>(include_str!("../../../../fixtures/csl/headless-parity.json"))
-        .expect("synthetic corpus is valid")
+        .unwrap_or_else(|error| panic!("synthetic corpus is valid: {error:?}"))
         .cases
 }
 fn input(case: &Case) -> (Vec<Work>, Vec<Occurrence>) {
@@ -82,7 +82,7 @@ fn pinned_semantic_oracles_cover_five_styles_and_all_output_formats() {
                 expected.bibliography,
                 cancel(false),
             )
-            .expect("synthetic reference formats");
+            .unwrap_or_else(|error| panic!("synthetic reference formats: {error:?}"));
             assert_eq!(
                 actual, expected.value,
                 "{} / {:?} / {} / bibliography={}",
@@ -112,7 +112,7 @@ fn rejects(works: &[Work], cites: &[Occurrence], bibliography: bool, cancelled: 
     let (works, cites) = input(&healthy);
     assert_eq!(
         format(&works, &cites, CitationStyle::Apa, Output::Text, false, cancel(false))
-            .expect("healthy request after rejection"),
+            .unwrap_or_else(|error| panic!("healthy request after rejection: {error:?}")),
         healthy.expected[0].value
     );
 }
@@ -187,7 +187,8 @@ JSON.stringify([
 ])
 "#;
     assert_eq!(
-        execute_script(script, std::time::Duration::from_secs(5)).expect("qualified intrinsic calls"),
+        execute_script(script, std::time::Duration::from_secs(5))
+            .unwrap_or_else(|error| panic!("qualified intrinsic calls: {error:?}")),
         "[1,-1,-1,0,\"İSTANBUL\",\"ı\"]"
     );
 }

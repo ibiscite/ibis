@@ -15,3 +15,7 @@ pub mod search;
 pub mod settings;
 pub mod source;
 pub mod zotero;
+
+// ADR 0027: test-invoked characterization, without an application/public API.
+#[cfg(all(test, feature = "headless-csl-prototype"))]
+mod headless_csl;
