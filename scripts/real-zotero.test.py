@@ -150,6 +150,7 @@ class CaptureTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "oversized"):
                 self.capture.copy_bundle(data, output, set())
 
+    @unittest.skipUnless(hasattr(os, "killpg"), "POSIX process-group APIs unavailable")
     def test_adopted_helper_is_stopped_even_after_root_application_exit(self):
         app = unittest.mock.Mock()
         app.poll.return_value = 0
