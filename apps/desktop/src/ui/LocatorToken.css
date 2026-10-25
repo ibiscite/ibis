@@ -1,0 +1,7 @@
+.locator-token { display: inline-flex; align-items: center; min-inline-size: 0; max-inline-size: 50%; margin-inline-start: var(--space-1); }
+.locator-token > bdi { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.locator-token .locator-token-remove { flex: none; inline-size: var(--chip-height); min-inline-size: var(--chip-height); block-size: var(--chip-height); min-block-size: var(--chip-height); padding: 0; border-width: 0; border-radius: var(--chip-radius); }
+.locator-token-remove::before { content: ""; position: absolute; inset: 0; background: currentColor; -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; }
+@media (forced-colors: active) {
+  .locator-token-remove::before { forced-color-adjust: none; background: ButtonText; }
+}

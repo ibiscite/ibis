@@ -7,6 +7,7 @@ import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
 import { formatCitation, type FormattedCitation } from "./format/formatted";
 import { afterCopy } from "./copyFeedback";
+import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
@@ -26,6 +27,7 @@ import {
   type LibraryStatus,
   type LoginItem,
   type LocatorQuery,
+  type Locator,
   type SearchResult,
   type ShortcutStatus,
   type ZoteroGroup,
@@ -396,6 +398,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     });
   };
 
+  const changeLocator = (reference: CitationReference, locator: Readonly<Locator> | null) => {
+    setClickCopy(null);
+    setSelected((previous) => {
+      if (previous.get(idKey(reference.id)) !== reference) return previous;
+      const next = new Map(previous);
+      next.set(idKey(reference.id), { ...reference, locator: locator ? { ...locator } : null });
+      return next;
+    });
+    input.current?.focus({ preventScroll: true });
+  };
+
   // Results belong to the query that produced them. While a newer search is
   // pending, the rows still on screen are not acted on or offered by any key,
   // click or footer hint; only these current results are.
@@ -627,6 +640,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const enterAction = chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
     : chosen.length > 1 ? keyText.copySeveralAs(chosen.length, choiceName(format)) : keyText.copyAs(choiceName(format));
   const highlighted = current[active];
+  const usingLocator = current === results && interpretLocators ? interpretation?.locator : null;
+  const prepared = highlighted && selected.get(idKey(highlighted.id));
+  const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
+    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator }]);
   const shiftEnterAction = highlighted
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
@@ -750,6 +767,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         error={error} copyError={copyError} copied={copied}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => setCopied(null)} />
+      {usingLocator && <div className="notices">
+        <p role="status">{pickerText.usingLocator(usingLocator.label, usingLocator.value)}{" "}
+          <Button variant="quiet" size="small" onPress={() => { setInterpretLocators(false); input.current?.focus({ preventScroll: true }); }}>
+            {pickerText.searchAsTyped}
+          </Button>
+          {canApplyLocator && <Button variant="quiet" size="small" onPress={() => changeLocator(prepared, usingLocator)}>
+            {pickerText.applyLocator(prepared.key)}
+          </Button>}
+        </p>
+      </div>}
       <div className="results-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
@@ -795,7 +822,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {
         toggle(r);
         input.current?.focus({ preventScroll: true });
-      }} style={style} keys={keyFormat !== null}
+      }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
         shown={displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}

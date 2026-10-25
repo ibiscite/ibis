@@ -3849,3 +3849,53 @@ test("typed locators stay with selected references across later searches", async
     { id: { source: "refs.bib", native_key: "b" }, locator: { label: "page", value: "9" } },
   ], format: "pandoc", expectedRevision: "1" }]));
 });
+
+
+function locatorReply(value = "12", label: api.Locator["label"] = "page") {
+  return { revision: "1", results: [result("a", "Locator reference")],
+    interpretation: { search: "Smith", locator: { label, value }, typed: `p.${value}` } };
+}
+
+test("a selected locator changes only through Apply or Remove, which retains the reference", async () => {
+  const copies: unknown[] = [];
+  backend({
+    search: ({ query }) => locatorReply(query.text.includes("9") ? "9" : "12"),
+    copy_citation: (args) => { copies.push(args); return { text: "copied locator", warnings: [] }; },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "Smith p.12" } });
+  fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  fireEvent.change(box, { target: { value: "Smith p.9" } });
+  await screen.findByText("Using page 9");
+  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
+  expect(screen.queryByRole("button", { name: "Remove page 12 from a" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Remove page 9 from a" }));
+  expect(chipKeys()).toEqual(["a"]);
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copies).toEqual([{ items: selections([result("a", "").id]), format: "pandoc", expectedRevision: "1" }]));
+});
+
+test("Search as typed preserves the full query and every edit restores interpretation", async () => {
+  const searched: api.SearchQuery[] = [];
+  let finish: (value: unknown) => void = () => undefined;
+  backend({ search: ({ query }) => {
+    searched.push(query);
+    return query.interpret_locators ? locatorReply() : new Promise((resolve) => { finish = resolve; });
+  } });
+  render(<App />);
+  const box = screen.getByLabelText("Search references") as HTMLInputElement;
+  fireEvent.change(box, { target: { value: "Smith p.12" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Search as typed" }));
+  await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12", interpret_locators: false }));
+  expect(box.value).toBe("Smith p.12");
+  expect(screen.queryByText("Using page 12")).toBeNull();
+  fireEvent.change(box, { target: { value: "Smith p.12 " } });
+  await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12 ", interpret_locators: true }));
+  await screen.findByText("Using page 12");
+  await act(async () => { finish({ revision: "1", results: [result("literal", "Late literal result")], interpretation: null }); });
+  expect(screen.queryByText("Late literal result")).toBeNull();
+  expect(screen.getByText("Using page 12")).toBeTruthy();
+});
