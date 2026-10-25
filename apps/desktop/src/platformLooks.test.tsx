@@ -81,14 +81,30 @@ test("the selected row follows each platform", () => {
   expect(tokens).toMatch(/--row-active-background:\s*var\(--selected-background\)/);
   expect(tokens).toMatch(/--selected-background:\s*AccentColor/);
   expect(tokens).toMatch(/--selected-text:\s*AccentColorText/);
-  // Windows: soft grey with an accent pill; Linux: GTK's selection colour (the Highlight pair).
-  expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--row-active-background:\s*color-mix\(in srgb, var\(--text\)/);
-  expect(rules(styles, ':root[data-platform="windows"] [role="option"][data-active]::before')).toMatch(/background:\s*var\(--accent\)/);
+  // Windows: the full Fluent accent with its paired text, no side pill (#1020);
+  // Linux: GTK's selection colour (the Highlight pair).
+  expect(rules(tokens, ':root[data-platform="windows"]')).not.toMatch(/--row-active-|--tile-active-/);
+  const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
+  expect(windows).toMatch(/--accent:\s*light-dark\(#005FB8, #60CDFF\);\s*--text-on-accent:\s*light-dark\(#fff, #000\);/);
+  expect(windows).toMatch(/--selected-background:\s*var\(--accent\);\s*--selected-text:\s*var\(--text-on-accent\);/);
+  expect(styles).not.toMatch(/::before[^{]*\{[^}]*--pill|--pill-/);
+  expect(tokens).not.toMatch(/--pill-/);
   const linux = rules(tokens, ':root[data-platform="linux"]');
   expect(linux).toMatch(/--row-active-background:\s*Highlight;/);
   expect(linux).toMatch(/--row-active-text:\s*HighlightText;/);
   // No later Linux rule turns it back into a faint tint or neutral fill.
   expect(linux.slice(linux.indexOf("Highlight;"))).not.toMatch(/--row-active-background/);
+});
+
+test("rows are 40, 58 or 76 px and 2 px apart on every look and density (C4)", () => {
+  expect(tokens).toMatch(/--row-spacing: 2px;/);
+  expect(rules(styles, '[role="option"] + [role="option"]')).toMatch(/^\s*margin-top: var\(--row-spacing\);\s*$/);
+  for (const [token, px] of [["--row-compact", 40], ["--row-comfortable", 58], ["--row-spacious", 76]] as const) {
+    expect(Number(tokens.match(new RegExp(`${token}: ([\\d.]+)rem`))?.[1]) * 16).toBe(px);
+  }
+  // No look or density changes the spacing or the heights.
+  expect(tokens.match(/--row-spacing:/g)).toHaveLength(1);
+  for (const platform of ["macos", "windows", "linux"]) expect(rules(tokens, `:root[data-platform="${platform}"]`)).not.toMatch(/--row-(spacing|compact|comfortable|spacious|height):/);
 });
 
 test("high contrast keeps a non-colour edge on the active row", () => {
@@ -239,20 +255,18 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
   }
 });
 
-test.each(["windows"])("meta text on the %s grey row stays at 4.5:1 in both themes", (platform) => {
-  const hex = (value: string) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16) / 255);
-  const luminance = (rgb: number[]) => rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4)
-    .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
-  // The look's own neutrals when it has them, otherwise the shared ones.
-  const look = tokens.slice(tokens.indexOf(`:root[data-platform="${platform}"]:not([data-gallery-theme="contrast"]) {`));
-  const pair = (token: string) => (look.slice(0, look.indexOf("}")).match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`))
-    ?? tokens.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`)))!.slice(1, 3).map(hex);
-  const tint = Number(rules(tokens, `:root[data-platform="${platform}"]`).match(/--row-active-background:\s*color-mix\(in srgb, var\(--text\) (\d+)%/)?.[1]) / 100;
-  const [surface, text, muted] = [pair("--surface"), pair("--text"), pair("--muted")];
+test("the Windows accent row keeps 4.5:1 text and the added tile 3:1 in both themes", () => {
+  const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
+  const pair = (token: string) => windows.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`, "i"))!.slice(1, 3);
+  const full = (hex: string) => hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join("")}` : hex;
+  const [fill, text] = [pair("--accent"), pair("--text-on-accent")];
+  const tiles = tokens.match(/--citation-tile:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/)!.slice(1, 3);
   for (const mode of [0, 1]) {
-    const row = surface[mode]!.map((c: number, i: number) => c * (1 - tint) + text[mode]![i]! * tint);
-    const [lighter, darker] = [luminance(muted[mode]!), luminance(row)].sort((a, b) => b - a);
-    expect((lighter! + .05) / (darker! + .05)).toBeGreaterThanOrEqual(4.5);
+    // The meta line uses currentColor on the accent, so the same pair covers it.
+    expect(contrast(full(fill[mode]!), full(text[mode]!))).toBeGreaterThanOrEqual(4.5);
+    // D9: on the selected row the added tile is the paired text with a scarlet check.
+    expect(contrast(full(text[mode]!), full(fill[mode]!))).toBeGreaterThanOrEqual(3);
+    expect(contrast(full(text[mode]!), tiles[mode]!)).toBeGreaterThanOrEqual(3);
   }
 });
 
@@ -272,9 +286,12 @@ test("an added row shows only its scarlet tile with a check: no wash, ring or sc
     }
   }
   expect(styles).not.toMatch(/data-citation-selected[^{]*\.result-key/);
+  // On the selected row the tile is the paired text with a scarlet check on
+  // every look, so no accent (red and orange included) swallows it (D9).
+  expect(rules(outside, '[role="option"][data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\);\s*color:\s*var\(--citation-tile\)/);
   // High contrast inverts the tile on the active row instead of drawing a ring.
   const contrast = styles.slice(styles.indexOf("@media (prefers-contrast: more)"));
-  expect(rules(contrast, "[data-active][data-citation-selected] .result-tile")).toMatch(/background:\s*var\(--row-active-text\)/);
+  expect(rules(contrast, '[role="option"][data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\);\s*color:\s*var\(--row-active-background\)/);
   expect(rules(gallery, ':root[data-gallery-theme="contrast"] [data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\)/);
 });
 
@@ -499,7 +516,6 @@ test("under forced colours the active row opts out of the backplate so Highlight
   expect(forcedTokens).toMatch(/--row-active-text:\s*HighlightText;/);
   expect(rules(forced, '[role="option"][data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*HighlightText/);
   expect(rules(forced, ".result-tile")).toMatch(/forced-color-adjust:\s*none/);
-  expect(rules(forced, ':root[data-platform="windows"] [role="option"][data-active]::before')).toMatch(/background:\s*HighlightText/);
 });
 
 // Contrast against the surface (WCAG 1.4.11) with each platform's default
