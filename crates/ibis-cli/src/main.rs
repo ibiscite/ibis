@@ -40,8 +40,11 @@ enum Command {
     /// Write a citation for one or more keys in a source-document syntax.
     Cite {
         /// Citation keys, in order.
-        #[arg(required = true)]
+        #[arg(required_unless_present = "items")]
         keys: Vec<String>,
+        /// Read a JSON array of citation items from stdin (locators, notes, author omission).
+        #[arg(long, conflicts_with_all = ["keys", "pages"])]
+        items: bool,
         #[arg(long, value_enum, default_value_t = Format::Pandoc)]
         format: Format,
         /// Page locator for a key, e.g. `--page smith2020=12-14`. Repeatable.
@@ -250,11 +253,22 @@ fn run(cli: Cli) -> Result<ExitCode> {
         }
         Command::Cite {
             keys,
+            items: structured,
             format,
             pages,
             bib,
             json,
         } => {
+            let mut items = if structured {
+                cite::read_items(std::io::stdin().lock())?
+            } else {
+                keys.iter()
+                    .map(|key| CiteItem {
+                        key: key.clone(),
+                        ..CiteItem::default()
+                    })
+                    .collect()
+            };
             let mut load_warnings = Vec::new();
             if !bib.is_empty() {
                 let mut loaded = load(&bib)?;
@@ -263,17 +277,10 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 }
                 load_warnings = all_warnings(&loaded);
                 let references = take_references(&mut loaded);
-                for key in &keys {
-                    resolve(key, &references)?;
+                for item in &items {
+                    resolve(&item.key, &references)?;
                 }
             }
-            let mut items: Vec<CiteItem> = keys
-                .iter()
-                .map(|k| CiteItem {
-                    key: k.clone(),
-                    ..CiteItem::default()
-                })
-                .collect();
             for spec in &pages {
                 let Some((key, value)) = spec.rsplit_once('=').filter(|(_, value)| !value.trim().is_empty()) else {
                     bail!("--page needs KEY=PAGES, got `{spec}`")

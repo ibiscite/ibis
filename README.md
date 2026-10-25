@@ -75,6 +75,22 @@ cargo run -p ibis -- cite mueller2021 vanderberg2019 --page mueller2021=12-14 --
 cargo run -p ibis -- check fixtures/bibtex/damaged.bib
 ```
 
+For scripts and agents, `cite --items` reads a UTF-8 JSON array from standard
+input. Each item has a `key`, optional `locator` (`label` and `value`), `prefix`,
+`suffix` and `suppress_author`. For example, in a POSIX shell:
+
+```sh
+printf '%s' '[{"key":"example","locator":{"label":"chapter","value":"3"},"prefix":"see"}]' |
+  cargo run -p ibis -- cite --items --json
+```
+
+Locator labels are page, chapter, section, paragraph, figure, line, note, volume
+and verse. Order and repeated keys are preserved. All seven key syntaxes work;
+warnings explain intent a syntax cannot carry. Input is limited to 1 MiB and
+1,000 items; unknown fields and empty locators are errors. Use `--bib` to check
+membership. `--items` cannot be combined with positional keys or `--page`.
+This formats key-based citations; CSL style formatting remains in the desktop app.
+
 ## Contributing
 
 You do not need to be a programmer to help. Reporting an app where pasting fails, adding a test example, or improving documentation are all valuable. AI-assisted contributions are welcome under clear rules. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
