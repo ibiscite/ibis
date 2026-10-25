@@ -30,6 +30,7 @@ mod placement;
 mod preferences;
 mod row_context;
 mod setup;
+mod sizing;
 mod tray;
 mod updater;
 
@@ -98,6 +99,7 @@ fn main() {
         .manage(row_context::RowContext::default())
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
+        .manage(sizing::Sizing::default())
         .manage(picker::PickerGeneration::default())
         .manage(notice::Notice::default())
         .manage(picker::FullScreenGuard::default())
@@ -116,6 +118,11 @@ fn main() {
                 panel::observe_window_focus(window.app_handle(), *focused);
             }
             match event {
+                WindowEvent::Resized(_) => {
+                    if let Some(window) = window.app_handle().get_webview_window("main") {
+                        sizing::resized(window.app_handle(), &window);
+                    }
+                }
                 // Closing the picker hides it; the app keeps running for the shortcut.
                 WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();

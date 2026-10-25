@@ -18,6 +18,7 @@ export const {
   libraryStatus,
   hidePicker,
   setPinned,
+  fitPicker,
   quit,
   shortcutStatus,
   copyCitation,

@@ -1,0 +1,14 @@
+/* One hint line on the title column (docs/design.md, C2 and C11); its count
+   ends where row text ends. */
+.compact-start {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-min-size);
+  padding-inline: calc(var(--row-pad) + var(--tile-size) + var(--row-gap)) var(--row-pad);
+  color: var(--muted);
+  font-size: var(--hint-size);
+  line-height: var(--type-label-line);
+}
+.compact-start > .key-hint { min-width: 0; white-space: normal; flex-wrap: wrap; }
+.compact-next { flex: none; margin-inline-start: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
