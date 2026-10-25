@@ -150,7 +150,6 @@ library files and Zotero data in place.
 
 | Flow | What would be sent | To whom | When |
 | --- | --- | --- | --- |
-| Style updates | A request for a signed style bundle | Ibis release host | Only if enabled |
 | Metadata lookup / reference verification | The identifier you choose, such as a DOI | Crossref / OpenAlex / doi.org | Only on request, after an explanation |
 
 Citation history and manual diagnostic export are not shipped features.
