@@ -490,6 +490,18 @@ test("a shortcut note that changes while the picker is open shows at once", asyn
   await waitFor(() => expect(screen.queryByText(/No key on this keyboard layout/)).toBeNull());
 });
 
+test("the shortcut status is read only once its change listener is in place", async () => {
+  backend();
+  let ready: () => void = () => undefined;
+  const reads = vi.fn(async () => ({ shortcut: "Command+Shift+Y", registered: true, error: null }));
+  const onShortcutStatus = () => new Promise<() => void>((resolve) => { ready = () => resolve(() => undefined); });
+  render(<App api={{ ...api, shortcutStatus: reads, onShortcutStatus }} />);
+  await screen.findByLabelText("Search references");
+  expect(reads).not.toHaveBeenCalled();
+  await act(async () => { ready(); });
+  await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+});
+
 test("a failed search clears the results of the previous query", async () => {
   backend({
     search: ({ query: { text: query } }) => {

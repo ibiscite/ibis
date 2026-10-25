@@ -238,11 +238,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
-    readShortcut();
     const unlistenShortcut = onShortcutStatus?.((status) => {
       shortcutReads += 1;
       if (mounted) setShortcut(status);
     }).catch(() => subscriptionFailure("pickerEvents"));
+    // Read once the change listener is in place, so a change in between is not lost.
+    void (unlistenShortcut ?? Promise.resolve()).then(readShortcut);
     preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;
