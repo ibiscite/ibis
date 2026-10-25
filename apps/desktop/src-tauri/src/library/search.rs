@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use ibis_core::locator_query::{self, LocatorQuery};
 use ibis_core::model::{RecordId, Reference};
 use ibis_core::search::{MatchField, OwnedIndex};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The newest search each interface page has sent, so a search for a query
 /// the person has already typed past stops early instead of delaying the
@@ -88,24 +89,46 @@ impl SearchResult {
     }
 }
 
+/// Query text and the explicit choice to read a trailing locator.
+#[derive(Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SearchQuery {
+    pub(super) text: String,
+    pub(super) interpret_locators: bool,
+}
+
 /// A search keeps its snapshot identity even when no references match.
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchReply {
     pub(super) revision: String,
     pub(super) results: Vec<SearchResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) interpretation: Option<LocatorQuery>,
 }
 
 pub(super) fn search_snapshot(
     index: &OwnedIndex,
     revision: String,
-    query: &str,
+    query: &SearchQuery,
     limit: usize,
     request: u32,
     newest: &AtomicU32,
     scope: Option<&[String]>,
 ) -> SearchReply {
-    let results = search_newest(index, &revision, query, limit, request, newest, scope);
-    SearchReply { revision, results }
+    let interpretation = query
+        .interpret_locators
+        .then(|| locator_query::split(&query.text))
+        .flatten();
+    let text = interpretation
+        .as_ref()
+        .map_or(query.text.as_str(), |query| &query.search);
+    let results = search_newest(index, &revision, text, limit, request, newest, scope);
+    SearchReply {
+        revision,
+        results,
+        interpretation,
+    }
 }
 
 /// Run a search unless a newer request has started, stopping if one does.
@@ -259,12 +282,34 @@ mod tests {
         let index = Arc::clone(&library.index);
         let scope = vec!["zotero:group:7".into()];
         let newest = AtomicU32::default();
-        let scoped = search_snapshot(&index, captured.revision.clone(), "研究", 20, 1, &newest, Some(&scope));
+        let scoped = search_snapshot(
+            &index,
+            captured.revision.clone(),
+            &SearchQuery {
+                text: "研究".into(),
+                interpret_locators: true,
+            },
+            20,
+            1,
+            &newest,
+            Some(&scope),
+        );
         assert_eq!(scoped.revision, captured.revision);
         assert_eq!(scoped.results.len(), 1);
         assert_eq!(scoped.results[0].id.source, "zotero:group:7");
         assert_eq!(scoped.results[0].revision, captured.revision);
-        let all = search_snapshot(&index, captured.revision.clone(), "研究", 20, 2, &newest, None);
+        let all = search_snapshot(
+            &index,
+            captured.revision.clone(),
+            &SearchQuery {
+                text: "研究".into(),
+                interpret_locators: true,
+            },
+            20,
+            2,
+            &newest,
+            None,
+        );
         assert_eq!(all.results.len(), 2);
         for (request, scope) in [
             (3, Vec::new()),
@@ -274,7 +319,10 @@ mod tests {
             let empty = search_snapshot(
                 &index,
                 captured.revision.clone(),
-                "研究",
+                &SearchQuery {
+                    text: "研究".into(),
+                    interpret_locators: true,
+                },
                 20,
                 request,
                 &newest,
@@ -283,7 +331,18 @@ mod tests {
             assert!(empty.results.is_empty());
             assert_eq!(empty.revision, captured.revision);
         }
-        let late = search_snapshot(&index, captured.revision.clone(), "研究", 20, 1, &newest, None);
+        let late = search_snapshot(
+            &index,
+            captured.revision.clone(),
+            &SearchQuery {
+                text: "研究".into(),
+                interpret_locators: true,
+            },
+            20,
+            1,
+            &newest,
+            None,
+        );
         assert!(late.results.is_empty());
         assert_eq!(late.revision, captured.revision);
         library.requested = Some(Source::Zotero(ZoteroLibrary::Group(99).into()));

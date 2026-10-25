@@ -2,7 +2,8 @@
 
 use std::sync::Mutex;
 
-use ibis_core::cite::{self, CiteItem, KeyFormat};
+use ibis_core::cite::{self, KeyFormat};
+use ibis_core::library::{CitationSelection, citation_items};
 use ibis_core::model::{RecordId, Reference};
 use ibis_core::settings;
 use serde::Serialize;
@@ -45,32 +46,11 @@ struct PreviewSegment {
 /// Render the selected records as one citation in `format`.
 pub(crate) fn render_citation(
     references: &[Reference],
-    ids: &[RecordId],
+    selections: &[CitationSelection],
     format: KeyFormat,
 ) -> Result<cite::Rendered, String> {
-    let items = citation_items(references, ids)?;
+    let items = citation_items(references, selections).map_err(|error| error.to_string())?;
     cite::render(format, &items).map_err(|e| e.to_string())
-}
-
-fn citation_items(references: &[Reference], ids: &[RecordId]) -> Result<Vec<CiteItem>, String> {
-    ids.iter()
-        .map(|id| {
-            let reference = references
-                .iter()
-                .find(|r| &r.id == id)
-                .ok_or_else(|| "a selected reference is no longer in the library".to_string())?;
-            let key = reference.citekey.clone().ok_or_else(|| {
-                format!(
-                    "\"{}\" has no citation key, so it cannot be cited in this format",
-                    reference.title_plain().unwrap_or_else(|| id.native_key.clone())
-                )
-            })?;
-            Ok(CiteItem {
-                key,
-                ..CiteItem::default()
-            })
-        })
-        .collect()
 }
 
 /// Validate and prepare from one locked snapshot; clipboard I/O happens afterward.
@@ -87,14 +67,14 @@ pub(crate) fn prepare_snapshot<T>(
 }
 
 /// Prepare preview and copy through the same checked snapshot and formatter.
-fn prepare_citation(
+pub(crate) fn prepare_citation(
     library: &Mutex<Library>,
     expected: &str,
-    ids: &[RecordId],
+    selections: &[CitationSelection],
     format: KeyFormat,
 ) -> Result<CitationPreview, CommandError> {
     prepare_snapshot(library, expected, |locked| {
-        let items = citation_items(locked.index.references(), ids)?;
+        let items = citation_items(locked.index.references(), selections).map_err(|error| error.to_string())?;
         let (rendered, segments) = cite::render_with_segments(format, &items).map_err(|e| e.to_string())?;
         Ok(CitationPreview {
             text: rendered.text,
@@ -114,12 +94,12 @@ fn prepare_citation(
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn citation_text(
-    ids: Vec<RecordId>,
+    items: Vec<CitationSelection>,
     format: KeyFormat,
     expected_revision: String,
     library: State<'_, Mutex<Library>>,
 ) -> Result<CitationPreview, CommandError> {
-    prepare_citation(&library, &expected_revision, &ids, format)
+    prepare_citation(&library, &expected_revision, &items, format)
 }
 
 /// Copy the selected records as a citation to the clipboard. Format choices
@@ -127,14 +107,14 @@ pub(crate) fn citation_text(
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_citation(
-    ids: Vec<RecordId>,
+    items: Vec<CitationSelection>,
     format: KeyFormat,
     expected_revision: String,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
     let rendered = prepare_snapshot(&library, &expected_revision, |locked| {
-        render_citation(locked.index.references(), &ids, format)
+        render_citation(locked.index.references(), &items, format)
     })?;
     let rendered = Copied::from(rendered);
     app.clipboard()
@@ -236,7 +216,7 @@ mod tests {
         (KeyFormat::Keys, "other, same"),
     ];
 
-    fn preview_library() -> (Mutex<Library>, Vec<RecordId>) {
+    fn preview_library() -> (Mutex<Library>, Vec<CitationSelection>) {
         let mut loaded = bibtex::load_str(
             "synthetic",
             "@article{same, title={First}}\n@book{other, title={Second}}",
@@ -252,7 +232,10 @@ mod tests {
             .references
             .iter()
             .rev()
-            .map(|reference| reference.id.clone())
+            .map(|reference| CitationSelection {
+                id: reference.id.clone(),
+                locator: None,
+            })
             .collect();
         let mut library = Library::default();
         library.source = Some(crate::library::Source::File("synthetic.bib".into()));
@@ -301,7 +284,7 @@ mod tests {
     #[test]
     fn key_preview_rejects_stale_or_unavailable_snapshot_before_record_lookup() {
         let (library, mut ids) = preview_library();
-        ids[0].source = "missing".into();
+        ids[0].id.source = "missing".into();
         for (format, _) in FORMATS {
             assert_eq!(
                 prepare_citation(&library, "retired", &ids, format).err(),
@@ -317,9 +300,12 @@ mod tests {
     #[test]
     fn key_preview_preserves_empty_missing_and_invalid_selection_errors() {
         let (library, _) = preview_library();
-        let missing = RecordId {
-            source: "missing".into(),
-            native_key: "shared".into(),
+        let missing = CitationSelection {
+            id: RecordId {
+                source: "missing".into(),
+                native_key: "shared".into(),
+            },
+            locator: None,
         };
         for (format, _) in FORMATS {
             assert_eq!(
@@ -408,12 +394,23 @@ mod tests {
             "a.bib",
             "@article{same, title={From A}}\n@article{other, title={Other}}\n",
         );
-        let ids: Vec<RecordId> = loaded.references.iter().rev().map(|r| r.id.clone()).collect();
+        let ids = loaded
+            .references
+            .iter()
+            .rev()
+            .map(|r| CitationSelection {
+                id: r.id.clone(),
+                locator: None,
+            })
+            .collect::<Vec<_>>();
         let rendered = render_citation(&loaded.references, &ids, KeyFormat::Pandoc).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(rendered.text, "[@other; @same]");
-        let missing = RecordId {
-            source: "b.bib".into(),
-            native_key: "same".into(),
+        let missing = CitationSelection {
+            id: RecordId {
+                source: "b.bib".into(),
+                native_key: "same".into(),
+            },
+            locator: None,
         };
         assert!(render_citation(&loaded.references, &[missing], KeyFormat::Pandoc).is_err());
     }
