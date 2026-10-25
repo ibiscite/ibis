@@ -23,17 +23,21 @@ export function useShortcutStatus({ shortcutStatus, onShortcutStatus, report }: 
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribes once, like the picker's other events.
   useEffect(() => {
     mounted.current = true;
+    // This setup's own flag: a subscription cleaned up by a remount must not
+    // report or show anything once a newer one is live.
+    let active = true;
     const unlisten = onShortcutStatus?.((status) => {
       reads.current += 1;
-      if (mounted.current) setShortcut(status);
+      if (active) setShortcut(status);
     }).catch(() => {
-      if (mounted.current) report("pickerEvents");
+      if (active) report("pickerEvents");
       else console.error("Picker event subscription failed.");
       return () => undefined;
     });
     // Read once the change listener is in place, so a change in between is not lost.
     void (unlisten ?? Promise.resolve()).then(readShortcut);
     return () => {
+      active = false;
       mounted.current = false;
       void unlisten?.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
     };

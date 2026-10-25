@@ -1,6 +1,7 @@
 import { expect, test, vi, afterEach } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
+import { StrictMode } from "react";
 import { App } from "./App";
 import * as api from "./api";
 import { backend, resetApp } from "./testing/app";
@@ -49,4 +50,22 @@ test("the shortcut status is read only once its change listener is in place", as
   expect(reads).not.toHaveBeenCalled();
   await act(async () => { ready(); });
   await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+});
+
+test("a remount's abandoned shortcut subscription failing later reports nothing", async () => {
+  backend();
+  let fail: () => void = () => undefined;
+  let subscriptions = 0;
+  const onShortcutStatus = () => {
+    subscriptions += 1;
+    // The first, abandoned subscription fails only after the live one is in place.
+    return subscriptions === 1
+      ? new Promise<() => void>((_, reject) => { fail = () => reject(new Error("gone")); })
+      : Promise.resolve(() => undefined);
+  };
+  render(<StrictMode><App api={{ ...api, onShortcutStatus }} /></StrictMode>);
+  await screen.findByLabelText("Search references");
+  await waitFor(() => expect(subscriptions).toBe(2));
+  await act(async () => { fail(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(screen.queryByText(/Restart Ibis/)).toBeNull();
 });
