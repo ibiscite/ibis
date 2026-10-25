@@ -261,7 +261,7 @@ mod tests {
 
     use crate::library::error::ZOTERO_OFFLINE;
     use crate::library::load::load_library;
-    use crate::library::search::search_snapshot;
+    use crate::library::search::{SearchQuery, search_snapshot};
     use crate::library::status::LibraryState;
     use crate::tray::library_line;
 
@@ -851,7 +851,10 @@ mod tests {
         let late_reply = search_snapshot(
             &old_index,
             old_revision.clone(),
-            "sleep",
+            &SearchQuery {
+                text: "sleep".into(),
+                interpret_locators: true,
+            },
             20,
             1,
             &AtomicU32::default(),
@@ -861,7 +864,10 @@ mod tests {
         let empty = search_snapshot(
             &old_index,
             old_revision.clone(),
-            "no-match",
+            &SearchQuery {
+                text: "no-match".into(),
+                interpret_locators: true,
+            },
             20,
             2,
             &AtomicU32::default(),
@@ -873,10 +879,21 @@ mod tests {
         assert_eq!(late[0].key, "oldkey");
         assert_eq!(late[0].revision, old_revision);
         let ids = vec![late[0].id.clone()];
+        let selections = ids
+            .iter()
+            .map(|id| ibis_core::library::CitationSelection {
+                id: id.clone(),
+                locator: None,
+            })
+            .collect::<Vec<_>>();
         let looked_up = std::cell::Cell::new(false);
         let retired = crate::copy::prepare_snapshot(&library, &old_revision, |locked| {
             looked_up.set(true);
-            crate::copy::render_citation(locked.index.references(), &ids, ibis_core::cite::KeyFormat::Pandoc)
+            crate::copy::render_citation(
+                locked.index.references(),
+                &selections,
+                ibis_core::cite::KeyFormat::Pandoc,
+            )
         });
         assert!(retired.is_err());
         assert!(!looked_up.get());
@@ -903,7 +920,11 @@ mod tests {
         );
         assert!(!wrote.get());
         let current = crate::copy::prepare_snapshot(&library, &replaced.revision, |locked| {
-            crate::copy::render_citation(locked.index.references(), &ids, ibis_core::cite::KeyFormat::Pandoc)
+            crate::copy::render_citation(
+                locked.index.references(),
+                &selections,
+                ibis_core::cite::KeyFormat::Pandoc,
+            )
         })
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(current.text, "[@newkey]");
@@ -948,7 +969,10 @@ mod tests {
         let reply = search_snapshot(
             &locked.index,
             empty.revision.clone(),
-            "",
+            &SearchQuery {
+                text: "".into(),
+                interpret_locators: true,
+            },
             20,
             3,
             &AtomicU32::default(),

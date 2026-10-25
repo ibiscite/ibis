@@ -48,6 +48,14 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 
 Hide or show the citation output with **Show what will be pasted** in **More**, or **Ctrl+I** (**⌘I** on macOS). Ibis remembers this choice; the references you added stay selected.
 
+Add a locator at the end of a search, such as `memory p 12–14`, `memory ch. 3`
+or `memory S. 12`. Ibis shows how it interpreted the locator; **Search as typed**
+searches the complete text instead. Each reference you add keeps its own locator
+through later searches, preview and copy. To change an already added reference,
+highlight it and choose **Apply locator**; its locator's remove button clears
+only the locator. Pages, chapters, sections, paragraphs, figures, lines, notes,
+volumes and verses are supported. Times such as `01:23` stay literal search text.
+
 ## Use with Zotero
 
 With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. It never changes anything in Zotero.

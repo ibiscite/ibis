@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App } from "./App";
+import type { SearchQuery } from "./api";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -28,7 +29,7 @@ function backend(search: (query: string) => ReturnType<typeof result>[]) {
   mockIPC((cmd, args) => {
     const handlers: Record<string, () => unknown> = {
       shortcut_status: () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
-      search: () => ({ revision: "1", results: search(String((args as { query?: string } | undefined)?.query ?? "")) }),
+      search: () => ({ revision: "1", results: search((args as { query: SearchQuery }).query.text), parsed_locator: null }),
       hide_picker: () => null,
       set_pinned: () => null,
       copy_format: () => "pandoc",

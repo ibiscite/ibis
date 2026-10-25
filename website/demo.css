@@ -67,3 +67,11 @@
   .picker-shelf .picker-status:not(:empty) { animation: receipt var(--motion-panel) var(--ease-out); }
   @media (pointer: coarse) { .pick { transition: scale var(--motion-feedback) var(--ease-out); } .pick:active { scale: .985; } }
 }
+
+/* Locator controls use the picker controls and shared spacing roles. */
+.picker-locator, .picker-locators { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--row-pad); }
+.picker-locator > bdi { min-width: 0; overflow-wrap: anywhere; font-size: var(--type-meta-size); }
+.picker-locator button { max-inline-size: 100%; overflow-wrap: anywhere; }
+.locator-token { display: inline-flex; align-items: center; gap: var(--space-1); min-inline-size: 0; max-inline-size: min(100%, var(--locator-token-max-inline, 16rem)); font-size: var(--type-meta-size); }
+.locator-token bdi { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.locator-token button { flex: none; }

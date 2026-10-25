@@ -14,6 +14,10 @@ Rules:
 | `updates/` | A synthetic package with unversioned, Stable and Nightly signatures from CLI 2.12.3, a forged trusted comment, and an unrelated public key; throwaway private keys were discarded |
 | `zotero/` | Synthetic Zotero local-API item envelopes (`key`, `links`, `data`, `csljson`); database snapshots for Zotero 7–10, including trashed parents and children, are still planned |
 
+`locator-queries.json` is the shared trailing-locator corpus for the Rust parser
+and synthetic website demo. It covers nine locator types, non-Latin text and
+literal ambiguous/time inputs; production interpretation remains in Rust.
+
 `bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input
 from #111. The robustness tests also exercise invalid zero months in uncertain
 dates: malformed dates produce field warnings without discarding the reference.
