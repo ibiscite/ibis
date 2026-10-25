@@ -42,7 +42,7 @@ fn arbitrary_field_labels_never_enter_field_warning_messages() {
 }
 
 #[test]
-fn normalization_preserves_the_complete_raw_item_in_both_csl_encodings() {
+fn normalization_preserves_the_complete_raw_item_in_both_csl_encodings() -> Result<(), serde_json::Error> {
     for local in [false, true] {
         let original = item(
             json!({
@@ -55,7 +55,7 @@ fn normalization_preserves_the_complete_raw_item_in_both_csl_encodings() {
         let loaded = load_items(Library::Group(42), std::slice::from_ref(&original));
         assert!(loaded.warnings.is_empty());
         let reference = &loaded.references[0];
-        let raw: Value = serde_json::from_str(reference.raw.as_deref().unwrap()).unwrap();
+        let raw: Value = serde_json::from_str(reference.raw.as_deref().unwrap_or_default())?;
         assert_eq!(raw, original);
         let csl = reference.to_csl_json();
         assert_eq!(csl["title"], "Été <i>日本🌙</i> &amp; &lt; 0.05");
@@ -64,6 +64,7 @@ fn normalization_preserves_the_complete_raw_item_in_both_csl_encodings() {
         assert_eq!(csl["volume"], "12");
         assert_eq!(csl["custom"], "original value");
     }
+    Ok(())
 }
 
 #[test]
