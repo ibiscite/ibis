@@ -120,6 +120,7 @@ export const pickerText = {
   searchError: "Ibis could not search your library. Use Reload, then try again.",
   copyError: "Nothing was copied. Try again, or use Reload.",
   snapshotChanged: "The library changed. Search again and reselect the references before copying.",
+  sharedKey: (key: string) => `More than one reference has the key ${key}, so it can't be cited by key. Give one of them a different key in Zotero or your .bib file.`,
   usingLocator: (label: string, value: string) => `Using ${label} ${value}`,
   searchAsTyped: "Search as typed",
   applyLocator: (key: string) => `Apply locator to ${key}`,

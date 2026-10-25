@@ -663,6 +663,9 @@ test("the shelf is two 40 px lines of 24 px chips and one output line above the 
   expect(rules(styles, ".shelf-output")).toMatch(/height:\s*var\(--shelf-line\)/);
   // The output is one line; the full text is its tooltip.
   expect(rules(styles, ".shelf-output .preview-text, .shelf-output p")).toMatch(/white-space:\s*nowrap/);
+  // A failure names its fix, so it wraps and grows the band rather than clipping.
+  expect(rules(styles, '.shelf-output[data-state="failed"]')).toMatch(/height:\s*auto;\s*min-height:\s*var\(--shelf-line\)/);
+  expect(rules(styles, '.shelf-output[data-state="failed"] p')).toMatch(/white-space:\s*normal/);
   // Chips are fills without an outline, except in contrast modes.
   const edge = styles.lastIndexOf("@media (prefers-contrast: more), (forced-colors: active) {");
   expect(rules(styles.slice(0, edge), ".chip")).toMatch(/background:\s*var\(--chip-fill\)/);
