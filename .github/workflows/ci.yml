@@ -229,6 +229,10 @@ jobs:
       # Every script test, as scripts/check.mjs runs them locally.
       - name: Script tests, UI import boundary and style tokens
         working-directory: .
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: safe.directory
+          GIT_CONFIG_VALUE_0: ${{ github.workspace }}
         run: |
           node scripts/check.mjs --script-tests
           node scripts/ui-imports.mjs
