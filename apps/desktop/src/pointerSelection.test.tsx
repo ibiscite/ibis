@@ -25,9 +25,10 @@ function result(key: string, title: string) {
   return { revision: "1", id: { source: "refs.bib", native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"], first_author: "Smith", author_count: 1 };
 }
 
-function backend(search: (query: string) => ReturnType<typeof result>[]) {
+function backend(search: (query: string) => ReturnType<typeof result>[], extra: Record<string, (args: unknown) => unknown> = {}) {
   mockIPC((cmd, args) => {
     const handlers: Record<string, () => unknown> = {
+      ...Object.fromEntries(Object.entries(extra).map(([name, handle]) => [name, () => handle(args)])),
       shortcut_status: () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
       search: () => ({ revision: "1", results: search((args as { query: SearchQuery }).query.text), parsed_locator: null }),
       hide_picker: () => null,
@@ -56,16 +57,28 @@ function move(target: Element, x: number, y: number, at?: number) {
   fireEvent(target, event);
 }
 
-test("moving the mouse over a row makes it the active row", async () => {
-  backend(() => three);
+test("moving the mouse only shows hover; a clicked row stays chosen and is what Copy copies", async () => {
+  const copies: unknown[] = [];
+  backend(() => three, { copy_citation: (args) => { copies.push(args); return { text: "@b", warnings: [] }; } });
   await act(async () => { render(<App />); });
   await screen.findByText("Gamma");
   expect(activeTitle()).toBe("Alpha");
   move(row("Alpha"), 10, 10);
+  fireEvent.pointerEnter(row("Beta"), { pointerType: "mouse" });
   move(row("Beta"), 10, 40);
+  expect(activeTitle()).toBe("Alpha");
+  expect(row("Beta").hasAttribute("data-hovered")).toBe(true);
+  fireEvent.click(row("Beta"), { detail: 1 });
   expect(activeTitle()).toBe("Beta");
+  // Reach for the footer's Copy across the rows below, then leave the list.
   move(row("Gamma"), 10, 70);
-  expect(activeTitle()).toBe("Gamma");
+  move(row("Gamma"), 10, 90);
+  fireEvent.mouseLeave(screen.getByRole("listbox", { name: "Results" }));
+  expect(activeTitle()).toBe("Beta");
+  const footerCopy = screen.getAllByRole("button", { name: /^Copy/ }).find((button) => button.classList.contains("footer-action"))!;
+  fireEvent.click(footerCopy);
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(JSON.stringify(copies[0])).toContain('"native_key":"b"');
 });
 
 test("keyboard takeover removes resting hover until qualified movement, even inside the active row", async () => {
@@ -117,7 +130,7 @@ test("a row sliding under a still pointer while typing does not change the selec
   expect(activeTitle()).toBe("Beta");
 });
 
-test("the wheel scrolls without changing the selection", async () => {
+test("the wheel scrolls without changing the selection or showing hover", async () => {
   backend(() => three);
   render(<App />);
   await screen.findByText("Gamma");
@@ -126,33 +139,36 @@ test("the wheel scrolls without changing the selection", async () => {
   const list = screen.getByRole("listbox", { name: "Results" });
   fireEvent.wheel(row("Alpha"), { deltaY: 120 });
   fireEvent.scroll(list, { target: { scrollTop: 40 } });
+  fireEvent.pointerEnter(row("Beta"), { pointerType: "mouse" });
   move(row("Beta"), 10, 11);
-  expect(activeTitle()).toBe("Alpha");
+  expect(row("Beta").hasAttribute("data-hovered")).toBe(false);
   move(row("Beta"), 10, 14);
-  expect(activeTitle()).toBe("Beta");
+  expect(row("Beta").hasAttribute("data-hovered")).toBe(true);
+  expect(activeTitle()).toBe("Alpha");
 });
 
-test("the first move after the pointer has been still does not select", async () => {
+test("the first move after the pointer has been still shows no hover", async () => {
   backend(() => three);
   render(<App />);
   await screen.findByText("Gamma");
   move(row("Alpha"), 10, 10, 1000);
   // The picker reopened under a pointer that moved while it was hidden.
+  fireEvent.pointerEnter(row("Gamma"), { pointerType: "mouse" });
   move(row("Gamma"), 10, 300, 60_000);
-  expect(activeTitle()).toBe("Alpha");
+  expect(row("Gamma").hasAttribute("data-hovered")).toBe(false);
   move(row("Gamma"), 10, 302, 60_016);
-  expect(activeTitle()).toBe("Gamma");
+  expect(row("Gamma").hasAttribute("data-hovered")).toBe(true);
+  expect(activeTitle()).toBe("Alpha");
 });
 
-test("selecting by pointer does not scroll the list, but arrow keys do", async () => {
+test("selecting by click does not scroll the list, but arrow keys do", async () => {
   backend(() => three);
   const scrolled = vi.fn();
   Element.prototype.scrollIntoView = scrolled;
   render(<App />);
   await screen.findByText("Gamma");
   scrolled.mockClear();
-  move(row("Alpha"), 10, 10);
-  move(row("Gamma"), 10, 70);
+  fireEvent.click(row("Gamma"), { detail: 1 });
   expect(activeTitle()).toBe("Gamma");
   expect(scrolled).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowUp" });

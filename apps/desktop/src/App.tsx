@@ -341,7 +341,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [restored]);
 
   // Keep the highlighted result visible while moving with the arrow keys.
-  // A row chosen by the pointer is already under it; scrolling would move it away.
+  // A row clicked is already under the pointer; scrolling would move it away.
   // Selection/preview reflow follows the highlight only while Search has focus.
   const previousActive = useRef(active);
   const followKeyboard = useRef(true);
@@ -825,7 +825,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             // Rows of an earlier query, still shown while a newer search
             // is pending, are not acted on by a click or Shift+click (#507).
             if (current !== results) return;
-            setActive(i);
+            pointer.choose(i);
             if (action === "toggle") toggle(r);
             else if (action === "copy") requestCopy(selected.size > 0 ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
             input.current?.focus();
@@ -846,7 +846,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           }}
           onToggle={(i, r) => {
             if (current !== results) return;
-            setActive(i);
+            pointer.choose(i);
             toggle(r);
             input.current?.focus();
           }} />}
