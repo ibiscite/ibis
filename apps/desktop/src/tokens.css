@@ -165,6 +165,8 @@
   --empty-padding: 2rem 1rem;
   --notice-padding: 0 calc(var(--inset) + var(--row-pad));
   --notice-margin: var(--space-3) 0;
+  --progress-track: var(--fill-control); --progress-fill: var(--accent-text); --progress-border: var(--clear); --progress-border-width: 0px;
+  --progress-segment-width: 25%; --progress-travel: 300%; --progress-duration: 1s; /* Busy indicator; motion's looping exception. */
   --copy-padding: .5rem;
   --dismiss-margin: .5rem 0 .5rem .5rem;
   --alert-padding: var(--space-3);
@@ -374,15 +376,18 @@
 :root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --scrim: Canvas; }
 
 @media (prefers-contrast: more) {
+  :root, :root[data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
   :root, :root[data-platform] { --separator: CanvasText; --stroke-control: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
 }
 @media (forced-colors: active) {
+  :root, :root[data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
   :root, :root[data-platform] { --separator: CanvasText; --stroke-control: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
 }
 
 /* Explicit contrast preview in the development states gallery. */
+:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
 :root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --stroke-control: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; }
 :root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
 
