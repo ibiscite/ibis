@@ -8,7 +8,7 @@ Ibis has one maintainer, who sets its direction. [ROADMAP.md](ROADMAP.md) is the
 
 - **Ideas and questions** start in [Discussions](https://github.com/ibiscite/ibis/discussions). When an idea fits, the maintainer opens an issue for it.
 - **Issues** are for problems and agreed work.
-- **Code pull requests** link an issue labelled `status:accepted`. Fixtures, typo fixes and small documentation corrections need no issue.
+- **Pull requests** link an issue. For code, it is one labelled `status:accepted`; a fixture or a typo fix can link the problem it fixes.
 
 A pull request without an accepted issue may be closed with a pointer back here. That's not a judgement of the work, only of the timing.
 
