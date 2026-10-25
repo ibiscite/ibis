@@ -331,6 +331,27 @@ mod tests {
     }
 
     #[test]
+    fn preview_and_copy_refuse_invalid_locator_values_before_output() {
+        use ibis_core::cite::{Locator, LocatorLabel};
+        let (library, mut selected) = preview_library();
+        for value in ["", "  ", "\u{2003}", "12\n13", "12\0"] {
+            selected[0].locator = Some(Locator {
+                label: LocatorLabel::Page,
+                value: value.into(),
+            });
+            for (format, _) in FORMATS {
+                let preview = prepare_citation(&library, "0", &selected, format).err();
+                let copied = prepare_snapshot(&library, "0", |locked| {
+                    render_citation(locked.index.references(), &selected, format)
+                })
+                .err();
+                assert!(preview.is_some());
+                assert_eq!(preview, copied);
+            }
+        }
+    }
+
+    #[test]
     fn key_preview_payload_keeps_nonempty_formatter_warnings() {
         let payload = Copied::from(cite::Rendered {
             text: "synthetic citation".into(),

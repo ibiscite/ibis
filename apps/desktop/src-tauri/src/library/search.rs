@@ -167,6 +167,134 @@ mod tests {
     use crate::library::status::status;
 
     #[test]
+    fn locator_search_can_be_literal_scoped_cancelled_and_empty() {
+        let index = OwnedIndex::new(
+            ibis_core::bibtex::load_str(
+                "synthetic",
+                "@misc{plain,title={Reference}}\n@misc{literal,title={Reference p 12}}",
+            )
+            .references,
+        );
+        let newest = AtomicU32::default();
+        for interpret_locators in [true, false] {
+            let query = SearchQuery {
+                text: "Reference p 12".into(),
+                interpret_locators,
+            };
+            let reply = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &newest, None);
+            assert_eq!(reply.results.len(), if interpret_locators { 2 } else { 1 });
+            assert_eq!(reply.interpretation.is_some(), interpret_locators);
+            assert!(reply.results.iter().all(|result| result.revision == reply.revision));
+            let json = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(json.get("interpretation").is_some(), interpret_locators);
+            for scope in [&[][..], &["absent".into()][..]] {
+                let scoped = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &newest, Some(scope));
+                assert!(scoped.results.is_empty());
+                assert_eq!(scoped.revision, "snapshot");
+            }
+        }
+        newest.store(2, Ordering::SeqCst);
+        let query = SearchQuery {
+            text: "Reference p 12".into(),
+            interpret_locators: true,
+        };
+        let cancelled = search_snapshot(&index, "snapshot".into(), &query, 20, 1, &newest, None);
+        assert!(cancelled.results.is_empty());
+        assert_eq!(cancelled.revision, "snapshot");
+        let empty = SearchQuery {
+            text: String::new(),
+            interpret_locators: true,
+        };
+        assert!(
+            search_snapshot(&index, "snapshot".into(), &empty, 20, 3, &newest, None)
+                .results
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn separate_searches_keep_each_selected_locator_through_preview_and_copy() {
+        use ibis_core::cite::KeyFormat;
+        use ibis_core::library::CitationSelection;
+        let mut loaded = ibis_core::bibtex::load_str("a", "@misc{same,title={Alpha}}");
+        loaded
+            .references
+            .extend(ibis_core::bibtex::load_str("b", "@misc{same,title={Beta}}").references);
+        let library = Mutex::new(candidate(PathBuf::from("synthetic.bib"), loaded));
+        let (index, revision) = {
+            let locked = library.lock().unwrap_or_else(|error| panic!("{error}"));
+            (Arc::clone(&locked.index), locked.revision.to_string())
+        };
+        let mut selected = Vec::new();
+        for (request, text) in [(1, "Alpha p 12"), (2, "Beta ch. 3")] {
+            let query = SearchQuery {
+                text: text.into(),
+                interpret_locators: true,
+            };
+            let reply = search_snapshot(
+                &index,
+                revision.clone(),
+                &query,
+                20,
+                request,
+                &AtomicU32::default(),
+                None,
+            );
+            assert_eq!(reply.results.len(), 1);
+            selected.push(CitationSelection {
+                id: reply.results[0].id.clone(),
+                locator: reply.interpretation.map(|query| query.locator),
+            });
+        }
+        assert_ne!(selected[0].id.source, selected[1].id.source);
+        for (format, expected) in [
+            (KeyFormat::Pandoc, "[@same, p. 12; @same, chap. 3]"),
+            (KeyFormat::Autocite, r"\autocites[12]{same}[chap.~3]{same}"),
+            (KeyFormat::Parencite, r"\parencites[12]{same}[chap.~3]{same}"),
+            (KeyFormat::Textcite, r"\textcites[12]{same}[chap.~3]{same}"),
+            (KeyFormat::Cite, r"\cite[p.~12]{same}, \cite[chap.~3]{same}"),
+            (KeyFormat::Typst, "@same[p. 12] @same[chap. 3]"),
+            (KeyFormat::Keys, "same, same"),
+        ] {
+            let preview = crate::copy::prepare_citation(&library, &revision, &selected, format)
+                .unwrap_or_else(|error| panic!("{error}"));
+            let preview = serde_json::to_value(preview).unwrap_or_else(|error| panic!("{error}"));
+            let copied = crate::copy::prepare_snapshot(&library, &revision, |locked| {
+                crate::copy::render_citation(locked.index.references(), &selected, format)
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(copied.text, expected);
+            assert_eq!(preview["text"], copied.text);
+            assert_eq!(preview["warnings"], serde_json::json!(copied.warnings));
+            assert_eq!(
+                copied.warnings.is_empty(),
+                !matches!(format, KeyFormat::Cite | KeyFormat::Keys)
+            );
+            let segments = preview["segments"]
+                .as_array()
+                .unwrap_or_else(|| panic!("preview segments"));
+            assert_eq!(
+                segments
+                    .iter()
+                    .filter_map(|part| part["text"].as_str())
+                    .collect::<String>(),
+                expected
+            );
+            assert_eq!(
+                segments
+                    .iter()
+                    .filter_map(|part| part["item"].as_u64())
+                    .collect::<Vec<_>>(),
+                [0, 1]
+            );
+            assert!(matches!(
+                crate::copy::prepare_citation(&library, "retired", &selected, format),
+                Err(crate::library::CommandError::SnapshotChanged)
+            ));
+        }
+    }
+
+    #[test]
     fn results_carry_what_tells_similar_references_apart() {
         let long = "Long ".repeat(60);
         let bib = format!(
