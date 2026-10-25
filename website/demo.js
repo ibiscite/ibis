@@ -41,7 +41,8 @@ export function setupDemo() {
   const labels = { copy: "copy", add: "add", move: "choose", escape: "step back", preview: "show output" };
   const touch = matchMedia("(hover: none)").matches;
   // The app's default shortcut also opens this example, so visitors learn it by using it.
-  const opens = mac ? event => event.ctrlKey && event.metaKey && !event.altKey && !event.shiftKey && event.code === "KeyR"
+  // On macOS the app follows the key that types the letter, falling back to its US place (#196).
+  const opens = mac ? event => event.ctrlKey && event.metaKey && !event.altKey && !event.shiftKey && (/^[a-z]$/i.test(event.key) ? event.key.toLowerCase() === "r" : event.code === "KeyR")
     : event => event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyY";
   if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then Copy.";
   else hint.append(el("kbd", { textContent: mac ? "⌃⌘R" : "Ctrl+Shift+Y" }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));

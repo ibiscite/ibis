@@ -80,7 +80,7 @@ const SHORTCUT_BACKEND_UNAVAILABLE: &str =
     "Global shortcuts need a working X11 connection with XKB. Open Ibis from your application launcher.";
 const SHORTCUT_REGISTRATION_FAILED: &str =
     "The shortcut could not be registered. Another app may be using it; choose a different shortcut in settings.";
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 const NO_KEY_TYPES_THE_LETTER: &str =
     "No key on this keyboard layout types the shortcut's letter, so it uses that letter's place on a US keyboard.";
 
@@ -158,23 +158,32 @@ fn relayout(app: &AppHandle) {
         return;
     };
     let (key, note) = on_layout(requested);
-    if key == current {
-        return;
-    }
-    let shortcuts = app.global_shortcut();
-    let _ = shortcuts.unregister(current);
-    let result = shortcuts.register(key).map_err(|_| SHORTCUT_REGISTRATION_FAILED);
-    *registered = Some((requested, key));
+    // Register the new key before releasing the working one: on a conflict the
+    // working key stays and the next check tries again.
+    let moved = if key == current {
+        Ok(())
+    } else {
+        let shortcuts = app.global_shortcut();
+        shortcuts
+            .register(key)
+            .map_err(|_| SHORTCUT_REGISTRATION_FAILED)
+            .map(|()| {
+                let _ = shortcuts.unregister(current);
+                *registered = Some((requested, key));
+            })
+    };
     if let Ok(mut status) = app.state::<Mutex<ShortcutStatus>>().lock() {
-        status.registered = result.is_ok();
-        // A settings problem stays visible; only this shortcut's own notes change.
-        if status
-            .error
-            .as_deref()
-            .is_none_or(|error| [NO_KEY_TYPES_THE_LETTER, SHORTCUT_REGISTRATION_FAILED].contains(&error))
-        {
-            status.error = result.err().or(note).map(str::to_string);
-        }
+        layout_status(&mut status, moved, note);
+    }
+}
+
+/// Show a layout check's outcome. A settings problem stays visible; only the
+/// notes a layout check writes are replaced or cleared.
+#[cfg(any(target_os = "macos", test))]
+fn layout_status(status: &mut ShortcutStatus, moved: Result<(), &'static str>, note: Option<&'static str>) {
+    let ours = [NO_KEY_TYPES_THE_LETTER, SHORTCUT_REGISTRATION_FAILED];
+    if status.error.as_deref().is_none_or(|error| ours.contains(&error)) {
+        status.error = moved.err().or(note).map(str::to_string);
     }
 }
 
@@ -586,6 +595,25 @@ mod tests {
             toggle_trace(None, Some(true)),
             "ibis-picker: toggle not-known-visible show"
         );
+    }
+
+    #[test]
+    fn a_layout_check_updates_its_own_notes_and_keeps_settings_problems() {
+        let mut status = ShortcutStatus {
+            shortcut: "Command+Shift+Y".into(),
+            registered: true,
+            error: None,
+        };
+        layout_status(&mut status, Ok(()), Some(NO_KEY_TYPES_THE_LETTER));
+        assert_eq!(status.error.as_deref(), Some(NO_KEY_TYPES_THE_LETTER));
+        layout_status(&mut status, Err(SHORTCUT_REGISTRATION_FAILED), None);
+        assert_eq!(status.error.as_deref(), Some(SHORTCUT_REGISTRATION_FAILED));
+        assert!(status.registered, "the working key stays registered");
+        layout_status(&mut status, Ok(()), None);
+        assert_eq!(status.error, None);
+        status.error = Some("the shortcut in settings is not valid".into());
+        layout_status(&mut status, Ok(()), Some(NO_KEY_TYPES_THE_LETTER));
+        assert_eq!(status.error.as_deref(), Some("the shortcut in settings is not valid"));
     }
 
     #[test]

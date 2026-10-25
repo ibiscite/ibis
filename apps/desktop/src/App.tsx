@@ -188,6 +188,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       else console.error(FAILURE_MESSAGES[operation]);
       return () => undefined;
     };
+    // The shortcut can change while the picker is hidden (macOS follows the
+    // keyboard layout), so read it again each time the picker opens.
+    let shortcutReads = 0;
+    const readShortcut = () => {
+      const read = ++shortcutReads;
+      shortcutStatus()
+        .then((status) => { if (mounted && read === shortcutReads) setShortcut(status); })
+        .catch(() => { if (mounted && read === shortcutReads) { setShortcut(null); report("shortcut"); } });
+    };
     const focusSearch = () => {
       resetPointer();
       copyVisibility.current += 1;
@@ -202,6 +211,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }
       hiddenAt.current = null;
       readLoginItem();
+      readShortcut();
       input.current?.focus();
       input.current?.select();
     };
@@ -228,9 +238,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
-    shortcutStatus()
-      .then(setShortcut)
-      .catch(() => { setShortcut(null); report("shortcut"); });
+    readShortcut();
     preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;

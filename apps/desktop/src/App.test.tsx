@@ -466,6 +466,19 @@ test("a shortcut that could not be registered is explained", async () => {
   expect((await screen.findByText(/another app may be using it/)).getAttribute("role")).toBe("status");
 });
 
+test("a shortcut note that appears while the picker is hidden shows when it opens again", async () => {
+  let error: string | null = null;
+  backend({ shortcut_status: () => ({ shortcut: "Command+Shift+Y", registered: true, error }) });
+  render(<App />);
+  await act(async () => { await emit("picker:hidden"); });
+  error = "No key on this keyboard layout types the shortcut's letter";
+  await act(async () => { await emit("picker:shown"); });
+  expect(await screen.findByText(/No key on this keyboard layout/)).toBeTruthy();
+  error = null;
+  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  await waitFor(() => expect(screen.queryByText(/No key on this keyboard layout/)).toBeNull());
+});
+
 test("a failed search clears the results of the previous query", async () => {
   backend({
     search: ({ query: { text: query } }) => {

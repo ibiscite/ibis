@@ -4,28 +4,37 @@
 
 use tauri_plugin_global_shortcut::{Code, Shortcut};
 
-/// Each letter's US key position: the macOS virtual key global-hotkey registers for it.
+/// Every printable key position: the macOS virtual key global-hotkey registers
+/// for each code, and what it types on a US keyboard.
 #[rustfmt::skip]
-const LETTERS: [(Code, u16, char); 26] = [
+const POSITIONS: [(Code, u16, char); 47] = [
     (Code::KeyA, 0x00, 'a'), (Code::KeyS, 0x01, 's'), (Code::KeyD, 0x02, 'd'), (Code::KeyF, 0x03, 'f'),
     (Code::KeyH, 0x04, 'h'), (Code::KeyG, 0x05, 'g'), (Code::KeyZ, 0x06, 'z'), (Code::KeyX, 0x07, 'x'),
     (Code::KeyC, 0x08, 'c'), (Code::KeyV, 0x09, 'v'), (Code::KeyB, 0x0B, 'b'), (Code::KeyQ, 0x0C, 'q'),
     (Code::KeyW, 0x0D, 'w'), (Code::KeyE, 0x0E, 'e'), (Code::KeyR, 0x0F, 'r'), (Code::KeyY, 0x10, 'y'),
-    (Code::KeyT, 0x11, 't'), (Code::KeyO, 0x1F, 'o'), (Code::KeyU, 0x20, 'u'), (Code::KeyI, 0x22, 'i'),
-    (Code::KeyP, 0x23, 'p'), (Code::KeyL, 0x25, 'l'), (Code::KeyJ, 0x26, 'j'), (Code::KeyK, 0x28, 'k'),
-    (Code::KeyN, 0x2D, 'n'), (Code::KeyM, 0x2E, 'm'),
+    (Code::KeyT, 0x11, 't'), (Code::Digit1, 0x12, '1'), (Code::Digit2, 0x13, '2'), (Code::Digit3, 0x14, '3'),
+    (Code::Digit4, 0x15, '4'), (Code::Digit6, 0x16, '6'), (Code::Digit5, 0x17, '5'), (Code::Equal, 0x18, '='),
+    (Code::Digit9, 0x19, '9'), (Code::Digit7, 0x1A, '7'), (Code::Minus, 0x1B, '-'), (Code::Digit8, 0x1C, '8'),
+    (Code::Digit0, 0x1D, '0'), (Code::BracketRight, 0x1E, ']'), (Code::KeyO, 0x1F, 'o'), (Code::KeyU, 0x20, 'u'),
+    (Code::BracketLeft, 0x21, '['), (Code::KeyI, 0x22, 'i'), (Code::KeyP, 0x23, 'p'), (Code::KeyL, 0x25, 'l'),
+    (Code::KeyJ, 0x26, 'j'), (Code::Quote, 0x27, '\''), (Code::KeyK, 0x28, 'k'), (Code::Semicolon, 0x29, ';'),
+    (Code::Backslash, 0x2A, '\\'), (Code::Comma, 0x2B, ','), (Code::Slash, 0x2C, '/'), (Code::KeyN, 0x2D, 'n'),
+    (Code::KeyM, 0x2E, 'm'), (Code::Period, 0x2F, '.'), (Code::Backquote, 0x32, '`'),
 ];
 
-/// The shortcut whose key types `shortcut`'s letter, given what each US key
-/// position types now; `None` when no letter key types it.
+/// The shortcut whose key types `shortcut`'s letter, given what each key
+/// position types now; `None` when no key types it. Only letters move.
 pub(super) fn translate(shortcut: Shortcut, typed: impl Fn(u16) -> Option<char>) -> Option<Shortcut> {
-    let Some(&(_, own, letter)) = LETTERS.iter().find(|(code, ..)| *code == shortcut.key) else {
+    let Some(&(_, own, letter)) = POSITIONS
+        .iter()
+        .find(|(code, _, us)| *code == shortcut.key && us.is_ascii_lowercase())
+    else {
         return Some(shortcut);
     };
     if typed(own) == Some(letter) {
         return Some(shortcut);
     }
-    LETTERS
+    POSITIONS
         .iter()
         .find(|(_, key, _)| typed(*key) == Some(letter))
         .map(|&(code, ..)| Shortcut::new(Some(shortcut.mods), code))
@@ -51,39 +60,69 @@ mod tests {
     use super::*;
     use tauri_plugin_global_shortcut::Modifiers;
 
-    fn layout(swaps: &'static [(char, char)]) -> impl Fn(u16) -> Option<char> {
+    /// A layout as the US characters whose keys type something else.
+    fn layout(changes: &'static [(char, char)]) -> impl Fn(u16) -> Option<char> {
         move |key| {
-            let us = LETTERS.iter().find(|(_, k, _)| *k == key).map(|&(.., letter)| letter)?;
-            Some(swaps.iter().find(|(from, _)| *from == us).map_or(us, |&(_, to)| to))
+            let us = POSITIONS.iter().find(|(_, k, _)| *k == key).map(|&(.., us)| us)?;
+            Some(changes.iter().find(|(from, _)| *from == us).map_or(us, |&(_, to)| to))
         }
     }
 
     const MODS: Modifiers = Modifiers::SUPER.union(Modifiers::SHIFT);
+    const QWERTZ: &[(char, char)] = &[('y', 'z'), ('z', 'y')];
+    const AZERTY: &[(char, char)] = &[('a', 'q'), ('q', 'a'), ('z', 'w'), ('w', 'z'), (';', 'm'), ('m', ',')];
+    #[rustfmt::skip]
+    const DVORAK: &[(char, char)] = &[
+        ('q', '\''), ('w', ','), ('e', '.'), ('r', 'p'), ('t', 'y'), ('y', 'f'), ('u', 'g'), ('i', 'c'), ('o', 'r'),
+        ('p', 'l'), ('[', '/'), (']', '='), ('s', 'o'), ('d', 'e'), ('f', 'u'), ('g', 'i'), ('h', 'd'), ('j', 'h'),
+        ('k', 't'), ('l', 'n'), (';', 's'), ('\'', '-'), ('z', ';'), ('x', 'q'), ('c', 'j'), ('v', 'k'), ('b', 'x'),
+        ('n', 'b'), (',', 'w'), ('.', 'v'), ('/', 'z'), ('-', '['), ('=', ']'),
+    ];
+
+    fn key(code: Code) -> Shortcut {
+        Shortcut::new(Some(MODS), code)
+    }
 
     #[test]
-    fn the_us_layout_keeps_every_letter_where_it_is() {
-        for &(code, ..) in &LETTERS {
-            let shortcut = Shortcut::new(Some(MODS), code);
-            assert_eq!(translate(shortcut, layout(&[])), Some(shortcut));
+    fn the_us_layout_keeps_every_key_where_it_is() {
+        for &(code, ..) in &POSITIONS {
+            assert_eq!(translate(key(code), layout(&[])), Some(key(code)));
         }
     }
 
     #[test]
-    fn a_letter_moves_to_the_key_that_types_it() {
-        let qwertz = layout(&[('y', 'z'), ('z', 'y')]);
-        let wanted = Shortcut::new(Some(MODS), Code::KeyY);
-        assert_eq!(translate(wanted, &qwertz), Some(Shortcut::new(Some(MODS), Code::KeyZ)));
-        // Dvorak types y with the US T key.
-        let dvorak = layout(&[('t', 'y'), ('y', 'f'), ('f', 'u')]);
-        assert_eq!(translate(wanted, dvorak), Some(Shortcut::new(Some(MODS), Code::KeyT)));
+    fn a_letter_moves_to_the_key_that_types_it_on_whole_layouts() {
+        for (changes, letter, place) in [
+            (QWERTZ, Code::KeyY, Code::KeyZ),
+            (AZERTY, Code::KeyM, Code::Semicolon),
+            (AZERTY, Code::KeyA, Code::KeyQ),
+            (DVORAK, Code::KeyY, Code::KeyT),
+            (DVORAK, Code::KeyS, Code::Semicolon),
+            (DVORAK, Code::KeyW, Code::Comma),
+            (DVORAK, Code::KeyV, Code::Period),
+            (DVORAK, Code::KeyZ, Code::Slash),
+        ] {
+            assert_eq!(translate(key(letter), layout(changes)), Some(key(place)), "{letter:?}");
+        }
+        // Every letter has a key on each of these layouts, so none falls back.
+        for changes in [QWERTZ, AZERTY, DVORAK] {
+            let typed = layout(changes);
+            for &(code, ..) in POSITIONS.iter().filter(|(.., us)| us.is_ascii_lowercase()) {
+                let moved = translate(key(code), &typed).unwrap_or_else(|| panic!("{code:?} has no key"));
+                let place = POSITIONS.iter().find(|(c, ..)| *c == moved.key).map(|&(_, k, _)| k);
+                let letter = POSITIONS.iter().find(|(c, ..)| *c == code).map(|&(.., us)| us);
+                assert_eq!(place.and_then(&typed), letter);
+            }
+        }
     }
 
     #[test]
     fn a_layout_without_the_letter_says_so_and_other_keys_pass_through() {
         let cyrillic = |_| Some('я');
-        assert_eq!(translate(Shortcut::new(Some(MODS), Code::KeyY), cyrillic), None);
-        let space = Shortcut::new(Some(Modifiers::ALT), Code::Space);
-        assert_eq!(translate(space, cyrillic), Some(space));
-        assert_eq!(translate(Shortcut::new(Some(MODS), Code::KeyY), |_| None), None);
+        assert_eq!(translate(key(Code::KeyY), cyrillic), None);
+        assert_eq!(translate(key(Code::KeyY), |_| None), None);
+        for other in [Code::Space, Code::Digit1, Code::Semicolon] {
+            assert_eq!(translate(key(other), cyrillic), Some(key(other)));
+        }
     }
 }
