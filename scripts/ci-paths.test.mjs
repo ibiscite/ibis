@@ -106,6 +106,7 @@ test("workflow retains web validation and gates native-only Windows bootstrap", 
 test("Desktop starts after classification, and the queue skips the optional Native UI", () => {
   const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const changes = workflow.match(/\n  changes:\n([\s\S]*?)\n  test:/)[1];
+  assert.match(changes, /pnpm exec vite build --mode evidence\n          test -f dist\/gallery\.html/, "native gallery captures need the evidence build");
   assert.match(changes, /- name: Share the web interface\n        if: steps\.classify\.outputs\.native == 'true'[\s\S]*name: desktop-web/);
   assert.match(workflow.match(/\n  desktop:\n([\s\S]*?)\n    steps:/)[1], /\n    needs: changes\n/);
   assert.match(workflow.match(/\n  native-ui:\n([\s\S]*?)\n    steps:/)[1], /if: .*github\.event_name != 'merge_group'/);

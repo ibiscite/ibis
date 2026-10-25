@@ -162,12 +162,15 @@ jobs:
           cache: true
           cache_dependency_path: apps/desktop/pnpm-lock.yaml
 
+      # The evidence build adds gallery.html, which the native gallery
+      # captures load; the Web interface job type-checks the same source.
       - name: Build the web interface
         if: steps.classify.outputs.native == 'true'
         working-directory: apps/desktop
         run: |
           pnpm install --frozen-lockfile
-          pnpm build
+          pnpm exec vite build --mode evidence
+          test -f dist/gallery.html
 
       - name: Share the web interface
         if: steps.classify.outputs.native == 'true'
