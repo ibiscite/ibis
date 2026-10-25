@@ -40,18 +40,24 @@ pub(super) fn translate(shortcut: Shortcut, typed: impl Fn(u16) -> Option<char>)
         .map(|&(code, ..)| Shortcut::new(Some(shortcut.mods), code))
 }
 
-/// What the key at a US position types on the active layout, without modifiers.
-/// Keyboard layout queries must run on the main thread.
+/// What the key at each position types on the active layout, with no
+/// modifiers: a private event source ignores keys the person is holding, so
+/// a held Shift cannot move the shortcut. Layout queries need the main thread.
 #[cfg(target_os = "macos")]
-pub(super) fn typed(key: u16) -> Option<char> {
-    let event = objc2_core_graphics::CGEvent::new_keyboard_event(None, key, true)?;
-    let text = objc2_app_kit::NSEvent::eventWithCGEvent(&event)?
-        .charactersIgnoringModifiers()?
-        .to_string();
-    let mut chars = text.chars().flat_map(char::to_lowercase);
-    match (chars.next(), chars.next()) {
-        (Some(letter), None) => Some(letter),
-        _ => None,
+pub(super) fn typing() -> impl Fn(u16) -> Option<char> {
+    use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID};
+    let source = CGEventSource::new(CGEventSourceStateID::Private);
+    move |key| {
+        let event = CGEvent::new_keyboard_event(source.as_deref(), key, true)?;
+        CGEvent::set_flags(Some(&event), CGEventFlags::empty());
+        let text = objc2_app_kit::NSEvent::eventWithCGEvent(&event)?
+            .charactersIgnoringModifiers()?
+            .to_string();
+        let mut chars = text.chars().flat_map(char::to_lowercase);
+        match (chars.next(), chars.next()) {
+            (Some(letter), None) => Some(letter),
+            _ => None,
+        }
     }
 }
 
@@ -71,6 +77,7 @@ mod tests {
     const MODS: Modifiers = Modifiers::SUPER.union(Modifiers::SHIFT);
     const QWERTZ: &[(char, char)] = &[('y', 'z'), ('z', 'y')];
     const AZERTY: &[(char, char)] = &[('a', 'q'), ('q', 'a'), ('z', 'w'), ('w', 'z'), (';', 'm'), ('m', ',')];
+    const TURKISH_Q: &[(char, char)] = &[('i', 'ı'), ('\'', 'i')];
     #[rustfmt::skip]
     const DVORAK: &[(char, char)] = &[
         ('q', '\''), ('w', ','), ('e', '.'), ('r', 'p'), ('t', 'y'), ('y', 'f'), ('u', 'g'), ('i', 'c'), ('o', 'r'),
@@ -101,11 +108,13 @@ mod tests {
             (DVORAK, Code::KeyW, Code::Comma),
             (DVORAK, Code::KeyV, Code::Period),
             (DVORAK, Code::KeyZ, Code::Slash),
+            // Turkish Q types dotted i with the US quote key and dotless ı with the US I key.
+            (TURKISH_Q, Code::KeyI, Code::Quote),
         ] {
             assert_eq!(translate(key(letter), layout(changes)), Some(key(place)), "{letter:?}");
         }
         // Every letter has a key on each of these layouts, so none falls back.
-        for changes in [QWERTZ, AZERTY, DVORAK] {
+        for changes in [QWERTZ, AZERTY, DVORAK, TURKISH_Q] {
             let typed = layout(changes);
             for &(code, ..) in POSITIONS.iter().filter(|(.., us)| us.is_ascii_lowercase()) {
                 let moved = translate(key(code), &typed).unwrap_or_else(|| panic!("{code:?} has no key"));

@@ -92,7 +92,7 @@ pub(crate) struct Registered(Mutex<Option<(Shortcut, Shortcut)>>);
 /// note when no key types its letter. Only macOS registers physical keys.
 fn on_layout(shortcut: Shortcut) -> (Shortcut, Option<&'static str>) {
     #[cfg(target_os = "macos")]
-    return layout::translate(shortcut, layout::typed)
+    return layout::translate(shortcut, layout::typing())
         .map_or((shortcut, Some(NO_KEY_TYPES_THE_LETTER)), |key| (key, None));
     #[cfg(not(target_os = "macos"))]
     (shortcut, None)
@@ -172,8 +172,14 @@ fn relayout(app: &AppHandle) {
                 *registered = Some((requested, key));
             })
     };
-    if let Ok(mut status) = app.state::<Mutex<ShortcutStatus>>().lock() {
+    let changed = app.state::<Mutex<ShortcutStatus>>().lock().ok().and_then(|mut status| {
+        let before = status.error.clone();
         layout_status(&mut status, moved, note);
+        (status.error != before).then(|| status.clone())
+    });
+    // An open picker shows the new note at once, not only when next opened.
+    if let Some(status) = changed {
+        report(app.emit("shortcut:status", status), NativeIssue::Shortcut);
     }
 }
 

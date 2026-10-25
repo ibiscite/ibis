@@ -47,7 +47,7 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -56,7 +56,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, onShortcutStatus } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -239,12 +239,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
     readShortcut();
+    const unlistenShortcut = onShortcutStatus?.((status) => {
+      shortcutReads += 1;
+      if (mounted) setShortcut(status);
+    }).catch(() => subscriptionFailure("pickerEvents"));
     preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;
       mounted = false;
       copyVisibility.current += 1;
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
+      void unlistenShortcut?.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlistenLibrary.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
     };

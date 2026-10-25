@@ -479,6 +479,17 @@ test("a shortcut note that appears while the picker is hidden shows when it open
   await waitFor(() => expect(screen.queryByText(/No key on this keyboard layout/)).toBeNull());
 });
 
+test("a shortcut note that changes while the picker is open shows at once", async () => {
+  backend({ shortcut_status: () => ({ shortcut: "Command+Shift+Y", registered: true, error: null }) });
+  render(<App />);
+  await screen.findByLabelText("Search references");
+  const note = "No key on this keyboard layout types the shortcut's letter";
+  await act(async () => { await emit("shortcut:status", { shortcut: "Command+Shift+Y", registered: true, error: note }); });
+  expect(await screen.findByText(/No key on this keyboard layout/)).toBeTruthy();
+  await act(async () => { await emit("shortcut:status", { shortcut: "Command+Shift+Y", registered: true, error: null }); });
+  await waitFor(() => expect(screen.queryByText(/No key on this keyboard layout/)).toBeNull());
+});
+
 test("a failed search clears the results of the previous query", async () => {
   backend({
     search: ({ query: { text: query } }) => {
