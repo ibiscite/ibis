@@ -44,5 +44,7 @@ export function useUpdateChecks({ updateChecks, setUpdateChecks, perform, menuOp
     show(!before);
     ask("updateChecksChange", () => setUpdateChecks(!before), () => show(before));
   };
-  return { automatic: automatic ?? false, toggle, offered: Boolean(setUpdateChecks) && automatic !== null };
+  // The More menu's items, given how "Check for Updates…" runs there.
+  return (check: (() => void) | undefined) =>
+    setUpdateChecks && check && automatic !== null ? { automatic, toggle, check } : null;
 }

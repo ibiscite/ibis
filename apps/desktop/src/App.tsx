@@ -25,6 +25,7 @@ import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
+import { useAskWriting } from "./features/picker/useAskWriting";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { useUpdateChecks } from "./features/picker/useUpdateChecks";
 import { usePin } from "./features/picker/usePin";
@@ -121,7 +122,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
-  const automaticUpdates = useUpdateChecks({ updateChecks, setUpdateChecks, perform, menuOpen });
+  const updateMenu = useUpdateChecks({ updateChecks, setUpdateChecks, perform, menuOpen });
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
   // Where focus goes back to when the keys overlay closes.
@@ -436,17 +437,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [pendingCopy, chosenKey, shown, queryKey]);
 
   const busy = library?.state === "loading" || library?.state === "reloading";
-  // First run, step 2: once a library first opens after none was chosen, ask
-  // once where the person writes, which picks the copy format [C12].
-  const [askWriting, setAskWriting] = useState(false);
-  const sawNoLibrary = useRef(false);
-  useEffect(() => {
-    if (library?.state === "none") sawNoLibrary.current = true;
-    else if (library?.has_snapshot && library.state === "loaded" && sawNoLibrary.current) {
-      sawNoLibrary.current = false;
-      setAskWriting(true);
-    }
-  }, [library?.state, library?.has_snapshot]);
+  const [askWriting, setAskWriting] = useAskWriting(library);
   const showWriting = askWriting && !busy && !query && Boolean(library?.has_snapshot);
   // A library that could not be opened, with nothing earlier to search.
   const blocked = library?.state === "error" && !library.has_snapshot;
@@ -711,10 +702,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             } : null}
             density={density} largerText={largerText} searchMark={searchMark} showPastePreview={showPastePreview} pinned={pinned}
             startAtLogin={loginItemOffered && startAtLogin ? { item: startAtLogin, toggle: toggleStartAtLogin } : null}
-            updates={automaticUpdates.offered && checkForUpdates ? {
-              automatic: automaticUpdates.automatic, toggle: automaticUpdates.toggle,
-              check: () => runFromMenu("checkForUpdates", checkForUpdates),
-            } : null}
+            updates={updateMenu(checkForUpdates && (() => runFromMenu("checkForUpdates", checkForUpdates)))}
             actions={{
               choose: () => runFromMenu("choose", chooseLibrary),
               useZotero: () => runFromMenu("zotero", useZotero),
