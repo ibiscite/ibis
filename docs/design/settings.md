@@ -72,6 +72,7 @@ needs an ADR before it adds a field. *Planned*: tied to a roadmap milestone.
 | Light or dark | segmented: **System** / Light / Dark | System | new |
 | Result rows | segmented: Compact / **Comfortable** / Spacious | Comfortable | exists (`density`) |
 | Larger text | switch (three steps later, #775) | **off** | exists (`larger_text`) |
+| Ibis mark in search | switch (in More until Settings exists) | **off** (magnifier) | exists (`search_mark`, ADR 0020) |
 | Keep the last search for | pop-up: Don't keep / **1 minute** / 3 minutes | 1 minute | new |
 | Show tips in the footer | switch | **on** | new |
 | Check for updates automatically | switch, with what is sent written underneath | asked once at first run | exists (`update_checks`) |

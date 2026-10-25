@@ -3676,6 +3676,23 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
   } finally { format.mockRestore(); }
 });
 
+test("the Ibis mark can replace the search glyph and is remembered", async () => {
+  let mark = false;
+  backend({
+    search: () => [],
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark }),
+    set_picker_preferences: ({ preferences }) => { mark = (preferences as api.PickerPreferences).search_mark; return null; },
+  });
+  const first = render(<App />);
+  expect(document.querySelector(".search-mark")).toBeNull();
+  await chooseFromMore("Ibis mark in search", "menuitemcheckbox");
+  await waitFor(() => expect(mark).toBe(true));
+  expect(document.querySelector(".search-mark")).toBeTruthy();
+  first.unmount();
+  render(<App />);
+  await waitFor(() => expect(document.querySelector(".search-mark")).toBeTruthy());
+});
+
 
 test("preview choices made during a delayed read and rapid queued saves drain in order before Quit", async () => {
   let loaded!: () => void, saved!: () => void;
