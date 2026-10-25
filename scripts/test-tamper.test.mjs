@@ -97,3 +97,14 @@ test("matcher-only deletion still removes an assertion", () => {
     assert.equal(check("tests/case.test.ts", `@@ -2 +2 @@\n-${matcher};\n+;`).length, 1, matcher);
   }
 });
+
+
+test("runner option forms and todo declarations need an explanation", () => {
+  for (const line of ["+test.todo('case');", "+test('case', { skip: true }, () => {});", "+test('case', { only: true }, () => {});"]) assert.equal(check("scripts/case.test.mjs", line).length, 1, line);
+});
+
+test("inline Rust test assertions are guarded without treating runtime assertions as tests", () => {
+  const before = "fn runtime() {\n  assert!(ready);\n}\n#[cfg(test)]\nmod tests {\n #[test]\n fn case() {\n  assert_eq!(actual, expected);\n }\n}\n";
+  assert.deepEqual(testTamper([{ filename: "src/lib.rs", patch: "@@ -2 +2 @@\n-  assert!(ready);\n+  run();", before, after: before }]), []);
+  assert.equal(testTamper([{ filename: "src/lib.rs", patch: "@@ -8 +8 @@\n-  assert_eq!(actual, expected);\n+  run();", before, after: before }]).length, 1);
+});

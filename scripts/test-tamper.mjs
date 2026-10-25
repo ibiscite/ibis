@@ -1,22 +1,48 @@
 // Heuristic guard: legitimate test rewrites need a visible explanation, not a ban.
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
-const testFile = (name) => /(?:^|\/)(?:__tests__|tests|test)[\/]|(?:^|\/)test_[^/]+$|(?:[._](?:test|spec)\.[^/]+$)|\.rs$/.test(name);
+const testPath = (name) => /(?:^|\/)(?:__tests__|tests|test)[\/]|(?:^|\/)test_[^/]+$|(?:[._](?:test|spec)\.[^/]+$)/.test(name);
+const testFile = (name) => testPath(name) || name.endsWith(".rs");
 const expectedFile = (name) => /(?:^|\/)(?:fixtures|proptest-regressions|snapshots)\/|\.snap(?:\.new)?$/.test(name);
+
+function rustTestLines(source = "") {
+  const masked = source.replace(/r(#{0,16})"[\s\S]*?"\1|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])'|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (value) => value.replace(/[^\n]/g, " "));
+  const lines = new Set();
+  for (const match of masked.matchAll(/#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:\w+::)?test)\s*\][^{;]*\{/g)) {
+    let end = match.index + match[0].length, depth = 1;
+    while (end < masked.length && depth) { if (masked[end] === "{") depth++; if (masked[end] === "}") depth--; end++; }
+    const startLine = masked.slice(0, match.index).split("\n").length;
+    const endLine = startLine + masked.slice(match.index, end).split("\n").length - 1;
+    for (let line = startLine; line <= endLine; line++) lines.add(line);
+  }
+  return lines;
+}
 
 export function testTamper(files, body = "") {
   const visible = body.replace(/<!--[\s\S]*?(?:-->|$)|```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "");
   if ([...visible.matchAll(/^ {0,3}Test changes:[ \t]*(.*)$/gmi)].some((match) => /\p{L}/u.test(match[1].replace(/<[^>]*(?:>|$)/g, "")))) return [];
-  const flagged = files.some(({ filename, patch }) => {
+  const flagged = files.some(({ filename, patch, before, after }) => {
     const name = filename.replaceAll("\\", "/");
     if (expectedFile(name)) return true;
     if (!testFile(name)) return false;
-    const lines = patch.split(/\r?\n/).filter((line) => !/^(?:---|\+\+\+)/.test(line));
-    const removed = lines.filter((line) => line.startsWith("-")).map((line) => line.slice(1)).join("\n");
-    const added = lines.filter((line) => line.startsWith("+")).map((line) => line.slice(1)).join("\n");
+    const inline = name.endsWith(".rs") && !testPath(name);
+    const oldTests = inline ? rustTestLines(before) : null, newTests = inline ? rustTestLines(after) : null;
+    const removedLines = [], addedLines = [];
+    let oldLine = 1, newLine = 1;
+    for (const line of patch.split(/\r?\n/)) {
+      const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (hunk) { oldLine = Number(hunk[1]); newLine = Number(hunk[2]); continue; }
+      if (/^(?:---|\+\+\+|diff |index |\\)/.test(line)) continue;
+      if (line.startsWith("-")) { if (!inline || oldTests.has(oldLine)) removedLines.push(line.slice(1)); oldLine++; }
+      else if (line.startsWith("+")) { if (!inline || newTests.has(newLine) || /#\s*\[\s*ignore\b/.test(line)) addedLines.push(line.slice(1)); newLine++; }
+      else if (line.startsWith(" ")) { oldLine++; newLine++; }
+    }
+    const removed = removedLines.join("\n"), added = addedLines.join("\n");
     return /\b(?:assert(?:_\w+)?!?\s*(?:[.(]|[ \t]+)|expect\s*[.(]|self\.assert\w*\s*\()/.test(removed)
       || /^\s*\.\s*(?:not\s*\.\s*)?(?:to[A-Z]\w*|rejects|resolves)\b/m.test(removed)
-      || /#\s*\[\s*ignore\b|\.\s*(?:skip|only)\b|\btodo\s*!\s*\(/.test(added);
+      || /\b(?:skip|only|todo)\s*:\s*(?!false\b)[^,}\s]/.test(added)
+      || /#\s*\[\s*ignore\b|\.\s*(?:skip|only|todo)\b|\btodo\s*!\s*\(/.test(added);
   });
   return flagged ? ["Test changes need review: add a visible line 'Test changes: <explain why assertions, disabled tests or expected data changed>' to the PR body."] : [];
 }
@@ -47,7 +73,13 @@ export function testDiff(event, run = git, merge = process.env.GITHUB_SHA ?? eve
   if (!/^[a-f0-9]{40}$/.test(base)) throw new Error("Test diff needs origin/main; run git fetch origin main and retry.");
   const range = head ? [base, head] : [base];
   const names = run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", ...range, "--"]).split("\0").filter(Boolean);
-  return names.filter((name) => testFile(name) || expectedFile(name)).map((filename) => ({
-    filename, patch: run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=0", ...range, "--", filename]),
-  }));
+  return names.filter((name) => testFile(name) || expectedFile(name)).map((filename) => {
+    const file = { filename, patch: run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=0", ...range, "--", filename]) };
+    if (filename.endsWith(".rs") && !testPath(filename)) {
+      const at = (commit) => run(["ls-tree", "--name-only", "-z", commit, "--", filename]) ? run(["show", `${commit}:${filename}`]) : "";
+      file.before = at(base);
+      file.after = head ? at(head) : existsSync(filename) ? readFileSync(filename, "utf8") : "";
+    }
+    return file;
+  });
 }
