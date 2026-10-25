@@ -324,7 +324,13 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
     }
     // The new contents reach the disk before they replace the old file, so a
     // power cut leaves either file whole, never an empty one.
-    let mut file = File::create(&temporary)?;
+    // A leftover temporary file, or a link planted in its place, is removed
+    // rather than followed, so writing it can never truncate another file.
+    match fs::remove_file(&temporary) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
+        _ => {}
+    }
+    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
     file.write_all(format!("{json}\n").as_bytes())?;
     file.sync_all()?;
     drop(file);
@@ -345,7 +351,12 @@ fn preserve_invalid(path: &Path) -> io::Result<()> {
     let bytes = fs::read(path)?;
     for number in 1..=1000 {
         let invalid = path.with_extension(format!("json.invalid-{number}"));
-        match fs::OpenOptions::new().write(true).create_new(true).open(&invalid) {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Damaged settings may hold private paths: readable by the owner only.
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        match options.open(&invalid) {
             Ok(mut file) => {
                 file.write_all(&bytes)?;
                 file.sync_all()?;
@@ -716,6 +727,40 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recovery_never_writes_through_a_planted_temporary_link() {
+        let directory = dir("temporary-link");
+        let path = directory.path().join("settings.json");
+        fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
+        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+        std::os::unix::fs::symlink(path.with_extension("json.invalid-1"), path.with_extension("json.tmp"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            fs::read_to_string(path.with_extension("json.invalid-1")).unwrap_or_default(),
+            "{ damaged"
+        );
+        assert!(load(&path).problem.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserved_damaged_settings_are_readable_by_the_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = dir("archive-mode");
+        let path = directory.path().join("settings.json");
+        fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap_or_else(|e| panic!("{e}"));
+        fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |_| {}).unwrap_or_else(|e| panic!("{e}"));
+        let mode = fs::metadata(path.with_extension("json.invalid-1"))
+            .unwrap_or_else(|e| panic!("{e}"))
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0);
     }
 
     #[test]
