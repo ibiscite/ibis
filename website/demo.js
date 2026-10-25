@@ -26,6 +26,11 @@ export function setupDemo() {
   const list = el("ul", { id: "demo-results", className: "picker-results" });
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
   const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
+  const interpretationText = el("bdi"), literal = el("button", { type: "button", textContent: "Search as typed" });
+  const apply = el("button", { type: "button" });
+  const interpretation = el("div", { className: "picker-locator" }, interpretationText, literal, apply);
+  const locatorTokens = el("div", { className: "picker-locators" }); locatorTokens.setAttribute("role", "group"); locatorTokens.setAttribute("aria-label", "Selected reference locators");
+  const warnings = el("p", { className: "picker-meta" });
   // The visible status can appear with the shelf; this live region is always rendered so the first change is announced.
   const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
   const copy = el("button", { type: "button", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
@@ -43,7 +48,7 @@ export function setupDemo() {
   const beak = el("img", { src: "assets/ibis-quote-beak.svg", alt: "", width: 22, height: 19 });
   const shelf = el("div", { className: "picker-shelf" }, beak, output, status);
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, format),
-    el("p", { className: "picker-meta" }, "Best matches", count), list, shelf,
+    el("p", { className: "picker-meta" }, "Best matches", count), interpretation, list, locatorTokens, shelf, warnings,
     el("div", { className: "picker-foot" }, el("span", {}, "sample.bib · 6 invented references"), add, copy));
   const empty = el("li", { textContent: "Nothing matches. Try an author, title, year or journal.", className: "picker-empty" });
   empty.setAttribute("role", "none"); list.append(empty);
@@ -59,7 +64,23 @@ export function setupDemo() {
   }));
   function render() {
     const found = model.found(); state.selected = Math.max(0, Math.min(state.selected, found.length - 1));
-    const current = found[state.selected], value = model.output();
+    const current = found[state.selected], rendered = model.rendered(), value = rendered.text, parsed = model.interpretation();
+    interpretation.hidden = !parsed;
+    interpretationText.textContent = parsed ? `Using ${parsed.locator.label} ${parsed.locator.value}` : "";
+    literal.setAttribute("aria-label", "Search as typed");
+    const captured = current ? state.locators[current.key] : null;
+    apply.hidden = !parsed || !current || !state.added.includes(current.key) || captured?.label === parsed.locator.label && captured?.value === parsed.locator.value;
+    apply.textContent = current ? `Apply locator to ${current.key}` : "";
+    locatorTokens.replaceChildren(...state.added.flatMap(key => {
+      const locator = state.locators[key];
+      if (!locator) return [];
+      const text = `${locator.label} ${locator.value}`, remove = el("button", { type: "button", className: "locator-token-remove", textContent: "×" });
+      remove.setAttribute("aria-label", `Remove ${text} from ${key}`);
+      remove.addEventListener("click", () => { model.removeLocator(key); render(); input.focus(); });
+      return [el("span", { className: "locator-token", title: `${key}: ${text}` }, el("bdi", { textContent: `${key}: ${text}` }), remove)];
+    }));
+    locatorTokens.hidden = !locatorTokens.childElementCount;
+    warnings.textContent = rendered.warnings.join(" "); warnings.hidden = !rendered.warnings.length;
     input.value = state.query; panel.hidden = !state.open; reopen.hidden = state.open;
     clear.hidden = !state.query;
     input.setAttribute("aria-expanded", String(state.open));
@@ -73,7 +94,8 @@ export function setupDemo() {
     }
     empty.hidden = found.length > 0;
     if (current) input.setAttribute("aria-activedescendant", rows.get(current.key).row.id); else input.removeAttribute("aria-activedescendant");
-    output.textContent = value || "—"; status.textContent = announce.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
+    output.textContent = value || "—"; status.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
+    announce.textContent = [status.textContent, warnings.textContent].filter(Boolean).join(". ");
     output.hidden = beak.hidden = !state.preview; shelf.hidden = !state.preview && !status.textContent;
     copy.disabled = !value; copy.replaceChildren(`Copy as ${formats[state.format]} `, el("kbd", { textContent: keyLabel(keysFor("copy"), mac) }));
     add.disabled = !current; add.textContent = current && state.added.includes(current.key) ? "Remove" : "Add";
@@ -84,8 +106,10 @@ export function setupDemo() {
   }
   function performCopy() { if (model.copy()) { render(); if (paste.isConnected) paste.focus(); } }
   function performPaste() { model.paste(); render(); result.focus({ preventScroll: true }); }
-  input.addEventListener("input", () => { state.query = input.value; state.selected = 0; render(); list.scrollTop = 0; });
-  clear.addEventListener("click", () => { state.query = ""; state.selected = 0; render(); list.scrollTop = 0; input.focus(); });
+  input.addEventListener("input", () => { model.setQuery(input.value); render(); list.scrollTop = 0; });
+  clear.addEventListener("click", () => { model.setQuery(""); render(); list.scrollTop = 0; input.focus(); });
+  literal.addEventListener("click", () => { model.searchAsTyped(); render(); list.scrollTop = 0; input.focus(); });
+  apply.addEventListener("click", () => { const ref = model.found()[state.selected]; if (ref) model.applyLocator(ref.key); render(); input.focus(); });
   select.addEventListener("change", () => { state.format = select.value; render(); input.focus(); });
   copy.addEventListener("click", performCopy);
   add.addEventListener("click", () => { const ref = model.found()[state.selected]; if (ref) model.add(ref.key); render(); });

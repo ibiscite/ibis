@@ -8,7 +8,7 @@ use ibis_zotero_local::LocalZotero;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
-use super::search::{SearchReply, SearchRequests, search_snapshot};
+use super::search::{SearchQuery, SearchReply, SearchRequests, search_snapshot};
 use super::source::Source;
 use super::state::Library;
 use super::status::LibraryStatus;
@@ -89,7 +89,7 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn search(
-    query: String,
+    query: SearchQuery,
     limit: usize,
     page: u32,
     request: u32,

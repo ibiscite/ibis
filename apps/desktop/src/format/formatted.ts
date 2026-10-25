@@ -1,7 +1,7 @@
 // Formats the chosen references as an in-text citation for the picker's
 // preview and copy, in a background worker (see client.ts).
 import { FormatClient } from "./client";
-import type { CslItem } from "./engine";
+import type { CiteItem, CslItem } from "./engine";
 import { STYLE_TITLES, type StyleId } from "./styles";
 import { clipboardHtml, parse, parseSegments, plainText, type CitationPart, type Markup } from "./markup";
 
@@ -27,23 +27,27 @@ let shared: FormatClient | null = null;
 /**
  * `csl` is the JSON the app returns for the chosen records, in order. Each
  * item is given its position as its id, so records sharing a citation key
- * stay apart and problems can be named. `signal` drops a preview that a newer
- * one replaced before the worker starts it.
+ * stay apart and problems can be named. Optional `cites` supplies one citation
+ * context per reference, in the same order; generated IDs always take priority.
+ * `signal` drops a preview that a newer one replaced before the worker starts it.
  */
 export async function formatCitation(
   csl: string,
   style: StyleId,
-  { signal, client = (shared ??= new FormatClient()), segments = false }: { signal?: AbortSignal; client?: FormatClient; segments?: boolean } = {},
+  { signal, client = (shared ??= new FormatClient()), segments = false, cites }: {
+    signal?: AbortSignal; client?: FormatClient; segments?: boolean; cites?: readonly Omit<CiteItem, "id">[];
+  } = {},
 ): Promise<FormattedCitation> {
   const parsed: unknown = JSON.parse(csl);
   if (!Array.isArray(parsed)) throw new Error("the references could not be read");
+  if (cites !== undefined && cites.length !== parsed.length) throw new Error("the citation details do not match the references");
   const items: CslItem[] = parsed.map((item: CslItem, index) => ({ ...item, id: `ref-${index}` }));
   const result = await client.format({
     kind: "citation",
     style,
     format: "html",
     items,
-    cites: items.map((item) => ({ id: item.id })),
+    cites: items.map((item, index) => ({ ...cites?.[index], id: item.id })),
     ...(segments ? { segments: true } : {}),
   }, signal);
   const markup = parse(result.output);
