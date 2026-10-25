@@ -6,12 +6,11 @@ import { LibrarySetup, WritingSetup } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
-import { formatCitation, type FormattedCitation } from "./format/formatted";
 import { afterCopy } from "./copyFeedback";
 import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
-import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
+import { choiceKey, choiceName, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
 import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
@@ -24,6 +23,8 @@ import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
+import { useCitationOutput } from "./features/picker/useCitationOutput";
+import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { usePin } from "./features/picker/usePin";
 import {
@@ -33,8 +34,6 @@ import {
   type Locator,
   type SearchResult,
   type ShortcutStatus,
-  type ZoteroGroup,
-  type ZoteroLibrary,
 } from "./api";
 
 // A search comes back if the picker returns within a minute, as in Raycast.
@@ -85,9 +84,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
   const { format, density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
   const style = cslItems && copyFormatted ? styleOf(format) : null;
-  // The formatted preview, tagged with the style, choice and library it was
-  // made for, so Enter never copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale"; problem?: string } | null>(null);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
@@ -109,6 +105,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot });
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
+  // The selection, or the highlighted result when nothing is selected.
+  const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+  const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
+    useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, cslItems, citationText, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
   const output = useRef<HTMLElement | null>(null);
   const outputRef = useCallback((node: HTMLElement | null) => {
@@ -358,46 +358,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const latestRowScope = useRef(rowScope);
   latestRowScope.current = rowScope;
   const contextRequest = useRef(0);
-  // The selection, or the highlighted result when nothing is selected.
-  const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
-  const chosenKey = choiceKey(chosen);
-  const chosenRevision = chosen[0]?.revision;
-  const staleSelection = chosen.length > 0 && (!chosenRevision || chosen.some((record) => record.revision !== chosenRevision) || chosenRevision !== library?.revision);
-  // A key syntax is previewed by the backend without touching the clipboard.
-  const keyFormat = styleOf(format) === null && citationText ? (format as CopyFormat) : null;
-  // A hidden key preview is never fetched: key copying asks the backend itself.
-  const keyPreview = showPastePreview ? keyFormat : null;
-  const previewKey = `${style ?? keyPreview}\u0002${libraryVersion}\u0002${chosenKey}`;
-  // What Enter would copy now; null while it is being formatted.
-  const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
-  // Why the preview failed, when the user can fix it.
-  const previewProblem = shown === "failed" ? formatted?.problem : undefined;
-  // Visibility changes presentation only. Key copying also survives a failed
-  // preview, unless the failure is one copying would meet too.
-  const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && (shown !== "failed" || previewProblem))) ? shown : undefined;
-  // Format the preview again whenever the choice or the style changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, revision and the style or key format, so it is the only trigger.
-  useEffect(() => {
-    if (chosen.length === 0 || staleSelection || !chosenRevision) return;
-    let live = true;
-    const key = previewKey;
-    const replaced = new AbortController();
-    const ids = chosen.map((r) => r.id);
-    const items = chosen.map((r) => ({ id: r.id, locator: r.locator ?? null }));
-    let made: Promise<FormattedCitation>;
-    if (style && cslItems) made = cslItems(ids, chosenRevision).then((csl) => formatCitation(csl, style, { signal: replaced.signal, cites: chosen.map((r) => r.locator ? { locator: r.locator.value, label: r.locator.label } : {}) }));
-    else if (keyPreview && citationText) made = citationText(items, keyPreview, chosenRevision).then(({ text, warnings }) => ({ markup: [], text, html: "", warnings }));
-    else return;
-    made
-      .then((result) => { if (live) setFormatted({ key, result }); })
-      .catch((error) => { if (live) {
-        const stale = nativeApi.isSnapshotChanged(error);
-        const shared = nativeApi.sharedCitationKey(error);
-        setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : undefined });
-        if (stale) refreshSnapshot();
-      } });
-    return () => { live = false; replaced.abort(); };
-  }, [previewKey]);
 
   // Copy the chosen references in the chosen format.
   const copy = async () => {
@@ -489,70 +449,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A library that could not be opened, with nothing earlier to search.
   const blocked = library?.state === "error" && !library.has_snapshot;
 
-  // Zotero libraries: the ones chosen, and the groups Zotero offers, listed
-  // when the menu opens or when results come from several libraries.
-  const [groups, setGroups] = useState<ZoteroGroup[] | null>(null);
-  // A choice sent but not yet reported back, so a second toggle builds on it.
-  const [pendingLibraries, setPendingLibraries] = useState<ZoteroLibrary[] | null>(null);
-  const reportedLibraries = library?.zotero_libraries ?? [];
-  const sameChoice = (a: ZoteroLibrary[], b: ZoteroLibrary[]) =>
-    a.length === b.length && a.every((choice, i) => sameLibrary(choice, b[i]!));
-  // biome-ignore lint/correctness/useExhaustiveDependencies: library is the trigger: a new status report settles the pending choice.
-  useEffect(() => {
-    if (pendingLibraries && sameChoice(pendingLibraries, reportedLibraries)) setPendingLibraries(null);
-  }, [library]);
-  const chosenLibraries = pendingLibraries ?? reportedLibraries;
-  const severalLibraries = chosenLibraries.length > 1;
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
-  const wantGroups = Boolean(zoteroGroups && library?.zotero && (menuOpen || severalLibraries || nothingMatched));
-  // biome-ignore lint/correctness/useExhaustiveDependencies: libraryVersion is a trigger: a library change refreshes group names.
-  useEffect(() => {
-    // Group names can refresh in the background, but a failure belongs only
-    // to this menu opening. Closing it also invalidates its pending request.
-    report("zoteroGroups", false);
-    if (!wantGroups || !zoteroGroups) return;
-    let current = true;
-    zoteroGroups()
-      .then((list) => { if (current) { setGroups(list); report("zoteroGroups", false); } })
-      .catch(() => { if (current && menuOpen) report("zoteroGroups"); });
-    return () => { current = false; };
-  }, [wantGroups, menuOpen, libraryVersion]);
-  const isChosen = (choice: ZoteroLibrary) => chosenLibraries.some((chosen) => sameLibrary(chosen, choice));
-  const toggleLibrary = (choice: ZoteroLibrary) => {
-    if (!chooseZoteroLibraries) return;
-    const next = isChosen(choice)
-      ? chosenLibraries.filter((chosen) => !sameLibrary(chosen, choice))
-      : [...chosenLibraries, choice];
-    if (next.length === 0) return;
-    setPendingLibraries(next);
-    void perform("zotero", () => chooseZoteroLibraries(next).catch((error: unknown) => {
-      setPendingLibraries(null);
-      throw error;
-    }));
-  };
-  // Every Zotero library on offer, once the group list is known.
-  const allLibraries = (): ZoteroLibrary[] => ["user", ...offeredGroups.map((group) => ({ group }))];
-  const searchAllLibraries = () => {
-    if (!chooseZoteroLibraries) return;
-    const all = allLibraries();
-    setPendingLibraries(all);
-    input.current?.focus();
-    void perform("zotero", () => chooseZoteroLibraries(all).catch((error: unknown) => {
-      setPendingLibraries(null);
-      throw error;
-    }));
-  };
-  const groupName = (id: number) => groups?.find((group) => group.id === id)?.name ?? pickerText.groupLibrary(id);
+  const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
+    useZoteroScope({ library, libraryVersion, menuOpen, nothingMatched, zoteroGroups, chooseZoteroLibraries, report, perform,
+      focusSearch: () => input.current?.focus() });
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  // Every group Zotero lists, plus chosen groups it no longer lists, so they can be turned off.
-  const offeredGroups = [...(groups?.map((group) => group.id) ?? []),
-    ...chosenLibraries.flatMap((chosen) => (typeof chosen === "object" ? [chosen.group] : []))]
-    .filter((id, i, all) => all.indexOf(id) === i);
-  const libraryOf = (source: string) =>
-    source === "zotero:user" ? pickerText.myLibrary
-      : source.startsWith("zotero:group:") ? groupName(Number(source.slice("zotero:group:".length))) : null;
   /** Names the library too when another chosen reference has the same key. */
   const removeLabel = (r: SearchResult) => {
     const library = libraryOf(r.id.source);
@@ -573,7 +476,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus();
     void perform(operation, action);
   };
-  const narrowed = Boolean(library?.zotero && chooseZoteroLibraries && groups) && allLibraries().some((choice) => !isChosen(choice));
   const openKeys = () => {
     closeMenu(false);
     const focused = document.activeElement;

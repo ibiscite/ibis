@@ -111,6 +111,26 @@ to the physical US-keyboard R position; the label does not follow the active
 layout (#196). Non-English keyboard coverage remains incomplete. Avoid
 Ctrl+Alt combinations on Windows because many layouts use them as AltGr.
 
+## Writing apps
+
+Ibis copies; you paste. What to copy depends on where you write. This table
+comes from how each app accepts pasted text and from Zotero's own guidance; it
+is not a test of every app. Reports help: use the "Writing app report" form.
+
+| Where you write | What to copy from Ibis | Notes |
+| --- | --- | --- |
+| Markdown, Quarto, R Markdown, Obsidian, Zettlr | Pandoc keys (`[@key]`) | The document needs the matching `.bib` or CSL-JSON file when it is built. |
+| LaTeX, Overleaf | BibLaTeX or LaTeX keys | Same: the project's `.bib` must contain the key. |
+| Typst | Typst keys (`@key`) | The project needs a `.bib` or Hayagriva file. |
+| Word, LibreOffice, Google Docs with Zotero citations | Nothing; use Zotero's plugin | Pasted text never joins Zotero's managed bibliography or changes with the style. |
+| Word for the web, Pages, Notion, email | A formatted citation | Zotero has no plugin for these. Italics survive where the app accepts HTML. Bibliography entries and RTF arrive in 0.3. |
+| Chat and plain-text fields | A formatted citation | Plain text drops italics. |
+
+Numeric styles such as IEEE number each copy on its own, so the number will
+not match your document
+([#1129](https://github.com/ibiscite/ibis/issues/1129)). Emacs org-cite, MyST
+and natbib key forms are planned for 0.3.
+
 ## What the tests establish
 
 `scripts/smoke-native.py` checks a narrow case on each hosted OS: the default

@@ -31,10 +31,14 @@ pub(crate) fn settings_location(directory: &Path, identifier: &str) -> SettingsL
         return current;
     }
     let old = parent.join(legacy);
-    if !present(&old.join("settings.json")) || present(&current.path) || present(&directory.join("settings.json.bak")) {
+    if (!present(&old.join("settings.json")) && !present(&old.join("settings.json.bak")))
+        || present(&current.path)
+        || present(&directory.join("settings.json.bak"))
+    {
         return current;
     }
-    if copy_settings(&old, directory).is_ok() || present(&current.path) {
+    if copy_settings(&old, directory).is_ok() || present(&current.path) || present(&directory.join("settings.json.bak"))
+    {
         return current;
     }
     SettingsLocation {
@@ -222,12 +226,11 @@ fn copy_settings_prepared(
     #[cfg(not(unix))]
     fs::create_dir(&staging)?;
     let result = (|| {
+        let mut copied = false;
         for name in ["settings.json", "settings.json.bak"] {
             let source = old.join(name);
             let metadata = match fs::metadata(&source) {
-                Err(error)
-                    if error.kind() == io::ErrorKind::NotFound && name.ends_with(".bak") && !present(&source) =>
-                {
+                Err(error) if error.kind() == io::ErrorKind::NotFound && !present(&source) => {
                     continue;
                 }
                 other => other?,
@@ -243,6 +246,10 @@ fn copy_settings_prepared(
             io::copy(&mut File::open(source)?, &mut output)?;
             output.set_permissions(metadata.permissions())?;
             output.sync_all()?;
+            copied = true;
+        }
+        if !copied {
+            return Err(io::ErrorKind::NotFound.into());
         }
         prepare(&staging)?;
         if directory.exists() {
@@ -963,6 +970,86 @@ mod tests {
                     .starts_with("com.ibiscite.ibis.migration-")
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn each_channels_backup_only_settings_migrate_or_remain_usable_on_failure() -> io::Result<()> {
+        use ibis_core::settings::{self, PrimaryRead};
+        for suffix in ["", ".nightly"] {
+            for blocked in [false, true] {
+                let root = tempfile::tempdir()?;
+                let old = root.path().join(format!("io.github.ibiscite.ibis{suffix}"));
+                let new = root.path().join(format!("com.ibiscite.ibis{suffix}"));
+                let backup = br#"{"shortcut":"Alt+Space","future_choice":[true,null]}"#;
+                write(&old.join("settings.json.bak"), backup)?;
+                if blocked {
+                    write(&new, b"unrelated file")?;
+                }
+                let location = settings_location(&new, &format!("com.ibiscite.ibis{suffix}"));
+                assert_eq!(location.using_legacy, blocked);
+                assert_eq!(location.path, if blocked { &old } else { &new }.join("settings.json"));
+                let loaded = settings::load(&location.path);
+                assert_eq!(loaded.primary_read, PrimaryRead::Missing);
+                assert!(loaded.from_backup);
+                assert!(loaded.problem.is_some());
+                assert_eq!(loaded.settings.shortcut.as_deref(), Some("Alt+Space"));
+                assert!(!location.path.exists());
+                assert_eq!(fs::read(location.path.with_extension("json.bak"))?, backup);
+                settings::update(&location.path, |_| {}).map_err(io::Error::other)?;
+                assert_eq!(fs::read(location.path.with_extension("json.bak"))?, backup);
+                settings::update(&location.path, |s| s.larger_text = Some(true)).map_err(io::Error::other)?;
+                assert_eq!(
+                    settings::load(&location.path.with_extension("json.bak")).settings,
+                    loaded.settings
+                );
+                if blocked {
+                    assert_eq!(fs::read(&new)?, b"unrelated file");
+                } else {
+                    assert_eq!(fs::read(old.join("settings.json.bak"))?, backup);
+                    assert!(!old.join("settings.json").exists());
+                    #[cfg(target_os = "macos")]
+                    assert_eq!(fs::read(new.join(PENDING))?, RECEIPT);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn migration_refuses_to_publish_when_both_source_files_are_missing() -> io::Result<()> {
+        let root = tempfile::tempdir()?;
+        let old = root.path().join("io.github.ibiscite.ibis");
+        let new = root.path().join("com.ibiscite.ibis");
+        fs::create_dir(&old)?;
+        assert_eq!(
+            copy_settings(&old, &new).err().map(|e| e.kind()),
+            Some(io::ErrorKind::NotFound)
+        );
+        assert!(!new.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_backup_only_migrations_all_use_the_published_backup() -> io::Result<()> {
+        let root = tempfile::tempdir()?;
+        let old = root.path().join("io.github.ibiscite.ibis");
+        let new = root.path().join("com.ibiscite.ibis");
+        let bytes = vec![b'x'; 256 * 1024];
+        write(&old.join("settings.json.bak"), &bytes)?;
+        std::thread::scope(|scope| {
+            let copies: Vec<_> = (0..4)
+                .map(|_| scope.spawn(|| settings_location(&new, "com.ibiscite.ibis")))
+                .collect();
+            for copy in copies {
+                let location = copy.join().unwrap_or_else(|_| panic!("migration worker failed"));
+                assert!(!location.using_legacy);
+                assert_eq!(location.path, new.join("settings.json"));
+            }
+        });
+        assert_eq!(fs::read(new.join("settings.json.bak"))?, bytes);
+        assert_eq!(fs::read(old.join("settings.json.bak"))?, bytes);
+        assert!(!new.join("settings.json").exists());
         Ok(())
     }
 
