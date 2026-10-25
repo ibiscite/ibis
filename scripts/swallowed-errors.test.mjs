@@ -55,3 +55,8 @@ test("transparent TypeScript wrappers retain catch detection", () => {
 test("all JavaScript line terminators separate an earlier comment", () => {
   for (const separator of ["\r", "\u2028", "\u2029"]) assert.deepEqual(check("// prior explanation" + separator + "try {} catch {}").map((problem) => problem.line), [2]);
 });
+
+test("bare returns discard errors unless the catch line explains why", () => {
+  for (const source of ["function task() { try {} catch { return; } }", "p.catch(() => { return; });"]) assert.equal(check(source).length, 1, source);
+  for (const source of ["function task() { try {} catch { return fallback; } }", "p.catch(() => { return fallback; });", "p.catch(() => { return; }); // caller already reported the error"]) assert.deepEqual(check(source), [], source);
+});

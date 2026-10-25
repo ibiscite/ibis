@@ -9,7 +9,7 @@ const viteRequire = createRequire(desktopRequire.resolve("vite"));
 const { parseSync } = await import(viteRequire.resolve("rolldown/utils"));
 const baselinePath = "scripts/swallowed-errors-baseline.json";
 const unwrap = (node) => { while (["ParenthesizedExpression", "TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion", "TSInstantiationExpression"].includes(node?.type)) node = node.expression; return node; };
-const empty = (body) => body?.type === "BlockStatement" && body.body.every((node) => node.type === "EmptyStatement");
+const empty = (body) => body?.type === "BlockStatement" && body.body.every((node) => node.type === "EmptyStatement" || node.type === "ReturnStatement" && node.argument == null);
 
 export function catchProblems(path, source) {
   path = path.replaceAll("\\", "/");
