@@ -24,11 +24,12 @@ import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
+import { useLoginItem } from "./features/picker/useLoginItem";
+import { usePin } from "./features/picker/usePin";
 import {
   type Copied,
   type CopyFormat,
   type LibraryStatus,
-  type LoginItem,
   type Locator,
   type SearchResult,
   type ShortcutStatus,
@@ -71,7 +72,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   // The formatted preview, tagged with the style, choice and library it was
   // made for, so Enter never copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale" } | null>(null);
+  const [formatted, setFormatted] = useState<{ key: string; result: FormattedCitation | "failed" | "stale"; problem?: string } | null>(null);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
@@ -103,6 +104,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, []);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
+  const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);
@@ -112,7 +115,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [searchFocused, setSearchFocused] = useState(false);
   // autoFocus can happen before React listens for focus events.
   useEffect(() => setSearchFocused(document.activeElement === input.current), []);
-  const [pinned, setPinnedState] = useState(false);
   // When the picker last went away; the search waits a minute, in memory only.
   const hiddenAt = useRef<number | null>(null);
   // A search Escape cleared comes back on reopening within the same minute.
@@ -134,11 +136,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const copyRequest = useRef(0);
   const copyVisibility = useRef(0);
   const pickerShows = useRef(0);
-  const currentPin = useRef(pinned);
-  currentPin.current = pinned;
-  const confirmedPin = useRef(false);
-  const pinRequest = useRef(0);
-  const pinWork = useRef(Promise.resolve());
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
@@ -179,56 +176,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       window.removeEventListener("blur", reset);
     };
   }, []);
-
-  // Whether Ibis starts at login, as the system reports it; read again each
-  // time the picker opens, since people also change it in system settings.
-  const [startAtLogin, setStartAtLogin] = useState<LoginItem | null>(null);
-  // Calls run one after another, and only the newest one's answer is shown,
-  // so quick clicks end in the state of the last click.
-  const loginQueue = useRef<Promise<unknown>>(Promise.resolve());
-  const loginRequest = useRef(0);
-  const askLoginItem = (operation: "loginItem" | "loginItemChange", call: () => Promise<LoginItem>, failed?: () => void) => {
-    const request = ++loginRequest.current;
-    const run = loginQueue.current.catch(() => undefined).then(call).then(
-      (item) => { if (request === loginRequest.current) setStartAtLogin(item); },
-      (error: unknown) => { if (request === loginRequest.current) failed?.(); throw error; },
-    );
-    loginQueue.current = run;
-    void perform(operation, () => run);
-  };
-  const readLoginItem = () => {
-    if (loginItem) askLoginItem("loginItem", loginItem);
-  };
-  const toggleStartAtLogin = () => {
-    if (!setLoginItem || !startAtLogin) return;
-    const before = startAtLogin;
-    const on = !before.enabled;
-    // Shown at once; the system's answer replaces it.
-    setStartAtLogin({ ...before, enabled: on, problem: null });
-    askLoginItem("loginItemChange", () => setLoginItem(on), () => setStartAtLogin({ ...before, problem: null }));
-  };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reads once each time More opens; readLoginItem is rebuilt every render.
-  useEffect(() => { if (menuOpen) readLoginItem(); }, [menuOpen]);
-  const loginItemOffered = Boolean(setLoginItem) && startAtLogin !== null && startAtLogin.problem !== "unsupported";
-
-  const togglePin = () => {
-    const on = !currentPin.current;
-    currentPin.current = on;
-    setPinnedState(on);
-    const request = ++pinRequest.current;
-    // Preserve native request order, and roll back only the latest request to
-    // the last confirmed state. An older failure cannot undo a newer choice.
-    pinWork.current = pinWork.current.then(() => perform("pin", async () => {
-      try { await setPinned(on); confirmedPin.current = on; }
-      catch (error: unknown) {
-        if (request === pinRequest.current) {
-          currentPin.current = confirmedPin.current;
-          setPinnedState(confirmedPin.current);
-        }
-        throw error;
-      }
-    }));
-  };
 
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
@@ -391,8 +338,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const previewKey = `${style ?? keyPreview}\u0002${libraryVersion}\u0002${chosenKey}`;
   // What Enter would copy now; null while it is being formatted.
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
-  // Visibility changes presentation only. Key copying also survives a failed preview.
-  const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && shown !== "failed")) ? shown : undefined;
+  // Why the preview failed, when the user can fix it.
+  const previewProblem = shown === "failed" ? formatted?.problem : undefined;
+  // Visibility changes presentation only. Key copying also survives a failed
+  // preview, unless the failure is one copying would meet too.
+  const displayedOutput = showPastePreview && chosen.length > 0 && (style || (keyFormat && (shown !== "failed" || previewProblem))) ? shown : undefined;
   // Format the preview again whenever the choice or the style changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, revision and the style or key format, so it is the only trigger.
   useEffect(() => {
@@ -410,7 +360,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((result) => { if (live) setFormatted({ key, result }); })
       .catch((error) => { if (live) {
         const stale = nativeApi.isSnapshotChanged(error);
-        setFormatted({ key, result: stale ? "stale" : "failed" });
+        const shared = nativeApi.sharedCitationKey(error);
+        setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : undefined });
         if (stale) refreshSnapshot();
       } });
     return () => { live = false; replaced.abort(); };
@@ -450,7 +401,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }
     } catch (error) {
       const stale = nativeApi.isSnapshotChanged(error);
-      if (ownsCompletion()) setCopyError(stale ? pickerText.snapshotChanged : pickerText.copyError);
+      const shared = nativeApi.sharedCitationKey(error);
+      if (ownsCompletion()) setCopyError(stale ? pickerText.snapshotChanged : shared ? pickerText.sharedKey(shared) : pickerText.copyError);
       // A retired request can reveal a replacement after the user has moved on.
       if (stale) refreshSnapshot();
       return;
@@ -808,7 +760,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         toggle(r);
         input.current?.focus({ preventScroll: true });
       }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
-        shown={showWriting ? undefined : displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
+        shown={showWriting ? undefined : displayedOutput} problem={previewProblem} focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
