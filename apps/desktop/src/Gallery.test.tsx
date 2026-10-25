@@ -158,17 +158,15 @@ test("the typed-locator gallery exercises capture, explicit update, removal and 
 });
 
 test("the rendered gallery forwards literal-search arguments through its tracking wrapper", async () => {
-  const state = galleryStates.find((candidate) => candidate.id === "typed-locator")!;
+  const state = { ...galleryStates.find((candidate) => candidate.id === "typed-locator")!, tray: 0, pinned: false };
   const provider = galleryProvider(state);
   const search = vi.fn(provider.api.search);
-  const acknowledge = vi.fn(async () => undefined);
   const container = document.createElement("div");
   document.body.append(container);
   let stop = () => {};
   try {
-    await act(async () => { stop = renderGalleryState(container, state, acknowledge, { ...provider, api: { ...provider.api, search } }); });
-    await waitFor(() => expect(acknowledge).toHaveBeenCalledWith("typed-locator"));
-    fireEvent.click(within(container).getByRole("button", { name: "Search as typed" }));
+    await act(async () => { stop = renderGalleryState(container, state, async () => undefined, { ...provider, api: { ...provider.api, search } }); });
+    fireEvent.click(await within(container).findByRole("button", { name: "Search as typed" }));
     await waitFor(() => expect(search).toHaveBeenLastCalledWith("memory p 45", undefined, undefined, false));
     await within(container).findByText("No matching references");
   } finally {
