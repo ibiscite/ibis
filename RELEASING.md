@@ -15,9 +15,8 @@ come from Conventional Commits; commit conventions are in
 `Release-As: 0.N.0` in a commit body on `main`.
 
 The [code signing policy](docs/code-signing.md) records the current unsigned
-status and the planned SignPath Foundation process. Link it from release notes;
-once accepted and integrated, include the SignPath credit described there.
-Updater signatures and operating-system code signing are separate.
+status and the signing planned for 1.0. Link it from release notes. Updater
+signatures and operating-system code signing are separate.
 
 Release Please keeps a pull request titled `chore: release X.Y.Z`; merging it
 under that authority updates `CHANGELOG.md` and the workspace version,
@@ -87,6 +86,6 @@ Before publishing, install a dry-run build on each operating system without a ne
 
 ### Planned
 
-- Desktop builds for Windows, macOS and Linux are produced by CI, never on a personal machine. They are signed (Apple Developer ID; SignPath Foundation or Microsoft Store for Windows), with build-provenance attestations and an SBOM.
+- Desktop builds for Windows, macOS and Linux are produced by CI, never on a personal machine. They are signed (Apple Developer ID on macOS; a service chosen before 1.0 on Windows), with build-provenance attestations and an SBOM.
 - Updater and style-bundle signing keys live only in GitHub organization secrets with narrow access; their loss or rotation follows a written procedure before 1.0.
 - Distribution: GitHub Releases, Homebrew cask, winget, Flathub/AppImage/.deb/.rpm.
