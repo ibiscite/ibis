@@ -149,10 +149,12 @@ grow the window in 220 ms with the top edge fixed, up to the remembered height;
 it never shrinks while open and starts compact next time. Reduced motion: no
 animation. Width: 720 px by default, 360 px minimum.
 
-**Compact start** [C11]. With an empty query: Recently added (three compact
-rows) when the library has dates; otherwise one rotating tip ("1 of 6");
-otherwise nothing but search and footer. The placeholder carries the hint:
-"Search by title, author, year or key".
+**Compact start** [C11]. With an empty query the picker shows its hint (the
+search icon, "Type to find a reference", what to search by, and the Copy and
+Add keys), and the window is just tall enough for it, with even space above
+and below. Recently added (three compact rows, #1070) joins it once the
+library records added dates. (2026-10-25: the maintainer kept this hint over
+a one-line rotating tip.)
 
 **Corners** [C15][D3]. Fixed CSS px at every text size; nested shapes are
 concentric, and an inner corner never goes below the per-OS floor:

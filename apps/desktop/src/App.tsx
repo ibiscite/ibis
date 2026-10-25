@@ -17,6 +17,7 @@ import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
 import { EmptyState } from "./features/picker/EmptyState";
+import { useFitWindow } from "./features/picker/useFitWindow";
 import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
@@ -44,7 +45,7 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -53,7 +54,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
     hidePicker, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
@@ -679,9 +680,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       } />
   ) : null;
 
+  // Size follows content (C10): only results, a citation and overlays need the results height.
+  const main = useRef<HTMLElement>(null);
+  const compact = selected.size === 0 && !keysOpen && !menuOpen && !(query && results.length > 0);
+  useFitWindow(main, compact, fitPicker, fitPicker ? onPickerShown : undefined);
+
   return (
-    <main
+    <main ref={main}
       data-selection={selected.size > 0 || undefined}
+      data-compact={compact || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
       onBlur={() => setSearchFocused(false)}
       onKeyDownCapture={pointer.resetHover}
