@@ -434,7 +434,7 @@ and visible labels match accessible names.
 |---|---|---|---|
 | Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass | Desktop Acrylic (build 22621+), content directly on it; footer band with a top divider | Opaque `window_bg`, no blur; footer band with a divider |
 | Accent fallback [C14] (light / dark) | #007AFF / #0A84FF | #005FB8 / #60CDFF | #3584E4 / #78AEED |
-| Selected row [C4] | Accent fill, paired selected-content text | Full accent with `--text-on-accent` | Full accent with its paired text |
+| Selected row [C4] | Accent fill, paired selected-content text | Accent fill (#005FB8 light, the deeper #0067C0 dark) with white text | Full accent with its paired text |
 | Search box | Frameless, large | Text box whose underline turns accent on focus | Framed entry |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule | ComboBox, chevron | Drop-down, `pan-down-symbolic`, bold label |
 | Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |

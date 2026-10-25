@@ -239,7 +239,9 @@
          Chromium's AccentColor is a fixed #0075FF in both themes, not the
          user's accent, so it is not used here. */
       --accent: light-dark(#005FB8, #60CDFF); --text-on-accent: light-dark(#fff, #000);
-      --selected-background: var(--accent); --selected-text: var(--text-on-accent);
+      /* A full row of the light dark-mode accent is loud; selection uses the
+         deeper accent shade (SystemAccentColorDark1) with white text instead. */
+      --selected-background: light-dark(#005FB8, #0067C0); --selected-text: #fff;
     }
     /* GNOME (libadwaita): window_bg and window_fg; buttons and the entry on
        the control fill (the text colour at 8%). */

@@ -86,7 +86,8 @@ test("the selected row follows each platform", () => {
   expect(rules(tokens, ':root[data-platform="windows"]')).not.toMatch(/--row-active-|--tile-active-/);
   const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
   expect(windows).toMatch(/--accent:\s*light-dark\(#005FB8, #60CDFF\);\s*--text-on-accent:\s*light-dark\(#fff, #000\);/);
-  expect(windows).toMatch(/--selected-background:\s*var\(--accent\);\s*--selected-text:\s*var\(--text-on-accent\);/);
+  // Selection takes the deeper accent shade with white text, calm in dark mode.
+  expect(windows).toMatch(/--selected-background:\s*light-dark\(#005FB8, #0067C0\);\s*--selected-text:\s*#fff;/);
   expect(styles).not.toMatch(/::before[^{]*\{[^}]*--pill|--pill-/);
   expect(tokens).not.toMatch(/--pill-/);
   const linux = rules(tokens, ':root[data-platform="linux"]');
@@ -255,11 +256,12 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
   }
 });
 
-test("the Windows accent row keeps 4.5:1 text and the added tile 3:1 in both themes", () => {
+test("the Windows selected row keeps 4.5:1 text and the added tile 3:1 in both themes", () => {
   const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
   const pair = (token: string) => windows.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`, "i"))!.slice(1, 3);
   const full = (hex: string) => hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join("")}` : hex;
-  const [fill, text] = [pair("--accent"), pair("--text-on-accent")];
+  const fill = pair("--selected-background");
+  const text = ["#fff", "#fff"];
   const tiles = tokens.match(/--citation-tile:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/)!.slice(1, 3);
   for (const mode of [0, 1]) {
     // The meta line uses currentColor on the accent, so the same pair covers it.
