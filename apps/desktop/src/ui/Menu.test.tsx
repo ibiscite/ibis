@@ -443,7 +443,7 @@ test("rows keep equal insets beside a scroll bar, labels never wrap, and metrics
   const popover = menuCss.slice(menuCss.indexOf(".menu-popover {\n  box-sizing"));
   expect(popover.slice(0, popover.indexOf("}"))).toMatch(/padding-block: var\(--menu-padding\);/);
   expect(popover.slice(0, popover.indexOf("}"))).not.toMatch(/[^-]padding: /);
-  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*padding-inline: var\(--menu-padding\);[^}]*overflow: auto;/);
+  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*padding-inline: var\(--menu-padding\);/);
   expect(menuCss).toMatch(/\.menu-popover > :not\(\[role="menu"\]\) \{ margin-inline: var\(--menu-padding\); \}/);
   expect(menuCss).toMatch(/\.menu-label \{[^}]*overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/);
   expect(menuCss).toMatch(/--menu-label-start: calc\(var\(--menu-item-pad\) \+ var\(--menu-check-width\) \+ var\(--menu-item-gap\)\);/);
@@ -458,10 +458,4 @@ test("the shortcuts table breaks actions only between words and keeps keys on on
   expect(styles).not.toMatch(/\.keys-scroll[^{]*\{[^}]*overflow-wrap: anywhere/);
   expect(styles).toMatch(/\.keys-scroll th, \.keys-scroll td \{[^}]*overflow-wrap: break-word;/);
   expect(styles).toMatch(/\.keys-scroll td \{[^}]*text-align: end; white-space: nowrap; \}/);
-});
-
-test("the scroll-edge fade stays valid with one edge marked", () => {
-  const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
-  // calc(100% - 0) is invalid and would drop the whole mask.
-  expect(menuCss).toMatch(/var\(--menu-fade-top, 0%\)[^;]*calc\(100% - var\(--menu-fade-bottom, 0%\)\)/);
 });

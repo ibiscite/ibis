@@ -56,6 +56,9 @@
   --menu-pad: 6px;
   --r-mi: max(var(--r-min), calc(var(--r-menu) - var(--menu-pad)));  /* menu items */
   --status-dot-size: .5rem;
+  /* Scroll areas (ui/ScrollArea.css): the system's own bars, and the depth of
+     the fade at an edge with more content beyond it. */
+  --scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: var(--space-4);
   --menu-min-width: 14rem;
   --r-dialog: var(--r-win);
   --scrim: rgb(0 0 0 / 30%);
@@ -285,6 +288,8 @@
   /* Fluent's focus visual: an outer stroke in the text colour (black in light
      mode, white in dark) around an inner stroke in the surface colour. */
   --focus-ring-color: var(--text); --focus-ring-shadow: 0 0 0 1px var(--surface);
+  /* Fluent's thin scroll bar; its thumb is ControlStrongFillColorDefault. */
+  --scrollbar-width: thin; --scrollbar-color: rgb(0 0 0 / 44.6%) transparent;
 }
 :root[data-platform="linux"] {
   /* libadwaita 1.8+: fixed 7 px rows and 6 px tiles/controls (Canvas C15). */
@@ -354,6 +359,7 @@
     --shadow-overlay: 0 0 2px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 8px 16px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
     --shadow-dialog: 0 0 8px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 32px 64px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
     --shadow-toast: 0 4px 16px light-dark(rgb(0 0 0 / 22%), rgb(0 0 0 / 37.4%));
+    --scrollbar-color: light-dark(rgb(0 0 0 / 44.6%), rgb(255 255 255 / 54.5%)) transparent;
   }
 }
 /* Windows: Fluent's DividerStrokeColorDefault and ControlStrokeColorDefault.

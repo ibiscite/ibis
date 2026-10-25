@@ -2,12 +2,15 @@ import { useEffect, useRef } from "react";
 import { keyText } from "../../messages";
 import { ariaKeys, keyLabel, shortcutLabel, type KeyBinding } from "../../keys";
 import { Button } from "../../ui/Button";
+import { useScrollEdges } from "../../ui/ScrollArea";
 
 /** Every key in one table grouped by where it works, as a modal dialog:
     Escape or Close returns focus. */
 export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly KeyBinding[]; isMac: boolean; onClose: () => void }) {
   const regions = [...new Set(bindings.map((binding) => binding.region))];
   const dialog = useRef<HTMLDivElement>(null);
+  const scroll = useRef<HTMLDivElement>(null);
+  useScrollEdges(scroll);
   useEffect(() => { dialog.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
   return (
     <div className="keys-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -37,7 +40,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
           <h2 id="keys-title">{keyText.title}</h2>
           <Button variant="icon" glyph="close" aria-label={keyText.close} title={keyText.close} aria-keyshortcuts="Escape" onPress={onClose} />
         </div>
-        <div className="keys-scroll" tabIndex={0} role="group" aria-labelledby="keys-title">
+        <div ref={scroll} className="keys-scroll scroll-area" tabIndex={0} role="group" aria-labelledby="keys-title">
           <table>
             <thead className="visually-hidden">
               <tr><th scope="col">{keyText.actionColumn}</th><th scope="col">{keyText.keyColumn}</th></tr>
