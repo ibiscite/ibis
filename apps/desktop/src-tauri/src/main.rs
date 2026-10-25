@@ -104,23 +104,17 @@ fn main() {
         // Must be registered first: a second launch brings the running picker forward.
         // A login entry starting a second copy leaves the running picker alone.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // Decide and act together, so concurrent requests see each other's
-            // visibility changes even when callbacks arrive on worker threads.
-            let handle = app.clone();
-            report(
-                app.run_on_main_thread(move || {
-                    match instance_action(&args, || {
-                        handle
-                            .get_webview_window("main")
-                            .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
-                    }) {
-                        InstanceAction::Show => show_picker(&handle),
-                        InstanceAction::Hide => dismiss_picker(&handle),
-                        InstanceAction::Ignore => {}
-                    }
-                }),
-                NativeIssue::PickerEvent,
-            );
+            // Act in the callback, as a plain second launch always has:
+            // deferring the show to the main thread loses focus on Linux.
+            let visible = || {
+                app.get_webview_window("main")
+                    .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
+            };
+            match instance_action(&args, visible) {
+                InstanceAction::Show => show_picker(app),
+                InstanceAction::Hide => dismiss_picker(app),
+                InstanceAction::Ignore => {}
+            }
         }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
