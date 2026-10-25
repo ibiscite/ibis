@@ -36,9 +36,11 @@ test.each<Density>(["compact", "comfortable", "spacious"])("%s rows reserve the 
   const key = container.querySelector(".result-key")!;
   expect(year.parentElement).toBe(row);
   expect(year.textContent).toBe("No date");
-  expect(container.querySelector(".result-meta")?.contains(key)).toBe(true);
+  // C4: the key is not drawn in the row; it stays spoken, in the tooltip and LTR.
+  expect(key.classList.contains("visually-hidden")).toBe(true);
+  expect(container.querySelector(".result-meta")?.contains(key)).toBe(false);
   expect(key.getAttribute("dir")).toBe("ltr");
-  expect(key.getAttribute("title")).toBe(record.key);
+  expect(container.querySelector(".result-body")?.getAttribute("title")).toBe(record.key);
   expect(getByRole("option", { name: /多言語の研究 · الذاكرة.*memory2020.*No date/ })).toBe(row);
 });
 
@@ -50,9 +52,9 @@ test.each(["", "研究_memory_".repeat(1_000)])("unusual keys stay literal and d
   expect(container.querySelector(".result-key")?.textContent).toBe(key);
   expect(container.querySelector(".result-year")?.textContent).toBe("0");
   const range = document.createRange();
-  range.selectNodeContents(container.querySelector(".result-key")!);
+  range.selectNodeContents(container.querySelector(".result-title")!);
   window.getSelection()?.addRange(range);
-  fireEvent.click(container.querySelector(".result-key")!);
+  fireEvent.click(container.querySelector(".result-title")!);
   if (key) expect(onChoose).not.toHaveBeenCalled();
   window.getSelection()?.removeAllRanges();
   onChoose.mockClear();

@@ -1519,7 +1519,7 @@ test("rows with the same first author and year are told apart by their container
   // container is only as wide as its text, so it sits beside its separator.
   expect(styles).not.toMatch(/match-parent/);
   // It keeps its own width beside a long title, as in the prototype, capped and ellipsized.
-  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--key-max-width\);[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--meta-part-max-width\);[^}]*text-overflow: ellipsis/);
   // A very narrow Compact row gives the title its own line instead.
   expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ flex-wrap: wrap; row-gap: 0; \}\s*:root\[data-density="compact"\] \.result-title \{ flex-basis: 100%; \}/);
   expect(line?.textContent).toBe("Sleep spindlesGarcía et al.");
@@ -1530,7 +1530,7 @@ test("rows with the same first author and year are told apart by their container
   expect(rows[1]?.textContent).toContain("Matched in");
 });
 
-test("rows shorten the authors and keep the journal, key and library label visible", async () => {
+test("rows shorten the authors and keep the journal and library label visible", async () => {
   backend({ search: () => [
     { ...result("a", "Six authors"), authors: "García, Okafor, Lima, Chen, Novak, Haddad", first_author: "García", author_count: 6, container: "Journal of Sleep Research" },
     // Two creators are both named; the core counts an organisation with a comma as one.
@@ -1560,10 +1560,10 @@ test("rows shorten the authors and keep the journal, key and library label visib
   expect(styles).toMatch(/\.result-byline \{[^}]*flex: 1 1 auto; min-width: min\(12em, 60%\)/);
   expect(styles).toMatch(/\.result-authors \{ flex: none; max-width: 60%;[^}]*text-overflow: ellipsis/);
   expect(styles).toMatch(/\.result-container \{ flex: 0 1 auto; min-width: 0;[^}]*text-overflow: ellipsis/);
-  expect(styles).toMatch(/\.result-key \{ flex: 0 1000 auto; min-width: min\(6ch, 100%\);[^}]*text-overflow: ellipsis/);
+  expect(styles).not.toMatch(/\.result-key \{/);
   expect(styles).toMatch(/\.result-library \{ flex: 0 1000 auto; min-width: min\(5em, 100%\);[^}]*text-overflow: ellipsis/);
   expect(styles).toMatch(/\.result-type \{ flex: none; max-width: 100%;[^}]*text-overflow: ellipsis/);
-  for (const name of ["key", "library"]) expect(styles).not.toMatch(new RegExp(`\\.result-${name} \\{[^}]*min-width: 0`));
+  expect(styles).not.toMatch(/\.result-library \{[^}]*min-width: 0/);
 });
 
 test("Escape clears the search before it hides the picker, keeping chosen references", async () => {
