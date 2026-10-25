@@ -44,7 +44,7 @@ export function nightlyVersion(base, commitTime) {
 /** Ibis Nightly's own update public key (minisign, base64), separate from the
  * stable key in tauri.conf.json, so a key used on every push to main can never
  * sign a stable update (ADR 0019). */
-export const NIGHTLY_PUBKEY = "REPLACE_WITH_THE_NIGHTLY_PUBLIC_KEY";
+export const NIGHTLY_PUBKEY = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc4NTA5QzM1QzM2NDdEQjkKUldTNWZXVEROWnhRZUJ2RnlScnkvT09BTmFHek1yS21GNWRaWWQzSmpMYUtSMlJYWlNuM3RzdzIK";
 
 /** The public key whose signatures a feed for `version` must carry. */
 export function feedPublicKey(version, stablePubkey) {
