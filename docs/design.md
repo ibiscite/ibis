@@ -275,9 +275,13 @@ the Return cap is the ↵ glyph); Windows gives each key a cap 4 px apart (Ctrl
 K); GNOME adds "+" between caps (Ctrl + K). Decorative caps are hidden from
 screen readers; `aria-keyshortcuts` names the keys.
 
-**Scroll areas.** One scroll bar style for the list, menus, the shelf and every
-other scroller, from the shared component: overlay scroll bars on macOS, the
-platform's thin style elsewhere. Content never shifts when a bar appears.
+**Scroll areas.** One scroll area (`ui/ScrollArea`) for the results, menus,
+Shortcuts and notices: the system's own scroll bars (overlay on macOS and
+GNOME) and Fluent's thin bar on Windows, from `--scrollbar-width` and
+`--scrollbar-color`. The side inset sits inside the bar, so a classic bar never
+takes it. An edge with more content beyond it fades over `--scroll-fade-size`,
+so a list that ends on a whole row still shows there is more; the results list
+needs no fade, as a cut row already shows it.
 
 **Tables** (the keyboard shortcuts list, Settings lists). Columns size to their
 content and never break a word; a table that does not fit scrolls or drops a
