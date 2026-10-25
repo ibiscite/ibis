@@ -68,25 +68,61 @@ export function splitLocatorQuery(query) {
   }
   return null;
 }
+const abbreviations = { page: ["p.", "pp."], chapter: ["chap."], section: ["sec."], paragraph: ["para."], figure: ["fig."], line: ["l.", "ll."], note: ["n."], volume: ["vol."], verse: ["v.", "vv."] };
+const dashValue = (locator, dash) => locator.value.replace(/[-–—]+/gu, dash);
+function locatorText(locator, dash = "-", space = " ") {
+  const labels = abbreviations[locator.label], plural = /[-–—,]/u.test(locator.value);
+  return `${labels[plural ? labels.length - 1 : 0]}${space}${dashValue(locator, dash)}`;
+}
+// Parser values contain only numbers, letters, ranges and list separators.
+const escapeNote = text => text.replaceAll("&", "\\&");
+function renderItems(format, items) {
+  const warnings = [], hasLocator = items.some(item => item.locator);
+  if (!items.length) return { text: "", warnings };
+  let text;
+  if (format === "keys") {
+    if (hasLocator) warnings.push("bare keys cannot carry page numbers or notes; they were left out");
+    text = items.map(item => item.key).join(", ");
+  } else if (format === "pandoc") {
+    text = `[${items.map(({ key, locator }) => `@${key}${locator ? `, ${escapeNote(locatorText(locator))}` : ""}`).join("; ")}]`;
+  } else if (format === "typst") {
+    text = items.map(({ key, locator }) => `@${key}${locator ? `[${locatorText(locator, "–")}]` : ""}`).join(" ");
+  } else if (format === "cite") {
+    if (hasLocator && items.length > 1) warnings.push("plain \\cite holds one note per command; one \\cite per reference was used");
+    text = hasLocator ? items.map(({ key, locator }) => `\\cite${locator ? `[${escapeNote(locatorText(locator, "--", "~"))}]` : ""}{${key}}`).join(", ")
+      : `\\cite{${items.map(item => item.key).join(",")}}`;
+  } else {
+    const notes = items.map(({ key, locator }) => `${locator ? `[${escapeNote(locator.label === "page" ? dashValue(locator, "--") : locatorText(locator, "--", "~"))}]` : ""}{${key}}`);
+    text = `\\${format}${items.length > 1 ? "s" : ""}${notes.join("")}`;
+  }
+  return { text, warnings };
+}
 export function createDemo() {
-  const state = { query: "okafor", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
+  const state = { query: "okafor", literalQuery: null, selected: 0, format: "pandoc", added: [], locators: {}, copied: null, pasted: null, open: true, preview: true };
+  const interpretation = () => state.literalQuery === state.query ? null : splitLocatorQuery(state.query);
   const found = () => {
-    const words = state.query.toLowerCase().split(/\s+/).filter(Boolean);
+    const words = (interpretation()?.search ?? state.query).toLowerCase().split(/\s+/).filter(Boolean);
     return references.filter(ref => words.every(word => `${ref.authors} ${ref.title} ${ref.year} ${ref.key} ${ref.where}`.toLowerCase().includes(word)));
   };
-  const output = () => {
-    const keys = state.added.length ? state.added : [found()[state.selected]?.key].filter(Boolean);
-    if (!keys.length) return "";
-    if (state.format === "pandoc") return `[${keys.map(key => `@${key}`).join("; ")}]`;
-    if (state.format === "typst") return keys.map(key => `@${key}`).join(" ");
-    if (state.format === "keys") return keys.join(", ");
-    if (state.format !== "cite" && keys.length > 1) return `\\${state.format}s${keys.map(key => `{${key}}`).join("")}`;
-    return `\\${state.format}{${keys.join(",")}}`;
-  };
-  return { state, found, output,
-    add(key) { if (!references.some(ref => ref.key === key)) return; state.added = state.added.includes(key) ? state.added.filter(value => value !== key) : [...state.added, key]; },
+  const selections = () => state.added.length ? state.added.map(key => ({ key, locator: state.locators[key] ?? null }))
+    : [found()[state.selected]].filter(Boolean).map(ref => ({ key: ref.key, locator: interpretation()?.locator ?? null }));
+  const rendered = () => renderItems(state.format, selections());
+  const output = () => rendered().text;
+  const setQuery = query => { state.query = query; state.literalQuery = null; state.selected = 0; };
+  return { state, found, output, rendered, interpretation, selections, setQuery,
+    searchAsTyped() { state.literalQuery = state.query; state.selected = 0; },
+    add(key) {
+      if (!references.some(ref => ref.key === key)) return;
+      if (state.added.includes(key)) { state.added = state.added.filter(value => value !== key); delete state.locators[key]; }
+      else { state.added = [...state.added, key]; state.locators[key] = interpretation()?.locator ?? null; }
+    },
+    applyLocator(key) {
+      const locator = interpretation()?.locator;
+      if (state.added.includes(key) && found()[state.selected]?.key === key && locator) state.locators[key] = { ...locator };
+    },
+    removeLocator(key) { if (state.added.includes(key)) state.locators[key] = null; },
     copy() { const value = output(); if (!value) return false; state.copied = value; return true; },
     paste() { state.pasted = state.copied; },
-    back() { if (state.preview) state.preview = false; else if (state.query) { state.query = ""; state.selected = 0; } else state.open = false; },
+    back() { if (state.preview) state.preview = false; else if (state.query) setQuery(""); else state.open = false; },
   };
 }

@@ -56,3 +56,54 @@ test("locator tails stay bounded and reject ambiguous or malformed values", () =
   }
   assert.equal(splitLocatorQuery(`${"研究 ".repeat(10000)}p. 12`).locator.value, "12");
 });
+
+test("demo freezes each added locator and changes it only through explicit actions", () => {
+  const demo = createDemo();
+  demo.setQuery("okafor 2023 p. 12");
+  assert.equal(demo.found()[0].key, "okafor2023");
+  demo.add("okafor2023");
+  demo.setQuery("nakamura ch. III"); demo.add("nakamura2024");
+  assert.equal(demo.output(), "[@okafor2023, p. 12; @nakamura2024, chap. III]");
+  demo.setQuery("okafor 2023 p. 19");
+  assert.equal(demo.output(), "[@okafor2023, p. 12; @nakamura2024, chap. III]");
+  demo.applyLocator("okafor2023");
+  assert.equal(demo.output(), "[@okafor2023, p. 19; @nakamura2024, chap. III]");
+  demo.removeLocator("okafor2023");
+  assert.equal(demo.output(), "[@okafor2023; @nakamura2024, chap. III]");
+  assert.deepEqual(demo.state.added, ["okafor2023", "nakamura2024"]);
+  demo.copy(); demo.add("okafor2023"); demo.add("okafor2023");
+  assert.equal(demo.output(), "[@nakamura2024, chap. III; @okafor2023, p. 19]");
+  demo.paste(); assert.equal(demo.state.pasted, "[@okafor2023; @nakamura2024, chap. III]");
+});
+test("search as typed preserves the query and editing restores interpretation", () => {
+  const demo = createDemo();
+  demo.setQuery("okafor p. 12");
+  assert.equal(demo.interpretation().typed, "p. 12");
+  assert.equal(demo.output(), "[@okafor2023, p. 12]");
+  demo.searchAsTyped();
+  assert.equal(demo.state.query, "okafor p. 12"); assert.equal(demo.interpretation(), null);
+  assert.equal(demo.found().length, 0); assert.equal(demo.copy(), false);
+  demo.setQuery("okafor p. 12");
+  assert.equal(demo.interpretation().locator.value, "12");
+});
+test("every demo key format carries frozen contexts or warns when unsupported", () => {
+  const demo = createDemo();
+  demo.setQuery("okafor 2023 pp. 12–14"); demo.add("okafor2023");
+  demo.setQuery("nakamura ch. III"); demo.add("nakamura2024");
+  const outputs = {
+    pandoc: "[@okafor2023, pp. 12-14; @nakamura2024, chap. III]",
+    autocite: "\\autocites[12--14]{okafor2023}[chap.~III]{nakamura2024}",
+    parencite: "\\parencites[12--14]{okafor2023}[chap.~III]{nakamura2024}",
+    textcite: "\\textcites[12--14]{okafor2023}[chap.~III]{nakamura2024}",
+    cite: "\\cite[pp.~12--14]{okafor2023}, \\cite[chap.~III]{nakamura2024}",
+    typst: "@okafor2023[pp. 12–14] @nakamura2024[chap. III]", keys: "okafor2023, nakamura2024",
+  };
+  for (const [format, output] of Object.entries(outputs)) {
+    demo.state.format = format;
+    assert.equal(demo.output(), output, format);
+    assert.equal(demo.rendered().warnings.length, ["keys", "cite"].includes(format) ? 1 : 0, format);
+  }
+  demo.setQuery("okafor pp 3, 7 & 9a"); demo.applyLocator("okafor2023");
+  demo.state.format = "pandoc"; assert.match(demo.output(), /7 \\& 9a/);
+  demo.state.format = "autocite"; assert.match(demo.output(), /7 \\& 9a/);
+});
