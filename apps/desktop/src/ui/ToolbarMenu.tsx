@@ -3,7 +3,7 @@ import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { Button } from "./Button";
-import { MenuCheck, useMenuBoundary, useMenuPlacement } from "./Menu";
+import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
 import { currentPlatform } from "../platform";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
@@ -23,10 +23,11 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   const [internalOpen, setOpen] = useState(false);
   const [skipExit, setSkipExit] = useState(false);
   const open = isOpen ?? internalOpen;
-  const boundary = useMenuBoundary(open, returnFocusRef);
-  const { listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(open);
-  const composing = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
+  const boundary = useMenuBoundary(open, returnFocusRef, button);
+  const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(open);
+  const wholeRows = useWholeRows(list);
+  const composing = useRef(false);
   const renderedPlacement = useMenuPlacement(open, button, "bottom end");
   const popover = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
@@ -48,8 +49,9 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   }, []);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
+    wholeRows(node);
     if (!node && pending.current) retryFocus(restoreFocus);
-  }, [restoreFocus, retryFocus]);
+  }, [restoreFocus, retryFocus, wholeRows]);
   useLayoutEffect(() => { if (open) { setSkipExit(false); cancel(); } }, [open, cancel]);
   useEffect(() => {
     const hidden = () => { if (document.hidden) cancel(); };
@@ -96,7 +98,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       <Header className="toolbar-menu-heading">{section.label}</Header>
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={false}
-        render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-disabled={item.disabled || undefined} />}>
+        render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={item.disabled || undefined} />}>
         {({ isSelected }) => <><MenuCheck checked={isSelected} />
           <Text slot="label" className="menu-label">{item.label}</Text><Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined}>{item.sample}</Text></>}
       </MenuItem>)}

@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { useRef, useState } from "react";
-import { Menu, MenuItem, MenuSection, MenuSeparator, useMenuBoundary, useMenuPlacement } from "./Menu";
+import { Menu, MenuItem, MenuSection, MenuSeparator, useMenuBoundary, useMenuPlacement, useWholeRows } from "./Menu";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 
 test.each(["frame", "cancel", "reopen", "unmount"])("a deferred menu focus request respects %s", async (action) => {
@@ -82,14 +82,16 @@ test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highl
   expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Open" }));
 });
 
-test("action rows start with labels; toggles keep trailing checks and shortcuts stay out of names", async () => {
+test("toggles carry a check placed per platform, and shortcuts stay out of names", async () => {
   const { trigger } = mount();
   fireEvent.click(trigger);
   const menu = await screen.findByRole("menu");
   const rows = [...menu.querySelectorAll("[role^=menuitem]")];
-  expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-label", "menu-label"]);
-  expect(rows[0]!.querySelector(".menu-check")).toBeNull();
-  expect(rows.slice(1).map((row) => row.lastElementChild?.className)).toEqual(["menu-check", "menu-check"]);
+  expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-check", "menu-check"]);
+  // macOS and Windows keep a leading check column for every row; GNOME puts the check last.
+  const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
+  expect(menuCss).toMatch(/:root:not\(\[data-platform="linux"\]\) \.menu:has\(\[role="menuitemcheckbox"\]\) :is\(\.menu-item:not\(\[role="menuitemcheckbox"\]\), \.menu-header\) \{ padding-inline-start: var\(--menu-label-start\); \}/);
+  expect(menuCss).toMatch(/:root\[data-platform="linux"\] \.menu-check \{ order: 1; \}/);
   expect(screen.getByRole("menuitem", { name: "Open" }).textContent).toBe("OpenCtrl+O");
   // Menu shortcuts are trailing text, so global kbd cap styles cannot apply.
   const shortcut = screen.getByRole("menuitem", { name: "Open" }).querySelector(".menu-keys")!;
@@ -296,6 +298,8 @@ test("menus highlight with a fill, never a ring, and the picker sheet has no men
   expect(menuCss).toMatch(/\.menu-item\[data-focused\] \{ background: var\(--menu-highlight\); color: var\(--menu-highlight-text\); \}/);
   expect(menuCss).toMatch(/\.menu-item \{[^}]*outline: none/);
   expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*outline: none/);
+  // The global :focus-visible ring would otherwise win on the list itself.
+  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\]:focus-visible \{ outline: none; \}/);
   expect(styles).not.toMatch(/role="menu|menuitem/);
 });
 
@@ -347,4 +351,117 @@ test.each(["ltr", "rtl"])("menu alignment follows rendered %s on opening and kee
   expect(hook.result.current).toBe(direction === "rtl" ? "top right" : "top left");
   hook.unmount();
   button.remove();
+});
+
+// #1031: faults measured in a browser render of the format and More menus.
+test("a menu opened above the footer ends above it; a footer menu keeps the whole window", () => {
+  const footer = document.createElement("footer");
+  footer.dataset.menuFloor = "";
+  const more = document.createElement("button");
+  footer.append(more);
+  const header = document.createElement("button");
+  document.body.append(header, footer);
+  vi.spyOn(footer, "getBoundingClientRect").mockReturnValue(new DOMRect(0, window.innerHeight - 40, 720, 40));
+  const [headerRef, moreRef] = [{ current: header }, { current: more }];
+  const above = renderHook(() => useMenuBoundary(true, undefined, headerRef));
+  expect(above.result.current.boundaryElement?.style.bottom).toBe("40px");
+  above.unmount();
+  const inside = renderHook(() => useMenuBoundary(true, undefined, moreRef));
+  // Untouched: the boundary keeps its "inset: 0" bottom at the window edge.
+  expect(inside.result.current.boundaryElement?.style.bottom).not.toBe("40px");
+  inside.unmount();
+  footer.remove();
+  header.remove();
+});
+
+test("a scrolling menu shortens to its last whole row and refits when the popover resizes", async () => {
+  const frame = document.createElement("div");
+  const list = document.createElement("div");
+  frame.append(list);
+  document.body.append(frame);
+  const rows = [0, 1, 2, 3].map((i) => {
+    const row = document.createElement("div");
+    row.setAttribute("role", "menuitem");
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100 + i * 28, 200, 28));
+    list.append(row);
+    return row;
+  });
+  vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 200, 70));
+  let height = 70;
+  Object.defineProperty(list, "clientHeight", { get: () => height });
+  Object.defineProperty(list, "scrollHeight", { get: () => rows.length * 28 });
+  const listRef = { current: list };
+  const hook = renderHook(() => useWholeRows(listRef));
+  act(() => hook.result.current(frame));
+  // 70 px would cut the third 28 px row in half; two whole rows remain.
+  expect(list.style.maxHeight).toBe("56px");
+  // More rows wait below; scrolled to the end, only those above remain.
+  expect([list.hasAttribute("data-more-above"), list.hasAttribute("data-more-below")]).toEqual([false, true]);
+  list.scrollTop = 56;
+  fireEvent.scroll(list);
+  expect([list.hasAttribute("data-more-above"), list.hasAttribute("data-more-below")]).toEqual([true, false]);
+  list.scrollTop = 0;
+  height = 100;
+  frame.style.maxHeight = "200px";
+  await act(async () => { await Promise.resolve(); });
+  expect(list.style.maxHeight).toBe("84px");
+  height = 200;
+  frame.style.maxHeight = "300px";
+  await act(async () => { await Promise.resolve(); });
+  expect(list.style.maxHeight).toBe("");
+  expect(list.hasAttribute("data-more-below")).toBe(false);
+  act(() => hook.result.current(null));
+  frame.remove();
+});
+
+test("any pointer movement over an item highlights it, also after arrow keys", async () => {
+  const { search } = mount();
+  act(() => search.focus());
+  fireEvent.keyDown(search, { key: "k", ctrlKey: true });
+  const menu = await screen.findByRole("menu");
+  const open = screen.getByRole("menuitem", { name: "Open" });
+  const second = screen.getByRole("menuitemcheckbox", { name: "Second" });
+  expect(open.hasAttribute("data-focused")).toBe(true);
+  // The pointer rests on Second while the keyboard moves the highlight.
+  fireEvent.pointerMove(second, { pointerType: "mouse", clientX: 1 });
+  expect(second.hasAttribute("data-focused")).toBe(true);
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  await waitFor(() => expect(second.hasAttribute("data-focused")).toBe(false));
+  // The synthetic move a resting pointer gets when rows scroll under it does not count.
+  fireEvent.pointerMove(second, { pointerType: "mouse", clientX: 1 });
+  expect(second.hasAttribute("data-focused")).toBe(false);
+  fireEvent.pointerMove(second, { pointerType: "mouse", clientX: 3 });
+  expect(second.hasAttribute("data-focused")).toBe(true);
+  expect(document.activeElement).toBe(second);
+  // Touch never moves the highlight.
+  fireEvent.pointerMove(open, { pointerType: "touch", clientX: 5 });
+  expect(open.hasAttribute("data-focused")).toBe(false);
+  expect(menu.isConnected).toBe(true);
+});
+
+test("rows keep equal insets beside a scroll bar, labels never wrap, and metrics come from tokens", () => {
+  const popover = menuCss.slice(menuCss.indexOf(".menu-popover {\n  box-sizing"));
+  expect(popover.slice(0, popover.indexOf("}"))).toMatch(/padding-block: var\(--menu-padding\);/);
+  expect(popover.slice(0, popover.indexOf("}"))).not.toMatch(/[^-]padding: /);
+  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*padding-inline: var\(--menu-padding\);[^}]*overflow: auto;/);
+  expect(menuCss).toMatch(/\.menu-popover > :not\(\[role="menu"\]\) \{ margin-inline: var\(--menu-padding\); \}/);
+  expect(menuCss).toMatch(/\.menu-label \{[^}]*overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/);
+  expect(menuCss).toMatch(/--menu-label-start: calc\(var\(--menu-item-pad\) \+ var\(--menu-check-width\) \+ var\(--menu-item-gap\)\);/);
+  const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
+  // The filter text and section headings start where the labels do.
+  expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
+  expect(toolbar).toMatch(/\.toolbar-menu-popover \{ width: 16\.5rem; \}/);
+  expect(`${menuCss}${toolbar}`.match(/\b(10|18|34)px\b/g)).toEqual(["10px", "18px"]);
+});
+
+test("the shortcuts table breaks actions only between words and keeps keys on one line at the end", () => {
+  expect(styles).not.toMatch(/\.keys-scroll[^{]*\{[^}]*overflow-wrap: anywhere/);
+  expect(styles).toMatch(/\.keys-scroll th, \.keys-scroll td \{[^}]*overflow-wrap: break-word;/);
+  expect(styles).toMatch(/\.keys-scroll td \{[^}]*text-align: end; white-space: nowrap; \}/);
+});
+
+test("the scroll-edge fade stays valid with one edge marked", () => {
+  const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
+  // calc(100% - 0) is invalid and would drop the whole mask.
+  expect(menuCss).toMatch(/var\(--menu-fade-top, 0%\)[^;]*calc\(100% - var\(--menu-fade-bottom, 0%\)\)/);
 });
