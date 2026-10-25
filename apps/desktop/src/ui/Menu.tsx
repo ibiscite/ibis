@@ -4,6 +4,7 @@ import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
 import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Button } from "./Button";
+import { markScrollEdges } from "./ScrollArea";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
 
@@ -75,13 +76,8 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
     stop.current?.();
     stop.current = null;
     if (!frame) return;
-    // Marks the edges with rows beyond them, which Menu.css fades.
-    const edges = () => {
-      const node = list.current;
-      if (!node) return;
-      node.toggleAttribute("data-more-above", node.scrollTop > 0);
-      node.toggleAttribute("data-more-below", node.scrollHeight - node.clientHeight - node.scrollTop >= 1);
-    };
+    // The list is a scroll area; its edges with rows beyond them fade.
+    const edges = () => { if (list.current) markScrollEdges(list.current); };
     const fit = () => {
       const node = list.current;
       if (!node) return;
@@ -299,7 +295,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
         event.stopPropagation();
         leave(to, event.key === "Tab");
       }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
-        <AriaMenu key={opening} ref={listRef} id={id} className="menu" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
+        <AriaMenu key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
           <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
             {children}
           </ActionFocusContext.Provider>

@@ -1,0 +1,18 @@
+/* One scroll area for the results, menus, Shortcuts and notices (#1034): the
+   system's own scroll bars, overlay where the system uses them, and Fluent's
+   thin bar on Windows (tokens.css). An edge with more content beyond it fades,
+   so a list that ends on a whole row still shows there is more. A mask reads
+   only alpha, so the opaque text colour serves. */
+.scroll-area { overflow: auto; overscroll-behavior: contain; scrollbar-width: var(--scrollbar-width); scrollbar-color: var(--scrollbar-color); }
+.scroll-area[data-more-above] {
+  -webkit-mask-image: linear-gradient(transparent, currentColor var(--scroll-fade-size));
+  mask-image: linear-gradient(transparent, currentColor var(--scroll-fade-size));
+}
+.scroll-area[data-more-below] {
+  -webkit-mask-image: linear-gradient(currentColor calc(100% - var(--scroll-fade-size)), transparent);
+  mask-image: linear-gradient(currentColor calc(100% - var(--scroll-fade-size)), transparent);
+}
+.scroll-area[data-more-above][data-more-below] {
+  -webkit-mask-image: linear-gradient(transparent, currentColor var(--scroll-fade-size), currentColor calc(100% - var(--scroll-fade-size)), transparent);
+  mask-image: linear-gradient(transparent, currentColor var(--scroll-fade-size), currentColor calc(100% - var(--scroll-fade-size)), transparent);
+}

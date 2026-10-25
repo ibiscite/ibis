@@ -787,7 +787,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           </Button>}
         </p>
       </div>}
-      <div className="results-area" ref={resultArea}>
+      <div className="results-area scroll-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}

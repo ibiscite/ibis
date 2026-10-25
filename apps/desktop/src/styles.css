@@ -58,7 +58,7 @@ main {
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
-.results-area { flex: 1; min-height: var(--results-min-height); overflow: auto; margin-block: var(--inset); padding-inline: var(--inset); scrollbar-width: thin; }
+.results-area { flex: 1; min-height: var(--results-min-height); margin-block: var(--inset); padding-inline: var(--inset); }
 .results-heading { display: flex; justify-content: space-between; padding: var(--heading-padding); color: var(--muted); font-size: var(--heading-size); line-height: var(--type-label-line); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
 #results { list-style: none; padding: 0; margin: 0; }
 /* Rows are exactly --row-height and --row-spacing apart in every list of
@@ -257,8 +257,8 @@ main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; 
 /* Keep a result reachable at large system text; the shelf uses its own scroll
    area when the header, output and wrapped footer cannot all keep their height. */
 main[data-selection] > .picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 24px; overflow: auto; overscroll-behavior: contain; container-type: size; }
-main[data-selection] .notices { flex: none; max-height: 6rem; overflow: auto; }
-main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overflow: auto; }
+main[data-selection] .notices { flex: none; max-height: 6rem; }
+main[data-selection] .results-area { flex: 1 0 var(--results-min-height); }
 /* Use the available middle height, not a guessed header/footer size. Under
    pressure results join its scrollport, so wheel input has one vertical owner. */
 /* The shelf sits outside this content, so only a very short window gets here. */
@@ -316,7 +316,7 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 .keys-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--space-4) var(--space-2); border-bottom: var(--border-width) solid var(--line); }
 .keys-heading h2 { margin: 0; font-size: inherit; font-weight: var(--type-strong-weight); }
 .keys-heading button { min-height: var(--control-min-size); }
-.keys-scroll { overflow: auto; min-height: 0; padding: var(--space-2) var(--space-4) var(--space-4); }
+.keys-scroll { min-height: 0; padding: var(--space-2) var(--space-4) var(--space-4); }
 .keys-scroll table { width: 100%; border-collapse: collapse; font-size: var(--metadata-size); }
 /* Grouped by where the keys work (#1034): a muted heading per group, the
    action at the start breaking only between words, its keys at the end on
