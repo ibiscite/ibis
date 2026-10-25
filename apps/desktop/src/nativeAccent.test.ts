@@ -76,8 +76,8 @@ test("both subscriptions precede the replay query and accent survives a failed r
   expect(root.hasAttribute("data-native-accent")).toBe(false);
 });
 
-test("an added tile on the native accent uses its paired text fill, keeping scarlet off the row fill", () => {
-  expect(css).toMatch(/:root\[data-native-accent="true"\]\[data-platform="macos"\][^{}]*\[data-citation-selected\][^{}]*\.result-tile\s*\{[^}]*background:\s*var\(--row-active-text\)[^}]*color:\s*var\(--citation-tile\)/);
+test("the native accent adds no row rule of its own: the shared selected-row tile covers it (D9)", () => {
+  expect(css).not.toMatch(/data-citation-selected/);
 });
 
 test("selected rows and menu highlights keep WebKit's white selected text on the native accent", () => {
