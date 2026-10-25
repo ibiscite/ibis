@@ -96,6 +96,11 @@ describe("formatted citation for the picker", () => {
     expect(mixed.text).toBe("Garcia, Synthetic first. 2021.\nlonely");
     expect(mixed.segments?.map((part) => part.item)).toEqual([0, 1]);
     expect(mixed.warnings).toEqual(["IEEE shows nothing for “lonely”, so Ibis copies that instead."]);
+    // Also when another reference fails, so the style's own recovery runs.
+    const broken = JSON.parse(csl)[1];
+    const both = await formatCitation(JSON.stringify([empty, broken]), "ieee", { client, segments: true });
+    expect(both.text).toBe("lonely\nBroken");
+    expect(both.segments?.map((part) => part.item)).toEqual([0, 1]);
   });
 
   it("names an IEEE reference the style could not format, and still copies the others", async () => {
