@@ -1,6 +1,6 @@
 # 0027. Prototype bounded headless citation formatting in Rust
 
-Status: proposed (2026-10-25); amends 0007
+Status: accepted (2026-10-25); amends 0007
 
 ## Context
 
@@ -17,12 +17,12 @@ evaluates that concrete route, not bare QuickJS or production adoption.
 
 ### Approval boundary
 
-While proposed, this ADR authorizes no implementation or dependency change.
-Acceptance, recorded in #1059, authorizes only an optional, test-invoked native
+The [recorded engineering decision](https://github.com/ibiscite/ibis/issues/1059#issuecomment-6394203060)
+accepts only an optional, test-invoked native
 prototype in `ibis-core`, disabled in normal application builds. It does not
 replace the production GUI worker, change its five-second watchdog, or add a
 CLI command, IPC surface, setting, network endpoint, daemon or persisted format.
-The lead reviews the recorded proposal before that prototype starts.
+The reviewed proposal is the boundary for this implementation.
 
 Production adoption needs a later recorded decision after the gates below pass;
 this proposal does not pre-approve it. ADRs 0002/0008 and release scope remain

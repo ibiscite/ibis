@@ -29,4 +29,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0023 | Use the owned domain for the app identity and preserve channel settings | accepted (supersedes location in 0016) |
 | 0024 | Restrict desktop commands by window | accepted |
 | 0025 | Structured citation input for the engine and CLI | accepted |
-| 0027 | Prototype bounded headless citation formatting in Rust | proposed (amends 0007) |
+| 0027 | Prototype bounded headless citation formatting in Rust | accepted (amends 0007) |
