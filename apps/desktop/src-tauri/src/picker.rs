@@ -12,6 +12,8 @@ use crate::placement::place_on_active_display;
 
 mod dialogs;
 mod full_screen;
+#[cfg(any(target_os = "macos", test))]
+mod layout;
 #[cfg(target_os = "linux")]
 #[expect(dead_code, reason = "portal transport is wired to the picker in the next #782 slice")]
 mod portal;
@@ -78,10 +80,29 @@ const SHORTCUT_BACKEND_UNAVAILABLE: &str =
     "Global shortcuts need a working X11 connection with XKB. Open Ibis from your application launcher.";
 const SHORTCUT_REGISTRATION_FAILED: &str =
     "The shortcut could not be registered. Another app may be using it; choose a different shortcut in settings.";
+#[cfg(target_os = "macos")]
+const NO_KEY_TYPES_THE_LETTER: &str =
+    "No key on this keyboard layout types the shortcut's letter, so it uses that letter's place on a US keyboard.";
+
+/// The shortcut from settings and the key registered for it on the active layout.
+#[derive(Default)]
+pub(crate) struct Registered(Mutex<Option<(Shortcut, Shortcut)>>);
+
+/// The key to register for `shortcut` on the active keyboard layout, and a
+/// note when no key types its letter. Only macOS registers physical keys.
+fn on_layout(shortcut: Shortcut) -> (Shortcut, Option<&'static str>) {
+    #[cfg(target_os = "macos")]
+    return layout::translate(shortcut, layout::typed)
+        .map_or((shortcut, Some(NO_KEY_TYPES_THE_LETTER)), |key| (key, None));
+    #[cfg(not(target_os = "macos"))]
+    (shortcut, None)
+}
 
 /// The Linux plugin can return success after its X11 worker exits. Confirm its
 /// required backend first; session labels alone do not identify usable X11.
-pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(), &'static str> {
+/// Success can carry a note for the person, such as a missing layout letter.
+pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<Option<&'static str>, &'static str> {
+    let (key, note) = on_layout(shortcut);
     register_with(
         || {
             #[cfg(target_os = "linux")]
@@ -89,8 +110,71 @@ pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(
             #[cfg(not(target_os = "linux"))]
             Ok(())
         },
-        || app.global_shortcut().register(shortcut),
-    )
+        || app.global_shortcut().register(key),
+    )?;
+    if let Ok(mut registered) = app.state::<Registered>().0.lock() {
+        *registered = Some((shortcut, key));
+    }
+    Ok(note)
+}
+
+/// Move the shortcut when the person switches keyboard layout. objc2's
+/// notification observers need unsafe code, so check every two seconds, with
+/// at most one pending main-thread check (layout queries need the main thread).
+#[cfg(target_os = "macos")]
+pub(crate) fn follow_layout(app: &AppHandle) {
+    let handle = app.clone();
+    let pending = std::sync::Arc::new(AtomicBool::new(false));
+    let watcher = std::thread::Builder::new()
+        .name("keyboard-layout".to_owned())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                if pending.swap(true, Ordering::Relaxed) {
+                    continue;
+                }
+                let (task, done) = (handle.clone(), pending.clone());
+                if handle
+                    .run_on_main_thread(move || {
+                        relayout(&task);
+                        done.store(false, Ordering::Relaxed);
+                    })
+                    .is_err()
+                {
+                    pending.store(false, Ordering::Relaxed);
+                }
+            }
+        });
+    report(watcher, NativeIssue::Shortcut);
+}
+
+#[cfg(target_os = "macos")]
+fn relayout(app: &AppHandle) {
+    let Ok(mut registered) = app.state::<Registered>().0.lock() else {
+        return;
+    };
+    let Some((requested, current)) = *registered else {
+        return;
+    };
+    let (key, note) = on_layout(requested);
+    if key == current {
+        return;
+    }
+    let shortcuts = app.global_shortcut();
+    let _ = shortcuts.unregister(current);
+    let result = shortcuts.register(key).map_err(|_| SHORTCUT_REGISTRATION_FAILED);
+    *registered = Some((requested, key));
+    if let Ok(mut status) = app.state::<Mutex<ShortcutStatus>>().lock() {
+        status.registered = result.is_ok();
+        // A settings problem stays visible; only this shortcut's own notes change.
+        if status
+            .error
+            .as_deref()
+            .is_none_or(|error| [NO_KEY_TYPES_THE_LETTER, SHORTCUT_REGISTRATION_FAILED].contains(&error))
+        {
+            status.error = result.err().or(note).map(str::to_string);
+        }
+    }
 }
 
 fn register_with<E>(

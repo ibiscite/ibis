@@ -90,10 +90,10 @@ fn instance_action(args: &[String], visible: impl FnOnce() -> Option<bool>) -> I
     }
 }
 
-fn shortcut_registration(
+fn shortcut_registration<T>(
     wayland: bool,
-    register: impl FnOnce() -> Result<(), &'static str>,
-) -> Result<(), &'static str> {
+    register: impl FnOnce() -> Result<T, &'static str>,
+) -> Result<T, &'static str> {
     register().map_err(|error| {
         if wayland {
             "On Wayland, bind ibis toggle (or ibis-desktop toggle) in your desktop's keyboard settings"
@@ -162,6 +162,7 @@ fn main() {
         .manage(Pinned::default())
         .manage(sizing::Sizing::default())
         .manage(picker::PickerGeneration::default())
+        .manage(picker::Registered::default())
         .manage(notice::Notice::default())
         .manage(picker::FullScreenGuard::default())
         .manage(Mutex::new(ShortcutStatus::default()))
@@ -276,13 +277,14 @@ fn main() {
             let wayland = cfg!(target_os = "linux")
                 && (std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
                     || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()));
-            let registration_error = shortcut_registration(wayland, || register_shortcut(app.handle(), shortcut))
-                .err()
-                .map(str::to_string);
+            let registration = shortcut_registration(wayland, || register_shortcut(app.handle(), shortcut));
             let status = ShortcutStatus {
                 shortcut: label,
-                registered: registration_error.is_none(),
-                error: registration_error.or(setting_error),
+                registered: registration.is_ok(),
+                error: match registration {
+                    Ok(note) => setting_error.or(note.map(str::to_string)),
+                    Err(error) => Some(error.to_string()),
+                },
             };
             if let Some(error) = &status.error {
                 report(Err::<(), _>(error), NativeIssue::Shortcut);
@@ -290,6 +292,8 @@ fn main() {
             if let Ok(mut current) = app.state::<Mutex<ShortcutStatus>>().lock() {
                 *current = status;
             }
+            #[cfg(target_os = "macos")]
+            picker::follow_layout(app.handle());
             let login_items = login_item::for_app(app.handle());
             login_items.refresh();
             app.manage(login_items);
@@ -365,10 +369,13 @@ mod toggle_tests {
     #[test]
     fn wayland_toggle_guidance_preserves_working_shortcuts() {
         assert_eq!(shortcut_registration(true, || Ok(())), Ok(()));
-        let error = shortcut_registration(true, || Err("unavailable"));
+        let error = shortcut_registration::<()>(true, || Err("unavailable"));
         assert!(error.is_err_and(|message| message.contains("Wayland") && message.contains("ibis toggle")));
         assert_eq!(shortcut_registration(false, || Ok(())), Ok(()));
-        assert_eq!(shortcut_registration(false, || Err("unavailable")), Err("unavailable"));
+        assert_eq!(
+            shortcut_registration::<()>(false, || Err("unavailable")),
+            Err("unavailable")
+        );
     }
 
     #[test]
