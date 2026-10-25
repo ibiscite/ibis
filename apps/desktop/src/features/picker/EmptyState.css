@@ -32,3 +32,4 @@
 }
 @keyframes empty-spin { to { transform: rotate(1turn); } }
 @media (prefers-reduced-motion: reduce) { .empty-spinner { animation: none; } }
+:root[data-picker-hidden] .empty-spinner { animation-play-state: paused; }

@@ -18,6 +18,7 @@ const syntheticApi: PickerApi = {
   useZotero: async () => undefined,
   reloadLibrary: async () => undefined,
   hidePicker: async () => undefined,
+  pickerVisible: async () => true,
   setPinned: async () => undefined,
   quit: async () => undefined,
   onLibraryChanged: async () => () => undefined,
@@ -585,4 +586,14 @@ test("warning captures wait until the whole dismissal target fits above the noti
     size.mockRestore();
     document.documentElement.style.removeProperty("font-size");
   }
+});
+
+test("the update preset shows progress without any native update commands", async () => {
+  const nativeCalls: string[] = [];
+  mockIPC((command) => { nativeCalls.push(command); throw new Error("No native update"); });
+  const state = galleryStates.find((candidate) => candidate.id === "update-downloading");
+  expect(state).toBeTruthy();
+  render(<App {...galleryProvider(state!)} />);
+  expect((await screen.findByRole("progressbar")).getAttribute("aria-valuenow")).toBe("25");
+  expect(nativeCalls).toEqual([]);
 });
