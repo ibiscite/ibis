@@ -11,7 +11,7 @@ name: Preview builds
 #   fixed it fails on Windows and macOS, so it no longer runs after every push.
 # - Run manually (Actions → Preview builds → Run workflow) for a dry run:
 #   leave publication unchecked; packages stay in workflow artifacts.
-# - A maintainer's tag push, or Release Please's explicit dispatch at its tag,
+# - A tag push, by a maintainer or by Release Please's app at a release merge,
 #   verifies and publishes the packages (see RELEASING.md).
 #
 # Preview builds are unsigned: macOS builds are ad-hoc signed only and
