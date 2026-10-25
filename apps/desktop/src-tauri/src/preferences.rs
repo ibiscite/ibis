@@ -20,6 +20,13 @@ pub(crate) fn settings_problem(problem: &settings::SettingsError) -> &'static st
             "settings.json has an invalid Zotero library entry"
         }
         settings::SettingsError::NewerVersion(_) => "settings.json was written by a newer version of Ibis",
+        settings::SettingsError::Backup(error) => match error.as_ref() {
+            settings::SettingsError::NewerVersion(_) => "settings.json.bak was written by a newer version of Ibis",
+            settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
+                "settings.json.bak is not valid"
+            }
+            _ => "settings.json.bak could not be read",
+        },
     }
 }
 
@@ -27,7 +34,12 @@ pub(crate) fn settings_problem(problem: &settings::SettingsError) -> &'static st
 /// serde or operating-system details. Diagnostics keep the fixed description.
 fn settings_message(problem: &settings::SettingsError) -> String {
     match problem {
-        settings::SettingsError::InvalidZoteroLibraryEntry { .. } => problem.to_string(),
+        settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
+            problem.to_string().replacen("the settings file", "settings.json", 1)
+        }
+        settings::SettingsError::Backup(error) => {
+            settings_message(error).replacen("settings.json", "settings.json.bak", 1)
+        }
         _ => settings_problem(problem).to_string(),
     }
 }
@@ -35,21 +47,31 @@ fn settings_message(problem: &settings::SettingsError) -> String {
 /// This notice is for the interface only: its settings path must not be logged.
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
     loaded.problem.as_ref().map(|problem| {
+        if loaded.primary_read == settings::PrimaryRead::Missing && loaded.from_backup {
+            return format!(
+                "settings.json is missing; using the backup. The next save will restore settings.json and keep the backup unchanged. Settings file: {}",
+                path.display()
+            );
+        }
         let recovery = if loaded.from_backup { "the backup" } else { "defaults" };
         let recoverable = match problem {
             settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => true,
             settings::SettingsError::Unreadable(error) => error.kind() == std::io::ErrorKind::InvalidData,
-            settings::SettingsError::NewerVersion(_) => false,
+            settings::SettingsError::NewerVersion(_) | settings::SettingsError::Backup(_) => false,
         };
         let saving = if loaded.from_backup && recoverable {
             "The next save will keep the damaged file as settings.json.invalid-N and restore settings from the backup."
         } else {
             "Changes are not being saved while this problem remains."
         };
+        let problem_path = match problem {
+            settings::SettingsError::Backup(_) => path.with_extension("json.bak"),
+            _ => path.to_path_buf(),
+        };
         format!(
             "{}; using {recovery}. {saving} Settings file: {}",
             settings_message(problem),
-            path.display()
+            problem_path.display()
         )
     })
 }
@@ -359,6 +381,101 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn dangling_primary_notice_keeps_the_save_refusal_warning() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        let target = directory.path().join("synthetic-private-target");
+        std::os::unix::fs::symlink(&target, &file.path).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(file.path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
+        let loaded = settings::load(&file.path);
+        let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a recovery notice"));
+        assert!(notice.contains("settings.json could not be read; using the backup"));
+        assert!(notice.contains("Changes are not being saved while this problem remains."));
+        assert!(!notice.contains("The next save"));
+        assert!(!notice.contains("synthetic-private-target"));
+        assert_eq!(
+            file.save_preferences(PickerPreferences::from_settings(&loaded.settings), None)
+                .err(),
+            Some("settings.json could not be read".to_string())
+        );
+        assert_eq!(std::fs::read_link(&file.path).unwrap_or_else(|e| panic!("{e}")), target);
+        assert!(!target.exists());
+        assert_eq!(
+            std::fs::read(file.path.with_extension("json.bak")).unwrap_or_default(),
+            b"{}"
+        );
+    }
+
+    #[test]
+    fn missing_primary_notices_and_failed_saves_name_the_refused_backup() {
+        for (contents, expected) in [
+            (
+                br#"{"schema_version":99,"private":"synthetic-private-value"}"#.as_slice(),
+                "settings.json.bak was written by a newer version of Ibis",
+            ),
+            (
+                br#"{"copy_format":"synthetic-private-value"}"#.as_slice(),
+                "settings.json.bak is not valid",
+            ),
+            (b"\xff".as_slice(), "settings.json.bak could not be read"),
+            (
+                br#"{"library":{"zotero":["user",{"group":"synthetic-private-value"}]}}"#.as_slice(),
+                "settings.json.bak is not valid: Zotero library entry 2 must be \"user\" or {\"group\": <non-negative integer ID>}",
+            ),
+        ] {
+            let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+            let file = SettingsFile::new(directory.path().join("settings.json"));
+            let backup = file.path.with_extension("json.bak");
+            std::fs::write(&backup, contents).unwrap_or_else(|e| panic!("{e}"));
+            let loaded = settings::load(&file.path);
+            let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a warning"));
+            assert!(notice.starts_with(expected), "{notice}");
+            assert!(notice.contains("using defaults"));
+            assert!(notice.contains("Changes are not being saved"));
+            assert!(!notice.contains("synthetic-private-value"));
+            assert!(notice.ends_with(backup.to_string_lossy().as_ref()));
+            for _ in 0..2 {
+                assert_eq!(
+                    file.save_preferences(
+                        PickerPreferences::from_settings(&loaded.settings),
+                        Some(KeyFormat::Keys)
+                    )
+                    .err(),
+                    Some(expected.to_string())
+                );
+            }
+            assert!(!file.path.exists());
+            assert_eq!(std::fs::read(&backup).unwrap_or_else(|e| panic!("{e}")), contents);
+        }
+    }
+
+    #[test]
+    fn missing_primary_notice_explains_restoration_and_clears_after_a_successful_save() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        let backup = br#"{"copy_format":"typst","future_choice":[true,null]}"#;
+        std::fs::write(file.path.with_extension("json.bak"), backup).unwrap_or_else(|e| panic!("{e}"));
+        let loaded = settings::load(&file.path);
+        let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a recovery notice"));
+        assert!(notice.contains("settings.json is missing; using the backup"));
+        assert!(notice.contains("The next save will restore settings.json and keep the backup unchanged."));
+        assert!(!notice.contains("not being saved"));
+        assert!(!notice.contains("invalid-N"));
+        let saved = file
+            .save_preferences(PickerPreferences::from_settings(&loaded.settings), None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved, loaded.settings);
+        let restarted = settings::load(&file.path);
+        assert_eq!(restarted.settings, saved);
+        assert!(settings_notice(&file.path, &restarted).is_none());
+        assert_eq!(
+            std::fs::read(file.path.with_extension("json.bak")).unwrap_or_default(),
+            backup
+        );
+    }
+
+    #[test]
     fn unreadable_settings_report_no_operating_system_payload() {
         let loaded = settings::Loaded {
             settings: settings::Settings::default(),
@@ -467,7 +584,10 @@ mod tests {
                         std::fs::read(&backup).unwrap_or_else(|e| panic!("{e}")),
                         backup_contents
                     );
-                    assert!(!temporary.exists());
+                    assert_eq!(
+                        std::fs::read(&temporary).unwrap_or_default(),
+                        b"synthetic unfinished save"
+                    );
                     continue;
                 }
                 assert!(saved.is_err());
