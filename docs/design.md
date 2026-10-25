@@ -302,8 +302,9 @@ radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
 the keys and sit in one group named "Keys". With Alt held: "Add to citation ⇧↵",
 the Escape step ("Clear search Esc" or "Hide Esc"), then More. When the footer
 does not fit, drop Shortcuts first (More lists it), then shorten the status,
-then wrap. The status dot is `--status-dot-size`, centred on the tile column and
-the text's x-height; the status text starts on the title column [C3].
+then wrap. The status dot is `--status-dot-size`, at the footer's leading edge
+(in line with the tiles' edge) and centred on the text's x-height; the status
+text follows 12 px after it, as system status bars place an indicator.
 
 | Case | Footer | Dot |
 |---|---|---|

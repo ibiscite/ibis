@@ -298,8 +298,8 @@ test("menus highlight with a fill, never a ring, and the picker sheet has no men
   expect(menuCss).toMatch(/\.menu-item\[data-focused\] \{ background: var\(--menu-highlight\); color: var\(--menu-highlight-text\); \}/);
   expect(menuCss).toMatch(/\.menu-item \{[^}]*outline: none/);
   expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*outline: none/);
-  // The global :focus-visible ring would otherwise win on the list itself.
-  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\]:focus-visible \{ outline: none; \}/);
+  // The global :focus-visible ring and its halo would otherwise draw lines on the list.
+  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\]:focus-visible \{ outline: none; box-shadow: none; \}/);
   expect(styles).not.toMatch(/role="menu|menuitem/);
 });
 
