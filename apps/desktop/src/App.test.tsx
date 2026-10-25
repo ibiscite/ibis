@@ -3901,6 +3901,52 @@ test("Search as typed preserves the full query and every edit restores interpret
 });
 
 
+test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search preserves or resets its mode on %s", async (change) => {
+  const searched: api.SearchQuery[] = [];
+  const calls = backend({ search: ({ query }) => {
+    searched.push(query);
+    return { ...locatorReply(), interpretation: query.text && query.interpret_locators ? locatorReply().interpretation : null };
+  }, copy_citation: () => ({ text: "copied literal result", warnings: [] }) });
+  const now = vi.spyOn(performance, "now").mockReturnValue(1_000_000);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText("Search references") as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "Reference p 12" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Search as typed" }));
+    await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Reference p 12", interpret_locators: false }));
+    fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() => expect(searched.at(-1)).toEqual({ text: "", interpret_locators: true }));
+    expect(box.value).toBe("");
+    if (change === "edit") {
+      fireEvent.change(box, { target: { value: "Edited p 12" } });
+      await screen.findByText("Using page 12");
+      expect(searched.at(-1)).toEqual({ text: "Edited p 12", interpret_locators: true });
+      fireEvent.change(box, { target: { value: "" } });
+    }
+    if (change === "copy") {
+      await screen.findByText("References");
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      fireEvent.keyDown(box, { key: "Enter" });
+      await screen.findByText("Copied", { selector: ".copy-notice p" });
+    } else fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() => expect(calls).toContain("hide_picker"));
+    await act(async () => { await emit("picker:hidden"); });
+    now.mockReturnValue(1_000_000 + (change === "expiry" ? 61_000 : 30_000));
+    await act(async () => { await emit("picker:shown"); });
+    const text = change === "reopen" ? "Reference p 12" : "";
+    await waitFor(() => expect(box.value).toBe(text));
+    await waitFor(() => expect(searched.at(-1)).toEqual({ text, interpret_locators: change !== "reopen" }));
+    expect(screen.queryByText("Using page 12")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
+    expect(document.activeElement).toBe(box);
+    expect([box.selectionStart, box.selectionEnd]).toEqual([0, text.length]);
+    // A real edit always starts interpreting again, including after restoration.
+    fireEvent.change(box, { target: { value: "Reference p 12 " } });
+    await screen.findByText("Using page 12");
+    expect(searched.at(-1)).toEqual({ text: "Reference p 12 ", interpret_locators: true });
+  } finally { now.mockRestore(); }
+});
+
 test.each(Object.keys(copyFormatNames) as api.CopyFormat[])("%s previews and copies the captured locator, including with output hidden", async (format) => {
   const preview = vi.fn(() => ({ text: "key with locator", warnings: [] }));
   const copy = vi.fn(() => ({ text: "key with locator", warnings: [] }));

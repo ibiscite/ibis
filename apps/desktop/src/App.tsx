@@ -110,7 +110,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // When the picker last went away; the search waits a minute, in memory only.
   const hiddenAt = useRef<number | null>(null);
   // A search Escape cleared comes back on reopening within the same minute.
-  const escapedQuery = useRef<string | null>(null);
+  const escapedQuery = useRef<{ text: string; interpretLocators: boolean } | null>(null);
   const [restored, setRestored] = useState(0);
   // Each completed copy owns only the interaction that started it. Map identity
   // also distinguishes removing and re-adding the same selected references.
@@ -241,7 +241,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       else if (hiddenAt.current !== null && escapedQuery.current !== null) {
         const escaped = escapedQuery.current;
         escapedQuery.current = null;
-        setQuery((now) => (now === "" ? escaped : now));
+        setQuery((now) => (now === "" ? escaped.text : now));
+        setInterpretLocators(escaped.interpretLocators);
         setRestored((n) => n + 1);
       }
       hiddenAt.current = null;
@@ -654,7 +655,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     // Escape steps back one layer, retaining the chosen references.
     if (menuOpen) closeMenu(true);
     else if (query) {
-      escapedQuery.current = query;
+      escapedQuery.current = { text: query, interpretLocators };
       setQuery("");
       setInterpretLocators(true);
       input.current?.focus();
