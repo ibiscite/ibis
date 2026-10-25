@@ -67,3 +67,9 @@ test("hostile Markdown delimiter runs are bounded", () => {
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { timeout: 1500, killSignal: "SIGKILL", encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr || result.error?.message);
 });
+
+
+test("invalid baseline counts cannot silence broken references", () => {
+  const problems = check("[bad](missing.md)");
+  for (const baseline of [null, [], { [problems[0]]: "not-a-number" }, { [problems[0]]: 0 }, { bogus: 1 }, { [problems[0]]: Number.MAX_SAFE_INTEGER + 1 }]) assert.match(baselineErrors(problems, baseline)[0], /baseline.*positive.*integer/i);
+});

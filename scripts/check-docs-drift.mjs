@@ -114,6 +114,9 @@ export function docProblems(doc, text, files, crates) {
 }
 
 export function baselineErrors(problems, baseline) {
+  const validKey = (key) => /^(?:AGENTS\.md|CONTRIBUTING\.md|docs\/[^/]+\.md): (?:path|link|node script|cargo package) .+$/.test(key) && !/[\x00-\x1f]/.test(key);
+  if (!baseline || typeof baseline !== "object" || Array.isArray(baseline) || ![Object.prototype, null].includes(Object.getPrototypeOf(baseline))
+    || Object.entries(baseline).some(([key, count]) => !validKey(key) || !Number.isSafeInteger(count) || count < 1)) return ["Docs-drift baseline needs valid reference keys and positive safe-integer counts; fix scripts/docs-drift-baseline.json."];
   const counts = {};
   for (const problem of problems) counts[problem] = (counts[problem] ?? 0) + 1;
   return [...Object.entries(counts).filter(([key, n]) => n > (baseline[key] ?? 0)).map(([key]) => `${key}: correct this reference to an existing repository path or package.`),
