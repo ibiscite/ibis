@@ -8,7 +8,7 @@
   "apps/desktop/src-tauri/src/preferences.rs": 679,
   "apps/desktop/src-tauri/src/updater.rs": 850,
   "apps/desktop/src/App.test.tsx": 4222,
-  "apps/desktop/src/App.tsx": 900,
+  "apps/desktop/src/App.tsx": 842,
   "apps/desktop/src/platformLooks.test.tsx": 924,
   "brand/build.py": 658,
   "crates/ibis-core/src/bibtex/convert.rs": 1406,

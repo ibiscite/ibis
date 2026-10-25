@@ -34,7 +34,8 @@ function git(args, allowFailure = false) {
   const result = spawnSync("git", ["--literal-pathspecs", "-c", "core.fsmonitor=false", ...args], { encoding: "utf8", timeout: 30000, killSignal: "SIGKILL", maxBuffer: 32 * 1024 * 1024 });
   if (result.status !== 0 || result.error) {
     if (allowFailure) return null;
-    throw new Error("File-size check cannot read Git metadata; fetch origin/main and retry.");
+    const detail = result.stderr?.trim() || result.error?.message || `Git exited with status ${result.status}.`;
+    throw new Error(`File-size check cannot read Git metadata. Fix the Git error below, then rerun the check:\n${detail}`);
   }
   return result.stdout;
 }

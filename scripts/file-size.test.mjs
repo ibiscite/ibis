@@ -78,3 +78,40 @@ test("CLI enforces and writes reductions against the committed base", (t) => {
 test("colliding normalized filenames cannot overwrite a larger count", () => {
   assert.ok(sizeErrors({ "src/a.ts": text(601), "src\\a.ts": text(1) }, {}, {}).length);
 });
+
+
+test("CI trusts only its workspace and Git ownership failures stay actionable", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "ibis-size-ownership-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "scripts"));
+  writeFileSync(join(root, "scripts/file-size-baseline.json"), "{}");
+  const env = { ...process.env };
+  delete env.GITHUB_EVENT_PATH;
+  for (const key of Object.keys(env)) if (key.toUpperCase().startsWith("GIT_")) delete env[key];
+  const git = (...args) => {
+    const result = spawnSync("git", ["-c", "core.hooksPath=", "-c", "commit.gpgsign=false", "-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid", ...args], { cwd: root, env, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
+  };
+  git("init", "-q"); git("add", "."); git("commit", "-qm", "synthetic ownership case");
+  git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"));
+  const isolated = { ...env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(root, "no-config"), GIT_TEST_ASSUME_DIFFERENT_OWNER: "1" };
+  const run = (runEnv) => spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: runEnv, encoding: "utf8" });
+  const refused = run(isolated);
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /dubious ownership/i, "the underlying Git failure must be visible");
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const step = workflow.match(/- name: Script tests, UI import boundary and style tokens\n([\s\S]*?)(?=\n      - name:)/)?.[1] ?? "";
+  const configured = { ...isolated };
+  for (const key of ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"]) {
+    const value = step.match(new RegExp(`^ +${key}: (.+)$`, "m"))?.[1];
+    assert.ok(value, `the script-tests step needs ${key}`);
+    configured[key] = value.replace("${{ github.workspace }}", root);
+  }
+  assert.equal(run(configured).status, 0, "the workflow's exact scoped setting must admit its workspace");
+  const other = mkdtempSync(join(tmpdir(), "ibis-other-ownership-"));
+  t.after(() => rmSync(other, { recursive: true, force: true }));
+  git("init", "-q", other);
+  const unrelated = spawnSync("git", ["-C", other, "status", "--porcelain"], { env: configured, encoding: "utf8" });
+  assert.notEqual(unrelated.status, 0, "another repository must remain untrusted");
+  assert.match(unrelated.stderr, /dubious ownership/i);
+});
