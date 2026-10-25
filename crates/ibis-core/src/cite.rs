@@ -14,6 +14,7 @@ pub use input::{InputError, MAX_INPUT_BYTES, MAX_INPUT_ITEMS, read_items};
 
 /// Kind of locator ("p. 12", "chap. 3").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum LocatorLabel {
     Page,
@@ -48,6 +49,7 @@ impl LocatorLabel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(deny_unknown_fields)]
 pub struct Locator {
     pub label: LocatorLabel,

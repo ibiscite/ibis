@@ -21,6 +21,8 @@ test("selection identity is the record, not its key or position", () => {
   expect(idKey({ source: "a", native_key: "b" })).not.toBe(idKey({ source: "a\u0000b", native_key: "" }));
   expect(choiceKey([record()])).not.toBe(choiceKey([record({ revision: "2" })]));
   expect(choiceKey([record({ key: "x" })])).toBe(choiceKey([record({ key: "y" })]));
+  expect(choiceKey([{ ...record(), locator: { label: "page", value: "12" } }])).not.toBe(choiceKey([{ ...record(), locator: { label: "page", value: "9" } }]));
+  expect(choiceKey([{ ...record(), locator: { label: "page", value: "12" } }])).not.toBe(choiceKey([{ ...record(), locator: { label: "chapter", value: "12" } }]));
   expect(sameLibrary("user", "user")).toBe(true);
   expect(sameLibrary({ group: 3 }, { group: 3 })).toBe(true);
   expect(sameLibrary({ group: 3 }, "user")).toBe(false);

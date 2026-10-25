@@ -4,6 +4,8 @@ import { provisional, type FormattedCitation } from "../../format/formatted";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
+import type { CitationReference } from "./choice";
+import { LocatorToken } from "../../ui/LocatorToken";
 import { Button } from "../../ui/Button";
 import { beak } from "../../brand";
 import "./CitationShelf.css";
@@ -29,12 +31,13 @@ export function chipLabels(records: SearchResult[]): string[] {
 /** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, removeLabel, onRemove, style, keys, shown, focusable, outputRef }: {
+export function CitationShelf({ announce, selected, removeLabel, onRemove, onRemoveLocator, style, keys, shown, focusable, outputRef }: {
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
-  selected: Map<string, SearchResult>;
+  selected: Map<string, CitationReference>;
   removeLabel: (r: SearchResult) => string;
   onRemove: (r: SearchResult) => void;
+  onRemoveLocator?: (r: CitationReference) => void;
   /** The citation style, when one is chosen. */
   style: StyleId | null;
   /** True for a citation-key syntax, which is shown in monospace. */
@@ -107,6 +110,8 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, style
               {shownChips.map((r, i) => (
                 <li key={keysOf[i]} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
                   <bdi className="chip-label">{labels[i]}</bdi>
+                  {r.locator && onRemoveLocator && <LocatorToken text={`${r.locator.label} ${r.locator.value}`}
+                    removeLabel={pickerText.removeLocator(r.locator.label, r.locator.value, r.key)} onRemove={() => onRemoveLocator(r)} />}
                   <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
                 </li>
               ))}

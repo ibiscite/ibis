@@ -260,3 +260,59 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
     await context.close();
   } finally { await browser.close(); }
 });
+
+test("browser captures, explicitly updates and removes locators across searches", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const { loadPlaywright } = await import("./gallery-contact-sheet.mjs");
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 700 }, reducedMotion: "reduce" });
+    await page.goto(process.env.IBIS_WEBSITE_URL);
+    const input = page.getByRole("combobox", { name: "Search the made-up library" }), output = page.locator(".picker-shelf code");
+    await input.fill("okafor 2023 p. 12");
+    assert.equal(await page.locator(".picker-locator bdi").textContent(), "Using page 12");
+    await input.dispatchEvent("keydown", { key: "Enter", shiftKey: true, isComposing: true, bubbles: true });
+    assert.equal(await page.locator(".tile.is-added").count(), 0, "composition never adds a reference");
+    await input.press("Shift+Enter");
+    await input.fill("nakamura ch. III"); await input.press("Shift+Enter");
+    assert.equal(await output.textContent(), "[@okafor2023, p. 12; @nakamura2024, chap. III]");
+    await input.fill("okafor 2023 p. 19");
+    assert.equal(await output.textContent(), "[@okafor2023, p. 12; @nakamura2024, chap. III]");
+    await input.press("Enter");
+    await page.getByRole("button", { name: "Apply locator to okafor2023", exact: true }).click();
+    assert.equal(await output.textContent(), "[@okafor2023, p. 19; @nakamura2024, chap. III]");
+    await page.getByRole("button", { name: "Paste the copied citation into the sentence", exact: true }).click();
+    assert.equal(await page.locator("[data-result] code").textContent(), "[@okafor2023, p. 12; @nakamura2024, chap. III]", "copy retains its captured contexts");
+    await page.getByRole("button", { name: "Remove page 19 from okafor2023", exact: true }).click();
+    assert.equal(await output.textContent(), "[@okafor2023; @nakamura2024, chap. III]");
+    assert.equal(await page.locator('.tile[aria-pressed="true"]').count(), 2, "offscreen selected references stay selected");
+    await input.press("Shift+Enter"); await input.press("Shift+Enter");
+    assert.equal(await output.textContent(), "[@nakamura2024, chap. III; @okafor2023, p. 19]", "remove and readd captures the new locator at the end");
+    await page.getByRole("button", { name: "Search as typed", exact: true }).click();
+    assert.equal(await input.inputValue(), "okafor 2023 p. 19");
+    assert.equal(await page.locator(".picker-empty").isVisible(), true);
+    assert.equal(await output.textContent(), "[@nakamura2024, chap. III; @okafor2023, p. 19]", "literal search preserves captured contexts");
+    await input.fill("okafor 2023 p. 20");
+    assert.equal(await page.locator(".picker-locator bdi").textContent(), "Using page 20");
+    await page.getByRole("combobox", { name: "Copy format" }).selectOption("keys");
+    assert.equal(await output.textContent(), "nakamura2024, okafor2023");
+    assert.match(await page.getByRole("status").textContent(), /bare keys cannot carry page numbers/);
+    await page.close();
+    const touch = await browser.newPage({ viewport: { width: 320, height: 650 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" });
+    await touch.goto(process.env.IBIS_WEBSITE_URL);
+    await touch.locator(".picker-panel").evaluate(e => { e.dir = "rtl"; });
+    const touchInput = touch.getByRole("combobox", { name: "Search the made-up library" });
+    const value = `${"1, ".repeat(18)}2`;
+    await touchInput.fill(`okafor pp ${value}`);
+    await touch.getByRole("button", { name: "Add", exact: true }).click();
+    const remove = touch.getByRole("button", { name: `Remove page ${value} from okafor2023`, exact: true });
+    assert.equal(await remove.isVisible(), true);
+    assert.ok(await touch.locator(".locator-token").evaluate(e => e.getBoundingClientRect().width <= 256 && e.scrollWidth <= e.clientWidth + 1), "long tokens stay bounded in RTL");
+    assert.ok(await touch.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await touch.emulateMedia({ forcedColors: "active" });
+    await remove.click();
+    assert.equal(await touch.locator(".tile.is-added").count(), 1);
+    assert.equal(await touch.locator(".picker-shelf code").textContent(), "[@okafor2023]");
+    await touch.close();
+  } finally { await browser.close(); }
+});

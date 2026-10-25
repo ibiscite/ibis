@@ -692,7 +692,7 @@ test("the alias-only migration exposes the complete design-system role inventory
   }
 });
 
-// CSSOM audits the live root, menu, notice and shelf scopes. Synthetic local
+// CSSOM audits the live root, menu, notice, shelf and nested locator scopes. Synthetic local
 // fixtures also exercise inheritance and pointer modes without pooling declarations.
 // This bounded dependency audit is not a CSS cascade/specificity interpreter;
 // browser comparisons verify the actual winning values and rendered appearance.
@@ -728,7 +728,7 @@ function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = 
         return (!prefix || doc.documentElement.matches(prefix)) && (!look || look === platform);
       });
       if (!active) continue;
-      const scope = /\.ui-button\[data-pointer-only\]/.test(selector) ? "pointer-button" : /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
+      const scope = /\.ui-button\[data-pointer-only\]/.test(selector) ? "pointer-button" : /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.locator-token(?:\b|-)/.test(selector) ? "locator-token" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
       const values: [string, string][] = Array.from(styled.style).map((name) => [name, styled.style.getPropertyValue(name)]);
       if (scope === "root" && values.some(([name]) => name.startsWith("--")) && !selector.split(/,(?![^()]*\))/).every((part) => /^:root\S*$/.test(part.trim()))) throw new Error(`Unmodeled token scope: ${selector}`);
       blocks.push({ file, selector, scope, values });
@@ -765,8 +765,12 @@ function tokenScopes(blocks: TokenBlock[]) {
   const raw = (scope: string) => new Map(blocks.filter((block) => block.scope === scope).flatMap((block) => block.values.filter(([name]) => name.startsWith("--"))));
   const root = raw("root");
   // Inherited custom properties resolve on the parent, before child overrides.
-  const inherited = [...root].map(([name, value]) => [name, resolveToken(value, root) ?? value] as [string, string]);
-  return new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search", "pointer-button"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+  const inherit = (parent: Map<string, string>) => [...parent].map(([name, value]) => [name, resolveToken(value, parent) ?? value] as [string, string]);
+  const inherited = inherit(root);
+  const scopes = new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search", "pointer-button"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+  // Locator controls live inside shelf chips and inherit its fine/coarse target.
+  scopes.set("locator-token", new Map([...inherit(scopes.get("shelf")!), ...raw("locator-token")]));
+  return scopes;
 }
 
 test.each(["macos", "windows", "linux"])("every application var resolves on %s in its active mode, without alias cycles", (platform) => {
@@ -807,6 +811,21 @@ test("the var audit distinguishes fallbacks, inactive definitions and cycles inc
   expect(resolveToken("var(--a)", tokenScopes(tokenBlocks(overrides, "macos")).get("root")!)).toBe("4px");
   // No external variable contracts are currently needed. Optional browser/native
   // values such as --vibrancy-tint and --notice-from must carry real fallbacks.
+});
+
+test("locator tokens inherit resolved shelf values without leaking their local aliases", () => {
+  const scopes = tokenScopes(tokenBlocks({ fixture: `:root { --value: 4px; --control-min-size: 2rem; }
+    .shelf { --value: 8px; --parent-alias: var(--value); --chip-hit-size: 2.75rem; }
+    .shelf .locator-token { --value: 12px; --local-only: 16px; --locator-token-hit-size: var(--chip-hit-size, var(--control-min-size)); }` }));
+  const locator = scopes.get("locator-token")!;
+  expect(resolveToken("var(--value)", scopes.get("root")!)).toBe("4px");
+  expect(resolveToken("var(--value)", scopes.get("shelf")!)).toBe("8px");
+  expect(resolveToken("var(--value)", locator)).toBe("12px");
+  expect(resolveToken("var(--parent-alias)", locator)).toBe("8px");
+  expect(resolveToken("var(--locator-token-hit-size)", locator)).toBe("2.75rem");
+  for (const scope of ["root", "shelf"]) expect(resolveToken("var(--local-only)", scopes.get(scope)!)).toBeNull();
+  const standalone = tokenScopes(tokenBlocks({ fixture: ":root { --control-min-size: 2rem; } .locator-token { --locator-token-hit-size: var(--chip-hit-size, var(--control-min-size)); }" }));
+  expect(resolveToken("var(--locator-token-hit-size)", standalone.get("locator-token")!)).toBe("2rem");
 });
 
 /** Only arithmetic used by spacing declarations; 16 px/rem is the unscaled grid. */
@@ -864,9 +883,17 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
     const scope = tokenScopes(tokenBlocks(local, "windows", "normal", true, false, false, coarse)).get("chip-group")!;
     expect(gridPixels(resolveToken("var(--chip-group-target)", scope)!)).toBe(target);
     expect(gridPixels(resolveToken("max(var(--space-1), calc(var(--chip-group-target) - var(--chip-height)))", scope)!)).toBe(gap);
-    const shelf = tokenScopes(tokenBlocks(appSheets, "windows", "normal", true, false, false, coarse)).get("shelf")!;
+    const scopes = tokenScopes(tokenBlocks(appSheets, "windows", "normal", true, false, false, coarse));
+    const shelf = scopes.get("shelf")!;
     expect(gridPixels(resolveToken("var(--chip-hit-size)", shelf)!)).toBe(target);
     expect(gridPixels(resolveToken("calc((var(--chip-hit-size) - var(--chip-height)) / 2)", shelf)!)).toBe(gap / 2);
+    const locator = scopes.get("locator-token")!;
+    expect(gridPixels(resolveToken("var(--locator-token-hit-size)", locator)!)).toBe(target);
+    const locatorCss = appSheets["ui/LocatorToken.css"]!;
+    const reserve = rules(locatorCss, ".locator-token").match(/padding-inline-end:\s*([^;]+)/)![1]!;
+    const inset = rules(locatorCss, ".locator-token .locator-token-remove::after").match(/inset:\s*([^;]+)/)![1]!;
+    expect(gridPixels(resolveToken(reserve, locator)!)).toBe(gap);
+    expect(gridPixels(resolveToken(inset, locator)!)).toBe(-gap / 2);
   }
   expect(opticalSpacing({ file: "fixture", selector: ".other", scope: "root", values: [] }, "padding", "1px")).toBeFalsy();
 });

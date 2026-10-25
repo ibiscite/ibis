@@ -264,3 +264,15 @@ test("RTL mirrors the beak through its HTML shelf direction", () => {
     expect(getComputedStyle(container.querySelector("svg.shelf-mark")!).transform).toBe("scaleX(-1)");
   } finally { sheet.remove(); }
 });
+
+
+test("a captured locator has a separate removal action naming its owning reference", () => {
+  const reference = { ...record("a"), locator: { label: "page" as const, value: "12–15" } };
+  const onRemove = vi.fn(), onRemoveLocator = vi.fn();
+  render(shelf({ selected: chosen([reference]), onRemove, onRemoveLocator }));
+  expect(screen.getByText("page 12–15").tagName).toBe("BDI");
+  fireEvent.click(screen.getByRole("button", { name: "Remove page 12–15 from a" }));
+  expect(onRemoveLocator).toHaveBeenCalledExactlyOnceWith(reference);
+  expect(onRemove).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Remove a" })).toBeTruthy();
+});
