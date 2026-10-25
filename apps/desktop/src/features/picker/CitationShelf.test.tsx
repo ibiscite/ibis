@@ -174,8 +174,9 @@ test("the output is one line in text colours: keys in monospace, failures and pe
   expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status").textContent).toBe("Formatting…");
   rerender(shelf({ keys: false, style: "apa", shown: "failed" }));
   expect(screen.getByRole("alert").textContent).toMatch(/could not be formatted/);
-  rerender(shelf({ keys: false, style: "ieee", shown: { markup: [], text: "[1]", html: "", warnings: ["Missing year"] } }));
-  expect(screen.getByText("Numbers may change")).toBeTruthy();
+  rerender(shelf({ keys: false, style: "ieee", shown: { markup: [], text: "A. Garcia, “Synthetic,” 2021.", html: "", warnings: ["Missing year"] } }));
+  expect(screen.getByText("Reference entry")).toBeTruthy();
+  expect(screen.getByText("IEEE numbers depend on your whole document, so Ibis copies the reference entry instead.")).toBeTruthy();
   expect(screen.getByText("1 warning")).toBeTruthy();
   expect(screen.getByText("Missing year")).toBeTruthy();
 });
