@@ -47,6 +47,7 @@ const steps = [
   // All desktop unit tests, including the generated-contract freshness check.
   ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"]],
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],
+  ["Desktop: hook dependencies", "pnpm", ["lint"], desktop],
   ["Desktop: interface tests", "pnpm", ["test"], desktop],
   ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings"]],
 ];

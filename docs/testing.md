@@ -48,6 +48,9 @@ import-boundary suite that needs those packages; Web CI and local full checks
 retain it. Existing embedded native self-tests and runtime checks still run.
 `node scripts/style-lint.mjs` (in the full check and Web CI) fails on a raw colour
 or px size in desktop CSS outside `tokens.css`; existing ones are allowlisted for #1033.
+`pnpm -C apps/desktop lint` (in the full check and Web CI) runs Biome with only the
+React hook rules: complete effect dependencies and hooks at the top level. A
+deliberate trigger-only dependency list carries a `biome-ignore` comment that says why.
 
 ## Focused harnesses
 
