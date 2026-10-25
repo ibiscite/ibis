@@ -187,17 +187,20 @@ pub enum SettingsError {
     InvalidZoteroLibraryEntry { position: usize },
     #[error("the settings file was written by a newer version of Ibis (format {0}); it was left unchanged")]
     NewerVersion(u32),
+    /// A refused backup when the primary entry is absent; retain its error source.
+    #[error("settings.json.bak: {0}")]
+    Backup(#[source] Box<SettingsError>),
 }
 
 /// The outcome of the existing primary-file read, independent of parsing or backup recovery.
 /// This is in-memory provenance, never a persisted setting or raw diagnostic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PrimaryRead {
-    /// The read returned NotFound; the backup was tried before using defaults.
+    /// The read and entry metadata returned NotFound; the backup was tried before defaults.
     Missing,
     /// UTF-8 contents were read; `Loaded::problem` says whether they were valid.
     Present,
-    /// The read failed for another reason; normal backup recovery was attempted.
+    /// The read failed without confirming an absent entry; backup recovery was attempted.
     Unreadable,
 }
 
@@ -265,7 +268,12 @@ fn v1_to_v2(mut value: Value) -> Value {
 pub fn load(path: &Path) -> Loaded {
     let (primary_read, primary) = match read_regular(path) {
         Ok(text) => (PrimaryRead::Present, parse(&text)),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => (PrimaryRead::Missing, Err(SettingsError::Unreadable(e))),
+        Err(e)
+            if e.kind() == io::ErrorKind::NotFound
+                && fs::symlink_metadata(path).is_err_and(|e| e.kind() == io::ErrorKind::NotFound) =>
+        {
+            (PrimaryRead::Missing, Err(SettingsError::Unreadable(e)))
+        }
         Err(e) => (PrimaryRead::Unreadable, Err(SettingsError::Unreadable(e))),
     };
     match primary {
@@ -286,7 +294,7 @@ pub fn load(path: &Path) -> Loaded {
                 if primary_read == PrimaryRead::Missing {
                     let absent = matches!(&error, SettingsError::Unreadable(e) if e.kind() == io::ErrorKind::NotFound)
                         && fs::symlink_metadata(&backup_path).is_err_and(|e| e.kind() == io::ErrorKind::NotFound);
-                    problem = (!absent).then_some(error);
+                    problem = (!absent).then_some(SettingsError::Backup(Box::new(error)));
                 }
                 Settings::default()
             });
@@ -307,8 +315,14 @@ pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
 }
 
 fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<(), SettingsError> {
-    if let Some(SettingsError::NewerVersion(v)) = load(path).problem {
-        return Err(SettingsError::NewerVersion(v));
+    if let Some(problem) = load(path).problem {
+        let source = match &problem {
+            SettingsError::Backup(error) => error.as_ref(),
+            _ => &problem,
+        };
+        if matches!(source, SettingsError::NewerVersion(_)) {
+            return Err(problem);
+        }
     }
     let temporary = path.with_extension("json.tmp");
     let backup = backup_path(path);
@@ -548,12 +562,21 @@ mod tests {
                 .collect();
             assert_eq!(fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")), bytes);
             assert!(!path.exists());
+            for result in &attempts {
+                let error = result
+                    .as_ref()
+                    .err()
+                    .unwrap_or_else(|| panic!("expected a refused backup"));
+                assert!(error.to_string().contains("settings.json.bak"));
+            }
             assert!(
                 attempts
                     .into_iter()
-                    .all(|result| matches!(result, Err(SettingsError::NewerVersion(99))))
+                    .all(|result| matches!(result, Err(SettingsError::Backup(error)) if matches!(*error, SettingsError::NewerVersion(99))))
             );
-            assert!(matches!(load(&path).problem, Some(SettingsError::NewerVersion(99))));
+            assert!(
+                matches!(load(&path).problem, Some(SettingsError::Backup(error)) if matches!(*error, SettingsError::NewerVersion(99)))
+            );
         }
     }
 
@@ -564,8 +587,14 @@ mod tests {
             let path = directory.path().join("settings.json");
             assert!(load(&path).problem.is_none());
             fs::write(backup_path(&path), bytes).unwrap_or_else(|e| panic!("{e}"));
-            assert!(load(&path).problem.is_some());
-            assert!(update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).is_err());
+            let problem = load(&path)
+                .problem
+                .unwrap_or_else(|| panic!("expected a refused backup"));
+            assert!(problem.to_string().contains("settings.json.bak"));
+            let error = update(&path, |s| s.copy_format = Some(KeyFormat::Keys))
+                .err()
+                .unwrap_or_else(|| panic!("expected a failed save"));
+            assert!(error.to_string().contains("settings.json.bak"));
             assert!(!path.exists());
             assert_eq!(fs::read(backup_path(&path)).unwrap_or_default(), bytes);
         }
@@ -698,7 +727,9 @@ mod tests {
         let target = directory.path().join("absent.json");
         std::os::unix::fs::symlink(&target, &path).unwrap_or_else(|e| panic!("{e}"));
         fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
-        assert!(load(&path).from_backup);
+        let loaded = load(&path);
+        assert!(loaded.from_backup);
+        assert_eq!(loaded.primary_read, PrimaryRead::Unreadable);
         assert!(update(&path, |_| {}).is_err());
         assert_eq!(fs::read_link(&path).unwrap_or_else(|e| panic!("{e}")), target);
         assert!(!target.exists());
