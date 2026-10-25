@@ -2,7 +2,8 @@ import * as nativeApi from "./api";
 import { copiedNoticeText, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { KEY_TABLE, shortcutLabel, type KeyBinding } from "./keys";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LibrarySetup } from "./LibrarySetup";
+import { LibrarySetup, WritingSetup } from "./LibrarySetup";
+import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
 import { formatCitation, type FormattedCitation } from "./format/formatted";
@@ -539,6 +540,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [clickCopy, chosenKey, shown, queryKey]);
 
   const busy = library?.state === "loading" || library?.state === "reloading";
+  // First run, step 2: once a library first opens after none was chosen, ask
+  // once where the person writes, which picks the copy format [C12].
+  const [askWriting, setAskWriting] = useState(false);
+  const sawNoLibrary = useRef(false);
+  useEffect(() => {
+    if (library?.state === "none") sawNoLibrary.current = true;
+    else if (library?.has_snapshot && library.state === "loaded" && sawNoLibrary.current) {
+      sawNoLibrary.current = false;
+      setAskWriting(true);
+    }
+  }, [library?.state, library?.has_snapshot]);
+  const showWriting = askWriting && !busy && !query && Boolean(library?.has_snapshot);
+  // A library that could not be opened, with nothing earlier to search.
+  const blocked = library?.state === "error" && !library.has_snapshot;
 
   // Zotero libraries: the ones chosen, and the groups Zotero offers, listed
   // when the menu opens or when results come from several libraries.
@@ -641,14 +656,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A formatted citation still being made, or one that failed, is not copied.
-  const enterAction = chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
+  const enterAction = showWriting || chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
     : chosen.length > 1 ? keyText.copySeveralAs(chosen.length, choiceName(format)) : keyText.copyAs(choiceName(format));
   const highlighted = current[active];
   const usingLocator = current === results && interpretLocators ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator }]);
-  const shiftEnterAction = highlighted
+  const shiftEnterAction = highlighted && !showWriting
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
   const escapeStep = () => {
@@ -666,19 +681,22 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (highlighted) toggle(highlighted);
     input.current?.focus();
   };
-  const emptyState = library !== undefined && (busy || results.length === 0 && !error && !library?.error) ? (
+  const writingStep = showWriting ? (
+    <div className="empty-state">
+      <WritingSetup format={format} shortcut={shortcut?.registered ? shortcutLabel(shortcut.shortcut, isMac) : null}
+        choose={(choice) => { chooseFormat(choice); setAskWriting(false); input.current?.focus(); }} />
+    </div>
+  ) : null;
+  const emptyState = writingStep ?? (library !== undefined && (busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); setInterpretLocators(true); input.current?.focus(); }}
       onSearchAll={searchAllLibraries}
       onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
       setup={
-        <LibrarySetup api={setupApi} perform={perform}
-          writing={{ format, formatted: Boolean(cslItems && copyFormatted), choose: chooseFormat }}
-          shortcut={shortcut?.registered ? shortcutLabel(shortcut.shortcut, isMac) : null}
-          startAtLogin={loginItemOffered && startAtLogin ? { name: startAtLogin.name, enabled: startAtLogin.enabled, toggle: toggleStartAtLogin } : undefined} />
+        (focus) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} />
       } />
-  ) : null;
+  ) : null);
 
   // Size follows content (C10): only results, a citation and overlays need the results height.
   const main = useRef<HTMLElement>(null);
@@ -739,7 +757,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             e.preventDefault();
             return;
           }
-          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          if (e.key === "ArrowDown" && (results.length === 0 || writingStep) && focusChoices()) {
+            e.preventDefault();
+          } else if (writingStep && e.key === "Enter") {
+            // Nothing to copy until the writing step is answered or a search is typed.
+            e.preventDefault();
+          } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
             followKeyboard.current = true;
             const step = e.key === "ArrowDown" ? 1 : -1;
@@ -752,8 +775,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             void copy();
           }
         }}
-        expanded={results.length > 0}
-        activeDescendant={results[active] ? `result-${active}` : undefined}
+        expanded={results.length > 0 && !writingStep}
+        activeDescendant={!writingStep && results[active] ? `result-${active}` : undefined}
         format={format}
         showFormat={library === null || Boolean(library?.has_snapshot)}
         styles={Boolean(cslItems && copyFormatted)}
@@ -788,14 +811,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         </p>
       </div>}
       <div className="results-area" ref={resultArea}>
-        {library?.has_snapshot && results.length > 0 && !busy && <div className="results-heading" aria-hidden="true">
+        {library?.has_snapshot && results.length > 0 && !busy && !showWriting && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
-          {announcement}
+          {showWriting ? "" : announcement}
         </p>
         {busy && emptyState}
-        <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
+        {!writingStep && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
           libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
           onChoose={(i, r, action) => {
             // Rows of an earlier query, still shown while a newer search
@@ -825,7 +848,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             setActive(i);
             toggle(r);
             input.current?.focus();
-          }} />
+          }} />}
         {!busy && emptyState}
       </div>
       </div>
@@ -833,7 +856,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         toggle(r);
         input.current?.focus({ preventScroll: true });
       }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
-        shown={displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
+        shown={showWriting ? undefined : displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: () => { void copy(); }, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
