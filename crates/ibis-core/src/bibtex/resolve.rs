@@ -527,7 +527,7 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
-        merged.extend(merge_dates(&sources));
+        merged.extend(merge_dates(&sources, &mut walk.problems));
         let fields: Fields = Rc::new(merged);
         if !self.budget.exhausted() {
             walk.memo.insert((idx, remaining), Rc::clone(&fields));
@@ -820,8 +820,9 @@ const DATE_PARTS: [&str; 4] = ["date", "year", "month", "day"];
 /// gains inherited precision; an inherited plain `date` is combined with the
 /// entry's own year, month or day (own month `mar` with an inherited
 /// `2024-02-05` gives 2024-03-05). Ranges and approximate dates are kept
-/// whole.
-fn merge_dates(sources: &[Vec<(String, String)>]) -> Vec<(String, String)> {
+/// whole. A day that is not a day of the month, or has no month, is named
+/// in `problems` and left out.
+fn merge_dates(sources: &[Vec<(String, String)>], problems: &mut Vec<String>) -> Vec<(String, String)> {
     let field = |source: &Vec<(String, String)>, n: &str| {
         source.iter().find(|(f, _)| f == n).map(|(_, v)| v.trim().to_string())
     };
@@ -837,17 +838,21 @@ fn merge_dates(sources: &[Vec<(String, String)>]) -> Vec<(String, String)> {
         let year = field(own, "year").unwrap_or(y);
         let month = field(own, "month").as_deref().and_then(month_number).or(m);
         let day = field(own, "day").or(d);
-        return compose(year, month, day);
+        return compose(year, month, day, problems);
     }
     let month = inherited("month");
     match (month.as_deref().map(month_number), inherited("year")) {
         // A month that is not a number or abbreviation ("Spring") stays as written.
-        (Some(None), year) => year
-            .map(|y| ("year".to_string(), y))
-            .into_iter()
-            .chain(month.map(|m| ("month".to_string(), m)))
-            .collect(),
-        (numeric, Some(year)) => compose(year, numeric.flatten(), inherited("day")),
+        (Some(None), year) => {
+            if let Some(day) = inherited("day") {
+                problems.push(format!("`day` `{day}` has no month number; it is ignored"));
+            }
+            year.map(|y| ("year".to_string(), y))
+                .into_iter()
+                .chain(month.map(|m| ("month".to_string(), m)))
+                .collect()
+        }
+        (numeric, Some(year)) => compose(year, numeric.flatten(), inherited("day"), problems),
         (numeric, None) => numeric
             .flatten()
             .map(|m| ("month".to_string(), m))
@@ -857,8 +862,23 @@ fn merge_dates(sources: &[Vec<(String, String)>]) -> Vec<(String, String)> {
 }
 
 /// Fields for a year with optional month and day, exactly as precise as given.
-fn compose(year: String, month: Option<String>, day: Option<String>) -> Vec<(String, String)> {
-    let day = day.and_then(|d| d.parse::<u8>().ok()).filter(|d| (1..=31).contains(d));
+fn compose(
+    year: String,
+    month: Option<String>,
+    day: Option<String>,
+    problems: &mut Vec<String>,
+) -> Vec<(String, String)> {
+    let day = day.and_then(|text| {
+        let Some(day) = text.parse::<u8>().ok().filter(|d| (1..=31).contains(d)) else {
+            problems.push(format!("`day` `{text}` is not a day of the month; it is ignored"));
+            return None;
+        };
+        if month.is_none() {
+            problems.push(format!("`day` `{text}` has no month; it is ignored"));
+            return None;
+        }
+        Some(day)
+    });
     match month {
         Some(m) if is_digits(&year, 4) => {
             let date = match day {
@@ -870,6 +890,7 @@ fn compose(year: String, month: Option<String>, day: Option<String>) -> Vec<(Str
         month => {
             let mut out = vec![("year".to_string(), year)];
             out.extend(month.map(|m| ("month".to_string(), m)));
+            out.extend(day.map(|d| ("day".to_string(), d.to_string())));
             out
         }
     }

@@ -121,6 +121,51 @@ fn malformed_separate_date_parts_retain_references_with_warnings() {
 }
 
 #[test]
+fn a_separate_day_is_kept_when_valid_and_named_when_not() {
+    let loaded = load_str(
+        "synthetic.bib",
+        "@article{bad, title={T}, year={2024}, month={3}, day={32}}\n\
+         @article{short, title={T}, year={95}, month={3}, day={5}}\n\
+         @article{nomonth, title={T}, year={2024}, day={5}}\n\
+         @article{season, title={T}, year={2024}, month={Spring}, day={5}}\n\
+         @article{good, title={T}, year={2024}, month=mar, day={5}}",
+    );
+    let date = |key: &str| {
+        let issued = loaded
+            .references
+            .iter()
+            .find(|r| r.id.native_key == key)
+            .and_then(|r| r.issued.as_ref());
+        issued.map(|i| (i.start.year, i.start.month, i.start.day))
+    };
+    assert_eq!(date("bad"), Some((2024, Some(3), None)));
+    assert_eq!(date("short"), Some((95, Some(3), Some(5))));
+    assert_eq!(date("nomonth"), Some((2024, None, None)));
+    assert_eq!(date("good"), Some((2024, Some(3), Some(5))));
+    let warned = |key: &str| {
+        loaded
+            .warnings
+            .iter()
+            .filter(|w| w.key.as_deref() == Some(key) && w.kind == WarningKind::Field)
+            .map(|w| w.message.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(warned("bad").len(), 1, "{:?}", loaded.warnings);
+    assert!(warned("bad")[0].contains("`day`"), "{:?}", warned("bad"));
+    assert_eq!(warned("nomonth").len(), 1, "{:?}", loaded.warnings);
+    assert!(
+        warned("season").iter().any(|w| w.contains("`day`")),
+        "{:?}",
+        loaded.warnings
+    );
+    assert!(
+        warned("short").is_empty() && warned("good").is_empty(),
+        "{:?}",
+        loaded.warnings
+    );
+}
+
+#[test]
 fn unsafe_separate_parts_are_checked_after_macro_expansion_for_every_date_prefix() {
     for (prefix, csl_field) in [
         ("", "issued"),
