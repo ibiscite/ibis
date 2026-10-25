@@ -73,3 +73,10 @@ test("invalid baseline counts cannot silence broken references", () => {
   const problems = check("[bad](missing.md)");
   for (const baseline of [null, [], { [problems[0]]: "not-a-number" }, { [problems[0]]: 0 }, { bogus: 1 }, { [problems[0]]: Number.MAX_SAFE_INTEGER + 1 }]) assert.match(baselineErrors(problems, baseline)[0], /baseline.*positive.*integer/i);
 });
+
+
+test("CRLF fences close before subsequent inline references", () => {
+  const lines = ["```sh", "node scripts/check.mjs", "```", "`scripts/missing.mjs`"];
+  assert.equal(check(lines.join("\r\n")).length, 1);
+  assert.deepEqual(check(lines.join("\r\n")), check(lines.join("\n")));
+});

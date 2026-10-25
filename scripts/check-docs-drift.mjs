@@ -68,6 +68,7 @@ function* inlineLinks(text) {
 
 export function docProblems(doc, text, files, crates) {
   doc = normalize(doc);
+  text = text.replace(/\r\n?/g, "\n");
   text = text.replace(/\\\r?\n[ \t]*/g, " ");
   const paths = new Set(files.map(normalize));
   for (const file of [...paths]) {
