@@ -1420,6 +1420,7 @@ def first_run_preferences_main(args):
         type_query(native, snapshot, NO_MATCH, "super+a" if system == "Darwin" else "ctrl+a")
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
         native.click("Copy as Pandoc")
+        wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
         native.click("Typst")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
         passed("Typst choice is saved before any copy")
