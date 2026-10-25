@@ -30,7 +30,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Everything is done with the app's token (Contents, Pull requests and
-    # Issues: read and write on this repository only).
+    # Issues: read and write on this repository only). Its credentials live in
+    # the release environment; until they move there, the repository secrets
+    # of the same names are used.
+    environment: release
     permissions: {}
     steps:
       - name: Mint the release app token
