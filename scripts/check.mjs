@@ -27,6 +27,10 @@ const scriptTests = scriptFiles
   .filter((name) => args[0] !== "--platform-script-tests" || name !== "ui-imports.test.mjs")
   .map((name) => `scripts/${name}`);
 const scriptSteps = [
+  // Small repository guards run in CI's script-only modes too.
+  ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name)).map((name) => [
+    `Repository guard: ${name}`, "node", [`scripts/${name}`],
+  ]),
   ["Script tests", "node", ["--test", ...scriptTests]],
   ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [
     `Python script tests: ${name}`, process.platform === "win32" ? "python" : "python3", ["-B", `scripts/${name}`],
