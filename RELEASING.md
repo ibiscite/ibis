@@ -87,5 +87,5 @@ Before publishing, install a dry-run build on each operating system without a ne
 ### Planned
 
 - Desktop builds for Windows, macOS and Linux are produced by CI, never on a personal machine. They are signed (Apple Developer ID on macOS; a service chosen before 1.0 on Windows), with build-provenance attestations and an SBOM.
-- Updater and style-bundle signing keys live only in GitHub organization secrets with narrow access; their loss or rotation follows a written procedure before 1.0.
+- The updater signing key lives only in GitHub organization secrets with narrow access; its loss or rotation follows a written procedure before 1.0.
 - Distribution: GitHub Releases, Homebrew cask, winget, Flathub/AppImage/.deb/.rpm.
