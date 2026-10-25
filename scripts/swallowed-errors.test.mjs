@@ -39,3 +39,19 @@ test("existing-case allowances cannot hide a changed or additional catch", () =>
   assert.ok(catchBaselineErrors(check("try {} catch (_) {}"), baseline).length);
   assert.ok(catchBaselineErrors([], baseline).length);
 });
+
+
+test("baseline schema errors never suppress a catch finding", () => {
+  const problems = check("try {} catch {}");
+  for (const baseline of [null, [], { [problems[0].key]: "not-a-number" }, { [problems[0].key]: 0 }, { bogus: 1 }, { [problems[0].key]: Number.MAX_SAFE_INTEGER + 1 }]) {
+    assert.match(catchBaselineErrors(problems, baseline)[0], /baseline.*positive.*integer/i);
+  }
+});
+
+test("transparent TypeScript wrappers retain catch detection", () => {
+  for (const source of ["p.catch((() => {}) satisfies ((e: unknown) => void));", "p.catch(<((e: unknown) => void)>(() => {}));", "p.catch!(() => {});"]) assert.equal(check(source).length, 1, source);
+});
+
+test("all JavaScript line terminators separate an earlier comment", () => {
+  for (const separator of ["\r", "\u2028", "\u2029"]) assert.deepEqual(check("// prior explanation" + separator + "try {} catch {}").map((problem) => problem.line), [2]);
+});

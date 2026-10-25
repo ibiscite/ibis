@@ -8,7 +8,7 @@ const desktopRequire = createRequire(new URL("../apps/desktop/package.json", imp
 const viteRequire = createRequire(desktopRequire.resolve("vite"));
 const { parseSync } = await import(viteRequire.resolve("rolldown/utils"));
 const baselinePath = "scripts/swallowed-errors-baseline.json";
-const unwrap = (node) => { while (["ParenthesizedExpression", "TSAsExpression", "TSNonNullExpression"].includes(node?.type)) node = node.expression; return node; };
+const unwrap = (node) => { while (["ParenthesizedExpression", "TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion", "TSInstantiationExpression"].includes(node?.type)) node = node.expression; return node; };
 const empty = (body) => body?.type === "BlockStatement" && body.body.every((node) => node.type === "EmptyStatement");
 
 export function catchProblems(path, source) {
@@ -17,7 +17,10 @@ export function catchProblems(path, source) {
   const parsed = parseSync(path, source);
   if (parsed.errors.length) throw new Error(`${path}: fix source syntax before running the swallowed-error check.`);
   const starts = [0];
-  for (let i = source.indexOf("\n"); i >= 0; i = source.indexOf("\n", i + 1)) starts.push(i + 1);
+  for (let i = 0; i < source.length; i++) {
+    const char = source.charCodeAt(i);
+    if (char === 10 || char === 13 || char === 0x2028 || char === 0x2029) starts.push(i + 1);
+  }
   const lineAt = (offset) => {
     let low = 0, high = starts.length;
     while (low < high) { const middle = (low + high) >>> 1; if (starts[middle] <= offset) low = middle + 1; else high = middle; }
@@ -30,9 +33,10 @@ export function catchProblems(path, source) {
     if (!node || typeof node !== "object") continue;
     let position, callback;
     if (node.type === "CatchClause" && (empty(node.body) || node.param?.type === "Identifier" && /^_/.test(node.param.name))) position = node.start;
-    if (node.type === "CallExpression" && node.callee?.type === "MemberExpression" && (node.callee.property.name === "catch" || node.callee.computed && node.callee.property.value === "catch")) {
+    const callee = node.type === "CallExpression" ? unwrap(node.callee) : null;
+    if (callee?.type === "MemberExpression" && (callee.property.name === "catch" || callee.computed && callee.property.value === "catch")) {
       callback = unwrap(node.arguments[0]);
-      if (["ArrowFunctionExpression", "FunctionExpression"].includes(callback?.type) && (empty(callback.body) || callback.body.type === "Identifier" && callback.body.name === "undefined" || callback.body.type === "UnaryExpression" && callback.body.operator === "void")) position = node.callee.property.start;
+      if (["ArrowFunctionExpression", "FunctionExpression"].includes(callback?.type) && (empty(callback.body) || callback.body.type === "Identifier" && callback.body.name === "undefined" || callback.body.type === "UnaryExpression" && callback.body.operator === "void")) position = callee.property.start;
     }
     if (position != null && !explained.has(lineAt(position)) && !explained.has(lineAt(callback?.start ?? position))) {
       problems.push({ path, line: lineAt(position), key: `${path}:${createHash("sha256").update(source.slice(node.start, node.end)).digest("hex").slice(0, 16)}` });
@@ -46,6 +50,12 @@ export function catchProblems(path, source) {
 }
 
 export function catchBaselineErrors(problems, baseline) {
+  const validKey = (key) => {
+    const path = key.match(/^(apps\/desktop\/src\/.+\.[cm]?[jt]sx?):[a-f0-9]{16}$/)?.[1];
+    return path && !/[\x00-\x1f\\]/.test(path) && path.split("/").every((part) => part && part !== "." && part !== "..");
+  };
+  if (!baseline || typeof baseline !== "object" || Array.isArray(baseline) || ![Object.prototype, null].includes(Object.getPrototypeOf(baseline))
+    || Object.entries(baseline).some(([key, count]) => !validKey(key) || !Number.isSafeInteger(count) || count < 1)) return ["Swallowed-error baseline needs valid source/hash keys and positive safe-integer counts; fix scripts/swallowed-errors-baseline.json."];
   const counts = new Map();
   for (const problem of problems) counts.set(problem.key, (counts.get(problem.key) ?? 0) + 1);
   return [...problems.filter((problem) => counts.get(problem.key) > (baseline[problem.key] ?? 0)).map((problem) => `${problem.path}:${problem.line}: handle the error, or add a comment on the catch line explaining why ignoring it is safe.`),
