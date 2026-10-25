@@ -41,6 +41,8 @@ export interface Formatted {
   preview?: string;
   /** Items shown with a plain fallback because the style could not format them. */
   problems: { id: string; reason: string }[];
+  /** For a bibliography without problems: the caller's item index for each entry, in output order. */
+  order?: number[];
 }
 
 const FALLBACK_REASON = "this style could not format the reference, so its title is shown instead";
@@ -181,9 +183,11 @@ export class Formatter {
   bibliography(style: StyleId, items: CslItem[], format: OutputFormat): Formatted {
     const { keyed } = engineKeys(items);
     const run = (chosen: CslItem[]) =>
-      chosen.length === 0 ? [] : this.attempt(style, chosen, format, (engine) => entries(engine));
+      chosen.length === 0 ? [] : this.attempt(style, chosen, format, (engine) => entries(engine).lines);
     try {
-      return { output: wrap(run(keyed).join("\n"), format, "bibliography"), problems: [] };
+      const all = keyed.length === 0 ? { lines: [], ids: [] } : this.attempt(style, keyed, format, (engine) => entries(engine));
+      const order = all.ids?.map((id) => Number(id.slice("ibis-".length)));
+      return { output: wrap(all.lines.join("\n"), format, "bibliography"), problems: [], ...(order ? { order } : {}) };
     } catch {
       // Format the references that work together, so numbering, sorting and
       // disambiguation stay right, and show the others by title.
@@ -245,11 +249,15 @@ function callerId(items: CslItem[], key: string): string {
   return typeof id === "string" ? id : "";
 }
 
-function entries(engine: Engine): string[] {
+function entries(engine: Engine): { lines: string[]; ids: string[] | null } {
   const bibliography = engine.makeBibliography();
   if (!bibliography) throw new Error("the style has no bibliography");
+  const groups = bibliography[0].entry_ids;
+  // Each entry names the items it shows; Ibis's engine keys are never merged.
+  const ids: unknown[] = Array.isArray(groups) ? groups.map((group) => (Array.isArray(group) ? group[0] : group)) : [];
+  const known = ids.length === bibliography[1].length && ids.every((id) => typeof id === "string" && /^ibis-\d+$/.test(id));
   // One line per entry: a line break inside a field must not split it.
-  return bibliography[1].map(oneLine);
+  return { lines: bibliography[1].map(oneLine), ids: known ? (ids as string[]) : null };
 }
 
 function oneLine(text: string): string {

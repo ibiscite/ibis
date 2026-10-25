@@ -26,11 +26,12 @@ export const STYLE_NAMES: Record<StyleId, string> = {
   "modern-language-association": "MLA",
 };
 
-// Real in-text output for the synthetic one-author 2021 menu example.
+// What each style really copies for the synthetic one-author 2021 menu example.
+// IEEE copies the reference entry (#1129).
 export const STYLE_SAMPLES: Record<StyleId, string> = {
   apa: "(García, 2021)",
   "chicago-author-date": "(García 2021)",
   "harvard-cite-them-right": "(García, 2021)",
-  ieee: "[1]",
+  ieee: "A. García, “Synthetic sleep study,” Journal of Tests, 2021.",
   "modern-language-association": "(García)",
 };

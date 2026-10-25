@@ -1240,13 +1240,18 @@ test("a citation style shows a safe preview and copies rich text with its warnin
     await screen.findByText("First");
     chooseFormat("style:ieee");
     const preview = await screen.findByRole("region", { name: "Preview" });
-    await within(preview).findByText("[1]");
-    expect(within(preview).getByText(/Provisional/)).toBeTruthy();
+    // IEEE copies the reference entry, never a number the document may not use (#1129).
+    const entry = await within(preview).findByText(/Garcia/);
+    expect(entry.closest("bdi")?.textContent).not.toMatch(/\[\d+\]/);
+    expect(document.querySelector("img")).toBeNull();
+    expect(within(preview).getByText("Reference entry")).toBeTruthy();
+    expect(screen.getByText("Copy IEEE entry")).toBeTruthy();
     const box = screen.getByLabelText("Search references");
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     fireEvent.keyDown(box, { key: "ArrowUp" });
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(await screen.findByText("Copy 2 IEEE entries")).toBeTruthy();
     chooseFormat("style:apa");
     await within(preview).findByText("(Garcia, 2021); Second");
     fireEvent.keyDown(box, { key: "Enter" });
@@ -2762,7 +2767,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
   expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["In a menu"], ["From any app"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
-  expect(groups[0]).toContainEqual(["Copy the highlighted reference, or the ones added to the citation, in the Copy as format", "Enter"]);
+  expect(groups[0]).toContainEqual(["Copy the highlighted reference, or the ones added to the citation, in the Copy as format (numeric styles such as IEEE copy the reference entry)", "Enter"]);
   expect(groups[0]).toContainEqual(["Add the highlighted reference to the citation, or remove it", "Shift+Enter"]);
   expect(groups[1]).toContainEqual(["Open or close More", "Ctrl+K"]);
   expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);
@@ -3025,7 +3030,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   if (next === "style:apa") chooseFormat("style:ieee");
   chooseFormat(next);
   await act(async () => { release(); await ready; });
-  if (next !== "pandoc") await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain(next === "style:ieee" ? "[1]" : "Smith"));
+  if (next !== "pandoc") await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain("Smith"));
   expect(output).toEqual([]);
   expect(calls).not.toContain("hide_picker");
   expect(calls).not.toContain("show_copied_notice");
@@ -3033,7 +3038,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   await waitFor(() => expect(output).toHaveLength(1));
   expect(output[0]).toMatchObject(next === "pandoc"
     ? { format: "pandoc", items: selections([{ source: "refs.bib", native_key: "b" }]) }
-    : { text: next === "style:ieee" ? "[1]" : "(Smith, 2020)" });
+    : { text: next === "style:ieee" ? "Smith, “b,” 2020." : "(Smith, 2020)" });
   expect(calls).toContain(next === "pandoc" ? "copy_citation" : "copy_formatted");
 });
 

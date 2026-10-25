@@ -11,6 +11,7 @@ import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
+import { copiesEntry } from "./format/formatted";
 import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
@@ -554,6 +555,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A formatted citation still being made, or one that failed, is not copied.
   const enterAction = showWriting || chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
+    : style && copiesEntry(style) ? keyText.copyEntries(chosen.length, choiceName(format))
     : chosen.length > 1 ? keyText.copySeveralAs(chosen.length, choiceName(format)) : keyText.copyAs(choiceName(format));
   const highlighted = current[active];
   const usingLocator = current === results && interpretLocators ? interpretation?.locator : null;
