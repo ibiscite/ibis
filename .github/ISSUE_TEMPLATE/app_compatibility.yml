@@ -1,22 +1,29 @@
-name: App compatibility
-description: Inserting or pasting into a specific app did not work (or worked — that helps too!).
-labels: [type:bug, area:desktop]
+name: Writing app report
+description: How a copied citation pasted into a specific app, good or bad.
+labels: [area:desktop]
 body:
   - type: markdown
     attributes:
       value: |
-        This builds the public compatibility list. Never paste document contents; describe only what happened.
+        This builds the public list of writing apps in docs/compatibility.md, so reports that it worked help too. Never paste document contents; describe only what happened.
   - type: input
     id: app
     attributes:
       label: App and version
-      placeholder: "Overleaf in Firefox 140, Microsoft Word 16.9, Obsidian 1.9, iTerm2 ..."
+      placeholder: "Word for the web in Firefox 140, Pages 14, Obsidian 1.9, Overleaf ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ibis version
+      placeholder: "Ibis X.Y.Z / Ibis Nightly X.Y.Z-nightly.YYYYMMDDHHMMSS"
     validations:
       required: true
   - type: input
     id: os
     attributes:
-      label: Operating system, version and (on Linux) desktop/session
+      label: Operating system, version and (on Linux) desktop and session
       placeholder: "Windows 11 24H2 / macOS 26.1 / Fedora KDE Wayland"
     validations:
       required: true
@@ -25,12 +32,10 @@ body:
     attributes:
       label: What happened?
       options:
-        - Worked correctly
-        - Nothing was inserted
-        - Inserted in the wrong place or window
-        - Inserted with wrong formatting (lost italics, extra characters, doubled brackets...)
-        - Clipboard was not restored or was overwritten
-        - Ibis said it copied instead of inserting
+        - It worked as expected
+        - The shortcut did not open Ibis
+        - The pasted text had wrong formatting (lost italics, extra characters, doubled brackets ...)
+        - Something else was pasted
         - Other
     validations:
       required: true
@@ -38,7 +43,7 @@ body:
     id: format
     attributes:
       label: Output format
-      placeholder: "IEEE formatted citation / Pandoc [@key] / \\autocite / Typst ..."
+      placeholder: "APA citation / Pandoc [@key] / \\autocite / Typst ..."
   - type: input
     id: layout
     attributes:

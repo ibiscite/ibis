@@ -25,9 +25,9 @@ pub(crate) fn problem_url(version: &str) -> String {
     )
 }
 
-/// The idea form.
+/// The Ideas form in Discussions, where ideas start (CONTRIBUTING.md).
 pub(crate) fn idea_url() -> String {
-    format!("{ISSUES}?template=feature_request.yml")
+    "https://github.com/ibiscite/ibis/discussions/new?category=ideas".to_owned()
 }
 
 /// Open `url` in the default browser. If that fails, copy it and say so.
@@ -108,7 +108,7 @@ mod tests {
         assert!(query.chars().all(|c| c.is_ascii_alphanumeric() || "=&._-%".contains(c)));
         assert_eq!(
             idea_url(),
-            "https://github.com/ibiscite/ibis/issues/new?template=feature_request.yml"
+            "https://github.com/ibiscite/ibis/discussions/new?category=ideas"
         );
     }
 }

@@ -30,9 +30,14 @@ pub enum CitationSelectionError {
     NotFound,
     #[error("\"{0}\" has no citation key, so it cannot be cited in this format")]
     NoCitationKey(String),
+    /// Another record has the same key, so the pasted key would not say which
+    /// one is meant; the command line refuses the same key.
+    #[error("the citation key `{0}` belongs to more than one reference, so it cannot be cited by key")]
+    SharedCitationKey(String),
 }
 
 /// Resolve canonical citation keys while keeping order, repetitions and locators.
+/// A key that another record also has is refused, as [`find_by_key`] refuses it.
 /// Values are validated by the chosen key formatter, not during record lookup.
 pub fn citation_items(
     references: &[Reference],
@@ -52,6 +57,12 @@ pub fn citation_items(
                         .unwrap_or_else(|| selection.id.native_key.clone()),
                 )
             })?;
+            if references
+                .iter()
+                .any(|other| other.id != reference.id && other.citekey.as_ref() == Some(&key))
+            {
+                return Err(CitationSelectionError::SharedCitationKey(key));
+            }
             Ok(CiteItem {
                 key,
                 locator: selection.locator.clone(),
@@ -133,7 +144,8 @@ mod tests {
     #[test]
     fn citation_selections_keep_locators_with_record_identity_and_order() {
         use crate::cite::{KeyFormat, Locator, LocatorLabel, render};
-        let references = refs();
+        let mut references = refs();
+        references[2].citekey = Some("onlyb".into());
         let selected = [
             CitationSelection {
                 id: references[2].id.clone(),
@@ -153,7 +165,7 @@ mod tests {
         let items = citation_items(&references, &selected).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             render(KeyFormat::Pandoc, &items).unwrap_or_else(|e| panic!("{e}")).text,
-            "[@same, chap. 3; @same, p. 12]"
+            "[@onlyb, chap. 3; @same, p. 12]"
         );
         assert_eq!(selected[0].id.source, "b.bib");
         assert_eq!(selected[1].id.source, "a.bib");
@@ -184,6 +196,23 @@ mod tests {
         );
         assert!(csl_items(&references).is_ok());
         assert_eq!(citation_items(&[], &[selected]), Err(CitationSelectionError::NotFound));
+    }
+
+    #[test]
+    fn a_selected_record_whose_key_another_record_shares_is_refused() {
+        let refs = refs();
+        let select = |reference: &Reference| CitationSelection {
+            id: reference.id.clone(),
+            locator: None,
+        };
+        // Either record with the shared key is refused, alone or with others.
+        for selected in [vec![select(&refs[0])], vec![select(&refs[1]), select(&refs[2])]] {
+            assert_eq!(
+                citation_items(&refs, &selected),
+                Err(CitationSelectionError::SharedCitationKey("same".into()))
+            );
+        }
+        assert!(citation_items(&refs, &[select(&refs[1])]).is_ok());
     }
 
     #[test]
