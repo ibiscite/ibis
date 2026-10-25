@@ -80,7 +80,7 @@ and reports unrepresented references. Clipboard output never uses annotations.
 
 ## Insertion
 
-Planned for 0.4; today the picker copies. Every insertion will end in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
+Planned for after 1.0, or when people ask; today the picker copies and you paste. Every insertion will end in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
 
 ## Desktop process model
 

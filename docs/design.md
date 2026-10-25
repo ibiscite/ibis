@@ -713,16 +713,17 @@ means not decided yet.
 
 | Feature (release) | Fits as |
 |---|---|
-| Page numbers and locators (0.3, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
+| Page numbers and locators (0.2, #354; other locator types 0.3, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
 | Any CSL style, prefix, suffix, author omission (0.3) | Styles in the format pop-up (filter, leading checks), listed per Settings › Citations; prefix, suffix and omission controls: open |
 | Multiple references (0.3) | Shelf segments [C7], added with ⌘/Ctrl-click, Shift+Enter or the tile + |
 | Zotero while closed (0.3, #14), changed keys, cloud-synced data | Footer status with words and a Look or Stop dot; detail in the tooltip and More |
-| "Is this in my library?" (0.3) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
-| Collections (0.3) | Shown on rows and usable as a filter chip; placement and syntax: open |
+| "Is this in my library?" (0.4, #701) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
+| Collections (later) | Shown on rows and usable as a filter chip; placement and syntax: open |
 | Settings window (0.3, #776) | **Settings**; General, Shortcuts and Libraries first |
-| Insertion (0.4) | Enter, double-click and Copy insert when Settings › Citations says so; the notice says "Inserted" or why it copied |
-| Action registry (0.4) | Every action in More with its `keys.ts` key; picker keys editable in Settings › Shortcuts |
-| Open in Zotero, PDF at the page (0.4) | More and the row's right-click menu; the attachment chip opens the preview [C17] |
+| Bibliography export (0.3, #667) | Export the shelf or the session's citations from More to `.bib`, Hayagriva or CSL-JSON; placement: open |
+| Insertion (later) | Enter, double-click and Copy insert when Settings › Citations says so; the notice says "Inserted" or why it copied |
+| Action registry (later) | Every action in More with its `keys.ts` key; picker keys editable in Settings › Shortcuts |
+| Open in Zotero, PDF at the page (later) | More and the row's right-click menu; the attachment chip opens the preview [C17] |
 | Recently cited and added (0.4) | Compact start [C11] and browsing tabs; local history that can be turned off and cleared |
 | `ibis toggle` for Wayland (0.4, #782) | No picker UI; Settings › Shortcuts explains it |
 | Online mode (0.5) | Its own section after local rows, never reordering them; needs its ADR and the maintainer's yes |
