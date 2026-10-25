@@ -96,10 +96,10 @@ export function commandKey(e: KeyPress, mac: boolean): boolean {
 const NON_LATIN_PUNCTUATION: Record<string, string> = { KeyQ: ";/", KeyW: "'" };
 
 /** Whether a key press is an accelerator from the key table, such as `CmdOrCtrl+Q`.
- * Letters match in any case (Caps Lock). When a letter key types a non-Latin
- * letter (Cyrillic й) or that layout's punctuation (Greek ;, Hebrew /), the
- * physical key decides instead; a Latin layout matches what it types, so
- * AZERTY's Q key is A and Dvorak's Q key is '. */
+ * Letters match in any case (Caps Lock). When a letter key types anything
+ * non-ASCII (Cyrillic й, Hindi ौ, Arabic ؛) or a non-Latin layout's ASCII
+ * punctuation (Greek ;, Hebrew /), the physical key decides instead; a Latin
+ * layout matches what it types, so AZERTY's Q key is A and Dvorak's Q key is '. */
 export function matchesAccelerator(e: KeyPress, accelerator: string, mac: boolean): boolean {
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
   const key = parts[parts.length - 1] ?? "";
@@ -110,5 +110,5 @@ export function matchesAccelerator(e: KeyPress, accelerator: string, mac: boolea
   if (e.key.length !== 1 || /^[a-z]$/i.test(e.key)) return false;
   if (/^\d$/.test(key)) return e.code === `Digit${key}`;
   if (!/^[a-z]$/i.test(key) || e.code !== `Key${key.toUpperCase()}`) return false;
-  return /\p{L}/u.test(e.key) || (NON_LATIN_PUNCTUATION[e.code] ?? "").includes(e.key);
+  return /[^\x00-\x7f]/.test(e.key) || (NON_LATIN_PUNCTUATION[e.code] ?? "").includes(e.key);
 }

@@ -68,6 +68,9 @@ test("an accelerator falls back to the physical key only for non-Latin letters a
   expect(matchesAccelerator(press("'", { code: "KeyQ", metaKey: true }), "CmdOrCtrl+Q", true)).toBe(false);
   expect(matchesAccelerator(press(",", { code: "KeyW", ctrlKey: true }), "CmdOrCtrl+W", false)).toBe(false);
   expect(matchesAccelerator(press("'", { code: "KeyW", ctrlKey: true }), "CmdOrCtrl+W", false)).toBe(true);
+  // Vowel signs and non-ASCII punctuation on letter keys count too: Hindi ौ on Q, Arabic ؛ on Shift+P.
+  expect(matchesAccelerator(press("ौ", { code: "KeyQ", ctrlKey: true }), "CmdOrCtrl+Q", false)).toBe(true);
+  expect(matchesAccelerator(press("؛", { code: "KeyP", ctrlKey: true, shiftKey: true }), "CmdOrCtrl+Shift+P", false)).toBe(true);
   // Digits still follow the physical key, as on AZERTY's digit row.
   expect(matchesAccelerator(press("&", { code: "Digit1", ctrlKey: true }), "CmdOrCtrl+1", false)).toBe(true);
 });
