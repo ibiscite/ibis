@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import type { Copied, Density, LibraryStatus, SearchResult } from "./api";
+import type { Copied, Density, LibraryStatus, LocatorQuery, SearchResult } from "./api";
 import type { Sources } from "./bindings";
 import type { PickerApi, PickerPreview } from "./App";
 import type { Platform } from "./nativeAppearance";
@@ -13,6 +13,8 @@ export type GalleryState = {
   sources?: Sources;
   results?: SearchResult[];
   query?: string;
+  /** Exact synthetic backend replies for interaction captures, never a query parser. */
+  locatorQueries?: Readonly<Record<string, LocatorQuery>>;
   copied?: Copied;
   theme?: "light" | "dark" | "contrast";
   direction?: "ltr" | "rtl";
@@ -128,6 +130,8 @@ const largeSelection = Array.from({ length: 50 }, (_, i) => reference(
   `synthetic_${String(i + 1).padStart(2, "0")}_${"long_key_".repeat(5)}`,
   `Selection study ${i + 1}: a synthetic reference`, "Example, Sample", "Journal of Synthetic Studies"));
 
+const longLocator = `${"12-14, ".repeat(8)}16`;
+
 export const galleryStates: readonly GalleryState[] = [
   { id: "first-run", label: "First run", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, zotero: false, references: 0 }) },
   { id: "first-run-found", label: "First run, libraries found", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, zotero: false, references: 0 }),
@@ -137,6 +141,13 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "idle", label: "Nothing typed", library: library(), query: "" },
   { id: "no-results", label: "No matching references", library: library(), query: "unmatched phrase" },
   { id: "many-results", label: "Many results", library: library(), query: "memory", results: many },
+  { id: "typed-locator", label: "Typed locator and prepared reference", library: library(), query: "memory p 45", results: examples, tray: 1, pinned: true,
+    locatorQueries: {
+      "memory p 45": { search: "memory", typed: "p 45", locator: { label: "page", value: "45" } },
+      "memory p 84": { search: "memory", typed: "p 84", locator: { label: "page", value: "84" } },
+      "memory section 3": { search: "memory", typed: "section 3", locator: { label: "section", value: "3" } },
+      [`memory pp ${longLocator}`]: { search: "memory", typed: `pp ${longLocator}`, locator: { label: "page", value: longLocator } },
+    } },
   { id: "long-titles", label: "Long and non-Latin titles", library: library(), query: "research", results: [
     reference("long2026", "An intentionally long synthetic title about research across languages, with enough words to wrap across several lines at larger text sizes and in narrow picker windows"),
     examples[1]!, reference("학습2026", "언어와 기억에 관한 가상의 연구", "가상 저자", null, "chapter"),
@@ -199,6 +210,8 @@ export const galleryStates: readonly GalleryState[] = [
 
 export function galleryProvider(state: GalleryState): { api: PickerApi; preview: PickerPreview } {
   const sources = state.sources;
+  const citation = (items: Parameters<PickerApi["copyCitation"]>[0]) => `[${items.map(({ id, locator }) =>
+    `@${id.native_key}${locator ? `, ${locator.label === "page" ? "p." : locator.label} ${locator.value}` : ""}`).join("; ")}]`;
   return {
     preview: { query: state.query, copied: state.copied },
     api: {
@@ -206,13 +219,17 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       ...(sources || state.library.state === "none" ? {
         findSources: async () => sources ?? { zotero: "absent", list: 0, files: [], cut_short: false }, openFoundLibrary: async () => null,
       } : {}),
-      search: async () => ({ revision: state.library.revision, results: state.results ?? [] }),
+      search: async (query, _limit, _scope, interpretLocators = true) => ({
+        revision: state.library.revision,
+        results: state.locatorQueries?.[query] && !interpretLocators ? [] : state.results ?? [],
+        interpretation: interpretLocators ? state.locatorQueries?.[query] ?? null : null,
+      }),
       citationText: async (items) => {
-        const text = `[${items.map(({ id }) => `@${id.native_key}`).join("; ")}]`;
+        const text = citation(items);
         return { text, warnings: [], segments: [{ item: null, text }] };
       },
-      copyCitation: async (items) => ({ text: (state.tray ?? 0) >= 20 ? `[@${items.map(({ id }) => id.native_key).join("; @")}]` : "[@example2026]", warnings: [] }),
-      ...((state.tray ?? 0) >= 20 || state.formatted ? {
+      copyCitation: async (items) => ({ text: state.locatorQueries || (state.tray ?? 0) >= 20 ? citation(items) : "[@example2026]", warnings: [] }),
+      ...((state.tray ?? 0) >= 20 || state.formatted || state.locatorQueries ? {
         cslItems: async (ids: Parameters<NonNullable<PickerApi["cslItems"]>>[0]) => JSON.stringify(ids.map((id) => ({
           id: id.native_key, type: "book", title: "Synthetic preview pressure", author: [{ family: id.native_key }], issued: { "date-parts": [[2026]] },
         }))),

@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App, type PickerApi } from "./App";
 import { galleryHref, galleryThemeFor, renderGalleryState } from "./gallery";
@@ -122,6 +122,39 @@ test("the many-results fixture exercises a scrollable real result list", async (
   render(<App {...galleryProvider(state!)} />);
   await screen.findByText("Memory study 20: a synthetic reference");
   expect(within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option")).toHaveLength(20);
+});
+
+test("the typed-locator fixture supplies canned interpretations and literal-search replies", async () => {
+  const state = galleryStates.find((candidate) => candidate.id === "typed-locator");
+  expect(state).toBeTruthy();
+  const { api } = galleryProvider(state!);
+  const interpreted = await api.search("memory p 45");
+  expect(interpreted.interpretation).toEqual({ search: "memory", typed: "p 45", locator: { label: "page", value: "45" } });
+  expect(interpreted.results).toHaveLength(3);
+  const literal = await api.search("memory p 45", undefined, undefined, false);
+  expect(literal.interpretation).toBeNull();
+  expect(literal.results).toEqual([]);
+  expect((await api.search("not a canned query p 45")).interpretation).toBeNull();
+});
+
+test("the typed-locator gallery exercises capture, explicit update, removal and literal undo", async () => {
+  const state = galleryStates.find((candidate) => candidate.id === "typed-locator");
+  expect(state).toBeTruthy();
+  render(<App {...galleryProvider(state!)} />);
+  await screen.findByText("Using page 45");
+  const search = screen.getByLabelText("Search references");
+  fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
+  await screen.findByRole("button", { name: "Remove page 45 from example2026" });
+  fireEvent.change(search, { target: { value: "memory p 84" } });
+  await screen.findByText("Using page 84");
+  expect(screen.getByRole("button", { name: "Remove page 45 from example2026" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Apply locator to example2026" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove page 84 from example2026" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Remove page 84 from example2026" })).toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
+  await screen.findByText("No matching references");
+  expect((search as HTMLInputElement).value).toBe("memory p 84");
+  expect(screen.queryByText("Using page 84")).toBeNull();
 });
 
 test.each([
