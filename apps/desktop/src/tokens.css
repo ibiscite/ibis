@@ -235,7 +235,9 @@
       --fill-subtle-hover: light-dark(rgb(0 0 0 / 4%), rgb(255 255 255 / 6%));
       --field-active-background: light-dark(#ffffff, #1e1e1e);
       /* AccentFillColorDefault and TextOnAccentFillColorPrimary: the default
-         Windows accent until the system's own reaches the webview (#918). */
+         Windows accent until the system's own reaches the webview (#918).
+         Chromium's AccentColor is a fixed #0075FF in both themes, not the
+         user's accent, so it is not used here. */
       --accent: light-dark(#005FB8, #60CDFF); --text-on-accent: light-dark(#fff, #000);
       --selected-background: var(--accent); --selected-text: var(--text-on-accent);
     }
