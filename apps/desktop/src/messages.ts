@@ -137,6 +137,8 @@ export const pickerText = {
   entryOnly: (style: string) => `${style} numbers depend on your whole document, so Ibis copies the reference entry instead.`,
   entryOnlyShort: "Reference entry",
   entryLocator: (style: string) => `A reference entry has no page or other locator, so the ${style} copy leaves it out.`,
+  entryEmpty: (style: string, shown: string) => `${style} shows nothing for “${shown}”, so Ibis copies that instead.`,
+  entryNothing: (style: string) => `${style} shows nothing for a reference, so the copy leaves it out.`,
   shelfStale: "The library changed since these were chosen.",
   warningCount: (n: number) => (n === 1 ? "1 warning" : `${n} warnings`),
   /** The shelf's last chip, for references beyond the ones it shows. */

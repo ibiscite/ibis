@@ -47,7 +47,7 @@ export async function formatCitation(
   if (!Array.isArray(parsed)) throw new Error("the references could not be read");
   if (cites !== undefined && cites.length !== parsed.length) throw new Error("the citation details do not match the references");
   const items: CslItem[] = parsed.map((item: CslItem, index) => ({ ...item, id: `ref-${index}` }));
-  if (copiesEntry(style)) return formatEntries(items, style, client, signal, segments, cites);
+  if (copiesEntry(style)) return formatEntries(items, parsed, style, client, signal, segments, cites);
   const result = await client.format({
     kind: "citation",
     style,
@@ -68,17 +68,38 @@ export async function formatCitation(
 }
 
 async function formatEntries(
-  items: CslItem[], style: StyleId, client: FormatClient, signal: AbortSignal | undefined, segments: boolean,
+  items: CslItem[], original: readonly CslItem[], style: StyleId, client: FormatClient, signal: AbortSignal | undefined, segments: boolean,
   cites: readonly Omit<CiteItem, "id">[] | undefined,
 ): Promise<FormattedCitation> {
   const result = await client.format({ kind: "bibliography", style, format: "html", items }, signal);
-  const entries = withoutNumbers(parse(result.output)).filter((node) => typeof node !== "string" || node.trim() !== "");
-  const markup = entries;
-  const text = plainText(markup);
+  const formatted = withoutNumbers(parse(result.output)).filter((node) => typeof node !== "string" || node.trim() !== "");
   const warnings = named(result.problems, items);
   if (cites?.some((cite) => cite.locator)) warnings.push(pickerText.entryLocator(STYLE_NAMES[style]));
-  const order = result.order;
-  const parts: CitationPart[] = order && order.length === entries.length
+  const known = result.order && result.order.length === formatted.length ? result.order : undefined;
+  // A reference with no field the style prints leaves an empty entry, which
+  // would copy as nothing; copy its title or key instead, and say so.
+  const entries: Markup[] = [];
+  const order: (number | null)[] = [];
+  formatted.forEach((entry, index) => {
+    const item = known?.[index];
+    if (plainText([entry]).trim() !== "") {
+      entries.push(entry);
+      order.push(item ?? null);
+      return;
+    }
+    const reference = item === undefined ? undefined : original[item];
+    const shown = typeof reference?.title === "string" && reference.title.trim() ? reference.title.trim() : typeof reference?.id === "string" ? reference.id.trim() : "";
+    if (item === undefined || !shown) {
+      warnings.push(pickerText.entryNothing(STYLE_NAMES[style]));
+      return;
+    }
+    warnings.push(pickerText.entryEmpty(STYLE_NAMES[style], shown));
+    entries.push({ block: "entry", children: [shown] });
+    order.push(item);
+  });
+  const markup = entries;
+  const text = plainText(markup);
+  const parts: CitationPart[] = known
     ? entries.map((entry, index) => ({ item: order[index] ?? null, markup: [entry] }))
     : [{ item: null, markup }];
   const represented = new Set(parts.map((part) => part.item));

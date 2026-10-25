@@ -86,6 +86,18 @@ describe("formatted citation for the picker", () => {
     expect(result.unrepresented).toEqual([]);
   });
 
+  it("never copies an empty IEEE entry for a reference with nothing to show", async () => {
+    const empty = { id: "lonely", type: "document" };
+    const alone = await formatCitation(JSON.stringify([empty]), "ieee", { client, segments: true });
+    expect(alone.text).toBe("lonely");
+    expect(alone.warnings).toEqual(["IEEE shows nothing for “lonely”, so Ibis copies that instead."]);
+    expect(alone.segments?.map((part) => part.item)).toEqual([0]);
+    const mixed = await formatCitation(JSON.stringify([JSON.parse(locatedCsl)[0], empty]), "ieee", { client, segments: true });
+    expect(mixed.text).toBe("Garcia, Synthetic first. 2021.\nlonely");
+    expect(mixed.segments?.map((part) => part.item)).toEqual([0, 1]);
+    expect(mixed.warnings).toEqual(["IEEE shows nothing for “lonely”, so Ibis copies that instead."]);
+  });
+
   it("names an IEEE reference the style could not format, and still copies the others", async () => {
     const result = await formatCitation(csl, "ieee", { client });
     expect(result.text).toContain("Garcia");
