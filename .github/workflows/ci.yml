@@ -166,8 +166,14 @@ jobs:
       - name: Lint
         run: cargo clippy --all-targets --locked
 
+      - name: Lint the headless citation prototype
+        run: cargo clippy -p ibis-core --all-targets --locked --features headless-csl-prototype -- -D warnings
+
       - name: Test
         run: cargo test --locked
+
+      - name: Test the headless citation prototype
+        run: cargo test -p ibis-core --locked --features headless-csl-prototype
 
       - name: Test core in release mode (Linux)
         if: runner.os == 'Linux'
@@ -178,6 +184,7 @@ jobs:
         run: |
           rustup toolchain install 1.90.0 --profile minimal
           cargo +1.90.0 test --locked
+          cargo +1.90.0 test -p ibis-core --locked --features headless-csl-prototype
 
 
   web:
@@ -350,7 +357,9 @@ jobs:
         if: env.NATIVE == 'true' && runner.os != 'Linux'
         run: |
           cargo clippy --all-targets --locked
+          cargo clippy -p ibis-core --all-targets --locked --features headless-csl-prototype -- -D warnings
           cargo test --locked
+          cargo test -p ibis-core --locked --features headless-csl-prototype
           node scripts/check.mjs --platform-script-tests
 
       - name: Lint, test and build the app
