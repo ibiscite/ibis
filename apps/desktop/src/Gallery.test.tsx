@@ -157,6 +157,26 @@ test("the typed-locator gallery exercises capture, explicit update, removal and 
   expect(screen.queryByText("Using page 84")).toBeNull();
 });
 
+test("the rendered gallery forwards literal-search arguments through its tracking wrapper", async () => {
+  const state = galleryStates.find((candidate) => candidate.id === "typed-locator")!;
+  const provider = galleryProvider(state);
+  const search = vi.fn(provider.api.search);
+  const acknowledge = vi.fn(async () => undefined);
+  const container = document.createElement("div");
+  document.body.append(container);
+  let stop = () => {};
+  try {
+    await act(async () => { stop = renderGalleryState(container, state, acknowledge, { ...provider, api: { ...provider.api, search } }); });
+    await waitFor(() => expect(acknowledge).toHaveBeenCalledWith("typed-locator"));
+    fireEvent.click(within(container).getByRole("button", { name: "Search as typed" }));
+    await waitFor(() => expect(search).toHaveBeenLastCalledWith("memory p 45", undefined, undefined, false));
+    await within(container).findByText("No matching references");
+  } finally {
+    await act(async () => stop());
+    container.remove();
+  }
+});
+
 test.each([
   ["rtl-count", "مراجع.bib", "20 results", "updated"],
   ["rtl-hebrew", "מקורות.bib", "1 result", "checked"],
