@@ -17,6 +17,8 @@ use std::time::{Duration, Instant};
 
 use ibis_core::zotero::api::{Response, Transport, TransportError};
 
+pub mod discovery;
+
 /// Zotero's local API port.
 pub const DEFAULT_PORT: u16 = 23119;
 /// Largest answer accepted: one page of items is far smaller.
