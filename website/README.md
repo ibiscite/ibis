@@ -10,8 +10,7 @@ python3 -m http.server 8097 --bind 127.0.0.1 --directory website/dist
 ```
 
 The build copies the shared app tokens, shortcut module and allowlisted brand
-exports into `website/dist`. Build and publish only after the page and demo
-slices have merged. Check with `node --test scripts/website.test.mjs` and
+exports into `website/dist`. Check with `node --test scripts/website.test.mjs` and
 `node scripts/style-lint.mjs`.
 
 The optional browser regressions in `scripts/website-controls.test.mjs` run when
@@ -28,12 +27,8 @@ there is no Worker script. Use Node 22.13 or newer in the build environment.
 Cloudflare manages deployment credentials; no GitHub workflow or secrets are
 needed. Installers remain on GitHub Releases.
 
-When the reviewed site is ready, the maintainer connects the repository, adds
-ibiscite.org to Cloudflare DNS, checks the imported DNS records and replaces
-only the nameservers at Hostinger with Cloudflare's assigned pair. Hostinger
-remains the registrar. Once the zone is active, add `ibiscite.org` under the
-Worker's Settings → Domains & Routes → Custom Domain and enable Always Use
-HTTPS in the zone. No path redirects are needed for this single-page site.
+The site is served at ibiscite.org through the Worker's custom domain, with
+Always Use HTTPS on. Domain and DNS settings are the maintainer's.
 
 `_headers` applies a self-only page CSP and revalidation to unversioned files;
 brand assets cache for one hour. SVGs have a separate sandboxed policy allowing
