@@ -1423,7 +1423,7 @@ def first_run_preferences_main(args):
         wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
         # Pick with the filter: Windows UIA exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
-        wait_for(lambda: any(node.get("focused") for node in named(snapshot(), "Filter formats")), "Copy as filter focused")
+        # Not every platform reports focus on the filter; the filtered list proves where typing went.
         native.text("Typst")
         # "\cite" names only that menu item; "Pandoc" is also the header's visible text.
         wait_for(lambda: not named(snapshot(), "\\cite"), "Copy as filter leaves only Typst")
@@ -2246,7 +2246,6 @@ class ContractTests(unittest.TestCase):
             menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
                 {"name": name, "role": "button"} for name in names] + [
-                {"name": "Filter formats", "role": "entry", "focused": True}] * menu_open + [
                 {"name": "\\cite", "role": "menu item"}] * (native.format_filter == "") + [
                 {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus and not menu_open},
                 {"name": "private result payload", "role": "list item", "focused": result_focus}]}
