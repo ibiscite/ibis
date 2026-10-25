@@ -1148,6 +1148,9 @@ test("an unavailable initial library is named once without a duplicate search er
   expect(document.body.textContent).not.toContain("keeping the last");
   expect(document.body.textContent).not.toContain("No matching references");
   expect(calls).not.toContain("search");
+  // The chosen row goes away, so the list that replaces it keeps the keyboard.
+  pressRow(choiceRow(/^Use another library/));
+  await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Zotero/)));
   await chooseFromMore("Choose library…");
   await waitFor(() => expect(calls).toContain("choose_library"));
 });
@@ -2263,6 +2266,11 @@ test("the first library asks where you write, sets Copy as to match, then shows 
   expect(screen.queryByText("First reference")).toBeNull();
   expect(document.querySelector(".results-heading")).toBeNull();
   expect(screen.getByLabelText("Search references").getAttribute("aria-expanded")).toBe("false");
+  await act(async () => { await new Promise((done) => setTimeout(done, 350)); });
+  expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe("");
+  fireEvent.keyDown(window, { key: "Alt", altKey: true });
+  expect(screen.queryByRole("button", { name: /Add to citation/ })).toBeNull();
+  fireEvent.keyUp(window, { key: "Alt" });
   expect(within(places).getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent))
     .toEqual(["Markdown (Pandoc)", "LaTeX", "Typst"]);
   expect(screen.getByText(/^Open Ibis from any app with /)).toBeTruthy();

@@ -28,9 +28,11 @@ const WRITING_PLACES = [
 /** First run, step 1, and the screen while no library is chosen: Zotero, a
  * .bib file through the system chooser, and, only when asked, libraries found
  * nearby. Only names are shown; nothing is read until one is picked (#998). */
-export function LibrarySetup({ api, perform }: {
+export function LibrarySetup({ api, perform, autoFocus = false }: {
   api: SetupApi;
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
+  /** Focus the first row on mount, when the row that led here is gone. */
+  autoFocus?: boolean;
 }) {
   const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
   // Undefined while looking; null before an explicit search or after failure.
@@ -86,7 +88,7 @@ export function LibrarySetup({ api, perform }: {
   const notes = [zotero === "access_off" && setupText.zoteroAccessOff, sources?.cut_short && setupText.cutShort].filter(Boolean);
   return (
     <div className="library-setup">
-      <ChoiceList title={setupText.sourcesTitle} line={setupText.sourcesLine} choices={choices} onChoose={choose}
+      <ChoiceList title={setupText.sourcesTitle} line={setupText.sourcesLine} choices={choices} onChoose={choose} autoFocus={autoFocus}
         footnote={notes.length > 0 ? notes.join(" ") : undefined} />
       {/* Search progress and outcome, announced once; the row shows the same words. */}
       {findSources && search > 0 && <p className="visually-hidden" role="status">{outcome}</p>}

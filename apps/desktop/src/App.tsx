@@ -662,7 +662,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator }]);
-  const shiftEnterAction = highlighted
+  const shiftEnterAction = highlighted && !showWriting
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
   const escapeStep = () => {
@@ -693,7 +693,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       onSearchAll={searchAllLibraries}
       onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
       setup={
-        <LibrarySetup api={setupApi} perform={perform} />
+        (focus) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} />
       } />
   ) : null);
 
@@ -808,7 +808,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
-          {announcement}
+          {showWriting ? "" : announcement}
         </p>
         {busy && emptyState}
         {!writingStep && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}

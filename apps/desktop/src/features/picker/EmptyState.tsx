@@ -45,10 +45,11 @@ function Recovery({ library, onFind, onReload, setup }: {
   library: LibraryStatus;
   onFind: () => void;
   onReload: () => void;
-  setup: ReactNode;
+  setup: (focus: boolean) => ReactNode;
 }) {
   const [switching, setSwitching] = useState(false);
-  if (switching) return <div className="empty-state">{setup}</div>;
+  // The chosen row is gone, so the list that replaces it takes focus.
+  if (switching) return <div className="empty-state">{setup(true)}</div>;
   const name = shortName(library.name) ?? (library.zotero ? setupText.zotero : setupText.theLibrary);
   const reason = library.error ? setupText.sentence(library.error) : undefined;
   const problem = library.problem ?? "other";
@@ -84,8 +85,8 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   onClearSearch: () => void;
   onSearchAll: () => void;
   onReload: () => void;
-  /** Shown while no library is chosen. */
-  setup: ReactNode;
+  /** Shown while no library is chosen; focus moves into it when asked. */
+  setup: (focus: boolean) => ReactNode;
 }) {
   if (!library) return <div className="empty-state" />;
   const loading = library.state === "loading" || library.state === "reloading";
@@ -93,7 +94,7 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   if (library.state === "error" && !library.has_snapshot) {
     return <Recovery key={`${library.name}\u0000${library.problem}`} library={library} onFind={onChooseLibrary} onReload={onReload} setup={setup} />;
   }
-  if (!library.name) return <div className="empty-state">{library.state === "none" ? setup : null}</div>;
+  if (!library.name) return <div className="empty-state">{library.state === "none" ? setup(false) : null}</div>;
   const empty = library.has_snapshot && library.references === 0;
   const fullTitle = libraryMessages.emptyTitle(library.snapshot_name || null);
   const title = empty ? libraryMessages.emptyTitle(shortName(library.snapshot_name))
