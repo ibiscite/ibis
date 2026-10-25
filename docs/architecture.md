@@ -57,7 +57,7 @@ references capture their own locator with record identity and revision, so later
 searches cannot rewrite a citation. Query mode and locator contents invalidate
 pending previews and copy actions. See ADR 0026.
 
-Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. For now this runs in the desktop web interface (`apps/desktop/src/format/`), not in the core, so the command line cannot format with styles; moving it into the core is planned for 0.5 (#366). Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
+Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. For now this runs in the desktop web interface (`apps/desktop/src/format/`), not in the core, so the command line cannot format with styles; moving it into the core waits until after 1.0 (#366, #1066). Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
 
 The core's structured citation reader bounds JSON input to 1 MiB and 1,000
 items before formatting. It preserves order and per-reference intent, rejects

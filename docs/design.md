@@ -533,7 +533,7 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   found .bib files join as rows above it (folder as the tag), and the row
   becomes "Look again" with the outcome as its help line. Zotero refusing other
   apps and folders too large to search are one quiet note below. A CSL JSON or
-  YAML row joins only when those sources ship (0.5).
+  YAML row joins only when those sources ship (after 1.0).
 - **Could not open, nothing kept:** the title names the library and the fix;
   the backend sorts each failure by `problem`:
 
@@ -724,9 +724,9 @@ means not decided yet.
 | Insertion (later) | Enter, double-click and Copy insert when Settings › Citations says so; the notice says "Inserted" or why it copied |
 | Action registry (later) | Every action in More with its `keys.ts` key; picker keys editable in Settings › Shortcuts |
 | Open in Zotero, PDF at the page (later) | More and the row's right-click menu; the attachment chip opens the preview [C17] |
-| Recently cited and added (0.4) | Compact start [C11] and browsing tabs; local history that can be turned off and cleared |
-| `ibis toggle` for Wayland (0.4, #782) | No picker UI; Settings › Shortcuts explains it |
-| Online mode (0.5) | Its own section after local rows, never reordering them; needs its ADR and the maintainer's yes |
+| Recently cited and added (later) | Compact start [C11] and browsing tabs; local history that can be turned off and cleared |
+| `ibis toggle` for Wayland (0.2, #1091) | No picker UI; Settings › Shortcuts explains it |
+| Online mode (later) | Its own section after local rows, never reordering them; needs its ADR and the maintainer's yes |
 
 ## How the design changes
 
