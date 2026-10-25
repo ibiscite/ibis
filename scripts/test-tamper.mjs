@@ -6,7 +6,7 @@ const expectedFile = (name) => /(?:^|\/)(?:fixtures|proptest-regressions|snapsho
 
 export function testTamper(files, body = "") {
   const visible = body.replace(/<!--[\s\S]*?(?:-->|$)|```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "");
-  if (/^[ \t]*Test changes:[ \t]*[^\s<>].*$/mi.test(visible)) return [];
+  if ([...visible.matchAll(/^[ \t]{0,3}Test changes:[ \t]*(.*)$/gmi)].some((match) => /\p{L}/u.test(match[1]))) return [];
   const flagged = files.some(({ filename, patch }) => {
     const name = filename.replaceAll("\\", "/");
     if (expectedFile(name)) return true;
@@ -15,13 +15,14 @@ export function testTamper(files, body = "") {
     const removed = lines.filter((line) => line.startsWith("-")).map((line) => line.slice(1)).join("\n");
     const added = lines.filter((line) => line.startsWith("+")).map((line) => line.slice(1)).join("\n");
     return /\b(?:assert(?:_\w+)?!?\s*(?:[.(]|[ \t]+)|expect\s*[.(]|self\.assert\w*\s*\()/.test(removed)
+      || /^\s*\.\s*(?:not\s*\.\s*)?(?:to[A-Z]\w*|rejects|resolves)\b/m.test(removed)
       || /#\s*\[\s*ignore\b|\.\s*(?:skip|only)\b|\btodo\s*!\s*\(/.test(added);
   });
   return flagged ? ["Test changes need review: add a visible line 'Test changes: <explain why assertions, disabled tests or expected data changed>' to the PR body."] : [];
 }
 
 function git(args) {
-  const result = spawnSync("git", ["-c", "core.fsmonitor=false", ...args], {
+  const result = spawnSync("git", ["--literal-pathspecs", "-c", "core.fsmonitor=false", ...args], {
     encoding: "utf8", timeout: 30000, killSignal: "SIGKILL", maxBuffer: 32 * 1024 * 1024,
   });
   if (result.status !== 0 || result.error) throw new Error("Test diff unavailable. Run git fetch origin main, then retry; in CI check the checkout and origin access.");

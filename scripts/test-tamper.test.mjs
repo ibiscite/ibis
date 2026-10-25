@@ -34,7 +34,7 @@ test("empty, harmless and large diffs stay deterministic", () => {
 });
 
 test("an explanation must be visible and contain a reason", () => {
-  for (const body of ["Test changes:", "Test changes:   ", "<!-- Test changes: hidden -->", "```\nTest changes: example\n```", "Test changes: <!-- hidden -->"]) {
+  for (const body of ["Test changes:", "Test changes:   ", "Test changes: .", "Test changes: ----", "<!-- Test changes: hidden -->", "```\nTest changes: example\n```", "Test changes: <!-- hidden -->"]) {
     assert.equal(check("tests/case.test.ts", "+it.skip('case', () => {});", body).length, 1, body);
   }
   assert.deepEqual(check("tests/case.test.ts", "+it.skip('case', () => {});", "Test changes: remove a redundant test.\r\n"), []);
@@ -56,9 +56,11 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   run(source, "init", "-q", "-b", "main");
   mkdirSync(join(source, "fixtures"));
   writeFileSync(join(source, "fixtures/資料 expected.txt"), "synthetic\n");
+  writeFileSync(join(source, ":(literal)case.test.mjs"), "assert.equal(1, 1);\n");
   run(source, "add", "."); run(source, "commit", "-qm", "base");
   run(source, "switch", "-qc", "change");
   run(source, "mv", "fixtures/資料 expected.txt", "moved.txt");
+  run(source, "--literal-pathspecs", "rm", "-q", "--", ":(literal)case.test.mjs");
   run(source, "commit", "-qm", "rename");
   const head = run(source, "rev-parse", "HEAD").trim();
   run(source, "switch", "-q", "main");
@@ -71,10 +73,24 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   const calls = [];
   const files = testDiff(event, (args) => { calls.push(args); return run(shallow, ...args); });
   assert.ok(calls.some((args) => args[0] === "fetch"), "missing parent is obtained from the existing origin");
-  assert.deepEqual(files.map((file) => file.filename), ["fixtures/資料 expected.txt"]);
+  assert.deepEqual(files.map((file) => file.filename), [":(literal)case.test.mjs", "fixtures/資料 expected.txt"]);
+  const cwd = process.cwd();
+  try {
+    process.chdir(source);
+    const literalFile = testDiff(event).find((file) => file.filename.startsWith(":"));
+    assert.match(literalFile.patch, /-assert.equal/);
+    assert.equal(testTamper([literalFile]).length, 1);
+  } finally { process.chdir(cwd); }
   assert.equal(testTamper(files).length, 1);
   assert.throws(() => testDiff({ pull_request: { base: { sha: "bad" } } }), /valid PR base\/head/);
   assert.throws(() => testDiff(event, () => "parent " + base + "\n"), /merge checkout/);
   assert.throws(() => testDiff(null, () => { throw Error("unavailable"); }), /unavailable/);
   assert.deepEqual(testDiff(null, (args) => args[0] === "merge-base" ? base : ""), []);
+});
+
+
+test("matcher-only deletion still removes an assertion", () => {
+  for (const matcher of [".toEqual(expected)", ".not.toBe(expected)", ".rejects.toThrow()", ".resolves.toEqual(expected)"]) {
+    assert.equal(check("tests/case.test.ts", `@@ -2 +2 @@\n-${matcher};\n+;`).length, 1, matcher);
+  }
 });
