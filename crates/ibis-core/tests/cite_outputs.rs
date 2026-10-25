@@ -21,6 +21,23 @@ fn pages(key: &str, value: &str) -> CiteItem {
     }
 }
 
+#[test]
+fn empty_locators_are_refused_before_any_syntax_can_drop_them() {
+    for format in [
+        KeyFormat::Pandoc,
+        KeyFormat::Autocite,
+        KeyFormat::Parencite,
+        KeyFormat::Textcite,
+        KeyFormat::Cite,
+        KeyFormat::Typst,
+        KeyFormat::Keys,
+    ] {
+        for value in ["", " ", "\u{a0}", "\u{2003}"] {
+            assert_eq!(render(format, &[pages("example", value)]), Err(CiteError::EmptyLocator));
+        }
+    }
+}
+
 fn text(format: KeyFormat, items: &[CiteItem]) -> String {
     match render(format, items) {
         Ok(r) => r.text,
