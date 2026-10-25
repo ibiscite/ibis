@@ -1,6 +1,6 @@
 # 0009. Insertion never fails silently; destination behaviour is data
 
-Status: accepted (2026-10-17); pasting into the previous app is scheduled for 0.3 on macOS, then Windows, on by default; destination profiles wait until after 1.0 ([ROADMAP.md](../../ROADMAP.md), #326)
+Status: accepted (2026-10-17); pasting into the previous app is scheduled for 0.3 on macOS, then Windows, on by default and without restoring the previous clipboard, which can paste the old contents into a slow app; restoring and destination profiles wait until after 1.0 ([ROADMAP.md](../../ROADMAP.md), #326)
 
 Edge cases are catalogued in `docs/compatibility.md`.
 
