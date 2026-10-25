@@ -134,6 +134,8 @@ fn save_automatic(app: &AppHandle, on: bool) {
             app,
             &format!("Your choice applies until Ibis quits, but it could not be saved: {problem}."),
         );
+    } else {
+        crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());
     }
 }
 
