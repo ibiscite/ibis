@@ -397,7 +397,8 @@ jobs:
     needs: [build, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Holds the update signing key; only main and v tags may use it.
+    # Holds the stable update signing key; only v tags may use it, after the
+    # maintainer approves the deployment.
     environment: updates
     permissions:
       contents: write
@@ -418,8 +419,7 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+          # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.
       - name: Install the signing tool
@@ -586,8 +586,8 @@ jobs:
     needs: [build, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Holds the update signing key; only main and v tags may use it.
-    environment: updates
+    # Holds the nightly update signing key, which Ibis (stable) never trusts.
+    environment: nightly
     permissions:
       contents: write
       attestations: read
@@ -607,8 +607,7 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+          # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.
       - name: Install the signing tool
@@ -825,9 +824,19 @@ jobs:
           set -euo pipefail
           version=$(node scripts/update-feed.mjs version)
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          published=$(curl -fsSL "https://github.com/$REPO/releases/download/nightly/latest.json" | jq -r .version)
+          curl -fsSL "https://github.com/$REPO/releases/download/nightly/latest.json" -o published.json
+          published=$(jq -r .version published.json)
           if [ ! -f previous/latest.json ] || [ ! -f "previous/$PACKAGE" ]; then
             echo "::notice::Update test skipped: the previous nightly had no update feed or no $PACKAGE."
+            exit 0
+          fi
+          # Standalone, so an unreadable feed fails the step instead of comparing empty strings.
+          previous_key=$(node scripts/update-feed.mjs feed-key previous/latest.json)
+          published_key=$(node scripts/update-feed.mjs feed-key published.json)
+          if [ "$previous_key" != "$published_key" ]; then
+            # Once, when the nightly key changes (ADR 0019): the previous nightly
+            # rightly refuses the new key, and testers reinstall by hand.
+            echo "::notice::Update test skipped: the previous nightly was signed with another key."
           elif [ "$published" != "$version" ]; then
             echo "::notice::Update test skipped: the published nightly is $published, not this build ($version)."
           elif [ "$(jq -r .version previous/latest.json)" = "$version" ]; then
