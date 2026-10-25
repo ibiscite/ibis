@@ -39,7 +39,7 @@ Preserve the manifest's appended `moduleSuffix` for the generated ES module;
 the source hash applies before that declared transformation.
 Do not change pins or patch the processor while evaluating its host runtime.
 
-Keep all four direct crates optional behind `headless-csl-prototype`, with
+Keep these direct crates optional behind `headless-csl-prototype`, with
 default features disabled and only these features enabled:
 
 | Crate | Exact version | Features | License |
@@ -48,6 +48,7 @@ default features disabled and only these features enabled:
 | icu_collator | =2.4.0 | compiled_data | Unicode-3.0 |
 | icu_casemap | =2.4.0 | compiled_data | Unicode-3.0 |
 | icu_locale_core | =2.4.0 | alloc | Unicode-3.0 |
+| writeable | =0.6.4 | none | Unicode-3.0 |
 
 Lock rquickjs core/sys packages to 0.14.0 too. The published archives
 identify [rquickjs commit d7ef5ee](https://github.com/DelSkayn/rquickjs/commit/d7ef5eeae702fea24c03643064de454f1c1dd4b0)
@@ -55,6 +56,8 @@ and include source matching its [QuickJS-NG gitlink](https://github.com/quickjs-
 ICU component/data archives identify [commit 031d9e8](https://github.com/unicode-org/icu4x/commit/031d9e89f6a3fd26a14491e090729d46094328fd).
 Lock `icu_{collator,casemap,normalizer,properties,locale_fallback}_data` to 2.4.0:
 the snapshot uses Unicode 18/CLDR 49. Updates require output/data review.
+The existing transitive `writeable` utility needs a direct trait import for the
+bounded casing writer; its archive identifies [commit a14f2da](https://github.com/unicode-org/icu4x/commit/a14f2dad852be26bad277ae704abf27a15cbfed1).
 
 Before adding dependencies, verify registry archive checksums in `Cargo.lock`
 and run `cargo deny --all-features --locked check` without policy exceptions.
@@ -90,7 +93,7 @@ budgets or a guarantee that every valid request fits:
 
 | Resource | Starting ceiling |
 | --- | --- |
-| Selected CSL-JSON plus citation intent, serialized UTF-8 | 1 MiB; 1,000 citation occurrences |
+| Selected CSL-JSON plus citation intent, serialized UTF-8 | 1 MiB; 1,000 records and 1,000 citation occurrences |
 | Engine-accounted heap | 64 MiB |
 | Engine stack | 1 MiB, with additional Rust/C worker-stack headroom |
 | Active job | 5 seconds from dispatch, including initialization and fallback passes |
