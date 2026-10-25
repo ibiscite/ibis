@@ -34,6 +34,7 @@ fn arbitrary_field_labels_never_enter_field_warning_messages() {
                 assert_eq!(warning.kind, WarningKind::Field);
                 assert_eq!(warning.key.as_deref(), Some("SYN00001"));
                 assert!(!warning.message.contains("SYNTHETIC_PRIVATE_LABEL"));
+                assert!(warning.message.contains("`other CSL field`"));
                 assert!(warning.message.len() < 128);
             }
         }
@@ -43,11 +44,14 @@ fn arbitrary_field_labels_never_enter_field_warning_messages() {
 #[test]
 fn normalization_preserves_the_complete_raw_item_in_both_csl_encodings() {
     for local in [false, true] {
-        let original = item(json!({
-            "type": "book", "title": "  Été <I>日本🌙</I> & < 0.05  ",
-            "container-title": "  <b >Synthetic</b>  ", "volume": 12,
-            "abstract": "  Synthetic abstract  ", "custom": " original value "
-        }), local);
+        let original = item(
+            json!({
+                "type": "book", "title": "  Été <I>日本🌙</I> & < 0.05  ",
+                "container-title": "  <b >Synthetic</b>  ", "volume": 12,
+                "abstract": "  Synthetic abstract  ", "custom": " original value "
+            }),
+            local,
+        );
         let loaded = load_items(Library::Group(42), std::slice::from_ref(&original));
         assert!(loaded.warnings.is_empty());
         let reference = &loaded.references[0];
@@ -66,9 +70,15 @@ fn normalization_preserves_the_complete_raw_item_in_both_csl_encodings() {
 fn title_scalars_keep_numeric_and_empty_behavior() {
     for local in [false, true] {
         for (value, expected) in [(json!(123), Some("123")), (json!("  "), None), (Value::Null, None)] {
-            let loaded = load_items(Library::User, &[item(json!({
-                "type": "book", "title": value, "container-title": value
-            }), local)]);
+            let loaded = load_items(
+                Library::User,
+                &[item(
+                    json!({
+                        "type": "book", "title": value, "container-title": value
+                    }),
+                    local,
+                )],
+            );
             assert_eq!(loaded.references[0].title.as_deref(), expected);
             assert_eq!(loaded.references[0].container_title.as_deref(), expected);
             assert!(loaded.warnings.is_empty());

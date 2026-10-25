@@ -166,14 +166,15 @@ fn load_item(library: Library, item: &Value) -> Result<Loaded, (Option<String>, 
         issued: None,
         dates: BTreeMap::new(),
         container_title: text(csl, "container-title").map(|t| rich_text(&t)),
-        doi: text(csl, "DOI"),
-        url: text(csl, "URL"),
-        abstract_text: text(csl, "abstract"),
+        doi: text(csl, "DOI").map(Cow::into_owned),
+        url: text(csl, "URL").map(Cow::into_owned),
+        abstract_text: text(csl, "abstract").map(Cow::into_owned),
         keywords: tags(data),
-        language: text(csl, "language"),
+        language: text(csl, "language").map(Cow::into_owned),
         eprints: Vec::new(),
         variables: BTreeMap::new(),
         attachment: attachment_kind(item),
+        // Preserve the complete source item and its CSL encoding (ADR 0005).
         raw: serde_json::to_string(item).ok(),
     };
     for (name, value) in csl {
@@ -204,14 +205,14 @@ fn load_item(library: Library, item: &Value) -> Result<Loaded, (Option<String>, 
                         Some(shown) => {
                             reference.variables.insert(name.to_string(), shown);
                         }
-                        None => problems.push(format!("the date `{name}` could not be read")),
+                        None => problems.push(format!("the date `{}` could not be read", warning_field(name))),
                     }
                 }
             }
         } else if let Some(text) = scalar(value) {
-            reference.variables.insert(name.to_string(), text);
+            reference.variables.insert(name.to_string(), text.into_owned());
         } else if !value.is_null() && value.as_str().is_none() {
-            problems.push(format!("the field `{name}` could not be read"));
+            problems.push(format!("the field `{}` could not be read", warning_field(name)));
         }
     }
     Ok(Some((reference, problems)))
@@ -300,16 +301,39 @@ fn citation_key(data: &Map<String, Value>, csl: &Map<String, Value>, problems: &
     from_extra.or_else(|| csl.get("citation-key").and_then(Value::as_str).and_then(&mut usable))
 }
 
-fn text(csl: &Map<String, Value>, name: &str) -> Option<String> {
-    csl.get(name).and_then(scalar).filter(|t| !t.is_empty())
+fn text<'a>(csl: &'a Map<String, Value>, name: &str) -> Option<Cow<'a, str>> {
+    csl.get(name).and_then(scalar)
 }
 
-fn scalar(value: &Value) -> Option<String> {
+// Borrow until the normalized destination needs ownership, so rich-text
+// conversion does not first allocate a second copy of each source string.
+fn scalar(value: &Value) -> Option<Cow<'_, str>> {
     match value {
-        Value::String(s) => Some(s.trim().to_string()).filter(|s| !s.is_empty()),
-        Value::Number(n) => Some(n.to_string()),
+        Value::String(s) => Some(Cow::Borrowed(s.trim())).filter(|s| !s.is_empty()),
+        Value::Number(n) => Some(Cow::Owned(n.to_string())),
         _ => None,
     }
+}
+
+/// Warning labels use a fixed vocabulary; extension names can contain private
+/// library content. Their original spelling remains in the reference and raw.
+fn warning_field(name: &str) -> &'static str {
+    const OTHER_FIELDS: [&str; 7] = [
+        "translator",
+        "issued",
+        "accessed",
+        "event-date",
+        "original-date",
+        "submitted",
+        "note",
+    ];
+    NAME_FIELDS
+        .iter()
+        .chain(TEXT_FIELDS.iter())
+        .chain(OTHER_FIELDS.iter())
+        .copied()
+        .find(|field| *field == name)
+        .unwrap_or("other CSL field")
 }
 
 fn tags(data: &Map<String, Value>) -> Vec<String> {
@@ -329,7 +353,7 @@ fn names(csl: &Map<String, Value>, field: &str, problems: &mut Vec<String>) -> V
         return Vec::new();
     };
     let Some(list) = list.as_array() else {
-        problems.push(format!("the names in `{field}` could not be read"));
+        problems.push(format!("the names in `{}` could not be read", warning_field(field)));
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -351,7 +375,10 @@ fn names(csl: &Map<String, Value>, field: &str, problems: &mut Vec<String>) -> V
             literal: part("literal"),
         };
         if name == Name::default() {
-            problems.push(format!("a name in `{field}` is empty and was left out"));
+            problems.push(format!(
+                "a name in `{}` is empty and was left out",
+                warning_field(field)
+            ));
         } else {
             out.push(name);
         }
@@ -363,6 +390,7 @@ fn names(csl: &Map<String, Value>, field: &str, problems: &mut Vec<String>) -> V
 /// an unreadable range end are left out and reported; a date with no valid
 /// year is `None`.
 fn date(value: &Value, name: &str, problems: &mut Vec<String>) -> Option<Issued> {
+    let name = warning_field(name);
     let parts = value.get("date-parts")?.as_array()?;
     let start = partial_date(parts.first()?, name, problems)?;
     let end = match parts.get(1) {
@@ -387,6 +415,7 @@ fn date(value: &Value, name: &str, problems: &mut Vec<String>) -> Option<Issued>
 }
 
 fn partial_date(parts: &Value, name: &str, problems: &mut Vec<String>) -> Option<PartialDate> {
+    let name = warning_field(name);
     let parts = parts.as_array()?;
     let number = |i: usize| -> Option<Option<i64>> {
         match parts.get(i)? {
