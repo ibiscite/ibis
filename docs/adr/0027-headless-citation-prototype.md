@@ -80,8 +80,11 @@ or network access.
 Use the existing normalized CSL-JSON and citation intent, including ordered
 repeated references, typed locators, prefix, suffix and author omission. Resolve
 desktop records under its existing revision guard before formatting; release
-the library lock before evaluation. Generate request-local processor IDs, keep
-record identity distinct from citation keys, and clear all request state.
+the library lock before evaluation. Map each distinct resolved record identity
+(source plus native key, 0005) to one request-local processor ID. Repeated citation
+occurrences reuse that ID with independent locators and citation intent; positions
+do not create new works. Distinct records sharing a citekey receive distinct IDs. Clear the
+map/state after the request; no new public identity protocol is introduced.
 
 Run one synchronous request in a fresh runtime/context on its owning test thread;
 do not introduce a queue, worker pool or processor cache. Only a bounded per-request
@@ -173,6 +176,11 @@ provisional (0007); no document-history API is introduced here. Compare current
 worker and native output for all five styles, citation and bibliography, HTML,
 text and complete RTF, with Unicode, date ranges, duplicate keys, repeated items,
 mixed intent, edited fields, empty/malformed input and fallback/recovery cases.
+For identity fixtures, call pinned citeproc directly with semantic record IDs as
+the oracle: repeat one resolved record with different locators, and cite distinct
+records sharing a key. Verify citation and bibliography behavior, including work
+count/disambiguation. Comparing two position-ID adapters is not an independent
+identity oracle; the current GUI cannot select the same record twice.
 
 Keep preview annotations separate: erasing wrappers must reproduce canonical
 output; ambiguous ownership keeps the existing aggregate presentation. Engine
