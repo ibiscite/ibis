@@ -161,3 +161,91 @@ fn records_occurrences_and_serialized_bytes_have_independent_ceilings() {
     works[0].csl["title"] = Value::String("x".repeat(1024 * 1024));
     rejects(&works, &cites, false, false, Failure::Limit);
 }
+
+// This suite uses the extended deadline; other suites retain the two-second wrapper.
+#[allow(dead_code)]
+#[path = "../../tests/support/subprocess_watchdog.rs"]
+mod subprocess_watchdog;
+
+fn execute_script(script: &str, timeout: std::time::Duration) -> Result<String, Failure> {
+    let guard = std::rc::Rc::new(super::intl::Guard::new(
+        std::time::Instant::now() + timeout,
+        cancel(false),
+    ));
+    super::execute("{}", "", script, guard)
+}
+
+#[test]
+fn native_intrinsics_preserve_default_sort_options_and_turkish_case() {
+    let script = r#"
+JSON.stringify([
+    Math.sign('2'.localeCompare('10', 'en-US')),
+    Math.sign('2'.localeCompare('10', 'en-US', {sensitivity:'base', numeric:true, ignorePunctuation:true})),
+    Math.sign('a'.localeCompare('A', 'en-US')),
+    Math.sign('a'.localeCompare('A', 'en-US', {sensitivity:'base', numeric:true, ignorePunctuation:true})),
+    'istanbul'.toLocaleUpperCase(['tr']), 'I'.toLocaleLowerCase(['tr'])
+])
+"#;
+    assert_eq!(
+        execute_script(script, std::time::Duration::from_secs(5)).expect("qualified intrinsic calls"),
+        "[1,-1,-1,0,\"İSTANBUL\",\"ı\"]"
+    );
+}
+
+#[test]
+fn swallowed_native_failures_and_invalid_output_still_reject_the_request() {
+    let cases = [
+        (
+            "try { 'a'.localeCompare('b', 'unknown'); } catch (_) {} 'caught'",
+            Failure::Unsupported,
+        ),
+        (
+            "try { 'a'.localeCompare('b', 'en-US', {}); } catch (_) {} 'caught'",
+            Failure::Unsupported,
+        ),
+        (
+            r#"try { 'a'.localeCompare('b', 'en-US', {get sensitivity(){return 'base'}, numeric:true, ignorePunctuation:true}); } catch (_) {} 'caught'"#,
+            Failure::Unsupported,
+        ),
+        (
+            r#"const locales = ['en-US']; Object.defineProperty(locales, '0', {get(){return 'en-US'}}); try { 'a'.toLocaleUpperCase(locales); } catch (_) {} 'caught'"#,
+            Failure::Unsupported,
+        ),
+        (
+            r#"try { '\ud800'.toLocaleUpperCase('en-US'); } catch (_) {} 'caught'"#,
+            Failure::Invalid,
+        ),
+        (r#"'\ud800'"#, Failure::Invalid),
+        ("'x'.repeat(1048577)", Failure::Limit),
+    ];
+    for (script, expected) in cases {
+        assert_eq!(execute_script(script, std::time::Duration::from_secs(5)), Err(expected));
+        assert_eq!(
+            execute_script("'healthy'", std::time::Duration::from_secs(5)),
+            Ok("healthy".into())
+        );
+    }
+}
+
+#[test]
+fn native_interrupt_returns_and_next_request_runs() {
+    const CHILD: &str = "IBIS_TEST_HEADLESS_INTERRUPT";
+    if std::env::var_os(CHILD).is_some() {
+        // The guard includes processor initialization, not only script execution.
+        assert_eq!(
+            execute_script("while (true) {}", std::time::Duration::from_millis(100)),
+            Err(Failure::TimedOut)
+        );
+        assert_eq!(
+            execute_script("'healthy'", std::time::Duration::from_secs(5)),
+            Ok("healthy".into())
+        );
+        return;
+    }
+    subprocess_watchdog::assert_finishes_with_timeout(
+        "headless_csl::tests::native_interrupt_returns_and_next_request_runs",
+        CHILD,
+        "headless citation interrupt did not return",
+        std::time::Duration::from_secs(10),
+    );
+}
