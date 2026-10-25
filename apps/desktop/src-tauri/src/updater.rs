@@ -130,7 +130,12 @@ pub(crate) fn toggle_automatic(app: &AppHandle) {
     save_automatic(app, on);
 }
 
-fn save_automatic(app: &AppHandle, on: bool) {
+/// Whether checks run on their own, as the menus show it.
+pub(crate) fn automatic(app: &AppHandle) -> bool {
+    app.state::<Updates>().automatic.load(Ordering::SeqCst)
+}
+
+pub(crate) fn save_automatic(app: &AppHandle, on: bool) {
     set_automatic(app, on);
     if let Err(problem) = app.state::<SettingsFile>().update(|s| s.update_checks = Some(on)) {
         tell(

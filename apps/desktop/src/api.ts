@@ -35,6 +35,9 @@ export const {
   openFoundLibrary,
   showCopiedNotice,
   rowContext,
+  updateChecks,
+  setUpdateChecks,
+  checkForUpdates,
 } = commands;
 
 // The limit default, page and request number are not part of the UI's API:

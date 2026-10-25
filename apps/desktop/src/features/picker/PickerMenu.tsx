@@ -9,8 +9,8 @@ import { MenuItem, MenuSection, MenuSeparator, MoreMenu } from "./MoreMenu";
 const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** The More button and menu: the library and its Zotero scope, view settings,
- * starting at login, the keys overlay and Quit. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, zotero, density, largerText, searchMark, showPastePreview, pinned, startAtLogin, actions }: {
+ * starting at login, updates, the keys overlay and Quit. */
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, zotero, density, largerText, searchMark, showPastePreview, pinned, startAtLogin, updates, actions }: {
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
   library: LibraryStatus | null | undefined;
@@ -25,6 +25,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   pinned: boolean;
   /** Offered when the system supports it. */
   startAtLogin: { item: LoginItem; toggle: () => void } | null;
+  /** The tray's update controls, for builds that have updates. */
+  updates: { automatic: boolean; toggle: () => void; check: () => void } | null;
   actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; quit: () => void };
 }) {
   return (
@@ -68,9 +70,13 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {startAtLogin && (
           <MenuItem id="start-at-login" label={loginItemText.label(currentPlatform())} title={loginItemText.title(currentPlatform())} checked={startAtLogin.item.enabled} onAction={startAtLogin.toggle} />
         )}
+        {updates && (
+          <MenuItem id="check-automatically" label={pickerText.checkAutomatically} checked={updates.automatic} onAction={updates.toggle} />
+        )}
       </MenuSection>
       <MenuSeparator />
       <MenuSection id="ibis">
+        {updates && <MenuItem id="check-for-updates" label={pickerText.checkForUpdates} onAction={updates.check} />}
         <MenuItem id="keys" label={keyText.title} keys={label(keysFor("keys"))} onAction={actions.keys} />
         {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
         <MenuItem id="quit" label={pickerText.quitLabel} keys={label(keysFor("quit"))} onAction={actions.quit} />

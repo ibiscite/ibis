@@ -207,6 +207,8 @@ function backend(overrides: Record<string, Handler> = {}): string[] {
     set_picker_preferences: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
+    // Builds without an update key have no update controls.
+    update_checks: () => null,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };
@@ -2934,6 +2936,51 @@ test("systems without login items, and pickers without the commands, offer no ch
   expect(screen.queryByRole("menuitemcheckbox", { name: "Start on Login" })).toBeNull();
 });
 
+test("More has the tray's update controls, in builds that have updates", async () => {
+  let automatic = false;
+  const calls = backend({
+    update_checks: () => automatic,
+    set_update_checks: ({ enabled }) => { automatic = Boolean(enabled); return automatic; },
+    check_for_updates: () => null,
+  });
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const item = await screen.findByRole("menuitemcheckbox", { name: "Check for updates automatically" });
+  expect(item.getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(item);
+  await waitFor(() => expect(automatic).toBe(true));
+  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Check for updates automatically" }).getAttribute("aria-checked")).toBe("true"));
+  // Turned off from the tray while More was closed.
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  automatic = false;
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Check for updates automatically" }).getAttribute("aria-checked")).toBe("false"));
+  await chooseFromMore("Check for updates…");
+  await waitFor(() => expect(calls.filter((c) => c === "check_for_updates")).toHaveLength(1));
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("builds without updates, and pickers without the commands, offer no update controls", async () => {
+  backend();
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(screen.queryByRole("menuitem", { name: "Check for updates…" })).toBeNull();
+  expect(screen.queryByRole("menuitemcheckbox", { name: "Check for updates automatically" })).toBeNull();
+  cleanup();
+  const { updateChecks: _read, ...withoutRead } = api;
+  backend({ update_checks: () => true });
+  render(<App api={withoutRead} />);
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(screen.queryByRole("menuitem", { name: "Check for updates…" })).toBeNull();
+});
+
 test("first run leaves starting at login to More", async () => {
   backend({ library_status: () => NO_LIBRARY, login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
   render(<App />);
@@ -3941,7 +3988,7 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(calls).not.toContain("set_pinned");
   await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check for Updates");
+  expect(screen.getByRole("alert").textContent).toContain("Check for updates in More");
 });
 
 test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {

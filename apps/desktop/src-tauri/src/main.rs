@@ -32,6 +32,7 @@ mod row_context;
 mod setup;
 mod sizing;
 mod tray;
+mod update_controls;
 mod updater;
 
 use std::path::PathBuf;
