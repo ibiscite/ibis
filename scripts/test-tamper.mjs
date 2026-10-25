@@ -6,7 +6,7 @@ const expectedFile = (name) => /(?:^|\/)(?:fixtures|proptest-regressions|snapsho
 
 export function testTamper(files, body = "") {
   const visible = body.replace(/<!--[\s\S]*?(?:-->|$)|```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "");
-  if ([...visible.matchAll(/^[ \t]{0,3}Test changes:[ \t]*(.*)$/gmi)].some((match) => /\p{L}/u.test(match[1]))) return [];
+  if ([...visible.matchAll(/^ {0,3}Test changes:[ \t]*(.*)$/gmi)].some((match) => /\p{L}/u.test(match[1].replace(/<[^>]*(?:>|$)/g, "")))) return [];
   const flagged = files.some(({ filename, patch }) => {
     const name = filename.replaceAll("\\", "/");
     if (expectedFile(name)) return true;
@@ -38,7 +38,9 @@ export function testDiff(event, run = git) {
     // parent excludes changes made only on main, even in a shallow checkout.
     const commit = run(["cat-file", "-p", "HEAD"]);
     const parents = [...commit.matchAll(/^parent ([a-f0-9]{40})$/gm)].map((m) => m[1]);
-    if (parents.length !== 2 || parents[0] !== pr.base.sha || parents[1] !== pr.head.sha) throw new Error("Test diff needs the PR merge checkout matching the event; rerun the workflow.");
+    const merge = process.env.GITHUB_SHA ?? pr.merge_commit_sha;
+    // The event's base SHA can lag behind GitHub's regenerated merge ref.
+    if (!/^[a-f0-9]{40}$/.test(merge ?? "") || run(["rev-parse", "HEAD"]).trim() !== merge || parents.length !== 2 || parents[1] !== pr.head.sha) throw new Error("Test diff needs the PR merge checkout matching the event; rerun the workflow.");
     base = parents[0]; head = "HEAD";
     try { run(["cat-file", "-e", `${base}^{commit}`]); }
     catch { run(["fetch", "--no-tags", "--depth=1", "origin", base]); }

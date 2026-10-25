@@ -34,7 +34,7 @@ test("empty, harmless and large diffs stay deterministic", () => {
 });
 
 test("an explanation must be visible and contain a reason", () => {
-  for (const body of ["Test changes:", "Test changes:   ", "Test changes: .", "Test changes: ----", "<!-- Test changes: hidden -->", "```\nTest changes: example\n```", "Test changes: <!-- hidden -->"]) {
+  for (const body of ["Test changes:", "Test changes:   ", "Test changes: .", "Test changes: ----", "Test changes: <br>", "\tTest changes: example", "<!-- Test changes: hidden -->", "```\nTest changes: example\n```", "Test changes: <!-- hidden -->"]) {
     assert.equal(check("tests/case.test.ts", "+it.skip('case', () => {});", body).length, 1, body);
   }
   assert.deepEqual(check("tests/case.test.ts", "+it.skip('case', () => {});", "Test changes: remove a redundant test.\r\n"), []);
@@ -60,6 +60,7 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   writeFileSync(join(source, "fixtures/資料 expected.txt"), "synthetic\n");
   writeFileSync(join(source, tricky), "assert.equal(1, 1);\n");
   run(source, "add", "."); run(source, "commit", "-qm", "base");
+  const initial = run(source, "rev-parse", "HEAD").trim();
   run(source, "switch", "-qc", "change");
   run(source, "mv", "fixtures/資料 expected.txt", "moved.txt");
   run(source, "--literal-pathspecs", "rm", "-q", "--", tricky);
@@ -71,7 +72,7 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   const base = run(source, "rev-parse", "HEAD").trim();
   run(source, "merge", "--no-ff", "-qm", "merge", "change");
   run(root, "clone", "-q", "--depth=1", pathToFileURL(source).href, shallow);
-  const event = { pull_request: { base: { sha: base }, head: { sha: head } } };
+  const event = { pull_request: { base: { sha: initial }, head: { sha: head }, merge_commit_sha: run(source, "rev-parse", "HEAD").trim() } };
   const calls = [];
   const files = testDiff(event, (args) => { calls.push(args); return run(shallow, ...args); });
   assert.ok(calls.some((args) => args[0] === "fetch"), "missing parent is obtained from the existing origin");
