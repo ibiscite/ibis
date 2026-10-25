@@ -59,10 +59,31 @@ enum InstanceAction {
     Ignore,
 }
 
+fn is_toggle(args: &[String]) -> bool {
+    matches!(args, [_, command] if command == "toggle")
+}
+
+/// Only a macOS toggle shares the shortcut's main thread; see the callback.
+fn acts_on_main_thread(args: &[String], macos: bool) -> bool {
+    macos && is_toggle(args)
+}
+
+fn act_on_instance(app: &tauri::AppHandle, args: &[String]) {
+    let visible = || {
+        app.get_webview_window("main")
+            .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
+    };
+    match instance_action(args, visible) {
+        InstanceAction::Show => show_picker(app),
+        InstanceAction::Hide => dismiss_picker(app),
+        InstanceAction::Ignore => {}
+    }
+}
+
 fn instance_action(args: &[String], visible: impl FnOnce() -> Option<bool>) -> InstanceAction {
     if args.iter().skip(1).any(|arg| arg == login_item::AT_LOGIN_ARG) {
         InstanceAction::Ignore
-    } else if matches!(args, [_, command] if command == "toggle") && visible() == Some(true) {
+    } else if is_toggle(args) && visible() == Some(true) {
         InstanceAction::Hide
     } else {
         InstanceAction::Show
@@ -104,16 +125,18 @@ fn main() {
         // Must be registered first: a second launch brings the running picker forward.
         // A login entry starting a second copy leaves the running picker alone.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // Act in the callback, as a plain second launch always has:
-            // deferring the show to the main thread loses focus on Linux.
-            let visible = || {
-                app.get_webview_window("main")
-                    .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
-            };
-            match instance_action(&args, visible) {
-                InstanceAction::Show => show_picker(app),
-                InstanceAction::Hide => dismiss_picker(app),
-                InstanceAction::Ignore => {}
+            // macOS: the shortcut acts on the main thread, so a toggle decides
+            // and acts there too, or the two could interleave and lose one.
+            // Elsewhere, act in the callback as a second launch always has:
+            // deferring the show loses the focus hand-off on Linux.
+            if acts_on_main_thread(&args, cfg!(target_os = "macos")) {
+                let handle = app.clone();
+                report(
+                    app.run_on_main_thread(move || act_on_instance(&handle, &args)),
+                    NativeIssue::PickerEvent,
+                );
+            } else {
+                act_on_instance(app, &args);
             }
         }))
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -327,6 +350,17 @@ fn main() {
 #[cfg(test)]
 mod toggle_tests {
     use super::*;
+
+    #[test]
+    fn only_a_macos_toggle_waits_for_the_main_thread() {
+        let toggle: Vec<String> = ["ibis-desktop", "toggle"].map(String::from).to_vec();
+        let plain: Vec<String> = ["ibis-desktop"].map(String::from).to_vec();
+        let login: Vec<String> = ["ibis-desktop", "--at-login"].map(String::from).to_vec();
+        assert!(acts_on_main_thread(&toggle, true));
+        for (args, macos) in [(&toggle, false), (&plain, true), (&plain, false), (&login, true)] {
+            assert!(!acts_on_main_thread(args, macos));
+        }
+    }
 
     #[test]
     fn wayland_toggle_guidance_preserves_working_shortcuts() {
