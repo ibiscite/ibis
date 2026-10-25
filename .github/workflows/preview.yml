@@ -397,7 +397,8 @@ jobs:
     needs: [build, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Holds the update signing key; only main and v tags may use it.
+    # Holds the stable update signing key; only v tags may use it, after the
+    # maintainer approves the deployment.
     environment: updates
     permissions:
       contents: write
@@ -418,8 +419,7 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+          # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.
       - name: Install the signing tool
@@ -586,8 +586,8 @@ jobs:
     needs: [build, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Holds the update signing key; only main and v tags may use it.
-    environment: updates
+    # Holds the nightly update signing key, which Ibis (stable) never trusts.
+    environment: nightly
     permissions:
       contents: write
       attestations: read
@@ -607,8 +607,7 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+          # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.
       - name: Install the signing tool

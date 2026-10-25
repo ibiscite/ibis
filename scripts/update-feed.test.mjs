@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { PACKAGES, compareVersions, keyId, manifest, nightlyConfig, nightlyVersion } from "./update-feed.mjs";
+import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion } from "./update-feed.mjs";
 
 const fixture = (name) => readFileSync(new URL(`../fixtures/updates/${name}`, import.meta.url), "utf8");
 const testKey = fixture("test-key.pub");
@@ -70,7 +70,12 @@ test("Ibis Nightly is a separate app that reads only the nightly feed", () => {
   assert.equal(config.productName, "Ibis Nightly");
   assert.deepEqual(config.plugins.updater.endpoints, ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"]);
   assert.ok(!config.bundle.targets.includes("msi") && !config.bundle.targets.includes("rpm"));
-  assert.ok(!("pubkey" in config.plugins.updater), "both apps trust the same built-in key");
+  const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+  assert.equal(config.plugins.updater.pubkey, NIGHTLY_PUBKEY, "Ibis Nightly trusts only the nightly key");
+  assert.notEqual(NIGHTLY_PUBKEY, stable.plugins.updater.pubkey, "nightly and stable updates use separate keys");
+  assert.notEqual(keyId(NIGHTLY_PUBKEY), keyId(stable.plugins.updater.pubkey));
+  assert.equal(feedPublicKey("0.1.1-nightly.20261019223000", stable.plugins.updater.pubkey), NIGHTLY_PUBKEY);
+  assert.equal(feedPublicKey("0.2.0", stable.plugins.updater.pubkey), stable.plugins.updater.pubkey);
 });
 
 test("Windows startup fixtures use the shipped channel names and identifiers", () => {

@@ -53,3 +53,7 @@ Testers should get fixes without reinstalling by hand. Builds are already publis
 
 Upstream: [CLI 2.12.3 signing](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.3/crates/tauri-cli/src/helpers/updater_signature.rs),
 [updater 2.14.0 verification](https://github.com/tauri-apps/plugins-workspace/blob/updater-v2.14.0/plugins/updater/src/updater.rs).
+
+## Amendment: separate stable and nightly keys (2026-10-25, #1125)
+
+Ibis and Ibis Nightly no longer share an update key. The stable key signs only tag releases, from the `updates` environment, which waits for the maintainer's approval. The nightly key signs every push to `main`, from the `nightly` environment. Each app trusts only its own public key: the stable one in `tauri.conf.json`, the nightly one set by the Nightly build overlay. A leaked nightly key cannot sign a stable update.

@@ -41,6 +41,16 @@ export function nightlyVersion(base, commitTime) {
   return `${match[1]}.${match[2]}.${Number(match[3]) + 1}-nightly.${commitTime}`;
 }
 
+/** Ibis Nightly's own update public key (minisign, base64), separate from the
+ * stable key in tauri.conf.json, so a key used on every push to main can never
+ * sign a stable update (ADR 0019). */
+export const NIGHTLY_PUBKEY = "REPLACE_WITH_THE_NIGHTLY_PUBLIC_KEY";
+
+/** The public key whose signatures a feed for `version` must carry. */
+export function feedPublicKey(version, stablePubkey) {
+  return version.includes("-nightly.") ? NIGHTLY_PUBKEY : stablePubkey;
+}
+
 /** Ibis Nightly: a separate app with its own settings and update feed. No MSI
  * (Windows Installer versions cannot carry "nightly") and no .rpm (RPM
  * versions cannot contain "-"). */
@@ -50,7 +60,9 @@ export function nightlyConfig(version) {
     version,
     identifier: "io.github.ibiscite.ibis.nightly",
     bundle: { targets: ["app", "dmg", "nsis", "deb", "appimage"] },
-    plugins: { updater: { endpoints: ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"] } },
+    plugins: {
+      updater: { endpoints: ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"], pubkey: NIGHTLY_PUBKEY },
+    },
   };
 }
 
@@ -125,6 +137,7 @@ function main([command, ...args]) {
   } else if (command === "release") {
     console.log(workspaceVersion());
   } else if (command === "config" && args.length === 1) {
+    keyId(NIGHTLY_PUBKEY); // refuses to build Ibis Nightly without a real key
     console.log(JSON.stringify(nightlyConfig(args[0])));
   } else if (command === "manifest" && args.length === 4) {
     const [dir, base, version, notes] = args;
@@ -138,7 +151,7 @@ function main([command, ...args]) {
       date: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
       base,
       signatures,
-      publicKey: config.plugins.updater.pubkey,
+      publicKey: feedPublicKey(version, config.plugins.updater.pubkey),
     });
     writeFileSync(join(dir, "latest.json"), `${JSON.stringify(feed, null, 2)}\n`);
   } else {
