@@ -21,6 +21,51 @@ function glob(pattern, value) {
   return Boolean(row[chars.length]);
 }
 
+function* codeSpans(text) {
+  const runs = [];
+  let cursor = 0, lineStart = 0, fence = 0, start;
+  while ((start = text.indexOf("`", cursor)) >= 0) {
+    const newline = text.slice(cursor, start).lastIndexOf("\n");
+    if (newline >= 0) lineStart = cursor + newline + 1;
+    let end = start + 1;
+    while (text[end] === "`") end++;
+    const length = end - start;
+    if (length >= 3 && start - lineStart <= 3 && /^ *$/.test(text.slice(lineStart, start))) {
+      const lineEnd = text.indexOf("\n", end), tail = text.slice(end, lineEnd < 0 ? text.length : lineEnd);
+      if (fence && length >= fence && /^[ \t]*$/.test(tail)) fence = 0;
+      else if (!fence && !tail.includes("`")) fence = length;
+      else if (!fence) runs.push({ start, end, length });
+    } else if (!fence) runs.push({ start, end, length });
+    cursor = end;
+  }
+  const next = new Map(), pairs = new Array(runs.length).fill(-1);
+  for (let i = runs.length - 1; i >= 0; i--) { pairs[i] = next.get(runs[i].length) ?? -1; next.set(runs[i].length, i); }
+  for (let i = 0; i < runs.length; i++) {
+    if (pairs[i] < 0) continue;
+    yield text.slice(runs[i].end, runs[pairs[i]].start).replace(/\r?\n/g, " ").trim();
+    i = pairs[i];
+  }
+}
+
+function* inlineLinks(text) {
+  for (const line of text.split(/\r?\n/)) {
+    let opening = -1;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === "[") opening = i;
+      if (opening < 0 || line[i] !== "]" || line[i + 1] !== "(") continue;
+      let at = i + 2;
+      while (/[ \t]/.test(line[at] ?? "")) at++;
+      let end = at;
+      if (line[at] === "<") { end = line.indexOf(">", at + 1); if (end < 0) break; end++; }
+      else while (end < line.length && !/[ \t)]/.test(line[end])) end++;
+      const close = line.indexOf(")", end);
+      if (close < 0) break;
+      yield line.slice(at, end).replace(/^<|>$/g, "");
+      i = close; opening = -1;
+    }
+  }
+}
+
 export function docProblems(doc, text, files, crates) {
   doc = normalize(doc);
   text = text.replace(/\\\r?\n[ \t]*/g, " ");
@@ -51,15 +96,14 @@ export function docProblems(doc, text, files, crates) {
     catch { problems.push(`${doc}: ${kind} ${value}`); return; }
     if (name && !exists(name, link)) problems.push(`${doc}: ${kind} ${value}`);
   }
-  for (const match of text.matchAll(/(?<!`)(`+)([\s\S]*?)\1(?!`)/g)) {
-    if (match[1].length > 2) continue;
-    const value = normalize(match[2].replace(/\r?\n/g, " "));
+  for (const span of codeSpans(text)) {
+    const value = normalize(span);
     if (/^(?:node|cargo|pnpm|python\d*)\s/.test(value) || /^[-#]|\s--/.test(value) || value.startsWith(".local/")) continue;
     if (/\s/.test(value) && (!/^(?:\.\.?\/|[\w.-]+\/)/.test(value) || /[=;()"']/.test(value))) continue;
     if (/\//.test(value) || /^[\w.-]+\.(?:md|[cm]?js|rs|tsx?|css|json|toml|ya?ml|py|sh|ps1)$/.test(value)) path(value, "path");
   }
-  for (const match of text.matchAll(/\[[^\]\n]*\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+[^)]*)?\)/g)) path(match[1].replace(/^<|>$/g, ""), "link", true);
-  for (const match of text.matchAll(/^\s*\[[^\]]+\]:\s*(\S+)/gm)) path(match[1].replace(/^<|>$/g, ""), "link", true);
+  for (const link of inlineLinks(text)) path(link, "link", true);
+  for (const match of text.matchAll(/^[ \t]*\[[^\]\r\n]+\]:[ \t]*(\S+)/gm)) path(match[1].replace(/^<|>$/g, ""), "link", true);
   for (const match of text.matchAll(/\bnode\s+(?:"(scripts[\\/][^"\r\n]+)"|'(scripts[\\/][^'\r\n]+)'|(scripts[\\/][^\s`;'"|)]+))/g)) path(normalize(match[1] ?? match[2] ?? match[3]), "node script");
   for (const command of text.matchAll(/\bcargo(?:\s+\+[^\s`]+)?\s+([^\r\n`]+)/g)) {
     for (const match of command[1].split(/\s--(?:\s|$)/)[0].matchAll(/(?:^|\s)(?:-p(?:=|\s+)?|--package(?:=|\s+))(['"]?)([^\s`;'"|)]+)\1/g)) {

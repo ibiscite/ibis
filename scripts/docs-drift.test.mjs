@@ -60,3 +60,10 @@ test("hostile glob matching is bounded", () => {
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { timeout: 1500, killSignal: "SIGKILL", encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr || result.error?.message);
 });
+
+
+test("hostile Markdown delimiter runs are bounded", () => {
+  const code = `import {docProblems} from ${JSON.stringify(new URL("./check-docs-drift.mjs", import.meta.url).href)}; for (const point of [96, 91, 10]) docProblems("docs/guide.md", String.fromCharCode(point).repeat(100000), [], []);`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { timeout: 1500, killSignal: "SIGKILL", encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+});
