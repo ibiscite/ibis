@@ -4,7 +4,7 @@ The one current rule book for how Ibis looks and behaves: picker, first run,
 Settings, preview, brand and website. Accepted ADRs win over it. Values live in
 [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
 tokens by role and gives numbers only where no token exists. The unbuilt
-Settings window's detail is in [design/settings.md](design/settings.md); scope is
+Settings window's detailed spec waits in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
 each beside its rule.
@@ -565,7 +565,7 @@ Until then settings live in More and the tray menu. **Start Ibis when you log
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
 ("Open at Login", "Start when you sign in", "Start on Login"), and is read from
 the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).
-The detailed spec is [design/settings.md](design/settings.md).
+The detailed spec waits in #776 until that work starts.
 
 ## Brand and mark
 
