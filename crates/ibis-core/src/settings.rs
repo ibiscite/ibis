@@ -8,7 +8,7 @@
 //! rather than overwritten; a file written by an older version is migrated
 //! when it is read, one version step at a time (ADR 0018).
 
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -380,7 +380,7 @@ fn preserve_invalid(path: &Path) -> io::Result<()> {
 fn sync_directory(path: &Path) {
     #[cfg(unix)]
     if let Some(directory) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-        let _ = File::open(directory).and_then(|d| d.sync_all());
+        let _ = fs::File::open(directory).and_then(|d| d.sync_all());
     }
     #[cfg(not(unix))]
     let _ = path;
