@@ -107,3 +107,21 @@ test("every demo key format carries frozen contexts or warns when unsupported", 
   demo.state.format = "pandoc"; assert.match(demo.output(), /7 \\& 9a/);
   demo.state.format = "autocite"; assert.match(demo.output(), /7 \\& 9a/);
 });
+
+test("demo refuses invalid rendered control text and recovers after locator removal", () => {
+  const demo = createDemo();
+  demo.setQuery("okafor pp 3,\n7"); demo.add("okafor2023");
+  assert.equal(demo.output(), ""); assert.equal(demo.copy(), false);
+  assert.deepEqual(demo.rendered().warnings, ["text contains a control character"]);
+  demo.removeLocator("okafor2023");
+  assert.equal(demo.output(), "[@okafor2023]"); assert.equal(demo.copy(), true);
+});
+
+test("locator byte bounds and Unicode whitespace match the core", () => {
+  const tail = `pp ${"1, ".repeat(20)}1`;
+  assert.equal(Buffer.byteLength(tail), 64);
+  assert.equal(splitLocatorQuery(`title ${tail}`).locator.value, tail.slice(3));
+  assert.equal(splitLocatorQuery(`title ${tail}1`), null);
+  assert.equal(splitLocatorQuery("title\u0085p 12").locator.value, "12");
+  assert.equal(splitLocatorQuery("title\ufeffp 12"), null);
+});

@@ -9,6 +9,8 @@ export const references = [
 ];
 export const formats = { pandoc: "Pandoc", autocite: "\\autocite", parencite: "\\parencite", textcite: "\\textcite", cite: "\\cite", typst: "Typst", keys: "Keys only" };
 // This offline model mirrors the core parser; production parsing stays in Rust.
+const trimEnd = text => text.replace(/\p{White_Space}+$/u, "");
+const trim = text => trimEnd(text.replace(/^\p{White_Space}+/u, ""));
 const labelAliases = {
   page: ["p", "pp", "pg", "pgs", "page", "pages", "s"], chapter: ["ch", "chap", "chaps", "chapter", "chapters"],
   section: ["sec", "sect", "secs", "section", "sections"], paragraph: ["para", "paras", "paragraph", "paragraphs"],
@@ -21,7 +23,7 @@ function readLabel(text) {
   const word = text.match(/^([\p{L}]+)(.*)$/us);
   if (!word) return null;
   const name = word[1].toLowerCase(), rest = word[2], dotted = rest.startsWith(".");
-  if (["para", "n", "s"].includes(name) && !dotted || !dotted && !/^\s/u.test(rest)) return null;
+  if (["para", "n", "s"].includes(name) && !dotted || !dotted && !/^\p{White_Space}/u.test(rest)) return null;
   const label = Object.keys(labelAliases).find(label => labelAliases[label].includes(name));
   return label ? { label, rest: dotted ? rest.slice(1) : rest } : null;
 }
@@ -32,35 +34,35 @@ function isNumber(text, labelled) {
 }
 const isRange = (text, labelled) => {
   const parts = text.split(/[-–—]/u);
-  return parts.length <= 2 && parts.every(part => isNumber(part.trim(), labelled));
+  return parts.length <= 2 && parts.every(part => isNumber(trim(part), labelled));
 };
-const isValue = (text, labelled) => text.length > 0 && text.split(/[,&]/u).every(part => isRange(part.trim(), labelled));
+const isValue = (text, labelled) => text.length > 0 && text.split(/[,&]/u).every(part => isRange(trim(part), labelled));
 function valueStart(text) {
   const floor = Math.max(text.lastIndexOf(","), text.lastIndexOf("&")) + 1;
-  const starts = [...text.slice(floor).matchAll(/\S+/gu)].slice(-3).map(match => floor + match.index);
+  const starts = [...text.slice(floor).matchAll(/[^\p{White_Space}]+/gu)].slice(-3).map(match => floor + match.index);
   return starts.find(index => isRange(text.slice(index), true));
 }
 function continuesBefore(query, start, floor) {
-  let before = query.slice(0, start).trimEnd();
+  let before = trimEnd(query.slice(0, start));
   while (/[,&]$/u.test(before)) {
-    const rest = before.slice(0, -1).trimEnd(), item = valueStart(rest);
+    const rest = trimEnd(before.slice(0, -1)), item = valueStart(rest);
     if (item === undefined) { before = rest; break; }
     if (item < floor) return true;
-    before = rest.slice(0, item).trimEnd();
+    before = trimEnd(rest.slice(0, item));
   }
-  const word = before.search(/\S+$/u);
+  const word = before.search(/[^\p{White_Space}]+$/u);
   return word >= 0 && word < floor && readLabel(`${before.slice(word)} `) !== null;
 }
 export function splitLocatorQuery(query) {
-  const text = query.trimEnd();
+  const text = trimEnd(query);
   // Every candidate tail fits in 64 UTF-8 bytes, including its label.
   let floor = Math.max(0, text.length - 64);
   while (new TextEncoder().encode(text.slice(floor)).length > 64) floor++;
   for (let start = floor; start < text.length; start++) {
-    if (/[\s,]/u.test(text[start]) || start === 0 || !/[\s,]/u.test(text[start - 1])) continue;
-    const before = text.slice(0, start).trimEnd(), search = before.replace(/,+$/u, "").trimEnd(), typed = text.slice(start);
+    if (/[\p{White_Space},]/u.test(text[start]) || start === 0 || !/[\p{White_Space},]/u.test(text[start - 1])) continue;
+    const before = trimEnd(text.slice(0, start)), search = trimEnd(before.replace(/,+$/u, "")), typed = text.slice(start);
     if (!search) continue;
-    const labelled = readLabel(typed), value = labelled ? labelled.rest.trim() : typed;
+    const labelled = readLabel(typed), value = labelled ? trim(labelled.rest) : typed;
     if (labelled ? isValue(value, true) : before.endsWith(",") && isValue(value, false)) {
       if (continuesBefore(text, start, floor)) return null;
       return { search, locator: { label: labelled?.label ?? "page", value }, typed };
@@ -79,6 +81,7 @@ const escapeNote = text => text.replaceAll("&", "\\&");
 function renderItems(format, items) {
   const warnings = [], hasLocator = items.some(item => item.locator);
   if (!items.length) return { text: "", warnings };
+  if (items.some(item => item.locator && /\p{Cc}/u.test(item.locator.value))) return { text: "", warnings: ["text contains a control character"] };
   let text;
   if (format === "keys") {
     if (hasLocator) warnings.push("bare keys cannot carry page numbers or notes; they were left out");
@@ -101,7 +104,7 @@ export function createDemo() {
   const state = { query: "okafor", literalQuery: null, selected: 0, format: "pandoc", added: [], locators: {}, copied: null, pasted: null, open: true, preview: true };
   const interpretation = () => state.literalQuery === state.query ? null : splitLocatorQuery(state.query);
   const found = () => {
-    const words = (interpretation()?.search ?? state.query).toLowerCase().split(/\s+/).filter(Boolean);
+    const words = (interpretation()?.search ?? state.query).toLowerCase().split(/\p{White_Space}+/u).filter(Boolean);
     return references.filter(ref => words.every(word => `${ref.authors} ${ref.title} ${ref.year} ${ref.key} ${ref.where}`.toLowerCase().includes(word)));
   };
   const selections = () => state.added.length ? state.added.map(key => ({ key, locator: state.locators[key] ?? null }))
