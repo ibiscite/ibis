@@ -240,7 +240,12 @@ menu). More starts at its labels; its toggles are `menuitemcheckbox` items with
 a trailing check. The format menu's filter field aligns with the item
 labels; menus with more than seven items get one. Format opens 4 px below its
 pop-up, aligned to its trailing edge; header menus open `bottom end`, footer
-menus `top end`, flipping then shifting within 8 px of the window. A shortcut in
+menus `top end`, flipping then shifting within 8 px of the window; a menu opened
+above the footer ends at least 8 px above it. A menu that scrolls ends on a
+whole row; its side inset sits on the scrolling list, so a scroll bar never
+takes it. Any pointer movement over an item highlights it, also after arrow
+keys. Labels never wrap: the menu widens, then the label ends with an
+ellipsis. A shortcut in
 a menu is plain trailing text in native modifier order (⇧⌘C), never a key cap.
 Check each menu side by side with a real one on every platform.
 

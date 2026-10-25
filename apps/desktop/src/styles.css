@@ -311,15 +311,17 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); overfl
 .keys-scroll { overflow: auto; min-height: 0; padding: var(--space-2) var(--space-4) var(--space-4); }
 .keys-scroll table { width: 100%; border-collapse: collapse; font-size: var(--metadata-size); }
 .keys-scroll th { text-align: start; color: var(--muted); font-weight: var(--type-strong-weight); }
-.keys-scroll th, .keys-scroll td { padding: var(--space-1) var(--space-2); vertical-align: top; overflow-wrap: anywhere; border-bottom: var(--border-width) solid var(--line); }
-.keys-scroll td:first-child { white-space: nowrap; }
+/* Columns size to their words and never break inside one (#1034): only the
+   action column wraps, between words; keys and the region stay on one line. */
+.keys-scroll th, .keys-scroll td { padding: var(--space-1) var(--space-2); vertical-align: top; overflow-wrap: break-word; border-bottom: var(--border-width) solid var(--line); }
+.keys-scroll td:first-child, .keys-scroll th:last-child, .keys-scroll td:last-child { white-space: nowrap; }
 .keys-scroll td:last-child { color: var(--muted); }
 .keys-scroll kbd { margin-inline-start: 0; white-space: nowrap; }
 @media (forced-colors: active) {
   .keys-dialog { border-color: CanvasText; }
 }
 @media (max-width: 460px) {
-  .keys-scroll td:first-child { white-space: normal; }
+  .keys-scroll td:first-child, .keys-scroll td:last-child { white-space: normal; }
 }
 /* The shelf and its chips keep an edge where fills are not drawn. */
 @media (prefers-contrast: more), (forced-colors: active) {

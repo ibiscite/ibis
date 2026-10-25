@@ -16,16 +16,17 @@
 .toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-size); height: var(--icon-size); color: var(--muted); stroke-width: var(--icon-stroke); }
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
 .toolbar-menu-button .popup-indicator-windows { width: var(--space-3); height: var(--space-3); stroke-width: var(--border-width); }
-.toolbar-menu-popover { width: 264px; }
+/* rem, so the menu grows with Larger text and keeps its width while filtering. */
+.toolbar-menu-popover { width: 16.5rem; }
 .toolbar-menu-filter { flex: none; }
-.toolbar-menu-heading { color: var(--muted); font-size: var(--hint-size); font-weight: 600; padding-block: 8px 4px; padding-inline: 34px 10px; }
-.toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px 10px; background: var(--separator); }
+.toolbar-menu-heading { color: var(--muted); font-size: var(--hint-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
+.toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px var(--menu-item-pad); background: var(--separator); }
 .toolbar-menu-sample { margin-inline-start: auto; color: var(--muted); font: var(--hint-size) var(--font-mono); white-space: nowrap; }
 .toolbar-menu-sample[data-prose] { font-family: var(--font-family); }
 .menu-item[data-focused] .toolbar-menu-sample { color: inherit; }
 .toolbar-menu-filter input {
   box-sizing: border-box; width: 100%; height: 30px; border: 0; border-radius: var(--menu-item-radius);
-  padding-block: 0; padding-inline: 34px 10px; background: var(--field-background); color: var(--text); font: inherit;
+  padding-block: 0; padding-inline: var(--menu-label-start) var(--menu-item-pad); background: var(--field-background); color: var(--text); font: inherit;
 }
 /* A text field shows its caret, not a ring, like the search box. */
 .toolbar-menu-filter input:focus-visible { outline: 0; box-shadow: none; }

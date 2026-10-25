@@ -1,7 +1,8 @@
-import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
-import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { mergeProps, setInteractionModality } from "react-aria";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Button } from "./Button";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
@@ -16,8 +17,10 @@ export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement |
 }
 
 /** Keep React Aria's placement boundary inside the viewport and below the
- * return field. A wrapped picker can put its footer trigger below the window. */
-export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>) {
+ * return field. A wrapped picker can put its footer trigger below the window.
+ * A menu opened from above the `[data-menu-floor]` region (the footer) also
+ * ends above it, so it never covers the footer's actions. */
+export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>) {
   const [boundary, setBoundary] = useState<HTMLElement>();
   const [clearBottom, setClearBottom] = useState(0);
   useLayoutEffect(() => {
@@ -26,9 +29,12 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     node.dataset.menuBoundary = "";
     node.setAttribute("aria-hidden", "true");
     Object.assign(node.style, { position: "fixed", inset: "0", pointerEvents: "none" });
+    const floor = document.querySelector<HTMLElement>("[data-menu-floor]");
+    const above = floor && trigger?.current && !floor.contains(trigger.current) ? floor : null;
     const update = () => {
       const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
       node.style.top = `${bottom}px`;
+      if (above) node.style.bottom = `${Math.max(0, window.innerHeight - above.getBoundingClientRect().top)}px`;
       setClearBottom(bottom);
     };
     update();
@@ -36,6 +42,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     setBoundary(node);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     if (returnRef?.current) observer?.observe(returnRef.current);
+    if (above) observer?.observe(above);
     window.addEventListener("resize", update);
     window.visualViewport?.addEventListener("resize", update);
     return () => {
@@ -44,7 +51,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
       window.visualViewport?.removeEventListener("resize", update);
       node.remove();
     };
-  }, [open, returnRef]);
+  }, [open, returnRef, trigger]);
   const getTargetRect = useCallback((target: Element) => {
     const rect = target.getBoundingClientRect();
     if (!boundary?.isConnected) return rect;
@@ -56,6 +63,56 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     return new DOMRect(rect.x, top, rect.width, rect.height);
   }, [boundary, clearBottom]);
   return { boundaryElement: boundary, getTargetRect };
+}
+
+/** A scrolling menu ends on a whole row, never a cut one (#1031). Pass the
+ * returned callback the popover node; it refits whenever React Aria resizes
+ * the popover or the rows change, as when filtering. */
+export function useWholeRows(list: RefObject<HTMLElement | null>) {
+  const stop = useRef<(() => void) | null>(null);
+  return useCallback((frame: HTMLElement | null) => {
+    stop.current?.();
+    stop.current = null;
+    if (!frame) return;
+    const fit = () => {
+      const node = list.current;
+      if (!node) return;
+      node.style.maxHeight = "";
+      const height = node.clientHeight;
+      if (node.scrollHeight <= height) return;
+      const top = node.getBoundingClientRect().top + node.clientTop;
+      let end = 0;
+      for (const row of node.querySelectorAll('[role^="menuitem"]')) {
+        const bottom = row.getBoundingClientRect().bottom - top;
+        if (bottom <= height && bottom > end) end = bottom;
+      }
+      if (end > 0) node.style.maxHeight = `${Math.floor(end)}px`;
+    };
+    // The frame's own style (React Aria's max-height) and the rows, never the
+    // list's style, which fit() itself sets.
+    const resized = new MutationObserver(fit);
+    const rows = new MutationObserver(fit);
+    resized.observe(frame, { attributes: true, attributeFilter: ["style"] });
+    rows.observe(frame, { childList: true, subtree: true });
+    fit();
+    stop.current = () => { resized.disconnect(); rows.disconnect(); };
+  }, [list]);
+}
+
+/** A menu item's row. Any pointer movement over it highlights it, as in
+ * native menus: React Aria moves the highlight only when the pointer enters an
+ * item, and not at all while arrow keys are in use (#1031). Rendered by the
+ * item, so it reads the menu's own state. */
+export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { itemId: string }) {
+  const state = useContext(MenuStateContext);
+  const onPointerMove = (event: PointerEvent) => {
+    const manager = state?.selectionManager;
+    if (event.pointerType === "touch" || !manager || (manager.isFocused && manager.focusedKey === itemId)) return;
+    setInteractionModality("pointer");
+    manager.setFocused(true);
+    manager.setFocusedKey(itemId);
+  };
+  return <div {...mergeProps(props, { onPointerMove })} />;
 }
 
 const ActionFocusContext = createContext<(() => void) | null>(null);
@@ -87,7 +144,7 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
       if (checked === undefined) requestActionFocus?.();
       onAction();
     }}
-    render={(props) => <div {...props as ComponentPropsWithRef<"div">} title={title} aria-disabled={disabled || undefined} />}>
+    render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
       <span className="menu-label">{label}</span>
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
@@ -136,12 +193,13 @@ type MenuProps = {
  * item is highlighted, as in native menus.
  */
 export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerTitle, triggerKeys, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
-  const boundary = useMenuBoundary(isOpen, tabFocusRef);
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
+  const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
   const renderedPlacement = useMenuPlacement(isOpen, button, placement);
   const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(isOpen);
   const popover = useRef<HTMLElement | null>(null);
+  const wholeRows = useWholeRows(list);
   const pendingFocus = useRef<HTMLElement | null>(null);
   const [skipExit, setSkipExit] = useState(false);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
@@ -171,8 +229,9 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   }, []);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
+    wholeRows(node);
     if (!node && pendingFocus.current) retryFocus(restoreFocus);
-  }, [restoreFocus, retryFocus]);
+  }, [restoreFocus, retryFocus, wholeRows]);
   useLayoutEffect(() => {
     if (isOpen) {
       setSkipExit(false);
