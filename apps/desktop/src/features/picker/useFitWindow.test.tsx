@@ -3,10 +3,10 @@ import { useRef } from "react";
 import { expect, test, vi } from "vitest";
 import { useFitWindow, type FitPicker } from "./useFitWindow";
 
-function Picker({ compact, fit, rows }: { compact: boolean; fit: FitPicker; rows: number }) {
+function Picker({ compact, fit, rows, spare = 0 }: { compact: boolean; fit: FitPicker; rows: number; spare?: number }) {
   const main = useRef<HTMLElement>(null);
   useFitWindow(main, compact, fit);
-  return <main ref={main}><div className="results-area">{Array.from({ length: rows }, (_, i) => <p key={i}>row</p>)}</div><footer /></main>;
+  return <main ref={main}><div className="results-area">{Array.from({ length: rows }, (_, i) => <p key={i}>row</p>)}</div><footer style={{ marginBlockStart: `${spare}px` }} /></main>;
 }
 
 test("compact content asks for its own height, results for the results height, once each", () => {
@@ -18,6 +18,14 @@ test("compact content asks for its own height, results for the results height, o
   expect(fit).toHaveBeenCalledTimes(1);
   rerender(<Picker compact={false} fit={fit} rows={3} />);
   expect(fit).toHaveBeenLastCalledWith(null, expect.any(Boolean));
+  height.mockRestore();
+});
+
+test("the space that pushes the footer down is not counted as content", () => {
+  const fit = vi.fn<FitPicker>(() => Promise.resolve());
+  const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(480);
+  render(<Picker compact fit={fit} rows={0} spare={339} />);
+  expect(fit).toHaveBeenLastCalledWith(141, expect.any(Boolean));
   height.mockRestore();
 });
 

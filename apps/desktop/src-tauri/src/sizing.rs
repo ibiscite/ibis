@@ -24,6 +24,8 @@ pub(crate) struct Sizing {
     state: Mutex<State>,
     /// A newer request or a hide stops a growing animation.
     generation: AtomicU64,
+    /// Orders our resizes, so a hide's compact height is the last one.
+    resizing: Mutex<()>,
 }
 
 #[derive(Default)]
@@ -34,7 +36,8 @@ struct State {
     floor: f64,
     /// The last content height asked for, used when the picker opens again.
     compact: Option<f64>,
-    /// The height we last set, and until when resize events are ours.
+    /// The height we last set, and until when resize events are ours; each
+    /// frame renews it, so a late frame is never taken for a drag.
     ours: Option<(f64, Instant)>,
 }
 
@@ -71,6 +74,7 @@ fn by_user(ours: Option<(f64, Instant)>, height: f64, now: Instant) -> bool {
 struct Frame {
     width: f64,
     height: f64,
+    #[cfg_attr(target_os = "linux", expect(dead_code, reason = "GTK keeps the top edge itself"))]
     top_left: PhysicalPosition<i32>,
     /// Logical height from the window's top edge to the bottom of the work area.
     room: f64,
@@ -97,10 +101,28 @@ fn frame(window: &WebviewWindow) -> Option<Frame> {
     })
 }
 
-/// Set the height and put the top edge back, since some systems keep the bottom.
+/// Set the height and put the top edge back, since some systems keep the
+/// bottom. GTK keeps the top itself, and Wayland does not allow moving.
 fn resize(window: &WebviewWindow, at: &Frame, height: f64) {
     report(window.set_size(LogicalSize::new(at.width, height)), NativeIssue::Resize);
+    #[cfg(not(target_os = "linux"))]
     report(window.set_position(at.top_left), NativeIssue::Position);
+}
+
+/// One resize of ours, unless a newer request or a hide replaced `generation`.
+/// Window reads happen before any lock: from another thread they wait for the
+/// main thread, which takes the state lock for resize events.
+fn step(app: &AppHandle, window: &WebviewWindow, generation: u64, height: f64) {
+    let Some(at) = frame(window) else { return };
+    let sizing = app.state::<Sizing>();
+    let Ok(_order) = sizing.resizing.lock() else { return };
+    if sizing.generation.load(Ordering::SeqCst) != generation {
+        return;
+    }
+    if let Ok(mut state) = sizing.state.lock() {
+        state.ours = Some((height, Instant::now() + SETTLE));
+    }
+    resize(window, &at, height);
 }
 
 /// Fit the picker to `height` CSS px of content, or to the results height.
@@ -112,31 +134,27 @@ pub(crate) fn fit_picker(app: AppHandle, height: Option<f64>, animate: bool) {
     };
     let Some(at) = frame(&window) else { return };
     let sizing = app.state::<Sizing>();
+    let height = height.filter(|h| h.is_finite());
     let frames = {
         let Ok(mut state) = sizing.state.lock() else { return };
-        if let Some(h) = height.filter(|h| h.is_finite()) {
-            state.compact = Some(h);
+        if height.is_some() {
+            state.compact = height;
         }
-        let to = target(height.filter(|h| h.is_finite()), state.remembered, state.floor, at.room);
+        let to = target(height, state.remembered, state.floor, at.room);
         state.floor = to;
         if (to - at.height).abs() < 1.0 {
             return;
         }
-        let frames = steps(at.height, to, animate);
-        state.ours = Some((to, Instant::now() + FRAME * frames.len() as u32 + SETTLE));
-        frames
+        steps(at.height, to, animate)
     };
     let generation = sizing.generation.fetch_add(1, Ordering::SeqCst) + 1;
     if let [height] = frames[..] {
-        resize(&window, &at, height);
+        step(&app, &window, generation, height);
         return;
     }
     std::thread::spawn(move || {
         for height in frames {
-            if app.state::<Sizing>().generation.load(Ordering::SeqCst) != generation {
-                return;
-            }
-            resize(&window, &at, height);
+            step(&app, &window, generation, height);
             std::thread::sleep(FRAME);
         }
     });
@@ -144,34 +162,44 @@ pub(crate) fn fit_picker(app: AppHandle, height: Option<f64>, animate: bool) {
 
 /// After a hide: forget this opening's height and start compact next time.
 pub(crate) fn reset(app: &AppHandle, window: &WebviewWindow) {
+    let at = frame(window);
     let sizing = app.state::<Sizing>();
+    let Ok(_order) = sizing.resizing.lock() else { return };
+    // Stops a growing animation before its next frame.
     sizing.generation.fetch_add(1, Ordering::SeqCst);
-    let Ok(mut state) = sizing.state.lock() else { return };
-    state.floor = 0.0;
-    let Some(compact) = state.compact else { return };
-    let Some(at) = frame(window) else { return };
-    let to = target(Some(compact), None, 0.0, at.room);
-    if (to - at.height).abs() >= 1.0 {
+    let to = {
+        let Ok(mut state) = sizing.state.lock() else { return };
+        state.floor = 0.0;
+        let (Some(compact), Some(at)) = (state.compact, at.as_ref()) else {
+            return;
+        };
+        let to = target(Some(compact), None, 0.0, at.room);
+        if (to - at.height).abs() < 1.0 {
+            return;
+        }
         state.ours = Some((to, Instant::now() + SETTLE));
+        to
+    };
+    if let Some(at) = at {
         resize(window, &at, to);
     }
 }
 
 /// A drag to a new height becomes the results height from now on.
 pub(crate) fn resized(app: &AppHandle, window: &WebviewWindow) {
-    let (Some(scale), Some(size)) = (
+    let (Some(scale), Some(size), Ok(true)) = (
         checked(window.scale_factor(), NativeIssue::Size),
         checked(window.inner_size(), NativeIssue::Size),
+        window.is_visible(),
     ) else {
         return;
     };
     let height = size.to_logical::<f64>(scale).height;
     let sizing = app.state::<Sizing>();
     let Ok(mut state) = sizing.state.lock() else { return };
-    if by_user(state.ours, height, Instant::now()) && window.is_visible().unwrap_or(false) {
+    if by_user(state.ours, height, Instant::now()) {
         state.remembered = Some(height);
         state.floor = height;
-        state.ours = None;
     }
 }
 
