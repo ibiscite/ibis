@@ -14,7 +14,8 @@ each beside its rule.
 1. **One anatomy everywhere.** Search, list, shelf and footer, in that order,
    at every size. Layouts fold rather than reorder.
 2. **Native material, Ibis voice.** Each platform's material, radii, selection,
-   menu metrics, font and shortcut labels. Ibis keeps its anatomy, icon
+   menu metrics, font and shortcut labels (materials and metrics not yet built
+   wait for 1.0; see the look freeze under Per platform). Ibis keeps its anatomy, icon
    drawings, wording and citation scarlet on every platform.
 3. **Readable first.** Nothing smaller than 12 px; secondary text passes 4.5:1.
 4. **Easy to hit.** Every target is at least 32 px; 44 px under `pointer: coarse`.
@@ -458,6 +459,13 @@ and visible labels match accessible names.
 | Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |
 | Switch | 38 × 22 | 40 × 20, outlined when off | 46 × 26 |
 
+**Look freeze until 1.0** (maintainer, 2026-10-25, #326). What has shipped
+stays and is kept working, but is not extended. Rules on this page that are not
+built yet for a platform are deferred: materials, native accent injection and
+depth [C13, C14], versioned macOS radii and GNOME icon weight. Their issues are
+in the Later milestone. New interface work uses the shared look and the
+fallbacks above.
+
 - **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
@@ -530,7 +538,7 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   found .bib files join as rows above it (folder as the tag), and the row
   becomes "Look again" with the outcome as its help line. Zotero refusing other
   apps and folders too large to search are one quiet note below. A CSL JSON or
-  YAML row joins only when those sources ship (0.5).
+  YAML row joins only when those sources ship (after 1.0).
 - **Could not open, nothing kept:** the title names the library and the fix;
   the backend sorts each failure by `problem`:
 
@@ -710,19 +718,20 @@ means not decided yet.
 
 | Feature (release) | Fits as |
 |---|---|
-| Page numbers and locators (0.3, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
+| Page numbers and locators (0.2, #354; other locator types 0.3, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
 | Any CSL style, prefix, suffix, author omission (0.3) | Styles in the format pop-up (filter, leading checks), listed per Settings › Citations; prefix, suffix and omission controls: open |
 | Multiple references (0.3) | Shelf segments [C7], added with ⌘/Ctrl-click, Shift+Enter or the tile + |
 | Zotero while closed (0.3, #14), changed keys, cloud-synced data | Footer status with words and a Look or Stop dot; detail in the tooltip and More |
-| "Is this in my library?" (0.3) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
-| Collections (0.3) | Shown on rows and usable as a filter chip; placement and syntax: open |
+| "Is this in my library?" (0.4, #701) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
+| Collections (later) | Shown on rows and usable as a filter chip; placement and syntax: open |
 | Settings window (0.3, #776) | **Settings**; General, Shortcuts and Libraries first |
-| Insertion (0.4) | Enter, double-click and Copy insert when Settings › Citations says so; the notice says "Inserted" or why it copied |
-| Action registry (0.4) | Every action in More with its `keys.ts` key; picker keys editable in Settings › Shortcuts |
-| Open in Zotero, PDF at the page (0.4) | More and the row's right-click menu; the attachment chip opens the preview [C17] |
-| Recently cited and added (0.4) | Compact start [C11] and browsing tabs; local history that can be turned off and cleared |
-| `ibis toggle` for Wayland (0.4, #782) | No picker UI; Settings › Shortcuts explains it |
-| Online mode (0.5) | Its own section after local rows, never reordering them; needs its ADR and the maintainer's yes |
+| Bibliography export (0.3, #667) | Export the shelf or the session's citations from More to `.bib`, Hayagriva or CSL-JSON; placement: open |
+| Insertion (later) | Enter, double-click and Copy insert when Settings › Citations says so; the notice says "Inserted" or why it copied |
+| Action registry (later) | Every action in More with its `keys.ts` key; picker keys editable in Settings › Shortcuts |
+| Open in Zotero, PDF at the page (later) | More and the row's right-click menu; the attachment chip opens the preview [C17] |
+| Recently cited and added (later) | Compact start [C11] and browsing tabs; local history that can be turned off and cleared |
+| `ibis toggle` for Wayland (0.2, #1091) | No picker UI; Settings › Shortcuts explains it |
+| Online mode (later) | Its own section after local rows, never reordering them; needs its ADR and the maintainer's yes |
 
 ## How the design changes
 

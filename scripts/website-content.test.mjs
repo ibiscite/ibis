@@ -16,7 +16,7 @@ test("website headline and planned features come from the canonical sources", as
   const design = await readFile(new URL("../docs/design.md", import.meta.url), "utf8");
   const highlights = [...html.matchAll(/<li><strong>([^<]+)<\/strong>/g)];
   assert.equal(highlights.length, 3);
-  for (const name of ["Page numbers and locators", "Zotero while closed", "Insertion"]) assert.ok(design.includes(name));
+  for (const name of ["Page numbers and locators", "Zotero while closed", "Bibliography export"]) assert.ok(design.includes(name));
   assert.match(html, /not a stable release/);
   assert.match(html, /does not generate your document’s bibliography/);
   assert.ok(html.indexOf("not a stable release") < html.indexOf("/releases/download/"));
@@ -29,7 +29,7 @@ test("keys lead the example and roadmap highlights omit version numbers", async 
   assert.ok(how.indexOf("formatted citations") > how.indexOf("data-result"));
   const roadmap = html.match(/<section id="roadmap"[\s\S]*?<\/section>/)[0];
   assert.doesNotMatch(roadmap, /Planned for|\b0\.\d/);
-  assert.doesNotMatch(roadmap, /<strong>Insertion<\/strong>|cloud-synced data/);
+  assert.doesNotMatch(roadmap, /<strong>Insertion<\/strong>|<strong>Bibliography export<\/strong>|cloud-synced data/);
 });
 
 test("macOS browser platform names select Mac shortcuts and native tokens", async () => {
