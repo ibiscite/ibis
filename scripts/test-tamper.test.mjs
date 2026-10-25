@@ -74,13 +74,13 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   run(root, "clone", "-q", "--depth=1", pathToFileURL(source).href, shallow);
   const event = { pull_request: { base: { sha: initial }, head: { sha: head }, merge_commit_sha: run(source, "rev-parse", "HEAD").trim() } };
   const calls = [];
-  const files = testDiff(event, (args) => { calls.push(args); return run(shallow, ...args); });
+  const files = testDiff(event, (args) => { calls.push(args); return run(shallow, ...args); }, event.pull_request.merge_commit_sha);
   assert.ok(calls.some((args) => args[0] === "fetch"), "missing parent is obtained from the existing origin");
   assert.deepEqual(files.map((file) => file.filename), [tricky, "fixtures/資料 expected.txt"].sort());
   const cwd = process.cwd();
   try {
     process.chdir(source);
-    const literalFile = testDiff(event).find((file) => file.filename === tricky);
+    const literalFile = testDiff(event, undefined, event.pull_request.merge_commit_sha).find((file) => file.filename === tricky);
     assert.match(literalFile.patch, /-assert.equal/);
     assert.equal(testTamper([literalFile]).length, 1);
   } finally { process.chdir(cwd); }

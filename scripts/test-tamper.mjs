@@ -29,7 +29,7 @@ function git(args) {
   return result.stdout;
 }
 
-export function testDiff(event, run = git) {
+export function testDiff(event, run = git, merge = process.env.GITHUB_SHA ?? event?.pull_request?.merge_commit_sha) {
   let base, head = "";
   if (event) {
     const pr = event.pull_request;
@@ -38,7 +38,6 @@ export function testDiff(event, run = git) {
     // parent excludes changes made only on main, even in a shallow checkout.
     const commit = run(["cat-file", "-p", "HEAD"]);
     const parents = [...commit.matchAll(/^parent ([a-f0-9]{40})$/gm)].map((m) => m[1]);
-    const merge = process.env.GITHUB_SHA ?? pr.merge_commit_sha;
     // The event's base SHA can lag behind GitHub's regenerated merge ref.
     if (!/^[a-f0-9]{40}$/.test(merge ?? "") || run(["rev-parse", "HEAD"]).trim() !== merge || parents.length !== 2 || parents[1] !== pr.head.sha) throw new Error("Test diff needs the PR merge checkout matching the event; rerun the workflow.");
     base = parents[0]; head = "HEAD";
