@@ -34,7 +34,17 @@ fn toggle_forwards_to_a_sibling_and_reports_launch_failure() {
     let cli = desktop.with_file_name("ibis");
     std::fs::copy(env!("CARGO_BIN_EXE_ibis"), &cli).unwrap_or_else(|e| panic!("{e}"));
     std::fs::set_permissions(&desktop, std::fs::Permissions::from_mode(0o700)).unwrap_or_else(|e| panic!("{e}"));
-    let run = || Command::new(&cli).arg("toggle").output();
+    // Another test thread forking while the copy was open for writing can
+    // briefly keep it "text file busy" (ETXTBSY) on Linux; retry only that.
+    let run = || {
+        for _ in 0..100 {
+            match Command::new(&cli).arg("toggle").output() {
+                Err(e) if e.raw_os_error() == Some(26) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                other => return other,
+            }
+        }
+        Command::new(&cli).arg("toggle").output()
+    };
     let output = run().unwrap_or_else(|e| panic!("{e}"));
     assert!(output.status.success());
     assert_eq!(output.stdout, b"toggle\n");
