@@ -34,7 +34,7 @@ No other labels; each family has one colour. Pull requests need no labels: the t
 
 ### Tracking issue
 
-Each active milestone has one, labelled `tracking` and titled `<milestone>: plan, queue and decisions`. Its body:
+There is one, labelled `tracking` and titled `Ibis plan, queue and decisions`. Its body fits on one screen:
 
 ```markdown
 **Goal:** one line. Scope: ROADMAP.md.
@@ -53,7 +53,7 @@ Each active milestone has one, labelled `tracking` and titled `<milestone>: plan
 - **YYYY-MM-DD** one line
 ```
 
-Keep the body current (Now and Queue). Comment on the issue only for decisions and handoffs. Every issue in the Queue is in this milestone.
+Keep the body current (Now and Queue), with at most two lanes and five items each. Decisions older than a week leave the body; the edit history keeps them. Comment on the issue only for decisions and handoffs.
 
 ### Branches and worktrees
 
