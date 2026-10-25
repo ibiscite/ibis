@@ -32,8 +32,10 @@ requires the maintainer's reserved decision. No such exception is requested.
 
 Keep the five styles, en-US locale and exact processor bytes in
 `apps/desktop/vendor/csl/manifest.json`, including Zotero commit
-`db41b99fddcc52d38897c59c161b6adaca036afb` and processor SHA-256
+`db41b99fddcc52d38897c59c161b6adaca036afb` and upstream processor source SHA-256
 `4e717cb27c1d66024bbaa578604203c178af04e789c6244a722df44d70631466`.
+Preserve the manifest's appended `moduleSuffix` for the generated ES module;
+the source hash applies before that declared transformation.
 Do not change pins or patch the processor while evaluating its host runtime.
 
 Evaluate crates.io `rquickjs = "=0.14.0"`, with `default-features = false` and
@@ -87,7 +89,7 @@ budgets or a guarantee that every valid request fits:
 | Each returned representation, canonical or ownership preview | 1 MiB UTF-8 |
 | All returned representations together, including preview | 3 MiB |
 | Fixed diagnostics per result | 1,001, with bounded position indices |
-| Canonical and preview markup work | 10,000 nodes and depth 256 |
+| Canonical plus preview markup work | 10,000 combined nodes; depth 256 per tree |
 
 Bound before copying across the host boundary, including errors and diagnostic
 counts; reject oversized work without truncating citation text. The VM heap cap
