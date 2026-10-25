@@ -31,11 +31,20 @@ use super::status::{LibraryProblem, LibraryState, LibraryStatus, status};
 #[derive(Default)]
 pub(crate) struct LibraryWatch(pub(crate) Mutex<Option<SourceWatch>>);
 
-pub(super) fn publish(app: &AppHandle, status: LibraryStatus) {
+pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStatus) {
     if let Some(message) = &status.error {
         application_message(message);
     }
     report(app.emit("library:changed", status), NativeIssue::LibraryEvent);
+}
+
+pub(crate) fn refresh_settings_notice<R: tauri::Runtime>(app: &AppHandle<R>, settings_file: &SettingsFile) {
+    if let Some(library) = app.try_state::<Mutex<Library>>()
+        && let Ok(mut library) = library.lock()
+    {
+        settings_file.refresh_notice(&mut library);
+        publish(app, status(&library));
+    }
 }
 
 pub(super) fn refresh_tray(app: &AppHandle) {
@@ -239,6 +248,8 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent:
                         library.choice_save_warning =
                             Some(format!("the library opened but could not be saved for next time: {e}"));
                         show_note = true;
+                    } else {
+                        app.state::<SettingsFile>().refresh_notice(&mut library);
                     }
                 }
             }
