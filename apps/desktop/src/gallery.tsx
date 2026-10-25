@@ -31,7 +31,8 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
   const recovery = root.querySelector(".choice-screen h2")?.textContent ?? null;
   const alerts = [library.settings_notice, library.error && !blocked && !hasRetainedFreshnessProblem(library) ? libraryMessages.openError(library.name, library.error, library.zotero) : null]
     .filter((text): text is string => text !== null);
-  const actualAlerts = [...root.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent)
+  // The shelf's own alert belongs to a seeded selection; seeded() checks it.
+  const actualAlerts = [...root.querySelectorAll('[role="alert"]')].filter((alert) => !alert.closest(".shelf-output")).map((alert) => alert.textContent)
     .filter((text) => !blocked || recovery === null || !text?.startsWith(recovery));
   const searched = library.state !== "none" && library.state !== "loading" && !(library.state === "error" && !library.has_snapshot);
   const announcement = searched ? `${results.length} ${results.length === 1 ? "result" : "results"}` : "";
@@ -178,6 +179,7 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
     && root.querySelectorAll(`ul[aria-label="${pickerText.selectedReferences}"] > li.chip`).length === (state.trayExpanded ? state.tray : Math.min(state.tray ?? 0, SHELF_CHIPS))
     && Boolean(root.querySelector('.shelf-chips[data-expanded]')) === Boolean(state.trayExpanded)
+    && (root.querySelector('.shelf-output[data-state="failed"] [role="alert"]') !== null) === Boolean(state.sharedKey)
     && (state.showPastePreview === false ? root.querySelector(".shelf-output") === null
       && root.querySelector('footer [aria-keyshortcuts="Enter"]') !== null
       : !(state.formatted || state.showPastePreview) || root.querySelector(".shelf-output .preview-text") !== null)

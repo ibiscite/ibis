@@ -72,6 +72,8 @@ pub(crate) enum CommandError {
     /// The references the interface chose from are no longer the open
     /// library; search again and choose again.
     SnapshotChanged,
+    /// Another loaded record has this citation key, so citing by key would be ambiguous.
+    SharedCitationKey { key: String },
     /// Anything else, with fixed text for the user.
     Failed { message: String },
 }
@@ -94,6 +96,9 @@ impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CommandError::SnapshotChanged => f.write_str("library snapshot changed"),
+            CommandError::SharedCitationKey { key } => {
+                write!(f, "the citation key `{key}` belongs to more than one reference")
+            }
             CommandError::Failed { message } => f.write_str(message),
         }
     }
@@ -115,6 +120,10 @@ mod tests {
         assert_eq!(
             json(CommandError::SnapshotChanged),
             serde_json::json!({"code": "snapshot_changed"})
+        );
+        assert_eq!(
+            json(CommandError::SharedCitationKey { key: "same".into() }),
+            serde_json::json!({"code": "shared_citation_key", "key": "same"})
         );
         assert_eq!(
             json("the clipboard could not be written".into()),

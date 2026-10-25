@@ -3,7 +3,7 @@
 use std::sync::Mutex;
 
 use ibis_core::cite::{self, KeyFormat};
-use ibis_core::library::{CitationSelection, citation_items};
+use ibis_core::library::{CitationSelection, CitationSelectionError, citation_items};
 use ibis_core::model::{RecordId, Reference};
 use ibis_core::settings;
 use serde::Serialize;
@@ -43,27 +43,35 @@ struct PreviewSegment {
     text: String,
 }
 
+/// The selection's keys; a shared key keeps its own code, so the picker can say what to fix.
+fn cite_items(references: &[Reference], selections: &[CitationSelection]) -> Result<Vec<cite::CiteItem>, CommandError> {
+    citation_items(references, selections).map_err(|error| match error {
+        CitationSelectionError::SharedCitationKey(key) => CommandError::SharedCitationKey { key },
+        other => other.to_string().into(),
+    })
+}
+
 /// Render the selected records as one citation in `format`.
 pub(crate) fn render_citation(
     references: &[Reference],
     selections: &[CitationSelection],
     format: KeyFormat,
-) -> Result<cite::Rendered, String> {
-    let items = citation_items(references, selections).map_err(|error| error.to_string())?;
-    cite::render(format, &items).map_err(|e| e.to_string())
+) -> Result<cite::Rendered, CommandError> {
+    let items = cite_items(references, selections)?;
+    cite::render(format, &items).map_err(|e| e.to_string().into())
 }
 
 /// Validate and prepare from one locked snapshot; clipboard I/O happens afterward.
-pub(crate) fn prepare_snapshot<T>(
+pub(crate) fn prepare_snapshot<T, E: Into<CommandError>>(
     library: &Mutex<Library>,
     expected: &str,
-    prepare: impl FnOnce(&Library) -> Result<T, String>,
+    prepare: impl FnOnce(&Library) -> Result<T, E>,
 ) -> Result<T, CommandError> {
     let locked = library
         .lock()
         .map_err(|_| CommandError::from("library state is unavailable"))?;
     locked.require_revision(expected)?;
-    Ok(prepare(&locked)?)
+    prepare(&locked).map_err(Into::into)
 }
 
 /// Prepare preview and copy through the same checked snapshot and formatter.
@@ -74,9 +82,10 @@ pub(crate) fn prepare_citation(
     format: KeyFormat,
 ) -> Result<CitationPreview, CommandError> {
     prepare_snapshot(library, expected, |locked| {
-        let items = citation_items(locked.index.references(), selections).map_err(|error| error.to_string())?;
-        let (rendered, segments) = cite::render_with_segments(format, &items).map_err(|e| e.to_string())?;
-        Ok(CitationPreview {
+        let items = cite_items(locked.index.references(), selections)?;
+        let (rendered, segments) =
+            cite::render_with_segments(format, &items).map_err(|e| CommandError::from(e.to_string()))?;
+        Ok::<_, CommandError>(CitationPreview {
             text: rendered.text,
             warnings: rendered.warnings,
             segments: segments
@@ -185,7 +194,7 @@ pub(crate) fn write_formatted(
     if text.len() + html.len() > MAX_FORMATTED {
         return Err("the formatted text is too large to copy".into());
     }
-    prepare_snapshot(library, expected, |_| Ok(()))?;
+    prepare_snapshot(library, expected, |_| Ok::<_, CommandError>(()))?;
     Ok(write(text, html)?)
 }
 
@@ -388,7 +397,7 @@ mod tests {
                         assert_eq!(preview.text, copied.text);
                         assert_eq!(preview.warnings, copied.warnings);
                     }
-                    (Err(preview), Err(copied)) => assert_eq!(preview, CommandError::from(copied)),
+                    (Err(preview), Err(copied)) => assert_eq!(preview, copied),
                     _ => panic!("preview and copy validation diverged"),
                 }
             }

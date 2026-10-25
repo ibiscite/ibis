@@ -18,6 +18,7 @@ export const operationFailures = {
   pin: "Ibis could not change the pin. Try again.",
   preferences: "Ibis could not read or save your picker choices. They apply until Ibis restarts.",
   quit: "Ibis could not quit. Try again.",
+  updateEvents: "Update progress is unavailable.",
   pickerEvents: "Ibis could not focus the search box. Restart Ibis to try again.",
   libraryEvents: "Your library may not update automatically. Use Reload, or restart Ibis.",
   findSources: "Ibis could not look for libraries on this computer. Choose a file instead.",
@@ -120,6 +121,7 @@ export const pickerText = {
   searchError: "Ibis could not search your library. Use Reload, then try again.",
   copyError: "Nothing was copied. Try again, or use Reload.",
   snapshotChanged: "The library changed. Search again and reselect the references before copying.",
+  sharedKey: (key: string) => `More than one reference has the key ${key}, so it can't be cited by key. Give one of them a different key in Zotero or your .bib file.`,
   usingLocator: (label: string, value: string) => `Using ${label} ${value}`,
   searchAsTyped: "Search as typed",
   applyLocator: (key: string) => `Apply locator to ${key}`,
@@ -434,4 +436,10 @@ export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }
   cite: { label: "\\cite", sample: "\\cite{key}" },
   typst: { label: "Typst", sample: "@key" },
   keys: { label: "Keys only", sample: "key" },
+};
+
+export const updateText = {
+  downloading: "Downloading the update…",
+  installing: "Checking and installing the update…",
+  failed: "The update could not be installed. Use Check for Updates in the Ibis menu to try again later.",
 };

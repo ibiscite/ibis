@@ -7,6 +7,7 @@
 // Errors exit 1; warnings are printed and do not fail. Bot pull requests
 // (Release Please, Dependabot) and GitHub's Revert button are skipped.
 
+import { testDiff, testTamper } from "./test-tamper.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -33,7 +34,7 @@ export function countWords(body) {
     .filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
 }
 
-export function lint({ title = "", body = "", branch = "", fork = false }) {
+export function lint({ title = "", body = "", branch = "", fork = false, files = [] }) {
   const errors = [];
   const warnings = [];
   if (BOT_BRANCH.test(branch)) return { errors, warnings };
@@ -72,6 +73,7 @@ export function lint({ title = "", body = "", branch = "", fork = false }) {
   if (/requested by|project thread/i.test(body) || /^#{1,6}.*\b(pause|paused|resume)\b/im.test(body)) {
     warnings.push("body contains session or pause notes; keep them out of pull requests");
   }
+  errors.push(...testTamper(files, body));
   return { errors, warnings };
 }
 
@@ -94,6 +96,12 @@ function main() {
   const argv = process.argv.slice(2);
   const input = argv.length === 0 && process.env.GITHUB_EVENT_PATH ? fromEvent(process.env.GITHUB_EVENT_PATH) : fromArgs(argv);
   const { errors, warnings } = lint(input);
+  if (!BOT_BRANCH.test(input.branch) && !(REVERT.branch.test(input.branch) && REVERT.title.test(input.title.trim()))) {
+    try {
+      const event = argv.length === 0 && process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : null;
+      errors.push(...testTamper(testDiff(event), input.body));
+    } catch (error) { errors.push(error.message); }
+  }
   const ci = Boolean(process.env.GITHUB_ACTIONS);
   for (const w of warnings) console.log(ci ? `::warning title=Pull request conventions::${w}` : `warning: ${w}`);
   for (const e of errors) console.log(ci ? `::error title=Pull request conventions::${e}` : `error: ${e}`);

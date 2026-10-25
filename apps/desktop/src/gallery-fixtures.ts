@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import type { Copied, Density, LibraryStatus, LocatorQuery, SearchResult } from "./api";
+import type { Copied, Density, LibraryStatus, LocatorQuery, SearchResult, UpdateProgress } from "./api";
 import type { Sources } from "./bindings";
 import type { PickerApi, PickerPreview } from "./App";
 import type { Platform } from "./nativeAppearance";
@@ -16,6 +16,7 @@ export type GalleryState = {
   /** Exact synthetic backend replies for interaction captures, never a query parser. */
   locatorQueries?: Readonly<Record<string, LocatorQuery>>;
   copied?: Copied;
+  updateProgress?: UpdateProgress;
   theme?: "light" | "dark" | "contrast";
   direction?: "ltr" | "rtl";
   largeText?: boolean;
@@ -36,6 +37,8 @@ export type GalleryState = {
   formatted?: boolean;
   showPastePreview?: boolean;
   keys?: boolean;
+  /** The chosen reference's key belongs to another record too, so the preview names the fix. */
+  sharedKey?: boolean;
 };
 
 /**
@@ -134,6 +137,8 @@ const largeSelection = Array.from({ length: 50 }, (_, i) => reference(
 const longLocator = `${"12-14, ".repeat(8)}16`;
 
 export const galleryStates: readonly GalleryState[] = [
+  { id: "update-downloading", label: "Agreed update download (synthetic)", library: library(), query: "memory", results: examples,
+    updateProgress: { attempt: 1, revision: 1, received: 25, total: 100, phase: "downloading" } },
   { id: "first-run", label: "First run", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, zotero: false, references: 0 }) },
   { id: "first-run-found", label: "First run, libraries found", library: library({ state: "none", name: null, snapshot_name: null, has_snapshot: false, zotero: false, references: 0 }),
     sources: { zotero: "available", list: 1, files: [{ name: "research.bib", folder: "Documents" }, { name: "reading.bib", folder: "Desktop" }], cut_short: false } },
@@ -204,6 +209,7 @@ export const galleryStates: readonly GalleryState[] = [
   { id: "tray-system-large", label: "50 selected at 200% system text", library: library({ references: 50 }), query: "selection",
     results: largeSelection, tray: 50, pinned: true, largeText: true },
   { id: "tray", label: "Several references chosen", library: library(), query: "memory", results: examples, tray: 2 },
+  { id: "shared-key", label: "Key two references share", library: library(), query: "memory", results: examples, tray: 1, sharedKey: true },
   { id: "keys", label: "All keys", library: library(), query: "memory", results: examples, keys: true },
   { id: "compact", label: "Compact rows", library: library(), query: "memory", results: many, density: "compact", tray: 2 },
   { id: "spacious", label: "Spacious rows", library: library(), query: "memory", results: many, density: "spacious", tray: 2 },
@@ -218,6 +224,9 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
     preview: { query: state.query, copied: state.copied },
     api: {
       libraryStatus: async () => state.library,
+      ...(state.updateProgress ? { onUpdateProgress: async (handler: (progress: UpdateProgress) => void) => {
+        handler(state.updateProgress!); return () => undefined;
+      } } : {}),
       ...(sources || state.library.state === "none" ? {
         findSources: async () => sources ?? { zotero: "absent", list: 0, files: [], cut_short: false }, openFoundLibrary: async () => null,
       } : {}),
@@ -227,6 +236,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
         interpretation: interpretLocators ? state.locatorQueries?.[query] ?? null : null,
       }),
       citationText: async (items) => {
+        if (state.sharedKey) throw { code: "shared_citation_key", key: items[0]!.id.native_key };
         const text = citation(items);
         return { text, warnings: [], segments: [{ item: null, text }] };
       },
@@ -246,6 +256,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       ...(state.library.zotero ? { useZoteroLibraries: async () => null } : {}),
       reloadLibrary: async () => undefined,
       hidePicker: async () => undefined,
+      pickerVisible: async () => true,
       setPinned: async () => undefined,
       loginItem: async () => ({ name: "Ibis", enabled: false, problem: null }),
       setLoginItem: async (enabled) => ({ name: "Ibis", enabled, problem: null }),
