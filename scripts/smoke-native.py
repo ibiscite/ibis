@@ -36,8 +36,32 @@ class Unavailable(RuntimeError):
 # never the picker, so picker visibility checks skip it.
 NOTICE_TITLE = "Ibis notice"
 
-# Hang guard, not a budget: a cold pwsh C# compile has exceeded 20 s on CI (#903).
+# Execution hang guard; C# compilation happens separately before timed calls.
 CONTRACT_TIMEOUT = 120
+
+
+def prepare_powershell(script, path):
+    """Prebuild the one inline C# block; only execution has a per-call deadline.
+
+    Callers own a fresh temporary directory, so assemblies cannot be stale or
+    shared across concurrent runs. CI's existing job timeout bounds preparation.
+    """
+    blocks = list(re.finditer(r"(?ms)^Add-Type[^\n]*@'\n.*?^'@", script))
+    if len(blocks) != 1:
+        raise ValueError("Expected one inline Windows helper compilation")
+    block = blocks[0]
+    assembly = path.with_suffix(".dll")
+    compiler = path.with_suffix(".compile.ps1")
+    compiler.write_text("$ErrorActionPreference='Stop'\n" + block.group().replace(
+        "Add-Type", "Add-Type -OutputAssembly $args[0]", 1) + "\n", encoding="utf-8")
+    try:
+        subprocess.run([shutil.which("pwsh") or "pwsh", "-NoProfile", "-File", str(compiler), str(assembly)],
+                       check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError:
+        raise RuntimeError("Windows helper compilation failed") from None
+    name = assembly.name.replace("'", "''")
+    load = f"[void][System.Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot '{name}'))"
+    path.write_text(script[:block.start()] + load + script[block.end():], encoding="utf-8")
 
 
 def run(*args):
@@ -1050,6 +1074,7 @@ class Scripted:
     def __init__(self, system):
         self.system = system
         self.editor_folder = None
+        self.helper_folder = None
         self.editor_pid = 0
         initialized = False
         if system == "Windows":
@@ -1057,6 +1082,11 @@ class Scripted:
         else:
             self.command = ["osascript", "-l", "JavaScript", str(Path(__file__).with_name("smoke-macos.js"))]
         try:
+            if system == "Windows":
+                self.helper_folder = tempfile.TemporaryDirectory(prefix="ibis native helper ")
+                helper = Path(self.helper_folder.name) / "smoke-windows.ps1"
+                prepare_powershell(Path(self.command[-1]).read_text(encoding="utf-8"), helper)
+                self.command[-1] = str(helper)
             self.call("probe")
             if system == "Darwin":
                 # TextEdit is a separate Apple Events target from System Events.
@@ -1103,6 +1133,8 @@ class Scripted:
                 raise Unavailable("macOS Accessibility/Automation permission is unavailable; see helper diagnostics") from error
             raise RuntimeError("Native automation preflight failed; see helper diagnostics") from error
         finally:
+            if not initialized and self.helper_folder:
+                self.helper_folder.cleanup()
             if not initialized and self.editor_folder:
                 try:
                     self.close()
@@ -1275,7 +1307,11 @@ class Scripted:
             finally:
                 self.editor_folder.cleanup()
         else:
-            self.call("close-editor")
+            try:
+                self.call("close-editor")
+            finally:
+                if getattr(self, "helper_folder", None):
+                    self.helper_folder.cleanup()
 
 
 def wait_for(predicate, description, timeout=20):
@@ -1421,7 +1457,14 @@ def first_run_preferences_main(args):
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
         native.click("Copy as Pandoc")
         wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
-        native.click("Typst")
+        # Pick with the filter: Windows UIA exposes the menu's radio items
+        # without a pattern the exact-name click helper accepts.
+        # Not every platform reports focus on the filter; the filtered list proves where typing went.
+        native.text("Typst")
+        # "\cite" names only that menu item; "Pandoc" is also the header's visible text.
+        wait_for(lambda: not named(snapshot(), "\\cite"), "Copy as filter leaves only Typst")
+        native.key("Down")
+        native.key("Return")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
         passed("Typst choice is saved before any copy")
         type_query(native, snapshot, "smoke000001", "super+a" if system == "Darwin" else "ctrl+a")
@@ -2149,6 +2192,7 @@ class ContractTests(unittest.TestCase):
         native.visible = True
         native.reopened = False
         native.more_open = False
+        native.format_filter = None
 
         def launch(_command, *, env, **_options):
             app = Mock()
@@ -2167,8 +2211,7 @@ class ContractTests(unittest.TestCase):
             native.visible = True
             return app
 
-        def click(name):
-            actions.append((name, len(launches)))
+        def choose(name):
             if name == "Typst":
                 settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "io.github.ibiscite.ibis/settings.json"
                 value = '{"schema_version":2,"copy_format":"typst"}'
@@ -2187,7 +2230,10 @@ class ContractTests(unittest.TestCase):
                 elif failure == "oversized":
                     value = json.dumps({"schema_version": 2, "copy_format": "typst", "padding": "x" * 65536})
                 settings.write_text(value, encoding="utf-8")
-            elif name == "Quit Ibis":
+
+        def click(name):
+            actions.append((name, len(launches)))
+            if name == "Quit Ibis":
                 native.more_open = False
                 if failure == "late-driver":
                     clock[0] += 11
@@ -2200,8 +2246,15 @@ class ContractTests(unittest.TestCase):
             elif name == "Copy as Pandoc":
                 # The footer's Copy action shares this name while a result is highlighted.
                 self.assertEqual(native.query, NO_MATCH, "Copy as Pandoc was ambiguous")
+                native.format_filter = ""
 
         def key(chord):
+            if chord == "Return" and native.format_filter is not None:
+                actions.append(("Return in Copy as", len(launches)))
+                actions.append((native.format_filter, len(launches)))
+                choose(native.format_filter)
+                native.format_filter = None
+                return
             actions.append((chord, len(launches)))
             if chord == "Return":
                 self.assertEqual(len(launches), 2, "Copy happened before relaunch")
@@ -2226,12 +2279,17 @@ class ContractTests(unittest.TestCase):
                 names += ["No matching references"] if native.query == NO_MATCH else [
                     "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
             result_focus = failure == "active-result-reopen" and native.reopened
+            menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
                 {"name": name, "role": "button"} for name in names] + [
-                {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus},
+                {"name": "\\cite", "role": "menu item"}] * (native.format_filter == "") + [
+                {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus and not menu_open},
                 {"name": "private result payload", "role": "list item", "focused": result_focus}]}
 
         def text(value):
+            if native.format_filter is not None:
+                native.format_filter = value
+                return
             native.query = value
             if failure == "delayed-query":
                 native.query_ready_at = clock[0] + 0.2
@@ -2303,6 +2361,8 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
         self.assertTrue(all("IBIS_GALLERY" not in env and "IBIS_GALLERY_STATE" not in env for env in launches))
         self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
+        pick = actions.index(("Typst", 2))
+        self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
@@ -3245,7 +3305,11 @@ class ContractTests(unittest.TestCase):
         expected = "synthetic 引用.bib"
         payload = json.dumps(expected, ensure_ascii=False).encode("utf-8").hex()
         native.command = [sys.executable, "-c", f"import sys; sys.stdout.buffer.write(bytes.fromhex('{payload}'))"]
-        with patch("locale.getencoding", return_value="cp1252"), patch("builtins.print"):
+        # Simulate a legacy default even when Python itself runs in UTF-8 mode.
+        process = subprocess.run
+        def legacy_locale(*args, **options):
+            return process(*args, **{"encoding": "cp1252", **options})
+        with patch("subprocess.run", side_effect=legacy_locale), patch("builtins.print"):
             self.assertEqual(native.call("snapshot"), expected)
 
     def test_startup_waits_for_the_count_in_the_native_footer_tree(self):
@@ -3843,7 +3907,7 @@ foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
 '''
         with tempfile.TemporaryDirectory() as temporary:
             test = Path(temporary) / "focus-contract.ps1"
-            test.write_text(script, encoding="utf-8")
+            prepare_powershell(script, test)
             result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                      "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
                                     capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
@@ -3995,7 +4059,7 @@ try {
         )
         with tempfile.TemporaryDirectory() as temporary:
             test = Path(temporary) / "snapshot-failure-contract.ps1"
-            test.write_text(script, encoding="utf-8")
+            prepare_powershell(script, test)
             for scenario, phase, kind, operation in cases:
                 with self.subTest(scenario=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
@@ -4027,11 +4091,17 @@ try {
     @unittest.skipUnless(platform.system() == "Windows" and shutil.which("pwsh"),
                          "Windows UI Automation is required to execute the real snapshot failure paths")
     def test_real_windows_snapshot_rejections_preserve_failure_and_redact_handle_input(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            helper = Path(temporary) / "smoke-windows.ps1"
+            prepare_powershell(Path(__file__).with_name("smoke-windows.ps1").read_text(encoding="utf-8"), helper)
+            self.check_real_windows_snapshot_rejections(helper)
+
+    def check_real_windows_snapshot_rejections(self, helper):
         for text, phase, kind in (("-1", "ownership", "RuntimeException"),
                                   ("injected-private-clipboard-引用", "handle-parse", "other")):
             with self.subTest(phase=phase):
                 result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File",
-                                         str(Path(__file__).with_name("smoke-windows.ps1")),
+                                         str(helper),
                                          "-Action", "snapshot", "-AppId", "0", "-EditorId", "0", "-Text", text],
                                         capture_output=True, text=True, timeout=30)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -4041,6 +4111,89 @@ try {
                 self.assertEqual(result.stdout, "")
                 self.assertNotIn("injected-private-clipboard", result.stderr)
 
+    def test_windows_helpers_compile_before_timed_execution(self):
+        methods = (
+            ContractTests.test_windows_helper_validates_owned_window_before_a_foreground_request_and_one_unlocked_retry,
+            ContractTests.test_windows_snapshot_fatal_phases_and_error_kinds_do_not_expose_payloads,
+            ContractTests.test_windows_click_activates_one_exact_owned_button_with_its_native_pattern,
+        )
+        for method in methods:
+            compilations = []
+            def execute(command, **options):
+                source = Path(command[3]).read_text(encoding="utf-8")
+                if re.search(r"(?m)^Add-Type.*@'", source):
+                    self.assertNotIn("timeout", options, "C# compilation must precede the timed contract")
+                    self.assertTrue(options["check"])
+                    compilations.append(source)
+                    return subprocess.CompletedProcess(command, 0, "", "")
+                self.assertEqual(options["timeout"], CONTRACT_TIMEOUT)
+                self.assertEqual(len(compilations), 1)
+                self.assertIn("Assembly]::LoadFrom", source)
+                raise subprocess.TimeoutExpired(command, CONTRACT_TIMEOUT)
+            with self.subTest(contract=method.__name__), patch("shutil.which", return_value="synthetic-pwsh"), \
+                 patch("subprocess.run", side_effect=execute):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    getattr(method, "__wrapped__", method)(ContractTests())
+
+    def test_windows_native_helper_prebuild_is_reused_and_cleaned_up(self):
+        compilations, deadlines = [], []
+        def execute(command, **options):
+            source = Path(command[3]).read_text(encoding="utf-8")
+            if re.search(r"(?m)^Add-Type.*@'", source):
+                self.assertNotIn("timeout", options)
+                self.assertTrue(options["check"])
+                compilations.append(source)
+                return subprocess.CompletedProcess(command, 0, "", "")
+            self.assertEqual(len(compilations), 1)
+            self.assertIn("Assembly]::LoadFrom", source)
+            deadlines.append(options["timeout"])
+            result = {"pid": 12345, "started": 987654321} if command[4] == "editor" else True
+            return subprocess.CompletedProcess(command, 0, json.dumps(result), "")
+        with patch("subprocess.run", side_effect=execute), patch("builtins.print"):
+            native = Scripted("Windows")
+            helper = Path(native.command[3])
+            try:
+                self.assertTrue(helper.is_file())
+                self.assertIs(native.call("clipboard", timeout=3.5), True)
+            finally:
+                native.close()
+        self.assertEqual(deadlines, [30, 30, 3.5, 30])
+        self.assertFalse(helper.parent.exists())
+
+    def test_windows_prebuild_failure_never_runs_actions_and_cleans_up(self):
+        folders = []
+        def fail(command, **options):
+            folders.append(Path(command[3]).parent)
+            raise subprocess.CalledProcessError(1, command, stderr="synthetic-private-compiler-output")
+        with patch("subprocess.run", side_effect=fail), patch.object(Scripted, "call") as action:
+            with self.assertRaisesRegex(RuntimeError, "^Windows helper compilation failed$"):
+                Scripted("Windows")
+            action.assert_not_called()
+        self.assertEqual(len(folders), 1)
+        self.assertFalse(folders[0].exists())
+
+    def test_windows_prebuild_preserves_source_and_handles_literal_paths(self):
+        block = "Add-Type -ReferencedAssemblies System.Runtime -TypeDefinition @'\n// synthetic 引用\n'@"
+        script = "# synthetic prefix\n" + block + "\nthrow 'synthetic sentinel'\n"
+        with tempfile.TemporaryDirectory(prefix="ibis ' 引用 $ ` ") as temporary:
+            path = Path(temporary) / "helper's 引用.ps1"
+            with patch("subprocess.run") as compile:
+                prepare_powershell(script, path)
+            command = compile.call_args.args[0]
+            self.assertEqual(command[-1], str(path.with_suffix(".dll")))
+            self.assertEqual(Path(command[3]).read_text(encoding="utf-8"),
+                             "$ErrorActionPreference='Stop'\n" + block.replace(
+                                 "Add-Type", "Add-Type -OutputAssembly $args[0]", 1) + "\n")
+            prepared = path.read_text(encoding="utf-8")
+            self.assertTrue(prepared.startswith("# synthetic prefix\n"))
+            self.assertTrue(prepared.endswith("\nthrow 'synthetic sentinel'\n"))
+            self.assertIn("'helper''s 引用.dll'", prepared)
+            self.assertNotIn("Add-Type", prepared)
+            for invalid in ("", block + "\n" + block):
+                with patch("subprocess.run") as compile, self.assertRaises(ValueError):
+                    prepare_powershell(invalid, path)
+                compile.assert_not_called()
+
     def test_windows_click_contract_timeout_preserves_only_bounded_fixed_phases(self):
         method = ContractTests.test_windows_click_activates_one_exact_owned_button_with_its_native_pattern
         method = getattr(method, "__wrapped__", method)
@@ -4049,12 +4202,16 @@ try {
         for stderr, expected in [(dirty, phases), (dirty.encode() + b'\n\xffprivate', phases), (None, []),
                                  (phases[0] + '\n' + 'private' * 100000 + '\nWINDOWS CLICK CONTRACT complete', phases[:1])]:
             error = subprocess.TimeoutExpired(["private-command"], CONTRACT_TIMEOUT, stderr=stderr)
-            with patch("shutil.which", return_value="synthetic-pwsh"), patch("subprocess.run", side_effect=error) as helper, patch("builtins.print") as output:
+            def execute(command, **options):
+                if "timeout" in options:
+                    raise error
+                return subprocess.CompletedProcess(command, 0, "", "")
+            with patch("shutil.which", return_value="synthetic-pwsh"), patch("subprocess.run", side_effect=execute) as helper, patch("builtins.print") as output:
                 with self.assertRaises(subprocess.TimeoutExpired) as caught:
                     method(self)
                 self.assertIs(caught.exception, error)
                 self.assertIs(error.stderr, stderr)
-                self.assertEqual(helper.call_count, 1)
+                self.assertEqual(helper.call_count, 2)
                 self.assertEqual(helper.call_args.kwargs["timeout"], CONTRACT_TIMEOUT)
                 self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
                 self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
@@ -4205,7 +4362,7 @@ try {
 '''
         with tempfile.TemporaryDirectory() as temporary:
             test = Path(temporary) / "click-contract.ps1"
-            test.write_text(script, encoding="utf-8")
+            prepare_powershell(script, test)
             try:
                 result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
                                          "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
@@ -4226,7 +4383,7 @@ try {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_windows_editor_preflight_rejects_a_pid_without_creation_identity(self):
-        with patch.object(Scripted, "call", side_effect=[True, 12345]):
+        with patch(__name__ + ".prepare_powershell"), patch.object(Scripted, "call", side_effect=[True, 12345]):
             with self.assertRaisesRegex(RuntimeError, "identity unavailable"):
                 Scripted("Windows")
 

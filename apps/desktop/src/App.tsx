@@ -140,12 +140,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   useEffect(() => {
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
   }, [setupDone]);
-  // A click still waiting for its preview must never copy once the user has left.
-  const [clickCopy, setClickCopy] = useState<{ choice: string; queryKey: string } | null>(null);
-  const requestClickCopy = (choice: string) => setClickCopy({ choice, queryKey });
+  // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
+  const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string } | null>(null);
+  const requestCopy = (choice: string) => setPendingCopy({ choice, queryKey });
   const hide = () => {
     copyVisibility.current += 1;
-    setClickCopy(null);
+    setPendingCopy(null);
     void perform("hide", hidePicker);
   };
   const clearSearch = () => {
@@ -156,8 +156,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     setActive(0);
   };
   const chooseFormat = (choice: Choice) => {
-    // A new format choice cancels the earlier click waiting for its preview.
-    setClickCopy(null);
+    // A new format choice cancels the earlier copy waiting for its preview.
+    setPendingCopy(null);
     preferences.chooseFormat(choice);
   };
 
@@ -260,7 +260,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       hiddenAt.current = performance.now();
       setKeysOpen(false);
       setAltHeld(false);
-      setClickCopy(null);
+      setPendingCopy(null);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
     const unlisten = onPickerShown(focusSearch).catch(() => subscriptionFailure("pickerEvents"));
@@ -341,7 +341,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [restored]);
 
   // Keep the highlighted result visible while moving with the arrow keys.
-  // A row chosen by the pointer is already under it; scrolling would move it away.
+  // A row clicked is already under the pointer; scrolling would move it away.
   // Selection/preview reflow follows the highlight only while Search has focus.
   const previousActive = useRef(active);
   const followKeyboard = useRef(true);
@@ -404,7 +404,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   };
 
   const changeLocator = (reference: CitationReference, locator: Readonly<Locator> | null) => {
-    setClickCopy(null);
+    setPendingCopy(null);
     setSelected((previous) => {
       if (previous.get(idKey(reference.id)) !== reference) return previous;
       const next = new Map(previous);
@@ -526,18 +526,19 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       });
     }
   };
-  // A click on a row copies what Enter would copy then (the row, or the
-  // citation being built), once that is ready; anything changing first cancels it.
+  // Enter, Copy or a click on a row copies what is chosen then (the row, or the
+  // citation being built), once its preview is ready; anything changing first cancels it.
+  const copyChosen = () => { if (chosen.length > 0) requestCopy(chosenKey); };
   useEffect(() => {
-    if (clickCopy === null) return;
-    if (chosenKey !== clickCopy.choice || queryKey !== clickCopy.queryKey) {
-      setClickCopy(null);
+    if (pendingCopy === null) return;
+    if (chosenKey !== pendingCopy.choice || queryKey !== pendingCopy.queryKey) {
+      setPendingCopy(null);
       return;
     }
     if (style && shown === null) return;
-    setClickCopy(null);
+    setPendingCopy(null);
     void copy();
-  }, [clickCopy, chosenKey, shown, queryKey]);
+  }, [pendingCopy, chosenKey, shown, queryKey]);
 
   const busy = library?.state === "loading" || library?.state === "reloading";
   // First run, step 2: once a library first opens after none was chosen, ask
@@ -667,7 +668,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
   const escapeStep = () => {
-    setClickCopy(null);
+    setPendingCopy(null);
     // Escape steps back one layer, retaining the chosen references.
     if (menuOpen) closeMenu(true);
     else if (query) {
@@ -772,7 +773,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             toggleHighlighted();
           } else if (e.key === "Enter") {
             e.preventDefault();
-            void copy();
+            copyChosen();
           }
         }}
         expanded={results.length > 0 && !writingStep}
@@ -810,7 +811,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           </Button>}
         </p>
       </div>}
-      <div className="results-area" ref={resultArea}>
+      <div className="results-area scroll-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && !showWriting && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
@@ -824,9 +825,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             // Rows of an earlier query, still shown while a newer search
             // is pending, are not acted on by a click or Shift+click (#507).
             if (current !== results) return;
-            setActive(i);
+            pointer.choose(i);
             if (action === "toggle") toggle(r);
-            else if (action === "copy") requestClickCopy(selected.size > 0 ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
+            else if (action === "copy") requestCopy(selected.size > 0 ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
             input.current?.focus();
           }}
           onContext={(i, r) => {
@@ -839,13 +840,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               if (!owns()) return;
               report("rowContext", false);
               if (action === "toggle") toggle(r);
-              else if (action === "copy") requestClickCopy(selected.size > 0 ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
+              else if (action === "copy") requestCopy(selected.size > 0 ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
               if (action !== null || document.hasFocus()) input.current?.focus({ preventScroll: true });
             }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) input.current?.focus({ preventScroll: true }); } });
           }}
           onToggle={(i, r) => {
             if (current !== results) return;
-            setActive(i);
+            pointer.choose(i);
             toggle(r);
             input.current?.focus();
           }} />}
@@ -859,7 +860,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         shown={showWriting ? undefined : displayedOutput} focusable={selected.size > 0} outputRef={outputRef} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
-        altHeld={altHeld} actions={{ copy: () => { void copy(); }, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
+        altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
         more={
           <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMenu(false))}
             buttonRef={moreButton} searchRef={input} library={library} libraryDetail={libraryDetail}

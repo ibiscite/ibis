@@ -1,5 +1,7 @@
 # UI Automation reads/invokes controls; SendInput exercises the actual shortcut
 # and typing path. Called by smoke-native.py, not a test-mode application API.
+# smoke-native.py prebuilds the inline C# in a fresh temporary directory before
+# timing any action, then runs a copy that loads that assembly without compiling.
 param([string] $Action, [int] $AppId, [int] $EditorId, [string] $Text, [long] $PickerHandle,
       [switch] $TraceForeground, [long] $EditorStarted)
 $ErrorActionPreference = 'Stop'
@@ -183,15 +185,16 @@ function Get-ErrorKind($Failure) {
   if ($known -contains $exception.GetType().Name) { $exception.GetType().Name } else { 'other' }
 }
 function Send-Chord([string] $Chord) {
-  $map = @{ctrl=0x11;shift=0x10;alt=0x12;super=0x5b;space=0x20;escape=0x1b;return=0x0d;tab=0x09}
+  $map = @{ctrl=0x11;shift=0x10;alt=0x12;super=0x5b;space=0x20;escape=0x1b;return=0x0d;tab=0x09;down=0x28}
   $keys = @($Chord.ToLowerInvariant().Split('+') | ForEach-Object {
     if ($map.ContainsKey($_)) { [ushort] $map[$_] }
     elseif ($_.Length -eq 1 -and $_ -cmatch '[a-z]') { [ushort][char] $_.ToUpperInvariant() }
     else { throw 'Unsupported smoke input key' }
   })
-  foreach ($key in $keys) { [IbisSmoke]::Key($key, 0, 0) }
+  # Arrow keys are extended keys; without the flag they arrive as keypad keys.
+  foreach ($key in $keys) { [IbisSmoke]::Key($key, 0, [uint32]($key -eq 0x28)) }
   [array]::Reverse($keys)
-  foreach ($key in $keys) { [IbisSmoke]::Key($key, 0, 2) }
+  foreach ($key in $keys) { [IbisSmoke]::Key($key, 0, 2 -bor [uint32]($key -eq 0x28)) }
 }
 function Get-MemoryIdentity($Date) {
   if ($Date -isnot [DateTime] -or $Date.Ticks -le 0 -or $Date.ToUniversalTime().Ticks -le 0) {

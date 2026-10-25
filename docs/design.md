@@ -4,7 +4,7 @@ The one current rule book for how Ibis looks and behaves: picker, first run,
 Settings, preview, brand and website. Accepted ADRs win over it. Values live in
 [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
 tokens by role and gives numbers only where no token exists. The unbuilt
-Settings window's detail is in [design/settings.md](design/settings.md); scope is
+Settings window's detailed spec waits in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
 each beside its rule.
@@ -275,9 +275,13 @@ the Return cap is the ↵ glyph); Windows gives each key a cap 4 px apart (Ctrl
 K); GNOME adds "+" between caps (Ctrl + K). Decorative caps are hidden from
 screen readers; `aria-keyshortcuts` names the keys.
 
-**Scroll areas.** One scroll bar style for the list, menus, the shelf and every
-other scroller, from the shared component: overlay scroll bars on macOS, the
-platform's thin style elsewhere. Content never shifts when a bar appears.
+**Scroll areas.** One scroll area (`ui/ScrollArea`) for the results, menus,
+Shortcuts and notices: the system's own scroll bars (overlay on macOS and
+GNOME) and Fluent's thin bar on Windows, from `--scrollbar-width` and
+`--scrollbar-color`. The side inset sits inside the bar, so a classic bar never
+takes it. An edge with more content beyond it fades over `--scroll-fade-size`,
+so a list that ends on a whole row still shows there is more; the results list
+needs no fade, as a cut row already shows it.
 
 **Tables** (the keyboard shortcuts list, Settings lists). Columns size to their
 content and never break a word; a table that does not fit scrolls or drops a
@@ -491,7 +495,8 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
 - **Clicking outside** hides Ibis and the click reaches its target, unless
   pinned or while a page number, picker dialog, file chooser, drag or sign-in
   is in progress.
-- **Hover** selects only under a moving pointer; the wheel never selects.
+- **Hover** only tints a row, and only under a moving pointer; a click selects
+  [C5], so reaching across rows for Copy never changes what is copied.
 - **After a copy** Ibis hides, focus returns to the previous window and the
   notice appears; a failed insert leaves the citation on the clipboard and
   says why. Pinned, Ibis stays. Escape never asks or unpins.
@@ -561,7 +566,7 @@ Until then settings live in More and the tray menu. **Start Ibis when you log
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
 ("Open at Login", "Start when you sign in", "Start on Login"), and is read from
 the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).
-The detailed spec is [design/settings.md](design/settings.md).
+The detailed spec waits in #776 until that work starts.
 
 ## Brand and mark
 
