@@ -45,6 +45,8 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   const root = mkdtempSync(join(tmpdir(), "ibis-tamper-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, "source"), shallow = join(root, "shallow");
+  // Windows forbids colons in filenames; POSIX exercises Git pathspec magic.
+  const tricky = process.platform === "win32" ? "literal-case.test.mjs" : ":(literal)case.test.mjs";
   mkdirSync(source);
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
@@ -56,11 +58,11 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   run(source, "init", "-q", "-b", "main");
   mkdirSync(join(source, "fixtures"));
   writeFileSync(join(source, "fixtures/資料 expected.txt"), "synthetic\n");
-  writeFileSync(join(source, ":(literal)case.test.mjs"), "assert.equal(1, 1);\n");
+  writeFileSync(join(source, tricky), "assert.equal(1, 1);\n");
   run(source, "add", "."); run(source, "commit", "-qm", "base");
   run(source, "switch", "-qc", "change");
   run(source, "mv", "fixtures/資料 expected.txt", "moved.txt");
-  run(source, "--literal-pathspecs", "rm", "-q", "--", ":(literal)case.test.mjs");
+  run(source, "--literal-pathspecs", "rm", "-q", "--", tricky);
   run(source, "commit", "-qm", "rename");
   const head = run(source, "rev-parse", "HEAD").trim();
   run(source, "switch", "-q", "main");
@@ -73,11 +75,11 @@ test("shallow merge checkout checks only PR changes and catches renamed expected
   const calls = [];
   const files = testDiff(event, (args) => { calls.push(args); return run(shallow, ...args); });
   assert.ok(calls.some((args) => args[0] === "fetch"), "missing parent is obtained from the existing origin");
-  assert.deepEqual(files.map((file) => file.filename), [":(literal)case.test.mjs", "fixtures/資料 expected.txt"]);
+  assert.deepEqual(files.map((file) => file.filename), [tricky, "fixtures/資料 expected.txt"].sort());
   const cwd = process.cwd();
   try {
     process.chdir(source);
-    const literalFile = testDiff(event).find((file) => file.filename.startsWith(":"));
+    const literalFile = testDiff(event).find((file) => file.filename === tricky);
     assert.match(literalFile.patch, /-assert.equal/);
     assert.equal(testTamper([literalFile]).length, 1);
   } finally { process.chdir(cwd); }
