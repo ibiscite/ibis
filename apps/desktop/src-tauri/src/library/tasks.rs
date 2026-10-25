@@ -137,6 +137,46 @@ enum OpenIntent {
     Refresh,
 }
 
+#[derive(Clone)]
+struct OpenRequest {
+    request: u64,
+    source: Source,
+    reload: bool,
+    intent: OpenIntent,
+    #[cfg(debug_assertions)]
+    started: std::time::Instant,
+}
+
+/// One worker owns the active load; new choices replace its pending request.
+#[derive(Default)]
+pub(super) struct OpenQueue {
+    running: bool,
+    pending: Option<OpenRequest>,
+}
+
+impl LoadRequests {
+    fn enqueue(&self, open: OpenRequest) -> bool {
+        let Ok(mut queue) = self.1.lock() else { return false };
+        // Reservation and enqueue can race on different command threads.
+        if self.0.load(Ordering::SeqCst) != open.request {
+            return false;
+        }
+        queue.pending = Some(open);
+        let start = !queue.running;
+        queue.running = true;
+        start
+    }
+
+    fn next_open(&self) -> Option<OpenRequest> {
+        let mut queue = self.1.lock().ok()?;
+        let next = queue.pending.take();
+        if next.is_none() {
+            queue.running = false;
+        }
+        next
+    }
+}
+
 impl OpenIntent {
     fn retry(reload: bool) -> Self {
         if reload { Self::Refresh } else { Self::Remember }
@@ -194,19 +234,51 @@ struct LoadPhases {
 fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent: OpenIntent) {
     #[cfg(debug_assertions)]
     let started = std::time::Instant::now();
-    publish_current(app);
+    if !matches!(intent, OpenIntent::Refresh) {
+        publish_current(app);
+    }
+    if !app.state::<LoadRequests>().enqueue(OpenRequest {
+        request,
+        source,
+        reload,
+        intent,
+        #[cfg(debug_assertions)]
+        started,
+    }) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(open) = app.state::<LoadRequests>().next_open() {
+            open_one(app.clone(), open).await;
+        }
+    });
+}
+
+fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Output = ()> {
+    let OpenRequest {
+        request,
+        source,
+        reload,
+        intent,
+        ..
+    } = open;
+    #[cfg(debug_assertions)]
+    let started = open.started;
     let previous = app
         .state::<Mutex<Library>>()
         .lock()
         .ok()
         .and_then(|library| library.zotero.clone());
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
+    async move {
         let chosen = source.setting();
+        let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let loading = std::time::Instant::now();
-            let loaded = load_source(source, reload, previous);
+            let loaded = load_source(source, reload, previous, || {
+                loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
+            });
             #[cfg(debug_assertions)]
             {
                 (loaded, loading.elapsed().as_secs_f64() * 1000.0)
@@ -275,7 +347,7 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent:
                 eprintln!("ibis-library-phases: {json}");
             }
         }
-    });
+    }
 }
 
 /// Show the system file dialog and open the chosen library. Cancelling
@@ -336,18 +408,8 @@ pub(super) fn open_zotero(app: &AppHandle, chosen: ZoteroLibraries) {
 /// Check the open Zotero library for changes, for example when the picker
 /// is shown. A file library has its own watcher, so nothing happens then.
 pub(crate) fn refresh_zotero(app: &AppHandle) {
-    if let Some((request, source, previous)) = begin_check(&app.state(), &app.state()) {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let loaded = tauri::async_runtime::spawn_blocking(move || load_source(source, true, previous))
-                .await
-                .unwrap_or(Err(LoadError::Stopped));
-            let installed = OpenIntent::Refresh.install(&app.state(), &app.state(), request, loaded);
-            if installed.is_some() {
-                publish_current(&app);
-                watch_current(&app, request);
-            }
-        });
+    if let Some((request, source, _)) = begin_check(&app.state(), &app.state()) {
+        run_open(app, request, source, true, OpenIntent::Refresh);
         return;
     }
     if let Some((request, source, reload)) = begin_zotero_retry(&app.state(), &app.state(), false) {
@@ -411,6 +473,76 @@ pub(crate) fn reload_library_file(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn three_rapid_choices_run_only_first_and_last_loads_and_the_last_wins() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let choose = |id| {
+            let source = Source::Zotero(ZoteroLibrary::Group(id).into());
+            let (request, reload, _) =
+                begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("choice starts"));
+            OpenRequest {
+                request,
+                source,
+                reload,
+                intent: OpenIntent::Read,
+                #[cfg(debug_assertions)]
+                started: std::time::Instant::now(),
+            }
+        };
+        assert!(requests.enqueue(choose(1)), "the first choice starts one worker");
+        let (started, active) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        let ran = std::thread::scope(|scope| {
+            let (requests, library) = (&requests, &library);
+            let worker = scope.spawn(move || {
+                let mut ran = Vec::new();
+                while let Some(open) = requests.next_open() {
+                    ran.push(open.request);
+                    if ran.len() == 1 {
+                        started.send(()).unwrap_or_else(|e| panic!("{e}"));
+                        resume
+                            .recv_timeout(Duration::from_secs(5))
+                            .unwrap_or_else(|e| panic!("{e}"));
+                    }
+                    let loaded = candidate(open.source, ibis_core::bibtex::load_str("synthetic", "@misc{key}"));
+                    let installed =
+                        open.intent
+                            .install(library, requests, open.request, Ok(Loaded::New(Box::new(loaded))));
+                    assert_eq!(installed.is_some(), open.request == 3, "stale work cannot install");
+                }
+                ran
+            });
+            active
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap_or_else(|e| panic!("{e}"));
+            let second = choose(2);
+            assert!(
+                !requests.enqueue(second.clone()),
+                "the second choice waits for the active load"
+            );
+            assert!(
+                !requests.enqueue(choose(3)),
+                "a pending choice cannot start another worker"
+            );
+            assert!(
+                !requests.enqueue(second),
+                "a delayed older enqueue cannot replace the latest choice"
+            );
+            release.send(()).unwrap_or_else(|e| panic!("{e}"));
+            worker.join().unwrap_or_else(|e| panic!("{e:?}"))
+        });
+        assert_eq!(ran, [1, 3], "the middle choice must never load");
+        assert_eq!(
+            library.lock().unwrap_or_else(|e| panic!("{e}")).source,
+            Some(Source::Zotero(ZoteroLibrary::Group(3).into()))
+        );
+        assert!(requests.enqueue(choose(4)), "an idle worker can restart");
+    }
 
     #[test]
     fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_it() {
