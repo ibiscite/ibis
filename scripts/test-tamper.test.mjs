@@ -108,3 +108,10 @@ test("inline Rust test assertions are guarded without treating runtime assertion
   assert.deepEqual(testTamper([{ filename: "src/lib.rs", patch: "@@ -2 +2 @@\n-  assert!(ready);\n+  run();", before, after: before }]), []);
   assert.equal(testTamper([{ filename: "src/lib.rs", patch: "@@ -8 +8 @@\n-  assert_eq!(actual, expected);\n+  run();", before, after: before }]).length, 1);
 });
+
+
+test("nested Rust comments cannot hide an assertion from its test region", () => {
+  const before = "#[test]\nfn case() {\n /* outer /* inner */ } */\n assert_eq!(1, 2);\n}\n";
+  const file = { filename: "src/lib.rs", before, after: before.replace("assert_eq!(1, 2)", "()"), patch: "@@ -4 +4 @@\n- assert_eq!(1, 2);\n+ ();" };
+  assert.equal(testTamper([file]).length, 1);
+});

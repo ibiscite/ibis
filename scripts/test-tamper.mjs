@@ -7,7 +7,22 @@ const testFile = (name) => testPath(name) || name.endsWith(".rs");
 const expectedFile = (name) => /(?:^|\/)(?:fixtures|proptest-regressions|snapshots)\/|\.snap(?:\.new)?$/.test(name);
 
 function rustTestLines(source = "") {
-  const masked = source.replace(/r(#{0,16})"[\s\S]*?"\1|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])'|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (value) => value.replace(/[^\n]/g, " "));
+  const tokens = /r(#{0,255})"[\s\S]*?"\1|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])'|\/\/[^\n]*|\/\*/g;
+  const chunks = [];
+  let previous = 0, token;
+  while ((token = tokens.exec(source))) {
+    let end = tokens.lastIndex;
+    if (token[0] === "/*") {
+      const comments = /\/\*|\*\//g; comments.lastIndex = end;
+      let depth = 1, next;
+      while (depth && (next = comments.exec(source))) { depth += next[0] === "/*" ? 1 : -1; end = comments.lastIndex; }
+      if (depth) end = source.length;
+      tokens.lastIndex = end;
+    }
+    chunks.push(source.slice(previous, token.index), source.slice(token.index, end).replace(/[^\n]/g, " "));
+    previous = end;
+  }
+  const masked = chunks.join("") + source.slice(previous);
   const lines = new Set();
   for (const match of masked.matchAll(/#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:\w+::)?test)\s*\][^{;]*\{/g)) {
     let end = match.index + match[0].length, depth = 1;
