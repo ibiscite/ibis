@@ -79,7 +79,7 @@ On Wayland it still attempts the in-app shortcut; if registration fails, the pic
 
 The developer CLI `ibis` is separate from the desktop download. It first finds `ibis-desktop` beside itself;
 otherwise it uses PATH on Linux, the installed **Ibis** app on macOS,
-or `%LOCALAPPDATA%\Ibis\ibis-desktop.exe` then PATH on Windows. Build the desktop app first when running from source.
+or `%LOCALAPPDATA%\Ibis\ibis-desktop.exe`, then `%ProgramFiles%\Ibis\ibis-desktop.exe`, then PATH on Windows. Build the desktop app first when running from source.
 `--app` overrides discovery: on macOS use `ibis toggle --app "Ibis Nightly"` or
 `ibis toggle --app "/Applications/Ibis Nightly.app"` (passed to `open -n -a`); on Linux/Windows pass the desktop
 executable path, including for Nightly or custom installs. Without the CLI, bind `ibis-desktop toggle` directly.

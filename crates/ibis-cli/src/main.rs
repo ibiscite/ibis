@@ -212,12 +212,17 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 .ok()
                 .map(|exe| exe.with_file_name(format!("ibis-desktop{}", std::env::consts::EXE_SUFFIX)))
                 .filter(|path| path.is_file());
-            let local_app_data = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+            // Per-user (NSIS) first, then machine-wide (MSI or NSIS for all users).
+            let install_roots: Vec<PathBuf> = ["LOCALAPPDATA", "ProgramFiles"]
+                .into_iter()
+                .filter_map(std::env::var_os)
+                .map(PathBuf::from)
+                .collect();
             let mut command = desktop_command(
                 std::env::consts::OS,
                 sibling.as_deref(),
                 app.as_deref(),
-                local_app_data.as_deref(),
+                &install_roots,
                 Path::is_file,
             );
             let failed =
@@ -408,20 +413,22 @@ fn run(cli: Cli) -> Result<ExitCode> {
 }
 
 /// Launch the same desktop binary again; its single-instance plugin forwards
-/// `toggle` to the running copy. Overrides win over sibling, per-user Windows
-/// install and PATH discovery; macOS app selection uses Launch Services.
+/// `toggle` to the running copy. Overrides win over sibling, Windows install
+/// folders (in the order given) and PATH; macOS app selection uses Launch Services.
 fn desktop_command(
     platform: &str,
     sibling: Option<&Path>,
     app: Option<&Path>,
-    local_app_data: Option<&Path>,
-    is_file: impl FnOnce(&Path) -> bool,
+    install_roots: &[PathBuf],
+    mut is_file: impl FnMut(&Path) -> bool,
 ) -> std::process::Command {
-    // Tauri NSIS currentUser: productName=Ibis; default binary=ibis-desktop.
-    let installed = local_app_data
-        .filter(|root| platform == "windows" && app.is_none() && sibling.is_none() && !root.as_os_str().is_empty())
+    // Tauri installers: <root>\<productName>\<binary>, productName Ibis, binary ibis-desktop.
+    let installed = install_roots
+        .iter()
+        .filter(|_| platform == "windows" && app.is_none() && sibling.is_none())
+        .filter(|root| !root.as_os_str().is_empty())
         .map(|root| root.join("Ibis").join("ibis-desktop.exe"))
-        .filter(|path| is_file(path));
+        .find(|path| is_file(path));
     let mut command = if platform == "macos" && (app.is_some() || sibling.is_none()) {
         let mut open = std::process::Command::new("open");
         // A new process is required for single-instance arguments to arrive.
@@ -450,7 +457,7 @@ mod toggle_tests {
         }
         let sibling = Some(Path::new("/synthetic/sibling"));
         for app in ["Ibis Nightly", "/synthetic/文献 $(x).app"] {
-            let command = desktop_command("macos", sibling, Some(Path::new(app)), None, |_| false);
+            let command = desktop_command("macos", sibling, Some(Path::new(app)), &[], |_| false);
             assert_eq!(command.get_program(), "open");
             let expected = ["-n", "-a", app, "--args", "toggle"];
             assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
@@ -460,33 +467,36 @@ mod toggle_tests {
     #[test]
     fn toggle_launches_the_desktop_with_one_literal_argument() {
         let path = Path::new("/synthetic/Ibis app/ibis-desktop");
-        let command = desktop_command("linux", Some(path), None, None, |_| false);
+        let command = desktop_command("linux", Some(path), None, &[], |_| false);
         assert_eq!(command.get_program(), path);
         assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
-        let command = desktop_command("macos", None, None, None, |_| false);
+        let command = desktop_command("macos", None, None, &[], |_| false);
         let expected = ["-n", "-a", "Ibis", "--args", "toggle"];
         assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
     }
 
     #[test]
-    fn toggle_windows_lookup_prefers_override_then_sibling_then_user_install_then_path() {
-        let root = Path::new("/synthetic/Local 文献");
-        let installed = root.join("Ibis").join("ibis-desktop.exe");
+    fn toggle_windows_lookup_prefers_override_then_sibling_then_install_folders_then_path() {
+        let user = PathBuf::from("/synthetic/Local 文献");
+        let machine = PathBuf::from("/synthetic/Program Files");
+        let in_user = user.join("Ibis").join("ibis-desktop.exe");
+        let in_machine = machine.join("Ibis").join("ibis-desktop.exe");
         let explicit = Path::new("/synthetic/Nightly app.exe");
         let sibling = Path::new("/synthetic/sibling.exe");
         let fallback = Path::new("ibis-desktop.exe");
-        for (sibling, app, env, found, expected) in [
-            (None, None, Some(root), true, installed.as_path()),
-            (None, None, Some(root), false, fallback),
-            (None, None, None, true, fallback),
-            (None, None, Some(Path::new("")), true, fallback),
-            (Some(sibling), None, Some(root), true, sibling),
-            (Some(sibling), Some(explicit), Some(root), true, explicit),
+        let roots = [user.clone(), machine.clone()];
+        for (sibling, app, roots, existing, expected) in [
+            (None, None, &roots[..], vec![&in_user, &in_machine], in_user.as_path()),
+            (None, None, &roots[..], vec![&in_machine], in_machine.as_path()),
+            (None, None, &roots[..], vec![], fallback),
+            (None, None, &[][..], vec![&in_user], fallback),
+            (None, None, &[PathBuf::new()][..], vec![], fallback),
+            (Some(sibling), None, &roots[..], vec![&in_user], sibling),
+            (Some(sibling), Some(explicit), &roots[..], vec![&in_user], explicit),
         ] {
-            let command = desktop_command("windows", sibling, app, env, |path| {
+            let command = desktop_command("windows", sibling, app, roots, |path| {
                 assert!(sibling.is_none() && app.is_none());
-                assert_eq!(path, installed);
-                found
+                existing.iter().any(|p| p.as_path() == path)
             });
             assert_eq!(command.get_program(), expected);
             assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
