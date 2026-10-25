@@ -60,11 +60,7 @@ An XWayland connection may pass the X11 check in a Wayland session. That does
 not establish shortcut activation while a native Wayland app has focus.
 The GlobalShortcuts portal work in [#782](https://github.com/ibiscite/ibis/issues/782)
 is scheduled for 0.2 but has not shipped. No native GNOME/KDE Wayland shortcut
-test is claimed. Portal-based insertion is also unshipped.
-
-The #782 portal client awaits picker integration. Desktop triggers are not
-persisted. Real GNOME/KDE sessions remain unverified; unit/fake-portal tests do
-not establish compositor activation or focus behavior.
+test is claimed.
 
 GNOME without a tray extension and some other desktops show no tray icon.
 The launcher and picker library controls still work. Use **More > Quit** to
@@ -127,6 +123,5 @@ Only a completed run with passed `smoke.json` establishes that case. A test
 definition or a green build alone does not. These checks do not prove automatic
 insertion, all citation formats, screen-reader speech, mixed-DPI displays,
 sleep/wake, cloud folders, network drives or every editor. See
-[testing](testing.md) for assertions and measurement limits, the
-[coverage ledger](https://github.com/ibiscite/ibis/issues/330#issuecomment-6282580538)
-and the [remaining manual checks](https://github.com/ibiscite/ibis/issues/79#issuecomment-6282579792).
+[testing](testing.md) for assertions and measurement limits and the
+[remaining manual checks](https://github.com/ibiscite/ibis/issues/79#issuecomment-6282579792).

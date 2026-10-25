@@ -49,8 +49,7 @@ M is the height of the bird.
    For YouTube, keep text inside the centre safe area (1546 × 423).
 4. Open a pull request with the inputs and all generated changes.
 5. After merging, the maintainer re-uploads `exports/png/github-social-preview.png`
-   and `exports/png/ibis-avatar-512.png` to GitHub if they changed. Update any
-   external profile image, such as the Notion project icon, from those same files.
+   and `exports/png/ibis-avatar-512.png` to GitHub if they changed.
 
 The build needs Python 3, librsvg's `rsvg-convert`, fontconfig and Inter Display
 (the Linux CI packages are `librsvg2-bin` and `fonts-inter`). The [desktop icon
