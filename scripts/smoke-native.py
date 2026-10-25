@@ -1421,7 +1421,13 @@ def first_run_preferences_main(args):
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
         native.click("Copy as Pandoc")
         wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
-        native.click("Typst")
+        # Pick with the filter: Windows UIA exposes the menu's radio items
+        # without a pattern the exact-name click helper accepts.
+        wait_for(lambda: any(node.get("focused") for node in named(snapshot(), "Filter formats")), "Copy as filter focused")
+        native.text("Typst")
+        wait_for(lambda: not named(snapshot(), "LaTeX"), "Copy as filter leaves only Typst")
+        native.key("Down")
+        native.key("Return")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
         passed("Typst choice is saved before any copy")
         type_query(native, snapshot, "smoke000001", "super+a" if system == "Darwin" else "ctrl+a")
@@ -2149,6 +2155,7 @@ class ContractTests(unittest.TestCase):
         native.visible = True
         native.reopened = False
         native.more_open = False
+        native.format_filter = None
 
         def launch(_command, *, env, **_options):
             app = Mock()
@@ -2167,8 +2174,7 @@ class ContractTests(unittest.TestCase):
             native.visible = True
             return app
 
-        def click(name):
-            actions.append((name, len(launches)))
+        def choose(name):
             if name == "Typst":
                 settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "io.github.ibiscite.ibis/settings.json"
                 value = '{"schema_version":2,"copy_format":"typst"}'
@@ -2187,7 +2193,10 @@ class ContractTests(unittest.TestCase):
                 elif failure == "oversized":
                     value = json.dumps({"schema_version": 2, "copy_format": "typst", "padding": "x" * 65536})
                 settings.write_text(value, encoding="utf-8")
-            elif name == "Quit Ibis":
+
+        def click(name):
+            actions.append((name, len(launches)))
+            if name == "Quit Ibis":
                 native.more_open = False
                 if failure == "late-driver":
                     clock[0] += 11
@@ -2200,8 +2209,15 @@ class ContractTests(unittest.TestCase):
             elif name == "Copy as Pandoc":
                 # The footer's Copy action shares this name while a result is highlighted.
                 self.assertEqual(native.query, NO_MATCH, "Copy as Pandoc was ambiguous")
+                native.format_filter = ""
 
         def key(chord):
+            if chord == "Return" and native.format_filter is not None:
+                actions.append(("Return in Copy as", len(launches)))
+                actions.append((native.format_filter, len(launches)))
+                choose(native.format_filter)
+                native.format_filter = None
+                return
             actions.append((chord, len(launches)))
             if chord == "Return":
                 self.assertEqual(len(launches), 2, "Copy happened before relaunch")
@@ -2226,12 +2242,17 @@ class ContractTests(unittest.TestCase):
                 names += ["No matching references"] if native.query == NO_MATCH else [
                     "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
             result_focus = failure == "active-result-reopen" and native.reopened
+            menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
                 {"name": name, "role": "button"} for name in names] + [
-                {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus},
+                {"name": "Filter formats", "role": "entry", "focused": True}] * menu_open + [
+                {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus and not menu_open},
                 {"name": "private result payload", "role": "list item", "focused": result_focus}]}
 
         def text(value):
+            if native.format_filter is not None:
+                native.format_filter = value
+                return
             native.query = value
             if failure == "delayed-query":
                 native.query_ready_at = clock[0] + 0.2
@@ -2303,6 +2324,8 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
         self.assertTrue(all("IBIS_GALLERY" not in env and "IBIS_GALLERY_STATE" not in env for env in launches))
         self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
+        pick = actions.index(("Typst", 2))
+        self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
