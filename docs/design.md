@@ -573,7 +573,7 @@ A choice screen hides the result heading, the shelf and the Copy hint.
 
 ## Settings
 
-[C18] Not built yet (0.3); the detailed spec waits in #776. Its own window
+[C18] Not built yet (0.4); the detailed spec waits in #776. Its own window
 (Dock, taskbar and Alt+Tab while open) with a searchable sidebar of pages, each
 a stack of titled groups of rows: a label and optional description, then one
 control at the end, at least 48 px (56 with a description), on
@@ -715,12 +715,12 @@ scheduled.
 
 | Feature (release) | Fits as |
 |---|---|
-| Page numbers and locators (0.2, #354; other locator types 0.3, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
-| Any CSL style, prefix, suffix, author omission (0.3) | Styles in the format pop-up (filter, leading checks), listed per Settings › Citations; prefix, suffix and omission controls: open |
+| Page numbers and locators (0.2, #354; other locator types 0.4, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
+| Any CSL style, prefix, suffix, author omission (0.4) | Styles in the format pop-up (filter, leading checks), listed per Settings › Citations; prefix, suffix and omission controls: open |
 | Zotero while closed (0.3, #14), changed keys, cloud-synced data | Footer status with words and a Look or Stop dot; detail in the tooltip and More |
-| "Is this in my library?" (0.4, #701) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
-| Settings window (0.3, #776) | **Settings**; General, Shortcuts and Libraries first |
-| Bibliography export (0.3, #667) | Export the shelf or the session's citations from More to `.bib`, Hayagriva or CSL-JSON; placement: open |
+| "Is this in my library?" (0.5, #701) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
+| Settings window (0.4, #776) | **Settings**; General, Shortcuts and Libraries first |
+| Bibliography export (0.4, #667) | Export the shelf or the session's citations from More to `.bib`, Hayagriva or CSL-JSON; placement: open |
 | `ibis toggle` for Wayland (0.2, #1091) | No picker UI; Settings › Shortcuts explains it |
 
 ## How the design changes

@@ -4,13 +4,13 @@
                       ┌─ Desktop picker (web UI in a Tauri shell; one process for now, ADR 0012)
                       ├─ Command line:  ibis search · ibis cite · ibis check · ibis csl
  ENGINE (Rust) ───────┼─ MCP server (read-only) for AI assistants            [after 1.0]
- small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [0.4]
+ small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [0.5]
                       └─ Browser extension, launcher integrations, web build  [later]
    │
    ├─ Sources: BibTeX/BibLaTeX · Zotero (open) · Zotero closed [0.3] · RIS, CSL-JSON [after 1.0]
    ├─ Search index in memory
    ├─ Key-based syntaxes in Rust (CSL styles: citeproc-js in the web UI for now)
-   ├─ Insertion: state machine + destination profiles              [after 1.0]
+   ├─ Insertion: paste into the previous app [0.3] · destination profiles [after 1.0]
    └─ Health rules                                                  [after 1.0]
 ```
 
@@ -80,7 +80,7 @@ and reports unrepresented references. Clipboard output never uses annotations.
 
 ## Insertion
 
-Planned for after 1.0, or when people ask; today the picker copies and you paste. Every insertion will end in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
+Planned for 0.3 on macOS, then Windows, on by default with a switch to turn it off; Linux copies and says why. Destination profiles come after 1.0. Today the picker copies and you paste. Every insertion will end in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
 
 ## Desktop process model
 
