@@ -197,6 +197,9 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
 }
 
 fn absolute(path: &Path, platform: Platform) -> bool {
+    if path.as_os_str().as_encoded_bytes().iter().any(u8::is_ascii_control) {
+        return false;
+    }
     let Some(text) = path.to_str() else {
         return path.is_absolute();
     };
@@ -205,14 +208,20 @@ fn absolute(path: &Path, platform: Platform) -> bool {
     }
     match platform {
         Platform::Windows => {
+            let extended = text.starts_with("\\\\?\\");
+            let text = text.strip_prefix("\\\\?\\").unwrap_or(text);
             let bytes = text.as_bytes();
-            if let Some(unc) = text.strip_prefix("\\\\").or_else(|| text.strip_prefix("//")) {
+            if let Some(unc) = text
+                .strip_prefix("\\\\")
+                .or_else(|| text.strip_prefix("//"))
+                .or_else(|| text.strip_prefix("UNC\\"))
+            {
                 let mut parts = unc.split(['\\', '/']);
                 let server = parts.next().unwrap_or_default();
                 return !matches!(server, "" | "." | "?") && parts.next().is_some_and(|share| !share.is_empty());
             }
             (bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && matches!(bytes[2], b'\\' | b'/'))
-                || path.is_absolute() // Injected fixtures may use absolute host paths.
+                || (!extended && path.is_absolute()) // Injected fixtures may use host paths.
         }
         _ => text.starts_with('/') || path.is_absolute(),
     }

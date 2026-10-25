@@ -100,12 +100,25 @@ fn manual_override_bypasses_even_broken_profile_configuration() {
 #[test]
 fn windows_manual_override_requires_a_full_drive_or_unc_path() {
     let roots = DiscoveryRoots::new(Platform::Windows, PathBuf::from("/synthetic"), None);
-    for text in ["\\\\", "\\\\server", "\\\\server\\", "Z:relative", "\\rooted"] {
+    for text in [
+        "\\\\",
+        "\\\\server",
+        "\\\\server\\",
+        "Z:relative",
+        "\\rooted",
+        "\\\\?\\Z:relative",
+        "\\\\?\\UNC\\server",
+    ] {
         let result = discover(&roots, Some(Path::new(text)));
         assert!(result.directories.is_empty());
         assert_eq!(result.warnings, [Warning::InvalidPath]);
     }
-    for text in ["Z:\\synthetic", "\\\\server\\share\\synthetic"] {
+    for text in [
+        "Z:\\synthetic",
+        "\\\\server\\share\\synthetic",
+        "\\\\?\\Z:\\synthetic",
+        "\\\\?\\UNC\\server\\share\\synthetic",
+    ] {
         let result = discover(&roots, Some(Path::new(text)));
         assert!(result.warnings.is_empty());
         assert_eq!(result.directories[0].path(), Path::new(text));
