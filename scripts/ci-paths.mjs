@@ -8,6 +8,8 @@ const validPath = (path) => typeof path === "string" && path.length > 0 && !/[\x
 const documentation = (path) => !path.startsWith("fixtures/") && (path.endsWith(".md") || path.startsWith("LICENSE") || path.startsWith(".github/ISSUE_TEMPLATE/"));
 const interfaceFile = (path) => /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path)
   || ["apps/desktop/index.html", "apps/desktop/gallery.html", "scripts/gallery-contact-sheet.mjs", "scripts/gallery-geometry.mjs", "scripts/gallery-geometry.test.mjs", "docs/design-geometry.json"].includes(path);
+// The website is plain files checked by the script tests in the Web job.
+const websiteFile = (path) => path.startsWith("website/");
 const nixInput = (path) => ["flake.nix", "flake.lock", "Cargo.lock", "apps/desktop/package.json", "apps/desktop/pnpm-lock.yaml"].includes(path) || path.startsWith("nix/");
 
 export function classify(event, expected, files) {
@@ -23,7 +25,7 @@ export function classify(event, expected, files) {
     paths.push(file.filename);
     if (file.previous_filename != null) paths.push(file.previous_filename);
   }
-  return { native: paths.some((path) => !documentation(path) && !interfaceFile(path)), web: paths.some((path) => !documentation(path)), nix: paths.some(nixInput) };
+  return { native: paths.some((path) => !documentation(path) && !interfaceFile(path) && !websiteFile(path)), web: paths.some((path) => !documentation(path)), nix: paths.some(nixInput) };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
