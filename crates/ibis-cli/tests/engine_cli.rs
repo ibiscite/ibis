@@ -99,7 +99,8 @@ fn untrusted_controls_cannot_execute_in_terminal_output_and_json_stays_literal()
                 args.into_iter().map(Into::into).collect(),
                 Cursor::new(vec![]),
                 &mut output,
-                &mut errors
+                &mut errors,
+                ibis::OutputMode::Terminal
             ),
             0
         );
@@ -182,5 +183,50 @@ fn native_stdio_framing_cancellation_and_transport_errors_use_the_engine() -> Re
     assert_eq!(response["error"]["data"]["code"], "source-unavailable");
     assert_eq!(ibis_engine::protocol::read_frame(&mut frames)?, None);
     assert!(output.stderr.is_empty());
+    Ok(())
+}
+
+#[test]
+fn piped_plain_citations_retain_literal_rtl_format_marks() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_core::contract::*;
+    use std::{io::Cursor, sync::Arc};
+    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
+    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let key = "مثال\u{200f}2026";
+    record.citation_keys[0].value = key.into();
+    let engine = ibis_engine::Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?));
+    let mut output = vec![];
+    let mut errors = vec![];
+    assert_eq!(
+        ibis::run_with(
+            engine.clone(),
+            ["ibis", "cite", key, "--format", "keys"].map(Into::into).to_vec(),
+            Cursor::new(vec![]),
+            &mut output,
+            &mut errors,
+            ibis::OutputMode::Plain
+        ),
+        0
+    );
+    assert_eq!(output, format!("{key}\n").into_bytes());
+    let mut output = vec![];
+    assert_eq!(
+        ibis::run_with(
+            engine,
+            ["ibis", "cite", key, "--format", "keys"].map(Into::into).to_vec(),
+            Cursor::new(vec![]),
+            &mut output,
+            &mut errors,
+            ibis::OutputMode::Terminal
+        ),
+        0
+    );
+    assert_eq!(
+        output,
+        format!("{}\n", key.replace('\u{200f}', "\\u{200f}")).into_bytes()
+    );
+    assert!(errors.is_empty());
     Ok(())
 }

@@ -42,6 +42,7 @@ fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dy
             Cursor::new(serde_json::to_vec(&case.request)?),
             &mut output,
             &mut errors,
+            ibis::OutputMode::Plain,
         );
         let expected_code =
             case.expected

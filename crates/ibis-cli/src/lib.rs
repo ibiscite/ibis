@@ -9,6 +9,12 @@ use std::{
 };
 mod toggle;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputMode {
+    Terminal,
+    Plain,
+}
+
 fn command() -> Command {
     let mut root = Command::new("ibis")
         .version(env!("CARGO_PKG_VERSION"))
@@ -138,14 +144,16 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
     input: R,
     mut output: W,
     mut errors: E,
+    mode: OutputMode,
 ) -> u8 {
     match Engine::new() {
-        Ok(engine) => run_with(engine, arguments, input, output, errors),
+        Ok(engine) => run_with(engine, arguments, input, output, errors, mode),
         Err(error) => emit(
             arguments.iter().any(|argument| argument == "--json"),
             Err(error),
             &mut output,
             &mut errors,
+            mode,
         ),
     }
 }
@@ -156,6 +164,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     mut input: R,
     mut output: W,
     mut errors: E,
+    mode: OutputMode,
 ) -> u8 {
     let json = arguments.iter().any(|argument| argument == "--json");
     let matches = match command().try_get_matches_from(arguments) {
@@ -175,6 +184,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                         }),
                         &mut output,
                         &mut errors,
+                        mode,
                     );
                 }
                 return if write!(output, "{error}").is_ok() { 0 } else { 70 };
@@ -184,12 +194,13 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                 Err(EngineError { code: ErrorCode::Usage }),
                 &mut output,
                 &mut errors,
+                mode,
             );
         }
     };
     match execute(&engine, &matches, &mut input, &mut output) {
         Ok(Execution::Stdio(code)) => code,
-        Ok(Execution::Result(result)) => emit(json, Ok(result), &mut output, &mut errors),
+        Ok(Execution::Result(result)) => emit(json, Ok(result), &mut output, &mut errors, mode),
         Err(error) if matches.subcommand_name() == Some("serve") => {
             if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
                 70
@@ -197,7 +208,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                 error.code.exit_code().value()
             }
         }
-        Err(error) => emit(json, Err(error), &mut output, &mut errors),
+        Err(error) => emit(json, Err(error), &mut output, &mut errors, mode),
     }
 }
 
@@ -326,6 +337,7 @@ fn emit(
     result: Result<DispatchResult, EngineError>,
     output: &mut impl Write,
     errors: &mut impl Write,
+    mode: OutputMode,
 ) -> u8 {
     let (code, envelope, text) = match result.and_then(DispatchResult::bounded) {
         Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),
@@ -353,7 +365,7 @@ fn emit(
         }
         return ibis_core::contract::ExitCode::Internal.value();
     };
-    if !json {
+    if !json && mode == OutputMode::Terminal {
         encoded = terminal_display(&String::from_utf8_lossy(&encoded)).into_bytes();
     }
     if output
@@ -401,7 +413,10 @@ mod tests {
             text: None,
             exit_code: ibis_core::contract::ExitCode::Ok,
         };
-        assert_eq!(emit(true, Ok(result), &mut Broken, &mut Vec::new()), 70);
+        assert_eq!(
+            emit(true, Ok(result), &mut Broken, &mut Vec::new(), OutputMode::Plain),
+            70
+        );
     }
     #[test]
     fn toggle_arguments_are_explicit_and_never_launched_by_parser_tests() {

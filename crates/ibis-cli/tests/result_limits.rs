@@ -25,6 +25,7 @@ fn cli(engine: Engine) -> (u8, Vec<u8>) {
         Cursor::new(vec![]),
         &mut output,
         &mut errors,
+        ibis::OutputMode::Plain,
     );
     assert!(errors.is_empty());
     (code, output)
