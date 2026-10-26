@@ -224,4 +224,14 @@ mod tests {
             [Some(2), Some(4)]
         );
     }
+    proptest::proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(64))]
+        #[test]
+        fn arbitrary_damaged_text_keeps_completed_prefix(bytes in proptest::collection::vec(proptest::arbitrary::any::<u8>(),0..4096)) {
+            // The pure parser never resolves file locations from generated data.
+            let text=format!("@book{{first,title={{Invented}}}}\n{}\n@book{{last,title={{Last}}}}",String::from_utf8_lossy(&bytes));
+            let result=load_str(&LibraryId::file(b"synthetic-property"),&text);
+            proptest::prop_assert!(result.records.iter().any(|record|record.citation_key()==Ok(Some("first"))));
+        }
+    }
 }

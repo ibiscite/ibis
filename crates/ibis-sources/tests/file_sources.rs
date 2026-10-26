@@ -201,3 +201,74 @@ fn deeply_nested_custom_json_is_private_and_does_not_hide_other_records() -> Res
     assert!(!wire.contains("custom"));
     Ok(())
 }
+
+#[test]
+fn duplicate_json_fields_are_refused_without_guessing_a_key() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(
+        &path,
+        r#"[{"id":"ambiguous","type":"book","citation-key":"First","citation-key":"Second"},{"id":"good","type":"book"}]"#,
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 1);
+    assert!(!loaded.warnings.is_empty());
+    Ok(())
+}
+
+#[test]
+fn huge_fields_non_files_invalid_utf8_and_empty_libraries_have_explicit_outcomes()
+-> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::SourceError;
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    assert_eq!(ibis_sources::load_file(dir.path()).err(), Some(SourceError::NotRegular));
+    std::fs::write(&path, [0xff])?;
+    assert_eq!(ibis_sources::load_file(&path).err(), Some(SourceError::Unreadable));
+    std::fs::write(&path, "")?;
+    assert!(ibis_sources::load_file(&path)?.snapshot.objects().is_empty());
+    std::fs::write(
+        &path,
+        format!(
+            "@book{{huge,title={{{}}},publisher={{Synthetic Press}}}}\n@book{{last,title={{Last}}}}",
+            "x".repeat(128 * 1024)
+        ),
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 2);
+    assert!(!loaded.warnings.is_empty());
+    let file = std::fs::OpenOptions::new().write(true).truncate(true).open(&path)?;
+    file.set_len(ibis_sources::MAX_LIBRARY_BYTES + 1)?;
+    drop(file);
+    assert_eq!(ibis_sources::load_file(&path).err(), Some(SourceError::TooLarge));
+    Ok(())
+}
+
+#[test]
+fn remote_and_ambiguous_attachment_locations_never_become_local_paths() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(
+        &path,
+        r#"[{"id":"one","type":"book","file":"https://example.invalid/synthetic.pdf;\\\\synthetic.invalid\\share\\file.pdf;ambiguous:thing:else"}]"#,
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.local_attachment_count(), 0);
+    let states: Vec<_> = loaded
+        .snapshot
+        .objects()
+        .iter()
+        .filter_map(|item| match &item.object {
+            LibraryObject::Attachment(attachment) => Some(attachment.availability),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        states,
+        [Availability::Online, Availability::Unknown, Availability::Unknown]
+    );
+    let wire = serde_json::to_string(&loaded.snapshot)?;
+    assert!(!wire.contains("synthetic.invalid"));
+    assert!(!loaded.warnings.is_empty());
+    Ok(())
+}

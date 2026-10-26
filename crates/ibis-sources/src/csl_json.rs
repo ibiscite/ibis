@@ -32,7 +32,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
-        let Ok(mut fields) = serde_json::from_str::<BTreeMap<String, &RawValue>>(raw.get()) else {
+        let Ok(mut fields) = object_fields(raw.get()) else {
             result.warnings.push(warning(WarningCode::Syntax));
             continue;
         };
@@ -128,6 +128,29 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     }
     Ok(result)
 }
+fn object_fields(text: &str) -> serde_json::Result<BTreeMap<String, &serde_json::value::RawValue>> {
+    struct UniqueFields;
+    impl<'de> serde::de::Visitor<'de> for UniqueFields {
+        type Value = BTreeMap<String, &'de serde_json::value::RawValue>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an object with unique property names")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut fields = BTreeMap::new();
+            while let Some((name, value)) = map.next_entry::<String, &serde_json::value::RawValue>()? {
+                if fields.insert(name, value).is_some() {
+                    return Err(serde::de::Error::custom("duplicate property"));
+                }
+            }
+            Ok(fields)
+        }
+    }
+    let mut parser = serde_json::Deserializer::from_str(text);
+    let result = serde::Deserializer::deserialize_map(&mut parser, UniqueFields)?;
+    parser.end()?;
+    Ok(result)
+}
+
 fn known_field(name: &str) -> bool {
     field_kind(name).is_some()
 }
