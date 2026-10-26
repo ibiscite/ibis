@@ -13,10 +13,12 @@ each beside its rule.
 
 1. **One anatomy everywhere.** Search, list, shelf and footer, in that order,
    at every size. Layouts fold rather than reorder.
-2. **Native material, Ibis voice.** Each platform's material, radii, selection,
-   menu metrics, font and shortcut labels (materials and metrics not yet built
-   wait for 1.0; see the look freeze under Per platform). Ibis keeps its anatomy, icon
-   drawings, wording and citation scarlet on every platform.
+2. **One design, macOS first.** Until per-platform designs return (after the
+   rebuild), Ibis uses its macOS design on every system: the same sizes,
+   radii, controls, selection and layout. Only what is correctness, not look,
+   follows the system: modifier keys and their labels (Ctrl on Windows and
+   Linux), the system font and accessibility settings. Ibis keeps its anatomy,
+   icon drawings, wording and citation scarlet everywhere.
 3. **Readable first.** Nothing smaller than 12 px; secondary text passes 4.5:1.
 4. **Easy to hit.** Every target is at least 32 px; 44 px under `pointer: coarse`.
 5. **Show less, reveal more.** An element appears when it becomes useful and
@@ -474,6 +476,12 @@ and visible labels match accessible names.
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule | ComboBox, chevron | Drop-down, `pan-down-symbolic`, bold label |
 | Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |
 | Switch | 38 × 22 | 40 × 20, outlined when off | 46 × 26 |
+
+**One macOS design for now** (maintainer, 2026-10-26, #326). Build and test
+the macOS column only; the Windows and GNOME columns below are the target for
+later and are not built or extended until per-platform design work starts.
+Keep platform differences simple: one code path, with a per-system value only
+where the system demands it (keys, fonts, window handling).
 
 **Look freeze until 1.0** (maintainer, 2026-10-25, #326). What has shipped
 stays and is kept working, but is not extended. Rules on this page that are not
