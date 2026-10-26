@@ -98,3 +98,23 @@ fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
             .is_ok()
     );
 }
+
+#[test]
+fn human_key_arguments_are_resolved_only_inside_the_engine() {
+    let case = case();
+    let engine = Engine::from_snapshot(Arc::new(case.library));
+    let request = KeyCitationRequest {
+        keys: vec!["Example2026".into()],
+        output: case.request.output,
+        form: CitationForm::Normal,
+        output_locale: None,
+    };
+    let result = engine.cite_keys(&request, &Cancellation::default()).unwrap();
+    assert_eq!(result.text, "[@Example2026]");
+    let mut missing = request;
+    missing.keys = vec!["missing".into()];
+    assert_eq!(
+        engine.cite_keys(&missing, &Cancellation::default()).unwrap_err().code,
+        ErrorCode::NotFound
+    );
+}

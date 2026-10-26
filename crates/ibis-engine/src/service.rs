@@ -175,35 +175,61 @@ impl Engine {
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
         let state = self.state()?;
-        match &request.item {
-            ItemSelector::Id(id) => state
-                .index
-                .snapshot()
-                .get(id)
-                .cloned()
-                .ok_or_else(|| error(ErrorCode::NotFound)),
-            ItemSelector::Key(key) => {
-                if key.len() > 64 * 1024 || key.is_empty() {
-                    return Err(error(ErrorCode::BadInput));
-                }
-                let mut matches = state.index.snapshot().objects().iter().filter(|item| {
-                    let LibraryObject::Record(record) = &item.object else {
-                        return false;
-                    };
-                    record.citation_keys.iter().any(|candidate| candidate.value == *key) || record.aliases.contains(key)
-                });
-                let found = matches.next().ok_or_else(|| error(ErrorCode::NotFound))?;
-                if matches.next().is_some() {
-                    return Err(error(ErrorCode::BadInput));
-                }
-                Ok(found.clone())
-            }
+        select(state.index.snapshot(), &request.item).cloned()
+    }
+    pub fn cite_keys(
+        &self,
+        request: &KeyCitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
+        cancel.check()?;
+        if request.keys.is_empty() || request.keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+            return Err(error(ErrorCode::BadInput));
         }
+        let snapshot = self.snapshot()?;
+        let items = request
+            .keys
+            .iter()
+            .map(|key| {
+                let selected = select(&snapshot, &ItemSelector::Key(key.clone()))?;
+                Ok(CitationItem {
+                    item: selected.object.id().clone(),
+                    expected_cite: Some(selected.fingerprints.cite.clone()),
+                    form: None,
+                    locator: None,
+                    prefix: vec![],
+                    suffix: vec![],
+                    suppress_author: false,
+                    annotation: None,
+                    expected_annotation_cite: None,
+                })
+            })
+            .collect::<Result<Vec<_>, EngineError>>()?;
+        self.cite_snapshot(
+            &snapshot,
+            &CitationRequest {
+                items,
+                output: request.output.clone(),
+                form: request.form,
+                keep_order: true,
+                input_language: None,
+                output_locale: request.output_locale.clone(),
+            },
+            cancel,
+        )
     }
     pub fn cite(&self, request: &CitationRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
         cancel.check()?;
         let snapshot = self.snapshot()?;
-        let result = ibis_core::syntax::cite(&snapshot, request).map_err(|_| error(ErrorCode::BadInput))?;
+        self.cite_snapshot(&snapshot, request, cancel)
+    }
+    fn cite_snapshot(
+        &self,
+        snapshot: &Snapshot,
+        request: &CitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
+        let result = ibis_core::syntax::cite(snapshot, request).map_err(|_| error(ErrorCode::BadInput))?;
         cancel.check()?;
         Ok(result)
     }
@@ -256,6 +282,27 @@ impl Engine {
         };
         cancel.check()?;
         Ok(DispatchResult { data, exit_code })
+    }
+}
+fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {
+    match selector {
+        ItemSelector::Id(id) => snapshot.get(id).ok_or_else(|| error(ErrorCode::NotFound)),
+        ItemSelector::Key(key) => {
+            if key.len() > 64 * 1024 || key.is_empty() {
+                return Err(error(ErrorCode::BadInput));
+            }
+            let mut matches = snapshot.objects().iter().filter(|item| {
+                let LibraryObject::Record(record) = &item.object else {
+                    return false;
+                };
+                record.citation_keys.iter().any(|candidate| candidate.value == *key) || record.aliases.contains(key)
+            });
+            let found = matches.next().ok_or_else(|| error(ErrorCode::NotFound))?;
+            if matches.next().is_some() {
+                return Err(error(ErrorCode::BadInput));
+            }
+            Ok(found)
+        }
     }
 }
 fn parameters<T: DeserializeOwned>(params: &Value) -> Result<T, EngineError> {

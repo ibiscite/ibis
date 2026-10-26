@@ -1,7 +1,7 @@
 //! Method parameters. File locations are headless/native input only and never
 //! appear in method results or diagnostics; the app exposes a narrower surface.
 use crate::Method;
-use ibis_core::contract::{CitationRequest, ItemRef, LibraryId};
+use ibis_core::contract::{CitationForm, CitationRequest, ItemRef, LibraryId, OutputSpec};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -49,6 +49,18 @@ pub enum ItemSelector {
 #[serde(deny_unknown_fields)]
 pub struct ShowRequest {
     pub item: ItemSelector,
+}
+
+/// Human key arguments are resolved against one engine snapshot, never by a frontend.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct KeyCitationRequest {
+    pub keys: Vec<String>,
+    pub output: OutputSpec,
+    #[serde(default)]
+    pub form: CitationForm,
+    #[serde(default)]
+    pub output_locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -83,9 +83,19 @@ pub fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>, FrameError
             FrameError::Io
         }
     })?;
-    serde_json::from_slice::<UniqueValue>(&body)
-        .map(|value| Some(value.0))
-        .map_err(|_| FrameError::InvalidJson)
+    parse_json(&body).map(Some)
+}
+
+/// Shared bounded JSON reader for stdio and command-line request input.
+pub fn parse_json(bytes: &[u8]) -> Result<Value, FrameError> {
+    if bytes.len() > MAX_FRAME_BYTES {
+        return Err(FrameError::TooLarge);
+    }
+    let value = serde_json::from_slice::<UniqueValue>(bytes)
+        .map_err(|_| FrameError::InvalidJson)?
+        .0;
+    validate_shape(&value)?;
+    Ok(value)
 }
 
 fn header_line(reader: &mut impl BufRead, remaining: &mut usize) -> Result<Option<Vec<u8>>, FrameError> {
