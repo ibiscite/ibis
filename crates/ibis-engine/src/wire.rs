@@ -55,3 +55,26 @@ pub fn encode(value: &Value, limit: usize) -> Result<Vec<u8>, FrameError> {
     serde_json::to_writer(&mut output, &Canonical(value)).map_err(|_| FrameError::TooLarge)?;
     Ok(output.bytes)
 }
+
+/// Count serialized bytes without copying a library object or building JSON.
+pub(crate) fn serialized_size(value: &impl Serialize, limit: usize) -> Result<usize, FrameError> {
+    struct Counter {
+        bytes: usize,
+        limit: usize,
+    }
+    impl Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if bytes.len() > self.limit.saturating_sub(self.bytes) {
+                return Err(io::Error::other("result exceeds the size limit"));
+            }
+            self.bytes += bytes.len();
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter { bytes: 0, limit };
+    serde_json::to_writer(&mut counter, value).map_err(|_| FrameError::TooLarge)?;
+    Ok(counter.bytes)
+}

@@ -258,12 +258,37 @@ impl Engine {
                 cancel.is_cancelled()
             })
             .ok_or_else(|| error(ErrorCode::Cancelled))?;
+        #[derive(Serialize)]
+        struct HitView<'a> {
+            item: &'a SnapshotObject,
+            score: u32,
+            matched: &'a [MatchField],
+        }
+        #[derive(Serialize)]
+        struct SearchView<'a> {
+            snapshot: &'a Fingerprints,
+            hits: Vec<HitView<'a>>,
+        }
+        let view = SearchView {
+            snapshot: state.index.snapshot().fingerprints(),
+            hits: hits
+                .iter()
+                .map(|hit| HitView {
+                    item: hit.item,
+                    score: hit.score,
+                    matched: &hit.matched,
+                })
+                .collect(),
+        };
+        ensure_budget(&view)?;
+        drop(view);
+        cancel.check()?;
         Ok(SearchResult {
             snapshot: state.index.snapshot().fingerprints().clone(),
             hits: hits
                 .into_iter()
                 .map(|hit| SearchHit {
-                    item: hit.item.clone(),
+                    item: public_object(hit.item),
                     score: hit.score,
                     matched: hit.matched,
                 })
@@ -272,7 +297,9 @@ impl Engine {
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
         let state = self.state()?;
-        select(state.index.snapshot(), &request.item).cloned()
+        let selected = select(state.index.snapshot(), &request.item)?;
+        ensure_budget(selected)?;
+        Ok(public_object(selected))
     }
     pub fn cite_keys(
         &self,
@@ -329,6 +356,7 @@ impl Engine {
     ) -> Result<CitationResult, EngineError> {
         let result = ibis_core::syntax::cite(snapshot, request).map_err(|_| error(ErrorCode::BadInput))?;
         cancel.check()?;
+        ensure_budget(&result)?;
         Ok(result)
     }
     pub fn dispatch(
@@ -383,6 +411,30 @@ impl Engine {
         .bounded()
     }
 }
+fn ensure_budget(value: &impl Serialize) -> Result<(), EngineError> {
+    crate::wire::serialized_size(value, crate::protocol::MAX_RESULT_BYTES)
+        .map(|_| ())
+        .map_err(|_| error(ErrorCode::ResourceLimit))
+}
+/// Build the public projection directly, leaving engine-only raw provenance in its snapshot.
+fn public_object(item: &SnapshotObject) -> SnapshotObject {
+    let object = match &item.object {
+        LibraryObject::Record(record) => LibraryObject::Record(Record {
+            id: record.id.clone(),
+            csl: record.csl.clone(),
+            citation_keys: record.citation_keys.clone(),
+            aliases: record.aliases.clone(),
+            identifiers: record.identifiers.clone(),
+            raw: None,
+        }),
+        object => object.clone(),
+    };
+    SnapshotObject {
+        object,
+        fingerprints: item.fingerprints.clone(),
+    }
+}
+
 fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {
     match selector {
         ItemSelector::Id(id) => snapshot.get(id).ok_or_else(|| error(ErrorCode::NotFound)),

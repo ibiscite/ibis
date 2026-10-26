@@ -154,3 +154,75 @@ fn a_named_missing_library_is_not_silently_an_empty_search() {
             .is_empty()
     );
 }
+
+#[test]
+fn public_typed_views_do_not_clone_or_return_raw_source_payloads() {
+    let case = case();
+    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    record.raw = Some(RawProvenance {
+        format: SourceFormat::Bibtex,
+        data: json!({"synthetic":"x".repeat(64*1024)}),
+    });
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()));
+    let shown = engine
+        .show(&ShowRequest {
+            item: ItemSelector::Key("Example2026".into()),
+        })
+        .unwrap();
+    let LibraryObject::Record(shown) = shown.object else {
+        panic!("record")
+    };
+    assert!(shown.raw.is_none());
+    let hits = engine
+        .search(
+            &SearchRequest {
+                query: "synthetic".into(),
+                limit: 10,
+                libraries: None,
+            },
+            &Cancellation::default(),
+        )
+        .unwrap();
+    for hit in hits.hits {
+        let LibraryObject::Record(record) = hit.item.object else {
+            panic!("record")
+        };
+        assert!(record.raw.is_none());
+    }
+    let snapshot = engine.snapshot().unwrap();
+    let LibraryObject::Record(record) = &snapshot.objects()[0].object else {
+        panic!("record")
+    };
+    assert!(record.raw.is_some());
+}
+
+#[test]
+fn typed_search_refuses_oversized_results_before_public_object_cloning() {
+    let case = case();
+    let LibraryObject::Record(mut first) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    first.csl.insert(
+        "annote".into(),
+        json!("x".repeat(ibis_engine::protocol::MAX_RESULT_BYTES / 2 + 1024)),
+    );
+    let mut second = first.clone();
+    second.id.key = "record:second-large".into();
+    second.citation_keys[0].value = "Other2026".into();
+    let engine = Engine::from_snapshot(Arc::new(
+        Snapshot::new(vec![LibraryObject::Record(first), LibraryObject::Record(second)]).unwrap(),
+    ));
+    let mut request = SearchRequest {
+        query: "synthetic".into(),
+        limit: 2,
+        libraries: None,
+    };
+    let Err(error) = engine.search(&request, &Cancellation::default()) else {
+        panic!("oversized typed search was accepted")
+    };
+    assert_eq!(error.code, ErrorCode::ResourceLimit);
+    request.limit = 1;
+    assert_eq!(engine.search(&request, &Cancellation::default()).unwrap().hits.len(), 1);
+}
