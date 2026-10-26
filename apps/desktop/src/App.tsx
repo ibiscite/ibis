@@ -287,15 +287,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   useEffect(() => {
     const moved = previousActive.current !== active;
     previousActive.current = active;
-    if (pointer.fromPointer.current) {
-      followKeyboard.current = false;
-      pointer.fromPointer.current = false;
+    const from = pointer.cameFrom(active);
+    if (from !== "other") {
+      if (from === "click") followKeyboard.current = false;
       return;
     }
     if (moved) followKeyboard.current = true;
     if (!moved && (selected.size === 0 || document.activeElement !== input.current)) return;
     document.getElementById(`result-${active}`)?.scrollIntoView?.({ block: "nearest" });
-  }, [active, pointer.fromPointer, selected.size,
+  }, [active, pointer.cameFrom, selected.size,
     selected.size > 0 ? formatted : null, selected.size > 0 ? format : null, selected.size > 0 ? searchFocused : null]);
 
   // Changes below the list can resize its viewport without moving the index.
@@ -600,7 +600,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             e.preventDefault();
           } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
-            followKeyboard.current = true;
+            followKeyboard.current = true; pointer.forgetClick();
             const step = e.key === "ArrowDown" ? 1 : -1;
             setActive((i) => Math.min(Math.max(i + step, 0), Math.max(results.length - 1, 0)));
           } else if (e.key === "Enter" && e.shiftKey) {
