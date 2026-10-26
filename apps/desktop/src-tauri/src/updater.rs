@@ -9,17 +9,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tauri::menu::CheckMenuItem;
 use tauri::{AppHandle, Emitter, Manager};
 
 mod progress;
+pub(crate) mod setting;
 #[cfg(any(target_os = "macos", test))]
 use tauri_plugin_dialog::MessageDialogResult;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::{Update, Updater, UpdaterExt};
 
 use crate::diagnostics::{NativeIssue, application_message, report};
-use crate::preferences::SettingsFile;
 
 /// Automatic checks wait a little after start, then repeat this often.
 const FIRST_CHECK: Duration = Duration::from_secs(30);
@@ -42,6 +41,7 @@ pub(crate) struct Updates {
     /// A version the person chose not to install; automatic checks don't offer it again.
     declined: Mutex<Option<String>>,
     progress: Mutex<progress::Progress>,
+    saver: setting::Saver,
     #[cfg(any(target_os = "macos", test))]
     installation_failure: InstallationFailure,
 }
@@ -83,8 +83,9 @@ impl InstallationFailure {
     }
 }
 
-/// The menu item that turns automatic checks on and off.
-pub(crate) struct AutomaticMenuItem(pub(crate) CheckMenuItem<tauri::Wry>);
+/// Native update control, kept with the ordered settings saver.
+/// Both menu items carry a fixed choice through delayed click events.
+pub(crate) use setting::AutomaticMenuItem;
 
 /// Builds without the update key (development, or before the key exists) have
 /// no updates at all, so the menu items and the question are left out.
@@ -112,7 +113,7 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
         return;
     }
     match saved {
-        Some(on) => set_automatic(app, on),
+        Some(on) => setting::set_automatic(app, on),
         None if can_save => ask(app),
         None => {}
     }
@@ -120,7 +121,7 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
     std::thread::spawn(move || {
         std::thread::sleep(FIRST_CHECK);
         loop {
-            if app.state::<Updates>().automatic.load(Ordering::SeqCst) {
+            if setting::automatic(&app) {
                 tauri::async_runtime::block_on(check(&app, false));
             }
             std::thread::sleep(CHECK_EVERY);
@@ -137,32 +138,9 @@ fn ask(app: &AppHandle) {
             "Check Automatically".into(),
             "Not Now".into(),
         ))
-        .show(move |yes| save_automatic(&handle, yes));
-}
-
-/// The menu item was clicked: flip the saved choice.
-pub(crate) fn toggle_automatic(app: &AppHandle) {
-    let on = !app.state::<Updates>().automatic.load(Ordering::SeqCst);
-    save_automatic(app, on);
-}
-
-fn save_automatic(app: &AppHandle, on: bool) {
-    set_automatic(app, on);
-    if let Err(problem) = app.state::<SettingsFile>().update(|s| s.update_checks = Some(on)) {
-        tell(
-            app,
-            &format!("Your choice applies until Ibis quits, but it could not be saved: {problem}."),
-        );
-    } else {
-        crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());
-    }
-}
-
-fn set_automatic(app: &AppHandle, on: bool) {
-    app.state::<Updates>().automatic.store(on, Ordering::SeqCst);
-    if let Some(item) = app.try_state::<AutomaticMenuItem>() {
-        report(item.0.set_checked(on), NativeIssue::AutomaticMenuUpdate);
-    }
+        .show(move |yes| {
+            setting::change(&handle, yes);
+        });
 }
 
 /// "Check for Updates…" in the menu.

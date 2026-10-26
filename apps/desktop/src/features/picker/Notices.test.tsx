@@ -51,5 +51,5 @@ test("update progress keeps known, unknown, checking and failed phases honest", 
   expect(screen.getByRole("progressbar").querySelector<HTMLElement>(".update-track > div")?.style.width).toBe("");
   rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, phase: "failed" } }} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check for Updates");
+  expect(screen.getByRole("alert").textContent).toContain("Check for updates in More");
 });
