@@ -106,10 +106,14 @@ picker's shortcut warning. A shortcut setting uses modifiers and one key
 joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere.
 Invalid settings report a warning and use the default.
 
-On Windows and X11 the default follows the key labelled Y. On macOS it refers
-to the physical US-keyboard R position; the label does not follow the active
-layout (#196). Non-English keyboard coverage remains incomplete. Avoid
-Ctrl+Alt combinations on Windows because many layouts use them as AltGr.
+On Windows and X11 a shortcut letter follows the key labelled with it. On
+macOS Ibis moves a letter to the key that types it on the active layout, so it
+stays the labelled key on QWERTZ, AZERTY, Dvorak and Colemak, and follows a
+layout switch within about two seconds. When no key types the letter (for
+example on a Cyrillic layout), the shortcut uses the letter's US-keyboard
+place and the picker says so. Non-English keyboard coverage remains
+incomplete. Avoid Ctrl+Alt combinations on Windows because many layouts use
+them as AltGr.
 
 ## Writing apps
 
