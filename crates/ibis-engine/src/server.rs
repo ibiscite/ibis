@@ -46,6 +46,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
     dispatch: Arc<Dispatch>,
     mut reader: R,
     writer: W,
+    changes: Option<LibrarySubscription>,
 ) -> Result<(), FrameError> {
     thread::scope(|scope| {
         let (output, frames) = mpsc::sync_channel::<Value>(64);
