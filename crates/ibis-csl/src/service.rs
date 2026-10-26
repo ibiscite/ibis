@@ -166,8 +166,17 @@ impl Service {
 }
 impl Drop for Service {
     fn drop(&mut self) {
-        self.shared.stopping.store(true, Ordering::Release);
-        self.shared.wake.notify_all();
+        {
+            // Change the condition under the same mutex as Condvar::wait;
+            // otherwise an idle worker can miss the shutdown notification.
+            let _state = self
+                .shared
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            self.shared.stopping.store(true, Ordering::Release);
+            self.shared.wake.notify_all();
+        }
         for thread in self.threads.drain(..) {
             let _ = thread.join();
         }
@@ -435,5 +444,34 @@ mod waiting_tests {
                 .unwrap(),
             Err(FormatError::TimedOut)
         );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod shutdown_tests {
+    use super::*;
+    use std::time::Duration;
+    #[test]
+    fn shutdown_cannot_change_wait_predicate_outside_its_mutex() {
+        let service = Service::new(Limits::default()).unwrap();
+        let shared = service.shared.clone();
+        let predicate = shared.state.lock().unwrap();
+        let (started, ready) = mpsc::channel();
+        let join = thread::spawn(move || {
+            started.send(()).unwrap();
+            drop(service);
+        });
+        ready.recv().unwrap();
+        let deadline = Instant::now() + Duration::from_millis(100);
+        while !shared.stopping.load(Ordering::Acquire) && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(
+            !shared.stopping.load(Ordering::Acquire),
+            "shutdown must acquire the wait predicate lock before changing it"
+        );
+        drop(predicate);
+        join.join().unwrap();
     }
 }
