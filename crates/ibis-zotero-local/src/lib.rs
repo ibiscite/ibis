@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 use ibis_core::zotero::api::{Response, Transport, TransportError};
 
 pub mod discovery;
+pub mod closed;
 
 /// Zotero's local API port.
 pub const DEFAULT_PORT: u16 = 23119;
