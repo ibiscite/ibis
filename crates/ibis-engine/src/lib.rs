@@ -7,3 +7,6 @@ pub mod protocol;
 pub mod request;
 
 pub mod rpc;
+
+mod service;
+pub use service::*;

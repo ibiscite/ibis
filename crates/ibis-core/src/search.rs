@@ -19,7 +19,7 @@ mod snapshot;
 pub use snapshot::{RecordHit, SnapshotIndex};
 
 /// Which part of a record matched a query term.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum MatchField {
