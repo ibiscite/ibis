@@ -1994,6 +1994,7 @@ dependencies = [
  "anyhow",
  "clap",
  "ibis-core",
+ "ibis-engine",
  "serde",
  "serde_json",
 ]
@@ -2070,6 +2071,7 @@ dependencies = [
  "ibis-core",
  "ibis-csl",
  "ibis-sources",
+ "schemars 1.2.3",
  "serde",
  "serde_json",
  "tempfile",
