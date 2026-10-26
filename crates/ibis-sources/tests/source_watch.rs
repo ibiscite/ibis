@@ -219,7 +219,7 @@ fn verbatim_leaf_names_and_ordinary_aliases_watch_the_selected_file() {
     for suffix in [".", " "] {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let parent = std::fs::canonicalize(dir.path()).unwrap_or_else(|e| panic!("{e}"));
-        let ordinary = dunce::simplified(&parent).join("library.bib");
+        let ordinary = dir.path().join("library.bib");
         let verbatim = parent.join(format!("library.bib{suffix}"));
         std::fs::write(&ordinary, "@misc{ordinary}").unwrap_or_else(|e| panic!("{e}"));
         std::fs::write(&verbatim, "@misc{verbatim}").unwrap_or_else(|e| panic!("{e}"));
