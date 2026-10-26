@@ -41,7 +41,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 .get(name)
                 .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
         };
-        let id = scalar("id").as_ref().and_then(id_string);
+        let id = fields.get("id").and_then(|value| id_string(value));
         let numeric_native = fields
             .get("id")
             .filter(|value| {
@@ -174,19 +174,21 @@ enum FieldKind {
     Date,
 }
 
-fn id_string(value: &Value) -> Option<String> {
-    match value {
-        Value::String(value) => Some(value.clone()),
-        Value::Number(value) => numeric_id(value),
-        _ => None,
+fn id_string(value: &RawValue) -> Option<String> {
+    let raw = value.get();
+    if raw.starts_with('"') {
+        serde_json::from_str(raw).ok()
+    } else {
+        // std's parser rounds decimal tokens correctly. The default JSON float
+        // parser can differ by one ULP and silently change a citation key.
+        raw.parse::<f64>().ok().and_then(numeric_id)
     }
 }
 /// CSL numeric IDs pass through citeproc-js. Use its decimal spelling instead
 /// of preserving JSON presentation (1.0, -0, exponent notation). Outside the
 /// exact integer range, an export must use string IDs so distinct works cannot
 /// silently collapse onto the same JavaScript number.
-fn numeric_id(value: &serde_json::Number) -> Option<String> {
-    let value = value.as_f64()?;
+fn numeric_id(value: f64) -> Option<String> {
     if !value.is_finite() || value.abs() > 9_007_199_254_740_991.0 {
         return None;
     }

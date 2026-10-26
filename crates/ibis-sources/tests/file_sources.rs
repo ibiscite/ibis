@@ -307,6 +307,7 @@ fn numeric_json_ids_use_consistent_citation_processor_spelling() -> Result<(), B
         ("1e-6", "0.000001"),
         ("1e-7", "1e-7"),
         ("1.25", "1.25"),
+        ("51.248178375505404", "51.248178375505404"),
     ] {
         std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
         let loaded = ibis_sources::load_file(&path)?;
