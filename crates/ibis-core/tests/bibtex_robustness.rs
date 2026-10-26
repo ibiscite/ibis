@@ -143,6 +143,12 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
          @article{inherits, title={T}, xdata={wrong}}\n\
          @xdata{dayonly, day={29}}\n\
          @article{supplies, title={T}, year={2024}, month={2}, xdata={dayonly}}\n\
+         @book{dated, title={B}, date={2024-03}}\n\
+         @xdata{dayfive, day={05}}\n\
+         @inbook{mixed, title={T}, crossref={dated}, xdata={dayfive}}\n\
+         @xdata{daybad, day={32}}\n\
+         @inbook{mixedbad, title={T}, crossref={dated}, xdata={daybad}}\n\
+         @article{grouped, title={T}, year={2024}, month={3}, day={0{5}}}\n\
          @article{good, title={T}, year={2024}, month=mar, day={5}}",
     );
     let date = |key: &str| {
@@ -162,6 +168,8 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
     assert_eq!(date("override"), Some((2024, Some(2), Some(29))));
     assert_eq!(date("named"), Some((2024, Some(2), Some(5))));
     assert_eq!(date("supplies"), Some((2024, Some(2), Some(29))));
+    assert_eq!(date("mixed"), Some((2024, Some(3), Some(5))));
+    assert_eq!(date("grouped"), Some((2024, Some(3), Some(5))));
     assert!(
         loaded.references.iter().any(|r| r.id.native_key == "spaced"),
         "{:?}",
@@ -184,13 +192,13 @@ fn a_separate_day_is_kept_when_valid_and_named_when_not() {
         loaded.warnings
     );
     assert!(
-        ["short", "good", "override", "named", "supplies"]
+        ["short", "good", "override", "named", "supplies", "mixed", "grouped"]
             .iter()
             .all(|k| warned(k).is_empty()),
         "{:?}",
         loaded.warnings
     );
-    for key in ["feb31", "signed", "child", "era", "braced", "inherits"] {
+    for key in ["feb31", "signed", "child", "era", "braced", "inherits", "mixedbad"] {
         assert_eq!(date(key).and_then(|(_, _, day)| day), None, "{key}");
         assert_eq!(warned(key).len(), 1, "{key}: {:?}", loaded.warnings);
     }

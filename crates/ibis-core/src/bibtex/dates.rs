@@ -32,13 +32,15 @@ pub(super) fn merge_dates(
         return vec![("date".to_string(), date)];
     }
     let inherited = |n: &str| sources.iter().find_map(|s| field(s, n));
-    if let Some(date) = sources[1..].iter().find_map(|s| field(s, "date")) {
+    if let Some((at, date)) = (1..sources.len()).find_map(|i| Some((i, field(&sources[i], "date")?))) {
         let Some((y, m, d)) = simple_date(&date) else {
             return vec![("date".to_string(), date)];
         };
-        let year = field(own, "year").unwrap_or(y);
-        let month = field(own, "month").as_deref().and_then(month_number).or(m);
-        let day = field(own, "day").or(d);
+        // Parts from sources that outrank the parent with the date win over its parts.
+        let before = |n: &str| sources[..at].iter().find_map(|s| field(s, n));
+        let year = before("year").unwrap_or(y);
+        let month = before("month").as_deref().and_then(month_number).or(m);
+        let day = before("day").or(d);
         return compose(year, month, day, check, problems);
     }
     let month = inherited("month");
@@ -91,8 +93,8 @@ fn compose(
             return None;
         };
         let last = days_in_month(astronomical_year(&year), m);
-        let digits = text.trim_matches(|c: char| matches!(c, '{' | '}') || c.is_whitespace());
-        let day = digits.parse::<u8>().ok().filter(|d| (1..=last).contains(d));
+        let digits: String = text.chars().filter(|c| !matches!(c, '{' | '}')).collect();
+        let day = digits.trim().parse::<u8>().ok().filter(|d| (1..=last).contains(d));
         if day.is_none() {
             problems.push(format!("`day` `{text}` is not a day of that month; it is ignored"));
         }
