@@ -1,4 +1,4 @@
 [
-  { "productName": "Ibis", "identifier": "io.github.ibiscite.ibis" },
-  { "productName": "Ibis Nightly", "identifier": "io.github.ibiscite.ibis.nightly" }
+  { "productName": "Ibis", "identifier": "com.ibiscite.ibis" },
+  { "productName": "Ibis Nightly", "identifier": "com.ibiscite.ibis.nightly" }
 ]

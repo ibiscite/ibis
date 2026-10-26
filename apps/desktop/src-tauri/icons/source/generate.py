@@ -47,7 +47,7 @@ def sources():
         "windows.svg": brand.mark(brand.GRADIENT, "m"),
         "windows-small.svg": brand.favicon(brand.SCARLET_MID),
         "macos.svg": macos(), "macos-small.svg": macos(True), "gnome.svg": gnome(),
-        "io.github.ibiscite.ibis-symbolic.svg": brand.favicon("currentColor").replace(
+        f"{brand.SET['desktop_identifier']}-symbolic.svg": brand.favicon("currentColor").replace(
             'width="32" height="32"', 'width="16" height="16"'),
     }
 
@@ -92,7 +92,7 @@ def main(root=ROOT):
         (root / "icon.icns").write_bytes(b"icns" + struct.pack(">I", len(payload) + 8) + payload)
 
         for size in [128, 256, 512]:
-            output = root / "linux" / f"{size}x{size}" / "io.github.ibiscite.ibis.png"
+            output = root / "linux" / f"{size}x{size}" / f"{brand.SET['desktop_identifier']}.png"
             output.parent.mkdir(parents=True, exist_ok=True)
             render(root, "gnome.svg", size, output)
 

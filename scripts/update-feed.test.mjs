@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, feedKeyId, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion } from "./update-feed.mjs";
+import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, feedKeyId, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion, previousNightlyIdentity } from "./update-feed.mjs";
 
 const fixture = (name) => readFileSync(new URL(`../fixtures/updates/${name}`, import.meta.url), "utf8");
 const testKey = fixture("test-key.pub");
 const signature = fixture("package-versioned.bin.sig");
+
+test("previous nightly settings use its own source identity without fallback or execution", () => {
+  for (const identifier of ["io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"]) {
+    const source = `  identifier: "${identifier}",\n`;
+    assert.equal(previousNightlyIdentity(source), identifier);
+    assert.throws(() => previousNightlyIdentity(source + source));
+  }
+  assert.throws(() => previousNightlyIdentity('identifier: "other",\n'));
+  assert.throws(() => previousNightlyIdentity(""));
+});
 
 test("nightly versions sit one patch above the release and sort by commit time", () => {
   assert.equal(nightlyVersion("0.1.0", "20261019223000"), "0.1.1-nightly.20261019223000");
@@ -66,7 +76,7 @@ test("both publication paths bind the same version they put in the feed", () => 
 
 test("Ibis Nightly is a separate app that reads only the nightly feed", () => {
   const config = nightlyConfig("0.1.1-nightly.20261019223000");
-  assert.equal(config.identifier, "io.github.ibiscite.ibis.nightly");
+  assert.equal(config.identifier, "com.ibiscite.ibis.nightly");
   assert.equal(config.productName, "Ibis Nightly");
   assert.deepEqual(config.plugins.updater.endpoints, ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"]);
   assert.ok(!config.bundle.targets.includes("msi") && !config.bundle.targets.includes("rpm"));
@@ -84,19 +94,19 @@ test("Windows startup fixtures use the shipped channel names and identifiers", (
   assert.deepEqual([stable, nightlyConfig("0.1.1-nightly.20261019223000")].map(({ productName, identifier }) => ({ productName, identifier })), identities);
 });
 
-test("Windows installers keep the historical install-location key across the planned identity change", () => {
+test("the shipped channel identities activate the permanent-identity migration", () => {
+  const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+  assert.equal(stable.identifier, "com.ibiscite.ibis");
+  assert.equal(nightlyConfig("0.1.1-nightly.20261019223000").identifier, "com.ibiscite.ibis.nightly");
+});
+
+test("Windows installers keep each channel's configured publisher and product name", () => {
   const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
   const overrides = nightlyConfig("0.1.1-nightly.20261019223000");
   const nightly = { ...stable, ...overrides, bundle: { ...stable.bundle, ...overrides.bundle } };
-  // Pinned Tauri CLI 2.12.3 NSIS: publisher, or identifier component 2, is
-  // MANUFACTURER; MANUPRODUCTKEY is Software\<manufacturer>\<product name>.
-  // https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.3/crates/tauri-bundler/src/bundle/windows/nsis/mod.rs#L284-L286
-  for (const [config, expected] of [[stable, "Software\\github\\Ibis"], [nightly, "Software\\github\\Ibis Nightly"]]) {
-    for (const identifier of [config.identifier, config.identifier.replace(/^io\.github\./, "com.")]) {
-      const manufacturer = config.bundle.publisher ?? identifier.split(".")[1] ?? identifier;
-      assert.equal(`Software\\${manufacturer}\\${config.productName}`, expected, identifier);
-      assert.equal(manufacturer, "github", "the displayed Windows Publisher keeps its historical value");
-    }
+  for (const [config, product] of [[stable, "Ibis"], [nightly, "Ibis Nightly"]]) {
+    assert.equal(config.productName, product);
+    assert.equal(config.bundle.publisher, "github");
   }
 });
 

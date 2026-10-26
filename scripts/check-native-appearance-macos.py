@@ -12,6 +12,7 @@ import select
 import subprocess
 import tempfile
 import time
+from native_test_settings import clean_settings, settings_exist
 
 
 class Unavailable(RuntimeError):
@@ -282,18 +283,20 @@ def main():
     report = {"platform": platform.system(), "status": "failed", "checks": [], "restored": False}
     ui, app, backdrop = NativeUI(), None, None
     claimed = False
+    owned_settings = None
     try:
         if platform.system() != "Darwin":
             raise Unavailable("Native appearance scenario requires macOS")
+        settings = Path.home() / "Library/Application Support/com.ibiscite.ibis/settings.json"
+        if settings_exist(settings):
+            raise Unavailable("Use a disposable desktop without existing Ibis settings")
+        owned_settings = settings
         ui.call("probe")  # Refuses preexisting System Settings; no consent prompts.
         subprocess.run(["open", "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?Display"],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=20)
         ui.owner = wait_for(lambda: ui.call("owner"), "new System Settings process")
         claimed = True
         wait_for(lambda: ui.call("controls-ready").get("ready") is True, "exact accessibility display controls")
-        settings = Path.home() / "Library/Application Support/io.github.ibiscite.ibis/settings.json"
-        if any(settings.with_suffix(suffix).exists() for suffix in (".json", ".json.bak", ".json.tmp")):
-            raise Unavailable("Use a disposable desktop without existing Ibis settings")
         def restoration(value):
             report.update(restored=value["matches_original"], restoration=value)
         with saved_preferences(ui.read, ui.write, observe=restoration) as original:
@@ -380,6 +383,11 @@ def main():
                 stop_owned(process)
             except Exception:
                 report.update(status="failed", cleanup="Owned appearance process cleanup failed")
+        if owned_settings is not None:
+            try:
+                clean_settings(owned_settings)
+            except Exception:
+                report.update(status="failed", cleanup="Owned settings cleanup failed")
         if claimed:
             try:
                 ui.close(report["restored"])  # Every action revalidates process identity.

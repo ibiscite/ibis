@@ -65,12 +65,19 @@ export function nightlyConfig(version) {
   return {
     productName: "Ibis Nightly",
     version,
-    identifier: "io.github.ibiscite.ibis.nightly",
+    identifier: "com.ibiscite.ibis.nightly",
     bundle: { targets: ["app", "dmg", "nsis", "deb", "appimage"] },
     plugins: {
       updater: { endpoints: ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"], pubkey: NIGHTLY_PUBKEY },
     },
   };
+}
+
+/** Read the literal identity from the previous published source, never execute it. */
+export function previousNightlyIdentity(source) {
+  const matches = [...source.matchAll(/^\s*identifier:\s*"(io\.github\.ibiscite\.ibis\.nightly|com\.ibiscite\.ibis\.nightly)",?\s*$/gm)];
+  if (matches.length !== 1) throw new Error("previous nightly source has no unambiguous supported identity");
+  return matches[0][1];
 }
 
 /** Semantic version precedence (semver.org §11), as the updater compares. */
@@ -148,6 +155,8 @@ function main([command, ...args]) {
     console.log(JSON.stringify(nightlyConfig(args[0])));
   } else if (command === "feed-key" && args.length === 1) {
     console.log(feedKeyId(JSON.parse(readFileSync(args[0], "utf8"))));
+  } else if (command === "previous-identity" && args.length === 1) {
+    console.log(previousNightlyIdentity(readFileSync(args[0], "utf8")));
   } else if (command === "manifest" && args.length === 4) {
     const [dir, base, version, notes] = args;
     const config = JSON.parse(readFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));
