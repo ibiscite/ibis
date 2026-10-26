@@ -67,3 +67,23 @@ fn explicit_null_id_is_a_request_not_a_notification() {
     };
     assert_eq!(request.id.map(|id| id.value()), Some(serde_json::Value::Null));
 }
+
+#[test]
+fn escaped_request_ids_fit_reserved_overhead_and_oversized_ids_are_not_echoed() {
+    let accepted = json!("\u{1}".repeat(1024));
+    let id = RequestId::parse(&accepted).unwrap_or_else(|| panic!("bounded ID"));
+    let response = failure(
+        Some(&id),
+        EngineError {
+            code: ErrorCode::ResourceLimit,
+        },
+    );
+    assert!(ibis_engine::wire::encode(&response, ibis_engine::protocol::RESPONSE_OVERHEAD).is_ok());
+    let rejected = json!({"jsonrpc":"2.0","id":"\u{1}".repeat(1025),"method":"libraries"});
+    let Message::Reply(response) = parse_message(&rejected) else {
+        panic!("invalid ID response")
+    };
+    assert!(response["id"].is_null());
+    assert_eq!(response["error"]["code"], -32600);
+    assert!(!response.to_string().contains("\\u0001"));
+}
