@@ -270,8 +270,11 @@ fn csl_item(schema: &Schema, item: &Item) -> Option<Value> {
             }
         }
     }
-    if !csl.contains_key("citation-key")
-        && let Some(key) = &item.better_bibtex_key
+    // Reuse the shared mapper's validation: an unusable native key must
+    // fall through to BBT. Its data field remains intact so mapping still
+    // reports the invalid key and gives a usable Extra key precedence.
+    if let Some(key) = &item.better_bibtex_key
+        && super::citation_key(&Map::new(), &csl, &mut Vec::new()).is_none()
     {
         csl.insert("citation-key".into(), key.clone().into());
     }

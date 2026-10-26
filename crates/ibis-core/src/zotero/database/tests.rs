@@ -301,6 +301,26 @@ fn allocation_reserves_the_expanded_extra_payload_before_conversion() {
     );
 }
 
+#[test]
+fn invalid_native_keys_fall_through_to_extra_then_better_bibtex() {
+    for (native, extra, expected, warned) in [
+        ("own2020", "Citation Key: extra2020", "own2020", false),
+        ("  own2020  ", "", "own2020", false),
+        ("研究2020", "", "研究2020", false),
+        ("two words", "Citation Key: extra2020", "extra2020", true),
+        ("two words", "", "valid2020", true),
+        ("two\u{a0}words", "", "valid2020", true),
+        ("{invalid}", "Citation Key: two words", "valid2020", true),
+        ("  ", "", "valid2020", false),
+    ] {
+        let mut stored = item("KEYS0001", "book", &[("citationKey", native), ("extra", extra)]);
+        stored.better_bibtex_key = Some("valid2020".into());
+        let result = load(Library::User, &schema(), &[stored]);
+        assert_eq!(result.references[0].citekey.as_deref(), Some(expected));
+        assert_eq!(!result.warnings.is_empty(), warned);
+    }
+}
+
 proptest::proptest! {
     #[test]
     fn any_stored_text_converts_without_a_crash(text in "\\PC{0,80}", other in "[A-Za-z :\\-\n\"“”0-9,!']{0,60}") {
