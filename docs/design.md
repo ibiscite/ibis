@@ -344,7 +344,7 @@ that never takes focus: a pill near the top on macOS, bottom right on Windows,
 a bottom toast on GNOME. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.
 
-**Empty states.** First run, no library and a library that could not be opened
+**Empty states.** First run, no library, an actually empty library and a library that could not be opened
 use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
 `--text-tertiary`, a title (title type), one line of at most 40 characters
 (meta type, `--muted`, up to three rows), then one suggested action 16 px below;
@@ -355,7 +355,6 @@ above rows.
 | Case | Title | Line | Below |
 |---|---|---|---|
 | No matches | No matching references | Try a surname, year or fewer words. | Clear search; quieter Search all libraries when some are left out |
-| Empty Zotero library | No references in My Library | Add items in Zotero, then reload. | Reload |
 | Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then a spinner; retained rows stay |
 
 **Shelf** [C7]. What Enter pastes, one 40 px line above the footer's Copy
@@ -544,7 +543,7 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
 
 ## First run and choice screens
 
-[C12] First run, no library and a library that could not be opened share one pattern: a title and
+[C12] First run, no library, an actually empty library and a library that could not be opened share one pattern: a title and
 one line on the tile column's edge, then result-style rows (tile, title, one
 line of help, optional trailing tag, chevron).
 
@@ -560,12 +559,20 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   becomes "Look again" with the outcome as its help line. Zotero refusing other
   apps and folders too large to search are one quiet note below. A CSL JSON or
   YAML row joins only when those sources ship (after 1.0).
+- **Empty library:** only after a successful load reports zero references: "No
+  references in thesis.bib", then "Choose a library with references." Zotero
+  and BibTeX or BibLaTeX file are the two rows; a detected Zotero library gets
+  "Found on this Mac/PC/computer". Below: "You can drop a file here too."
+  A search with no matches keeps its search actions; a failed refresh keeps
+  its searchable snapshot and failure notice. No shelf or Copy is shown on
+  these choice screens, and the window fits the content. An empty first
+  library offers recovery before asking where the person writes.
 - **Could not open, nothing kept:** the title names the library and the fix;
   the backend sorts each failure by `problem`:
 
   | Problem | Title | Line | Rows (first suggested) |
   |---|---|---|---|
-  | `missing` file | Can't find thesis.bib | It may have moved, or its drive is disconnected. | Find thesis.bib, Use another library, Try again |
+  | `missing` file | Can't find thesis.bib | It may have moved, or its drive is disconnected. | Find thesis.bib, Use another library |
   | `unreadable` | Can't read thesis.bib | The reason, as a sentence | Try again, Use another library |
   | `zotero_closed` | Zotero isn't open | Open Zotero, then try again. | Try again, Use another library |
   | `zotero_access_off` | Zotero isn't sharing your library | Where to turn it on | Try again, Use another library |

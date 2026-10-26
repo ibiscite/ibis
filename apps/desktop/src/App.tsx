@@ -94,6 +94,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const statusReads = useRef(0);
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
+  const busy = library?.state === "loading" || library?.state === "reloading";
+  const blocked = library?.state === "error" && !library.has_snapshot;
+  const libraryChoices = library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
+  const [askWriting, setAskWriting] = useAskWriting(library);
+  const showWriting = askWriting && !busy && !query && !libraryChoices && Boolean(library?.has_snapshot);
+  const showCitations = !libraryChoices && !showWriting;
   const refreshSnapshot = () => {
     const request = ++statusReads.current;
     void libraryStatus().then((status) => {
@@ -108,7 +114,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
   // The selection, or the highlighted result when nothing is selected.
-  const chosen = selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+  const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
   const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
     useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, cslItems, citationText, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
@@ -433,13 +439,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     setPendingCopy(null);
     void copy();
   }, [pendingCopy, chosenKey, shown, queryKey]);
-
-  const busy = library?.state === "loading" || library?.state === "reloading";
-  const [askWriting, setAskWriting] = useAskWriting(library);
-  const showWriting = askWriting && !busy && !query && Boolean(library?.has_snapshot);
-  // A library that could not be opened, with nothing earlier to search.
-  const blocked = library?.state === "error" && !library.has_snapshot;
-
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
@@ -488,11 +487,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const enterAction = showWriting || chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
     : copyLabel(format, chosen.length);
   const highlighted = current[active];
-  const usingLocator = current === results && interpretLocators ? interpretation?.locator : null;
+  const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator }]);
-  const shiftEnterAction = highlighted && !showWriting
+  const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
   const escapeStep = () => {
@@ -516,25 +515,25 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         choose={(choice) => { chooseFormat(choice); setAskWriting(false); input.current?.focus(); }} />
     </div>
   ) : null;
-  const emptyState = writingStep ?? (library !== undefined && (busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
+  const emptyState = writingStep ?? (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); setInterpretLocators(true); input.current?.focus(); }}
       onSearchAll={searchAllLibraries}
       onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
       setup={
-        (focus) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} />
+        (focus, empty) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} empty={empty} />
       } />
   ) : null);
 
   // Size follows content (C10): only results, a citation and overlays need the results height.
   const main = useRef<HTMLElement>(null);
-  const compact = selected.size === 0 && !keysOpen && !menuOpen && !(query && results.length > 0);
+  const compact = !keysOpen && !menuOpen && (!showCitations || selected.size === 0 && !(query && results.length > 0));
   useFitWindow(main, compact, fitPicker, fitPicker ? onPickerShown : undefined);
 
   return (
     <main ref={main}
-      data-selection={selected.size > 0 || undefined}
+      data-selection={showCitations && selected.size > 0 || undefined}
       data-compact={compact || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
       onBlur={() => setSearchFocused(false)}
@@ -586,10 +585,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             e.preventDefault();
             return;
           }
-          if (e.key === "ArrowDown" && (results.length === 0 || writingStep) && focusChoices()) {
+          if (e.key === "ArrowDown" && (results.length === 0 || !showCitations) && focusChoices()) {
             e.preventDefault();
-          } else if (writingStep && e.key === "Enter") {
-            // Nothing to copy until the writing step is answered or a search is typed.
+          } else if (!showCitations && e.key === "Enter") {
+            // Choice screens have no citation action in Search.
             e.preventDefault();
           } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
@@ -604,10 +603,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             copyChosen();
           }
         }}
-        expanded={results.length > 0 && !writingStep}
-        activeDescendant={!writingStep && results[active] ? `result-${active}` : undefined}
+        expanded={results.length > 0 && showCitations}
+        activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format}
-        showFormat={library === null || Boolean(library?.has_snapshot)}
+        showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles={Boolean(cslItems && copyFormatted)}
         onFormatChange={chooseFormat}
         onFormatCommand={(command) => {
@@ -640,14 +639,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         </p>
       </div>}
       <div className="results-area scroll-area" ref={resultArea}>
-        {library?.has_snapshot && results.length > 0 && !busy && !showWriting && <div className="results-heading" aria-hidden="true">
+        {library?.has_snapshot && results.length > 0 && !busy && showCitations && <div className="results-heading" aria-hidden="true">
           <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
-          {showWriting ? "" : announcement}
+          {showCitations ? announcement : ""}
         </p>
         {busy && emptyState}
-        {!writingStep && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
+        {showCitations && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
           libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
           onChoose={(i, r, action) => {
             // Rows of an earlier query, still shown while a newer search
@@ -681,11 +680,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         {!busy && emptyState}
       </div>
       </div>
-      <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {
+      {showCitations && <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {
         toggle(r);
         input.current?.focus({ preventScroll: true });
       }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
-        shown={showWriting ? undefined : displayedOutput} problem={previewProblem} focusable={selected.size > 0} outputRef={outputRef} />
+        shown={displayedOutput} problem={previewProblem} focusable={selected.size > 0} outputRef={outputRef} />}
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}

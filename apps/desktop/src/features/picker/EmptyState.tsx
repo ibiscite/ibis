@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import type { EmptyLibraryChoices } from "../../LibrarySetup";
 import type { LibraryStatus } from "../../api";
 import { ChoiceIcon } from "../../icons";
 import { keysFor } from "../../keys";
@@ -45,7 +46,7 @@ function Recovery({ library, onFind, onReload, setup }: {
   library: LibraryStatus;
   onFind: () => void;
   onReload: () => void;
-  setup: (focus: boolean) => ReactNode;
+  setup: (focus: boolean, empty?: EmptyLibraryChoices) => ReactNode;
 }) {
   const [switching, setSwitching] = useState(false);
   // The chosen row is gone, so the list that replaces it takes focus.
@@ -61,7 +62,7 @@ function Recovery({ library, onFind, onReload, setup }: {
   const tryAgain: Choice = { id: "retry", title: setupText.tryAgain, help: setupText.tryAgainHelp, icon: <ChoiceIcon name="retry" /> };
   const another: Choice = { id: "another", title: setupText.another, help: setupText.anotherHelp, icon: <ChoiceIcon name="swap" /> };
   const choices: Choice[] = problem === "missing" && !library.zotero
-    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true }, another, tryAgain]
+    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true }, another]
     : [{ ...tryAgain, suggested: true }, another];
   return (
     <div className="empty-state">
@@ -86,7 +87,7 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   onSearchAll: () => void;
   onReload: () => void;
   /** Shown while no library is chosen; focus moves into it when asked. */
-  setup: (focus: boolean) => ReactNode;
+  setup: (focus: boolean, empty?: EmptyLibraryChoices) => ReactNode;
 }) {
   if (!library) return <div className="empty-state" />;
   const loading = library.state === "loading" || library.state === "reloading";
@@ -95,30 +96,28 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
     return <Recovery key={`${library.name}\u0000${library.problem}`} library={library} onFind={onChooseLibrary} onReload={onReload} setup={setup} />;
   }
   if (!library.name) return <div className="empty-state">{library.state === "none" ? setup(false) : null}</div>;
-  const empty = library.has_snapshot && library.references === 0;
-  const fullTitle = libraryMessages.emptyTitle(library.snapshot_name || null);
-  const title = empty ? libraryMessages.emptyTitle(shortName(library.snapshot_name))
-    : query ? pickerText.noMatches : pickerText.typeToFind;
-  const description = empty ? libraryMessages.emptyHint(library.zotero)
-    : query ? pickerText.noMatchesHint : pickerText.typeToFindHint;
+  if (library.state === "loaded" && library.has_snapshot && library.references === 0) {
+    const fullTitle = libraryMessages.emptyTitle(library.snapshot_name || null);
+    const title = libraryMessages.emptyTitle(shortName(library.snapshot_name));
+    return <div className="empty-state">{setup(false, {
+      title: title === fullTitle ? title : <><span aria-hidden="true">{title}</span><span className="visually-hidden">{fullTitle}</span></>,
+      zotero: library.zotero,
+    })}</div>;
+  }
+  const title = query ? pickerText.noMatches : pickerText.typeToFind;
+  const description = query ? pickerText.noMatchesHint : pickerText.typeToFindHint;
   return (
     <div className="empty-state empty-template">
       <svg className="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        {empty ? <path d="M5 3h9l5 5v13H5zM14 3v5h5M8 12h8M8 16h6" />
-          : <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>}
+        <circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" />
       </svg>
-      <p className="empty-title" dir="auto">{empty && title !== fullTitle ? <>
-        <span aria-hidden="true">{title}</span><span className="visually-hidden">{fullTitle}</span>
-      </> : title}</p>
+      <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
-      {empty ? <div className="empty-actions">
-        {library.zotero && <Button variant="primary" className="empty-primary" onPress={onReload}>{pickerText.reload}</Button>}
-        <Button variant={library.zotero ? "quiet" : "primary"} className={library.zotero ? "empty-alternative" : "empty-primary"} onPress={onChooseLibrary}>{pickerText.chooseLibrary}</Button>
-      </div> : query ? <div className="empty-actions">
+      {query ? <div className="empty-actions">
         <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{pickerText.clearSearch}</Button>
         {narrowed && <Button variant="quiet" className="empty-alternative" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>}
       </div> : null}
-      {!empty && !query && <div className="empty-keys" aria-hidden="true">
+      {!query && <div className="empty-keys" aria-hidden="true">
         <KeyHint label={keyText.copy} keys={keysFor("copy")} />
         <KeyHint label={keyText.addToCitation} keys={keysFor("add")} />
       </div>}

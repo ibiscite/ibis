@@ -1138,12 +1138,12 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("empty 研究.bib · no references"));
   if (query) fireEvent.change(screen.getByLabelText("Search references"), { target: { value: query } });
   const title = await screen.findByText("No references in empty 研究.bib");
-  expect(screen.getByRole("listbox").compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(title.compareDocumentPosition(screen.getByRole("listbox", { name: "No references in empty 研究.bib" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(document.querySelector(".results-heading")).toBeNull();
-  expect(screen.getByText("Choose a file with references.")).toBeTruthy();
+  expect(screen.getByText("Choose a library with references.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
-  expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^BibTeX or BibLaTeX file/ })).toBeTruthy();
 });
 
 

@@ -125,3 +125,13 @@ test("locator byte bounds and Unicode whitespace match the core", () => {
   assert.equal(splitLocatorQuery("title\u0085p 12").locator.value, "12");
   assert.equal(splitLocatorQuery("title\ufeffp 12"), null);
 });
+
+
+test("an unmatched search keeps chosen references from the loaded demo library", () => {
+  const demo = createDemo();
+  demo.add("okafor2023");
+  demo.setQuery("unmatched synthetic search");
+  assert.equal(demo.found().length, 0);
+  assert.equal(demo.output(), "[@okafor2023]");
+  assert.equal(demo.copy(), true);
+});

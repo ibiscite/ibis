@@ -8,7 +8,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
 import { App, type PickerApi } from "./App";
 import { SHELF_CHIPS } from "./features/picker/CitationShelf";
-import { libraryMessages, pickerText } from "./messages";
+import { libraryMessages, pickerText, setupText } from "./messages";
 import { hasRetainedFreshnessProblem } from "./LibraryStatusLine";
 import { setPlatform } from "./nativeAppearance";
 import "./styles.css";
@@ -28,13 +28,15 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
   const label = libraryMessages.summary(library);
   // A library that could not be opened at all shows a recovery choice screen, which announces itself.
   const blocked = library.state === "error" && !library.has_snapshot;
+  const empty = library.state === "loaded" && library.has_snapshot && library.references === 0;
+  const choices = [...root.querySelectorAll(".choice-list .result-title")].map((row) => row.textContent);
   const recovery = root.querySelector(".choice-screen h2")?.textContent ?? null;
   const alerts = [library.settings_notice, library.error && !blocked && !hasRetainedFreshnessProblem(library) ? libraryMessages.openError(library.name, library.error, library.zotero) : null]
     .filter((text): text is string => text !== null);
   // The shelf's own alert belongs to a seeded selection; seeded() checks it.
   const actualAlerts = [...root.querySelectorAll('[role="alert"]')].filter((alert) => !alert.closest(".shelf-output")).map((alert) => alert.textContent)
     .filter((text) => !blocked || recovery === null || !text?.startsWith(recovery));
-  const searched = library.state !== "none" && library.state !== "loading" && !(library.state === "error" && !library.has_snapshot);
+  const searched = !empty && library.state !== "none" && library.state !== "loading" && !(library.state === "error" && !library.has_snapshot);
   const announcement = searched ? `${results.length} ${results.length === 1 ? "result" : "results"}` : "";
   const busy = library.state === "loading" ? `Opening ${library.name ?? "library"}…`
     : library.state === "reloading" ? `Reloading ${library.name ?? "library"}…` : null;
@@ -46,8 +48,9 @@ function rendered(root: HTMLElement, state: GalleryState): boolean {
       && row.querySelector(".result-key")?.textContent === results[index]?.key)
     && JSON.stringify(actualAlerts) === JSON.stringify(alerts)
     && (root.querySelector('.empty-loading[role="progressbar"]')?.getAttribute("aria-label") ?? null) === busy
-    && (root.querySelector(".library-setup .choice-list") !== null) === (library.state === "none")
-    && (recovery !== null) === (blocked || library.state === "none")
+    && (root.querySelector(".library-setup .choice-list") !== null) === (library.state === "none" || empty)
+    && (recovery !== null) === (blocked || library.state === "none" || empty)
+    && (!empty || JSON.stringify(choices) === JSON.stringify([setupText.zotero, setupText.file]))
     && (state.copied ? root.querySelector(".copy-notice") !== null
       && (root.querySelector(".copy-notice code")?.textContent ?? root.querySelector(".shelf-output .preview-text")?.textContent) === state.copied.text
       : root.querySelector(".copy-notice") === null)
