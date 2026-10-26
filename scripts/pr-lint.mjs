@@ -20,22 +20,9 @@ const BOT_BRANCH = /^(release-please--|dependabot\/)/;
 // GitHub's Revert button: `Revert "fix: …"` from `revert-<PR>-<branch>`; reverting a red main must never wait on lint.
 const REVERT = { title: /^Revert "/, branch: /^revert-\d+-/ };
 const LINK = /^[ \t]*(?:closes|fixes|resolves|part of) #(\d+)\b/gim;
-const SECTIONS = ["What and why", "How it works", "Verification"];
-const MAX_WORDS = 250;
-const HARD_MAX_WORDS = 300;
 
-export function countWords(body) {
-  return body
-    .replace(/<!--[\s\S]*?(-->|$)/g, " ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
-    .replace(/<img\b[^>]*>/gi, " ")
-    .split("\n")
-    .filter((line) => !/^\s*(#{1,6}\s|[-*] \[[ xX]\])/.test(line))
-    .join(" ")
-    .split(/\s+/)
-    .filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
-}
-
+// Until 1.0 only the title (it becomes the release notes), commit identities and
+// weakened tests fail the check (ADR 0027); everything else is a warning.
 export function lint({ title = "", body = "", branch = "", fork = false, files = [] }) {
   const errors = [];
   const warnings = [];
@@ -51,27 +38,11 @@ export function lint({ title = "", body = "", branch = "", fork = false, files =
     if (/^\p{Lu}\p{Ll}/u.test(t[3])) warnings.push("title should start in lower case after the colon");
   }
 
-  const b = branch.match(BRANCH);
-  if (!fork) {
-    if (!b) errors.push(`branch \`${branch}\` must be <type>/<issue>-<short-name>, for example fix/12-duplicate-keys`);
-    else if (t && b[1] !== t[1]) errors.push(`branch type \`${b[1]}\` differs from title type \`${t[1]}\``);
-  }
+  if (!fork && !BRANCH.test(branch)) warnings.push(`branch \`${branch}\` could be named <type>/<issue>-<short-name>, for example fix/12-duplicate-keys`);
 
-  const links = [...body.replace(/<!--[\s\S]*?(-->|$)/g, " ").matchAll(LINK)].map((m) => m[1]);
-  if (links.length !== 1) errors.push(`body needs exactly one "Closes #N" or "Part of #N" line; found ${links.length}`);
-  else if (b && !fork && links[0] !== b[2]) warnings.push(`body links #${links[0]} but the branch names #${b[2]}`);
+  const links = [...body.replace(/<!--[\s\S]*?(-->|$)/g, " ").matchAll(LINK)];
+  if (links.length === 0) warnings.push('body has no "Closes #N" or "Part of #N" line');
 
-  const words = countWords(body);
-  if (words > HARD_MAX_WORDS) errors.push(`body has ${words} words; at most ${MAX_WORDS} (move evidence to an "Evidence for <short SHA>" comment)`);
-  else if (words > MAX_WORDS) warnings.push(`body has ${words} words; aim for at most ${MAX_WORDS}`);
-
-  if (/\/actions\/runs\/\d+/.test(body)) errors.push('body links a workflow run; put run links in an "Evidence for <short SHA>" comment');
-  const shas = new Set(body.match(/\b[0-9a-f]{40}\b/g) ?? []);
-  if (shas.size > 1) errors.push(`body has ${shas.size} full commit hashes; put evidence in a comment`);
-
-  for (const section of SECTIONS) {
-    if (!new RegExp(`^#{2,3}\\s+${section}\\s*$`, "mi").test(body)) errors.push(`body is missing the "## ${section}" section from the template`);
-  }
   if (/requested by|project thread/i.test(body) || /^#{1,6}.*\b(pause|paused|resume)\b/im.test(body)) {
     warnings.push("body contains session or pause notes; keep them out of pull requests");
   }

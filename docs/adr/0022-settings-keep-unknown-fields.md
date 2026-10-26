@@ -1,6 +1,6 @@
 # 0022. Keep unknown settings fields and flush settings before replacing them
 
-Status: accepted (2026-10-21); amends 0016
+Status: accepted (2026-10-21); amends 0016; keeping unknown fields suspended until 1.0 by [0027](0027-fast-until-1-0.md) (flushing saves stays)
 
 ## Context
 

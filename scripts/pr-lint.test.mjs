@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { countWords, lint } from "./pr-lint.mjs";
+import { lint } from "./pr-lint.mjs";
 
 const body = (extra = "") => `Closes #12
 
@@ -32,45 +32,33 @@ test("rejects titles that are not short Conventional Commits", () => {
   assert.deepEqual(lint({ ...ok, title: "fix: IEEE keys" }).warnings, []);
 });
 
-test("checks the branch name and its type, except for forks and bots", () => {
-  assert.match(lint({ ...ok, branch: "claude/x" }).errors[0], /must be <type>\/<issue>-<short-name>/);
-  assert.match(lint({ ...ok, branch: "wip/12-thing" }).errors[0], /must be/);
-  assert.match(lint({ ...ok, branch: "feat/12-thing" }).errors[0], /differs from title type/);
-  assert.deepEqual(lint({ ...ok, branch: "patch-1", fork: true }).errors, []);
+test("only suggests a branch name, and skips forks, bots and reverts", () => {
+  assert.deepEqual(lint({ ...ok, branch: "claude/x" }).errors, []);
+  assert.match(lint({ ...ok, branch: "claude/x" }).warnings[0], /could be named <type>\/<issue>-<short-name>/);
+  assert.deepEqual(lint({ ...ok, branch: "feat/12-thing" }), { errors: [], warnings: [] });
+  assert.deepEqual(lint({ ...ok, branch: "patch-1", fork: true }), { errors: [], warnings: [] });
   assert.deepEqual(lint({ title: "chore(main): release 0.2.0", body: "", branch: "release-please--branches--main" }), { errors: [], warnings: [] });
   assert.deepEqual(lint({ title: "build(deps): bump x", body: "", branch: "dependabot/cargo/x-1.2" }), { errors: [], warnings: [] });
   assert.deepEqual(lint({ title: 'Revert "fix: keep notes literal (#12)"', body: "Reverts ibiscite/ibis#12", branch: "revert-12-fix/11-notes" }), { errors: [], warnings: [] });
   assert.ok(lint({ title: 'Revert "fix: x"', body: "", branch: "fix/11-notes" }).errors.length > 0);
 });
 
-test("needs exactly one issue link and warns when it differs from the branch", () => {
-  assert.match(lint({ ...ok, body: body().replace("Closes #12", "") }).errors[0], /found 0/);
-  assert.match(lint({ ...ok, body: `${body()}\nCloses #13` }).errors[0], /found 2/);
-  assert.match(lint({ ...ok, body: body().replace("Closes #12", "<!-- Closes #12 -->") }).errors[0], /found 0/);
-  assert.deepEqual(lint({ ...ok, body: body().replace("Closes #12", "Part of #12") }).errors, []);
-  assert.deepEqual(lint({ ...ok, body: body().replace("Closes #12", "Closes #9") }).warnings, ["body links #9 but the branch names #12"]);
+test("warns, but does not fail, without an issue link", () => {
+  assert.deepEqual(lint({ ...ok, body: body().replace("Closes #12", "") }).errors, []);
+  assert.match(lint({ ...ok, body: body().replace("Closes #12", "<!-- Closes #12 -->") }).warnings[0], /no "Closes #N"/);
+  assert.deepEqual(lint({ ...ok, body: body().replace("Closes #12", "Part of #12") }), { errors: [], warnings: [] });
+  assert.deepEqual(lint({ ...ok, body: `${body()}\nCloses #13` }).errors, []);
 });
 
-test("counts prose words only and limits the body", () => {
-  assert.equal(countWords("<!-- a b c -->\n## Heading words\n- [ ] box words\n![alt text](x.png) one two — 三"), 3);
-  assert.equal(countWords(""), 0);
-  assert.deepEqual(lint({ ...ok, body: body("w ".repeat(240)) }).warnings, [`body has ${countWords(body("w ".repeat(240)))} words; aim for at most 250`]);
-  assert.match(lint({ ...ok, body: body("w ".repeat(300)) }).errors[0], /words; at most 250/);
-  assert.equal(countWords(`<!-- unclosed ${"w ".repeat(500)}`), 0);
+test("accepts short or long bodies, evidence links and any headings", () => {
+  for (const extra of ["w ".repeat(600), "https://github.com/o/r/actions/runs/123", `${"a".repeat(40)} ${"b".repeat(40)}`]) {
+    assert.deepEqual(lint({ ...ok, body: body(extra) }).errors, [], extra.slice(0, 20));
+  }
+  assert.deepEqual(lint({ ...ok, body: "Closes #12\n\nShort." }), { errors: [], warnings: [] });
+  assert.deepEqual(lint({ ...ok, body: null }).errors, []);
 });
 
-test("keeps evidence and session notes out of the body", () => {
-  assert.match(lint({ ...ok, body: body("https://github.com/o/r/actions/runs/123") }).errors[0], /workflow run/);
-  const a = "a".repeat(40);
-  const b = "b".repeat(40);
-  assert.deepEqual(lint({ ...ok, body: body(`Review of ${a}, again ${a}`) }).errors, []);
-  assert.match(lint({ ...ok, body: body(`${a} ${b}`) }).errors[0], /2 full commit hashes/);
+test("keeps session notes out of the body", () => {
   assert.match(lint({ ...ok, body: `_Requested by **Someone**_\n${body()}` }).warnings[0], /session or pause notes/);
   assert.match(lint({ ...ok, body: body("## Paused here") }).warnings[0], /session or pause notes/);
-});
-
-test("needs the template sections", () => {
-  const r = lint({ ...ok, body: "Closes #12\n\nShort." });
-  assert.deepEqual(r.errors, ["What and why", "How it works", "Verification"].map((s) => `body is missing the "## ${s}" section from the template`));
-  assert.equal(lint({ ...ok, body: null }).errors.length, 4);
 });

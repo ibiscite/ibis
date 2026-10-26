@@ -1,6 +1,6 @@
 # 0015. Autonomous agents work under standing maintainer authorization
 
-Status: accepted (2026-10-18); amends 0011; amended 2026-10-25: one tracking issue (label `tracking`) replaces the per-milestone tracking issues; amended 2026-10-25: agents prepare and time releases, and the maintainer approves each stable publication in the protected deployment environment
+Status: accepted (2026-10-18); amends 0011; amended 2026-10-25: one tracking issue (label `tracking`) replaces the per-milestone tracking issues; amended 2026-10-25: agents prepare and time releases, and the maintainer approves each stable publication in the protected deployment environment; amended 2026-10-26 by [0027](0027-fast-until-1-0.md): independent review only for risky areas
 
 ## Context
 ADR 0011 says a maintainer approves every AI-assisted change. In practice the maintainer runs coding agents that work for hours unattended, and requiring approval of every change would stall them. The first day of unattended work showed the opposite risk: 26 pull requests merged with a median of 8 minutes from opening to merge, half of them over the size guideline, with review claimed only in the author's own words, and infrastructure done before the milestone's user-facing work. The maintainer could not yet follow or fix the resulting code without an agent.
