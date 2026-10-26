@@ -2051,6 +2051,7 @@ dependencies = [
  "ibis-core",
  "miniz_oxide 0.8.9",
  "rusqlite",
+ "rustix",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",

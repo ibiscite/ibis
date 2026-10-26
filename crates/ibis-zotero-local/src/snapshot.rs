@@ -68,6 +68,8 @@ pub enum SnapshotError {
     TooLarge,
     #[error("reading Zotero's database took too long")]
     TimedOut,
+    #[error("the chosen Zotero libraries are not in Zotero's database")]
+    NoLibrary,
 }
 
 /// The state of the database files when they were read: equal fingerprints
@@ -110,12 +112,16 @@ pub fn read(
             return Ok(Refresh::Unchanged);
         }
         let copy = Copy::new(scratch)?;
-        let copied = copy_files(data, &copy.0, &before, deadline);
-        // A file that went away or changed while it was copied is a change.
+        let copied = copy_files(data, Some(&copy.0), &before, deadline);
+        // A file that went away or changed while it was copied is a change,
+        // even one that kept its size and time (a reused WAL, a coarse clock):
+        // the files are read again and must be byte for byte the same.
         if fingerprint(data)? != before {
             continue;
         }
-        copied?;
+        if copied? != copy_files(data, None, &before, deadline)? {
+            continue;
+        }
         let result = read::libraries(&copy.0, libraries, deadline)?;
         return Ok(Refresh::Loaded {
             result,
@@ -224,27 +230,42 @@ fn fingerprint(data: &Path) -> Result<Fingerprint, SnapshotError> {
         .map(Fingerprint)
 }
 
-fn copy_files(data: &Path, copy: &Path, seen: &Fingerprint, deadline: Instant) -> Result<(), SnapshotError> {
+/// Copy the files seen into `copy`, or with `None` only read them, and
+/// return a hash of each file's bytes.
+fn copy_files(
+    data: &Path,
+    copy: Option<&Path>,
+    seen: &Fingerprint,
+    deadline: Instant,
+) -> Result<Vec<u64>, SnapshotError> {
     let total: u64 = seen.0.iter().flatten().map(|(len, _)| len).sum();
     if total > MAX_DATABASE_BYTES {
         return Err(SnapshotError::TooLarge);
     }
+    let mut hashes = Vec::new();
     for (name, state) in names().zip(&seen.0) {
         if state.is_none() || name.ends_with("-shm") {
             continue;
         }
         let source = crate::discovery::open_regular(&data.join(&name)).map_err(|_| SnapshotError::Unreadable)?;
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let target = options.open(copy.join(&name)).map_err(|_| SnapshotError::CopyFailed)?;
-        copy_bounded(source, target, MAX_DATABASE_BYTES, deadline)?;
+        let target = match copy {
+            Some(copy) => {
+                let mut options = std::fs::OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+                Some(options.open(copy.join(&name)).map_err(|_| SnapshotError::CopyFailed)?)
+            }
+            None => None,
+        };
+        hashes.push(copy_bounded(source, target, MAX_DATABASE_BYTES, deadline)?);
     }
-    Ok(())
+    Ok(hashes)
 }
 
-fn copy_bounded(source: File, mut target: File, limit: u64, deadline: Instant) -> Result<(), SnapshotError> {
+fn copy_bounded(source: File, mut target: Option<File>, limit: u64, deadline: Instant) -> Result<u64, SnapshotError> {
+    use std::hash::Hasher;
+    let mut hash = std::hash::DefaultHasher::new();
     let mut source = source.take(limit + 1);
     let mut buffer = vec![0u8; CHUNK];
     let mut copied = 0u64;
@@ -262,20 +283,59 @@ fn copy_bounded(source: File, mut target: File, limit: u64, deadline: Instant) -
         if copied > limit {
             return Err(SnapshotError::TooLarge);
         }
-        target.write_all(&buffer[..n]).map_err(|_| SnapshotError::CopyFailed)?;
+        hash.write(&buffer[..n]);
+        if let Some(target) = &mut target {
+            target.write_all(&buffer[..n]).map_err(|_| SnapshotError::CopyFailed)?;
+        }
     }
-    target.sync_all().map_err(|_| SnapshotError::CopyFailed)
+    if let Some(target) = target {
+        target.sync_all().map_err(|_| SnapshotError::CopyFailed)?;
+    }
+    Ok(hash.finish())
 }
 
-/// Whether a path is on this computer's own disks, as far as the path shows:
-/// Windows network shares (`\\server\share`) are not.
-fn local(path: &Path) -> bool {
+/// Whether a folder is on this computer's own disks. Windows network shares
+/// (`\\server\share`) are refused from the path alone, before anything is
+/// asked of them; on macOS and Linux the file system says whether it is
+/// local. Callers check this before looking for files in the folder.
+pub fn local(path: &Path) -> bool {
     let text = path.to_string_lossy();
     let unc = text.strip_prefix(r"\\?\").map_or_else(
         || text.starts_with(r"\\") || text.starts_with("//"),
         |rest| rest.get(..4).is_some_and(|p| p.eq_ignore_ascii_case(r"UNC\")),
     );
-    !(cfg!(windows) && unc)
+    if cfg!(windows) && unc {
+        return false;
+    }
+    local_file_system(path)
+}
+
+#[cfg(target_os = "macos")]
+fn local_file_system(path: &Path) -> bool {
+    const MNT_LOCAL: u32 = 0x1000;
+    rustix::fs::statfs(path).is_ok_and(|fs| fs.f_flags & MNT_LOCAL != 0)
+}
+
+#[cfg(target_os = "linux")]
+fn local_file_system(path: &Path) -> bool {
+    // NFS, SMB, CIFS, SMB2, AFS, Coda, 9P and Ceph. Magics are 32 bits, and
+    // `f_type` is signed on some targets, so compare the low 32 bits.
+    const NETWORK: [u32; 8] = [
+        0x6969,
+        0x517B,
+        0xFF53_4D42,
+        0xFE53_4D42,
+        0x5346_414F,
+        0x7375_7245,
+        0x0102_1997,
+        0x00C3_6400,
+    ];
+    rustix::fs::statfs(path).is_ok_and(|fs| !NETWORK.contains(&(fs.f_type as u32)))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn local_file_system(_: &Path) -> bool {
+    true
 }
 
 /// Whether a file's contents are on this computer, so reading it does not

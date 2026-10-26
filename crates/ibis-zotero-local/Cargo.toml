@@ -20,3 +20,7 @@ workspace = true
 [dev-dependencies]
 serde_json = "1.0.154"
 tempfile = "3.27.0"
+
+# Whether Zotero's data folder is on a local disk (ADR 0027).
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+rustix = { version = "1.1.5", features = ["fs"] }

@@ -311,6 +311,22 @@ fn a_database_missing_a_column_ibis_reads_is_refused() {
     );
 }
 
+#[test]
+fn a_huge_stored_value_and_missing_libraries_are_refused_clearly() {
+    let (data, scratch) = temp();
+    let mut f = Fixture::new(&data.path().join("zotero.sqlite"), 125);
+    f.item(1, 1, 1, "HUGE0001", "2024-01-01 10:00:00", &[(1, &"x".repeat(2 << 20))]);
+    drop(f);
+    assert_eq!(
+        read(data.path(), scratch.path(), &[Library::User], None),
+        Err(SnapshotError::TooLarge)
+    );
+    assert_eq!(
+        read(data.path(), scratch.path(), &[Library::Group(99)], None),
+        Err(SnapshotError::NoLibrary)
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn a_linked_database_is_not_followed() {

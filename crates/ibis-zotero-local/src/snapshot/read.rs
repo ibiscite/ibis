@@ -6,6 +6,7 @@
 //! untrusted schema functions off, so a damaged or hostile file can only
 //! fail to read, and every query stops at the read's deadline.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::Instant;
@@ -26,6 +27,12 @@ const SUPPORTED: std::ops::RangeInclusive<i64> = 123..=130;
 const MAX_ITEMS: usize = 1_000_000;
 /// Largest inflated global schema: Zotero's is under a megabyte.
 const MAX_SCHEMA_BYTES: usize = 64 * 1024 * 1024;
+/// Text read from the items, in bytes, before giving up: a value shared by
+/// many items is stored once but read once per item, so the file size alone
+/// does not bound it. The local API path has a similar budget.
+const MAX_TEXT_BYTES: usize = 256 * 1024 * 1024;
+/// The longest single value read; no real field comes near it.
+const MAX_VALUE_BYTES: usize = 1024 * 1024;
 /// Attachment link mode for a link to a web page, which is no best attachment.
 const LINKED_URL: i64 = 3;
 
@@ -110,6 +117,11 @@ pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Re
             }),
         }
     }
+    // As with the local API, a missing group is skipped with a warning, but
+    // a read that finds none of the chosen libraries is a failure.
+    if chosen.is_empty() && !wanted.is_empty() {
+        return Err(SnapshotError::NoLibrary);
+    }
     let mut items = items(&db, &chosen.iter().map(|(_, id)| *id).collect::<Vec<_>>())?;
     let keys = citation_keys(dir, &items, deadline);
     if keys.is_err() {
@@ -138,6 +150,9 @@ pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Re
         list.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
         let list: Vec<Item> = list.into_iter().map(|(_, _, item)| item).collect();
         let loaded = database::load(library, &schema, &list);
+        if Instant::now() > deadline {
+            return Err(SnapshotError::TimedOut);
+        }
         result.references.extend(loaded.references);
         result.warnings.extend(loaded.warnings);
     }
@@ -183,6 +198,34 @@ fn text(row: &Row<'_>, index: usize) -> rusqlite::Result<String> {
         ValueRef::Real(n) => n.to_string(),
         ValueRef::Text(t) | ValueRef::Blob(t) => String::from_utf8_lossy(t).into_owned(),
     })
+}
+
+/// What is left of the text budget for one read; `None` once a value went
+/// past it, so the read fails as too large rather than as unreadable.
+struct Budget(Cell<Option<usize>>);
+
+impl Budget {
+    fn text(&self, row: &Row<'_>, index: usize) -> rusqlite::Result<String> {
+        let value = text(row, index)?;
+        match self.0.get().and_then(|left| left.checked_sub(value.len())) {
+            Some(left) if value.len() <= MAX_VALUE_BYTES => {
+                self.0.set(Some(left));
+                Ok(value)
+            }
+            _ => {
+                self.0.set(None);
+                Err(rusqlite::Error::InvalidQuery)
+            }
+        }
+    }
+
+    fn failure(&self, error: rusqlite::Error) -> SnapshotError {
+        if self.0.get().is_none() {
+            SnapshotError::TooLarge
+        } else {
+            failure(error)
+        }
+    }
 }
 
 fn schema(db: &Connection) -> Result<Schema, SnapshotError> {
@@ -255,6 +298,9 @@ type Rank = (bool, bool, String, i64);
 /// Every regular item outside the trash in the given libraries, by item ID,
 /// with its library ID.
 fn items(db: &Connection, libraries: &[i64]) -> Result<HashMap<i64, (i64, Item)>, SnapshotError> {
+    let budget = Budget(Cell::new(Some(MAX_TEXT_BYTES)));
+    let failure = |error| budget.failure(error);
+    let text = |row: &Row<'_>, index| budget.text(row, index);
     let mut items = HashMap::new();
     if libraries.is_empty() {
         return Ok(items);
