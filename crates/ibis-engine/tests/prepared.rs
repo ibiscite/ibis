@@ -80,3 +80,202 @@ fn commit_binds_preview_and_engine_but_allows_a_full_only_refresh() -> Result<()
     assert_eq!(text, "(Taylor, 2026)");
     Ok(())
 }
+
+#[test]
+fn key_collision_refuses_keys_but_not_formatted_citations() -> Result<(), Box<dyn std::error::Error>> {
+    let mut case = case()?;
+    let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
+    let key = engine
+        .prepare_citation(&case.request, &Cancellation::default())
+        .map_err(|_| "prepare")?;
+    case.request.output = OutputSpec::Csl { style: "apa".into() };
+    let formatted = engine
+        .prepare_citation(&case.request, &Cancellation::default())
+        .map_err(|_| "prepare")?;
+    let LibraryObject::Record(mut other) = case.library.objects()[0].object.clone() else {
+        return Err("record".into());
+    };
+    other.id.library = LibraryId::zotero(b"another synthetic library");
+    engine
+        .publish_library(
+            other.id.library.clone(),
+            Arc::new(Snapshot::new(vec![LibraryObject::Record(other)])?),
+        )
+        .map_err(|_| "publish")?;
+    assert!(matches!(
+        engine.commit_citation(&key, &key.result().content_hash, |_| panic!("ambiguous key")),
+        Err(CitationCommitError::Refused {
+            item: 0,
+            error: CitationError::AmbiguousKey
+        })
+    ));
+    assert_eq!(
+        engine.commit_citation(&formatted, &formatted.result().content_hash, |content| content
+            .text
+            .to_owned())?,
+        "(Taylor, 2026)"
+    );
+    Ok(())
+}
+
+#[test]
+fn formatted_zotero_picks_need_no_agreeing_key() -> Result<(), Box<dyn std::error::Error>> {
+    let mut case = case()?;
+    case.request.output = OutputSpec::Csl { style: "apa".into() };
+    case.request.items[0].expected_cite = None;
+    for conflicting in [false, true] {
+        let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+            return Err("record".into());
+        };
+        record.id.library = LibraryId::zotero(b"synthetic keyless library");
+        record.citation_keys.clear();
+        if conflicting {
+            record.citation_keys = vec![
+                CitationKey {
+                    value: "First2026".into(),
+                    source: CitationKeySource::Extra,
+                },
+                CitationKey {
+                    value: "Other2026".into(),
+                    source: CitationKeySource::BetterBibtex,
+                },
+            ];
+        }
+        case.request.items[0].item = record.id.clone();
+        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?));
+        let prepared = engine
+            .prepare_citation(&case.request, &Cancellation::default())
+            .map_err(|_| "prepare")?;
+        assert_eq!(
+            engine.commit_citation(&prepared, &prepared.result().content_hash, |content| content
+                .text
+                .to_owned())?,
+            "(Taylor, 2026)"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn annotation_uses_printed_label_and_rechecks_its_file() -> Result<(), Box<dyn std::error::Error>> {
+    let mut case = case()?;
+    let record = case.library.objects()[0].object.clone();
+    let id = case.request.items[0].item.clone();
+    let mut attachment = Attachment {
+        id: ItemRef {
+            library: id.library.clone(),
+            key: "synthetic-attachment".into(),
+        },
+        parent: Some(id.clone()),
+        title: "Synthetic PDF".into(),
+        media_type: "application/pdf".into(),
+        availability: Availability::Unknown,
+        content_hash: Some(Fingerprint::of_bytes(b"synthetic file one")),
+    };
+    let annotation = Annotation {
+        id: ItemRef {
+            library: id.library.clone(),
+            key: "synthetic-annotation".into(),
+        },
+        parent: attachment.id.clone(),
+        text: "Synthetic note".into(),
+        comment: String::new(),
+        page_label: Some("iv".into()),
+        page_index: Some(12),
+    };
+    case.request.output = OutputSpec::Csl { style: "apa".into() };
+    case.request.items[0].annotation = Some(annotation.id.clone());
+    case.request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "iv".into(),
+    });
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![
+        record.clone(),
+        LibraryObject::Attachment(attachment.clone()),
+        LibraryObject::Annotation(annotation.clone()),
+    ])?));
+    let prepared = engine
+        .prepare_citation(&case.request, &Cancellation::default())
+        .map_err(|_| "prepare")?;
+    assert!(prepared.result().copy_content(1).is_some());
+    case.request.items[0].locator.as_mut().ok_or("locator")?.value = "13".into();
+    let invalid = engine
+        .prepare_citation(&case.request, &Cancellation::default())
+        .map_err(|_| "prepare")?;
+    assert_eq!(
+        invalid.result().outcomes,
+        vec![ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::AnnotationMismatch
+        }]
+    );
+    assert!(invalid.result().copy_content(1).is_none());
+    attachment.content_hash = Some(Fingerprint::of_bytes(b"synthetic file two"));
+    engine
+        .publish_library(
+            id.library,
+            Arc::new(Snapshot::new(vec![
+                record,
+                LibraryObject::Attachment(attachment),
+                LibraryObject::Annotation(annotation),
+            ])?),
+        )
+        .map_err(|_| "publish")?;
+    assert!(matches!(
+        engine.commit_citation(&prepared, &prepared.result().content_hash, |_| panic!("changed file")),
+        Err(CitationCommitError::Refused {
+            item: 0,
+            error: CitationError::AnnotationMismatch
+        })
+    ));
+    Ok(())
+}
+
+#[test]
+fn publication_waits_for_the_native_write() -> Result<(), Box<dyn std::error::Error>> {
+    use std::{sync::mpsc, time::Duration};
+    let case = case()?;
+    let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
+    let prepared = engine
+        .prepare_citation(&case.request, &Cancellation::default())
+        .map_err(|_| "prepare")?;
+    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+        return Err("record".into());
+    };
+    record.csl.insert("title".into(), json!("New synthetic title"));
+    let next = Arc::new(Snapshot::new(vec![LibraryObject::Record(record.clone())])?);
+    let (writing, started) = mpsc::channel();
+    let (release, finish) = mpsc::channel();
+    let (published, done) = mpsc::channel();
+    std::thread::scope(|scope| {
+        let owner = &engine;
+        let ticket = &prepared;
+        let committing = scope.spawn(move || {
+            owner.commit_citation(ticket, &ticket.result().content_hash, |_| {
+                writing.send(()).map_err(|_| "write start")?;
+                finish.recv_timeout(Duration::from_secs(5)).map_err(|_| "write release")
+            })
+        });
+        started
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(|_| "write start")?;
+        let publishing = scope.spawn(|| {
+            let result = engine.publish_library(record.id.library, next);
+            let _ = published.send(());
+            result
+        });
+        let early = done.recv_timeout(Duration::from_millis(40));
+        release.send(()).map_err(|_| "release")?;
+        committing
+            .join()
+            .map_err(|_| "commit thread")?
+            .map_err(|_| "commit")??;
+        publishing
+            .join()
+            .map_err(|_| "publish thread")?
+            .map_err(|_| "publish")?;
+        assert!(matches!(early, Err(mpsc::RecvTimeoutError::Timeout)));
+        Ok::<(), Box<dyn std::error::Error>>(())
+    })?;
+    Ok(())
+}

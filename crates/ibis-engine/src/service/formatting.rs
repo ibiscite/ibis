@@ -175,3 +175,91 @@ pub(super) fn refusal(request: &CitationRequest, failure: CitationError) -> Cita
         vec![],
     )
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use std::time::{Duration, Instant};
+    fn case() -> GoldenCase {
+        serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap()
+    }
+    #[test]
+    fn cancellation_reaches_format_workers_and_next_request_recovers() {
+        let case = case();
+        let LibraryObject::Record(template) = &case.library.objects()[0].object else {
+            panic!("record")
+        };
+        let mut request = case.request.clone();
+        request.output = OutputSpec::Csl { style: "apa".into() };
+        request.form = CitationForm::BibliographyOnly;
+        request.keep_order = false;
+        request.items.clear();
+        let objects = (0..1000)
+            .map(|index| {
+                let mut record = template.clone();
+                record.id.key = format!("synthetic-{index}");
+                record
+                    .csl
+                    .insert("title".into(), serde_json::json!(format!("Synthetic title {index}")));
+                let mut pick = case.request.items[0].clone();
+                pick.item = record.id.clone();
+                pick.expected_cite = None;
+                request.items.push(pick);
+                LibraryObject::Record(record)
+            })
+            .collect();
+        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+        let cancel = Cancellation::default();
+        std::thread::scope(|scope| {
+            let working = scope.spawn(|| engine.cite(&request, &cancel));
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut observed = false;
+            while Instant::now() < deadline && !working.is_finished() {
+                observed = !cancel.0.handlers.lock().unwrap().tasks.is_empty();
+                if observed {
+                    break;
+                }
+                std::thread::yield_now();
+            }
+            cancel.cancel();
+            assert_eq!(working.join().unwrap().unwrap_err().code, ErrorCode::Cancelled);
+            assert!(observed, "format request was registered for cancellation");
+        });
+        assert!(cancel.0.handlers.lock().unwrap().tasks.is_empty());
+        request.items.truncate(1);
+        assert!(
+            engine
+                .cite(&request, &Cancellation::default())
+                .unwrap()
+                .copy_content(1)
+                .is_some()
+        );
+    }
+    #[test]
+    fn oversized_csl_is_a_resource_refusal_and_worker_recovers() {
+        let mut case = case();
+        case.request.output = OutputSpec::Csl { style: "apa".into() };
+        case.request.items[0].expected_cite = None;
+        let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+            panic!("record")
+        };
+        record
+            .csl
+            .insert("title".into(), serde_json::json!("x".repeat(4 * 1024 * 1024)));
+        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()));
+        assert_eq!(
+            engine.cite(&case.request, &Cancellation::default()).unwrap_err().code,
+            ErrorCode::ResourceLimit
+        );
+        let id = case.request.items[0].item.library.clone();
+        engine.publish_library(id, Arc::new(case.library)).unwrap();
+        assert!(
+            engine
+                .cite(&case.request, &Cancellation::default())
+                .unwrap()
+                .copy_content(1)
+                .is_some()
+        );
+    }
+}
