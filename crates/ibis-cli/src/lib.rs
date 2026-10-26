@@ -344,8 +344,12 @@ fn emit(
         envelope.data().and_then(|data| serde_json::to_vec_pretty(data).ok())
     };
     let Some(mut encoded) = encoded else {
-        if json {
-            let _ = output.write_all(b"{\"error\":{\"code\":\"bad-input\"},\"ibis\":1,\"ok\":false}\n");
+        if json
+            && output
+                .write_all(b"{\"error\":{\"code\":\"bad-input\"},\"ibis\":1,\"ok\":false}\n")
+                .is_err()
+        {
+            return 70;
         }
         return ibis_core::contract::ExitCode::BadInput.value();
     };
@@ -381,6 +385,24 @@ fn terminal_display(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failure_to_write_a_bounded_json_error_is_an_internal_transport_error() {
+        struct Broken;
+        impl std::io::Write for Broken {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("synthetic transport failure"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let result = DispatchResult {
+            data: json!("x".repeat(protocol::MAX_FRAME_BYTES + 1)),
+            text: None,
+            exit_code: ibis_core::contract::ExitCode::Ok,
+        };
+        assert_eq!(emit(true, Ok(result), &mut Broken, &mut Vec::new()), 70);
+    }
     #[test]
     fn toggle_arguments_are_explicit_and_never_launched_by_parser_tests() {
         assert!(
