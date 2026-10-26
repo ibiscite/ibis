@@ -55,7 +55,7 @@ try {
     switch ($env:IBIS_CLOSED_ACTION) {
         'closed' {
             $all = @(Get-Process -ErrorAction Stop)
-            if ($all.Count -eq 0) { throw 'process check' }
+            if ($all.Count -eq 0 -or @($all | Where-Object { $_.Id -eq $PID }).Count -ne 1) { throw 'process check' }
             if (@($all | Where-Object { $_.ProcessName -imatch '^zotero(?:[-.].*)?$' }).Count -gt 0) {
                 [Console]::Out.Write('running')
             } else { [Console]::Out.Write('closed') }

@@ -14,15 +14,11 @@ const SCRIPT: &str = include_str!("windows.ps1");
 pub(super) fn closed() -> Result<(), ClosedError> {
     #[cfg(unix)]
     {
-        let bytes = output(Command::new("/bin/ps").args(["-A", "-o", "comm="]))?;
-        let names = std::str::from_utf8(&bytes).map_err(|_| ClosedError::ProcessCheck)?;
-        if names.trim().is_empty() {
+        if std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists() {
             return Err(ClosedError::ProcessCheck);
         }
-        if names.lines().any(zotero_process) {
-            return Err(ClosedError::Running);
-        }
-        Ok(())
+        let bytes = output(Command::new("/bin/ps").args(["-A", "-ww", "-o", "pid=,comm="]))?;
+        process_list(&bytes, std::process::id())
     }
     #[cfg(windows)]
     {
@@ -34,6 +30,33 @@ pub(super) fn closed() -> Result<(), ClosedError> {
     }
     #[cfg(not(any(unix, windows)))]
     Err(ClosedError::ProcessCheck)
+}
+
+#[cfg(unix)]
+fn process_list(bytes: &[u8], own_pid: u32) -> Result<(), ClosedError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| ClosedError::ProcessCheck)?;
+    let mut seen_self = false;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let (pid, name) = line
+            .trim()
+            .split_once(char::is_whitespace)
+            .ok_or(ClosedError::ProcessCheck)?;
+        let pid: u32 = pid.parse().map_err(|_| ClosedError::ProcessCheck)?;
+        if pid == own_pid {
+            seen_self = true;
+        }
+        if name.trim().is_empty() {
+            return Err(ClosedError::ProcessCheck);
+        }
+        if zotero_process(name) {
+            return Err(ClosedError::Running);
+        }
+    }
+    if seen_self {
+        Ok(())
+    } else {
+        Err(ClosedError::ProcessCheck)
+    }
 }
 
 #[cfg(unix)]
@@ -284,6 +307,20 @@ fn windows(action: &str, path: &Path, needed: u64) -> Result<Vec<u8>, ClosedErro
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn incomplete_or_malformed_process_lists_are_not_closed() {
+        use super::{ClosedError, process_list};
+        assert_eq!(process_list(b" 42 /synthetic/ibis\n 43 /bin/ps\n", 42), Ok(()));
+        for bytes in [b"".as_slice(), b"43 ps\n", b"invalid\n", b"42 \n"] {
+            assert_eq!(process_list(bytes, 42), Err(ClosedError::ProcessCheck));
+        }
+        assert_eq!(
+            process_list(b"42 ibis\n43 /synthetic/zotero\n", 42),
+            Err(ClosedError::Running)
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn recognizes_application_names_without_matching_test_executable() {

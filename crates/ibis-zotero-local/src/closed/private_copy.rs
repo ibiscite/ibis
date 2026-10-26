@@ -53,7 +53,7 @@ impl Store {
             if entry.file_name().to_string_lossy().starts_with("copy-")
                 && entry.file_type().is_ok_and(|t| t.is_dir() && !t.is_symlink())
                 && platform::secure(&entry.path()).is_ok()
-                && std::fs::read(entry.path().join(".ibis-copy")).is_ok_and(|s| s == MARKER)
+                && owned_marker(&entry.path())
             {
                 std::fs::remove_dir_all(entry.path()).map_err(|_| ClosedError::PrivateStorage)?;
             }
@@ -159,6 +159,20 @@ impl Store {
         control.check()?;
         result
     }
+}
+
+fn owned_marker(path: &Path) -> bool {
+    let path = path.join(".ibis-copy");
+    if !std::fs::symlink_metadata(&path)
+        .is_ok_and(|m| m.is_file() && !m.file_type().is_symlink() && m.len() == MARKER.len() as u64)
+    {
+        return false;
+    }
+    let Ok(file) = platform::open_source(&path) else {
+        return false;
+    };
+    let mut bytes = Vec::new();
+    file.take(MARKER.len() as u64 + 1).read_to_end(&mut bytes).is_ok() && bytes == MARKER
 }
 
 fn private_file(path: &Path) -> Result<File, ClosedError> {

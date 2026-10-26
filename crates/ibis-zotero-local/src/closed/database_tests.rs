@@ -73,3 +73,18 @@ fn journal_recovery_is_refused_without_interpreting_external_paths() {
     assert_eq!(read_fixture(dir.path()).err(), Some(ClosedError::NeedsRecovery));
     assert_eq!(std::fs::read(sentinel).unwrap_or_default(), b"synthetic sentinel");
 }
+
+#[test]
+fn dangling_bibliographic_rows_are_refused_instead_of_silently_dropped() {
+    for sql in [
+        "UPDATE items SET itemTypeID=999 WHERE itemID=10;",
+        "UPDATE itemData SET fieldID=999 WHERE itemID=10 AND fieldID=1;",
+        "UPDATE itemData SET valueID=999 WHERE itemID=10 AND fieldID=1;",
+        "UPDATE itemCreators SET creatorID=999 WHERE itemID=10 AND orderIndex=0;",
+        "UPDATE itemCreators SET creatorTypeID=999 WHERE itemID=10 AND orderIndex=1;",
+    ] {
+        let dir = fixture(10);
+        edit(dir.path(), sql);
+        assert_eq!(read_fixture(dir.path()).err(), Some(ClosedError::Damaged));
+    }
+}

@@ -273,3 +273,163 @@ fn reads_committed_wal_only_rows_without_touching_source_database() {
     );
     assert!(!source.path().join("zotero.sqlite-shm").exists());
 }
+
+#[test]
+fn free_space_check_refuses_impossible_allocation() {
+    let scratch = scratch();
+    assert_eq!(platform::space(scratch.path(), u64::MAX), Err(ClosedError::NoSpace));
+}
+
+#[cfg(unix)]
+#[test]
+fn passive_lock_probe_detects_a_synthetic_child_holder() {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let source = fixture(10);
+    let ready = source.path().join("synthetic-ready");
+    let stop = source.path().join("synthetic-stop");
+    let mut child = Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("test executable")))
+        .args([
+            "--ignored",
+            "--exact",
+            "closed::private_copy::tests::synthetic_lock_holder",
+            "--nocapture",
+        ])
+        .env("IBIS_TEST_CLOSED_DIR", source.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap_or_else(|_| panic!("synthetic child"));
+    let until = Instant::now() + Duration::from_secs(10);
+    while !ready.exists() && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let observed = if ready.exists() {
+        platform::open_source(&source.path().join("zotero.sqlite")).err()
+    } else {
+        None
+    };
+    std::fs::write(stop, b"stop").unwrap_or_else(|_| panic!("synthetic stop"));
+    let status = child.wait().unwrap_or_else(|_| panic!("reap synthetic child"));
+    assert!(status.success());
+    assert_eq!(observed, Some(ClosedError::Running));
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "subprocess helper; parent uses only an invented temporary database"]
+fn synthetic_lock_holder() {
+    let Some(path) = std::env::var_os("IBIS_TEST_CLOSED_DIR") else {
+        return;
+    };
+    let dir = PathBuf::from(path);
+    let db =
+        rusqlite::Connection::open(dir.join("zotero.sqlite")).unwrap_or_else(|_| panic!("synthetic child database"));
+    db.execute_batch("BEGIN EXCLUSIVE; UPDATE items SET version=8 WHERE itemID=10;")
+        .unwrap_or_else(|_| panic!("synthetic child lock"));
+    std::fs::write(dir.join("synthetic-ready"), b"ready").unwrap_or_else(|_| panic!("synthetic ready"));
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    while !dir.join("synthetic-stop").exists() && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    db.execute_batch("ROLLBACK;")
+        .unwrap_or_else(|_| panic!("synthetic rollback"));
+}
+
+#[test]
+fn replacing_or_adding_a_sidecar_invalidates_the_candidate() {
+    let source = fixture(10);
+    let scratch = scratch();
+    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let mut attempts = 0;
+    let result = store.read_with(
+        source.path(),
+        &control(),
+        &mut || {
+            attempts += 1;
+            let sidecar = source.path().join("zotero.sqlite-wal");
+            if sidecar.exists() {
+                std::fs::remove_file(&sidecar).unwrap_or_else(|_| panic!("synthetic delete"));
+            } else {
+                std::fs::write(&sidecar, b"synthetic sidecar").unwrap_or_else(|_| panic!("synthetic sidecar"));
+            }
+            Ok(())
+        },
+        &mut || Ok(()),
+    );
+    assert_eq!(result.err(), Some(ClosedError::Changing));
+    assert_eq!(attempts, 3);
+    assert_eq!(candidates(scratch.path()), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn source_replacement_and_restored_mtime_changes_are_detected() {
+    for replace in [true, false] {
+        let source = fixture(10);
+        let scratch = scratch();
+        let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+        let mut attempts = 0;
+        let result = store.read_with(
+            source.path(),
+            &control(),
+            &mut || {
+                attempts += 1;
+                let path = source.path().join("zotero.sqlite");
+                let old_time = std::fs::metadata(&path)
+                    .unwrap_or_else(|_| panic!("synthetic metadata"))
+                    .modified()
+                    .unwrap_or_else(|_| panic!("synthetic time"));
+                if replace {
+                    let bytes = std::fs::read(&path).unwrap_or_default();
+                    let replacement = source.path().join("replacement");
+                    std::fs::write(&replacement, bytes).unwrap_or_else(|_| panic!("synthetic replacement"));
+                    std::fs::rename(replacement, &path).unwrap_or_else(|_| panic!("synthetic rename"));
+                } else {
+                    edit(
+                        source.path(),
+                        &format!("UPDATE items SET version={} WHERE itemID=10", attempts + 20),
+                    );
+                }
+                let file = OpenOptions::new()
+                    .write(true)
+                    .open(path)
+                    .unwrap_or_else(|_| panic!("synthetic file"));
+                file.set_modified(old_time)
+                    .unwrap_or_else(|_| panic!("restore synthetic mtime"));
+                Ok(())
+            },
+            &mut || Ok(()),
+        );
+        assert_eq!(result.err(), Some(ClosedError::Changing));
+        assert_eq!(attempts, 3);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn native_process_guard_refuses_a_synthetic_zotero_named_process() {
+    use std::process::{Command, Stdio};
+    let executable_dir = scratch();
+    let executable = executable_dir.path().join("zotero");
+    std::fs::copy("/bin/sleep", &executable).unwrap_or_else(|_| panic!("synthetic executable"));
+    let mut child = Command::new(&executable)
+        .arg("10")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap_or_else(|_| panic!("synthetic process"));
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let observed = loop {
+        let result = platform::closed();
+        if result == Err(ClosedError::Running) || std::time::Instant::now() >= until {
+            break result;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    assert_eq!(observed, Err(ClosedError::Running));
+}

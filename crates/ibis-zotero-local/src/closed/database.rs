@@ -109,7 +109,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
     let mut identities = BTreeSet::new();
     each(
         &db,
-        "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I JOIN itemTypesCombined T USING(itemTypeID) WHERE T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID) ORDER BY I.itemID",
+        "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID) ORDER BY I.itemID",
         &budget,
         |r| {
             let id: i64 = r.get(0)?;
@@ -154,7 +154,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
     )?;
     each(
         &db,
-        "SELECT D.itemID,F.fieldName,V.value FROM itemData D JOIN fieldsCombined F USING(fieldID) JOIN itemDataValues V USING(valueID) ORDER BY D.itemID,D.fieldID",
+        "SELECT D.itemID,F.fieldName,V.value FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) ORDER BY D.itemID,D.fieldID",
         &budget,
         |r| {
             let id = r.get(0)?;
@@ -186,7 +186,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
     )?;
     each(
         &db,
-        "SELECT IC.itemID,CT.creatorType,C.firstName,C.lastName,C.fieldMode,IC.orderIndex FROM itemCreators IC JOIN creators C USING(creatorID) JOIN creatorTypes CT USING(creatorTypeID) ORDER BY IC.itemID,IC.orderIndex",
+        "SELECT IC.itemID,CT.creatorType,C.firstName,C.lastName,C.fieldMode,IC.orderIndex FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) ORDER BY IC.itemID,IC.orderIndex",
         &budget,
         |r| {
             let id = r.get(0)?;
