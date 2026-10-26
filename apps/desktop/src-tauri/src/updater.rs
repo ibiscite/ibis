@@ -350,11 +350,28 @@ fn shorten(text: &str, limit: usize) -> String {
 
 const INSTALL_FAILURE_MESSAGE: &str = "The update could not be installed. Try again later. If Ibis no longer opens, download and reinstall the newest version from GitHub.";
 
-async fn install_update(app: &AppHandle, update: Update, _busy: BusyGuard) {
+/// The native presentation boundary. Mock runtimes replace only OS actions;
+/// download, retained progress, failure decisions and busy ownership stay here.
+trait InstallationUi: tauri::Runtime {
+    fn failed(app: &AppHandle<Self>);
+    fn restart(app: &AppHandle<Self>);
+}
+
+impl InstallationUi for tauri::Wry {
+    fn failed(app: &AppHandle<Self>) {
+        installation_failed(app);
+    }
+
+    fn restart(app: &AppHandle<Self>) {
+        app.restart();
+    }
+}
+
+async fn install_update<R: InstallationUi>(app: &AppHandle<R>, update: Update, _busy: BusyGuard) {
     let attempt = app.state::<Updates>().progress.lock().ok().and_then(|mut p| p.begin());
     let Some(attempt) = attempt else {
         publish_progress(app);
-        installation_failed(app);
+        R::failed(app);
         return;
     };
     publish_progress(app);
@@ -381,22 +398,27 @@ async fn install_update(app: &AppHandle, update: Update, _busy: BusyGuard) {
         .await;
     drop(refresh);
     match result {
-        Ok(()) => app.restart(),
+        Ok(()) => R::restart(app),
         Err(_) => {
             change_progress(app, attempt, None, "failed");
             publish_progress(app);
-            installation_failed(app);
+            R::failed(app);
         }
     }
 }
 
-fn change_progress(app: &AppHandle, attempt: u32, chunk: Option<(usize, Option<u64>)>, phase: &'static str) {
+fn change_progress<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    attempt: u32,
+    chunk: Option<(usize, Option<u64>)>,
+    phase: &'static str,
+) {
     if let Ok(mut progress) = app.state::<Updates>().progress.lock() {
         progress.change(attempt, chunk, phase);
     }
 }
 
-fn publish_progress(app: &AppHandle) {
+fn publish_progress<R: tauri::Runtime>(app: &AppHandle<R>) {
     let snapshot = app
         .state::<Updates>()
         .progress
