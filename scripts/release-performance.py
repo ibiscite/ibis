@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import statistics
 import tempfile
@@ -136,6 +137,8 @@ def result_reader(native):
                 stack.extend(child for child in item if child)
             return values
         try:
+            if root.getState().contains(native.atspi.STATE_DEFUNCT):
+                root = find()
             return read()
         except native.accessibility_error:
             root = find()
@@ -193,7 +196,7 @@ def measure(app, sha):
             library.write_text(smoke.fixture(100000), encoding="utf-8")
             env = smoke.real_app_environment(os.environ, library, folder / "config")
             smoke.answer_update_question(smoke.settings_path("Linux", folder))
-            process = subprocess.Popen([str(app.resolve())], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = subprocess.Popen([str(app.resolve())], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             native.app = process
             def loaded():
                 if process.poll() is not None:
@@ -204,29 +207,47 @@ def measure(app, sha):
             summon, typing, probes = interaction_samples(native)
             smoke.escape_to_hide(native, native.snapshot, "idle picker hidden")
             time.sleep(30)  # Tokio/GLib idle workers retire before the census.
-            before = wakeup_census(process.pid)
-            started = time.monotonic()
-            memory_before = native.memory()
-            time.sleep(10)  # No input or accessibility polling during the idle window.
-            memory_after = native.memory()
-            after = wakeup_census(process.pid)
-            seconds = time.monotonic() - started
+            for attempt in range(2):
+                before = wakeup_census(process.pid)
+                started = time.monotonic()
+                memory_before = native.memory()
+                time.sleep(10)  # No input or accessibility polling during the idle window.
+                memory_after = native.memory()
+                after = wakeup_census(process.pid)
+                seconds = time.monotonic() - started
+                try:
+                    wakeups = wakeup_delta(before, after)
+                    break
+                except smoke.Unavailable:
+                    if attempt:
+                        raise
+                    time.sleep(30)  # One bounded retry after retiring idle workers.
             idle = {"memory_bytes": max(memory_before, memory_after),
-                    "wakeups_per_second": wakeup_delta(before, after) / seconds,
-                    "seconds": seconds, "threads": len(before)}
+                    "wakeups_per_second": wakeups / seconds,
+                    "seconds": seconds, "threads": len(after), "attempts": attempt + 1}
             if process.poll() is not None or idle["memory_bytes"] <= 0:
                 raise AssertionError("Release process unavailable during idle measurement")
             return {"source_sha": sha, "summon_samples_ms": summon, "typing_samples_ms": typing, "idle": idle, "probes": probes}
     finally:
-        if process and process.poll() is None:
-            process.terminate()
+        if process:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)  # This synthetic app owns a new session.
+            except ProcessLookupError:
+                pass
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                process.kill()
+                os.killpg(process.pid, signal.SIGKILL)
                 process.wait(timeout=5)
         if native:
             native.close()
+            # ABBA must not start a new window manager while the old one still owns X11.
+            for helper in (native.editor, native.wm):
+                try:
+                    helper.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    helper.kill()
+                    helper.wait(timeout=5)
 
 
 def paired_measurements(candidate_app, candidate_sha, main_app, main_sha, output):

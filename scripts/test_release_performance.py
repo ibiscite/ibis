@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location("release_performance", Path(__file__).with_name("release-performance.py"))
 perf = importlib.util.module_from_spec(spec)
@@ -158,6 +158,27 @@ class ReleasePerformanceTests(unittest.TestCase):
             reports = [json.loads((root / "reports" / f"{key}.json").read_text()) for key in ("candidate", "main")]
             self.assertNotEqual(reports[0]["executable_sha256"], reports[1]["executable_sha256"])
             self.assertTrue(all(len(report["summon_samples_ms"]) == 20 for report in reports))
+
+
+    def test_launches_are_isolated_and_helpers_exit_before_next_abba_run(self):
+        native = Mock()
+        native.snapshot.return_value = {"visible": True, "nodes": [
+            {"name": "Search references", "focused": True}, {"name": "100,000 references"}]}
+        native.memory.return_value = 1024
+        process = Mock(pid=123)
+        process.poll.return_value = None
+        before, after = {(123, 123, 99): 1}, {(123, 123, 99): 3}
+        with patch.object(perf.smoke, "Linux", return_value=native), \
+             patch.object(perf.subprocess, "Popen", return_value=process) as launch, \
+             patch.object(perf, "interaction_samples", return_value=([1] * 10, [2] * 10, {})), \
+             patch.object(perf.smoke, "escape_to_hide"), patch.object(perf.time, "sleep"), \
+             patch.object(perf.os, "killpg") as kill, patch.object(perf, "wakeup_census", side_effect=(before, after)):
+            result = perf.measure(Path("synthetic-executable"), "a" * 40)
+        self.assertTrue(launch.call_args.kwargs["start_new_session"])
+        kill.assert_called_once_with(123, perf.signal.SIGTERM)
+        native.editor.wait.assert_called_once_with(timeout=5)
+        native.wm.wait.assert_called_once_with(timeout=5)
+        self.assertEqual(len(result["summon_samples_ms"]), 10)
 
 
 if __name__ == "__main__":
