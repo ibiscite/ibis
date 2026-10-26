@@ -12,6 +12,7 @@ pub mod identifier;
 pub mod library;
 pub mod locator_query;
 pub mod model;
+pub mod panic_guard;
 pub mod search;
 pub mod settings;
 pub mod source;

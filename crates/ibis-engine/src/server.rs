@@ -9,7 +9,6 @@ use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     io::{BufRead, Write},
-    panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, mpsc},
     thread,
 };
@@ -200,12 +199,12 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                     if let Some(id) = &job.id {
                         let _ = output.send(progress(id, job.generation, "begin"));
                     }
-                    let result = catch_unwind(AssertUnwindSafe(|| {
+                    let result = ibis_core::panic_guard::attempt(|| {
                         job.cancel.check()?;
                         let result = dispatch(job.method, &job.params, &job.cancel)?;
                         job.cancel.check()?;
                         Ok(result)
-                    }))
+                    })
                     .unwrap_or(Err(EngineError {
                         code: ErrorCode::Internal,
                     }));
@@ -565,6 +564,35 @@ mod tests {
     }
     #[test]
     fn worker_panics_are_fixed_errors_and_other_batch_members_complete() {
+        const CHILD: &str = "IBIS_RPC_PANIC_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "server::tests::worker_panics_are_fixed_errors_and_other_batch_members_complete",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let began = Instant::now();
+            while child.try_wait().unwrap().is_none() {
+                if began.elapsed() > Duration::from_secs(10) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("panic-guard subprocess timed out");
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success());
+            assert!(output.stderr.is_empty(), "caught worker panic reached stderr");
+            assert!(!String::from_utf8_lossy(&output.stdout).contains("synthetic worker failure"));
+            return;
+        }
+
         let dispatch = Arc::new(|_: Method, params: &Value, _: &Cancellation| {
             assert!(params["panic"] != true, "synthetic worker failure");
             Ok(DispatchResult {

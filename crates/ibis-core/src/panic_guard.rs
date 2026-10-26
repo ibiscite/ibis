@@ -1,4 +1,4 @@
-//! Keep contained parser panics private, forwarding unrelated panics unchanged.
+//! Keep contained parser and worker panics private; forward unrelated panics unchanged.
 use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Once;
@@ -15,7 +15,7 @@ impl Drop for Scope {
     }
 }
 
-pub(super) fn attempt<T>(read: impl FnOnce() -> T) -> std::thread::Result<T> {
+pub fn attempt<T>(read: impl FnOnce() -> T) -> std::thread::Result<T> {
     // A prior hook or an unwinding destructor may reenter the loader. Never
     // mutate hooks or wait on our own Once while already handling a panic.
     if std::thread::panicking() {
@@ -23,7 +23,7 @@ pub(super) fn attempt<T>(read: impl FnOnce() -> T) -> std::thread::Result<T> {
     }
     INSTALL.call_once(|| {
         // Stable take_hook/set_hook has an installation gap. Once coordinates
-        // our parser calls, not external hook writers; a later set_hook replaces
+        // our guarded calls, not external hook writers; a later set_hook replaces
         // this dispatcher. Do not claim atomic coexistence with external writers.
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
@@ -151,7 +151,7 @@ mod tests {
             let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
                 .args([
                     "--exact",
-                    "bibtex::panic_guard::tests::parser_hooks_in_subprocesses",
+                    "panic_guard::tests::parser_hooks_in_subprocesses",
                     "--nocapture",
                 ])
                 .env(CHILD, mode)

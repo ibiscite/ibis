@@ -19,7 +19,7 @@
 mod convert;
 mod dates;
 mod lexer;
-mod panic_guard;
+use crate::panic_guard;
 mod resolve;
 
 use std::cell::Cell;
