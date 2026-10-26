@@ -516,6 +516,10 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
   is in progress.
 - **Hover** only tints a row, and only under a moving pointer; a click selects
   [C5], so reaching across rows for Copy never changes what is copied.
+- **List scrolling.** A clicked row stays under the pointer. Remember which row
+  the click chose until it renders, even if a result reset or preview update
+  renders first; only that row consumes the click. Arrow keys take back
+  ownership and reveal the keyboard's row.
 - **After a copy** Ibis hides, focus returns to the previous window and the
   notice appears; a failed insert leaves the citation on the clipboard and
   says why. Pinned, Ibis stays. Escape never asks or unpins.

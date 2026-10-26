@@ -11,7 +11,7 @@
   "apps/desktop/src/platformLooks.test.tsx": 927,
   "brand/build.py": 658,
   "crates/ibis-core/src/bibtex/convert.rs": 1406,
-  "crates/ibis-core/src/bibtex/resolve.rs": 1424,
+  "crates/ibis-core/src/bibtex/resolve.rs": 1321,
   "crates/ibis-core/src/search.rs": 960,
   "crates/ibis-core/src/settings.rs": 1343,
   "crates/ibis-core/src/zotero.rs": 971,
