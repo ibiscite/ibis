@@ -21,12 +21,13 @@ pub(super) struct Store {
     _lock: File,
 }
 impl Store {
-    pub(super) fn open(cache: &Path) -> Result<Self, ClosedError> {
-        let parent = platform::directory(cache).map_err(|_| ClosedError::PrivateStorage)?;
+    pub(super) fn open(cache: &Path, control: &Control) -> Result<Self, ClosedError> {
+        control.check()?;
+        let parent = platform::directory(cache, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
         let root = parent.join(ROOT);
         match std::fs::symlink_metadata(&root) {
-            Ok(_) => platform::secure(&root)?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => platform::create_private(&root)?,
+            Ok(_) => platform::secure(&root, control)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => platform::create_private(&root, control)?,
             Err(_) => return Err(ClosedError::PrivateStorage),
         }
         let mut options = OpenOptions::new();
@@ -45,24 +46,31 @@ impl Store {
             return Err(ClosedError::PrivateStorage);
         }
         lock.try_lock().map_err(|_| ClosedError::StorageInUse)?;
-        platform::exclude_backups(&root)?;
+        platform::exclude_backups(&root, control)?;
         // Only marked candidates in our verified root are ours. Prefix
         // lookalikes, foreign files and symlinks are never traversed/deleted.
         for entry in std::fs::read_dir(&root).map_err(|_| ClosedError::PrivateStorage)? {
+            control.check()?;
             let entry = entry.map_err(|_| ClosedError::PrivateStorage)?;
             if entry.file_name().to_string_lossy().starts_with("copy-")
                 && entry.file_type().is_ok_and(|t| t.is_dir() && !t.is_symlink())
-                && platform::secure(&entry.path()).is_ok()
-                && owned_marker(&entry.path())
             {
-                std::fs::remove_dir_all(entry.path()).map_err(|_| ClosedError::PrivateStorage)?;
+                match platform::secure(&entry.path(), control) {
+                    Ok(()) if owned_marker(&entry.path()) => {
+                        control.check()?;
+                        std::fs::remove_dir_all(entry.path()).map_err(|_| ClosedError::PrivateStorage)?;
+                    }
+                    Err(error @ (ClosedError::Cancelled | ClosedError::TimedOut)) => return Err(error),
+                    _ => (),
+                }
             }
         }
+        control.check()?;
         Ok(Self { root, _lock: lock })
     }
 
     pub(super) fn read(&self, data: &Path, control: &Control) -> Result<ClosedSnapshot, ClosedError> {
-        self.read_with(data, control, &mut || Ok(()), &mut || platform::closed())
+        self.read_with(data, control, &mut || Ok(()), &mut || platform::closed(control))
     }
 
     // Hooks are private and used by synthetic tests to force exact race points.
@@ -75,7 +83,7 @@ impl Store {
     ) -> Result<ClosedSnapshot, ClosedError> {
         control.check()?;
         check_closed()?;
-        let directory = platform::directory(data)?;
+        let directory = platform::directory(data, control)?;
         if directory.starts_with(&self.root) || self.root.starts_with(&directory) {
             return Err(ClosedError::UnsafeSource);
         }
@@ -121,8 +129,8 @@ impl Store {
             .checked_mul(2)
             .and_then(|n| n.checked_add(64 * 1024 * 1024))
             .ok_or(ClosedError::TooLarge)?;
-        platform::space(&self.root, needed)?;
-        let copy = Copy::new(&self.root)?;
+        platform::space(&self.root, needed, control)?;
+        let copy = Copy::new(&self.root, control)?;
         // WAL is copied before main. We make no claim to concurrent-copy
         // support: process checks and source validation must all remain quiet.
         for index in [1, 2, 0] {
@@ -194,7 +202,8 @@ impl Copy {
         self.path.join("zotero.sqlite")
     }
 
-    fn new(root: &Path) -> Result<Self, ClosedError> {
+    fn new(root: &Path, control: &Control) -> Result<Self, ClosedError> {
+        control.check()?;
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let stamp = SystemTime::now()
@@ -206,9 +215,10 @@ impl Copy {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        platform::create_private(&path)?;
+        platform::create_private(&path, control)?;
         let result = Self { path };
-        platform::exclude_backups(&result.path)?;
+        platform::exclude_backups(&result.path, control)?;
+        control.check()?;
         let mut marker = private_file(&result.path.join(".ibis-copy"))?;
         marker.write_all(MARKER).map_err(|_| ClosedError::PrivateStorage)?;
         // The cleanup proof must reach stable storage before any library file.
@@ -222,6 +232,7 @@ impl Copy {
                 .and_then(|d| d.sync_all())
                 .map_err(|_| ClosedError::PrivateStorage)?;
         }
+        control.check()?;
         Ok(result)
     }
 }
@@ -263,7 +274,7 @@ impl Sources {
     }
 
     fn validate(&mut self, input: &Path, data: &Path, copy: &Path, control: &Control) -> Result<(), ClosedError> {
-        if platform::directory(input)? != data {
+        if platform::directory(input, control)? != data {
             return Err(ClosedError::Changing);
         }
         for (i, source) in self.files.iter_mut().enumerate() {

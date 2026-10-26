@@ -1,13 +1,14 @@
 //! Closed-only Zotero reader. Source files are read as bytes; SQLite opens only
 //! an owner-only disposable copy. No source lock is taken, including at startup.
 //!
-//! Construct one reader at startup to remove stale private copies. Keep it for
-//! subsequent loads; a private-root lock prevents another reader cleaning an
-//! active copy. Errors and Debug output never include paths or item text.
+//! Keep one reader for subsequent loads. Its first read removes stale private
+//! copies under the same cancellation/deadline control as acquisition; a
+//! private-root lock prevents another reader cleaning an active copy. Errors
+//! and Debug output never include paths or item text.
 
 use std::collections::BTreeMap;
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
 use std::time::{Duration, Instant};
 
 use thiserror::Error;
@@ -57,6 +58,16 @@ pub enum ClosedError {
     TimedOut,
     #[error("reading the closed Zotero database was cancelled")]
     Cancelled,
+}
+
+impl ClosedError {
+    // Native context must not hide the caller's reason for stopping.
+    fn context(self, fallback: Self) -> Self {
+        match self {
+            Self::Cancelled | Self::TimedOut => self,
+            _ => fallback,
+        }
+    }
 }
 
 /// Neutral bibliographic data accepted by the single Zotero mapper (#1195).
@@ -146,9 +157,11 @@ private_debug!(
     ClosedSnapshot
 );
 
-/// One owner of the private copy root. Opening it performs startup cleanup.
+/// One owner of the private copy root, initialized during the first read.
 pub struct ClosedReader {
-    store: private_copy::Store,
+    cache: PathBuf,
+    store: OnceLock<private_copy::Store>,
+    initializing: Mutex<()>,
 }
 
 impl ClosedReader {
@@ -157,7 +170,9 @@ impl ClosedReader {
     /// Ibis creates and verifies its own child with backup exclusion.
     pub fn new(cache: &Path) -> Result<Self, ClosedError> {
         Ok(Self {
-            store: private_copy::Store::open(cache)?,
+            cache: cache.to_owned(),
+            store: OnceLock::new(),
+            initializing: Mutex::new(()),
         })
     }
 
@@ -165,17 +180,27 @@ impl ClosedReader {
         self.read_cancellable(data, Arc::new(|| false))
     }
 
-    /// Cancellation is polled during copying and private SQLite queries.
+    /// One 60-second budget covers private-store setup, native helpers, copying
+    /// and private SQLite queries. Cancellation also interrupts helper waits.
     pub fn read_cancellable(
         &self,
         data: &Path,
         cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Result<ClosedSnapshot, ClosedError> {
-        let control = Control {
-            deadline: Instant::now() + Duration::from_secs(60),
-            cancelled,
-        };
-        self.store.read(data, &control)
+        let control = Control::new(cancelled);
+        self.read_with_control(data, &control)
+    }
+
+    fn read_with_control(&self, data: &Path, control: &Control) -> Result<ClosedSnapshot, ClosedError> {
+        control.check()?;
+        if self.store.get().is_none() {
+            let _permit = control.lock(&self.initializing, ClosedError::PrivateStorage)?;
+            if self.store.get().is_none() {
+                let store = private_copy::Store::open(&self.cache, control)?;
+                self.store.set(store).map_err(|_| ClosedError::PrivateStorage)?;
+            }
+        }
+        self.store.get().ok_or(ClosedError::PrivateStorage)?.read(data, control)
     }
 }
 
@@ -185,6 +210,13 @@ struct Control {
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 impl Control {
+    fn new(cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        Self {
+            deadline: Instant::now() + Duration::from_secs(60),
+            cancelled,
+        }
+    }
+
     fn check(&self) -> Result<(), ClosedError> {
         if (self.cancelled)() {
             Err(ClosedError::Cancelled)
@@ -192,6 +224,17 @@ impl Control {
             Err(ClosedError::TimedOut)
         } else {
             Ok(())
+        }
+    }
+
+    fn lock<'a, T>(&self, mutex: &'a Mutex<T>, poisoned: ClosedError) -> Result<MutexGuard<'a, T>, ClosedError> {
+        loop {
+            self.check()?;
+            match mutex.try_lock() {
+                Ok(permit) => return Ok(permit),
+                Err(TryLockError::Poisoned(_)) => return Err(poisoned),
+                Err(TryLockError::WouldBlock) => std::thread::sleep(Duration::from_millis(5)),
+            }
         }
     }
 }

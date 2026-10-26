@@ -26,16 +26,69 @@ pub(super) fn edit(dir: &Path, sql: &str) {
 }
 
 pub(super) fn control() -> Control {
-    Control {
-        deadline: Instant::now() + Duration::from_secs(30),
-        cancelled: Arc::new(|| false),
-    }
+    Control::new(Arc::new(|| false))
 }
 
 pub(super) fn read_fixture(dir: &Path) -> Result<ClosedSnapshot, ClosedError> {
     let scratch = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic scratch"));
-    let store = private_copy::Store::open(scratch.path())?;
-    store.read_with(dir, &control(), &mut || Ok(()), &mut || Ok(()))
+    let control = control();
+    let store = private_copy::Store::open(scratch.path(), &control)?;
+    store.read_with(dir, &control, &mut || Ok(()), &mut || Ok(()))
+}
+
+#[test]
+fn cancelled_first_read_does_not_initialize_private_store() {
+    let cache = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic cache"));
+    let reader = ClosedReader::new(cache.path()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        reader
+            .read_cancellable(Path::new("synthetic-unused-source"), Arc::new(|| true))
+            .err(),
+        Some(ClosedError::Cancelled)
+    );
+    assert!(
+        !cache.path().join("ibis-zotero-closed").exists(),
+        "cancelled acquisition must not initialize storage before its control exists"
+    );
+}
+
+#[test]
+fn expired_first_read_does_not_initialize_private_store() {
+    let cache = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic cache"));
+    let reader = ClosedReader::new(cache.path()).unwrap_or_else(|e| panic!("{e}"));
+    let mut control = control();
+    control.deadline = Instant::now();
+    assert_eq!(
+        reader
+            .read_with_control(Path::new("synthetic-unused-source"), &control)
+            .err(),
+        Some(ClosedError::TimedOut)
+    );
+    assert!(!cache.path().join("ibis-zotero-closed").exists());
+    assert!(reader.store.get().is_none());
+    assert!(reader.initializing.try_lock().is_ok());
+}
+
+#[test]
+fn cancellation_while_waiting_for_store_initialization_leaves_it_uninitialized() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let cache = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic cache"));
+    let reader = ClosedReader::new(cache.path()).unwrap_or_else(|e| panic!("{e}"));
+    let held = reader.initializing.lock().unwrap_or_else(|_| panic!("setup permit"));
+    let polls = Arc::new(AtomicUsize::new(0));
+    let observed = polls.clone();
+    let control = Control::new(Arc::new(move || observed.fetch_add(1, Ordering::SeqCst) >= 3));
+    assert_eq!(
+        reader
+            .read_with_control(Path::new("synthetic-unused-source"), &control)
+            .err(),
+        Some(ClosedError::Cancelled)
+    );
+    assert!(polls.load(Ordering::SeqCst) >= 4);
+    assert!(!cache.path().join("ibis-zotero-closed").exists());
+    assert!(reader.store.get().is_none());
+    drop(held);
+    assert!(reader.initializing.try_lock().is_ok());
 }
 
 #[test]

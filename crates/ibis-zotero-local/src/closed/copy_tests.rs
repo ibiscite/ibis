@@ -13,10 +13,22 @@ fn candidates(parent: &Path) -> usize {
 }
 
 #[test]
+fn cancelled_private_store_setup_releases_ownership_for_a_later_read() {
+    let scratch = scratch();
+    let root = scratch.path().join(ROOT);
+    let cancelled = Control::new(std::sync::Arc::new(move || root.exists()));
+    assert_eq!(
+        Store::open(scratch.path(), &cancelled).err(),
+        Some(ClosedError::Cancelled)
+    );
+    assert!(Store::open(scratch.path(), &control()).is_ok());
+}
+
+#[test]
 fn exactly_three_mutating_attempts_then_refusal_and_cleanup() {
     let source = fixture(10);
     let scratch = scratch();
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     let mut attempts = 0;
     let outcome = store.read_with(
         source.path(),
@@ -40,7 +52,7 @@ fn exactly_three_mutating_attempts_then_refusal_and_cleanup() {
 fn retries_a_changed_copy_then_reads_the_stable_candidate() {
     let source = fixture(10);
     let scratch = scratch();
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     let mut attempts = 0;
     let outcome = store.read_with(
         source.path(),
@@ -74,7 +86,7 @@ fn retries_a_changed_copy_then_reads_the_stable_candidate() {
 fn process_starting_during_copy_refuses_and_does_not_block_source_writes() {
     let source = fixture(10);
     let scratch = scratch();
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     let mut checks = 0;
     let result = store.read_with(
         source.path(),
@@ -100,7 +112,7 @@ fn process_starting_during_copy_refuses_and_does_not_block_source_writes() {
 fn cancellation_removes_copy_and_process_check_failure_does_not_create_one() {
     let source = fixture(10);
     let scratch = scratch();
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let check = cancelled.clone();
     let mut control = control();
@@ -130,19 +142,21 @@ fn cancellation_removes_copy_and_process_check_failure_does_not_create_one() {
 fn startup_cleans_only_marked_private_copies_and_preserves_active_root() {
     let scratch = scratch();
     let root = scratch.path().join(ROOT);
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
-    let copy = Copy::new(&root).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
+    let copy = Copy::new(&root, &control()).unwrap_or_else(|e| panic!("{e}"));
     let leftover = copy.path.clone();
     std::mem::forget(copy); // synthetic crash leaves the marked candidate.
     let lookalike = root.join("copy-not-ours");
     std::fs::create_dir(&lookalike).unwrap_or_else(|_| panic!("lookalike"));
     assert_eq!(
-        Store::open(scratch.path()).err().map(|_| ClosedError::StorageInUse),
+        Store::open(scratch.path(), &control())
+            .err()
+            .map(|_| ClosedError::StorageInUse),
         Some(ClosedError::StorageInUse)
     );
     assert!(leftover.exists());
     drop(store);
-    let _store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let _store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     assert!(!leftover.exists());
     assert!(lookalike.exists());
 }
@@ -150,8 +164,8 @@ fn startup_cleans_only_marked_private_copies_and_preserves_active_root() {
 #[test]
 fn backup_marker_and_owner_only_modes_are_set_before_library_data() {
     let scratch = scratch();
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
-    let copy = Copy::new(&store.root).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
+    let copy = Copy::new(&store.root, &control()).unwrap_or_else(|e| panic!("{e}"));
     assert!(
         std::fs::read(copy.path.join("CACHEDIR.TAG"))
             .unwrap_or_default()
@@ -189,9 +203,12 @@ fn source_symlinks_fifo_and_symlinked_private_roots_are_refused() {
     let scratch = scratch();
     let alias = scratch.path().join(ROOT);
     symlink(source.path(), &alias).unwrap_or_else(|_| panic!("symlink root"));
-    assert_eq!(Store::open(scratch.path()).err(), Some(ClosedError::PrivateStorage));
+    assert_eq!(
+        Store::open(scratch.path(), &control()).err(),
+        Some(ClosedError::PrivateStorage)
+    );
     let scratch2 = self::scratch();
-    let store = Store::open(scratch2.path()).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch2.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     symlink(
         source.path().join("zotero.sqlite"),
         source.path().join("zotero.sqlite-wal"),
@@ -228,7 +245,7 @@ fn oversized_sources_refuse_before_copying() {
         .unwrap_or_else(|_| panic!("synthetic sparse length"));
     drop(f);
     let scratch = scratch();
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
         store
             .read_with(source.path(), &control(), &mut || panic!("must not copy"), &mut || Ok(
@@ -277,7 +294,10 @@ fn reads_committed_wal_only_rows_without_touching_source_database() {
 #[test]
 fn free_space_check_refuses_impossible_allocation() {
     let scratch = scratch();
-    assert_eq!(platform::space(scratch.path(), u64::MAX), Err(ClosedError::NoSpace));
+    assert_eq!(
+        platform::space(scratch.path(), u64::MAX, &control()),
+        Err(ClosedError::NoSpace)
+    );
 }
 
 #[cfg(unix)]
@@ -341,7 +361,7 @@ fn synthetic_lock_holder() {
 fn replacing_or_adding_a_sidecar_invalidates_the_candidate() {
     let source = fixture(10);
     let scratch = scratch();
-    let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+    let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     let mut attempts = 0;
     let result = store.read_with(
         source.path(),
@@ -369,7 +389,7 @@ fn source_replacement_and_restored_mtime_changes_are_detected() {
     for replace in [true, false] {
         let source = fixture(10);
         let scratch = scratch();
-        let store = Store::open(scratch.path()).unwrap_or_else(|e| panic!("{e}"));
+        let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
         let mut attempts = 0;
         let result = store.read_with(
             source.path(),
@@ -423,7 +443,7 @@ fn native_process_guard_refuses_a_synthetic_zotero_named_process() {
         .unwrap_or_else(|_| panic!("synthetic process"));
     let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let observed = loop {
-        let result = platform::closed();
+        let result = platform::closed(&control());
         if result == Err(ClosedError::Running) || std::time::Instant::now() >= until {
             break result;
         }

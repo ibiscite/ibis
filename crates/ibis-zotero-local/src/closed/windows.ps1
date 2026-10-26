@@ -1,5 +1,8 @@
 # Runs only with Windows PowerShell 5.1's .NET Framework APIs. Never print paths,
 # exceptions or library data. Paths arrive as values, never executable text.
+# Fixed protocol bytes let Rust distinguish process startup from script/action
+# execution without retaining native exception text or any path.
+[Console]::Out.Write([char] 1)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -52,6 +55,7 @@ $owned = $false
 $success = $false
 try {
     $path = $env:IBIS_CLOSED_PATH
+    [Console]::Out.Write([char] 2)
     switch ($env:IBIS_CLOSED_ACTION) {
         'closed' {
             $all = @(Get-Process -ErrorAction Stop)

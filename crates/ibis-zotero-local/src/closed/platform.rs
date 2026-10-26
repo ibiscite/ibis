@@ -1,28 +1,29 @@
 //! Native boundaries used only by the closed reader. No source lock is acquired.
-use super::ClosedError;
+use super::{ClosedError, Control};
 use std::fs::{File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[cfg(windows)]
 const SCRIPT: &str = include_str!("windows.ps1");
 
 /// Conservative: refuse every running Zotero, even a different profile. An
 /// incomplete/failed process enumeration is never evidence that Zotero is closed.
-pub(super) fn closed() -> Result<(), ClosedError> {
+pub(super) fn closed(control: &Control) -> Result<(), ClosedError> {
+    control.check()?;
     #[cfg(unix)]
     {
         if std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists() {
             return Err(ClosedError::ProcessCheck);
         }
-        let bytes = output(Command::new("/bin/ps").args(["-A", "-ww", "-o", "pid=,comm="]))?;
+        let bytes = output(Command::new("/bin/ps").args(["-A", "-ww", "-o", "pid=,comm="]), control)?;
         process_list(&bytes, std::process::id())
     }
     #[cfg(windows)]
     {
-        match windows("closed", Path::new(""), 0)?.as_slice() {
+        match windows("closed", Path::new(""), 0, control)?.as_slice() {
             b"closed" => Ok(()),
             b"running" => Err(ClosedError::Running),
             _ => Err(ClosedError::ProcessCheck),
@@ -71,62 +72,91 @@ fn zotero_process(name: &str) -> bool {
 
 /// Bounded native-helper output stays private. Read concurrently so a full pipe
 /// cannot turn process enumeration or locality checking into an unbounded wait.
-fn output(command: &mut Command) -> Result<Vec<u8>, ClosedError> {
+fn output(command: &mut Command, control: &Control) -> Result<Vec<u8>, ClosedError> {
     const LIMIT: u64 = 4 * 1024 * 1024;
+    control.check()?;
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|_| ClosedError::ProcessCheck)?;
+        .map_err(|_| {
+            let error = control.check().err().unwrap_or(ClosedError::ProcessCheck);
+            #[cfg(test)]
+            report_failure(error, "spawn");
+            error
+        })?;
     let stdout = child.stdout.take().ok_or(ClosedError::ProcessCheck)?;
     let reader = std::thread::spawn(move || {
         let mut bytes = Vec::new();
         stdout.take(LIMIT + 1).read_to_end(&mut bytes).map(|_| bytes)
     });
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let success = loop {
+    let outcome = loop {
+        if let Err(error) = control.check() {
+            break Err(error);
+        }
         match child.try_wait() {
-            Ok(Some(status)) => {
-                #[cfg(test)]
-                if !status.success() {
-                    eprintln!("closed native helper exit: {:?}", status.code());
-                }
-                break status.success();
-            }
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
-            outcome => {
-                #[cfg(test)]
-                eprintln!(
-                    "closed native helper failure: {}",
-                    if outcome.is_err() { "wait" } else { "deadline" }
-                );
-                #[cfg(not(test))]
-                let _ = outcome;
-                let _ = child.kill();
-                let _ = child.wait();
-                break false;
-            }
+            Ok(Some(status)) => break Ok(status.success()),
+            Ok(None) => std::thread::sleep(Duration::from_millis(5)),
+            Err(_) => break Err(ClosedError::ProcessCheck),
         }
     };
-    let bytes = reader
-        .join()
-        .map_err(|_| ClosedError::ProcessCheck)?
-        .map_err(|_| ClosedError::ProcessCheck)?;
-    if !success || bytes.len() as u64 > LIMIT {
-        return Err(ClosedError::ProcessCheck);
+    if outcome.is_err() {
+        // Reap before releasing the single-flight permit or returning a stop.
+        let _ = child.kill();
+        let _ = child.wait();
     }
-    Ok(bytes)
+    let bytes = reader.join().ok().and_then(Result::ok);
+    let result = outcome.and_then(|success| {
+        control.check()?;
+        let bytes = bytes.as_ref().ok_or(ClosedError::ProcessCheck)?;
+        if !success || bytes.len() as u64 > LIMIT {
+            Err(ClosedError::ProcessCheck)
+        } else {
+            Ok(())
+        }
+    });
+    #[cfg(test)]
+    if let Err(error) = result {
+        let phase = match bytes.as_deref().unwrap_or_default() {
+            [1, 2, ..] => "action",
+            [1, ..] => "script-entry",
+            _ => "spawn",
+        };
+        report_failure(error, phase);
+    }
+    result?;
+    bytes.ok_or(ClosedError::ProcessCheck)
 }
 
-pub(super) fn directory(path: &Path) -> Result<PathBuf, ClosedError> {
+#[cfg(test)]
+fn report_failure(error: ClosedError, phase: &str) {
+    let reason = match error {
+        ClosedError::Cancelled => "cancelled",
+        ClosedError::TimedOut => "deadline",
+        _ => "native",
+    };
+    eprintln!("closed native helper stopped: phase={phase} reason={reason}");
+}
+
+#[cfg(any(windows, test))]
+fn gated_output(command: &mut Command, control: &Control, gate: &std::sync::Mutex<()>) -> Result<Vec<u8>, ClosedError> {
+    let _permit = control.lock(gate, ClosedError::ProcessCheck).inspect_err(|_error| {
+        #[cfg(test)]
+        report_failure(*_error, "queue");
+    })?;
+    output(command, control)
+}
+
+pub(super) fn directory(path: &Path, control: &Control) -> Result<PathBuf, ClosedError> {
+    control.check()?;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         super::mounts::resolved(path)
     }
     #[cfg(windows)]
     {
-        windows("local", path, 0).map_err(|_| ClosedError::UnsafeSource)?;
+        windows("local", path, 0, control).map_err(|e| e.context(ClosedError::UnsafeSource))?;
         Ok(path.to_owned())
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
@@ -231,7 +261,8 @@ pub(super) fn same(a: &Metadata, b: &Metadata) -> bool {
     a.len() == b.len() && a.modified().ok().is_some() && a.modified().ok() == b.modified().ok()
 }
 
-pub(super) fn create_private(path: &Path) -> Result<(), ClosedError> {
+pub(super) fn create_private(path: &Path, control: &Control) -> Result<(), ClosedError> {
+    control.check()?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -240,12 +271,12 @@ pub(super) fn create_private(path: &Path) -> Result<(), ClosedError> {
             .create(path)
             .map_err(|_| ClosedError::PrivateStorage)?;
         #[cfg(target_os = "macos")]
-        clear_inherited_acl(path)?;
-        secure(path)?;
+        clear_inherited_acl(path, control)?;
+        secure(path, control)?;
     }
     #[cfg(windows)]
     {
-        windows("create", path, 0).map_err(|_| ClosedError::PrivateStorage)?;
+        windows("create", path, 0, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
     }
     #[cfg(not(any(unix, windows)))]
     return Err(ClosedError::PrivateStorage);
@@ -253,13 +284,14 @@ pub(super) fn create_private(path: &Path) -> Result<(), ClosedError> {
 }
 
 #[cfg(target_os = "macos")]
-fn clear_inherited_acl(path: &Path) -> Result<(), ClosedError> {
-    output(Command::new("/bin/chmod").args(["-h", "-N"]).arg(path))
+fn clear_inherited_acl(path: &Path, control: &Control) -> Result<(), ClosedError> {
+    output(Command::new("/bin/chmod").args(["-h", "-N"]).arg(path), control)
         .map(|_| ())
-        .map_err(|_| ClosedError::PrivateStorage)
+        .map_err(|e| e.context(ClosedError::PrivateStorage))
 }
 
-pub(super) fn secure(path: &Path) -> Result<(), ClosedError> {
+pub(super) fn secure(path: &Path, control: &Control) -> Result<(), ClosedError> {
+    control.check()?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -277,20 +309,21 @@ pub(super) fn secure(path: &Path) -> Result<(), ClosedError> {
         // Darwin extended ACLs can grant access despite mode0700. Refuse any
         // existing ACL; only freshly created empty directories are stripped.
         // -b escapes filename newlines, so an ACL-free listing has one line.
-        let report =
-            output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(path)).map_err(|_| ClosedError::PrivateStorage)?;
+        let report = output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(path), control)
+            .map_err(|e| e.context(ClosedError::PrivateStorage))?;
         if report.split(|b| *b == b'\n').filter(|line| !line.is_empty()).count() != 1 {
             return Err(ClosedError::PrivateStorage);
         }
     }
     #[cfg(windows)]
     {
-        windows("private", path, 0).map_err(|_| ClosedError::PrivateStorage)?;
+        windows("private", path, 0, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
     }
     Ok(())
 }
 
-pub(super) fn exclude_backups(path: &Path) -> Result<(), ClosedError> {
+pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), ClosedError> {
+    control.check()?;
     // Standard cachedir signature: recognized by Unix backup tools. macOS also
     // gets Time Machine's native exclusion; Windows root is restricted to TEMP.
     use std::io::Write;
@@ -331,11 +364,12 @@ pub(super) fn exclude_backups(path: &Path) -> Result<(), ClosedError> {
     )
     .map_err(|_| ClosedError::PrivateStorage)?;
     #[cfg(windows)]
-    windows("backup", path, 0).map_err(|_| ClosedError::PrivateStorage)?;
+    windows("backup", path, 0, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
     Ok(())
 }
 
-pub(super) fn space(path: &Path, needed: u64) -> Result<(), ClosedError> {
+pub(super) fn space(path: &Path, needed: u64, control: &Control) -> Result<(), ClosedError> {
+    control.check()?;
     #[cfg(unix)]
     {
         let fs = rustix::fs::statvfs(path).map_err(|_| ClosedError::NoSpace)?;
@@ -345,7 +379,7 @@ pub(super) fn space(path: &Path, needed: u64) -> Result<(), ClosedError> {
     }
     #[cfg(windows)]
     {
-        windows("space", path, needed).map_err(|_| ClosedError::NoSpace)?;
+        windows("space", path, needed, control).map_err(|e| e.context(ClosedError::NoSpace))?;
     }
     Ok(())
 }
@@ -360,8 +394,9 @@ fn drive_path(path: &Path) -> bool {
 }
 
 #[cfg(windows)]
-fn windows(action: &str, path: &Path, needed: u64) -> Result<Vec<u8>, ClosedError> {
+fn windows(action: &str, path: &Path, needed: u64, control: &Control) -> Result<Vec<u8>, ClosedError> {
     use std::os::windows::process::CommandExt;
+    static GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let system = std::env::var_os("SystemRoot").ok_or(ClosedError::ProcessCheck)?;
     if !drive_path(Path::new(&system)) {
         return Err(ClosedError::ProcessCheck);
@@ -373,8 +408,13 @@ fn windows(action: &str, path: &Path, needed: u64) -> Result<Vec<u8>, ClosedErro
         .env("IBIS_CLOSED_SPACE", needed.to_string())
         .creation_flags(0x0800_0000);
     #[cfg(test)]
-    let started = Instant::now();
-    let result = output(&mut cmd);
+    let started = std::time::Instant::now();
+    let result = gated_output(&mut cmd, control, &GATE).and_then(|bytes| {
+        bytes
+            .strip_prefix(&[1, 2])
+            .map(<[u8]>::to_vec)
+            .ok_or(ClosedError::ProcessCheck)
+    });
     #[cfg(test)]
     if result.is_err() {
         eprintln!(
@@ -387,6 +427,137 @@ fn windows(action: &str, path: &Path, needed: u64) -> Result<Vec<u8>, ClosedErro
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::closed::tests::control;
+    use std::sync::{Arc, Mutex};
+
+    fn synthetic_helper(root: &Path) -> Command {
+        let mut command = Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")));
+        command
+            .args([
+                "--exact",
+                "closed::platform::tests::synthetic_native_helper",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("IBIS_TEST_CLOSED_NATIVE_ROOT", root);
+        command
+    }
+
+    #[test]
+    #[ignore = "subprocess helper; parent creates only invented temporary files"]
+    fn synthetic_native_helper() {
+        let Some(root) = std::env::var_os("IBIS_TEST_CLOSED_NATIVE_ROOT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let held = File::create(root.join("held")).unwrap_or_else(|_| panic!("synthetic held file"));
+        held.try_lock().unwrap_or_else(|_| panic!("synthetic child lock"));
+        std::fs::write(root.join("ready"), b"ready").unwrap_or_else(|_| panic!("synthetic child ready"));
+        std::thread::sleep(Duration::from_secs(90));
+        drop(held);
+    }
+
+    #[test]
+    fn expired_native_call_does_not_spawn_and_releases_its_permit() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
+        let gate = Mutex::new(());
+        let mut expired = control();
+        expired.deadline = std::time::Instant::now();
+        assert_eq!(
+            gated_output(&mut synthetic_helper(root.path()), &expired, &gate).err(),
+            Some(ClosedError::TimedOut)
+        );
+        assert!(!root.path().join("ready").exists());
+        assert!(gate.try_lock().is_ok());
+    }
+
+    #[test]
+    fn cancelled_native_permit_wait_never_spawns_a_second_child() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
+        let gate = Mutex::new(());
+        let held = gate.lock().unwrap_or_else(|_| panic!("native permit"));
+        let polls = Arc::new(AtomicUsize::new(0));
+        let observed = polls.clone();
+        let cancelled = Control::new(Arc::new(move || observed.fetch_add(1, Ordering::SeqCst) >= 2));
+        assert_eq!(
+            gated_output(&mut synthetic_helper(root.path()), &cancelled, &gate).err(),
+            Some(ClosedError::Cancelled)
+        );
+        assert!(polls.load(Ordering::SeqCst) >= 3);
+        assert!(!root.path().join("ready").exists());
+        assert!(gate.try_lock().is_err());
+        drop(held);
+        assert!(gate.try_lock().is_ok());
+    }
+
+    #[test]
+    fn queued_native_wait_spends_the_callers_deadline_without_spawning() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
+        let gate = Mutex::new(());
+        let held = gate.lock().unwrap_or_else(|_| panic!("native permit"));
+        let mut expired = control();
+        expired.deadline = std::time::Instant::now() + Duration::from_millis(20);
+        assert_eq!(
+            gated_output(&mut synthetic_helper(root.path()), &expired, &gate).err(),
+            Some(ClosedError::TimedOut)
+        );
+        assert!(!root.path().join("ready").exists());
+        assert!(gate.try_lock().is_err());
+        drop(held);
+        assert!(gate.try_lock().is_ok());
+    }
+
+    #[test]
+    fn running_native_child_is_cancelled_reaped_and_releases_its_permit() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
+        let ready = root.path().join("ready");
+        let cancelled = Control::new(Arc::new(move || ready.exists()));
+        let gate = Mutex::new(());
+        assert_eq!(
+            gated_output(&mut synthetic_helper(root.path()), &cancelled, &gate).err(),
+            Some(ClosedError::Cancelled)
+        );
+        assert!(root.path().join("ready").exists(), "cancellation follows child entry");
+        let held = File::open(root.path().join("held")).unwrap_or_else(|_| panic!("synthetic child lock file"));
+        assert!(held.try_lock().is_ok(), "return must follow child termination");
+        assert!(gate.try_lock().is_ok());
+    }
+
+    #[test]
+    fn running_native_child_uses_the_callers_deadline_and_releases_its_permit() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
+        let gate = Mutex::new(());
+        let mut expired = control();
+        expired.deadline = std::time::Instant::now() + Duration::from_millis(100);
+        assert_eq!(
+            gated_output(&mut synthetic_helper(root.path()), &expired, &gate).err(),
+            Some(ClosedError::TimedOut)
+        );
+        assert!(gate.try_lock().is_ok());
+    }
+
+    #[test]
+    fn native_permit_is_released_after_spawn_failure_and_success() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
+        let gate = Mutex::new(());
+        assert_eq!(
+            gated_output(
+                &mut Command::new(root.path().join("missing-executable")),
+                &control(),
+                &gate
+            )
+            .err(),
+            Some(ClosedError::ProcessCheck)
+        );
+        assert!(gate.try_lock().is_ok());
+        let mut success = Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")));
+        success.arg("--list");
+        assert!(gated_output(&mut success, &control(), &gate).is_ok());
+        assert!(gate.try_lock().is_ok());
+    }
+
     #[cfg(unix)]
     #[test]
     fn incomplete_or_malformed_process_lists_are_not_closed() {
@@ -436,9 +607,12 @@ mod macos_acl_tests {
         assert!(status.success());
         let link = root.path().join("replaced");
         std::os::unix::fs::symlink(&target, &link).unwrap_or_else(|_| panic!("synthetic ACL link"));
-        let _ = clear_inherited_acl(&link);
-        let report =
-            output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(&target)).unwrap_or_else(|e| panic!("{e}"));
+        let _ = clear_inherited_acl(&link, &crate::closed::tests::control());
+        let report = output(
+            Command::new("/bin/ls").args(["-lde", "-b"]).arg(&target),
+            &crate::closed::tests::control(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(report.split(|b| *b == b'\n').filter(|l| !l.is_empty()).count(), 2);
     }
 
@@ -454,8 +628,12 @@ mod macos_acl_tests {
             .unwrap_or_else(|_| panic!("synthetic inherited ACL"));
         assert!(status.success());
         let child = parent.path().join("private");
-        create_private(&child).unwrap_or_else(|e| panic!("{e}"));
-        let report = output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(&child)).unwrap_or_else(|e| panic!("{e}"));
+        create_private(&child, &crate::closed::tests::control()).unwrap_or_else(|e| panic!("{e}"));
+        let report = output(
+            Command::new("/bin/ls").args(["-lde", "-b"]).arg(&child),
+            &crate::closed::tests::control(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(report.split(|b| *b == b'\n').filter(|line| !line.is_empty()).count(), 1);
         // Existing roots with an unexpected ACL are refused, never repaired.
         let status = Command::new("/bin/chmod")
@@ -466,7 +644,10 @@ mod macos_acl_tests {
             .status()
             .unwrap_or_else(|_| panic!("synthetic existing ACL"));
         assert!(status.success());
-        assert_eq!(secure(&child), Err(ClosedError::PrivateStorage));
+        assert_eq!(
+            secure(&child, &crate::closed::tests::control()),
+            Err(ClosedError::PrivateStorage)
+        );
     }
 }
 
@@ -481,7 +662,10 @@ mod cache_tag_tests {
         std::fs::write(&target, b"synthetic sentinel").unwrap_or_else(|_| panic!("synthetic sentinel"));
         std::os::unix::fs::symlink(&target, root.path().join("CACHEDIR.TAG"))
             .unwrap_or_else(|_| panic!("synthetic tag link"));
-        assert_eq!(exclude_backups(root.path()), Err(ClosedError::PrivateStorage));
+        assert_eq!(
+            exclude_backups(root.path(), &crate::closed::tests::control()),
+            Err(ClosedError::PrivateStorage)
+        );
         assert_eq!(std::fs::read(target).unwrap_or_default(), b"synthetic sentinel");
     }
 }
