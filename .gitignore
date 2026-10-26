@@ -18,8 +18,5 @@ node_modules/
 /.claude/worktrees/
 __pycache__/
 
-# nix build output link
-/result
-
 # Public website build output
 /website/dist/

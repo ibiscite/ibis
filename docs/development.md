@@ -17,7 +17,7 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 
 - **Type**, exactly one on every issue: `type:bug`, `type:feature`, `type:task` (tests, CI, build, performance, refactoring, maintenance) or `type:docs`.
 - `status:needs-maintainer` marks a reserved decision or something needing the maintainer's own hands; `tracking` marks the tracking issue; `good first issue` and `help wanted` invite outside help.
-- Area, platform and other status labels are optional; add one only when it helps someone find the issue. The allowed names are `LABELS` in `scripts/hygiene.mjs`.
+- Area, platform and other status labels are optional; add one only when it helps someone find the issue.
 - Release Please and Dependabot add their own labels; leave them alone. Pull requests need no labels: the title's type says it. There are no priority labels: the milestone and the order of the Queue say what comes first.
 
 ### Milestones
@@ -54,8 +54,8 @@ Keep the body current (Now and Queue), with at most five items per lane. Decisio
 
 - One short-lived branch per pull request from `origin/main`, named `<type>/<issue>-<short-name>` where possible, for example `feat/22-setup-library`.
 - One writer per worktree: `git fetch origin main && git worktree add ../wt/<name> -b <branch> origin/main`. Remove the worktree after merging.
-- Long-lived branches: `main`, the bots' `release-please--*` and `dependabot/*`, and `evidence`, a data branch where CI publishes synthetic native screenshots (`scripts/publish-evidence.mjs`); never open pull requests from `evidence` or delete it.
-- Merged branches are deleted automatically, and the weekly hygiene run deletes head branches of closed pull requests. `main` history is never rewritten.
+- Long-lived branches: `main` and the bots' `release-please--*` and `dependabot/*`.
+- Merged branches are deleted automatically. `main` history is never rewritten.
 
 ### Commits
 
@@ -73,7 +73,7 @@ The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci
 ### Pull requests
 
 - **Title:** a Conventional Commit, because it becomes the commit on `main` and the release notes: `fix: keep good entries when a .bib file has a duplicate key`. This is the one pull request rule CI enforces.
-- **Body:** `Closes #N` or `Part of #N`, then what changes for a user and how it was checked, in plain words. The template is a suggestion, not a form. Screenshots with synthetic data for interface changes; CI's gallery screenshots on the `evidence` branch count.
+- **Body:** `Closes #N` or `Part of #N`, then what changes for a user and how it was checked, in plain words. The template is a suggestion, not a form. Include screenshots with synthetic data for interface changes.
 - `node scripts/pr-lint.mjs --title … --branch … --body-file …` runs the same check as the "Pull request conventions" job: errors only for the title, commit identities and weakened tests; everything else is a warning.
 
 ### Review and merge
@@ -90,7 +90,7 @@ Version numbers, release and nightly titles, tags and download links follow [REL
 
 ## Checking a change
 
-The full check is the required "CI result" on the exact head commit, then the merge queue, which always validates the complete app. While editing, run the focused tests; run `node scripts/check.mjs` locally to diagnose a CI failure or when changing the check itself. It exits 1 when a check fails and 2 when a tool is missing. It skips the web builds; run `pnpm build` in `apps/desktop` when you change the build setup. Which jobs a pull request needs is decided by `scripts/ci-paths.mjs`.
+The full check is the required "CI result" on the exact head commit, then the merge queue, which always validates the complete app. While editing, run the focused tests; run `node scripts/check.mjs` locally to diagnose a CI failure or when changing the check itself. It exits 1 when a check fails and 2 when a tool is missing. It skips the web builds; run `pnpm build` in `apps/desktop` when you change the build setup. Which jobs a pull request needs is decided by `scripts/ci-paths.mjs`. Native UI and browser gallery jobs run only on pushes to `main` and manual dispatch; neither is required by "CI result".
 
 To verify a commit without stale build output ([#387](https://github.com/ibiscite/ibis/issues/387)), check it out in a clean detached worktree with its own Cargo target, and confirm the intended tests actually ran, because exit 0 alone does not prove it:
 
