@@ -2,6 +2,8 @@
 
 These rules apply to coding agents and human contributors alike. **How we work** (issues, labels, milestones, the tracking issue, branches, commits, pull requests, review and merge) is the [contribution standard](docs/development.md#contribution-standard); follow it exactly. Product behaviour is in `README.md`, `ROADMAP.md`, `docs/architecture.md` and `docs/design.md`; testing is in `docs/testing.md`. Lasting decisions are in `docs/adr/`, and accepted ADRs win where documents disagree.
 
+**Until 1.0, move fast and keep only what prevents real damage:** a broken `main`, lost work, silent reverts, wrong citations, and security or privacy mistakes (ADR 0027). There is no backward compatibility before 1.0: replace what is wrong instead of keeping both, and write no new settings migrations or compatibility shims.
+
 Everything needed to continue is in this repository and on GitHub: these rules, the docs, the issues and the one tracking issue (label `tracking`). Do not rely on notes outside it or on an assistant's memory. `.local/` holds untracked maintainer notes: never commit, quote or summarize them in public text.
 
 ## Commands
@@ -30,16 +32,16 @@ Anyone (Claude, Codex, another tool or a human) can do any part of the work. Who
 
 ## The loop
 
-1. **Pick** the first untaken item in your lane of the tracking issue's Queue, and say in its issue that you took it. A red `main` comes first: when the required "CI result" fails on `main`, revert the merge whose own run first turned it red, then fix it in a new pull request. A failing job that is not required never triggers a revert or a queue hold by itself: record it in the issue CI opened for it, and if it fails twice on `main` for the same reason, treat it as a P2 bug.
+1. **Pick** the first untaken item in your lane of the tracking issue's Queue; your draft pull request is the claim. A red `main` comes first: when the required "CI result" fails on `main` for a real failure, revert the merge whose own run first turned it red, then fix it in a new pull request. Diagnose a runner, network or service outage before reverting anything. A failing job that is not required never triggers a revert or a queue hold by itself: record it in the issue CI opened for it, and if it fails twice on `main` for the same reason, treat it as a P2 bug.
 2. **Branch** `<type>/<issue>-<short-name>` from `origin/main` in your own worktree; never share a checkout. Start with a failing test or a fixture in `fixtures/`.
-3. **Build** one user-visible feature per pull request, with its tests, docs and closely related small fixes; split only when parts can ship on their own. Before opening it, have another model research, attack and try to break the branch, and fix what it finds. Use explicit working directories, inspect the diff before testing, and update docs and snapshots in the same change (review snapshot diffs like code).
+3. **Build** one user-visible feature per pull request, with its tests, docs and closely related small fixes; split only when parts can ship on their own. Use explicit working directories, inspect the diff before testing, and update docs and snapshots in the same change (review snapshot diffs like code).
 4. **Check** with the fast commands and focused tests. The full check is the required "CI result" on the exact head, then the merge queue; run `node scripts/check.mjs` locally only to diagnose a failure or for what CI cannot cover. Report each step as passed, failed or blocked, never "passed" for something that did not run.
 5. **Attack your own change once:** hostile, huge or empty input, other scripts and locales, concurrency, each platform, silent failure. P1 = crash, hang, data loss, security; P2 = wrong or silently changed output. Fix P1, P2 and regressions with a test; file P3s as one follow-up issue.
 6. **Open** the pull request with the template. Push unfinished work early as a draft so nothing lives on one machine; mark it ready once the check passes.
-7. **Review and merge** by the [review rule](docs/development.md#review-and-merge): code needs an independent review of the exact head with every P1 and P2 fixed (filing them does not count); docs-only or tests-only changes need only your recorded step 5 (ADR 0017). Squash-merge when all required checks pass. Never use `--admin` or another bypass.
+7. **Review and merge** by the [review rule](docs/development.md#review-and-merge): changes in a risky area (the list in [ADR 0027](docs/adr/0027-fast-until-1-0.md): updater, signing and CI permissions, files Ibis writes, clipboard, escaping and pasting, window permissions, native input and the shortcut portal, library reading, citation output, untrusted input, network and security boundaries) need one independent review of the final head with every P1 and P2 fixed (filing them does not count). Everything else needs only your recorded step 5. Squash-merge when all required checks pass. Never use `--admin` or another bypass.
 8. **Close the loop:** check "CI result" is green on `main` and keep the tracking issue's Now and Queue current. Comment there only for decisions and handoffs. Keep other comments under about 150 words; reviews and evidence may be longer. State results plainly, including what did not run.
 
-Reviews follow the [free-first procedure](docs/development.md#free-first-review-tools): never paid plans, credits, overages or automatic bot fixes. The CodeRabbit trial ends **2026-11-06**; the free-only policy continues afterward.
+Never use paid review plans, credits, overages or automatic bot fixes.
 
 ## Pausing and resuming
 
@@ -50,12 +52,12 @@ Reviews follow the [free-first procedure](docs/development.md#free-first-review-
 ## Limits
 
 - Work in the tracking issue's lanes; lanes never edit the same files, and each has one writer.
-- At most two open implementation pull requests per lane, counting those waiting on review or checks. Finish before starting; finish drafts rather than rebuilding them.
+- Finish drafts rather than rebuilding them.
 - A check that fails twice for the same reason: stop retrying, record the diagnosis in the issue and take the next item.
 - Native flakes get one issue and at most one open pull request. Do not grow `scripts/smoke-native.py` unless the issue asks for a new check.
 - No stacking: every branch starts from `main`, because stacked squash merges have silently reverted changes. After merging `main` into a branch, `git diff origin/main` must show only your change.
-- No new workflows, harnesses, ADRs or dependencies unless the issue asks. Prefer maintained libraries and fewer dependencies. Dependencies pass `cargo deny check`; confirm the exact name on its registry and repository first (AI tools suggest look-alikes).
-- Hard-to-reverse decisions (license, persisted formats, public CLI or API contracts, network use, security boundaries) need an ADR.
+- No new workflows, harnesses or dependencies unless the issue asks. Prefer maintained libraries and fewer dependencies. Dependencies pass `cargo deny check`; confirm the exact name on its registry and repository first (AI tools suggest look-alikes).
+- Hard-to-reverse decisions (license, network use, security boundaries, and from 1.0 persisted formats and public CLI or API contracts) need an ADR.
 - When an agent repeats a mistake, add a check to `scripts/check.mjs` or `scripts/pr-lint.mjs` (preferred) or one line here; remove lines that no longer matter.
 - Locate unfamiliar files with `rg --files` before reading or invoking them.
 - Use a separate Cargo target directory per worktree, or clean `ibis-core`, `ibis-zotero-local` and `ibis-desktop` before reusing one.
