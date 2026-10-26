@@ -2,6 +2,14 @@
 
 Status: accepted (2026-10-22); supersedes the settings location in 0016; settings carry-over suspended until 1.0 by [0027](0027-fast-until-1-0.md)
 
+Scope amended 2026-10-26: the maintainer prioritizes clean canonical identities
+and current installations over compatibility with earlier builds. Fresh/current
+install, startup, channel separation and file safety remain required. Earlier
+identifier/installer upgrades and preservation of their startup or shell state
+are outside the release gate; no native 0.1.1 upgrade rehearsal is required.
+Existing tested settings copying may remain as a best-effort convenience.
+Never destructively remove settings or libraries to implement the new identity.
+
 ## Context
 
 The maintainer owns ibiscite.com and chose `com.ibiscite.ibis` in
@@ -81,10 +89,9 @@ libraries, shortcuts and other migrated settings intact.
   cancellation, dropped delivery or a busy/unavailable owner keeps the notice
   unresolved for a later show. A crash may repeat it. Acknowledgement neither
   requests nor registers Open at Login.
-- Do not switch the shipped identifiers until these platform transitions and
-  notice handling are implemented and tested. Installed upgrade, direct
-  replacement and restart/login acceptance remain required; this amendment
-  does not establish them. Existing system permissions may need approval again.
+- Ship the canonical identities after current-install checks pass. Existing
+  best-effort migration and notice handling do not establish earlier-build
+  upgrade acceptance. Existing system permissions may need approval again.
 
 Special files are unreadable settings, not streams to open: keep regular backup
 recovery and refuse writes over a special primary, backup or temporary file.

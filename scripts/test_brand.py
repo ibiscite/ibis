@@ -82,6 +82,7 @@ class BrandDrift(unittest.TestCase):
             root = Path(directory)
             source, generated = root / "source", root / "generated"
             files = ["brand/exports/logo.svg", "brand/exports/png/logo.png",
+                     "apps/desktop/src-tauri/icons/source/example.desktop",
                      "apps/desktop/src-tauri/icons/icon.ico", "apps/desktop/src/brand.ts"]
             for tree in (source, generated):
                 for name in files:
@@ -89,20 +90,22 @@ class BrandDrift(unittest.TestCase):
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(b"synthetic artwork")
             code = source / "apps/desktop/src-tauri/icons/source/generate.py"
-            code.parent.mkdir(parents=True)
+            code.parent.mkdir(parents=True, exist_ok=True)
             code.write_text("synthetic input, not a generated file")
             compare = BUILD["drift"]
             self.assertEqual(compare(source, generated), [])
             (source / files[0]).write_text("changed by hand")
             (source / files[1]).unlink()
+            (source / files[2]).write_text("stale desktop template")
             extra = source / "apps/desktop/src-tauri/icons/source/retired.svg"
             extra.write_text("retired artwork")
-            self.assertEqual(compare(source, generated), sorted(files[:2] + [extra.relative_to(source).as_posix()]))
+            self.assertEqual(compare(source, generated), sorted(files[:3] + [extra.relative_to(source).as_posix()]))
             self.assertEqual(code.read_text(), "synthetic input, not a generated file")
             self.assertEqual((generated / files[0]).read_bytes(), b"synthetic artwork")
             BUILD["publish"](generated, source)
             self.assertEqual(compare(source, generated), [])
             self.assertFalse(extra.exists())
+            self.assertEqual((source / files[2]).read_bytes(), b"synthetic artwork")
             self.assertEqual(code.read_text(), "synthetic input, not a generated file")
 
 

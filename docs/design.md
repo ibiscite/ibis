@@ -13,10 +13,12 @@ each beside its rule.
 
 1. **One anatomy everywhere.** Search, list, shelf and footer, in that order,
    at every size. Layouts fold rather than reorder.
-2. **Native material, Ibis voice.** Each platform's material, radii, selection,
-   menu metrics, font and shortcut labels (materials and metrics not yet built
-   wait for 1.0; see the look freeze under Per platform). Ibis keeps its anatomy, icon
-   drawings, wording and citation scarlet on every platform.
+2. **One design, macOS first.** Until per-platform designs return (after the
+   rebuild), Ibis uses its macOS design on every system: the same sizes,
+   radii, controls, selection and layout. Only what is correctness, not look,
+   follows the system: modifier keys and their labels (Ctrl on Windows and
+   Linux), the system font and accessibility settings. Ibis keeps its anatomy,
+   icon drawings, wording and citation scarlet everywhere.
 3. **Readable first.** Nothing smaller than 12 px; secondary text passes 4.5:1.
 4. **Easy to hit.** Every target is at least 32 px; 44 px under `pointer: coarse`.
 5. **Show less, reveal more.** An element appears when it becomes useful and
@@ -340,7 +342,7 @@ that never takes focus: a pill near the top on macOS, bottom right on Windows,
 a bottom toast on GNOME. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.
 
-**Empty states.** First run, no library and a library that could not be opened
+**Empty states.** First run, no library, an actually empty library and a library that could not be opened
 use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
 `--text-tertiary`, a title (title type), one line of at most 40 characters
 (meta type, `--muted`, up to three rows), then one suggested action 16 px below;
@@ -351,7 +353,6 @@ above rows.
 | Case | Title | Line | Below |
 |---|---|---|---|
 | No matches | No matching references | Try a surname, year or fewer words. | Clear search; quieter Search all libraries when some are left out |
-| Empty Zotero library | No references in My Library | Add items in Zotero, then reload. | Reload |
 | Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then a spinner; retained rows stay |
 
 **Shelf** [C7]. What Enter pastes, one 40 px line above the footer's Copy
@@ -472,6 +473,12 @@ and visible labels match accessible names.
 | Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |
 | Switch | 38 × 22 | 40 × 20, outlined when off | 46 × 26 |
 
+**One macOS design for now** (maintainer, 2026-10-26, #326). Build and test
+the macOS column only; the Windows and GNOME columns below are the target for
+later and are not built or extended until per-platform design work starts.
+Keep platform differences simple: one code path, with a per-system value only
+where the system demands it (keys, fonts, window handling).
+
 **Look freeze until 1.0** (maintainer, 2026-10-25, #326). What has shipped
 stays and is kept working, but is not extended. Rules on this page that are not
 built yet for a platform are deferred: materials, native accent injection and
@@ -540,7 +547,7 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
 
 ## First run and choice screens
 
-[C12] First run, no library and a library that could not be opened share one pattern: a title and
+[C12] First run, no library, an actually empty library and a library that could not be opened share one pattern: a title and
 one line on the tile column's edge, then result-style rows (tile, title, one
 line of help, optional trailing tag, chevron).
 
@@ -556,12 +563,22 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   becomes "Look again" with the outcome as its help line. Zotero refusing other
   apps and folders too large to search are one quiet note below. A CSL JSON row
   joins when that source ships (0.2).
+- **Empty library:** only after a successful load reports zero references: "No
+  references in thesis.bib", then "Choose a library with references." Zotero
+  and BibTeX or BibLaTeX file are the two rows; a detected Zotero library gets
+  "Found on this Mac/PC/computer". Below: "You can drop a file here too."
+  A search with no matches keeps its search actions; a failed refresh keeps
+  its searchable snapshot and failure notice. No shelf or Copy is shown on
+  these choice screens, and the window fits the content. An empty first
+  library offers recovery before asking where the person writes.
+  When a focused citation control disappears, the shelf returns focus to
+  Search and keeps its selection announcement mounted; unrelated focus stays.
 - **Could not open, nothing kept:** the title names the library and the fix;
   the backend sorts each failure by `problem`:
 
   | Problem | Title | Line | Rows (first suggested) |
   |---|---|---|---|
-  | `missing` file | Can't find thesis.bib | It may have moved, or its drive is disconnected. | Find thesis.bib, Use another library, Try again |
+  | `missing` file | Can't find thesis.bib | It may have moved, or its drive is disconnected. | Find thesis.bib, Use another library |
   | `unreadable` | Can't read thesis.bib | The reason, as a sentence | Try again, Use another library |
   | `zotero_closed` | Zotero isn't open | Open Zotero, then try again. | Try again, Use another library |
   | `zotero_access_off` | Zotero isn't sharing your library | Where to turn it on | Try again, Use another library |

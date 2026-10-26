@@ -32,7 +32,7 @@ mod sizing;
 mod tray;
 mod updater;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
@@ -90,13 +90,27 @@ fn instance_action(args: &[String], visible: impl FnOnce() -> Option<bool>) -> I
 
 fn shortcut_registration<T>(
     wayland: bool,
+    executable: Option<&Path>,
+    identifier: &str,
     register: impl FnOnce() -> Result<T, &'static str>,
-) -> Result<T, &'static str> {
+) -> Result<T, String> {
     register().map_err(|error| {
         if wayland {
-            "On Wayland, bind ibis toggle (or ibis-desktop toggle) in your desktop's keyboard settings"
+            // Only display known executable names, never a private path. The
+            // running binary wins for unrenamed development builds; the channel
+            // is the fallback when current_exe is unavailable.
+            let binary = executable
+                .and_then(Path::file_name)
+                .and_then(|name| name.to_str())
+                .filter(|name| matches!(*name, "ibis-desktop" | "ibis-nightly"))
+                .unwrap_or(if identifier == "com.ibiscite.ibis.nightly" {
+                    "ibis-nightly"
+                } else {
+                    "ibis-desktop"
+                });
+            format!("On Wayland, bind {binary} toggle in your desktop's keyboard settings")
         } else {
-            error
+            error.to_string()
         }
     })
 }
@@ -253,13 +267,16 @@ fn main() {
             let wayland = cfg!(target_os = "linux")
                 && (std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
                     || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()));
-            let registration = shortcut_registration(wayland, || register_shortcut(app.handle(), shortcut));
+            let executable = std::env::current_exe().ok();
+            let registration = shortcut_registration(wayland, executable.as_deref(), &app.config().identifier, || {
+                register_shortcut(app.handle(), shortcut)
+            });
             let status = ShortcutStatus {
                 shortcut: label,
                 registered: registration.is_ok(),
                 error: match registration {
                     Ok(note) => setting_error.or(note.map(str::to_string)),
-                    Err(error) => Some(error.to_string()),
+                    Err(error) => Some(error),
                 },
             };
             if let Some(error) = &status.error {
@@ -344,14 +361,46 @@ mod toggle_tests {
 
     #[test]
     fn wayland_toggle_guidance_preserves_working_shortcuts() {
-        assert_eq!(shortcut_registration(true, || Ok(())), Ok(()));
-        let error = shortcut_registration::<()>(true, || Err("unavailable"));
-        assert!(error.is_err_and(|message| message.contains("Wayland") && message.contains("ibis toggle")));
-        assert_eq!(shortcut_registration(false, || Ok(())), Ok(()));
+        let stable = "com.ibiscite.ibis";
+        assert_eq!(shortcut_registration(true, None, stable, || Ok(())), Ok(()));
+        assert_eq!(shortcut_registration(false, None, stable, || Ok(())), Ok(()));
         assert_eq!(
-            shortcut_registration::<()>(false, || Err("unavailable")),
-            Err("unavailable")
+            shortcut_registration::<()>(false, None, stable, || Err("unavailable")),
+            Err("unavailable".to_string())
         );
+    }
+
+    #[test]
+    fn wayland_toggle_guidance_selects_the_running_binary_then_the_channel() {
+        for (executable, identifier, binary) in [
+            (
+                Some("/synthetic/bin/ibis-nightly"),
+                "com.ibiscite.ibis.nightly",
+                "ibis-nightly",
+            ),
+            (Some("/synthetic/bin/ibis-desktop"), "com.ibiscite.ibis", "ibis-desktop"),
+            (
+                Some("/synthetic/debug/ibis-desktop"),
+                "com.ibiscite.ibis.nightly",
+                "ibis-desktop",
+            ),
+            (None, "com.ibiscite.ibis.nightly", "ibis-nightly"),
+            (None, "com.ibiscite.ibis", "ibis-desktop"),
+            (
+                Some("/synthetic/private path/other"),
+                "com.ibiscite.ibis.nightly",
+                "ibis-nightly",
+            ),
+        ] {
+            let result =
+                shortcut_registration::<()>(true, executable.map(Path::new), identifier, || Err("unavailable"));
+            assert_eq!(
+                result,
+                Err(format!(
+                    "On Wayland, bind {binary} toggle in your desktop's keyboard settings"
+                ))
+            );
+        }
     }
 
     #[test]

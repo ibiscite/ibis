@@ -2,8 +2,12 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { testStates } from "../../test-fixtures";
 import { EmptyState } from "./EmptyState";
+import { LibrarySetup, type EmptyLibraryChoices } from "../../LibrarySetup";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+const setup = (focus: boolean, empty?: EmptyLibraryChoices) => <LibrarySetup
+  api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined }}
+  perform={async (_action, run) => { await run(); }} autoFocus={focus} empty={empty} />;
 const loaded = testStates.find((state) => state.id === "no-results")!.library;
 
 function mount(query = "", empty = false) {
@@ -36,7 +40,7 @@ test("idle instructions show only the two decorative key hints without an action
 test.each(["loading", "reloading"] as const)("%s stays blank for 400 ms, then shows only a spinner and the filename", async (state) => {
   vi.useFakeTimers();
   const { container } = render(<EmptyState library={{ ...loaded, state }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
   expect(container.textContent).toBe("");
   await act(() => vi.advanceTimersByTimeAsync(399));
   expect(container.textContent).toBe("");
@@ -73,7 +77,7 @@ test("the delayed loader shortens mixed-script names visually and exposes the fu
   vi.useFakeTimers();
   const name = `دراسة-研究-${"🧑🏽‍🔬e\u0301".repeat(50)}-library.bib`;
   const { container } = render(<EmptyState library={{ ...loaded, state: "loading", name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
   await act(() => vi.advanceTimersByTimeAsync(400));
   const loader = screen.getByRole("progressbar", { name: `Opening ${name}…` });
   expect(loader.textContent).toMatch(/^Opening دراسة-研究-.*….*library\.bib…$/);
@@ -85,7 +89,7 @@ test("the delayed loader shortens mixed-script names visually and exposes the fu
 test.each([null, ""])("a missing loading name has the same visible and accessible fallback (%s)", async (name) => {
   vi.useFakeTimers();
   render(<EmptyState library={{ ...loaded, state: "loading", name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
   await act(() => vi.advanceTimersByTimeAsync(400));
   expect(screen.getByRole("progressbar", { name: "Opening library…" }).textContent).toBe("Opening library…");
 });
@@ -99,68 +103,32 @@ test("no matches retain clear-search and search-all actions", () => {
   expect(searchAll).toHaveBeenCalledOnce();
 });
 
-test("an empty file gets a separate title and recovery line, keeping the chooser", () => {
-  const { container, choose } = mount("", true);
-  expect(container.querySelector(".empty-title")?.textContent).toBe("No references in example.bib");
-  expect(container.querySelector(".empty-description")?.textContent).toBe("Choose a file with references.");
-  fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
-  expect(choose).toHaveBeenCalledOnce();
+test("no matches keep one suggested clear-search action and a quieter search-all action", () => {
+  const { container } = mount("unmatched");
+  expect(container.querySelectorAll('.empty-actions .ui-button[data-variant="primary"]')).toHaveLength(1);
+  expect(container.querySelector('.empty-actions .ui-button[data-variant="primary"]')?.textContent).toBe("Clear search");
+  expect(container.querySelector('.empty-alternative')?.textContent).toBe("Search all Zotero libraries");
 });
 
-test("an empty Zotero library offers reload as well as choosing another library", () => {
-  const reload = vi.fn(), choose = vi.fn();
-  render(<EmptyState library={{ ...loaded, zotero: true, references: 0 }} query="" narrowed={false}
-    onChooseLibrary={choose} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={reload} setup={() => null} />);
-  fireEvent.click(screen.getByRole("button", { name: "Reload" }));
-  fireEvent.click(screen.getByRole("button", { name: "Choose library…" }));
-  expect(reload).toHaveBeenCalledOnce();
-  expect(choose).toHaveBeenCalledOnce();
-});
-
-test.each(["file", "zotero", "no-results"])("%s has exactly one enabled suggested action, with quieter alternatives", (state) => {
-  const empty = state !== "no-results";
-  const { container } = render(<EmptyState library={{ ...loaded, references: empty ? 0 : 24, zotero: state === "zotero" }}
-    query={empty ? "" : "unmatched"} narrowed onChooseLibrary={vi.fn()} onClearSearch={vi.fn()}
-    onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
-  const actions = container.querySelectorAll<HTMLButtonElement>('.empty-actions .ui-button[data-variant="primary"]');
-  expect(actions).toHaveLength(1);
-  expect(actions.item(0).disabled).toBe(false);
-  expect(actions.item(0).textContent).toBe(state === "file" ? "Choose library…" : state === "zotero" ? "Reload" : "Clear search");
-  const alternative = container.querySelector(".empty-alternative");
-  expect(alternative?.textContent ?? null).toBe(state === "file" ? null : state === "zotero" ? "Choose library…" : "Search all Zotero libraries");
-  if (alternative) expect(alternative.getAttribute("data-variant")).toBe("quiet");
-  expect(container.querySelector(".suggested-action")).toBeNull();
-  expect([...container.querySelectorAll(".empty-actions button")].every((button) => button.classList.contains("ui-button"))).toBe(true);
-});
-
-test.each([
-  ["file", "Choose library…", "choose"],
-  ["zotero", "Reload", "reload"],
-  ["zotero", "Choose library…", "choose"],
-  ["no-results", "Clear search", "clear"],
-  ["no-results", "Search all Zotero libraries", "searchAll"],
-] as const)("%s: Enter and Space each invoke only %s once", (state, label, action) => {
-  const handlers = { choose: vi.fn(), reload: vi.fn(), clear: vi.fn(), searchAll: vi.fn() };
-  render(<EmptyState library={{ ...loaded, references: state === "no-results" ? 24 : 0, zotero: state === "zotero" }}
-    query={state === "no-results" ? "unmatched" : ""} narrowed onChooseLibrary={handlers.choose} onClearSearch={handlers.clear}
-    onSearchAll={handlers.searchAll} onReload={handlers.reload} setup={() => null} />);
+test.each(["Clear search", "Search all Zotero libraries"])("no matches: Enter and Space invoke only %s once", (label) => {
+  const { clear, searchAll } = mount("unmatched");
+  const handler = label === "Clear search" ? clear : searchAll;
+  const other = label === "Clear search" ? searchAll : clear;
   const button = screen.getByRole("button", { name: label });
   button.focus();
   for (const key of ["Enter", " "]) {
-    const before = handlers[action].mock.calls.length;
-    fireEvent.keyDown(button, { key });
-    fireEvent.keyDown(button, { key, repeat: true });
-    fireEvent.keyUp(button, { key });
-    expect(handlers[action]).toHaveBeenCalledTimes(before + 1);
+    const before = handler.mock.calls.length;
+    fireEvent.keyDown(button, { key }); fireEvent.keyDown(button, { key, repeat: true }); fireEvent.keyUp(button, { key });
+    expect(handler).toHaveBeenCalledTimes(before + 1);
   }
-  for (const [name, handler] of Object.entries(handlers)) if (name !== action) expect(handler).not.toHaveBeenCalled();
+  expect(other).not.toHaveBeenCalled();
 });
 
 test.each(["🧑🏽‍🔬", "e\u0301"])("a long empty-library name keeps its extension, full accessible text and graphemes (%s)", (unit) => {
   const name = `دراسة-研究-${unit.repeat(50)}-library.bib`;
   const { container } = render(<EmptyState library={{ ...loaded, references: 0, snapshot_name: name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
-  const title = container.querySelector(".empty-title")!;
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
+  const title = container.querySelector(".choice-title")!;
   const visual = title.querySelector('[aria-hidden="true"]')!;
   expect(visual).toBeTruthy();
   expect(visual.textContent).toContain("…");
@@ -168,20 +136,20 @@ test.each(["🧑🏽‍🔬", "e\u0301"])("a long empty-library name keeps its e
   expect([...new Intl.Segmenter().segment(visual.textContent!)].length).toBeLessThanOrEqual(57);
   expect(visual.textContent?.replace("No references in دراسة-研究-", "").replace("-library.bib", "").replace("…", "").replaceAll(unit, "")).toBe("");
   expect(title.querySelector(".visually-hidden")?.textContent).toBe(`No references in ${name}`);
-  expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^BibTeX or BibLaTeX file/ })).toBeTruthy();
 });
 
 test.each([null, ""])("a missing empty-library snapshot name keeps a meaningful title (%s)", (snapshot_name) => {
   const { container } = render(<EmptyState library={{ ...loaded, references: 0, snapshot_name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
-  expect(container.querySelector(".empty-title")?.textContent).toBe("No references in this library");
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
+  expect(container.querySelector(".choice-title")?.textContent).toBe("No references in this library");
 });
 
 test("markup in an empty-library name remains plain text", () => {
   const name = '<img src=x onerror="alert(1)">.bib';
   const { container } = render(<EmptyState library={{ ...loaded, references: 0, snapshot_name: name }} query="" narrowed={false}
-    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
-  expect(container.querySelector(".empty-title")?.textContent).toBe(`No references in ${name}`);
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
+  expect(container.querySelector(".choice-title")?.textContent).toBe(`No references in ${name}`);
   expect(container.querySelector("img")).toBeNull();
 });
 
@@ -194,10 +162,37 @@ test("a webview without Segmenter can import and render the complete name", asyn
     const { EmptyState: LegacyEmptyState } = await import("./EmptyState");
     const name = `${"🧑🏽‍🔬e\u0301".repeat(50)}.bib`;
     const { container } = render(<LegacyEmptyState library={{ ...loaded, references: 0, snapshot_name: name }} query="" narrowed={false}
-      onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
-    expect(container.querySelector(".empty-title")?.textContent).toBe(`No references in ${name}`);
-    expect(screen.getByRole("button", { name: "Choose library…" })).toBeTruthy();
+      onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
+    expect(container.querySelector(".choice-title")?.textContent).toBe(`No references in ${name}`);
+    expect(screen.getByRole("option", { name: /^BibTeX or BibLaTeX file/ })).toBeTruthy();
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+
+test.each([false, true])("C12 zero-reference choices offer Zotero and a file, never no-match actions (Zotero=%s)", (zotero) => {
+  const choose = vi.fn(async () => undefined), useZotero = vi.fn(async () => undefined);
+  render(<EmptyState library={{ ...loaded, state: "loaded", references: 0, zotero }} query="unmatched" narrowed
+    onChooseLibrary={choose} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()}
+    setup={(focus, empty) => <LibrarySetup api={{ chooseLibrary: choose, useZotero }}
+      perform={async (_action, run) => { await run(); }} autoFocus={focus} empty={empty} />} />);
+  expect(screen.getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent))
+    .toEqual(["Zotero", "BibTeX or BibLaTeX file"]);
+  expect(screen.getByText("You can drop a file here too.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+});
+
+test("C12 missing-file choices name the requested file and keep both actions after cancellation", () => {
+  const choose = vi.fn();
+  render(<EmptyState library={{ ...loaded, state: "error", references: 0, has_snapshot: false,
+    name: "requested 研究.bib", snapshot_name: "previous.bib", problem: "missing" }} query="" narrowed={false}
+    onChooseLibrary={choose} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
+  const rows = screen.getAllByRole("option");
+  expect(rows.map((row) => row.querySelector(".result-title")?.textContent))
+    .toEqual(["Find requested 研究.bib", "Use another library"]);
+  fireEvent.click(rows[0]!);
+  expect(choose).toHaveBeenCalledOnce();
+  expect(screen.getByRole("option", { name: /^Find requested 研究.bib/ })).toBeTruthy();
+  expect(screen.queryByText(/previous.bib/)).toBeNull();
 });

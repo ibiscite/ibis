@@ -337,7 +337,7 @@ def library_phase_diagnostics(paths):
     return facts
 
 
-def settings_path(system, temporary, native=None, identifier="io.github.ibiscite.ibis"):
+def settings_path(system, temporary, native=None, identifier="com.ibiscite.ibis"):
     return temporary / "config" / identifier / "settings.json"
 
 
@@ -1093,7 +1093,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--identifier", default="io.github.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
+    parser.add_argument("--identifier", default="com.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
     parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Command+Shift+Y on macOS")
     parser.add_argument("--skip-performance", action="store_true", help="Keep correctness checks but skip the four 100,000-reference launches")
     parser.add_argument("--first-run-preferences", action="store_true", help="Exercise first-run format persistence and settled More/Quit only")
@@ -1693,7 +1693,7 @@ class ContractTests(unittest.TestCase):
 
         def choose(name):
             if name == "Typst":
-                settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "io.github.ibiscite.ibis/settings.json"
+                settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "com.ibiscite.ibis/settings.json"
                 value = '{"schema_version":2,"copy_format":"typst"}'
                 if failure == "wrong-format":
                     value = '{"schema_version":2,"copy_format":"pandoc"}'
@@ -1791,7 +1791,7 @@ class ContractTests(unittest.TestCase):
             root = Path(temporary)
             app = root / "synthetic-app"
             app.touch()
-            args = argparse.Namespace(app=app, output=root / "report", identifier="io.github.ibiscite.ibis", shortcut=None)
+            args = argparse.Namespace(app=app, output=root / "report", identifier="com.ibiscite.ibis", shortcut=None)
             candidate = root / "preexisting/settings.json"
             candidate.parent.mkdir()
             if failure == "preexisting":
@@ -2644,8 +2644,8 @@ class ContractTests(unittest.TestCase):
 
     def test_nightly_settings_and_the_update_question_answered_in_advance(self):
         with tempfile.TemporaryDirectory() as temporary:
-            settings = settings_path("Linux", Path(temporary), identifier="io.github.ibiscite.ibis.nightly")
-            self.assertEqual(settings, Path(temporary) / "config/io.github.ibiscite.ibis.nightly/settings.json")
+            settings = settings_path("Linux", Path(temporary), identifier="com.ibiscite.ibis.nightly")
+            self.assertEqual(settings, Path(temporary) / "config/com.ibiscite.ibis.nightly/settings.json")
             answer_update_question(settings)
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), {"schema_version": 2, "update_checks": False})
             settings.write_text("{invalid synthetic settings", encoding="utf-8")

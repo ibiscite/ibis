@@ -85,5 +85,9 @@
       "New in",
       "Ibis 0.2"
     ]
+  },
+  "desktop_identifiers": {
+    "stable": "com.ibiscite.ibis",
+    "nightly": "com.ibiscite.ibis.nightly"
   }
 }

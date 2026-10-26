@@ -61,16 +61,43 @@ export function feedKeyId(feed) {
 /** Ibis Nightly: a separate app with its own settings and update feed. No MSI
  * (Windows Installer versions cannot carry "nightly") and no .rpm (RPM
  * versions cannot contain "-"). */
-export function nightlyConfig(version) {
+export function nightlyConfig(version, platform = process.platform) {
+  const stable = JSON.parse(readFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));
+  const identifier = "com.ibiscite.ibis.nightly";
+  const linux = Object.fromEntries(["deb", "appimage"].map((format) => {
+    const files = stable.bundle.linux[format].files;
+    return [format, {
+      // Tauri applies RFC 7396: null removes inherited Stable destinations.
+      files: Object.fromEntries([
+        ...Object.keys(files).map((path) => [path, null]),
+        ...Object.entries(files).map(([path, source]) => [path.replaceAll(stable.identifier, identifier), source.replaceAll(stable.identifier, identifier)]),
+      ]),
+      ...(format === "deb" ? { desktopTemplate: `icons/source/${identifier}.desktop` } : {}),
+    }];
+  }));
   return {
     productName: "Ibis Nightly",
     version,
-    identifier: "io.github.ibiscite.ibis.nightly",
-    bundle: { targets: ["app", "dmg", "nsis", "deb", "appimage"] },
+    identifier: "com.ibiscite.ibis.nightly",
+    // The Linux packages must not both own /usr/bin/ibis-desktop or its
+    // automatically generated hicolor icons. Other platforms keep their binary.
+    ...(platform === "linux" ? { mainBinaryName: "ibis-nightly" } : {}),
+    bundle: {
+      targets: ["app", "dmg", "nsis", "deb", "appimage"],
+      icon: stable.bundle.icon.map((path) => path.replaceAll(stable.identifier, identifier)),
+      linux,
+    },
     plugins: {
       updater: { endpoints: ["https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"], pubkey: NIGHTLY_PUBKEY },
     },
   };
+}
+
+/** Read the literal identity from the previous published source, never execute it. */
+export function previousNightlyIdentity(source) {
+  const matches = [...source.matchAll(/^\s*identifier:\s*"(io\.github\.ibiscite\.ibis\.nightly|com\.ibiscite\.ibis\.nightly)",?\s*$/gm)];
+  if (matches.length !== 1) throw new Error("previous nightly source has no unambiguous supported identity");
+  return matches[0][1];
 }
 
 /** Semantic version precedence (semver.org §11), as the updater compares. */
@@ -148,6 +175,8 @@ function main([command, ...args]) {
     console.log(JSON.stringify(nightlyConfig(args[0])));
   } else if (command === "feed-key" && args.length === 1) {
     console.log(feedKeyId(JSON.parse(readFileSync(args[0], "utf8"))));
+  } else if (command === "previous-identity" && args.length === 1) {
+    console.log(previousNightlyIdentity(readFileSync(args[0], "utf8")));
   } else if (command === "manifest" && args.length === 4) {
     const [dir, base, version, notes] = args;
     const config = JSON.parse(readFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"));

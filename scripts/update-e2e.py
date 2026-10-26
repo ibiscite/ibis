@@ -46,7 +46,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from native_test_settings import clean_settings, settings_exist
 
-IDENTIFIER = "io.github.ibiscite.ibis.nightly"
+IDENTIFIER = "com.ibiscite.ibis.nightly"
 SHORTCUT = "Control+Alt+Y"
 BUTTON = "Install and Restart"
 # The app's first check comes 30 seconds after start; the download is ~100 MB.
@@ -825,7 +825,7 @@ function Contract-Result($pressed,$how) {
         with tempfile.TemporaryDirectory() as temporary:
             library = Path(temporary) / "synthetic 引用.bib"
             settings = seed_settings(Path(temporary), library)
-            self.assertEqual(settings, Path(temporary) / "io.github.ibiscite.ibis.nightly/settings.json")
+            self.assertEqual(settings, Path(temporary) / "com.ibiscite.ibis.nightly/settings.json")
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8")),
                              {"schema_version": 2, "update_checks": True,
                               "library": {"bibtex": str(library)}, "shortcut": "Control+Alt+Y"})
