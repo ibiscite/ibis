@@ -10,9 +10,9 @@ export async function content(html) {
   if (!design) throw Error("Canonical Coming features section is missing");
   const rows = [...design.matchAll(/^\| ([^|]+) \|/gm)].map(([, feature]) => feature);
   const plans = [
-    ["Page numbers and locators", "Add page numbers to a citation"],
     ["Zotero while closed", "Find references even when Zotero is closed"],
-    ["Bibliography export", "Export the bibliography your document cites"],
+    ["Paste into the app you came from", "Paste citations straight into your document"],
+    ["Browse", "Cite the exact page from your PDFs"],
   ].map(([name, label]) => {
     const row = rows.find(value => value.startsWith(name));
     const version = row?.match(/\((0\.\d)/)?.[1];
