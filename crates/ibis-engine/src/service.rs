@@ -238,6 +238,13 @@ impl Engine {
             return Err(error(ErrorCode::BadInput));
         }
         let state = self.state()?;
+        if request
+            .libraries
+            .as_ref()
+            .is_some_and(|libraries| libraries.iter().any(|id| !state.libraries.contains_key(id)))
+        {
+            return Err(error(ErrorCode::NotFound));
+        }
         let hits = state
             .index
             .search(&request.query, request.limit, request.libraries.as_deref(), &|| {
@@ -274,6 +281,7 @@ impl Engine {
             .keys
             .iter()
             .map(|key| {
+                cancel.check()?;
                 let selected = select(&snapshot, &ItemSelector::Key(key.clone()))?;
                 Ok(CitationItem {
                     item: selected.object.id().clone(),

@@ -132,3 +132,25 @@ fn library_changes_invalidate_subscribers_without_mutating_previous_snapshots() 
     drop(events);
     assert!(engine.subscribe().is_ok());
 }
+
+#[test]
+fn a_named_missing_library_is_not_silently_an_empty_search() {
+    let engine = Engine::new().unwrap();
+    let mut request = SearchRequest {
+        query: "synthetic".into(),
+        limit: 10,
+        libraries: Some(vec![LibraryId::file(b"missing synthetic scope")]),
+    };
+    assert_eq!(
+        engine.search(&request, &Cancellation::default()).unwrap_err().code,
+        ErrorCode::NotFound
+    );
+    request.libraries = Some(vec![]);
+    assert!(
+        engine
+            .search(&request, &Cancellation::default())
+            .unwrap()
+            .hits
+            .is_empty()
+    );
+}
