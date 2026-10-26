@@ -2104,6 +2104,13 @@ name = "ibis-zotero-local"
 version = "0.1.1"
 dependencies = [
  "ibis-core",
+ "nix",
+ "rusqlite",
+ "rustix",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "xattr",
 ]
 
 [[package]]
