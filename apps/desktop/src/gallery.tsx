@@ -174,6 +174,7 @@ function seeded(root: HTMLElement, state: GalleryState): boolean {
     && html.dataset.textSize === (state.largerTextSetting ? "larger" : "normal")
     && (pinButton(root) !== null) === Boolean(state.pinned)
     && (document.getElementById("more-menu") !== null) === Boolean(state.menuOpen)
+    && (!state.menuOpen || state.automaticUpdates === undefined || Boolean(menu?.textContent?.includes(pickerText.checkAutomatically)))
     && (document.querySelector(".toolbar-menu") !== null) === Boolean(state.formatMenu)
     && (typeof state.formatMenu !== "string" || filter?.value === state.formatMenu)
     && (root.querySelector('[role="dialog"]') !== null) === Boolean(state.keys)
