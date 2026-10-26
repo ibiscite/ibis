@@ -61,6 +61,12 @@ pub struct DispatchResult {
     pub text: Option<String>,
 }
 impl DispatchResult {
+    /// Every frontend shares the same serialized result budget.
+    pub fn bounded(self) -> Result<Self, EngineError> {
+        crate::wire::encode(&self.data, crate::protocol::MAX_RESULT_BYTES)
+            .map_err(|_| error(ErrorCode::ResourceLimit))?;
+        Ok(self)
+    }
     pub fn citation(result: CitationResult, expected_items: usize) -> Result<Self, EngineError> {
         let text = result
             .copy_content(expected_items)
@@ -70,11 +76,12 @@ impl DispatchResult {
         } else {
             ExitCode::Findings
         };
-        Ok(Self {
+        Self {
             data: value(result)?,
             exit_code,
             text,
-        })
+        }
+        .bounded()
     }
 }
 
@@ -164,7 +171,7 @@ impl Engine {
         let (sender, receiver) = mpsc::sync_channel(16);
         let mut subscribers = self.shared.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
         if subscribers.len() >= 64 {
-            return Err(error(ErrorCode::SourceUnavailable));
+            return Err(error(ErrorCode::ResourceLimit));
         }
         let id = self.shared.next_subscription.fetch_add(1, Ordering::Relaxed);
         subscribers.insert(id, sender);
@@ -368,11 +375,12 @@ impl Engine {
             }
         };
         cancel.check()?;
-        Ok(DispatchResult {
+        DispatchResult {
             data,
             exit_code: ExitCode::Ok,
             text: None,
-        })
+        }
+        .bounded()
     }
 }
 fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {

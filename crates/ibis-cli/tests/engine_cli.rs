@@ -161,7 +161,11 @@ fn native_stdio_framing_cancellation_and_transport_errors_use_the_engine() -> Re
     let response = response.ok_or("batch response")?;
     assert_eq!(response[0]["id"], 1);
     assert_eq!(response[0]["error"]["data"]["code"], "cancelled");
-    let output = run(format!("Content-Length: {}\r\n\r\n", ibis_engine::protocol::MAX_FRAME_BYTES + 1).as_bytes());
+    let output = run(format!(
+        "Content-Length: {}\r\n\r\n",
+        ibis_engine::protocol::MAX_REQUEST_BYTES + 1
+    )
+    .as_bytes());
     assert_eq!(output.status.code(), Some(3));
     let mut frames = Cursor::new(output.stdout);
     let response = ibis_engine::protocol::read_frame(&mut frames)?.ok_or("parse error")?;

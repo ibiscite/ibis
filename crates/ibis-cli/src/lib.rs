@@ -314,7 +314,7 @@ fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
 fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
     let mut bytes = vec![];
     input
-        .take(protocol::MAX_FRAME_BYTES as u64 + 1)
+        .take(protocol::MAX_REQUEST_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| EngineError {
             code: ErrorCode::BadInput,
@@ -327,14 +327,14 @@ fn emit(
     output: &mut impl Write,
     errors: &mut impl Write,
 ) -> u8 {
-    let (code, envelope, text) = match result {
+    let (code, envelope, text) = match result.and_then(DispatchResult::bounded) {
         Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),
         Err(error) => (error.code.exit_code(), Envelope::failure(error.code), None),
     };
     let encoded = if json {
         serde_json::to_value(&envelope)
             .ok()
-            .and_then(|value| ibis_engine::wire::encode(&value, 16 * 1024 * 1024).ok())
+            .and_then(|value| ibis_engine::wire::encode(&value, protocol::MAX_RESPONSE_BYTES).ok())
     } else if let Some(error) = envelope.error() {
         let _ = writeln!(errors, "ibis: {:?}", error.code);
         return code.value();
@@ -346,12 +346,12 @@ fn emit(
     let Some(mut encoded) = encoded else {
         if json
             && output
-                .write_all(b"{\"error\":{\"code\":\"bad-input\"},\"ibis\":1,\"ok\":false}\n")
+                .write_all(b"{\"error\":{\"code\":\"internal\"},\"ibis\":1,\"ok\":false}\n")
                 .is_err()
         {
             return 70;
         }
-        return ibis_core::contract::ExitCode::BadInput.value();
+        return ibis_core::contract::ExitCode::Internal.value();
     };
     if !json {
         encoded = terminal_display(&String::from_utf8_lossy(&encoded)).into_bytes();
@@ -397,7 +397,7 @@ mod tests {
             }
         }
         let result = DispatchResult {
-            data: json!("x".repeat(protocol::MAX_FRAME_BYTES + 1)),
+            data: json!("x".repeat(protocol::MAX_RESPONSE_BYTES + 1)),
             text: None,
             exit_code: ibis_core::contract::ExitCode::Ok,
         };

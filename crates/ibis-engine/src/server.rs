@@ -49,7 +49,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
     changes: Option<LibrarySubscription>,
 ) -> Result<(), FrameError> {
     thread::scope(|scope| {
-        let (output, frames) = mpsc::sync_channel::<Value>(64);
+        let (output, frames) = mpsc::sync_channel::<Value>(8);
         let writing = scope.spawn(move || {
             let mut writer = writer;
             for message in frames {
@@ -188,8 +188,14 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
             let output = output.clone();
             let completed = completed.clone();
             // At most MAX_WORKERS batches (MAX_BATCH jobs each) can execute.
+            let mut responses = Replies::new(
+                batch,
+                replies.len() + jobs.iter().filter(|job| job.id.is_some()).count(),
+            );
+            for reply in replies {
+                responses.push(reply);
+            }
             match thread::Builder::new().name("ibis-rpc".into()).spawn(move || {
-                let budget = protocol::MAX_FRAME_BYTES / (jobs.len() + replies.len() + 1);
                 for job in jobs {
                     if let Some(id) = &job.id {
                         let _ = output.send(progress(id, job.generation, "begin"));
@@ -208,21 +214,12 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                             Ok(result) => rpc::success(&id, result.data),
                             Err(error) => rpc::failure(Some(&id), error),
                         };
-                        replies.push(if crate::wire::encode(&reply, budget).is_ok() {
-                            reply
-                        } else {
-                            rpc::failure(
-                                Some(&id),
-                                EngineError {
-                                    code: ErrorCode::BadInput,
-                                },
-                            )
-                        });
+                        responses.push(reply);
                         let _ = output.send(progress(&id, job.generation, "end"));
                         let _ = completed.send((id, job.generation));
                     }
                 }
-                if let Some(reply) = response(batch, replies) {
+                if let Some(reply) = responses.finish() {
                     let _ = output.send(reply);
                 }
             }) {
@@ -246,15 +243,74 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
         transport.and(result)
     })
 }
-fn response(batch: bool, mut replies: Vec<Value>) -> Option<Value> {
-    if replies.is_empty() {
-        None
-    } else if batch {
-        Some(Value::Array(replies))
-    } else {
-        replies.pop()
+/// Aggregate actual bytes incrementally, reserving a bounded error for every
+/// remaining response. Notifications consume no response budget.
+struct Replies {
+    batch: bool,
+    remaining: usize,
+    bytes: usize,
+    messages: Vec<Value>,
+}
+impl Replies {
+    fn new(batch: bool, remaining: usize) -> Self {
+        Self {
+            batch,
+            remaining,
+            bytes: if batch { 2 } else { 0 },
+            messages: vec![],
+        }
+    }
+    fn push(&mut self, mut message: Value) {
+        self.remaining -= 1;
+        let separator = usize::from(self.batch && !self.messages.is_empty());
+        let available = protocol::MAX_RESPONSE_BYTES
+            .saturating_sub(self.bytes + separator + self.remaining * protocol::RESPONSE_OVERHEAD);
+        let size = match crate::wire::encode(&message, available) {
+            Ok(bytes) => bytes.len(),
+            Err(_) => {
+                let id = message.get("id").and_then(RequestId::parse);
+                message = rpc::failure(
+                    id.as_ref(),
+                    EngineError {
+                        code: ErrorCode::ResourceLimit,
+                    },
+                );
+                // IDs were bounded on input; this fixed error fits its reserved space.
+                match crate::wire::encode(&message, protocol::RESPONSE_OVERHEAD) {
+                    Ok(bytes) => bytes.len(),
+                    Err(_) => {
+                        message = rpc::failure(
+                            None,
+                            EngineError {
+                                code: ErrorCode::Internal,
+                            },
+                        );
+                        protocol::RESPONSE_OVERHEAD
+                    }
+                }
+            }
+        };
+        self.bytes += separator + size;
+        self.messages.push(message);
+    }
+    fn finish(mut self) -> Option<Value> {
+        if self.messages.is_empty() {
+            None
+        } else if self.batch {
+            Some(Value::Array(self.messages))
+        } else {
+            self.messages.pop()
+        }
     }
 }
+fn response(batch: bool, messages: Vec<Value>) -> Option<Value> {
+    let mut replies = Replies::new(batch, messages.len());
+    for message in messages {
+        replies.push(message);
+    }
+    replies.finish()
+}
+
 fn progress(id: &RequestId, generation: u64, kind: &str) -> Value {
     json!({"jsonrpc":"2.0","method":"$/progress","params":{"token":format!("ibis:{generation}"),"value":{"kind":kind,"title":"Processing","request":id.value()}}})
 }
@@ -373,6 +429,50 @@ mod tests {
         assert_eq!(reply(&output)["result"], "fresh");
         drop(input);
         assert!(server.join().unwrap().is_ok());
+    }
+    #[test]
+    fn replies_use_actual_frame_capacity_and_report_resource_limits() {
+        for (count, size, overflow) in [(1, 600_000, false), (32, 60_000, false), (32, 600_000, true)] {
+            let dispatch = Arc::new(move |_: Method, _: &Value, _: &Cancellation| {
+                Ok(DispatchResult {
+                    data: json!("x".repeat(size)),
+                    text: None,
+                    exit_code: ibis_core::contract::ExitCode::Ok,
+                })
+            });
+            let requests: Vec<_> = (0..count)
+                .map(|id| json!({"jsonrpc":"2.0","id":id,"method":"show"}))
+                .collect();
+            let message = if count == 1 {
+                requests[0].clone()
+            } else {
+                Value::Array(requests)
+            };
+            let mut input = vec![];
+            protocol::write_frame(&mut input, &message).unwrap();
+            let mut output = vec![];
+            run(dispatch, Cursor::new(input), &mut output).unwrap();
+            let mut reader = Cursor::new(output);
+            let mut replies = vec![];
+            while let Some(message) = protocol::read_response_frame(&mut reader).unwrap() {
+                if let Value::Array(batch) = message {
+                    replies.extend(batch);
+                } else if message.get("id").is_some() {
+                    replies.push(message);
+                }
+            }
+            assert_eq!(replies.len(), count);
+            let mut limited = 0;
+            for reply in replies {
+                if reply.get("error").is_some() {
+                    limited += 1;
+                    assert_eq!(reply["error"]["data"]["code"], "resource-limit");
+                } else {
+                    assert_eq!(reply["result"].as_str().map(str::len), Some(size));
+                }
+            }
+            assert_eq!(limited > 0, overflow, "count={count} size={size}");
+        }
     }
     #[test]
     fn library_changes_are_native_notifications_without_paths() {

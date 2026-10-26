@@ -101,7 +101,7 @@ Every command accepts `--json`, including help and argument errors. It writes
 one versioned envelope to stdout: `{"ibis":1,"ok":true,"data":…}` or
 `{"ibis":1,"ok":false,"error":{"code":…}}`. Diagnostics go to stderr. Exit codes
 are 0 for success (including empty searches), 1 for findings, 2 for usage,
-3 for bad input, 4 for a missing item/library, 5 for an unavailable source,
+3 for bad input, 4 for a missing item/library, 5 for an unavailable source or exhausted resources,
 6 for a newer unsupported format, 70 for an internal error and 130 for cancellation.
 
 `cite --request` reads a canonical `CitationRequest` JSON object from stdin.
@@ -111,7 +111,9 @@ carry typed locators and styled affixes, and return the canonical citation text,
 display tree, per-item outcomes, losses and content hash. Incomplete results stay
 inspectable in JSON; plain citation text is printed only after the engine's
 completeness and hash check. Input JSON is bounded to 1 MiB and duplicate members
-are rejected. Human key arguments are resolved by the engine as well.
+are rejected. Responses are bounded to 16 MiB, with space reserved for envelope
+fields; oversized results return `resource-limit` (exit 5). Reduce the selection
+or search limit when that happens. Human key arguments resolve in the engine as well.
 
 Use `--format csl-json` for CSL-JSON citation output or `--style STYLE_ID` for CSL
 formatting; `styles` lists bundled style IDs. `ibis call METHOD --stdin` reads

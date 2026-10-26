@@ -1,5 +1,5 @@
 //! Deterministic, bounded JSON independent of serde_json's map feature flags.
-use crate::protocol::{FrameError, validate_shape};
+use crate::protocol::{FrameError, validate_shape_with_limit};
 use serde::{
     Serialize, Serializer,
     ser::{SerializeMap, SerializeSeq},
@@ -34,7 +34,7 @@ impl Serialize for Canonical<'_> {
 
 /// Stage the complete message before any transport bytes are written.
 pub fn encode(value: &Value, limit: usize) -> Result<Vec<u8>, FrameError> {
-    validate_shape(value)?;
+    validate_shape_with_limit(value, limit)?;
     struct Bounded {
         bytes: Vec<u8>,
         limit: usize,

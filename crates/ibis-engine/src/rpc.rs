@@ -111,6 +111,7 @@ pub fn failure(id: Option<&RequestId>, error: EngineError) -> Value {
         ErrorCode::BadInput => (-32602, "Invalid parameters"),
         ErrorCode::NotFound => (-32004, "Item or library not found"),
         ErrorCode::SourceUnavailable => (-32005, "Source unavailable"),
+        ErrorCode::ResourceLimit => (-32000, "Resource limit exceeded"),
         ErrorCode::NewerFormat => (-32006, "Newer format is not supported"),
         ErrorCode::Internal => (-32603, "Internal error"),
         ErrorCode::Cancelled => (-32800, "Request cancelled"),
@@ -124,7 +125,7 @@ pub fn parse_error() -> Value {
     error_response(None, -32700, "Parse error", ErrorCode::BadInput)
 }
 pub fn busy(id: &RequestId) -> Value {
-    error_response(Some(id), -32000, "Server busy", ErrorCode::SourceUnavailable)
+    error_response(Some(id), -32000, "Server busy", ErrorCode::ResourceLimit)
 }
 fn error_response(id: Option<&RequestId>, code: i32, message: &'static str, ibis_code: ErrorCode) -> Value {
     json!({"jsonrpc":"2.0","id":id.map(RequestId::value).unwrap_or(Value::Null),"error":{"code":code,"message":message,"data":{"code":ibis_code}}})

@@ -3,7 +3,11 @@ use serde_json::Value;
 use std::io::{self, BufRead, Write};
 use thiserror::Error;
 
-pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
+pub const MAX_REQUEST_BYTES: usize = 1024 * 1024;
+pub const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+/// Reserved for a worst-case escaped request ID, envelope fields and errors.
+pub const RESPONSE_OVERHEAD: usize = 8 * 1024;
+pub const MAX_RESULT_BYTES: usize = MAX_RESPONSE_BYTES - RESPONSE_OVERHEAD;
 const MAX_HEADER_BYTES: usize = 8192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -21,6 +25,12 @@ pub enum FrameError {
 }
 
 pub fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>, FrameError> {
+    read_frame_with_limit(reader, MAX_REQUEST_BYTES)
+}
+pub fn read_response_frame(reader: &mut impl BufRead) -> Result<Option<Value>, FrameError> {
+    read_frame_with_limit(reader, MAX_RESPONSE_BYTES)
+}
+fn read_frame_with_limit(reader: &mut impl BufRead, limit: usize) -> Result<Option<Value>, FrameError> {
     let mut remaining = MAX_HEADER_BYTES;
     let mut length = None;
     let mut headers = 0;
@@ -57,7 +67,7 @@ pub fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>, FrameError
                 return Err(FrameError::InvalidHeader);
             }
             let parsed = value.parse::<usize>().map_err(|_| FrameError::TooLarge)?;
-            if parsed > MAX_FRAME_BYTES {
+            if parsed > limit {
                 return Err(FrameError::TooLarge);
             }
             length = Some(parsed);
@@ -83,18 +93,21 @@ pub fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>, FrameError
             FrameError::Io
         }
     })?;
-    parse_json(&body).map(Some)
+    parse_json_with_limit(&body, limit).map(Some)
 }
 
 /// Shared bounded JSON reader for stdio and command-line request input.
 pub fn parse_json(bytes: &[u8]) -> Result<Value, FrameError> {
-    if bytes.len() > MAX_FRAME_BYTES {
+    parse_json_with_limit(bytes, MAX_REQUEST_BYTES)
+}
+fn parse_json_with_limit(bytes: &[u8], limit: usize) -> Result<Value, FrameError> {
+    if bytes.len() > limit {
         return Err(FrameError::TooLarge);
     }
     let value = serde_json::from_slice::<UniqueValue>(bytes)
         .map_err(|_| FrameError::InvalidJson)?
         .0;
-    validate_shape(&value)?;
+    validate_shape_with_limit(&value, limit)?;
     Ok(value)
 }
 
@@ -128,7 +141,7 @@ fn header_line(reader: &mut impl BufRead, remaining: &mut usize) -> Result<Optio
 }
 
 pub fn write_frame(writer: &mut impl Write, message: &Value) -> Result<(), FrameError> {
-    let body = crate::wire::encode(message, MAX_FRAME_BYTES)?;
+    let body = crate::wire::encode(message, MAX_RESPONSE_BYTES)?;
     write!(writer, "Content-Length: {}\r\n\r\n", body.len()).map_err(|_| FrameError::Io)?;
     writer
         .write_all(&body)
@@ -137,25 +150,26 @@ pub fn write_frame(writer: &mut impl Write, message: &Value) -> Result<(), Frame
 }
 
 pub(crate) fn validate_shape(message: &Value) -> Result<(), FrameError> {
+    validate_shape_with_limit(message, MAX_REQUEST_BYTES)
+}
+pub(crate) fn validate_shape_with_limit(message: &Value, limit: usize) -> Result<(), FrameError> {
     let mut pending = vec![(message, 0)];
     let mut visited = 0;
     while let Some((value, depth)) = pending.pop() {
         visited += 1;
-        if depth > 128 || visited > MAX_FRAME_BYTES {
+        if depth > 128 || visited > limit {
             return Err(FrameError::TooLarge);
         }
         match value {
-            Value::String(text) if text.len() > MAX_FRAME_BYTES => return Err(FrameError::TooLarge),
+            Value::String(text) if text.len() > limit => return Err(FrameError::TooLarge),
             Value::Array(values) => {
-                if values.len() > MAX_FRAME_BYTES.saturating_sub(pending.len()) {
+                if values.len() > limit.saturating_sub(pending.len()) {
                     return Err(FrameError::TooLarge);
                 }
                 pending.extend(values.iter().map(|value| (value, depth + 1)));
             }
             Value::Object(values) => {
-                if values.len() > MAX_FRAME_BYTES.saturating_sub(pending.len())
-                    || values.keys().any(|key| key.len() > MAX_FRAME_BYTES)
-                {
+                if values.len() > limit.saturating_sub(pending.len()) || values.keys().any(|key| key.len() > limit) {
                     return Err(FrameError::TooLarge);
                 }
                 pending.extend(values.values().map(|value| (value, depth + 1)));

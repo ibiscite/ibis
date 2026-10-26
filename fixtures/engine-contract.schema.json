@@ -466,6 +466,7 @@
         "bad-input",
         "not-found",
         "source-unavailable",
+        "resource-limit",
         "newer-format",
         "internal",
         "cancelled"
