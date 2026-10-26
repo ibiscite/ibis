@@ -8,6 +8,7 @@ use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
+    cell::Cell,
     collections::BTreeMap,
     sync::{
         Arc, Mutex, RwLock, Weak,
@@ -90,20 +91,62 @@ pub struct LibraryChange {
     pub sequence: u64,
     pub libraries: Vec<LibraryId>,
     pub snapshot: Fingerprints,
+    /// Fetch every library when intermediate invalidations were coalesced.
+    pub resync: bool,
 }
 pub struct LibrarySubscription {
     id: u64,
     owner: Weak<Shared>,
     receiver: mpsc::Receiver<LibraryChange>,
+    last_sequence: Cell<u64>,
 }
 impl LibrarySubscription {
     pub fn recv_timeout(&self, timeout: std::time::Duration) -> Result<LibraryChange, mpsc::RecvTimeoutError> {
-        self.receiver.recv_timeout(timeout)
+        let began = std::time::Instant::now();
+        let mut remaining = timeout;
+        loop {
+            let event = self.receiver.recv_timeout(remaining)?;
+            if let Some(event) = self.coalesce(event) {
+                return Ok(event);
+            }
+            remaining = timeout.saturating_sub(began.elapsed());
+            if remaining.is_zero() {
+                return Err(mpsc::RecvTimeoutError::Timeout);
+            }
+        }
     }
     pub fn try_recv(&self) -> Result<LibraryChange, mpsc::TryRecvError> {
-        self.receiver.try_recv()
+        loop {
+            let event = self.receiver.try_recv()?;
+            if let Some(event) = self.coalesce(event) {
+                return Ok(event);
+            }
+        }
+    }
+    fn coalesce(&self, mut event: LibraryChange) -> Option<LibraryChange> {
+        while let Ok(next) = self.receiver.try_recv() {
+            event = next;
+        }
+        if let Some(latest) = self
+            .owner
+            .upgrade()
+            .and_then(|owner| owner.latest_change.lock().ok().and_then(|latest| latest.clone()))
+        {
+            event = latest;
+        }
+        let previous = self.last_sequence.get();
+        if event.sequence <= previous {
+            return None;
+        }
+        event.resync = event.sequence != previous.saturating_add(1);
+        if event.resync {
+            event.libraries.clear();
+        }
+        self.last_sequence.set(event.sequence);
+        Some(event)
     }
 }
+
 impl Drop for LibrarySubscription {
     fn drop(&mut self) {
         if let Some(owner) = self.owner.upgrade()
@@ -124,6 +167,7 @@ struct Shared {
     subscribers: Mutex<BTreeMap<u64, mpsc::SyncSender<LibraryChange>>>,
     next_subscription: AtomicU64,
     publication_sequence: AtomicU64,
+    latest_change: Mutex<Option<LibraryChange>>,
 }
 #[derive(Clone)]
 pub struct Engine {
@@ -154,6 +198,7 @@ impl Engine {
                 subscribers: Mutex::new(BTreeMap::new()),
                 next_subscription: AtomicU64::new(0),
                 publication_sequence: AtomicU64::new(0),
+                latest_change: Mutex::new(None),
             }),
         }
     }
@@ -168,7 +213,7 @@ impl Engine {
         Ok(self.state()?.index.snapshot().clone())
     }
     pub fn subscribe(&self) -> Result<LibrarySubscription, EngineError> {
-        let (sender, receiver) = mpsc::sync_channel(16);
+        let (sender, receiver) = mpsc::sync_channel(1);
         let mut subscribers = self.shared.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
         if subscribers.len() >= 64 {
             return Err(error(ErrorCode::ResourceLimit));
@@ -179,6 +224,7 @@ impl Engine {
             id,
             owner: Arc::downgrade(&self.shared),
             receiver,
+            last_sequence: Cell::new(self.shared.publication_sequence.load(Ordering::Acquire)),
         })
     }
     fn notify(&self, libraries: Vec<LibraryId>, snapshot: Fingerprints) -> Result<(), EngineError> {
@@ -186,10 +232,16 @@ impl Engine {
             sequence: self.shared.publication_sequence.fetch_add(1, Ordering::Relaxed) + 1,
             libraries,
             snapshot,
+            resync: false,
         };
+        *self
+            .shared
+            .latest_change
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))? = Some(event.clone());
         let mut subscribers = self.shared.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
         subscribers.retain(|_, sender| match sender.try_send(event.clone()) {
-            // Events invalidate caches: a queued event is enough to fetch newest state.
+            // A queued wake pulls latest_change; gaps explicitly require full resync.
             Ok(()) | Err(mpsc::TrySendError::Full(_)) => true,
             Err(mpsc::TrySendError::Disconnected(_)) => false,
         });

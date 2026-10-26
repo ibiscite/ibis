@@ -156,6 +156,34 @@ fn a_named_missing_library_is_not_silently_an_empty_search() {
 }
 
 #[test]
+fn a_slow_subscriber_gets_latest_state_and_an_explicit_full_resync() {
+    let engine = Engine::new().unwrap();
+    let events = engine.subscribe().unwrap();
+    for number in 0..40 {
+        engine
+            .publish_library(
+                LibraryId::file(format!("synthetic-slow-{number}").as_bytes()),
+                Arc::new(Snapshot::new(vec![]).unwrap()),
+            )
+            .unwrap();
+    }
+    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(event.sequence, 40);
+    assert_eq!(serde_json::to_value(&event).unwrap()["resync"], true);
+    assert!(event.libraries.is_empty());
+    assert_eq!(engine.libraries().unwrap().libraries.len(), 40);
+    assert!(events.try_recv().is_err());
+    let library = LibraryId::file(b"synthetic-after-resync");
+    engine
+        .publish_library(library.clone(), Arc::new(Snapshot::new(vec![]).unwrap()))
+        .unwrap();
+    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(event.sequence, 41);
+    assert_eq!(event.libraries, [library]);
+    assert_eq!(serde_json::to_value(&event).unwrap()["resync"], false);
+}
+
+#[test]
 fn public_typed_views_do_not_clone_or_return_raw_source_payloads() {
     let case = case();
     let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
