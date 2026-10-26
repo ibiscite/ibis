@@ -19,6 +19,7 @@ mod mounts;
 mod platform;
 mod private_copy;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use platform::resident;
 
 /// Fixed reasons suitable for diagnostics. Native errors are deliberately lost.
