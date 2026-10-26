@@ -118,25 +118,10 @@ fn header_line(reader: &mut impl BufRead, remaining: &mut usize) -> Result<Optio
 }
 
 pub fn write_frame(writer: &mut impl Write, message: &Value) -> Result<(), FrameError> {
-    validate_shape(message)?;
-    struct Body(Vec<u8>);
-    impl Write for Body {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            if bytes.len() > MAX_FRAME_BYTES - self.0.len() {
-                return Err(io::Error::other("message exceeds the size limit"));
-            }
-            self.0.extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-    let mut body = Body(vec![]);
-    serde_json::to_writer(&mut body, message).map_err(|_| FrameError::TooLarge)?;
-    write!(writer, "Content-Length: {}\r\n\r\n", body.0.len()).map_err(|_| FrameError::Io)?;
+    let body = crate::wire::encode(message, MAX_FRAME_BYTES)?;
+    write!(writer, "Content-Length: {}\r\n\r\n", body.len()).map_err(|_| FrameError::Io)?;
     writer
-        .write_all(&body.0)
+        .write_all(&body)
         .and_then(|()| writer.flush())
         .map_err(|_| FrameError::Io)
 }

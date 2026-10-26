@@ -10,3 +10,5 @@ pub mod rpc;
 
 mod service;
 pub use service::*;
+
+pub mod wire;
