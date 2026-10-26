@@ -294,6 +294,23 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn new(mut objects: Vec<LibraryObject>) -> Result<Self, ModelError> {
+        // Check every recursively shaped payload before any other validation
+        // can return and drop it. Values assembled by sources do not have the
+        // JSON reader's recursion limit, including engine-only raw provenance.
+        let safe_depth = objects.iter().all(|object| match object {
+            LibraryObject::Record(record) => record
+                .csl
+                .values()
+                .chain(record.raw.iter().map(|raw| &raw.data))
+                .all(|value| validate_value_depth(value).is_ok()),
+            _ => true,
+        });
+        if !safe_depth {
+            // serde_json::Value's ordinary destructor is recursive too. A
+            // rejected payload must be dismantled without using that stack.
+            drop_objects_iteratively(objects);
+            return Err(ModelError::InvalidObject);
+        }
         objects.sort_by(|left, right| left.id().cmp(right.id()));
         if objects.windows(2).any(|pair| pair[0].id() == pair[1].id()) {
             return Err(ModelError::DuplicateItem);
@@ -303,16 +320,6 @@ impl Snapshot {
             .any(|object| object.id().key.trim().is_empty() || object.id().key.chars().any(char::is_control))
         {
             return Err(ModelError::InvalidItemRef);
-        }
-        // Bound the only recursively shaped data before serde or hashing walks
-        // it. Source input can be assembled as Values without serde's JSON
-        // reader recursion limit, so that reader is not the safety boundary.
-        for object in &objects {
-            if let LibraryObject::Record(record) = object {
-                for value in record.csl.values() {
-                    validate_value_depth(value)?;
-                }
-            }
         }
         let objects = objects
             .into_iter()
@@ -359,9 +366,22 @@ impl<'de> Deserialize<'de> for Snapshot {
             fingerprints: Fingerprints,
         }
         let wire = Wire::deserialize(deserializer)?;
+        // Keep only shallow validation metadata: cloning the payload itself
+        // could overflow before new() gets to reject excessive nesting.
+        let expected: Vec<_> = wire
+            .objects
+            .iter()
+            .map(|item| (item.object.id().clone(), item.fingerprints.clone()))
+            .collect();
         let snapshot =
-            Self::new(wire.objects.iter().map(|item| item.object.clone()).collect()).map_err(de::Error::custom)?;
-        if snapshot.fingerprints != wire.fingerprints || snapshot.objects != wire.objects {
+            Self::new(wire.objects.into_iter().map(|item| item.object).collect()).map_err(de::Error::custom)?;
+        let actual = snapshot
+            .objects
+            .iter()
+            .map(|item| (item.object.id(), &item.fingerprints));
+        if snapshot.fingerprints != wire.fingerprints
+            || actual.ne(expected.iter().map(|(id, fingerprints)| (id, fingerprints)))
+        {
             return Err(de::Error::custom(ModelError::InvalidFingerprint));
         }
         Ok(snapshot)
@@ -401,6 +421,30 @@ fn validate_value_depth(value: &Value) -> Result<(), ModelError> {
         }
     }
     Ok(())
+}
+
+fn drop_objects_iteratively(mut objects: Vec<LibraryObject>) {
+    for object in &mut objects {
+        if let LibraryObject::Record(record) = object {
+            for value in std::mem::take(&mut record.csl).into_values() {
+                drop_value_iteratively(value);
+            }
+            if let Some(raw) = record.raw.take() {
+                drop_value_iteratively(raw.data);
+            }
+        }
+    }
+}
+
+fn drop_value_iteratively(value: Value) {
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::Array(values) => pending.extend(values),
+            Value::Object(object) => pending.extend(object.into_values()),
+            _ => {}
+        }
+    }
 }
 
 /// Fixed errors deliberately omit source data and locations.

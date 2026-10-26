@@ -63,3 +63,61 @@ fn golden_cases_parse_and_round_trip() -> Result<(), Box<dyn std::error::Error>>
     assert_eq!(names.len(), 10);
     Ok(())
 }
+
+#[test]
+fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
+    const CHILD: &str = "IBIS_DEEP_SNAPSHOT_TEST_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        std::thread::spawn(|| {
+            use ibis_core::contract::*;
+            use std::collections::BTreeMap;
+            for mode in 0..4 {
+                let mut value = serde_json::Value::Null;
+                for _ in 0..20_000 {
+                    value = serde_json::Value::Array(vec![value]);
+                }
+                let mut record = Record {
+                    id: ItemRef {
+                        library: LibraryId::file(b"synthetic-depth-fixture"),
+                        key: if mode == 3 { "".into() } else { "work".into() },
+                    },
+                    csl: BTreeMap::new(),
+                    citation_keys: vec![],
+                    aliases: vec![],
+                    raw: None,
+                };
+                if mode == 1 {
+                    record.raw = Some(RawProvenance {
+                        format: SourceFormat::CslJson,
+                        data: value,
+                    });
+                } else {
+                    record.csl.insert("title".into(), value);
+                }
+                let mut objects = vec![LibraryObject::Record(record)];
+                if mode == 2 {
+                    objects.push(LibraryObject::Record(Record {
+                        id: ItemRef {
+                            library: LibraryId::file(b"synthetic-depth-fixture"),
+                            key: "work".into(),
+                        },
+                        csl: BTreeMap::new(),
+                        citation_keys: vec![],
+                        aliases: vec![],
+                        raw: None,
+                    }));
+                }
+                assert!(Snapshot::new(objects).is_err());
+            }
+        })
+        .join()
+        .map_err(|_| "snapshot worker panicked")?;
+        return Ok(());
+    }
+    let status = std::process::Command::new(std::env::current_exe()?)
+        .args(["--exact", "deep_snapshot_rejection_is_safe", "--nocapture"])
+        .env(CHILD, "1")
+        .status()?;
+    assert!(status.success(), "deep snapshot rejection aborted the process");
+    Ok(())
+}
