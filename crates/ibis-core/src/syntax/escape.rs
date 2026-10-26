@@ -34,15 +34,47 @@ pub(crate) fn pandoc_key(key: &str) -> String {
 }
 
 pub(crate) fn pandoc_escape(text: &str) -> String {
+    pandoc_text(text, false)
+}
+
+pub(crate) fn pandoc_affix_escape(text: &str) -> String {
+    // Runs can meet at a boundary that would create -- or ...; quote each
+    // literal punctuation character before the trusted style wrappers join.
+    pandoc_text(text, true)
+}
+
+fn pandoc_text(text: &str, affix: bool) -> String {
     let mut out = String::new();
-    for c in text.chars() {
+    let mut chars = text.chars().peekable();
+    let mut previous = None;
+    while let Some(c) = chars.next() {
         if matches!(
             c,
-            '[' | ']' | ';' | '@' | '\\' | '*' | '_' | '`' | '$' | '<' | '>' | '^' | '~' | '&' | '#' | '|' | '{' | '}'
-        ) {
+            '[' | ']'
+                | ';'
+                | '@'
+                | '\\'
+                | '*'
+                | '_'
+                | '`'
+                | '$'
+                | '<'
+                | '>'
+                | '^'
+                | '~'
+                | '&'
+                | '#'
+                | '|'
+                | '{'
+                | '}'
+                | '\''
+                | '"'
+        ) || matches!(c, '-' | '.') && (affix || previous == Some(c) || chars.peek() == Some(&c))
+        {
             out.push('\\');
         }
         out.push(c);
+        previous = Some(c);
     }
     out
 }
@@ -50,20 +82,41 @@ pub(crate) fn pandoc_escape(text: &str) -> String {
 pub(crate) fn latex_escape(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
+        latex_character(&mut out, c);
+    }
+    out
+}
+
+/// Literal affixes must not activate TeX quote/dash ligatures or consumer smart
+/// typography. Locators retain their intentional range-dash normalization.
+pub(crate) fn latex_affix_escape(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
         match c {
-            '\\' => out.push_str("\\textbackslash{}"),
-            '~' => out.push_str("\\textasciitilde{}"),
-            '^' => out.push_str("\\textasciicircum{}"),
-            '#' | '$' | '%' | '&' | '_' | '{' | '}' => {
-                out.push('\\');
-                out.push(c);
-            }
-            '[' => out.push_str("{[}"),
-            ']' => out.push_str("{]}"),
-            _ => out.push(c),
+            '-' => out.push_str("{-}"),
+            '.' => out.push_str("{.}"),
+            '"' => out.push_str("\\textquotedbl{}"),
+            '\'' => out.push_str("\\textquotesingle{}"),
+            '`' => out.push_str("\\`{}"),
+            _ => latex_character(&mut out, c),
         }
     }
     out
+}
+
+fn latex_character(out: &mut String, c: char) {
+    match c {
+        '\\' => out.push_str("\\textbackslash{}"),
+        '~' => out.push_str("\\textasciitilde{}"),
+        '^' => out.push_str("\\textasciicircum{}"),
+        '#' | '$' | '%' | '&' | '_' | '{' | '}' => {
+            out.push('\\');
+            out.push(c);
+        }
+        '[' => out.push_str("{[}"),
+        ']' => out.push_str("{]}"),
+        _ => out.push(c),
+    }
 }
 
 pub(crate) fn typst_simple_label(key: &str) -> bool {

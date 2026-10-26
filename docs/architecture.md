@@ -51,6 +51,8 @@ untrusted data and are never injected as markup.
 arXiv eprints that have no printed CSL field. It is omitted when empty and affects
 only the full fingerprint; changing search metadata does not invalidate a citation.
 `identifier::of_record` combines these identifiers with recognised CSL fields.
+Explicit identifier values pass through the same canonical parsers as pasted
+queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 
 ## Sources (ibis-sources)
 
@@ -85,6 +87,13 @@ subsequently sort or format the citation. The old CLI/app entrypoints continue
 calling the existing pipeline until #1199/#1201 switch their callers to the engine;
 those cutovers delete the old entrypoints. Both pipelines share scalar escaping,
 without adapters between the two contracts.
+
+Literal affixes escape default consumer smart punctuation as well as markup.
+Plain LaTeX and Typst place prefixes outside the citation and report a typed
+prefix/flattened loss, since a footnote-style citation cannot carry that prefix
+in the same position. Capability tables list forms restricted to one item;
+multi-item Pandoc narrative requests are refused until mixed clusters are built
+in 0.4, rather than silently becoming several citation clusters.
 
 ## Engine interface (ibis-engine, ibis-cli)
 

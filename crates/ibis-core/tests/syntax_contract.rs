@@ -409,6 +409,209 @@ fn pandoc_available() -> bool {
     available
 }
 
+fn consumer_ast(format: &str, text: &str) -> Value {
+    use std::io::Write;
+    let mut child = std::process::Command::new("pandoc")
+        .args(["-f", format, "-t", "json"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+    let parsed = child.wait_with_output().unwrap();
+    assert!(parsed.status.success(), "{text}");
+    serde_json::from_slice(&parsed.stdout).unwrap()
+}
+
+fn first_citation(value: &Value) -> Option<&Value> {
+    match value {
+        Value::Object(object) if object.get("t").and_then(Value::as_str) == Some("Cite") => {
+            value["c"][0].as_array()?.first()
+        }
+        Value::Object(object) => object.values().find_map(first_citation),
+        Value::Array(array) => array.iter().find_map(first_citation),
+        _ => None,
+    }
+}
+
+#[test]
+fn prefix_relocation_is_reported_as_a_typed_loss() {
+    let mut case = seed();
+    case.request.items[0].prefix = vec![TextRun {
+        text: "see".into(),
+        ..TextRun::default()
+    }];
+    for syntax in [KeySyntax::Latex, KeySyntax::Typst] {
+        case.request.output = OutputSpec::Key { syntax, command: None };
+        assert_ne!(
+            syntax::capabilities(&case.request.output).unwrap().prefix,
+            syntax::FieldSupport::Native
+        );
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert_eq!(
+            result.losses,
+            [Loss {
+                item: Some(0),
+                field: LossField::Prefix,
+                reason: LossReason::Flattened
+            }]
+        );
+        if pandoc_available() {
+            let ast = consumer_ast(if syntax == KeySyntax::Latex { "latex" } else { "typst" }, &result.text);
+            assert_eq!(inline_text(&first_citation(&ast).unwrap()["citationPrefix"]), "");
+            let before = ast["blocks"][0]["c"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .take_while(|inline| inline["t"] != "Cite")
+                .map(inline_text)
+                .collect::<String>();
+            assert_eq!(before.trim(), "see");
+        }
+    }
+}
+
+#[test]
+fn default_consumers_preserve_literal_affix_text() {
+    if !pandoc_available() {
+        return;
+    }
+    let mut case = seed();
+    for note in [
+        "a -- \"b\" ...",
+        "`single` and ``double''",
+        "[] {} & % $ # _ ~ ^ \\ @; |<>",
+        "l'été Ελληνικά العربية हिन्दी 中文 😀",
+        "a - b; 12-14. (x), z: value!",
+    ] {
+        case.request.items[0].prefix = vec![TextRun {
+            text: note.into(),
+            ..TextRun::default()
+        }];
+        case.request.items[0].suffix = case.request.items[0].prefix.clone();
+        for caps in &CAPABILITIES {
+            if !matches!(caps.escaping, Escaping::Pandoc | Escaping::Latex) {
+                continue;
+            }
+            case.request.output = output(caps);
+            let result = syntax::cite(&case.library, &case.request).unwrap();
+            let ast = consumer_ast(
+                if caps.escaping == Escaping::Pandoc {
+                    "markdown"
+                } else {
+                    "latex"
+                },
+                &result.text,
+            );
+            let citation = first_citation(&ast).unwrap();
+            let prefix = if caps.syntax == KeySyntax::Latex {
+                ast["blocks"][0]["c"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .take_while(|inline| inline["t"] != "Cite")
+                    .map(inline_text)
+                    .collect::<String>()
+            } else {
+                inline_text(&citation["citationPrefix"])
+            };
+            assert_eq!(prefix.trim(), note, "{caps:?}: {}", result.text);
+            let expected = if caps.escaping == Escaping::Pandoc {
+                format!(", {note}")
+            } else {
+                note.to_string()
+            };
+            assert_eq!(
+                inline_text(&citation["citationSuffix"]),
+                expected,
+                "{caps:?}: {}",
+                result.text
+            );
+        }
+    }
+}
+
+#[test]
+fn mixed_pandoc_forms_are_explicitly_refused_in_one_request() {
+    let mut case = seed();
+    case.request.items.push(case.request.items[0].clone());
+    case.request.items[0].form = Some(CitationForm::Narrative);
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(
+        result.outcomes[0],
+        ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::UnsupportedForm
+        }
+    );
+    assert!(result.copy_content(2).is_none());
+    if pandoc_available() {
+        let ast = consumer_ast("markdown", &result.text);
+        let mut ids = vec![];
+        citations(&ast, &mut ids);
+        assert_eq!(ids.len(), 1);
+    }
+}
+
+#[test]
+fn literal_punctuation_across_runs_cannot_create_smart_typography() {
+    if !pandoc_available() {
+        return;
+    }
+    let mut case = seed();
+    case.request.items[0].suffix = "--...\"'`"
+        .chars()
+        .map(|c| TextRun {
+            text: c.to_string(),
+            ..TextRun::default()
+        })
+        .collect();
+    for caps in &CAPABILITIES {
+        if !matches!(caps.escaping, Escaping::Pandoc | Escaping::Latex) {
+            continue;
+        }
+        case.request.output = output(caps);
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        let ast = consumer_ast(
+            if caps.escaping == Escaping::Pandoc {
+                "markdown"
+            } else {
+                "latex"
+            },
+            &result.text,
+        );
+        let suffix = inline_text(&first_citation(&ast).unwrap()["citationSuffix"]);
+        assert_eq!(
+            suffix.strip_prefix(", ").unwrap_or(&suffix),
+            "--...\"'`",
+            "{}",
+            result.text
+        );
+    }
+}
+
+#[test]
+fn control_characters_are_refused_in_every_affix_target() {
+    let mut case = seed();
+    for control in ['\0', '\n', '\r', '\t', '\u{7f}'] {
+        case.request.items[0].suffix = vec![TextRun {
+            text: format!("synthetic{control}text"),
+            ..TextRun::default()
+        }];
+        for caps in &CAPABILITIES {
+            case.request.output = output(caps);
+            assert_eq!(
+                syntax::cite(&case.library, &case.request).unwrap().outcomes,
+                [ItemOutcome::Refused {
+                    item: 0,
+                    error: CitationError::InvalidRichText
+                }]
+            );
+        }
+    }
+}
+
 fn inline_text(value: &Value) -> String {
     match value.get("t").and_then(Value::as_str) {
         Some("Str") => value["c"].as_str().unwrap_or_default().into(),
@@ -502,7 +705,7 @@ fn unusual_keys_are_preserved_or_explicitly_refused_for_each_target() {
                 continue;
             }
             let format = match caps.escaping {
-                Escaping::Pandoc => "markdown-smart",
+                Escaping::Pandoc => "markdown",
                 Escaping::Latex => "latex",
                 Escaping::Typst => "typst",
                 _ => continue,
@@ -549,7 +752,7 @@ proptest! {
                 },
                 _ if available => {
                     use std::io::Write;
-                    let format = match caps.escaping { Escaping::Pandoc => "markdown-smart", Escaping::Latex => "latex", _ => "typst" };
+                    let format = match caps.escaping { Escaping::Pandoc => "markdown", Escaping::Latex => "latex", _ => "typst" };
                     let mut child = std::process::Command::new("pandoc").args(["-f", format, "-t", "json"]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
                     child.stdin.take().unwrap().write_all(result.text.as_bytes()).unwrap();
                     let parsed = child.wait_with_output().unwrap();
@@ -557,6 +760,17 @@ proptest! {
                     let ast: Value = serde_json::from_slice(&parsed.stdout).unwrap();
                     let mut ids = Vec::new(); citations(&ast, &mut ids);
                     prop_assert_eq!(ids, vec![key.clone()], "{:?}: {}", caps, result.text);
+                    if matches!(caps.escaping, Escaping::Pandoc | Escaping::Latex) {
+                        let citation = first_citation(&ast).unwrap();
+                        let prefix = if caps.syntax == KeySyntax::Latex {
+                            ast["blocks"][0]["c"].as_array().unwrap().iter().take_while(|inline| inline["t"] != "Cite").map(inline_text).collect::<String>()
+                        } else { inline_text(&citation["citationPrefix"]) };
+                        let expected = note.split_whitespace().collect::<Vec<_>>().join(" ");
+                        prop_assert_eq!(prefix.split_whitespace().collect::<Vec<_>>().join(" "), expected.clone(), "{:?}: {}", caps, result.text);
+                        let suffix = inline_text(&citation["citationSuffix"]);
+                        let suffix = if caps.escaping == Escaping::Pandoc { suffix.strip_prefix(",").unwrap_or(&suffix) } else { &suffix };
+                        prop_assert_eq!(suffix.split_whitespace().collect::<Vec<_>>().join(" "), expected, "{:?}: {}", caps, result.text);
+                    }
                 },
                 _ => {},
             }

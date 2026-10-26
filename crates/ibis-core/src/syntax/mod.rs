@@ -15,6 +15,8 @@ pub const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldSupport {
     Native,
+    /// Text is retained outside the citation rather than as a native field.
+    Flattened,
     Unsupported,
     SingleItem,
 }
@@ -35,6 +37,7 @@ pub struct SyntaxCapabilities {
     pub syntax: KeySyntax,
     pub command: Option<&'static str>,
     pub forms: &'static [CitationForm],
+    pub single_item_forms: &'static [CitationForm],
     pub locator: FieldSupport,
     pub prefix: FieldSupport,
     pub suffix: FieldSupport,
@@ -44,13 +47,14 @@ pub struct SyntaxCapabilities {
 }
 
 use CitationForm::{Narrative, Normal, YearOnly};
-use FieldSupport::{Native, SingleItem, Unsupported};
+use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
 pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
     SyntaxCapabilities {
         syntax: KeySyntax::Pandoc,
         command: None,
         forms: &[Normal, Narrative, YearOnly],
+        single_item_forms: &[Narrative],
         locator: Native,
         prefix: Native,
         suffix: Native,
@@ -62,6 +66,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         syntax: KeySyntax::Biblatex,
         command: Some("autocite"),
         forms: &[Normal, YearOnly],
+        single_item_forms: &[YearOnly],
         locator: Native,
         prefix: Native,
         suffix: Native,
@@ -73,6 +78,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         syntax: KeySyntax::Biblatex,
         command: Some("parencite"),
         forms: &[Normal, YearOnly],
+        single_item_forms: &[YearOnly],
         locator: Native,
         prefix: Native,
         suffix: Native,
@@ -84,6 +90,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         syntax: KeySyntax::Biblatex,
         command: Some("textcite"),
         forms: &[Normal, Narrative],
+        single_item_forms: &[],
         locator: Native,
         prefix: Native,
         suffix: Native,
@@ -95,8 +102,9 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         syntax: KeySyntax::Latex,
         command: Some("cite"),
         forms: &[Normal],
+        single_item_forms: &[],
         locator: Native,
-        prefix: Native,
+        prefix: Flattened,
         suffix: Native,
         rich_text: Native,
         author_suppression: Unsupported,
@@ -112,8 +120,9 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
             YearOnly,
             CitationForm::Full,
         ],
+        single_item_forms: &[],
         locator: Native,
-        prefix: Native,
+        prefix: Flattened,
         suffix: Native,
         rich_text: Native,
         author_suppression: Native,
@@ -123,6 +132,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         syntax: KeySyntax::Keys,
         command: None,
         forms: &[Normal],
+        single_item_forms: &[],
         locator: Unsupported,
         prefix: Unsupported,
         suffix: Unsupported,
@@ -134,6 +144,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         syntax: KeySyntax::CslJson,
         command: None,
         forms: &[Normal],
+        single_item_forms: &[],
         locator: Unsupported,
         prefix: Unsupported,
         suffix: Unsupported,
@@ -206,7 +217,11 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
                         losses.push(Loss {
                             item: Some(index),
                             field,
-                            reason: LossReason::Unsupported,
+                            reason: if support == Flattened {
+                                LossReason::Flattened
+                            } else {
+                                LossReason::Unsupported
+                            },
                         });
                     }
                 }
@@ -301,7 +316,7 @@ fn resolve<'a>(
     validate_annotation(snapshot, item)?;
     let form = item.form.unwrap_or(default_form);
     if !caps.forms.contains(&form)
-        || form == YearOnly && caps.author_suppression == SingleItem && count != 1
+        || count != 1 && caps.single_item_forms.contains(&form)
         || item.suppress_author && matches!(form, Narrative | CitationForm::AuthorOnly | CitationForm::Full)
     {
         return Err(CitationError::UnsupportedForm);

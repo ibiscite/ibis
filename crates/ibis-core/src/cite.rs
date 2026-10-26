@@ -7,7 +7,8 @@
 //! express something, the output says so in `warnings` instead of guessing.
 
 use crate::syntax::escape::{
-    is_range, latex_escape, normalize_dashes, pandoc_escape, pandoc_key, typst_markup_escape, typst_simple_label,
+    is_range, latex_affix_escape, latex_escape, normalize_dashes, pandoc_affix_escape, pandoc_escape, pandoc_key,
+    typst_markup_escape, typst_simple_label,
 };
 
 use serde::{Deserialize, Serialize};
@@ -254,7 +255,7 @@ fn pandoc(items: &[CiteItem]) -> Vec<CitationSegment> {
         .map(|item| {
             let mut s = String::new();
             if let Some(prefix) = &item.prefix {
-                s.push_str(&pandoc_escape(prefix));
+                s.push_str(&pandoc_affix_escape(prefix));
                 s.push(' ');
             }
             if item.suppress_author {
@@ -268,7 +269,7 @@ fn pandoc(items: &[CiteItem]) -> Vec<CitationSegment> {
             }
             if let Some(suffix) = &item.suffix {
                 s.push_str(", ");
-                s.push_str(&pandoc_escape(suffix));
+                s.push_str(&pandoc_affix_escape(suffix));
             }
             s
         })
@@ -291,7 +292,7 @@ fn biblatex_postnote(item: &CiteItem) -> Option<String> {
         LocatorLabel::Page => latex_escape(&normalize_dashes(l.value.trim(), "--")),
         _ => latex_locator(l),
     });
-    match (locator, item.suffix.as_deref().map(latex_escape)) {
+    match (locator, item.suffix.as_deref().map(latex_affix_escape)) {
         (Some(l), Some(s)) => Some(format!("{l}, {s}")),
         (Some(l), None) => Some(l),
         (None, Some(s)) => Some(s),
@@ -300,7 +301,7 @@ fn biblatex_postnote(item: &CiteItem) -> Option<String> {
 }
 
 fn biblatex_notes(item: &CiteItem) -> String {
-    let pre = item.prefix.as_deref().map(latex_escape);
+    let pre = item.prefix.as_deref().map(latex_affix_escape);
     match (pre, biblatex_postnote(item)) {
         (Some(pre), post) => format!("[{pre}][{}]", post.unwrap_or_default()),
         (None, Some(post)) => format!("[{post}]"),
@@ -357,9 +358,9 @@ fn plain_cite(items: &[CiteItem], warnings: &mut Vec<String>) -> Vec<CitationSeg
         .map(|item| {
             let locator = item.locator.as_ref().map(latex_locator);
             let note = [
-                item.prefix.as_deref().map(latex_escape),
+                item.prefix.as_deref().map(latex_affix_escape),
                 locator,
-                item.suffix.as_deref().map(latex_escape),
+                item.suffix.as_deref().map(latex_affix_escape),
             ]
             .into_iter()
             .flatten()

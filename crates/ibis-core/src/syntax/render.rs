@@ -228,8 +228,8 @@ fn rich(runs: &RichText, escaping: Escaping) -> String {
     runs.iter()
         .map(|run| {
             let mut text = match escaping {
-                Escaping::Pandoc => pandoc_escape(&run.text),
-                Escaping::Latex => latex_escape(&run.text),
+                Escaping::Pandoc => pandoc_affix_escape(&run.text),
+                Escaping::Latex => latex_affix_escape(&run.text),
                 Escaping::Typst => typst_literal(&run.text, runs.len() > 1),
                 _ => run.text.clone(),
             };
