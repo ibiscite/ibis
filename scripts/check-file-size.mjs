@@ -55,22 +55,18 @@ function commit(sha) {
   return reference;
 }
 
-// The main commits to compare with. Sizes: the commit the checked tree was
-// built on (a pull request's base, the queue's base, the previous push), so a
-// later shrink on main never fails a pull request that did not touch the
-// file; the queue then checks against the real base. Baseline: current main
-// for a pull request, because its base metadata can lag behind main and must
-// never resurrect an older limit.
-export function baseReferences() {
+// The main commit to compare with: the one the checked tree was built on.
+// A pull request checks out GitHub's merge of its head into main, whose first
+// parent can be newer than the event's base SHA; the queue's base and the
+// previous push are exact. The merge queue checks every change again against
+// the real main, so a stale pull request base never lands an older limit.
+export function baseReference() {
   const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
   if (event.pull_request) {
-    git(["fetch", "--no-tags", "--depth=1", "origin", "refs/heads/main"]);
-    const current = git(["rev-parse", "FETCH_HEAD"]).trim();
-    if (!/^[a-f0-9]{40}$/.test(current)) throw new Error("File-size check needs the current main commit; fetch origin main.");
-    return { sizes: commit(event.pull_request.base?.sha ?? current), baseline: current };
+    const [, first, second] = git(["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ");
+    return commit(second && second === event.pull_request.head?.sha ? first : event.pull_request.base?.sha);
   }
-  const reference = commit(event.merge_group?.base_sha ?? event.before);
-  return { sizes: reference, baseline: reference };
+  return commit(event.merge_group?.base_sha ?? event.before);
 }
 
 export function previousBaseline(reference) {
@@ -92,8 +88,8 @@ function main() {
   const files = Object.fromEntries(git(["ls-files", "-z"]).split("\0").filter((name) => sourceFile(name) && existsSync(name)).map((name) => [name, readFileSync(name, "utf8")]));
   const write = process.argv.includes("--write-baseline");
   const baseline = write ? Object.fromEntries(Object.entries(files).map(([name, text]) => [name, lineCount(text)]).filter(([, n]) => n > 600).sort(([a], [b]) => a.localeCompare(b, "en"))) : JSON.parse(readFileSync(baselinePath, "utf8"));
-  const base = baseReferences();
-  const errors = sizeErrors(files, baseline, previousBaseline(base.baseline), baseCounts(base.sizes, files));
+  const base = baseReference();
+  const errors = sizeErrors(files, baseline, previousBaseline(base), baseCounts(base, files));
   if (errors.length) {
     console.error(errors.join("\n") + "\nSplit the files named above. A shrink needs no baseline edit.");
     process.exitCode = 1;

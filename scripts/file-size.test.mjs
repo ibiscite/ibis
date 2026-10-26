@@ -71,12 +71,23 @@ test("CLI enforces and writes reductions against the committed base", (t) => {
   assert.equal(run("--write-baseline").status, 0);
   assert.equal(JSON.parse(readFileSync(baseline))["src/資料.ts"], 650);
   git("add", "."); git("commit", "-qm", "lower baseline");
-  git("switch", "-qc", "change"); git("remote", "add", "origin", root);
+  const mainSha = git("rev-parse", "HEAD");
+  git("switch", "-qc", "change", oldSha); git("remote", "add", "origin", root);
+  writeFileSync(join(root, "src/other.ts"), "synthetic\n"); git("add", "."); git("commit", "-qm", "synthetic change");
+  const headSha = git("rev-parse", "HEAD");
+  // GitHub checks out the head merged into a newer main than the event's base SHA.
+  git("switch", "-q", "--detach", mainSha); git("merge", "-q", "--no-edit", headSha);
   const eventFile = join(root, "event.json");
-  writeFileSync(eventFile, JSON.stringify({ pull_request: { base: { sha: oldSha } } }));
+  writeFileSync(eventFile, JSON.stringify({ pull_request: { base: { sha: oldSha }, head: { sha: headSha } } }));
   writeFileSync(source, text(680)); record(680);
   const stale = spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
-  assert.equal(stale.status, 1, "stale PR base must not resurrect main's old limit");
+  assert.equal(stale.status, 1, "a stale event base must not resurrect main's old limit");
+  // Main lowers the limit again after GitHub built the merge checkout.
+  git("switch", "-q", "main"); writeFileSync(source, text(640)); record(640); git("commit", "-qam", "lower again");
+  git("switch", "-q", "--detach", "HEAD@{1}"); git("merge", "-q", "--no-edit", headSha);
+  writeFileSync(source, text(650)); record(650);
+  const merged = spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
+  assert.equal(merged.status, 0, merged.stderr || "main's lowered baseline in the merge checkout must pass");
   writeFileSync(source, text(701)); record(701);
   assert.match(run().stderr, /exceptions cannot be added or grow/);
   assert.equal(run("--write-baseline").status, 1, "write mode also refuses inflation");
