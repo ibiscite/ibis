@@ -120,7 +120,10 @@ Use `--format csl-json` to export selected records. `styles` lists the five bund
 CSL styles. `cite KEY --style apa` formats a citation; add `--bibliography` for
 bibliography entries, sorted by the style. The same text, HTML, RTF, notices and
 typed refusals are available through `--json`, `cite --request` and `call cite`.
-Unsupported styles remain explicit per-item `unsupported-output` refusals.
+Plain output reports citation notices and omitted fields on stderr without changing
+canonical stdout. Styles that need a whole document return a full reference entry
+with that explanation. Unsupported styles remain explicit per-item
+`unsupported-output` refusals.
 `ibis call METHOD --stdin` reads method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
 Content-Length frames, progress/library-change notifications and
 `$/cancelRequest`; it writes no terminal text to that stream.
