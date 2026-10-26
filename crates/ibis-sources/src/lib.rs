@@ -67,14 +67,13 @@ struct ParsedLibrary {
 fn remove_local_urls(csl: &mut BTreeMap<String, Value>, problems: &mut Vec<String>) {
     if csl.get("URL").and_then(Value::as_str).is_some_and(|url| {
         let url = url.trim();
-        let bytes = url.as_bytes();
         url.to_ascii_lowercase().starts_with("file:")
-            || url.starts_with('/')
-            || url.starts_with("\\\\")
-            || bytes.len() >= 3
-                && bytes[0].is_ascii_alphabetic()
-                && bytes[1] == b':'
-                && matches!(bytes[2], b'/' | b'\\')
+            || url.starts_with(['/', '\\'])
+            || ["~", ".", ".."].contains(&url)
+            || ["~/", "~\\", "./", ".\\", "../", "..\\"]
+                .iter()
+                .any(|prefix| url.starts_with(prefix))
+            || attachments::windows_drive(url)
     }) {
         csl.remove("URL");
         problems.push("local file URL omitted".into());
