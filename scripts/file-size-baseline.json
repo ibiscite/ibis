@@ -6,7 +6,6 @@
   "apps/desktop/src-tauri/src/login_item/linux.rs": 805,
   "apps/desktop/src-tauri/src/picker/portal.rs": 805,
   "apps/desktop/src-tauri/src/preferences.rs": 799,
-  "apps/desktop/src-tauri/src/updater.rs": 942,
   "apps/desktop/src/App.test.tsx": 4287,
   "apps/desktop/src/App.tsx": 726,
   "apps/desktop/src/platformLooks.test.tsx": 927,
