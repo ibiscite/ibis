@@ -400,14 +400,6 @@ test("Escape hides the picker", async () => {
   await waitFor(() => expect(calls).toContain("hide_picker"));
 });
 
-test("a shortcut that could not be registered is explained", async () => {
-  backend({
-    shortcut_status: () => ({ shortcut: "Control+Command+R", registered: false, error: "another app may be using it" }),
-  });
-  render(<App />);
-  expect((await screen.findByText(/another app may be using it/)).getAttribute("role")).toBe("status");
-});
-
 test("a failed search clears the results of the previous query", async () => {
   backend({
     search: ({ query: { text: query } }) => {

@@ -28,6 +28,7 @@ import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useAskWriting } from "./features/picker/useAskWriting";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { useUpdateChecks } from "./features/picker/useUpdateChecks";
+import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import {
   type Copied,
@@ -35,7 +36,6 @@ import {
   type LibraryStatus,
   type Locator,
   type SearchResult,
-  type ShortcutStatus,
 } from "./api";
 
 // A search comes back if the picker returns within a minute, as in Raycast.
@@ -48,7 +48,7 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -57,7 +57,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
     hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, checkForUpdates } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, checkForUpdates, onShortcutStatus } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
@@ -69,6 +69,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
+  const { shortcut, readShortcut } = useShortcutStatus({ shortcutStatus, onShortcutStatus, report });
   useEffect(() => {
     let mounted = true;
     setFailures((old) => old.updateEvents ? { ...old, updateEvents: false } : old);
@@ -88,7 +89,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
   const [libraryVersion, setLibraryVersion] = useState(0);
   const statusReads = useRef(0);
@@ -221,6 +221,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }
       hiddenAt.current = null;
       readLoginItem();
+      readShortcut();
       input.current?.focus();
       input.current?.select();
     };
@@ -263,9 +264,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
-    shortcutStatus()
-      .then(setShortcut)
-      .catch(() => { setShortcut(null); report("shortcut"); });
     preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;
