@@ -11,6 +11,8 @@ import re
 import signal
 import subprocess
 import statistics
+import sys
+import uuid
 import tempfile
 import time
 
@@ -52,46 +54,126 @@ def compare(candidate, baseline):
                                      if baseline["metrics"][key] else None)} for key in METRICS}
 
 
-def parse_wakeups(text):
-    # Linux kernel/sched/debug.c exposes nr_wakeups only with schedstats enabled.
-    match = re.search(r"^nr_wakeups\s*:\s*(\d+)\s*$", text, re.MULTILINE)
-    if not match:
-        raise smoke.Unavailable("Scheduler wakeup counters unavailable")
-    return int(match[1])
+def require_lossless_trace(text):
+    fields = dict(re.findall(r"^(overrun|commit overrun|dropped events):\s*(\d+)\s*$", text, re.MULTILINE))
+    if set(fields) != {"overrun", "commit overrun", "dropped events"} or any(int(value) for value in fields.values()):
+        raise smoke.Unavailable("Kernel trace events lost or loss statistics unavailable")
 
 
-class CensusChanged(smoke.Unavailable):
-    def __init__(self, before, after):
-        super().__init__("Idle process/thread census changed")
-        self.facts = {"before_threads": len(before), "after_threads": len(after),
-                      "lost_threads": len(before.keys() - after.keys()),
-                      "new_threads": len(after.keys() - before.keys()),
-                      "reset_counters": sum(after[key] < value for key, value in before.items() if key in after)}
+def count_wakeup_events(lines, root_pid):
+    # Trace all four scheduler events in an isolated instance. PID event filters
+    # also include events emitted BY a listed task, so they cannot identify only
+    # wakeups OF that task. Instead follow fork/exit lineage and test the target.
+    owned, root_births = set(), 0
+    counts = {"wakeups": 0, "new_task_wakeups": 0}
+    for line in lines:
+        if line.startswith("#") or not line.strip():
+            continue
+        event = re.search(r": (sched_process_fork|sched_process_exit|sched_wakeup_new|sched_wakeup): (.*)$", line)
+        if not event:
+            raise smoke.Unavailable("Unexpected kernel trace event")
+        kind, payload = event.groups()
+        if kind == "sched_process_fork":
+            match = re.fullmatch(r"comm=.* pid=(\d+) child_comm=.* child_pid=(\d+)", payload)
+            if not match:
+                raise smoke.Unavailable("Unsupported kernel fork event")
+            parent, child = map(int, match.groups())
+            if child == root_pid:
+                root_births += 1
+                owned.add(child)
+            elif parent in owned:
+                owned.add(child)
+        else:
+            pattern = (r"comm=.* pid=(\d+) prio=-?\d+(?: group_dead=(?:true|false))?" if kind == "sched_process_exit"
+                       else r"comm=.* pid=(\d+) prio=-?\d+(?: success=\d+)? target_cpu=\d+")
+            match = re.fullmatch(pattern, payload)
+            if not match:
+                raise smoke.Unavailable("Unsupported kernel scheduler event")
+            target = int(match[1])
+            if kind == "sched_process_exit":
+                owned.discard(target)
+            elif target in owned:
+                counts["new_task_wakeups" if kind == "sched_wakeup_new" else "wakeups"] += 1
+    if root_births != 1:
+        raise smoke.Unavailable("App birth missing or PID recycled in kernel trace")
+    return counts
 
 
-def wakeup_delta(before, after):
-    # Never silently omit an exited thread or mistake a recycled TID for it.
-    if not before or not before.keys() <= after.keys() or any(after[key] < value for key, value in before.items()):
-        raise CensusChanged(before, after)
-    return sum(value - before.get(key, 0) for key, value in after.items())
+TRACE_ROOT = Path("/sys/kernel/tracing/instances")
 
 
-def wakeup_census(pid):
-    rows = [tuple(map(int, line.split())) for line in smoke.run("ps", "-eo", "pid=,ppid=").splitlines()]
-    owned = {pid}
-    while True:
-        found = owned | {child for child, parent in rows if parent in owned}
-        if found == owned:
-            break
-        owned = found
-    counters = {}
-    for process in owned:
-        for task in (Path("/proc") / str(process) / "task").iterdir():
-            # /proc stat's comm may contain spaces and parentheses; starttime is field 22.
-            fields = (task / "stat").read_text().rsplit(")", 1)[1].split()
-            identity = (process, int(task.name), int(fields[19]))
-            counters[identity] = parse_wakeups((task / "sched").read_text())
-    return counters
+def trace_instance(name):
+    if not re.fullmatch(r"ibis-perf-[0-9a-f]{32}", name):
+        raise ValueError("Invalid private trace instance")
+    return TRACE_ROOT / name
+
+
+def trace_start():
+    name = "ibis-perf-" + uuid.uuid4().hex
+    path = trace_instance(name)
+    path.mkdir()
+    try:
+        (path / "tracing_on").write_text("0")
+        (path / "current_tracer").write_text("nop")
+        (path / "events/enable").write_text("0")
+        (path / "trace_clock").write_text("global")
+        (path / "buffer_size_kb").write_text("4096")  # Per CPU; loss always invalidates the run.
+        for event in ("sched_process_fork", "sched_process_exit"):
+            (path / f"events/sched/{event}/enable").write_text("1")
+        (path / "trace").write_text("")
+        (path / "tracing_on").write_text("1")
+        return {"instance": name}
+    except Exception:
+        trace_stop(name)
+        raise
+
+
+def trace_stop(name):
+    path = trace_instance(name)
+    if path.exists():
+        (path / "tracing_on").write_text("0")
+        (path / "events/enable").write_text("0")
+        path.rmdir()
+
+
+def trace_window(name, root_pid):
+    path = trace_instance(name)
+    before = time.monotonic()
+    for event in ("sched_wakeup", "sched_wakeup_new"):
+        (path / f"events/sched/{event}/enable").write_text("1")
+    time.sleep(30)  # One fixed window, never retried or selected for a quiet result.
+    (path / "tracing_on").write_text("0")
+    seconds = time.monotonic() - before
+    stats = list((path / "per_cpu").glob("cpu*/stats"))
+    if not stats:
+        raise smoke.Unavailable("Kernel trace loss statistics unavailable")
+    for stat in stats:
+        require_lossless_trace(stat.read_text())
+    with (path / "trace").open(errors="replace") as source:
+        text = source.read(64 * 1024 * 1024 + 1)
+    if len(text) > 64 * 1024 * 1024:
+        raise smoke.Unavailable("Kernel trace exceeded observation bound")
+    # Raw trace text, including host task names, never leaves this root helper.
+    return dict(count_wakeup_events(text.splitlines(), root_pid), seconds=seconds,
+                method="tracefs sched_wakeup and sched_wakeup_new")
+
+
+class TraceUnavailable(smoke.Unavailable):
+    def __init__(self, facts):
+        super().__init__("Kernel scheduler observation unavailable")
+        self.facts = facts
+
+
+def trace_command(mode, *args):
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        raise smoke.Unavailable("Kernel observer is limited to disposable CI")
+    child = subprocess.run(["sudo", "-n", "--preserve-env=GITHUB_ACTIONS", "/usr/bin/python3", "-B", str(Path(__file__).resolve()),
+                            "--trace-" + mode, *map(str, args)], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, text=True, timeout=60)
+    facts = json.loads(child.stdout)
+    if child.returncode:
+        raise TraceUnavailable(facts)
+    return facts
 
 
 def observe(action, ready, timeout=20, phases=None):
@@ -196,7 +278,7 @@ def interaction_samples(native, samples=10):
 
 
 def measure(app, sha):
-    native, process = None, None
+    native, process, trace = None, None, None
     try:
         native = smoke.Linux()
         with tempfile.TemporaryDirectory(prefix="ibis-release-performance-") as temporary:
@@ -205,6 +287,7 @@ def measure(app, sha):
             library.write_text(smoke.fixture(100000), encoding="utf-8")
             env = smoke.real_app_environment(os.environ, library, folder / "config")
             smoke.answer_update_question(smoke.settings_path("Linux", folder))
+            trace = trace_command("start")["instance"]
             process = subprocess.Popen([str(app.resolve())], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             native.app = process
             def loaded():
@@ -215,48 +298,40 @@ def measure(app, sha):
             observe(lambda: None, loaded, timeout=120)
             summon, typing, probes = interaction_samples(native)
             smoke.escape_to_hide(native, native.snapshot, "idle picker hidden")
-            time.sleep(30)  # Tokio/GLib idle workers retire before the census.
-            for attempt in range(2):
-                before = wakeup_census(process.pid)
-                started = time.monotonic()
-                memory_before = native.memory()
-                time.sleep(10)  # No input or accessibility polling during the idle window.
-                memory_after = native.memory()
-                after = wakeup_census(process.pid)
-                seconds = time.monotonic() - started
-                try:
-                    wakeups = wakeup_delta(before, after)
-                    break
-                except smoke.Unavailable:
-                    if attempt:
-                        raise
-                    time.sleep(30)  # One bounded retry after retiring idle workers.
+            time.sleep(30)  # Fixed settling interval; worker retirement remains fully counted.
+            memory_before = native.memory()
+            wakeups = trace_command("window", trace, process.pid)
+            memory_after = native.memory()
             idle = {"memory_bytes": max(memory_before, memory_after),
-                    "wakeups_per_second": wakeups / seconds,
-                    "seconds": seconds, "threads": len(after), "attempts": attempt + 1}
+                    "wakeups_per_second": (wakeups["wakeups"] + wakeups["new_task_wakeups"]) / wakeups["seconds"],
+                    **wakeups}
             if process.poll() is not None or idle["memory_bytes"] <= 0:
                 raise AssertionError("Release process unavailable during idle measurement")
             return {"source_sha": sha, "summon_samples_ms": summon, "typing_samples_ms": typing, "idle": idle, "probes": probes}
     finally:
-        if process:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)  # This synthetic app owns a new session.
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=5)
-        if native:
-            native.close()
-            # ABBA must not start a new window manager while the old one still owns X11.
-            for helper in (native.editor, native.wm):
+        try:
+            if process:
                 try:
-                    helper.wait(timeout=5)
+                    os.killpg(process.pid, signal.SIGTERM)  # This synthetic app owns a new session.
+                except ProcessLookupError:
+                    pass
+                try:
+                    process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
-                    helper.kill()
-                    helper.wait(timeout=5)
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=5)
+            if native:
+                native.close()
+                # ABBA must not start a new window manager while the old one still owns X11.
+                for helper in (native.editor, native.wm):
+                    try:
+                        helper.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        helper.kill()
+                        helper.wait(timeout=5)
+        finally:
+            if trace:
+                trace_command("stop", trace)
 
 
 def paired_measurements(candidate_app, candidate_sha, main_app, main_sha, output):
@@ -282,7 +357,7 @@ def paired_measurements(candidate_app, candidate_sha, main_app, main_sha, output
 
 
 def failure_facts(error):
-    # Only public code locations and fixed numeric census facts; no exception text,
+    # Only public code locations and numeric observer facts; no exception text,
     # stack locals, native tree, filenames or user paths.
     frames, traceback = [], error.__traceback__
     while traceback:
@@ -290,8 +365,8 @@ def failure_facts(error):
             frames.append({"function": traceback.tb_frame.f_code.co_name, "line": traceback.tb_lineno})
         traceback = traceback.tb_next
     facts = {"schema": 1, "status": "unavailable", "error_class": type(error).__name__, "code_frames": frames}
-    if isinstance(error, CensusChanged):
-        facts["census"] = error.facts
+    if isinstance(error, TraceUnavailable):
+        facts["kernel_observer"] = error.facts
     return facts
 
 
@@ -322,10 +397,10 @@ def main():
                      "search focus and library count are checked afterwards. Typing ends on the exact singleton result title, "
                      "with the delayed spoken result count checked afterwards. One discarded warm-up per interaction per launch; "
                      "ABBA launch order (main, candidate, candidate, main), ten observations per interaction per launch. "
-                     "Idle is hidden after 30 seconds settling, then 10 seconds without UI polling. "
-                     "Memory sums process-tree RSS (shared pages may be counted twice). Wakeups sum Linux nr_wakeups "
-                     "for app process-tree threads, including the accessibility bridge; exited/reused threads invalidate the run. "
-                     "Threads born and exited wholly within the interval are not observed. OS caches persist. "
+                     "Idle is hidden after 30 seconds settling, then a fixed 30-second window without UI polling. "
+                     "Memory sums process-tree RSS (shared pages may be counted twice). Wakeups count kernel sched_wakeup and sched_wakeup_new events targeting app descendants, "
+                     "including short-lived workers and the accessibility bridge; lost events invalidate the run. "
+                     "OS caches persist. "
                      "No internal app latency budget is certified by these observations.")
         (args.output / "comparison.md").write_text("\n".join(lines) + "\n")
         return 0
@@ -337,4 +412,23 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if sys.argv[1:2] in (["--trace-start"], ["--trace-window"], ["--trace-stop"]):
+        try:
+            if os.environ.get("GITHUB_ACTIONS") != "true" or not hasattr(os, "geteuid") or os.geteuid() != 0:
+                raise smoke.Unavailable("Kernel observer needs a disposable hosted Linux runner")
+            mode = sys.argv[1]
+            if mode == "--trace-start" and len(sys.argv) == 2:
+                result = trace_start()
+            elif mode == "--trace-stop" and len(sys.argv) == 3:
+                trace_stop(sys.argv[2])
+                result = {"stopped": True}
+            elif mode == "--trace-window" and len(sys.argv) == 4 and sys.argv[3].isdigit() and int(sys.argv[3]) > 0:
+                result = trace_window(sys.argv[2], int(sys.argv[3]))
+            else:
+                raise ValueError("Invalid kernel observer arguments")
+            print(json.dumps(result, allow_nan=False))
+        except Exception as error:
+            print(json.dumps(failure_facts(error)))
+            raise SystemExit(1)
+    else:
+        raise SystemExit(main())

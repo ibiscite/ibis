@@ -48,9 +48,12 @@ single-keystroke samples in alternating ABBA launches at 100,000 synthetic refer
 RSS and scheduler wakeups, and the comparison. It never gates `CI result` or
 publication. Keyboard delivery, accessibility reads and polling are included in
 the observed timings; these do not certify the app's internal latency budgets.
-Idle wakeups include the accessibility bridge; disappeared or reused threads invalidate
-the measurement, and threads that start and exit inside the interval are not
-observed. Missing capabilities produce an unavailable diagnostic, never a zero
+Idle wakeups count kernel scheduler events targeting the app and its descendants,
+including short-lived workers and the accessibility bridge, over a fixed 30-second
+window after settling. A private tracefs instance captures fork/exit lineage from
+before app launch; only numeric counts leave the privileged observer. Raw host
+trace text is never retained. Missing tracing capabilities or dropped events
+produce an unavailable diagnostic, never a zero
 or a pass. No personal libraries or app logs are collected.
 
 ## Update keys (ADR 0019)
