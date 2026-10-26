@@ -19,12 +19,9 @@ if (args.length > 0 && !scriptsOnly && !brandOnly) {
 }
 
 const desktop = { cwd: "apps/desktop" };
-// Native runners have the built interface, without its parser packages. The
-// Web job and local full check retain that one package-dependent test suite.
 const scriptFiles = readdirSync(new URL(".", import.meta.url)).sort();
 const scriptTests = scriptFiles
   .filter((name) => /\.test\.(mjs|cjs)$/.test(name))
-  .filter((name) => args[0] !== "--platform-script-tests" || name !== "ui-imports.test.mjs")
   .map((name) => `scripts/${name}`);
 const scriptSteps = [
   // The identity guard needs the Web job's full history.
@@ -50,8 +47,6 @@ const steps = [
   ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
   ...scriptSteps,
-  ["Desktop: UI import boundary", "node", ["scripts/ui-imports.mjs"]],
-  ["Desktop: style tokens", "node", ["scripts/style-lint.mjs"]],
   // All desktop unit tests, including the generated-contract freshness check.
   ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"]],
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],

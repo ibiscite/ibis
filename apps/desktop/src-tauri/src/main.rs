@@ -10,8 +10,6 @@ mod bindings;
 mod copy;
 mod diagnostics;
 mod feedback;
-#[cfg(debug_assertions)]
-mod gallery;
 mod identity;
 mod library;
 mod login_item;
@@ -112,8 +110,6 @@ fn main() {
     }
     #[cfg(target_os = "macos")]
     let initial_panel = panel::prepare_startup(&mut context);
-    #[cfg(debug_assertions)]
-    report(gallery::configure(&mut context), NativeIssue::GalleryNavigation);
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -230,26 +226,6 @@ fn main() {
                 panel::cancel_initial_presentation(app.handle());
             }
             native_feel::install(app.handle());
-            // Debug builds may opt into the synthetic evidence gallery. Keep
-            // both environment reads out of release binaries entirely.
-            #[cfg(debug_assertions)]
-            {
-                let enabled = std::env::var("IBIS_GALLERY").ok();
-                if enabled.as_deref() == Some("1")
-                    && let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window)
-                {
-                    let state = std::env::var("IBIS_GALLERY_STATE").ok();
-                    report(
-                        gallery::install_readiness(
-                            app.handle(),
-                            &window,
-                            state.as_deref(),
-                            std::env::var_os("IBIS_GALLERY_READY_FILE").map(PathBuf::from),
-                        ),
-                        NativeIssue::GalleryNavigation,
-                    );
-                }
-            }
             // The picker opens near the top of the display with the pointer.
             if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
                 place_on_active_display(app.handle(), &window, true);

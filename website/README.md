@@ -9,13 +9,12 @@ node website/build.mjs
 python3 -m http.server 8097 --bind 127.0.0.1 --directory website/dist
 ```
 
-The build copies the shared app tokens, shortcut module and allowlisted brand
-exports into `website/dist`. Check with `node --test scripts/website.test.mjs` and
-`node scripts/style-lint.mjs`.
+The build copies the shared app tokens and allowlisted brand
+exports into `website/dist`. Check with `node --test scripts/website*.test.mjs`.
 
-The optional browser regressions in `scripts/website-controls.test.mjs` run when
-`IBIS_WEBSITE_URL` points to the loopback preview above; it uses the existing
-Playwright runtime (`IBIS_CHROMIUM_EXECUTABLE` can select its browser).
+The optional sidebar browser check in `scripts/website-controls.test.mjs` uses an
+existing Playwright runtime when `IBIS_WEBSITE_URL` points to the loopback preview.
+`IBIS_CHROMIUM_EXECUTABLE` can select an existing browser.
 
 ## Publish
 

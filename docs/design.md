@@ -42,7 +42,7 @@ radii or literal shadows [D1]. Three layers (ADR 0021): base values that
 components never read; role tokens, whose defaults are CSS system colours so an
 unknown webview still follows dark mode, the accent and high contrast; then
 look overrides (`:root[data-platform=…]`), increased contrast, forced colours
-and the gallery contrast preview, in that order. Light and dark come from
+in that order. Light and dark come from
 `color-scheme` and `light-dark()`; components never read `prefers-color-scheme`.
 
 | Role | Tokens | Rule |
@@ -56,7 +56,7 @@ and the gallery contrast preview, in that order. Light and dark come from
 | Strokes | `--separator`, `--stroke-control`, `--stroke-field`, `--stroke-overlay`, `--line`, `--border-width`, `--contrast-border-width` | Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
 | Citation [D9] | `--citation`, `--citation-tile`, `--on-citation` | Scarlet; see **Colour roles**. |
 | Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
-| Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes and the gallery use Canvas with CanvasText fill and edge. |
+| Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes use Canvas with CanvasText fill and edge. |
 | Elevation [D11] | `--shadow-card`, `--shadow-raised`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
 | Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap`, `--row-spacing` | 4 px grid; 2 px only as an optical nudge or between rows. |
 | Shape [D2] | `--r-win`, `--r-min`, `--r-row`, `--r-tile`, `--r-menu`, `--menu-pad`, `--r-mi`, `--r-control`, `--r-key`, `--r-card`, `--r-dialog`, `--r-full` | See **Corners**. |
@@ -185,10 +185,6 @@ concentric, and an inner corner never goes below the per-OS floor:
 Key caps use `--r-key`, Settings cards `--r-card`, switches, toasts and capsules
 `--r-full`.
 
-These numbers are also in [`design-geometry.json`](design-geometry.json), which
-`node scripts/gallery-geometry.mjs` measures the evidence gallery against;
-change both together with this page (a test checks that they agree).
-
 **Width classes** (container queries, in em). Below 28.75 em: header controls
 wrap and footer hints show keys only. Below 60 em the preview replaces the
 list; at 60 em (960 px) it sits beside it [C17]. Below 22 em high the shelf and
@@ -197,7 +193,7 @@ pane cap at 6 rem. Strokes at Windows 125 % and 150 % are inset shadows.
 ## Components and their states
 
 Each `src/ui/` component wraps one React Aria component (ADR 0021), owns one CSS
-file that reads role tokens only, and has a test per look and a gallery state.
+file that reads role tokens only, and has a test per look.
 Screens never restyle a shared component.
 
 **States.** Hover (`--fill-*-hover`, only under `@media (hover: hover)`) never
@@ -659,7 +655,7 @@ access, DNS records, credentials, backups and `.local/` never enter the public
 build.
 
 **Rhythm.** One vertical scale: 1.1 rem between paragraphs, 1.25 rem between
-blocks (lists, link rows, the picker), about 5 rem between sections on desktop
+blocks (lists and link rows), about 5 rem between sections on desktop
 and 4 rem on phones. The hero-to-first-section gap equals the section gap;
 headings and setup steps follow the same scale, and platform groups get two
 large steps when all three are shown. Content sets heights: ordinary scrolling,
@@ -670,8 +666,8 @@ links, with one font size and padding (links add touch space). At rest, scarlet
 text on translucent scarlet; hover, a thin inset outline; current, filled
 scarlet with contrasting text. Links press in slightly, and arriving at a
 section briefly turns its heading scarlet. Keyboard focus is a separate ring
-drawn outside, so it never crosses text (inside only in the sidebar, link rows
-and the demo, where an edge would clip it). Dragging in the sidebar never
+drawn outside, so it never crosses text (inside only in the sidebar and link
+rows, where an edge would clip it). Dragging in the sidebar never
 selects page text. No generic badges.
 
 **Motion.** App tokens only: 120 ms feedback, 200 ms hand-overs, ease-out, no
@@ -680,8 +676,7 @@ thumb. Sections may reveal once from 12 px below; the logo draws once, can
 redraw from Home and never loops. Quiet delights: a hovered page chip cites
 itself in turn as `[@key]`, `\cite{key}` and `@key`; the Star button's star
 fills and grows once on hover; the Why beak pecks once as it appears; the
-writing cursor blinks; Copied and Pasted land with a tick and a pasted key uses
-the chip's arrival cue; on touch a pressed row gives slightly; text selection is
+writing cursor blinks; on touch a pressed row gives slightly; text selection is
 a soft scarlet tint; the console greets the curious with one line pointing to
 the source. Reduced motion turns off movement, transitions, arrival flashes and
 smooth scrolling, and holds the chip's first form.
@@ -695,7 +690,7 @@ smooth scrolling, and holds the chip's first form.
   foot, quieter until hovered or focused. The structural margin is a neutral
   hairline; scarlet marks only chips, links and citations.
 - **Tablet portrait, 40–62 rem:** one centred reading column, chips centred
-  beneath the logo, the picker at full column width, no empty second column.
+  beneath the logo, no empty second column.
 - **Phone, below 40 rem:** "Early preview" on the logo's row, then a sticky,
   sideways-scrolling chip bar with an edge fade. When the current section
   changes, only the bar scrolls to keep its chip visible, never the page. Link
@@ -711,8 +706,8 @@ and output. One type role stays consistent across the page; no remote fonts.
 Neutral greys have zero chroma: light background/surface/line `#FFF` /
 `#F5F5F5` / `#E5E5E5`, text/muted `#171717` / `#525252`; dark `#111` /
 `#1C1C1C` / `#2E2E2E`, text/muted `#F2F2F2` / `#B5B5B5`. The primary button
-keeps its hue on hover and only softens toward the background. Page buttons,
-and the demo's controls on touch screens, share one slim 2.25 rem height with
+keeps its hue on hover and only softens toward the background. Page buttons
+share one slim 2.25 rem height with
 an invisible 44 px touch target. Text links rest with a soft underline that
 turns solid on hover. Forced colours use system roles. Appearance follows
 System until a local choice is made before paint: a small light/dark toggle
@@ -783,7 +778,7 @@ scheduled.
 - A design change edits this page, `tokens.css` or a shared component, never one
   screen.
 - A visual bug is fixed in the rule or component that allowed it, with a check
-  (a test, the geometry check or a gallery state) so it cannot return.
+  (a regression test) so it cannot return.
 - The maintainer's design canvas is the visual reference. Its decisions are
   written here, in place, with a [C] tag; the stale text they replace is
   deleted in the same change, never left as a "superseded" layer.

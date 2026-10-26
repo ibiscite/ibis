@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Exercise the embedded native picker; never substitute a browser or IPC mock.
+"""Exercise the embedded Linux native picker; never substitute a browser or IPC mock.
 
 Exit 1 means a failed assertion; exit 2 means the session lacks a required native
 capability. Only synthetic test text is recorded, never the accessibility tree or
-clipboard contents. See docs/testing.md before running on a personal desktop.
+clipboard contents. See ../CONTRIBUTING.md before running on a personal desktop.
 """
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
@@ -40,67 +40,8 @@ NOTICE_TITLE = "Ibis notice"
 CONTRACT_TIMEOUT = 120
 
 
-def prepare_powershell(script, path):
-    """Prebuild the one inline C# block; only execution has a per-call deadline.
-
-    Callers own a fresh temporary directory, so assemblies cannot be stale or
-    shared across concurrent runs. CI's existing job timeout bounds preparation.
-    """
-    blocks = list(re.finditer(r"(?ms)^Add-Type[^\n]*@'\n.*?^'@", script))
-    if len(blocks) != 1:
-        raise ValueError("Expected one inline Windows helper compilation")
-    block = blocks[0]
-    assembly = path.with_suffix(".dll")
-    compiler = path.with_suffix(".compile.ps1")
-    compiler.write_text("$ErrorActionPreference='Stop'\n" + block.group().replace(
-        "Add-Type", "Add-Type -OutputAssembly $args[0]", 1) + "\n", encoding="utf-8")
-    try:
-        subprocess.run([shutil.which("pwsh") or "pwsh", "-NoProfile", "-File", str(compiler), str(assembly)],
-                       check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError:
-        raise RuntimeError("Windows helper compilation failed") from None
-    name = assembly.name.replace("'", "''")
-    load = f"[void][System.Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot '{name}'))"
-    path.write_text(script[:block.start()] + load + script[block.end():], encoding="utf-8")
-
-
 def run(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.PIPE, timeout=20).strip()
-
-
-def windows_creation_identity(app):
-    # Query the original Popen handle, never a new handle to a possibly reused PID.
-    import ctypes
-    from ctypes import wintypes
-    get_times = ctypes.WinDLL("kernel32", use_last_error=True).GetProcessTimes
-    get_times.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
-    get_times.restype = wintypes.BOOL
-    times = [wintypes.FILETIME() for _ in range(4)]
-    if app.poll() is not None or not get_times(int(app._handle), *(ctypes.byref(value) for value in times)):
-        raise RuntimeError("Native app creation identity unavailable")
-    ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
-    if ticks <= 0:
-        raise RuntimeError("Native app creation identity unavailable")
-    # FILETIME starts in 1601; DateTime starts in year 1. CIM keeps microseconds.
-    return (ticks + 504911232000000000) // 10
-
-
-def memory_facts(value):
-    failure = "Native process-tree memory facts unavailable"
-    if (not isinstance(value, dict) or set(value) != {"memory_bytes", "components", "excluded_older"}
-            or type(value["excluded_older"]) is not int or not 0 <= value["excluded_older"] <= 65536
-            or not isinstance(value["components"], list) or not 1 <= len(value["components"]) <= 64):
-        raise RuntimeError(failure)
-    for index, row in enumerate(value["components"]):
-        if (not isinstance(row, dict) or set(row) != {"index", "parent_index", "depth", "age_us", "memory_bytes"}
-                or any(type(number) is not int or not 0 <= number < 2**63 for number in row.values())
-                or row["index"] != index or row["memory_bytes"] == 0
-                or (index == 0 and (row["parent_index"], row["depth"], row["age_us"]) != (0, 0, 0))
-                or (index > 0 and (row["parent_index"] >= index or row["depth"] != value["components"][row["parent_index"]]["depth"] + 1))):
-            raise RuntimeError(failure)
-    if type(value["memory_bytes"]) is not int or value["memory_bytes"] != sum(row["memory_bytes"] for row in value["components"]):
-        raise RuntimeError(failure)
-    return value
 
 
 def fixture(count=3):
@@ -113,9 +54,6 @@ def fixture(count=3):
 def real_app_environment(inherited, library, config):
     env = dict(inherited, IBIS_LIBRARY=str(library), XDG_CONFIG_HOME=str(config),
                NO_AT_BRIDGE="0", GTK_MODULES="gail:atk-bridge")
-    # Gallery fixtures cannot supply evidence about actual native behavior.
-    env.pop("IBIS_GALLERY", None)
-    env.pop("IBIS_GALLERY_STATE", None)
     return env
 
 
@@ -148,82 +86,6 @@ def missing_library_evidence(snapshot, name):
     }.items()}
 
 
-def helper_timeout_stages(stderr):
-    allowed = {f"NATIVE HELPER STAGE {stage}" for stage in (
-        "windows-encoding-start", "windows-encoding-ready", "windows-uia-assembly-start",
-        "windows-uia-assembly-ready", "windows-input-compile-start", "windows-input-compile-ready",
-        "windows-dispatch",
-    )}
-    if isinstance(stderr, bytes):
-        stderr = stderr.decode("utf-8", errors="replace")
-    return [line for line in (stderr or "").splitlines() if line in allowed]
-
-
-def foreground_diagnostics(stderr):
-    if isinstance(stderr, bytes):
-        stderr = stderr[:32768].decode("utf-8", errors="replace")
-    facts = []
-    for line in (stderr or "")[:32768].splitlines():
-        if not line.startswith("NATIVE FOREGROUND STATE ") or len(line) > 512:
-            continue
-        try:
-            value = json.loads(line.removeprefix("NATIVE FOREGROUND STATE "))
-        except (ValueError, RecursionError):
-            continue
-        if (not isinstance(value, dict) or set(value) != {"action", "stage", "owner", "foreground_observed",
-                "foreground_available", "picker_owned", "picker_visible", "elapsed_ms"}
-                or value["action"] not in ("more", "reload", "snapshot")
-                or value["stage"] not in (("snapshot",) if value["action"] == "snapshot" else ("ready", "before", "after"))
-                or value["owner"] not in ("app", "editor", "owned_helper", "unknown")
-                or any(type(value[key]) is not bool for key in ("foreground_observed", "foreground_available"))
-                or any(type(value[key]) not in (bool, type(None)) for key in ("picker_owned", "picker_visible"))
-                or type(value["elapsed_ms"]) is not int or not 0 <= value["elapsed_ms"] <= 30000
-                or (not value["foreground_observed"] and value["foreground_available"])
-                or (not value["foreground_available"] and value["owner"] != "unknown")
-                or (value["picker_owned"] is not True and value["picker_visible"] is not None)
-                or (value["owner"] == "app" and value["picker_owned"] is not True)):
-            continue
-        facts.append(value)
-        if len(facts) == 64:
-            break
-    return facts
-
-
-def fixed_windows_failure(stderr, action):
-    if isinstance(stderr, bytes):
-        stderr = stderr[:32768].decode("utf-8", errors="replace")
-    stderr = (stderr or "")[:32768]
-    lines = helper_timeout_stages(stderr)
-    kinds = ("ElementNotAvailableException", "COMException", "InvalidOperationException", "TimeoutException",
-             "UnauthorizedAccessException", "ArgumentException", "RuntimeException", "other")
-    phases = ("discovery", "provider", "handle-parse", "ownership", "window-bound", "search-bound", "tree-bound", "text-bound", "unknown")
-    operations = ("from-handle", "window-handle", "descendant-list", "node-current", "value-pattern", "value-read",
-                  "text-pattern", "text-read", "node-type", "node-name", "node-focus", "unknown")
-    for line in stderr.splitlines():
-        if line == f"Windows native smoke action unavailable: {action}" or (
-                line.startswith("NATIVE HELPER ERROR ") and line.removeprefix("NATIVE HELPER ERROR ") in kinds):
-            lines.append(line)
-        elif len(line) <= 512:
-            try:
-                if line.startswith("NATIVE CONTROL STATE "):
-                    lines.append("NATIVE CONTROL STATE " + json.dumps(control_activation_facts(json.loads(line[21:]))))
-                elif line.startswith("NATIVE SNAPSHOT FAILURE "):
-                    value = json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
-                    if (isinstance(value, dict) and set(value) == {"phase", "kind", "operation"}
-                            and value["phase"] in phases and value["kind"] in kinds and value["operation"] in operations):
-                        lines.append("NATIVE SNAPSHOT FAILURE " + json.dumps(value))
-            except (ValueError, RuntimeError, RecursionError):
-                pass
-    return lines
-
-
-def editor_focus_facts(native, stage):
-    state = native.call("editor-focus-state")
-    keys = ("system_events_editor_frontmost", "workspace_editor_frontmost", "workspace_ibis_frontmost",
-            "workspace_other_frontmost", "editor_running_application_active", "editor_window_visible")
-    if not isinstance(state, dict) or any(type(state.get(key)) is not bool for key in keys):
-        raise RuntimeError("Native editor focus metadata unavailable")
-    return {"stage": stage, **{key: state[key] for key in keys}}
 
 
 # Library actions live in the picker's More menu (Ctrl/Cmd+K), not the footer.
@@ -328,13 +190,6 @@ def menu_escape_focus(native, snapshot, shortcut, report):
     assert all(facts.values()), "Native menu keyboard ownership failed"
 
 
-def control_activation_facts(state):
-    keys = {"pressed", "button_role", "menu_item_role", "toggle_role",
-            "invoke_pattern", "expand_collapse_pattern", "toggle_pattern"}
-    if (not isinstance(state, dict) or type(state.get("pressed")) is not bool or
-            any(type(state[key]) is not bool for key in keys & state.keys())):
-        raise RuntimeError("Native button action metadata unavailable")
-    return {key: state[key] for key in sorted(keys & state.keys())}
 
 
 def has_search_text(snapshot):
@@ -483,14 +338,6 @@ def library_phase_diagnostics(paths):
 
 
 def settings_path(system, temporary, native=None, identifier="io.github.ibiscite.ibis"):
-    if system == "Windows":
-        # dirs7 uses SHGetKnownFolderPath, not the APPDATA environment variable.
-        roaming = Path(native.call("config-dir"))
-        if not roaming.is_absolute():
-            raise Unavailable("Windows native configuration directory unavailable")
-        return roaming / identifier / "settings.json"
-    if system == "Darwin":
-        return Path.home() / "Library/Application Support" / identifier / "settings.json"
     return temporary / "config" / identifier / "settings.json"
 
 
@@ -519,8 +366,8 @@ def prime_clipboard(native):
 def copy_picker_observation(native):
     """One existing native probe, reduced to fixed facts; never a readiness wait."""
     try:
-        # Scripted.call can print helper errors before raising. Optional probes
-        # must not disclose them or replace the actual copy-test failure.
+        # Optional probes must not disclose native errors or replace the
+        # actual copy-test failure.
         with open(os.devnull, "w") as quiet, redirect_stdout(quiet), redirect_stderr(quiet):
             current = native.snapshot()
             if type(current["visible"]) is not bool:
@@ -630,11 +477,8 @@ def measure_startup(launch, snapshot, phases):
     return (finished - started) * 1000
 
 
-PERF_METRICS = ("startup_ms", "first_result_ms", "memory_bytes")
 TIMED_METRICS = ("startup_ms", "first_result_ms")
 MEASURED_LAUNCHES = 3
-# Any single launch, warm-up included, fails above this multiple of the budget (#464).
-HARD_CEILING_FACTOR = 1.5
 
 
 def summarize_performance(samples):
@@ -649,22 +493,6 @@ def summarize_performance(samples):
             "memory_bytes": max(sample["memory_bytes"] for sample in samples),
             "maxima": {metric: max(sample[metric] for sample in samples) for metric in TIMED_METRICS},
             "memory_kind": "summed current process-tree RSS/working set; shared pages may be counted more than once"}
-
-
-def enforce_performance_budgets(performance, budgets):
-    ceilings = {metric: budgets[metric] for metric in PERF_METRICS}
-    hard = {metric: ceilings[metric] * HARD_CEILING_FACTOR for metric in TIMED_METRICS}
-    performance.update(status="failed", ceilings=ceilings, hard_ceilings=hard)
-    for metric, ceiling in ceilings.items():
-        if not 0 < performance[metric] <= ceiling:
-            performance["failed_metric"] = metric
-            kind = "maximum" if metric == "memory_bytes" else "median"
-            raise AssertionError(f"100k {kind} {metric} exceeded measured baseline budget")
-    for metric, ceiling in hard.items():
-        if not performance["maxima"][metric] <= ceiling:
-            performance["failed_metric"] = metric
-            raise AssertionError(f"100k single-launch {metric} exceeded {HARD_CEILING_FACTOR}x budget hard ceiling")
-    performance["status"] = "passed"
 
 
 def require_tree(snapshot):
@@ -1070,250 +898,6 @@ class Linux:
         self.wm.terminate()
 
 
-class Scripted:
-    def __init__(self, system):
-        self.system = system
-        self.editor_folder = None
-        self.helper_folder = None
-        self.editor_pid = 0
-        initialized = False
-        if system == "Windows":
-            self.command = ["pwsh", "-NoProfile", "-File", str(Path(__file__).with_name("smoke-windows.ps1"))]
-        else:
-            self.command = ["osascript", "-l", "JavaScript", str(Path(__file__).with_name("smoke-macos.js"))]
-        try:
-            if system == "Windows":
-                self.helper_folder = tempfile.TemporaryDirectory(prefix="ibis native helper ")
-                helper = Path(self.helper_folder.name) / "smoke-windows.ps1"
-                prepare_powershell(Path(self.command[-1]).read_text(encoding="utf-8"), helper)
-                self.command[-1] = str(helper)
-            self.call("probe")
-            if system == "Darwin":
-                # TextEdit is a separate Apple Events target from System Events.
-                # Open an owned file normally; UI inspection needs no TextEdit
-                # scripting consent, and must never touch an existing instance.
-                self.call("editor-preflight")
-                self.editor_folder = tempfile.TemporaryDirectory(prefix="ibis synthetic editor ")
-                self.editor_path = Path(self.editor_folder.name).resolve() / "Ibis synthetic editor.txt"
-                self.editor_path.write_text("", encoding="utf-8")
-                # Ignore saved state so a fresh instance never restores a
-                # window left behind by an earlier synthetic editor.
-                subprocess.run(["open", "-n", "-a", "TextEdit", str(self.editor_path),
-                                "--args", "-ApplePersistenceIgnoreState", "YES"], check=True,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
-                def registered():
-                    self.editor_pid = self.call("editor")
-                    if type(self.editor_pid) is not int or self.editor_pid < 0:
-                        raise RuntimeError("Synthetic editor process identity unavailable")
-                    return self.editor_pid > 0
-                wait_for(registered, "new synthetic TextEdit process is registered")
-                try:
-                    wait_for(lambda: self.call("editor-owned", str(self.editor_path)), "owned TextEdit document is accessible")
-                except AssertionError:
-                    state = self.call("editor-state", str(self.editor_path))
-                    fields = ("bundle_verified", "window_count", "document_metadata_count",
-                              "exact_document_url_matches", "owned_document_path_matches", "owned")
-                    print("NATIVE EDITOR STATE " + json.dumps({key: state[key] for key in fields}), flush=True)
-                    raise
-            else:
-                editor = self.call("editor")
-                if not isinstance(editor, dict) or any(type(editor.get(key)) is not int or editor[key] <= 0
-                                                       for key in ("pid", "started")):
-                    raise RuntimeError("Synthetic editor process identity unavailable")
-                self.editor_pid, self.editor_started = editor["pid"], editor["started"]
-            initialized = True
-        except FileNotFoundError as error:
-            raise Unavailable("Native automation tool is missing") from error
-        except subprocess.CalledProcessError as error:
-            details = error.stderr or ""
-            if system == "Darwin" and any(marker in details for marker in (
-                "TCC Accessibility is not granted", "TCC event posting is not granted",
-                "not allowed assistive access", "(-1743)",
-            )):
-                raise Unavailable("macOS Accessibility/Automation permission is unavailable; see helper diagnostics") from error
-            raise RuntimeError("Native automation preflight failed; see helper diagnostics") from error
-        finally:
-            if not initialized and self.helper_folder:
-                self.helper_folder.cleanup()
-            if not initialized and self.editor_folder:
-                try:
-                    self.close()
-                except Exception:
-                    # Keep the original preflight failure, without killing a
-                    # process whose owned-document identity is unverified.
-                    print("Native owned editor cleanup failed", file=sys.stderr)
-
-    def call(self, action, text="", *, timeout=30):
-        if self.system == "Windows" and action in ("focus-editor", "editor-focused", "close-editor"):
-            text = str(self.editor_started)
-        if getattr(self, "last_action", None) != action:
-            print(f"NATIVE ACTION {action}", flush=True)
-        self.last_action = action
-        arguments = [action, str(getattr(getattr(self, "app", None), "pid", 0)), str(getattr(self, "editor_pid", 0)), text]
-        if self.system == "Windows" and action == "click":
-            # A modal popover hides Search from UIA, so discovery cannot run
-            # again. Only the HWND established by this process's snapshot fits.
-            handle = getattr(self, "picker_handle", None)
-            if (getattr(self, "picker_app_pid", None) != getattr(getattr(self, "app", None), "pid", None)
-                    or type(handle) is not int or handle == 0):
-                raise RuntimeError("Verified native picker window identity unavailable")
-            arguments.append(str(handle))
-        tracing = self.system == "Windows" and (
-            (action == "click" and getattr(self, "foreground_controls", False))
-            or (action == "snapshot" and getattr(self, "foreground_remaining", 0) > 0))
-        if tracing:
-            if action == "snapshot":
-                self.foreground_remaining -= 1
-            arguments += ["-TraceForeground", "-EditorStarted", str(getattr(self, "editor_started", 0))]
-        try:
-            result = subprocess.run(self.command + arguments, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
-        except subprocess.TimeoutExpired as error:
-            if tracing:
-                self.record_foreground(error.stderr)
-            # Never print TimeoutExpired itself: its command contains paths and
-            # synthetic clipboard/query arguments. The fixed action is enough.
-            for stage in helper_timeout_stages(error.stderr):
-                print(stage, file=sys.stderr)
-            raise AssertionError(f"Native helper timed out during {action} after {timeout:g}s") from None
-        if tracing:
-            self.record_foreground(result.stderr)
-        if result.returncode:
-            # Helpers emit fixed diagnostics only, never tree or clipboard text.
-            print("\n".join(fixed_windows_failure(result.stderr, action)) if tracing else result.stderr, file=sys.stderr)
-            raise subprocess.CalledProcessError(result.returncode, self.command, stderr=result.stderr)
-        return json.loads(result.stdout)
-
-    def record_foreground(self, stderr):
-        previous = getattr(self, "foreground_trace", [])
-        facts = foreground_diagnostics(stderr)
-        self.foreground_trace = (previous + facts)[:64]
-        self.foreground_trace_capped = (getattr(self, "foreground_trace_capped", False)
-                                       or len(previous) + len(facts) >= 64 or len(stderr or "") > 32768)
-        for fact in facts[:max(0, 64 - len(previous))]:
-            print("NATIVE FOREGROUND STATE " + json.dumps(fact), file=sys.stderr)
-
-    def snapshot(self, *, timeout=None):
-        if self.system != "Windows":
-            return self.call("snapshot", **({} if timeout is None else {"timeout": timeout}))
-        deadline = None if timeout is None else time.monotonic() + timeout
-        if getattr(self, "picker_app_pid", None) != self.app.pid:
-            self.picker_handle = 0
-            self.picker_app_pid = self.app.pid
-        current = None
-        def settled():
-            # While the interface renders, a control can disappear between
-            # listing the tree and reading it, and right after launch the
-            # window can still be half created (#361). The helper reports only
-            # that fact; any other helper failure still fails at once.
-            nonlocal current
-            options = {}
-            if deadline is not None:
-                remaining = deadline - time.monotonic()
-                assert remaining > 0, "Native snapshot exceeded the Quit budget"
-                options["timeout"] = remaining
-            current = self.call("snapshot", str(self.picker_handle), **options)
-            if current == {"tree_changed": True}:
-                return False
-            if not isinstance(current, dict) or "tree_changed" in current:
-                raise RuntimeError("Native accessibility snapshot metadata unavailable")
-            return True
-        wait_for(settled, "native accessibility tree settles", timeout=TREE_SETTLE_SECONDS if timeout is None else min(TREE_SETTLE_SECONDS, timeout))
-        handle = current.get("picker_handle")
-        if handle is not None:
-            if type(handle) is not int or handle == 0 or (self.picker_handle and handle != self.picker_handle):
-                raise RuntimeError("Verified native picker window identity changed")
-            self.picker_handle = handle
-        elif current["visible"] or self.picker_handle:
-            raise RuntimeError("Native picker window identity unavailable")
-        return current
-
-    def key(self, chord):
-        self.call("key", chord)
-
-    def text(self, text):
-        self.call("text", text)
-
-    def settle_editor_windows(self):
-        """Close leftover windows of the owned editor, then require exactly one."""
-        self.call("close-extra-editor-windows", str(self.editor_path))
-        try:
-            wait_for(lambda: self.call("editor-owned", str(self.editor_path)), "single owned synthetic editor window", timeout=10)
-        except AssertionError:
-            state = self.call("editor-state", str(self.editor_path))
-            raise AssertionError(f"A single synthetic editor window is required; found {state['window_count']}") from None
-
-    def click(self, name):
-        if self.system != "Darwin":
-            facts = control_activation_facts(self.call("click", name))
-            print("NATIVE CONTROL STATE " + json.dumps(facts), flush=True)
-            assert facts["pressed"], "Native button was not activated"
-            return
-        state = {}
-        def pressed():
-            nonlocal state
-            state = self.call("click", name)
-            return control_activation_facts(state)["pressed"]
-        try:
-            wait_for(pressed, "exact named native button becomes available")
-        except AssertionError:
-            print("NATIVE CONTROL STATE " + json.dumps(state), flush=True)
-            raise
-        print("NATIVE CONTROL STATE " + json.dumps(control_activation_facts(state)), flush=True)
-
-    def focus_editor(self):
-        state = self.call("focus-editor")
-        if self.system == "Windows":
-            keys = {"owned", "window_valid", "request_accepted", "current_foreground"}
-            if not isinstance(state, dict) or set(state) != keys or any(type(value) is not bool for value in state.values()):
-                raise RuntimeError("Native editor focus request metadata unavailable")
-            if not state["owned"] or not state["window_valid"]:
-                raise AssertionError("Native editor window identity was lost")
-            print("NATIVE EDITOR FOCUS REQUEST " + json.dumps(state), flush=True)
-            # SetForegroundWindow reports a request outcome. Only this fresh
-            # native observation can satisfy focus, including before samples.
-            wait_for(self.editor_focused, "owned editor receives actual foreground focus")
-
-    def editor_focused(self):
-        return self.call("editor-focused")
-
-    def picker_key(self):
-        state = self.call("picker-key")
-        if type(state) is not bool:
-            raise RuntimeError("Native picker key-window state unavailable")
-        return state
-
-    def clipboard(self, *, timeout=None):
-        return self.call("clipboard", **({} if timeout is None else {"timeout": timeout}))
-
-    def set_clipboard(self, text):
-        self.call("write-clipboard", text)
-
-    def memory(self):
-        if self.system != "Windows":
-            return self.call("memory")
-        self.memory_facts = memory_facts(self.call("memory", str(windows_creation_identity(self.app))))
-        return self.memory_facts["memory_bytes"]
-
-    def close(self):
-        if self.system == "Darwin":
-            try:
-                if self.editor_pid <= 0 or not self.call("editor-owned", str(self.editor_path)):
-                    raise RuntimeError("Synthetic editor ownership could not be verified for cleanup")
-                try:
-                    os.kill(self.editor_pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                wait_for(lambda: not self.call("editor-running"), "owned TextEdit process exits after termination")
-            finally:
-                self.editor_folder.cleanup()
-        else:
-            try:
-                self.call("close-editor")
-            finally:
-                if getattr(self, "helper_folder", None):
-                    self.helper_folder.cleanup()
-
-
 def wait_for(predicate, description, timeout=20):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -1358,24 +942,14 @@ def quit_normally(native, app):
         assert budget > 0, "Normal Quit exceeded its shared 10-second budget"
         return budget
     def activate(name):
-        if isinstance(native, Scripted):
-            result = native.call("click", name, timeout=remaining())
-            facts = control_activation_facts(result)
-            print("NATIVE CONTROL STATE " + json.dumps(facts), flush=True)
-            assert facts["pressed"], "Native Quit control was not activated"
-        else:
-            native.click(name)
+        native.click(name)
         remaining()
     def ready():
-        current = native.snapshot(timeout=remaining()) if isinstance(native, Scripted) else native.snapshot()
+        current = native.snapshot()
         remaining()
         return current["visible"] and bool(named(current, "Quit Ibis"))
     activate("More")
-    # The macOS click guard already acquires one exact named native control
-    # and fails on absence or ambiguity before AXPress. A second full-tree
-    # read can exhaust the Quit budget before that single guarded activation.
-    if not (isinstance(native, Scripted) and native.system == "Darwin"):
-        wait_for(ready, "Quit appears in More", timeout=remaining())
+    wait_for(ready, "Quit appears in More", timeout=remaining())
     activate("Quit Ibis")  # One activation; never retry an uncertain native action.
     assert app.wait(timeout=remaining()) == 0, "Normal Quit did not exit zero"
     # Use the same final sample for acceptance and elapsed-time evidence.
@@ -1392,11 +966,9 @@ def first_run_preferences_main(args):
     native = app = log = owned_settings = temporary = None
     exit_code = 1
     try:
-        if not args.app.is_file() or system not in ("Linux", "Darwin", "Windows"):
-            raise Unavailable("Build the embedded app on a supported native platform")
-        if system == "Darwin":
-            owned_settings = claim_settings(settings_path(system, Path("."), identifier=args.identifier))
-        native = Linux() if system == "Linux" else Scripted(system)
+        if not args.app.is_file() or system != "Linux":
+            raise Unavailable("Build the embedded app on Linux/X11")
+        native = Linux()
         temporary = tempfile.TemporaryDirectory(prefix="ibis native preferences ")
         folder = Path(temporary.name)
         library = folder / "synthetic 引用.bib"
@@ -1404,7 +976,7 @@ def first_run_preferences_main(args):
         settings = settings_path(system, folder, native, args.identifier)
         owned_settings = claim_settings(settings)
         env = real_app_environment(os.environ, library, folder / "config")
-        shortcut = args.shortcut or ("super+shift+y" if system == "Darwin" else "ctrl+shift+y")
+        shortcut = args.shortcut or ("ctrl+shift+y")
 
         def launch(label, with_library=False):
             nonlocal app, log
@@ -1453,11 +1025,11 @@ def first_run_preferences_main(args):
         wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
         # The writing question needs a library chosen in the app; Copy as sets the same preference.
         # With no match the footer offers no "Copy as Pandoc", so the name is the header's alone.
-        type_query(native, snapshot, NO_MATCH, "super+a" if system == "Darwin" else "ctrl+a")
+        type_query(native, snapshot, NO_MATCH, "ctrl+a")
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
         native.click("Copy as Pandoc")
         wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
-        # Pick with the filter: Windows UIA exposes the menu's radio items
+        # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
         native.text("Typst")
@@ -1467,7 +1039,7 @@ def first_run_preferences_main(args):
         native.key("Return")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
         passed("Typst choice is saved before any copy")
-        type_query(native, snapshot, "smoke000001", "super+a" if system == "Darwin" else "ctrl+a")
+        type_query(native, snapshot, "smoke000001", "ctrl+a")
         wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
         prime_clipboard(native)
         native.key("Return")
@@ -1523,9 +1095,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--identifier", default="io.github.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
     parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Command+Shift+Y on macOS")
-    performance = parser.add_mutually_exclusive_group()
-    performance.add_argument("--budgets", type=Path, help="Measured per-platform baseline JSON, with startup_ms, first_result_ms, memory_bytes ceilings")
-    performance.add_argument("--skip-performance", action="store_true", help="Keep correctness checks but skip the four 100,000-reference launches")
+    parser.add_argument("--skip-performance", action="store_true", help="Keep correctness checks but skip the four 100,000-reference launches")
     parser.add_argument("--first-run-preferences", action="store_true", help="Exercise first-run format persistence and settled More/Quit only")
     args = parser.parse_args()
     if args.first_run_preferences:
@@ -1543,23 +1113,16 @@ def main():
     try:
         if not args.app.is_file():
             raise Unavailable("Build the embedded native app before running smoke")
-        if system not in ("Linux", "Darwin", "Windows"):
+        if system != "Linux":
             raise Unavailable("Unsupported native smoke platform")
-        if system == "Darwin":
-            owned_settings = claim_settings(settings_path(system, Path("."), identifier=args.identifier))
-        native = Linux() if system == "Linux" else Scripted(system)
+        native = Linux()
         with tempfile.TemporaryDirectory(prefix="ibis native smoke ") as temporary:
             folder = Path(temporary)
             library = folder / "synthetic 引用.bib"
             library.write_text(fixture(), encoding="utf-8")
             env = real_app_environment(os.environ, library, folder / "config")
-            # Linux honors XDG_CONFIG_HOME. macOS/Windows use their native user
-            # config locations; preflight refuses all existing preferences.
-            # Preference choices can save even with IBIS_LIBRARY, so clean only
-            # preference files this disposable run can create.
+            # Isolate preferences in this disposable run.
             settings = settings_path(system, folder, native, args.identifier)
-            if system == "Windows":
-                owned_settings = claim_settings(settings)
 
             def launch(label):
                 nonlocal app, log
@@ -1599,11 +1162,6 @@ def main():
                 current = snapshot()
                 return current["visible"] and current["foreground"] and search_focused(current)
 
-            def capture_editor_focus(stage):
-                if system == "Darwin":
-                    facts = editor_focus_facts(native, stage)
-                    report.setdefault("editor_focus_facts", []).append(facts)
-                    print("NATIVE EDITOR FOCUS " + json.dumps(facts), flush=True)
 
             def check(name, action):
                 try:
@@ -1620,21 +1178,11 @@ def main():
                 print(f"PASS {name}", flush=True)
 
             def query(text, expected):
-                if system == "Windows":
-                    current = snapshot()
-                    if not current["visible"] or not current["foreground"]:
-                        # Windows may retain editor activation after a restart.
-                        # Summon deliberately before delivering real keystrokes.
-                        native.key(shortcut)
-                        wait_for(picker_ready, "Windows picker activated before typing")
-                if system == "Darwin":
-                    type_query(native, snapshot, text, "super+a")
-                else:
-                    native.key("ctrl+a")
-                    native.text(text)
+                native.key("ctrl+a")
+                native.text(text)
                 wait_for_query(snapshot, text, expected, report)
 
-            shortcut = args.shortcut or ("super+shift+y" if system == "Darwin" else "ctrl+shift+y")
+            shortcut = args.shortcut or ("ctrl+shift+y")
             launch("small")
             check("startup", lambda: wait_for(lambda: shows_count(snapshot(), "3 references"), "synthetic library startup"))
             check("accessibility named search/count/list", lambda: require_tree(snapshot()))
@@ -1649,8 +1197,6 @@ def main():
                 check("first picker stays out of the taskbar and window switcher", skips_taskbar)
 
             def show():
-                if system == "Darwin":
-                    prepare_initial_picker_show(native, snapshot)
                 native.focus_editor()
                 wait_for(native.editor_focused, "previous editor focused")
                 def focus_state(stage):
@@ -1662,7 +1208,6 @@ def main():
                         report.setdefault("shortcut_states", []).append(state)
                         print("NATIVE SHORTCUT STATE " + json.dumps(state), flush=True)
                 focus_state("before-first-shortcut")
-                capture_editor_focus("before-first-shortcut")
                 native.key(shortcut)
                 focus_state("after-first-shortcut")
                 wait_for(picker_ready, "global shortcut visible, foreground and search focus")
@@ -1670,7 +1215,6 @@ def main():
                 native.focus_editor()
                 wait_for(native.editor_focused, "previous editor focused")
                 focus_state("before-second-shortcut")
-                capture_editor_focus("before-second-shortcut")
                 native.key(shortcut)
                 focus_state("after-second-shortcut")
                 wait_for(picker_ready, "global shortcut visible, foreground and search focus")
@@ -1682,7 +1226,6 @@ def main():
                 escape_to_hide(native, snapshot, "picker hidden before second launch")
                 native.focus_editor()
                 wait_for(native.editor_focused, "editor focused before second launch")
-                capture_editor_focus("before-second-launch")
                 with (args.output / "startup-second-instance.log").open("w", encoding="utf-8") as second_log:
                     second = subprocess.Popen([str(args.app.resolve())], env=env, stdout=second_log, stderr=second_log)
                     try:
@@ -1697,7 +1240,7 @@ def main():
             check("native typing and accessible result count", lambda: query("smoke000001", "1 result"))
             assert "Ibis smoke reference 000001" in strings(snapshot()), "Expected native result missing"
             check("shortcut menu Escape returns to invoker", lambda: menu_escape_focus(
-                native, snapshot, "super+k" if system == "Darwin" else "ctrl+k", report))
+                native, snapshot, "ctrl+k", report))
             # Restoring the query can schedule another search; do not copy the
             # temporary probe's results while that request is still pending.
             wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
@@ -1708,11 +1251,9 @@ def main():
                 # key-window wait stays out of the native copy check.
                 copy_with_diagnostics(native, report)
                 wait_for(lambda: not snapshot()["visible"], "copy hides picker")
-                capture_editor_focus("after-copy-hides-picker")
                 try:
                     wait_for(native.editor_focused, "copy restores focus to previous editor")
                 except AssertionError:
-                    capture_editor_focus("copy-restoration-timeout")
                     raise
                 # The Copied notice (#496) is up while the editor keeps focus.
                 # Only the Linux adapter can see it; others skip this check.
@@ -1767,14 +1308,10 @@ def main():
 
             def missing():
                 library.unlink()
-                if system == "Windows":
-                    native.foreground_controls = True
                 try:
                     menu_action(native, "Reload")
                 finally:
-                    if system == "Windows":
-                        native.foreground_controls = False
-                        native.foreground_remaining = 8
+                    pass
                 def explained():
                     report["missing_library_evidence"] = missing_library_evidence(snapshot(), library.name)
                     return all(report["missing_library_evidence"].values())
@@ -1823,19 +1360,10 @@ def main():
                     assert memory > 0, "Native process-tree memory measurement unavailable"
                     samples.append({"warmup": sample == 0, "startup_ms": round(startup, 2), "first_result_ms": round(first, 2),
                                     "memory_bytes": memory, "startup_phases": phases})
-                    if system == "Windows":
-                        samples[-1]["memory_facts"] = native.memory_facts
                     stop()
                     phases["library_phases"] = library_phase_diagnostics([diagnostic_logs[-1]])
                 report["performance"] = summarize_performance(samples)
-                if args.budgets:
-                    budgets = json.loads(args.budgets.read_text(encoding="utf-8"))[system]
-                    try:
-                        enforce_performance_budgets(report["performance"], budgets)
-                    finally:
-                        print(json.dumps(report["performance"]), flush=True)
-                else:
-                    print(json.dumps(report["performance"]), flush=True)
+                print(json.dumps(report["performance"]), flush=True)
         report["status"] = "passed"
         exit_code = 0
     except Unavailable as error:
@@ -1888,52 +1416,7 @@ def main():
 
 
 class ContractTests(unittest.TestCase):
-    def test_skip_performance_rejects_budgets_before_native_setup(self):
-        for flags in (("--skip-performance", "--budgets", "unused.json"),
-                      ("--budgets", "unused.json", "--skip-performance")):
-            with patch.object(sys, "argv", ["smoke", "--app", "unused", "--output", "unused", *flags]), \
-                    redirect_stderr(io.StringIO()) as errors, patch(__name__ + ".Linux") as native:
-                with self.assertRaises(SystemExit) as exit_status:
-                    main()
-                self.assertEqual(exit_status.exception.code, 2)
-                self.assertIn("not allowed with argument", errors.getvalue())
-                native.assert_not_called()
 
-    def test_skip_performance_keeps_correctness_and_removes_only_four_launches(self):
-        reports, counts = [], []
-        for flags in ([], ["--skip-performance"]):
-            with tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                app, output = root / "synthetic-app", root / "output"
-                app.touch()
-                native = Mock(memory_facts={}, foreground_trace=[], foreground_trace_capped=False)
-                native.editor_active.return_value = True
-                native.editor_has_input_focus.return_value = True
-                native.snapshot.return_value = {"visible": True, "foreground": True, "nodes": [
-                    {"name": "Ibis smoke reference 000001", "role": "label"}]}
-                native.memory.return_value = 1000
-                process = Mock()
-                process.poll.return_value = None
-                process.wait.return_value = 0
-                def startup(launch, snapshot, phases):
-                    launch()
-                    return 1
-                with patch.object(sys, "argv", ["smoke", "--app", str(app), "--output", str(output), *flags]), \
-                        patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux", return_value=native), \
-                        patch("subprocess.Popen", return_value=process) as launches, patch("builtins.print"), \
-                        patch(__name__ + ".wait_for"), patch(__name__ + ".wait_for_query"), \
-                        patch(__name__ + ".require_tree"), patch(__name__ + ".escape_to_hide"), \
-                        patch(__name__ + ".menu_escape_focus"), patch(__name__ + ".menu_action"), \
-                        patch(__name__ + ".copy_with_diagnostics"), patch(__name__ + ".measure_startup", side_effect=startup):
-                    self.assertEqual(main(), 0)
-                reports.append(json.loads((output / "smoke.json").read_text()))
-                counts.append(launches.call_count)
-                self.assertEqual(native.memory.call_count, 0 if flags else 4)
-        self.assertEqual(counts[0] - counts[1], 4)
-        self.assertEqual(reports[0]["checks"], reports[1]["checks"])
-        self.assertGreater(len(reports[1]["checks"]), 10)
-        self.assertEqual(reports[0]["performance"]["status"], "measured-without-budget")
-        self.assertEqual(reports[1]["performance"], {"status": "skipped"})
 
     class CensusNode:
         def __init__(self, pid=0, name="", children=(), value=None):
@@ -2179,13 +1662,10 @@ class ContractTests(unittest.TestCase):
                 app.terminate.assert_called_once()
                 native.close.assert_called_once()
 
-    def preference_probe(self, failure=None, *, scripted_system=None):
+
+    def preference_probe(self, failure=None):
         clock, launches, actions = [0.0], [], []
-        # Exercise the Scripted Quit protocol while keeping settings in the
-        # existing owned Linux fixture; this is a control-flow contract only.
-        native = Mock(spec=Scripted) if scripted_system else Mock()
-        if scripted_system:
-            native.system = scripted_system
+        native = Mock()
         native.query = ""
         native.query_ready_at = 0
         native.value = ""
@@ -2299,17 +1779,6 @@ class ContractTests(unittest.TestCase):
         native.text.side_effect = text
         native.snapshot.side_effect = snapshot
         native.set_clipboard.side_effect = lambda value: setattr(native, "value", value)
-        if scripted_system:
-            def helper(action, name, *, timeout):
-                self.assertEqual(action, "click")
-                self.assertGreater(timeout, 0)
-                clock[0] += 2
-                if name == "Quit Ibis" and failure == "absent-quit":
-                    actions.append((name, len(launches)))
-                    return {"pressed": False}
-                click(name)
-                return {"pressed": True}
-            native.call.side_effect = helper
         original_clipboard = Linux.clipboard
         native.clipboard.side_effect = lambda **kwargs: original_clipboard(native, **kwargs)
         def clipboard_read(*_args, **_kwargs):
@@ -2339,7 +1808,7 @@ class ContractTests(unittest.TestCase):
                     patch("subprocess.Popen", side_effect=launch), patch("time.monotonic", side_effect=lambda: clock[0]), \
                     patch("subprocess.check_output", side_effect=clipboard_read), \
                     patch("time.sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
-                    patch.dict(os.environ, {"IBIS_LIBRARY": "/unowned.bib", "IBIS_GALLERY": "1", "IBIS_GALLERY_STATE": "loaded"}), \
+                    patch.dict(os.environ, {"IBIS_LIBRARY": "/unowned.bib"}), \
                     patch("builtins.print"):
                 result = first_run_preferences_main(args)
             report = json.loads((args.output / "smoke.json").read_text(encoding="utf-8"))
@@ -2352,6 +1821,7 @@ class ContractTests(unittest.TestCase):
         native.close.assert_called_once()
         return result, report, launches, actions
 
+
     def test_first_run_preferences_relaunch_uses_saved_typst_before_copy(self):
         result, report, launches, actions = self.preference_probe()
         self.assertEqual((result, report["status"]), (0, "passed"))
@@ -2359,7 +1829,6 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertTrue(all("IBIS_GALLERY" not in env and "IBIS_GALLERY_STATE" not in env for env in launches))
         self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
@@ -2394,25 +1863,6 @@ class ContractTests(unittest.TestCase):
         self.assertEqual([action for action in actions if action[0] == "Return"], [("Return", 2)])
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
 
-    def test_first_run_preferences_darwin_quit_uses_one_guarded_activation_without_slow_full_tree_read(self):
-        result, report, _launches, actions = self.preference_probe("slow-menu-snapshot", scripted_system="Darwin")
-        self.assertEqual((result, report["status"]), (0, "passed"))
-        self.assertEqual((report["first_quit_seconds"], report["second_quit_seconds"]), (4, 4))
-        self.assertEqual([action for action in actions if action[0] == "Return"], [("Return", 2)])
-        self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
-
-    def test_first_run_preferences_darwin_quit_still_rejects_absent_uncertain_or_late_actions(self):
-        for failure in ("absent-quit", "uncertain-quit", "late-driver", "late-wait", "nonzero-quit", "stuck-quit"):
-            with self.subTest(failure=failure):
-                result, report, _launches, actions = self.preference_probe(failure, scripted_system="Darwin")
-                self.assertEqual((result, report["status"]), (1, "failed"))
-                self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1)])
-
-    def test_first_run_preferences_windows_keeps_its_menu_readiness_observation_in_the_shared_budget(self):
-        result, report, _launches, actions = self.preference_probe("slow-menu-snapshot", scripted_system="Windows")
-        self.assertEqual((result, report["status"]), (1, "failed"))
-        self.assertIn("shared 10-second budget", report["reason"])
-        self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [])
 
     def test_first_run_preferences_failure_retains_only_observed_boolean_state(self):
         result, report, _launches, actions = self.preference_probe("hidden-reopen")
@@ -2425,14 +1875,6 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("private", json.dumps(report))
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1)])
 
-    def test_scripted_calls_accept_a_remaining_budget_without_resetting_it(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Darwin"
-        native.command = ["synthetic-helper"]
-        completed = subprocess.CompletedProcess([], 0, stdout="true", stderr="")
-        with patch("subprocess.run", return_value=completed) as helper, patch("builtins.print"):
-            self.assertIs(native.call("click", "More", timeout=3.5), True)
-        self.assertEqual(helper.call_args.kwargs["timeout"], 3.5)
 
     def test_first_run_preferences_refuse_existing_settings_and_dangling_links(self):
         for failure in ("preexisting", "symlink"):
@@ -2441,29 +1883,6 @@ class ContractTests(unittest.TestCase):
                 self.assertEqual((result, report["status"]), (2, "unavailable"))
                 self.assertEqual(launches, [])
 
-    def test_normal_quit_shares_its_budget_with_each_scripted_call_and_wait(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Darwin"
-        clock = [0.0]
-        def helper(action, text="", *, timeout):
-            clock[0] += 2
-            return {"pressed": True} if action == "click" else {"visible": True, "nodes": [{"name": "Quit Ibis"}]}
-        native.call = Mock(side_effect=helper)
-        app = Mock()
-        def exited(timeout):
-            clock[0] += 1
-            return 0
-        app.wait.side_effect = exited
-        with patch("time.monotonic", side_effect=lambda: clock[0]):
-            self.assertEqual(quit_normally(native, app), 5)
-        self.assertEqual([entry.kwargs["timeout"] for entry in native.call.call_args_list], [10, 8])
-        app.wait.assert_called_once_with(timeout=6)
-        self.assertEqual([entry.args for entry in native.call.call_args_list], [("click", "More"), ("click", "Quit Ibis")])
-        clock[0] = 0
-        app.wait.side_effect = lambda timeout: (clock.__setitem__(0, 11), 0)[1]
-        with patch("time.monotonic", side_effect=lambda: clock[0]):
-            with self.assertRaisesRegex(AssertionError, "shared 10-second budget"):
-                quit_normally(native, app)
     def test_taskbar_hints_are_read_from_the_window_manager_state(self):
         self.assertTrue(window_state_skips_taskbar(
             "_NET_WM_STATE(ATOM) = _NET_WM_STATE_FOCUSED, _NET_WM_STATE_SKIP_TASKBAR, _NET_WM_STATE_SKIP_PAGER"))
@@ -2842,18 +2261,6 @@ class ContractTests(unittest.TestCase):
                 type_query(native, snapshot, "smoke000001", "super+a")
         self.assertEqual(native.text.call_count, TYPE_ATTEMPTS)
 
-    def test_macos_editor_settle_closes_leftovers_and_reports_window_count(self):
-        native = Scripted.__new__(Scripted)
-        native.editor_path = Path("synthetic.txt")
-        actions = []
-        def helper(action, text=""):
-            actions.append(action)
-            return {"close-extra-editor-windows": 1, "editor-owned": False, "editor-state": {"window_count": 2}}[action]
-        native.call = helper
-        with patch(__name__ + ".wait_for", side_effect=AssertionError("Timed out")):
-            with self.assertRaisesRegex(AssertionError, "single synthetic editor window is required; found 2"):
-                native.settle_editor_windows()
-        self.assertEqual(actions, ["close-extra-editor-windows", "editor-state"])
 
     def test_query_failure_facts_distinguish_empty_partial_and_exact_editable_values(self):
         for value, exact, empty in (("", False, True), ("priv", False, False), ("private query", True, False)):
@@ -2916,99 +2323,6 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(source.call_count, 4)
         self.assertEqual(report, {})
 
-    def test_helper_timeout_emits_only_allowlisted_stages_from_bytes_stderr(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.command = "Windows", ["synthetic-helper", "private argument"]
-        error = subprocess.TimeoutExpired(native.command, 30, stderr=(
-            b'private path and payload\xff\nNATIVE HELPER STAGE windows-input-compile-start\n'
-            b'NATIVE HELPER STAGE arbitrary-private-payload\n'))
-        with patch("subprocess.run", side_effect=error), patch("sys.stderr") as stderr, patch("builtins.print") as output:
-            with self.assertRaisesRegex(AssertionError, "timed out during probe after 30s"):
-                native.call("probe")
-        error_lines = [call.args[0] for call in output.call_args_list if call.kwargs.get("file") is stderr]
-        self.assertEqual(error_lines, ["NATIVE HELPER STAGE windows-input-compile-start"])
-
-    def test_editor_focus_diagnostics_preserve_only_fixed_boolean_ownership_facts(self):
-        native = Scripted.__new__(Scripted)
-        fields = ("system_events_editor_frontmost", "workspace_editor_frontmost", "workspace_ibis_frontmost",
-                  "workspace_other_frontmost", "editor_running_application_active", "editor_window_visible")
-        state = {key: key != "workspace_other_frontmost" for key in fields}
-        state["private_path"] = "not allowed in evidence"
-        with patch.object(native, "call", return_value=state):
-            facts = editor_focus_facts(native, "copy-restoration-timeout")
-            self.assertEqual(set(facts), set(fields) | {"stage"})
-            state["editor_window_visible"] = "true"
-            with self.assertRaisesRegex(RuntimeError, "metadata unavailable"):
-                editor_focus_facts(native, "copy-restoration-timeout")
-
-    def test_recovery_observations_keep_hidden_and_unavailable_distinct_and_redact(self):
-        fact = {"action": "reload", "stage": "after", "owner": "editor", "foreground_observed": True,
-                "foreground_available": True, "picker_owned": True, "picker_visible": False, "elapsed_ms": 1}
-        unavailable = dict(fact, owner="unknown", foreground_observed=False, foreground_available=False,
-                           picker_owned=None, picker_visible=None)
-        encode = lambda value: "NATIVE FOREGROUND STATE " + json.dumps(value)
-        self.assertEqual(foreground_diagnostics(encode(fact) + "\n" + encode(unavailable)), [fact, unavailable])
-        for changes in ({"private": "private-payload"}, {"owner": "private-payload"}, {"elapsed_ms": True},
-                        {"elapsed_ms": -1}, {"picker_owned": None}, {"foreground_observed": False},
-                        {"picker_visible": "false"}, {"stage": "private-payload"}):
-            self.assertEqual(foreground_diagnostics(encode(dict(fact, **changes))), [])
-        self.assertEqual(foreground_diagnostics("NATIVE FOREGROUND STATE " + "x" * 1000), [])
-        self.assertEqual(len(foreground_diagnostics((encode(fact) + "\n") * 100)), 64)
-
-    def test_recovery_observations_follow_existing_calls_without_retry(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.command = "Windows", ["synthetic-helper"]
-        native.app = type("App", (), {"pid": 123})()
-        native.picker_app_pid, native.picker_handle, native.editor_started = 123, 456, 7
-        native.foreground_controls, native.foreground_remaining = True, 8
-        fact = {"action": "reload", "stage": "before", "owner": "unknown", "foreground_observed": True,
-                "foreground_available": True, "picker_owned": True, "picker_visible": True, "elapsed_ms": 0}
-        trace = "NATIVE FOREGROUND STATE " + json.dumps(fact)
-        for outcome in (subprocess.CompletedProcess([], 0, "true", trace),
-                        subprocess.CompletedProcess([], 1, "", trace + '\nNATIVE FOREGROUND STATE {"private":"payload"}'),
-                        subprocess.TimeoutExpired(["private-command"], 30, stderr=trace.encode())):
-            native.foreground_trace = []
-            with patch("subprocess.run", side_effect=[outcome] if isinstance(outcome, Exception) else None,
-                       return_value=outcome) as helper, patch("builtins.print") as output:
-                if isinstance(outcome, subprocess.TimeoutExpired):
-                    with self.assertRaisesRegex(AssertionError, "timed out"):
-                        native.call("click", "Reload")
-                elif outcome.returncode:
-                    with self.assertRaises(subprocess.CalledProcessError):
-                        native.call("click", "Reload")
-                else:
-                    self.assertIs(native.call("click", "Reload"), True)
-                self.assertEqual(native.foreground_trace, [fact])
-                self.assertEqual(helper.call_count, 1)
-                self.assertIn("-TraceForeground", helper.call_args.args[0])
-                self.assertNotIn("payload", str(output.call_args_list))
-
-    def test_recovery_observations_stop_after_eight_existing_snapshots_and_cap_output(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.command, native.foreground_remaining = "Windows", ["synthetic-helper"], 8
-        fact = {"action": "snapshot", "stage": "snapshot", "owner": "unknown", "foreground_observed": True,
-                "foreground_available": False, "picker_owned": True, "picker_visible": False, "elapsed_ms": 1}
-        trace = "NATIVE FOREGROUND STATE " + json.dumps(fact)
-        with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, '{}', trace)) as helper, patch("builtins.print"):
-            for _ in range(9):
-                native.call("snapshot", "456")
-            self.assertEqual(helper.call_count, 9)
-            self.assertTrue(all("-TraceForeground" in entry.args[0] for entry in helper.call_args_list[:8]))
-            self.assertNotIn("-TraceForeground", helper.call_args_list[8].args[0])
-            self.assertEqual(native.foreground_trace, [fact] * 8)
-        native.foreground_trace = []
-        with patch("builtins.print") as output:
-            for _ in range(100):
-                native.record_foreground(trace)
-            self.assertEqual(len(native.foreground_trace), 64)
-            self.assertTrue(native.foreground_trace_capped)
-            self.assertEqual(output.call_count, 64)
-        failure = ('NATIVE HELPER ERROR COMException\nNATIVE CONTROL STATE {"pressed":false}\n'
-                   'NATIVE SNAPSHOT FAILURE {"phase":"ownership","kind":"COMException","operation":"from-handle"}\n'
-                   'NATIVE FOREGROUND STATE {"private":"payload"}')
-        lines = fixed_windows_failure(failure, "snapshot")
-        self.assertEqual(len(lines), 3)
-        self.assertNotIn("payload", str(lines))
 
     def test_menu_actions_open_more_first(self):
         native = Mock()
@@ -3143,174 +2457,6 @@ class ContractTests(unittest.TestCase):
                 self.assertTrue(all(report["menu_escape_focus"].values()))
                 self.assertEqual(native.value, native.original)
 
-    def test_macos_hid_contract_timeout_preserves_only_bounded_fixed_phases(self):
-        phases = [f"MACOS HID CONTRACT {phase}" for phase in (
-            "start", "source-ready", "fullscreen-cases", "key-plan-cases", "permission-cases",
-            "click-cases", "unicode-bridge-cases", "picker-key-cases", "snapshot-cases", "complete",
-        )]
-        dirty = "\n".join([phases[0], "private-output", phases[1], phases[0], "MACOS HID CONTRACT private"])
-        for stdout, stderr, expected in [
-            (dirty, phases[1] + "\n" + phases[-1], [phases[0], phases[1], phases[-1]]),
-            (dirty.encode() + b'\n\xffprivate', None, phases[:2]),
-            (None, dirty.encode(), phases[:2]),
-            (None, None, []), (7, {"private": "output"}, []),
-            ("prefix " + phases[0] + "\n" + phases[1] + " private", "MACOS HID CONTRACT", []),
-            (phases[0] + "\n" + "private" * 100000 + "\n" + phases[-1], None, phases[:1]),
-            ("\n".join(phases * 100), "\n".join(phases), phases),
-        ]:
-            error = subprocess.TimeoutExpired(["private-command"], CONTRACT_TIMEOUT, output=stdout, stderr=stderr)
-            with patch("subprocess.run", side_effect=error) as helper, patch("builtins.print") as output:
-                with self.assertRaises(subprocess.TimeoutExpired) as caught:
-                    self.test_global_macos_hid_event_contracts_without_native_execution()
-                self.assertIs(caught.exception, error)
-                self.assertIs(error.stdout, stdout)
-                self.assertIs(error.stderr, stderr)
-                self.assertEqual(helper.call_count, 1)
-                self.assertEqual(helper.call_args.kwargs, {
-                    "check": True, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "timeout": CONTRACT_TIMEOUT,
-                })
-                self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
-                self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
-        with patch("subprocess.run", side_effect=error), patch("builtins.print", side_effect=OSError("sink")):
-            with self.assertRaises(subprocess.TimeoutExpired) as caught:
-                self.test_global_macos_hid_event_contracts_without_native_execution()
-            self.assertIs(caught.exception, error)
-        for result in (subprocess.CompletedProcess(["node"], 0), subprocess.CalledProcessError(1, ["node"])):
-            with patch("subprocess.run", side_effect=result if isinstance(result, Exception) else None,
-                       return_value=result) as helper, patch("builtins.print") as output:
-                if isinstance(result, Exception):
-                    with self.assertRaises(subprocess.CalledProcessError) as caught:
-                        self.test_global_macos_hid_event_contracts_without_native_execution()
-                    self.assertIs(caught.exception, result)
-                else:
-                    self.test_global_macos_hid_event_contracts_without_native_execution()
-                self.assertEqual(helper.call_count, 1)
-                output.assert_not_called()
-
-    def test_macos_hid_contract_timeout_survives_a_closed_text_sink(self):
-        error = subprocess.TimeoutExpired(["private-command"], 20, stderr=b"MACOS HID CONTRACT start\n")
-        sink = io.StringIO()
-        sink.close()
-        with patch("subprocess.run", side_effect=error), patch("sys.stderr", sink):
-            with self.assertRaises(subprocess.TimeoutExpired) as caught:
-                self.test_global_macos_hid_event_contracts_without_native_execution()
-            self.assertIs(caught.exception, error)
-
-    def test_macos_hid_contract_timeout_discards_a_truncated_partial_line(self):
-        start, complete = "MACOS HID CONTRACT start", "MACOS HID CONTRACT complete"
-        prefix = start + "\n" + "x" * (4096 - len(start) - len(complete) - 2) + "\n"
-        terminated = start + "\n" + "x" * (4096 - len(start) - len(complete) - 3) + "\n" + complete + "\nprivate"
-        self.assertEqual(len(prefix + complete), 4096)
-        for stream in ("stdout", "stderr"):
-            for as_bytes in (False, True):
-                for captured, expected in [(prefix + complete + " private", [start]),
-                                           (prefix + complete, [start, complete]),
-                                           (prefix + complete + "\nprivate", [start]),
-                                           (terminated, [start, complete])]:
-                    if as_bytes:
-                        captured = captured.encode()
-                    error = subprocess.TimeoutExpired(["private-command"], 20)
-                    setattr(error, stream, captured)
-                    with patch("subprocess.run", side_effect=error), patch("builtins.print") as output:
-                        with self.assertRaises(subprocess.TimeoutExpired) as caught:
-                            self.test_global_macos_hid_event_contracts_without_native_execution()
-                        self.assertIs(caught.exception, error)
-                        self.assertIs(getattr(error, stream), captured)
-                        self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
-
-    def test_global_macos_hid_event_contracts_without_native_execution(self):
-        try:
-            subprocess.run(["node", str(Path(__file__).with_name("smoke-macos.test.cjs"))], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=CONTRACT_TIMEOUT)
-        except subprocess.TimeoutExpired as error:
-            allowed = {f"MACOS HID CONTRACT {phase}" for phase in (
-                "start", "source-ready", "fullscreen-cases", "key-plan-cases", "permission-cases",
-                "click-cases", "unicode-bridge-cases", "picker-key-cases", "snapshot-cases", "complete",
-            )}
-            seen = set()
-            for captured in (error.stdout, error.stderr):
-                if not isinstance(captured, (bytes, str)):
-                    continue
-                truncated = len(captured) > 4096
-                captured = captured[:4096]
-                if truncated:
-                    # Never turn a prefix of a longer line into an exact marker.
-                    newline = b"\n" if isinstance(captured, bytes) else "\n"
-                    captured = captured[:captured.rfind(newline) + 1]
-                if isinstance(captured, bytes):
-                    captured = captured.decode("utf-8", errors="replace")
-                for line in captured.splitlines():
-                    if line in allowed and line not in seen:
-                        seen.add(line)
-                        try:
-                            print(line, file=sys.stderr)
-                        except (OSError, ValueError):
-                            pass  # A failed diagnostic must not replace the original timeout.
-            raise
-
-    def test_macos_click_reacquires_a_missing_control_and_stops_after_one_press(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Darwin"
-        with patch.object(native, "call", side_effect=[{"pressed": False}, {"pressed": True}]) as helper, patch("time.sleep"):
-            native.click("Reload")
-        self.assertEqual(helper.call_args_list, [(('click', 'Reload'),), (('click', 'Reload'),)])
-
-    def test_windows_click_requires_one_confirmed_activation_and_logs_only_fixed_booleans(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Windows"
-        state = {"pressed": True, "button_role": True, "toggle_pattern": True, "private": "document payload"}
-        with patch.object(native, "call", return_value=state) as helper, patch("builtins.print") as output:
-            native.click("Typst")
-        helper.assert_called_once_with("click", "Typst")
-        self.assertNotIn("private", str(output.call_args))
-        self.assertNotIn("payload", str(output.call_args))
-        self.assertEqual(json.loads(output.call_args.args[0].removeprefix("NATIVE CONTROL STATE ")),
-                         {"pressed": True, "button_role": True, "toggle_pattern": True})
-        for invalid in (True, None, {"pressed": "true"}, {"pressed": True, "toggle_pattern": "true"}, {"pressed": False}):
-            with self.subTest(invalid=invalid), patch.object(native, "call", return_value=invalid) as helper, \
-                    patch("builtins.print"), self.assertRaises((AssertionError, RuntimeError)):
-                native.click("Typst")
-            helper.assert_called_once_with("click", "Typst")
-
-    def windows_native(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Windows"
-        native.app = Mock(pid=7)
-        return native
-
-    def test_windows_snapshot_rereads_only_a_tree_that_changed_while_being_read(self):
-        native = self.windows_native()
-        hidden = {"nodes": [], "visible": False, "foreground": False}
-        with patch.object(native, "call", side_effect=[{"tree_changed": True}, hidden]) as helper, patch("time.sleep"):
-            self.assertEqual(native.snapshot(), hidden)
-        self.assertEqual(helper.call_args_list, [call("snapshot", "0"), call("snapshot", "0")])
-
-    def test_windows_snapshot_fails_when_the_tree_never_settles_or_the_helper_fails(self):
-        native = self.windows_native()
-        clock = iter(range(0, 1000, 3))
-        with patch.object(native, "call", return_value={"tree_changed": True}) as helper, patch("time.sleep"), \
-                patch("time.monotonic", side_effect=lambda: next(clock)):
-            with self.assertRaisesRegex(AssertionError, "^Timed out: native accessibility tree settles$"):
-                native.snapshot()
-        self.assertEqual(helper.call_count, 3)
-        for failure in (subprocess.CalledProcessError(1, ["helper"]), {"tree_changed": False}, {"tree_changed": True, "nodes": []}):
-            with patch.object(native, "call", side_effect=[failure]) as helper:
-                with self.assertRaises((subprocess.CalledProcessError, RuntimeError)):
-                    native.snapshot()
-            self.assertEqual(helper.call_count, 1)
-
-    def test_scripted_native_json_preserves_unicode_under_a_legacy_windows_locale(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Windows"
-        expected = "synthetic 引用.bib"
-        payload = json.dumps(expected, ensure_ascii=False).encode("utf-8").hex()
-        native.command = [sys.executable, "-c", f"import sys; sys.stdout.buffer.write(bytes.fromhex('{payload}'))"]
-        # Simulate a legacy default even when Python itself runs in UTF-8 mode.
-        process = subprocess.run
-        def legacy_locale(*args, **options):
-            return process(*args, **{"encoding": "cp1252", **options})
-        with patch("subprocess.run", side_effect=legacy_locale), patch("builtins.print"):
-            self.assertEqual(native.call("snapshot"), expected)
 
     def test_startup_waits_for_the_count_in_the_native_footer_tree(self):
         # The Linux tree as WebKitGTK reported it when the count sat in a plain
@@ -3359,171 +2505,12 @@ class ContractTests(unittest.TestCase):
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 
-    BUDGETS = {"startup_ms": 100, "first_result_ms": 10, "memory_bytes": 2000}
-
-    def test_windows_creation_identity_uses_original_handle_and_integer_microseconds(self):
-        import ctypes
-        app = Mock(_handle=987)
-        app.poll.return_value = None
-        ticks = 134369280000000019
-        def get_times(handle, created, *_rest):
-            self.assertEqual(handle, 987)
-            created._obj.dwHighDateTime, created._obj.dwLowDateTime = ticks >> 32, ticks & 0xffffffff
-            return True
-        api = Mock(GetProcessTimes=Mock(side_effect=get_times))
-        with patch.object(ctypes, "WinDLL", return_value=api, create=True):
-            self.assertEqual(windows_creation_identity(app), (ticks + 504911232000000000) // 10)
-            api.GetProcessTimes.return_value = False
-            api.GetProcessTimes.side_effect = None
-            with self.assertRaises(RuntimeError):
-                windows_creation_identity(app)
-            app.poll.return_value = 0
-            api.GetProcessTimes.reset_mock()
-            with self.assertRaises(RuntimeError):
-                windows_creation_identity(app)
-            api.GetProcessTimes.assert_not_called()
-
-    def test_windows_memory_requires_pinned_identity_and_bounded_numeric_components(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.app = "Windows", Mock()
-        facts = {"memory_bytes": 300, "excluded_older": 1, "components": [
-            {"index": 0, "parent_index": 0, "depth": 0, "age_us": 0, "memory_bytes": 100},
-            {"index": 1, "parent_index": 0, "depth": 1, "age_us": 20, "memory_bytes": 200}]}
-        with patch(__name__ + ".windows_creation_identity", return_value=123), patch.object(native, "call", return_value=facts) as helper:
-            self.assertEqual(native.memory(), 300)
-            helper.assert_called_once_with("memory", "123")
-            self.assertEqual(native.memory_facts, facts)
-        for invalid in (300, {**facts, "private": "text"}, {**facts, "memory_bytes": 301},
-                        {**facts, "excluded_older": True}, {**facts, "components": []},
-                        {**facts, "components": facts["components"] * 33},
-                        {**facts, "components": [{**facts["components"][0], "age_us": -1}]}):
-            with patch(__name__ + ".windows_creation_identity", return_value=123), patch.object(native, "call", return_value=invalid):
-                with self.assertRaises(RuntimeError):
-                    native.memory()
-
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows memory identity contract")
-    def test_windows_memory_tree_excludes_orphans_and_rejects_identity_races(self):
-        script = r'''
-param([string] $Source)
-$ErrorActionPreference='Stop'
-$tokens=$null; $errors=$null
-$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
-if ($errors.Count) { throw 'Helper syntax is invalid' }
-foreach ($name in @('Get-MemoryIdentity','Get-Memory')) {
- $function=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
- if ($function) { Invoke-Expression $function.Extent.Text }
-}
-$switch=$ast.Find({param($node) $node -is [System.Management.Automation.Language.SwitchStatementAst] -and $node.Condition.Extent.Text -eq '$Action'},$true)
-$clause=@($switch.Clauses | Where-Object {$_.Item1.Value -eq 'memory'})[0].Item2.Extent.Text
-$operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
-$created=[DateTime]::new(2026,10,19,0,0,0,[DateTimeKind]::Utc)
-$AppId=10; $Text='63927964800000000'
-function Row($Id,$Parent,$Date) { [pscustomobject]@{ProcessId=$Id;ParentProcessId=$Parent;CreationDate=$Date} }
-function Get-CimInstance {
- [CmdletBinding()] param($ClassName)
- $script:enumerations++
- if ($script:replaceAfter -and $script:enumerations -gt 1) { return @((Row 10 1 $created.AddSeconds(1))) }
- $script:rows
-}
-function Get-Process {
- [CmdletBinding()] param($Id)
- foreach ($number in $Id) {
-  $row=$script:rows | Where-Object {$_.ProcessId -eq $number} | Select-Object -First 1
-  $date=$row.CreationDate
-  $script:reads++
-  if ($script:race -eq $number -and (!$script:afterRead -or $script:reads -gt 1)) { $date=$created.AddSeconds(10) }
-  [pscustomobject]@{Id=$number;StartTime=$date;WorkingSet64=100L}
- }
-}
-$initial=@((Row 10 1 $created),(Row 11 10 $created.AddSeconds(-1)),
- (Row 12 10 $created.AddSeconds(1)),(Row 13 12 $created.AddSeconds(2)),
- (Row 14 12 $created),(Row 15 11 $created.AddSeconds(3)),(Row 16 10 $created),(Row 99 98 $null))
-$script:rows=@($initial[7..0]); $script:race=0
-$result=& $operation
-if ($result.memory_bytes -ne 400 -or $result.components.Count -ne 4 -or $result.excluded_older -ne 2) {
- throw 'Memory attributed an older orphan or lost a genuine descendant'
-}
-if (($result.components | Measure-Object memory_bytes -Sum).Sum -ne 400 -or
-    @($result.components | Where-Object {$_.depth -eq 2}).Count -ne 1) { throw 'Component facts do not explain the sum' }
-function Reject {
- $rejected=$false
- try { & $operation | Out-Null } catch { $rejected=$true }
- if (!$rejected) { throw 'Unverified identity produced a memory verdict' }
-}
-foreach ($invalid in @($null,'2026-10-19',[DateTime]::MinValue)) {
- $script:rows=@((Row 10 1 $invalid)); Reject
- $script:rows=@((Row 10 1 $created),(Row 12 10 $invalid)); Reject
-}
-$script:rows=@((Row 10 1 $created.AddSeconds(1))); Reject
-$script:rows=@(); Reject
-$script:rows=@((Row 10 1 $created),(Row 10 1 $created)); Reject
-foreach ($number in @(10,12)) { $script:rows=$initial; $script:race=$number; Reject }
-$script:rows=$initial; $script:race=10; $script:afterRead=$true; $script:reads=0; Reject
-$script:afterRead=$false; $script:race=0
-$script:replaceAfter=$true; $script:enumerations=0; Reject
-$script:replaceAfter=$false
-$script:race=0
-# Identity truncation must match CIM's microsecond precision without floating point.
-$precise=$created.AddTicks(19); $script:rows=@((Row 10 1 $created.AddTicks(10)))
-$Text=(Get-MemoryIdentity $precise).ToString()
-$result=& $operation
-if ($result.memory_bytes -ne 100) { throw 'Creation timestamp precision mismatch' }
-# Huge trees refuse a result rather than returning the first 64 components.
-$Text='63927964800000000'; $script:rows=@((Row 10 1 $created))
-foreach ($number in 100..163) { $script:rows += Row $number 10 $created }
-Reject
-# A failed/missing working-set read cannot silently subtract a process.
-$script:rows=@((Row 10 1 $created))
-function Get-Process { [CmdletBinding()] param($Id) @() }
-Reject
-'''
-        with tempfile.TemporaryDirectory() as temporary:
-            test = Path(temporary) / "memory-contract.ps1"
-            test.write_text(script, encoding="utf-8")
-            result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
-                                     "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                    capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
 
     @staticmethod
     def perf_samples(warmup, *startups, first=5, memory=1000):
         return [{"warmup": True, "startup_ms": warmup, "first_result_ms": first, "memory_bytes": memory}] + [
             {"warmup": False, "startup_ms": startup, "first_result_ms": first, "memory_bytes": memory} for startup in startups]
 
-    def test_performance_budget_gates_the_median_and_ignores_the_warm_up(self):
-        performance = summarize_performance(self.perf_samples(140, 90, 140, 60))
-        enforce_performance_budgets(performance, self.BUDGETS)
-        self.assertEqual(performance["status"], "passed")
-        self.assertEqual((performance["startup_ms"], performance["sample_count"], performance["warmup_count"]), (90, 3, 1))
-        self.assertEqual(performance["maxima"]["startup_ms"], 140)
-        self.assertEqual(performance["hard_ceilings"], {"startup_ms": 150.0, "first_result_ms": 15.0})
-
-    def test_performance_budget_fails_any_launch_above_the_hard_ceiling_warm_up_included(self):
-        for samples in (self.perf_samples(151, 50, 50, 50), self.perf_samples(50, 50, 151, 50)):
-            performance = summarize_performance(samples)
-            with self.assertRaisesRegex(AssertionError, "single-launch startup_ms"):
-                enforce_performance_budgets(performance, self.BUDGETS)
-            self.assertEqual((performance["status"], performance["failed_metric"]), ("failed", "startup_ms"))
-        performance = summarize_performance(self.perf_samples(50, 50, 50, 50, first=5) + [
-            {"warmup": False, "startup_ms": 50, "first_result_ms": 16, "memory_bytes": 1000}])
-        with self.assertRaisesRegex(AssertionError, "single-launch first_result_ms"):
-            enforce_performance_budgets(performance, self.BUDGETS)
-
-    def test_performance_budget_still_fails_a_real_regression_where_every_launch_is_slow(self):
-        performance = summarize_performance(self.perf_samples(130, 110, 120, 105))
-        self.assertTrue(all(sample["startup_ms"] <= 150 for sample in performance["samples"]))
-        with self.assertRaisesRegex(AssertionError, "median startup_ms"):
-            enforce_performance_budgets(performance, self.BUDGETS)
-        self.assertEqual((performance["status"], performance["failed_metric"]), ("failed", "startup_ms"))
-
-    def test_performance_memory_uses_the_maximum_of_every_launch(self):
-        samples = self.perf_samples(50, 50, 50, 50)
-        samples[0]["memory_bytes"] = 2001
-        performance = summarize_performance(samples)
-        self.assertEqual(performance["memory_bytes"], 2001)
-        with self.assertRaisesRegex(AssertionError, "maximum memory_bytes"):
-            enforce_performance_budgets(performance, self.BUDGETS)
 
     def test_performance_summary_requires_a_measured_launch(self):
         with self.assertRaises(ValueError):
@@ -3634,34 +2621,6 @@ Reject
         self.assertEqual(phases["snapshot_ms"], 122000)
         self.assertEqual(phases["readiness_ms"], 122200)
 
-    def test_macos_waits_for_new_editor_process_registration(self):
-        registrations = iter((0, 12345))
-        def helper(native, action, text=""):
-            return next(registrations) if action == "editor" else action != "editor-running"
-
-        with patch.object(Scripted, "call", helper), patch("subprocess.run"), patch("os.kill"), patch("time.sleep"):
-            native = Scripted("Darwin")
-            self.assertEqual(native.editor_pid, 12345)
-            native.close()
-
-    def test_macos_editor_launch_uses_physical_path_for_axdocument_ownership(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            actual = Path(temporary) / "physical"
-            actual.mkdir()
-            alias = Path(temporary) / "alias"
-            alias.symlink_to(actual, target_is_directory=True)
-            class Folder:
-                name = str(alias)
-                def cleanup(self):
-                    pass
-            def helper(native, action, text=""):
-                return 12345 if action == "editor" else action != "editor-running"
-            with patch("tempfile.TemporaryDirectory", return_value=Folder()), patch.object(Scripted, "call", helper), patch("subprocess.run"), patch("os.kill"):
-                native = Scripted("Darwin")
-                try:
-                    self.assertEqual(native.editor_path.parent, actual.resolve())
-                finally:
-                    native.close()
 
     def test_toggle_diagnostics_accept_only_exact_fixed_lines_from_current_run_logs(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -3670,751 +2629,6 @@ Reject
                                       "ibis-picker: toggle visible unfocused show private-synthetic-detail")), encoding="utf-8")
             self.assertEqual(fixed_toggle_diagnostics([log]), ["ibis-picker: toggle visible focused hide"])
 
-    def test_windows_snapshots_reuse_verified_main_hwnd_for_hide_assertions(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Windows"
-        native.app = type("App", (), {"pid": 123})()
-        visible = {"picker_handle": 456, "visible": True}
-        hidden = {"picker_handle": 456, "visible": False}
-        with patch.object(native, "call", side_effect=[visible, hidden]) as helper:
-            native.snapshot()
-            native.snapshot()
-            self.assertEqual(helper.call_args_list[0].args, ("snapshot", "0"))
-            self.assertEqual(helper.call_args_list[1].args, ("snapshot", "456"))
-
-    def test_windows_click_reuses_verified_picker_when_a_modal_menu_hides_search(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.command = "Windows", ["synthetic-helper"]
-        native.app = type("App", (), {"pid": 123})()
-        native.picker_app_pid, native.picker_handle = 123, 456
-        result = subprocess.CompletedProcess([], 0, '{"pressed":true}', "")
-        for handle in (456, -2147483647):
-            with self.subTest(verified_handle=handle), patch("subprocess.run", return_value=result) as helper:
-                native.picker_handle = handle
-                native.call("click", "Reload")
-                self.assertEqual(helper.call_args.args[0], ["synthetic-helper", "click", "123", "0", "Reload", str(handle)])
-        for owner, handle in ((124, 456), (123, 0), (123, True), (123, 1.5)):
-            with self.subTest(owner=owner, handle=handle), patch("subprocess.run") as helper:
-                native.picker_app_pid, native.picker_handle = owner, handle
-                with self.assertRaisesRegex(RuntimeError, "identity"):
-                    native.call("click", "Reload")
-                helper.assert_not_called()
-
-    def test_windows_snapshots_fail_closed_if_the_verified_picker_identity_changes(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.picker_app_pid, native.picker_handle = "Windows", 123, 456
-        native.app = type("App", (), {"pid": 123})()
-        for snapshot in ({"picker_handle": 789, "visible": True}, {"visible": False}):
-            with self.subTest(snapshot=snapshot), patch.object(native, "call", return_value=snapshot):
-                with self.assertRaisesRegex(RuntimeError, "identity"):
-                    native.snapshot()
-
-    def test_macos_owned_editor_launch_has_no_textedit_apple_events_and_cleans_only_verified_pid(self):
-        def helper(native, action, text=""):
-            if action == "editor":
-                return 12345
-            if action == "editor-running":
-                return False
-            if action == "editor-owned":
-                self.assertEqual(Path(text).read_text(encoding="utf-8"), "")
-            return True
-
-        def launch(command, **kwargs):
-            self.assertEqual(command[:4], ["open", "-n", "-a", "TextEdit"])
-            self.assertEqual(command[5:], ["--args", "-ApplePersistenceIgnoreState", "YES"])
-            self.assertEqual(Path(command[4]).name, "Ibis synthetic editor.txt")
-            self.assertTrue(Path(command[4]).is_file())
-
-        with patch.object(Scripted, "call", helper), patch("subprocess.run", side_effect=launch), patch("os.kill") as terminate:
-            native = Scripted("Darwin")
-            owned = native.editor_path
-            native.close()
-            terminate.assert_called_once_with(12345, signal.SIGTERM)
-            self.assertFalse(owned.exists())
-
-    def test_macos_existing_editor_refusal_never_launches_or_terminates_a_process(self):
-        def helper(native, action, text=""):
-            if action == "editor-preflight":
-                raise subprocess.CalledProcessError(1, ["osascript"], stderr="Existing TextEdit process")
-            return True
-
-        with patch.object(Scripted, "call", helper), patch("subprocess.run") as launch, patch("os.kill") as terminate:
-            with self.assertRaisesRegex(RuntimeError, "preflight failed"):
-                Scripted("Darwin")
-            launch.assert_not_called()
-            terminate.assert_not_called()
-
-    def test_macos_cleanup_refuses_an_unverified_editor_identity(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.editor_pid = "Darwin", 12345
-        native.editor_folder = tempfile.TemporaryDirectory(prefix="ibis editor cleanup test ")
-        native.editor_path = Path(native.editor_folder.name) / "owned.txt"
-        native.editor_path.write_text("", encoding="utf-8")
-        with patch.object(native, "call", return_value=False), patch("os.kill") as terminate:
-            with self.assertRaisesRegex(RuntimeError, "ownership"):
-                native.close()
-            terminate.assert_not_called()
-            self.assertFalse(native.editor_path.exists())
-
-    def test_macos_cleanup_waits_for_owned_registration_to_exit_without_repeated_termination(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.editor_pid = "Darwin", 12345
-        native.editor_folder = tempfile.TemporaryDirectory(prefix="ibis editor exit test ")
-        native.editor_path = Path(native.editor_folder.name) / "owned.txt"
-        native.editor_path.write_text("", encoding="utf-8")
-        running = iter((True, True, False))
-        def helper(action, text=""):
-            return next(running) if action == "editor-running" else True
-        with patch.object(native, "call", side_effect=helper) as calls, patch("os.kill") as terminate, patch("time.sleep"):
-            native.close()
-            terminate.assert_called_once_with(12345, signal.SIGTERM)
-            self.assertEqual(sum(call.args[0] == "editor-running" for call in calls.call_args_list), 3)
-            self.assertFalse(native.editor_path.exists())
-
-    def test_helper_timeout_identifies_action_without_printing_command_arguments(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Darwin"
-        native.command = ["osascript", "private-synthetic-helper-path"]
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(native.command + ["private-synthetic-query"], 30)), patch("builtins.print"):
-            with self.assertRaisesRegex(AssertionError, r"^Native helper timed out during snapshot after 30s$"):
-                native.call("snapshot", "private-synthetic-query")
-
-    def test_windows_editor_operations_require_the_original_process_creation_identity(self):
-        native = Scripted.__new__(Scripted)
-        native.system, native.command = "Windows", ["pwsh"]
-        native.editor_pid, native.editor_started = 12345, 987654321
-        metadata = {"owned": True, "window_valid": True, "request_accepted": False, "current_foreground": True}
-        results = [subprocess.CompletedProcess(["pwsh"], 0, stdout=json.dumps(metadata), stderr="")]
-        results += [subprocess.CompletedProcess(["pwsh"], 0, stdout="true", stderr="")] * 3
-        with patch("subprocess.run", side_effect=results) as helper, patch("builtins.print"):
-            native.focus_editor()
-            native.editor_focused()
-            native.close()
-            self.assertEqual([call.args[0][-1] for call in helper.call_args_list], ["987654321"] * 4)
-
-    def test_windows_focus_request_requires_fresh_focus_even_when_request_or_snapshot_says_yes(self):
-        for accepted, foreground in ((False, False), (False, True), (True, True)):
-            native = Scripted.__new__(Scripted)
-            native.system = "Windows"
-            metadata = {"owned": True, "window_valid": True, "request_accepted": accepted, "current_foreground": foreground}
-            actions = []
-            def helper(action):
-                actions.append(action)
-                return metadata if action == "focus-editor" else False
-            def no_focus(predicate, description):
-                self.assertFalse(predicate())
-                raise AssertionError("Actual editor focus did not arrive")
-            with patch.object(native, "call", side_effect=helper), patch(__name__ + ".wait_for", side_effect=no_focus):
-                with self.assertRaisesRegex(AssertionError, "Actual editor focus did not arrive"):
-                    native.focus_editor()
-                    actions.extend(["timer", "launch"])
-            self.assertEqual(actions, ["focus-editor", "editor-focused"])
-
-    def test_windows_refused_foreground_request_can_only_finish_with_fresh_actual_focus(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Windows"
-        actions = []
-        metadata = {"owned": True, "window_valid": True, "request_accepted": False, "current_foreground": False}
-        observations = iter([False, True])
-        def helper(action):
-            actions.append(action)
-            return metadata if action == "focus-editor" else next(observations)
-        def focused(predicate, description):
-            self.assertFalse(predicate())
-            self.assertTrue(predicate())
-        with patch.object(native, "call", side_effect=helper), patch(__name__ + ".wait_for", side_effect=focused):
-            native.focus_editor()
-            actions.extend(["timer", "launch"])
-        self.assertEqual(actions, ["focus-editor", "editor-focused", "editor-focused", "timer", "launch"])
-
-    def test_windows_focus_metadata_rejects_bad_identity_window_or_schema_before_waiting(self):
-        valid = {"owned": True, "window_valid": True, "request_accepted": False, "current_foreground": True}
-        invalid = [True, None, {**valid, "owned": False}, {**valid, "window_valid": False},
-                   {**valid, "request_accepted": 1}, {**valid, "current_foreground": 1},
-                   {**valid, "payload": "private"}, {key: value for key, value in valid.items() if key != "owned"}]
-        native = Scripted.__new__(Scripted)
-        native.system = "Windows"
-        for metadata in invalid:
-            with patch.object(native, "call", return_value=metadata), patch(__name__ + ".wait_for") as wait, patch("builtins.print") as diagnostic:
-                with self.assertRaises((AssertionError, RuntimeError)):
-                    native.focus_editor()
-                wait.assert_not_called()
-                diagnostic.assert_not_called()
-
-    def test_macos_editor_focus_behavior_is_unchanged(self):
-        native = Scripted.__new__(Scripted)
-        native.system = "Darwin"
-        with patch.object(native, "call", return_value=True) as call, patch(__name__ + ".wait_for") as wait:
-            native.focus_editor()
-            call.assert_called_once_with("focus-editor")
-            wait.assert_not_called()
-
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows focus helper contract")
-    def test_windows_helper_validates_owned_window_before_a_foreground_request_and_one_unlocked_retry(self):
-        script = r'''
-param([string] $Source)
-$ErrorActionPreference = 'Stop'
-$tokens=$null; $errors=$null
-$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
-if ($errors.Count) { throw 'Helper syntax is invalid' }
-$getter=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-OwnedEditor'},$true)
-Invoke-Expression $getter.Extent.Text
-$switch=$ast.Find({param($node) $node -is [System.Management.Automation.Language.SwitchStatementAst] -and $node.Condition.Extent.Text -eq '$Action'},$true)
-$clause=@($switch.Clauses | Where-Object {$_.Item1.Value -eq 'focus-editor'})[0].Item2.Extent.Text
-$operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
-Add-Type @'
-using System;
-public static class IbisSmoke {
- public static bool Live=true, Accepted=false;
- public static uint Owner=12345, Foreground=0;
- public static int Requests=0, Keys=0;
- public static void Key(ushort vk, ushort scan, uint flags) { if (vk != 0x12) throw new Exception("unexpected key"); Keys++; }
- public static bool IsWindow(IntPtr window) { return Live; }
- public static uint OwnerPid(IntPtr window) { return Owner; }
- public static uint ForegroundPid() { return Foreground; }
- public static bool SetForegroundWindow(IntPtr window) { Requests++; return Accepted; }
-}
-'@
-$EditorId=12345; $Text='987654321'
-$script:current=[pscustomobject]@{ProcessName='Notepad';StartTime=[DateTime]::new(987654321,[DateTimeKind]::Utc);MainWindowHandle=[IntPtr]::new(20)}
-function Get-Process { param($Id,$ErrorAction) $script:current }
-foreach ($accepted in @($false,$true)) {
- [IbisSmoke]::Requests=0; [IbisSmoke]::Keys=0; [IbisSmoke]::Accepted=$accepted
- $result=& $operation
- # A refused request gets one retry after an Alt press and an Alt release.
- $requests=if ($accepted) {1} else {2}; $keys=if ($accepted) {0} else {2}
- if ($result.Count -ne 4 -or !$result.owned -or !$result.window_valid -or
-     $result.request_accepted -ne $accepted -or $result.current_foreground -or
-     [IbisSmoke]::Requests -ne $requests -or [IbisSmoke]::Keys -ne $keys) { throw 'Request metadata regression' }
-}
-[IbisSmoke]::Foreground=12345; [IbisSmoke]::Requests=0; [IbisSmoke]::Keys=0
-$result=& $operation
-if (!$result.current_foreground -or [IbisSmoke]::Requests -ne 0 -or [IbisSmoke]::Keys -ne 0) { throw 'Already focused editor was requested again' }
-foreach ($failure in @('missing','identity','zero','invalid','other-owner')) {
- [IbisSmoke]::Requests=0; [IbisSmoke]::Live=$true; [IbisSmoke]::Owner=12345
- $script:current=[pscustomobject]@{ProcessName='Notepad';StartTime=[DateTime]::new(987654321,[DateTimeKind]::Utc);MainWindowHandle=[IntPtr]::new(20)}
- switch ($failure) {
-  'missing' {$script:current=$null}
-  'identity' {$script:current.StartTime=[DateTime]::new(987654322,[DateTimeKind]::Utc)}
-  'zero' {$script:current.MainWindowHandle=[IntPtr]::Zero}
-  'invalid' {[IbisSmoke]::Live=$false}
-  'other-owner' {[IbisSmoke]::Owner=54321}
- }
- $rejected=$false
- try { & $operation | Out-Null } catch {$rejected=$true}
- if (!$rejected -or [IbisSmoke]::Requests -ne 0 -or [IbisSmoke]::Keys -ne 0) { throw 'Unowned or invalid editor reached a foreground request' }
-}
-'''
-        with tempfile.TemporaryDirectory() as temporary:
-            test = Path(temporary) / "focus-contract.ps1"
-            prepare_powershell(script, test)
-            result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
-                                     "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                    capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        facts = [json.loads(line.removeprefix("NATIVE EDITOR FOCUS ")) for line in result.stderr.splitlines()]
-        self.assertTrue(facts)
-        for value in facts:
-            self.assertEqual(set(value), {"stage", "owned", "window_valid", "request_accepted", "current_foreground"})
-            self.assertIn(value.pop("stage"), ("identity", "window", "foreground-request"))
-            self.assertTrue(all(type(item) is bool for item in value.values()))
-
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the snapshot failure contract")
-    def test_windows_snapshot_fatal_phases_and_error_kinds_do_not_expose_payloads(self):
-        script = r'''
-param([string] $Source, [string] $Scenario)
-$ErrorActionPreference='Stop'
-$tokens=$null; $errors=$null
-$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
-if ($errors.Count) { throw 'Helper syntax is invalid' }
-foreach ($name in @('Get-AppWindow','Get-Tree','Get-ErrorKind')) {
- $function=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
- Invoke-Expression $function.Extent.Text.Replace('System.Windows.Automation.', 'IbisSnapshotContract.')
-}
-$outer=@($ast.EndBlock.Statements | Where-Object {$_ -is [System.Management.Automation.Language.TryStatementAst]})[0]
-$body=$outer.CatchClauses[0].Body.Extent.Text
-$fatal=[scriptblock]::Create($body.Substring(1,$body.Length-2))
-Add-Type @'
-using System;
-namespace IbisSnapshotContract {
- public class ElementNotAvailableException : Exception {}
- public enum TreeScope { Children, Descendants }
- public class PropertyCondition { public PropertyCondition(object property, object value) {} }
- public static class Condition { public static object TrueCondition=new object(); }
- public static class ValuePattern { public static object Pattern=new object(); }
- public static class TextPattern { public static object Pattern=new object(); }
- public static class AutomationElement {
-  public static object ProcessIdProperty=new object(), NameProperty=new object();
-  public static SnapshotRoot RootElement=new SnapshotRoot();
-  public static object FromHandle(IntPtr handle) {
-   SnapshotFault.Check("from-handle");
-   if (SnapshotFault.Scenario=="provider") throw new InvalidOperationException(SnapshotFault.Marker);
-   return new SnapshotWindow();
-  }
- }
-}
-public static class SnapshotFault {
- public static string Scenario, Marker="injected-private-clipboard-引用";
- public static System.Collections.Generic.List<string> Reads=new System.Collections.Generic.List<string>();
- public static void Check(string operation) {
-  Reads.Add(operation);
-  if (Scenario==operation) throw new InvalidOperationException(Marker);
- }
-}
-public class SnapshotRoot {
- public object[] FindAll(IbisSnapshotContract.TreeScope scope, IbisSnapshotContract.PropertyCondition condition) {
-  if (SnapshotFault.Scenario=="window-bound") return new object[21];
-  throw new InvalidOperationException(SnapshotFault.Marker);
- }
-}
-public class SnapshotWindow {
- public SnapshotWindowInfo Current { get { return new SnapshotWindowInfo(); } }
- public object[] FindAll(IbisSnapshotContract.TreeScope scope, object condition) {
-  SnapshotFault.Check("descendant-list"); return new object[] {new SnapshotNode()};
- }
-}
-public class SnapshotWindowInfo {
- public int NativeWindowHandle { get { SnapshotFault.Check("window-handle"); return 7; } }
-}
-public class SnapshotNode {
- public SnapshotNodeInfo Current { get { SnapshotFault.Check("node-current"); return new SnapshotNodeInfo(); } }
- public bool TryGetCurrentPattern(object kind, out object pattern) {
-  bool value=kind==IbisSnapshotContract.ValuePattern.Pattern;
-  SnapshotFault.Check(value ? "value-pattern" : "text-pattern");
-  bool present=value ? SnapshotFault.Scenario=="value-read" || SnapshotFault.Scenario=="success-value"
-   : SnapshotFault.Scenario=="text-read" || SnapshotFault.Scenario=="success-text";
-  pattern=present ? (object)new SnapshotPattern() : null; return present;
- }
-}
-public class SnapshotNodeInfo {
- public SnapshotType ControlType { get { SnapshotFault.Check("node-type"); return new SnapshotType(); } }
- public string Name { get { SnapshotFault.Check("node-name"); return "Synthetic node"; } }
- public bool HasKeyboardFocus { get { SnapshotFault.Check("node-focus"); return true; } }
-}
-public class SnapshotType { public string ProgrammaticName { get { return "ControlType.Edit"; } } }
-public class SnapshotPattern {
- public SnapshotValue Current { get { return new SnapshotValue(); } }
- public SnapshotRange DocumentRange { get { return new SnapshotRange(); } }
-}
-public class SnapshotValue {
- public string Value { get { SnapshotFault.Check("value-read"); return "Synthetic value"; } }
-}
-public class SnapshotRange {
- public string GetText(int limit) {
-  SnapshotFault.Check("text-read");
-  if (limit!=16385) throw new InvalidOperationException(SnapshotFault.Marker);
-  return "Synthetic value";
- }
-}
-public static class IbisSmoke {
- public static bool IsWindow(IntPtr handle) { return SnapshotFault.Scenario!="ownership"; }
- public static uint OwnerPid(IntPtr handle) { return 42; }
- public static bool IsWindowVisible(IntPtr handle) { return true; }
- public static uint ForegroundPid() { return 42; }
-}
-'@
-[SnapshotFault]::Scenario=$Scenario
-$Action='snapshot'; $AppId=42; $Text='7'
-$completed=$false
-try {
- switch ($Scenario) {
-  'discovery' {$Text='0'}
-  'window-bound' {$Text='0'}
-  'handle-parse' {$Text=[SnapshotFault]::Marker}
-  'unknown-phase' {$script:SnapshotPhase=[SnapshotFault]::Marker; throw [SnapshotFault]::Marker}
-  'case-variant' {$script:SnapshotPhase='DiScOvErY'; throw [SnapshotFault]::Marker}
-  'unknown-operation' {$script:SnapshotPhase='provider'; $script:SnapshotOperation=[SnapshotFault]::Marker; throw [SnapshotFault]::Marker}
-  'case-operation' {$script:SnapshotPhase='provider'; $script:SnapshotOperation='NoDe-NaMe'; throw [SnapshotFault]::Marker}
- }
- $tree=Get-Tree
- $completed=$true
- if ($Scenario -like 'success-*') {
-  ConvertTo-Json -InputObject @{tree=$tree;reads=@([SnapshotFault]::Reads)} -Depth 10 -Compress
-  exit 0
- }
- throw 'Expected snapshot rejection'
-} catch {
- # A getter fault must abort immediately, not reach a later read or the sentinel.
- if ([SnapshotFault]::Reads.Contains($Scenario) -and
-     ($completed -or [SnapshotFault]::Reads[-1] -cne $Scenario)) {
-  [Console]::Error.WriteLine('Native contract provider fault continued')
-  exit 3
- }
- & $fatal
-}
-'''
-        cases = (
-            ("ownership", "ownership", "RuntimeException", "unknown"),
-            ("handle-parse", "handle-parse", "other", "unknown"),
-            ("discovery", "discovery", "InvalidOperationException", "unknown"),
-            ("provider", "provider", "InvalidOperationException", "from-handle"),
-            ("window-bound", "window-bound", "RuntimeException", "unknown"),
-            ("unknown-phase", "unknown", "RuntimeException", "unknown"),
-            ("case-variant", "unknown", "RuntimeException", "unknown"),
-            ("unknown-operation", "provider", "RuntimeException", "unknown"),
-            ("case-operation", "provider", "RuntimeException", "unknown"),
-            *((operation, "provider", "InvalidOperationException", operation) for operation in (
-                "from-handle", "window-handle", "descendant-list", "node-current", "value-pattern",
-                "value-read", "text-pattern", "text-read", "node-type", "node-name", "node-focus")),
-        )
-        with tempfile.TemporaryDirectory() as temporary:
-            test = Path(temporary) / "snapshot-failure-contract.ps1"
-            prepare_powershell(script, test)
-            for scenario, phase, kind, operation in cases:
-                with self.subTest(scenario=scenario):
-                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
-                                             "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
-                                             "-Scenario", scenario], capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
-                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                    facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
-                             for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
-                    self.assertEqual(facts, [{"phase": phase, "kind": kind, "operation": operation}])
-                    self.assertIn(f"NATIVE HELPER ERROR {kind}", result.stderr)
-                    self.assertEqual(result.stdout, "")
-                    self.assertNotIn("injected-private-clipboard", result.stderr)
-            # The successful output and native property-read order stay unchanged.
-            for pattern in ("value", "text"):
-                with self.subTest(success=pattern):
-                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
-                                             "-Source", str(Path(__file__).with_name("smoke-windows.ps1")),
-                                             "-Scenario", f"success-{pattern}"], capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
-                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                    facts = json.loads(result.stdout)
-                    self.assertEqual(facts["tree"], {"nodes": [{"role": "ControlType.Edit", "name": "Synthetic node",
-                                                           "value": "Synthetic value", "focused": True}],
-                                                     "visible": True, "foreground": True, "picker_handle": 7})
-                    reads = ["from-handle", "window-handle", "descendant-list", "node-current", "value-pattern"]
-                    reads += ["value-read"] if pattern == "value" else ["text-pattern", "text-read"]
-                    self.assertEqual(facts["reads"], reads + ["node-type", "node-name", "node-focus"])
-                    self.assertEqual(result.stderr, "")
-
-    @unittest.skipUnless(platform.system() == "Windows" and shutil.which("pwsh"),
-                         "Windows UI Automation is required to execute the real snapshot failure paths")
-    def test_real_windows_snapshot_rejections_preserve_failure_and_redact_handle_input(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            helper = Path(temporary) / "smoke-windows.ps1"
-            prepare_powershell(Path(__file__).with_name("smoke-windows.ps1").read_text(encoding="utf-8"), helper)
-            self.check_real_windows_snapshot_rejections(helper)
-
-    def check_real_windows_snapshot_rejections(self, helper):
-        for text, phase, kind in (("-1", "ownership", "RuntimeException"),
-                                  ("injected-private-clipboard-引用", "handle-parse", "other")):
-            with self.subTest(phase=phase):
-                result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File",
-                                         str(helper),
-                                         "-Action", "snapshot", "-AppId", "0", "-EditorId", "0", "-Text", text],
-                                        capture_output=True, text=True, timeout=30)
-                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                facts = [json.loads(line.removeprefix("NATIVE SNAPSHOT FAILURE "))
-                         for line in result.stderr.splitlines() if line.startswith("NATIVE SNAPSHOT FAILURE ")]
-                self.assertEqual(facts, [{"phase": phase, "kind": kind, "operation": "unknown"}])
-                self.assertEqual(result.stdout, "")
-                self.assertNotIn("injected-private-clipboard", result.stderr)
-
-    def test_windows_helpers_compile_before_timed_execution(self):
-        methods = (
-            ContractTests.test_windows_helper_validates_owned_window_before_a_foreground_request_and_one_unlocked_retry,
-            ContractTests.test_windows_snapshot_fatal_phases_and_error_kinds_do_not_expose_payloads,
-            ContractTests.test_windows_click_activates_one_exact_owned_button_with_its_native_pattern,
-        )
-        for method in methods:
-            compilations = []
-            def execute(command, **options):
-                source = Path(command[3]).read_text(encoding="utf-8")
-                if re.search(r"(?m)^Add-Type.*@'", source):
-                    self.assertNotIn("timeout", options, "C# compilation must precede the timed contract")
-                    self.assertTrue(options["check"])
-                    compilations.append(source)
-                    return subprocess.CompletedProcess(command, 0, "", "")
-                self.assertEqual(options["timeout"], CONTRACT_TIMEOUT)
-                self.assertEqual(len(compilations), 1)
-                self.assertIn("Assembly]::LoadFrom", source)
-                raise subprocess.TimeoutExpired(command, CONTRACT_TIMEOUT)
-            with self.subTest(contract=method.__name__), patch("shutil.which", return_value="synthetic-pwsh"), \
-                 patch("subprocess.run", side_effect=execute):
-                with self.assertRaises(subprocess.TimeoutExpired):
-                    getattr(method, "__wrapped__", method)(ContractTests())
-
-    def test_windows_native_helper_prebuild_is_reused_and_cleaned_up(self):
-        compilations, deadlines = [], []
-        def execute(command, **options):
-            source = Path(command[3]).read_text(encoding="utf-8")
-            if re.search(r"(?m)^Add-Type.*@'", source):
-                self.assertNotIn("timeout", options)
-                self.assertTrue(options["check"])
-                compilations.append(source)
-                return subprocess.CompletedProcess(command, 0, "", "")
-            self.assertEqual(len(compilations), 1)
-            self.assertIn("Assembly]::LoadFrom", source)
-            deadlines.append(options["timeout"])
-            result = {"pid": 12345, "started": 987654321} if command[4] == "editor" else True
-            return subprocess.CompletedProcess(command, 0, json.dumps(result), "")
-        with patch("subprocess.run", side_effect=execute), patch("builtins.print"):
-            native = Scripted("Windows")
-            helper = Path(native.command[3])
-            try:
-                self.assertTrue(helper.is_file())
-                self.assertIs(native.call("clipboard", timeout=3.5), True)
-            finally:
-                native.close()
-        self.assertEqual(deadlines, [30, 30, 3.5, 30])
-        self.assertFalse(helper.parent.exists())
-
-    def test_windows_prebuild_failure_never_runs_actions_and_cleans_up(self):
-        folders = []
-        def fail(command, **options):
-            folders.append(Path(command[3]).parent)
-            raise subprocess.CalledProcessError(1, command, stderr="synthetic-private-compiler-output")
-        with patch("subprocess.run", side_effect=fail), patch.object(Scripted, "call") as action:
-            with self.assertRaisesRegex(RuntimeError, "^Windows helper compilation failed$"):
-                Scripted("Windows")
-            action.assert_not_called()
-        self.assertEqual(len(folders), 1)
-        self.assertFalse(folders[0].exists())
-
-    def test_windows_prebuild_preserves_source_and_handles_literal_paths(self):
-        block = "Add-Type -ReferencedAssemblies System.Runtime -TypeDefinition @'\n// synthetic 引用\n'@"
-        script = "# synthetic prefix\n" + block + "\nthrow 'synthetic sentinel'\n"
-        with tempfile.TemporaryDirectory(prefix="ibis ' 引用 $ ` ") as temporary:
-            path = Path(temporary) / "helper's 引用.ps1"
-            with patch("subprocess.run") as compile:
-                prepare_powershell(script, path)
-            command = compile.call_args.args[0]
-            self.assertEqual(command[-1], str(path.with_suffix(".dll")))
-            self.assertEqual(Path(command[3]).read_text(encoding="utf-8"),
-                             "$ErrorActionPreference='Stop'\n" + block.replace(
-                                 "Add-Type", "Add-Type -OutputAssembly $args[0]", 1) + "\n")
-            prepared = path.read_text(encoding="utf-8")
-            self.assertTrue(prepared.startswith("# synthetic prefix\n"))
-            self.assertTrue(prepared.endswith("\nthrow 'synthetic sentinel'\n"))
-            self.assertIn("'helper''s 引用.dll'", prepared)
-            self.assertNotIn("Add-Type", prepared)
-            for invalid in ("", block + "\n" + block):
-                with patch("subprocess.run") as compile, self.assertRaises(ValueError):
-                    prepare_powershell(invalid, path)
-                compile.assert_not_called()
-
-    def test_windows_click_contract_timeout_preserves_only_bounded_fixed_phases(self):
-        method = ContractTests.test_windows_click_activates_one_exact_owned_button_with_its_native_pattern
-        method = getattr(method, "__wrapped__", method)
-        phases = ["WINDOWS CLICK CONTRACT parse-start", "WINDOWS CLICK CONTRACT compile-start"]
-        dirty = "\n".join([phases[0], "private-output", phases[1], phases[0], "WINDOWS CLICK CONTRACT private-command"])
-        for stderr, expected in [(dirty, phases), (dirty.encode() + b'\n\xffprivate', phases), (None, []),
-                                 (phases[0] + '\n' + 'private' * 100000 + '\nWINDOWS CLICK CONTRACT complete', phases[:1])]:
-            error = subprocess.TimeoutExpired(["private-command"], CONTRACT_TIMEOUT, stderr=stderr)
-            def execute(command, **options):
-                if "timeout" in options:
-                    raise error
-                return subprocess.CompletedProcess(command, 0, "", "")
-            with patch("shutil.which", return_value="synthetic-pwsh"), patch("subprocess.run", side_effect=execute) as helper, patch("builtins.print") as output:
-                with self.assertRaises(subprocess.TimeoutExpired) as caught:
-                    method(self)
-                self.assertIs(caught.exception, error)
-                self.assertIs(error.stderr, stderr)
-                self.assertEqual(helper.call_count, 2)
-                self.assertEqual(helper.call_args.kwargs["timeout"], CONTRACT_TIMEOUT)
-                self.assertEqual([entry.args[0] for entry in output.call_args_list], expected)
-                self.assertTrue(all(entry.kwargs.get("file") is sys.stderr for entry in output.call_args_list))
-
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required to execute the Windows click helper contract")
-    def test_windows_click_activates_one_exact_owned_button_with_its_native_pattern(self):
-        script = r'''
-param([string] $Source)
-$ErrorActionPreference='Stop'
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT parse-start')
-$tokens=$null; $errors=$null
-$ast=[System.Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
-if ($errors.Count) { throw 'Helper syntax is invalid' }
-$switch=$ast.Find({param($node) $node -is [System.Management.Automation.Language.SwitchStatementAst] -and $node.Condition.Extent.Text -eq '$Action'},$true)
-$clause=@($switch.Clauses | Where-Object {$_.Item1.Value -eq 'click'})[0].Item2.Extent.Text
-# Real Windows UIA types may already be loaded. Every extracted type and all
-# fake provider types must share this isolated namespace, including enums.
-$clause=$clause.Replace('[System.Windows.Automation.', '[IbisClickContract.')
-$operation=[scriptblock]::Create($clause.Substring(1,$clause.Length-2))
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT parse-ready')
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT compile-start')
-Add-Type -ReferencedAssemblies System.Runtime -TypeDefinition @'
-using System;
-public static class IbisSmoke {
- public static bool Valid=true, Visible=true, ReadFails=false, VisibilityFails=false;
- public static uint Owner=42, ForegroundOwner=42;
- public static long Handle=7;
- public static bool IsWindow(IntPtr handle) { return Valid && handle.ToInt64()==Handle; }
- public static bool IsWindowVisible(IntPtr handle) { if(VisibilityFails) throw new Exception("private"); return Visible; }
- public static IntPtr GetForegroundWindow() { if(ReadFails) throw new Exception("private"); return new IntPtr(9); }
- public static uint OwnerPid(IntPtr handle) { return handle.ToInt64()==9 ? ForegroundOwner : Owner; }
-}
-namespace IbisClickContract {
- public enum TreeScope { Descendants }
- public class AutomationElement {
-  public static string NameProperty="name"; public static ClickWindow Window;
-  public static ClickWindow FromHandle(IntPtr handle) { return Window; }
- }
- public class PropertyCondition { public string Value; public PropertyCondition(string property,string value) { Value=value; } }
- public class ControlType { public static string Button="button", MenuItem="menu", Text="text"; }
- public class InvokePattern { public static int Pattern=1; }
- public class ExpandCollapsePattern { public static int Pattern=2; }
- public class TogglePattern { public static int Pattern=3; }
-public class ClickPattern {
- public int Activations; public bool Fail, Hide;
- public void Invoke() { Activate(); } public void Expand() { Activate(); } public void Toggle() { Activate(); }
- private void Activate() { Activations++; if(Hide) IbisSmoke.Visible=false; if(Fail) throw new Exception("uncertain activation"); }
-}
-public class ClickElement {
- public string Name="Typst"; public ClickElement Current { get { return this; } }
- public string ControlType="button"; public int Supported=3; public ClickPattern Action=new ClickPattern();
- public bool TryGetCurrentPattern(int pattern,ref object value) { value=pattern==Supported ? Action : null; return value!=null; }
-}
-public class ClickWindow {
- public ClickElement[] Elements=new ClickElement[0];
- public ClickElement[] FindAll(TreeScope scope,PropertyCondition condition) {
-  return Array.FindAll(Elements,element=>element.Name==condition.Value);
- }
-}
-}
-'@
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT compile-ready')
-$AppId=42; $PickerHandle=7; $Text='Typst'; $script:window=[IbisClickContract.ClickWindow]::new()
-[IbisClickContract.AutomationElement]::Window=$script:window
-# This window has no Search control: only the opened modal menu's target.
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT pattern-cases')
-foreach ($nativeHandle in @(7,-2147483647)) {
- [IbisSmoke]::Handle=$nativeHandle; $PickerHandle=$nativeHandle
- foreach ($pattern in @(1,2,3)) {
-  $element=[IbisClickContract.ClickElement]::new(); $element.Supported=$pattern; $script:window.Elements=@($element)
-  $result=& $operation
-  if(!$result.pressed -or !$result.button_role -or $element.Action.Activations -ne 1 -or
-     $result.invoke_pattern -ne ($pattern -eq 1) -or $result.expand_collapse_pattern -ne ($pattern -eq 2) -or
-     $result.toggle_pattern -ne ($pattern -eq 3)) {throw 'Native pattern did not activate once'}
- }
-}
-[IbisSmoke]::Handle=7; $PickerHandle=7
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT ownership-cases')
-foreach ($failure in @('stale','foreign','hidden','missing-handle')) {
- $element=[IbisClickContract.ClickElement]::new(); $script:window.Elements=@($element)
- [IbisSmoke]::Valid=$failure -ne 'stale'; [IbisSmoke]::Visible=$failure -ne 'hidden'
- [IbisSmoke]::Owner=if($failure -eq 'foreign') {43} else {42}
- $PickerHandle=if($failure -eq 'missing-handle') {0} else {7}
- $rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
- if(!$rejected -or $element.Action.Activations -ne 0) {throw 'Unverified picker reached activation'}
-}
-[IbisSmoke]::Valid=$true; [IbisSmoke]::Visible=$true; [IbisSmoke]::Owner=42; $PickerHandle=7
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT rejection-cases')
-foreach ($failure in @('missing','wrong-label','text-toggle','menu-toggle','duplicate','unsupported','uncertain','bound')) {
- $element=[IbisClickContract.ClickElement]::new(); $script:window.Elements=@($element)
- switch($failure) {
-  'missing' {$script:window.Elements=@()}
-  'wrong-label' {$element.Name='private Typst suffix'}
-  'text-toggle' {$element.ControlType='text'}
-  'menu-toggle' {$element.ControlType='menu'}
-  'duplicate' {$script:window.Elements=@($element,[IbisClickContract.ClickElement]::new())}
-  'unsupported' {$element.Supported=0}
-  'uncertain' {$element.Action.Fail=$true}
-  'bound' {$script:window.Elements=@($element)*4001}
- }
- $rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
- $expected=if($failure -eq 'uncertain') {1} else {0}
- if(!$rejected -or $element.Action.Activations -ne $expected) {throw 'Unsafe or repeated activation'}
-}
-[IbisClickContract.AutomationElement]::Window=$null
-$rejected=$false; try {& $operation | Out-Null} catch {$rejected=$true}
-if(!$rejected) {throw 'Missing owned window accepted'}
-$traceFunction=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-ForegroundTrace'},$true)
-. ([scriptblock]::Create($traceFunction.Extent.Text))
-$script:ForegroundClock=[Diagnostics.Stopwatch]::StartNew()
-$Action='snapshot'; $AppId=$PID+2; $EditorId=$PID+1; $EditorStarted=100; $script:EditorTicks=100
-function Get-Process { [CmdletBinding()] param([int] $Id) [pscustomobject]@{StartTime=[DateTime]::new($script:EditorTicks,[DateTimeKind]::Utc)} }
-$originalError=[Console]::Error; $traceLog=[IO.StringWriter]::new(); [Console]::SetError($traceLog)
-try {
- [IbisSmoke]::Valid=$true; [IbisSmoke]::Visible=$false; [IbisSmoke]::Owner=$AppId
- foreach ($case in @(@($AppId,'app',$true),@($EditorId,'editor',$true),@($PID,'owned_helper',$true),@(($PID+3),'unknown',$true),@(0,'unknown',$false))) {
-  [void]$traceLog.GetStringBuilder().Clear(); [IbisSmoke]::ForegroundOwner=$case[0]
-  Write-ForegroundTrace 'snapshot' ([IntPtr]7)
-  $fact=$traceLog.ToString().Trim().Substring(24) | ConvertFrom-Json
-  if($fact.owner -ne $case[1] -or !$fact.foreground_observed -or $fact.foreground_available -ne $case[2] -or
-     !$fact.picker_owned -or $fact.picker_visible -ne $false) {throw 'Hidden foreground observation changed'}
- }
- foreach ($mode in @('reused-editor','unavailable','picker-unavailable')) {
-  [void]$traceLog.GetStringBuilder().Clear(); [IbisSmoke]::ForegroundOwner=$EditorId
-  $script:EditorTicks=101; [IbisSmoke]::ReadFails=$mode -eq 'unavailable'
-  [IbisSmoke]::VisibilityFails=$mode -eq 'picker-unavailable'
-  Write-ForegroundTrace 'snapshot' ([IntPtr]7)
-  $fact=$traceLog.ToString().Trim().Substring(24) | ConvertFrom-Json
-  if($fact.owner -ne 'unknown' -or $fact.foreground_observed -ne ($mode -ne 'unavailable') -or
-     ($mode -eq 'picker-unavailable' -and ($null -ne $fact.picker_owned -or $null -ne $fact.picker_visible))) {throw 'Unavailable observation guessed a state'}
- }
- [IbisSmoke]::ReadFails=$false; [IbisSmoke]::VisibilityFails=$false; [IbisSmoke]::Visible=$true
- [IbisSmoke]::ForegroundOwner=$AppId; $TraceForeground=$true; $Action='click'; $Text='Reload'; $PickerHandle=7
- [IbisClickContract.AutomationElement]::Window=$script:window
- foreach ($uncertain in @($false,$true)) {
-  [void]$traceLog.GetStringBuilder().Clear()
-  [IbisSmoke]::Visible=$true
-  $element=[IbisClickContract.ClickElement]::new(); $element.Name='Reload'; $element.Supported=1
-  $element.Action.Fail=$uncertain; $element.Action.Hide=$true
-  $script:window.Elements=@($element); $failed=$false
-  try {& $operation | Out-Null} catch {$failed=$true}
-  $records=@($traceLog.ToString() -split "\r?\n" | Where-Object { $_.StartsWith('NATIVE FOREGROUND STATE ') } | ForEach-Object { $_.Substring(24) | ConvertFrom-Json })
-  if(($records.stage -join ',') -ne 'ready,before,after' -or $failed -ne $uncertain -or $element.Action.Activations -ne 1 -or
-     !$records[1].picker_visible -or $records[2].picker_visible -ne $false) {throw 'Trace changed activation or phase order'}
- }
-} finally { [Console]::SetError($originalError) }
-[Console]::Error.WriteLine('WINDOWS CLICK CONTRACT complete')
-'''
-        with tempfile.TemporaryDirectory() as temporary:
-            test = Path(temporary) / "click-contract.ps1"
-            prepare_powershell(script, test)
-            try:
-                result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(test),
-                                         "-Source", str(Path(__file__).with_name("smoke-windows.ps1"))],
-                                        capture_output=True, text=True, timeout=CONTRACT_TIMEOUT)
-            except subprocess.TimeoutExpired as error:
-                allowed = {f"WINDOWS CLICK CONTRACT {phase}" for phase in (
-                    "parse-start", "parse-ready", "compile-start", "compile-ready", "pattern-cases",
-                    "ownership-cases", "rejection-cases", "complete",
-                )}
-                captured = error.stderr or ""
-                captured = captured[:4096].decode("utf-8", errors="replace") if isinstance(captured, bytes) else captured[:4096]
-                seen = set()
-                for line in captured.splitlines():
-                    if line in allowed and line not in seen:
-                        print(line, file=sys.stderr)
-                        seen.add(line)
-                raise
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_windows_editor_preflight_rejects_a_pid_without_creation_identity(self):
-        with patch(__name__ + ".prepare_powershell"), patch.object(Scripted, "call", side_effect=[True, 12345]):
-            with self.assertRaisesRegex(RuntimeError, "identity unavailable"):
-                Scripted("Windows")
-
-    def test_native_child_rejects_inherited_gallery_modes(self):
-        inherited = {"IBIS_GALLERY": "1", "IBIS_GALLERY_STATE": "loaded", "UNCHANGED": "kept"}
-        env = real_app_environment(inherited, Path("synthetic.bib"), Path("config"))
-        self.assertNotIn("IBIS_GALLERY", env)
-        self.assertNotIn("IBIS_GALLERY_STATE", env)
-        self.assertEqual(env["UNCHANGED"], "kept")
-        self.assertEqual(inherited["IBIS_GALLERY"], "1")
-
-    def test_generic_macos_invalid_index_is_failed_preflight_not_permission_denial(self):
-        error = subprocess.CalledProcessError(1, ["osascript"], stderr="System Events got an error: Invalid index. (-1719)")
-        with patch.object(Scripted, "call", side_effect=error):
-            with self.assertRaisesRegex(RuntimeError, "preflight failed"):
-                Scripted("Darwin")
-
-    def test_explicit_macos_permission_denials_remain_unavailable(self):
-        for details in ("not allowed assistive access. (-1719)", "not authorized to send Apple events. (-1743)",
-                        "TCC event posting is not granted; native smoke unavailable"):
-            with self.subTest(details=details):
-                error = subprocess.CalledProcessError(1, ["osascript"], stderr=details)
-                with patch.object(Scripted, "call", side_effect=error):
-                    with self.assertRaises(Unavailable):
-                        Scripted("Darwin")
-
-    def test_observed_macos_invalid_class_is_failed_preflight(self):
-        error = subprocess.CalledProcessError(1, ["osascript"], stderr="UIElementsEnabled is not a valid class for application System Events (-2700)")
-        with patch.object(Scripted, "call", side_effect=error):
-            with self.assertRaisesRegex(RuntimeError, "preflight failed"):
-                Scripted("Darwin")
 
     def test_copy_preflight_rejects_unchanged_clipboard_from_a_prior_run(self):
         class BrokenClipboard:
@@ -4427,28 +2641,6 @@ try {
         with self.assertRaisesRegex(AssertionError, "sentinel"):
             prime_clipboard(BrokenClipboard())
 
-    def test_windows_settings_use_native_known_folder_and_preserve_existing_files(self):
-        class Native:
-            def call(self, action):
-                self.action = action
-                return str(known)
-
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            known = root / "native roaming"
-            redirected = root / "ignored APPDATA override"
-            native = Native()
-            with patch.dict(os.environ, {"APPDATA": str(redirected)}):
-                actual = settings_path("Windows", root, native)
-            self.assertEqual(native.action, "config-dir")
-            self.assertEqual(actual, known / "io.github.ibiscite.ibis/settings.json")
-            actual.parent.mkdir(parents=True)
-            backup = actual.with_suffix(".json.bak")
-            backup.write_text("existing synthetic preferences", encoding="utf-8")
-            with self.assertRaisesRegex(Unavailable, "existing Ibis settings"):
-                claim_settings(actual)
-            self.assertEqual(backup.read_text(encoding="utf-8"), "existing synthetic preferences")
-            self.assertFalse(actual.exists())
 
     def test_nightly_settings_and_the_update_question_answered_in_advance(self):
         with tempfile.TemporaryDirectory() as temporary:

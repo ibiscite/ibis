@@ -82,7 +82,7 @@ test("the native accent adds no row rule of its own: the shared selected-row til
 
 test("selected rows and menu highlights keep WebKit's white selected text on the native accent", () => {
   // The contrast pick is black on the default blues; selection keeps the native pair (docs/design.md, Selected row).
-  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-platform="macos"\]:not\(\[data-gallery-theme\]\):not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
+  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-platform="macos"\]:not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
   const bridge = css.indexOf("--selected-text: var(--text-on-accent)");
   expect(bridge).toBeGreaterThan(-1);
   expect(css.indexOf("--selected-text: -apple-system-alternate-selected-text")).toBeGreaterThan(bridge);

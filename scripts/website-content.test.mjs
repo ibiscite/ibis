@@ -26,7 +26,7 @@ test("website headline and planned features come from the canonical sources", as
 test("keys lead the example and roadmap highlights omit version numbers", async () => {
   const html = await content(await readFile(new URL("../website/index.html", import.meta.url), "utf8"));
   const how = html.match(/<section id="how"[\s\S]*?<\/section>/)[0];
-  assert.ok(how.indexOf("formatted citations") > how.indexOf("data-result"));
+  assert.ok(how.indexOf("formatted citations") > how.indexOf("citation-key"));
   const roadmap = html.match(/<section id="roadmap"[\s\S]*?<\/section>/)[0];
   assert.doesNotMatch(roadmap, /Planned for|\b0\.\d/);
   assert.doesNotMatch(roadmap, /<strong>Insertion<\/strong>|<strong>Bibliography export<\/strong>|cloud-synced data/);

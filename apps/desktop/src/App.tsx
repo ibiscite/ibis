@@ -43,7 +43,7 @@ const KEEP_SEARCH_MS = 60_000;
 
 const noLibrary = () => null;
 
-// A stable provider lets the development gallery use synthetic data without IPC.
+// A stable provider lets component tests use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |

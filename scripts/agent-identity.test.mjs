@@ -6,10 +6,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const lint = fileURLToPath(new URL("./pr-lint.mjs", import.meta.url));
 const guard = fileURLToPath(new URL("./check-agent-identity.mjs", import.meta.url));
 const publicEmail = "diyanko@ibiscite.org", rejected = "maintainer@example.invalid";
-const body = "Closes #1181\n\n## What and why\n\nProtect metadata.\n\n## How it works\n\nCheck identities.\n\n## Verification\n\nSynthetic tests.\n";
 
 function fixture(t) {
   const cwd = mkdtempSync(join(tmpdir(), "ibis-identity-"));
@@ -27,8 +25,7 @@ function fixture(t) {
   };
   const base = commit("base@example.invalid", "Synthetic baseline", "Contributor");
   git("update-ref", "refs/remotes/origin/main", base);
-  writeFileSync(join(cwd, "body.md"), body);
-  const run = (args = [], extraEnv = {}) => spawnSync(process.execPath, args.length ? [lint, ...args] : [guard], {
+  const run = (args = [], extraEnv = {}) => spawnSync(process.execPath, [guard, ...args], {
     cwd, env: { ...env, ...extraEnv }, encoding: "utf8", timeout: 15_000,
   });
   const event = (value, name) => {
@@ -38,12 +35,12 @@ function fixture(t) {
   return { cwd, env, git, commit, base, run, event };
 }
 
-test("PR lint rejects a synthetic unintended maintainer author without printing it", (t) => {
+test("the identity guard rejects a synthetic unintended maintainer author without printing it", (t) => {
   const f = fixture(t);
   f.commit(rejected);
-  const result = f.run(["--title", "fix: protect agent identities", "--branch", "fix/1181-agent-identity", "--body-file", "body.md"]);
-  assert.equal(result.status, 1, "identity validation must fail the existing PR lint");
-  assert.match(result.stdout, /identity/i);
+  const result = f.run();
+  assert.equal(result.status, 1, "identity validation must fail the standalone guard");
+  assert.match(result.stderr, /identity/i);
   assert.doesNotMatch(result.stdout + result.stderr, /maintainer@example\.invalid|fatal:/);
 });
 

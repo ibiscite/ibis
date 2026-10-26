@@ -1,6 +1,5 @@
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { stripTypeScriptTypes } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { content } from "./content.mjs";
@@ -20,13 +19,9 @@ export async function build(output = join(source, "dist"), input = source) {
   await mkdir(dirname(output), { recursive: true });
   const stage = await mkdtemp(join(dirname(output), ".ibis-build-"));
   try {
-    for (const file of ["index.html", "404.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs", "robots.txt", "sitemap.xml"]) await copyFile(join(input, file), join(stage, file));
+    for (const file of ["index.html", "404.html", "style.css", "site.js", "_headers", "robots.txt", "sitemap.xml"]) await copyFile(join(input, file), join(stage, file));
     await writeFile(join(stage, "index.html"), await content(await readFile(join(stage, "index.html"), "utf8")));
     await copyFile(join(root, "apps/desktop/src/tokens.css"), join(stage, "tokens.css"));
-    for (const name of ["keys", "icon-paths"]) {
-      const shared = stripTypeScriptTypes(await readFile(join(root, `apps/desktop/src/${name}.ts`), "utf8"));
-      await writeFile(join(stage, `${name}.js`), shared);
-    }
     for (const file of PUBLIC) {
       const target = join(stage, "assets", file);
       await mkdir(dirname(target), { recursive: true });

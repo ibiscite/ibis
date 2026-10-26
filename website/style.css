@@ -12,7 +12,7 @@ a:hover { text-decoration-color: currentColor; text-decoration-thickness: var(--
 ::selection { background: color-mix(in srgb, var(--citation) 22%, transparent); color: var(--text); }
 :where(a, button, input, select):focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-width); border-radius: var(--r-min); }
 /* The ring sits outside so it never crosses text; inside only where a scroller or the page edge would clip it. */
-:where(.index, .rows, .picker) :focus-visible { outline-offset: calc(-1 * var(--focus-ring-width)); }
+:where(.index, .rows) :focus-visible { outline-offset: calc(-1 * var(--focus-ring-width)); }
 /* The sidebar is navigation: a press-and-drag there moves a link, it never starts a text selection across the page. */
 .index { -webkit-user-select: none; user-select: none; }
 .skip { position: absolute; left: -100vw; }
@@ -63,10 +63,6 @@ section { padding-block: var(--website-section-pad); }
 .action:first-child::before { content: counter(step) ". "; font-weight: var(--type-strong-weight); }
 .draft { margin: 0; font-size: var(--type-search-size); line-height: 1.55; }
 .caret { display: inline-block; width: var(--focus-ring-width); height: 1.05em; margin-inline-start: var(--space-1); vertical-align: -.15em; background: var(--citation); }
-.picker { margin: 0; font: var(--type-body-size)/1.4 var(--font-family); }
-.picker figcaption { margin-bottom: var(--space-3); }
-.picker-panel { padding: var(--space-4); border: var(--border-width) solid var(--separator); border-radius: var(--r-win); background: var(--surface); box-shadow: var(--website-shadow); }
-.picker-panel p:last-child { margin-bottom: 0; }
 .fn-mark { margin: -.4em -.2em -.4em -.15em; padding: .4em .25em; text-decoration: none; color: var(--citation); font: var(--type-strong-weight) .75em/0 var(--font-family); vertical-align: .55em; }
 .footnote { max-width: 34rem; margin-top: var(--space-8); font: var(--type-title-size)/1.55 var(--font-family); color: var(--muted); }
 .citation-key, .footnote > span { color: var(--citation); font-weight: var(--type-strong-weight); }
@@ -173,7 +169,7 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .logo { margin-inline: auto; padding-top: var(--space-6); }
   .index-note { text-align: center; }
   .intro { padding-top: var(--space-10); }
-  .row > .text, .journey, .text, .picker { max-width: none; }
+  .row > .text, .journey, .text { max-width: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }

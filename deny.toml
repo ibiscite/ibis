@@ -50,12 +50,6 @@ allow = [
     "Zlib",
 ]
 
-# ADRs 0013/0014: test-only libFuzzer; no application dependency on the fuzz package.
-[[licenses.exceptions]]
-name = "libfuzzer-sys"
-version = "=0.4.13"
-allow = ["NCSA"]
-
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

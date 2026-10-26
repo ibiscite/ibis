@@ -1,10 +1,10 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { galleryStates } from "../../gallery-fixtures";
+import { testStates } from "../../test-fixtures";
 import { EmptyState } from "./EmptyState";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
-const loaded = galleryStates.find((state) => state.id === "no-results")!.library;
+const loaded = testStates.find((state) => state.id === "no-results")!.library;
 
 function mount(query = "", empty = false) {
   const choose = vi.fn(), clear = vi.fn(), searchAll = vi.fn();

@@ -144,15 +144,15 @@ and natbib key forms are planned for 0.2.
 
 ## What the tests establish
 
-`scripts/smoke-native.py` checks a narrow case on each hosted OS: the default
+`scripts/smoke-native.py` checks a narrow case on Linux/X11: the default
 keyboard layout, one display, a synthetic BibTeX file at a path with spaces
 and non-Latin characters, Pandoc clipboard text and focus return to an ordinary
-editor window. Linux uses AT-SPI/xdotool; Windows uses UI Automation/SendInput;
-macOS needs System Events Accessibility and Automation permissions.
+editor window using AT-SPI/xdotool. The desktop build/tests and offline checks
+still run on Linux, macOS and Windows; package install/start checks cover all three.
 
 Only a completed run with passed `smoke.json` establishes that case. A test
 definition or a green build alone does not. These checks do not prove automatic
 insertion, all citation formats, screen-reader speech, mixed-DPI displays,
 sleep/wake, cloud folders, network drives or every editor. See
-[testing](testing.md) for assertions and measurement limits and the
+[testing](../CONTRIBUTING.md) for assertions and measurement limits and the
 [remaining manual checks](https://github.com/ibiscite/ibis/issues/79#issuecomment-6282579792).

@@ -1,13 +1,13 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { galleryStates } from "../../gallery-fixtures";
+import { testStates } from "../../test-fixtures";
 import { PickerFooter } from "./PickerFooter";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const footerStyles = readFileSync(new FileURL("./PickerFooter.css", import.meta.url), "utf8");
 
-const library = galleryStates.find((state) => state.id === "tray-20")!.library;
+const library = testStates.find((state) => state.id === "tray-20")!.library;
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function geometry(initial = 660, trailingMargin = 0, constrainHiddenHint = false) {

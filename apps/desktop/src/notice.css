@@ -1,4 +1,4 @@
-/* The Copied notice (#496): its own window, and the states gallery preview. */
+/* The Copied notice (#496): its own window. */
 :root.notice-window {
   color-scheme: light dark;
   background: transparent;
@@ -140,14 +140,6 @@
     box-shadow: none;
   }
 }
-
-/* The states gallery shows the notice over the picker, where the platform puts it. */
-.gallery-notice { position: fixed; inset-inline: 0; z-index: 10; pointer-events: none; }
-.gallery-notice .copied-notice,
-.gallery-notice .copied-notice.showing { animation: none; opacity: 1; }
-.gallery-notice[data-platform="macos"] { top: 0; }
-.gallery-notice[data-platform="windows"] { bottom: 0; inset-inline-start: auto; width: 26.25rem; height: 7rem; }
-.gallery-notice[data-platform="linux"] { bottom: 1.75rem; margin-inline: auto; width: 22.5rem; height: 2.75rem; }
 
 /* Linux without a compositor: an opaque window, so the toast fills it with square corners. */
 :root.notice-window[data-surface="opaque"],
