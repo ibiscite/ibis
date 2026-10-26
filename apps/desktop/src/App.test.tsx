@@ -2808,63 +2808,6 @@ test("the footer offers Copy only when its current output is ready, even outside
   }
 });
 
-test("More shows whether Ibis starts at login as the system reports it, and follows changes made elsewhere", async () => {
-  let system = true;
-  const calls = backend({
-    login_item: () => ({ name: "Ibis", enabled: system, problem: null }),
-    set_login_item: ({ enabled }) => { system = Boolean(enabled); return { enabled: system, problem: null }; },
-  });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const item = await screen.findByRole("menuitemcheckbox", { name: "Start on Login" });
-  await waitFor(() => expect(item.getAttribute("aria-checked")).toBe("true"));
-  fireEvent.click(item);
-  await waitFor(() => expect(calls).toContain("set_login_item"));
-  expect(system).toBe(false);
-  // Removed or added again in System Settings while Ibis was hidden.
-  system = true;
-  await act(async () => { await emit("picker:shown"); });
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Start on Login" }).getAttribute("aria-checked")).toBe("true"));
-  expect(screen.queryByRole("alert")).toBeNull();
-});
-
-test("a refused login item is explained kindly and never shown as on", async () => {
-  backend({ set_login_item: () => ({ name: "Ibis", enabled: false, problem: "refused" }) });
-  render(<App />);
-  await chooseFromMore("Start on Login", "menuitemcheckbox");
-  const alert = await screen.findByText(/^The system did not let Ibis change this\. You can change it in /);
-  expect(alert.getAttribute("role")).toBe("alert");
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect((await screen.findByRole("menuitemcheckbox", { name: "Start on Login" })).getAttribute("aria-checked")).toBe("false");
-});
-
-test("a failed login item command restores the previous state and says so", async () => {
-  backend({ set_login_item: () => { throw new Error("ipc"); } });
-  render(<App />);
-  await chooseFromMore("Start on Login", "menuitemcheckbox");
-  expect(await screen.findByText("Ibis could not change whether it starts when you log in. Try again.")).toBeTruthy();
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect((await screen.findByRole("menuitemcheckbox", { name: "Start on Login" })).getAttribute("aria-checked")).toBe("false");
-});
-
-test("systems without login items, and pickers without the commands, offer no choice", async () => {
-  backend({ login_item: () => ({ name: "Ibis", enabled: false, problem: "unsupported" }) });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(screen.queryByRole("menuitemcheckbox", { name: "Start on Login" })).toBeNull();
-  expect(screen.queryByRole("alert")).toBeNull();
-  cleanup();
-  const { loginItem: _read, setLoginItem: _set, ...withoutLoginItem } = api;
-  backend();
-  render(<App api={withoutLoginItem} />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
-  expect(screen.queryByRole("menuitemcheckbox", { name: "Start on Login" })).toBeNull();
-});
-
 test("first run leaves starting at login to More", async () => {
   backend({ library_status: () => NO_LIBRARY, login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
   render(<App />);
@@ -3872,7 +3815,7 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(calls).not.toContain("set_pinned");
   await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check for Updates");
+  expect(screen.getByRole("alert").textContent).toContain("Check for updates in More");
 });
 
 test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {

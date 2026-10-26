@@ -25,6 +25,9 @@ export const operationFailures = {
   openFound: "That file could not be opened from the list. Pick it again from the new list.",
   loginItem: "Ibis could not check whether it starts when you log in. Try again.",
   loginItemChange: "Ibis could not change whether it starts when you log in. Try again.",
+  updateChecks: "Ibis could not read its update setting. Try again.",
+  updateChecksChange: "Ibis could not change its update setting. Try again.",
+  checkForUpdates: "Ibis could not check for updates. Try again.",
 } as const;
 
 /** Where people turn login items on and off on each system. */
@@ -183,6 +186,8 @@ export const pickerText = {
   reloadTitle: "Reload library",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
+  checkForUpdates: "Check for updates…",
+  checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
   densityTitle: "Show less or more of each reference",
   largerText: "Larger text",
@@ -445,5 +450,5 @@ export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }
 export const updateText = {
   downloading: "Downloading the update…",
   installing: "Checking and installing the update…",
-  failed: "The update could not be installed. Use Check for Updates in the Ibis menu to try again later.",
+  failed: "The update could not be installed. Use Check for updates in More to try again later.",
 };
