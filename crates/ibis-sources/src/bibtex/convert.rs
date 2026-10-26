@@ -324,7 +324,7 @@ pub(crate) fn convert(
     if !keywords.is_empty() {
         csl.insert("keyword".into(), json!(keywords.join(", ")));
     }
-    // Search-only preprint identifiers remain in raw provenance, not a guessed CSL variable.
+    // Search-only preprint identifiers never become guessed CSL variables.
     Record {
         id: ItemRef {
             library: source.clone(),
@@ -336,6 +336,10 @@ pub(crate) fn convert(
             source: CitationKeySource::Bibtex,
         }],
         aliases: vec![],
+        identifiers: eprints
+            .iter()
+            .filter_map(|id| ibis_core::identifier::parse_query(id))
+            .collect(),
         raw: Some(RawProvenance {
             format: SourceFormat::Bibtex,
             data: json!(raw),

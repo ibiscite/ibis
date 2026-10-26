@@ -7,6 +7,8 @@ namespace; attachment keys use a separate namespace. Citation keys keep their
 original spelling and provenance. CSL-JSON prefers `citation-key`, then `id`.
 Numeric IDs use citeproc-js spelling; numbers beyond its safe integer range
 require a string ID or explicit citation key to prevent identity collisions.
+BibTeX arXiv eprints populate normalized search identifiers without changing CSL
+fields or citation fingerprints.
 
 `load_file_snapshot` also returns the initial observation for
 `SourceWatch::with_snapshot`. The watcher retains directory notifications,

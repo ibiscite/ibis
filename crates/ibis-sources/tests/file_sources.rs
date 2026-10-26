@@ -336,3 +336,31 @@ fn unsafe_numeric_native_id_stays_stable_when_explicit_key_changes() -> Result<(
     assert_eq!(ids[0], ids[1]);
     Ok(())
 }
+
+#[test]
+fn bibtex_eprints_are_searchable_without_changing_citation_output() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_core::identifier::{Identifier, of_record};
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(&path, "@article{one,title={Invented}}")?;
+    let before = ibis_sources::load_file(&path)?;
+    std::fs::write(
+        &path,
+        "@article{one,title={Invented},eprint={arXiv:2101.00001v2},archivePrefix={arXiv}}",
+    )?;
+    let after = ibis_sources::load_file(&path)?;
+    let LibraryObject::Record(record) = &after.snapshot.objects()[0].object else {
+        return Err("missing synthetic record".into());
+    };
+    assert_eq!(record.identifiers, [Identifier::Arxiv("2101.00001".into())]);
+    assert!(of_record(record).contains(&Identifier::Doi("10.48550/arxiv.2101.00001".into())));
+    assert_eq!(
+        before.snapshot.objects()[0].fingerprints.cite,
+        after.snapshot.objects()[0].fingerprints.cite
+    );
+    assert_ne!(
+        before.snapshot.objects()[0].fingerprints.full,
+        after.snapshot.objects()[0].fingerprints.full
+    );
+    Ok(())
+}

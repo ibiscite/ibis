@@ -131,6 +131,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 },
             }],
             aliases: vec![],
+            identifiers: vec![],
             raw: Some(RawProvenance {
                 format: SourceFormat::CslJson,
                 data: Value::String(raw.get().into()),
@@ -174,7 +175,7 @@ enum FieldKind {
     Date,
 }
 
-fn id_string(value: &RawValue) -> Option<String> {
+fn id_string(value: &serde_json::value::RawValue) -> Option<String> {
     let raw = value.get();
     if raw.starts_with('"') {
         serde_json::from_str(raw).ok()
