@@ -409,6 +409,8 @@ fn relative_file_urls_stay_in_private_provenance() -> Result<(), Box<dyn std::er
         "./invented/private.pdf",
         "C:invented.pdf",
         r"\invented\private.pdf",
+        r"papers\private.pdf",
+        "papers/private.pdf",
     ] {
         std::fs::write(
             &path,

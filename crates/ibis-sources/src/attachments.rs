@@ -563,3 +563,100 @@ mod limit_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod identity_budget_tests {
+    use super::*;
+    use ibis_core::contract::LibraryId;
+
+    #[test]
+    fn long_parent_keys_cannot_amplify_retained_attachment_identity_bytes() {
+        for (key_length, location) in [(64 * 1024, "https://example.invalid/x"), (1024, "x.pdf")] {
+            let parent = ItemRef {
+                library: LibraryId::file(b"invented"),
+                key: format!("record:{}", "x".repeat(key_length)),
+            };
+            let mut objects = Vec::new();
+            let mut paths = BTreeMap::new();
+            let mut warnings = Vec::new();
+            let mut probes = 0;
+            append_with(
+                Path::new("/invented"),
+                vec![(parent, format!("{location};").repeat(256), Some(3))],
+                &mut objects,
+                &mut paths,
+                &mut warnings,
+                &mut AttachmentBudget::default(),
+                |_| {
+                    probes += 1;
+                    Availability::BrokenLink
+                },
+            );
+            let retained = objects
+                .iter()
+                .map(|object| match object {
+                    LibraryObject::Attachment(item) => {
+                        item.id.key.len()
+                            + item.id.library.as_str().len()
+                            + item
+                                .parent
+                                .as_ref()
+                                .map_or(0, |parent| parent.key.len() + parent.library.as_str().len())
+                    }
+                    _ => 0,
+                })
+                .sum::<usize>()
+                + paths
+                    .keys()
+                    .map(|id| id.key.len() + id.library.as_str().len())
+                    .sum::<usize>();
+            assert!(retained <= 256 * 1024, "retained {retained} identity bytes");
+            assert!(objects.len() < 256);
+            assert!(
+                warnings
+                    .iter()
+                    .any(|warning| warning.code == WarningCode::WorkLimit && warning.line == Some(3))
+            );
+            if location.starts_with("https:") {
+                assert_eq!(probes, 0);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod identity_library_budget_test {
+    use super::*;
+    use ibis_core::contract::LibraryId;
+    #[test]
+    fn exhausted_reference_budget_refuses_identity_clones_and_probes() {
+        let parent = ItemRef {
+            library: LibraryId::file(b"invented"),
+            key: format!("record:{}", "x".repeat(1024)),
+        };
+        let mut objects = Vec::new();
+        let mut paths = BTreeMap::new();
+        let mut warnings = Vec::new();
+        let mut budget = AttachmentBudget {
+            bytes: MAX_LIBRARY_BYTES - 128,
+            ..AttachmentBudget::default()
+        };
+        let mut probes = 0;
+        append_with(
+            Path::new("/invented"),
+            vec![(parent, "x.pdf".into(), Some(2))],
+            &mut objects,
+            &mut paths,
+            &mut warnings,
+            &mut budget,
+            |_| {
+                probes += 1;
+                Availability::BrokenLink
+            },
+        );
+        assert!(objects.is_empty());
+        assert!(paths.is_empty());
+        assert_eq!(probes, 0);
+        assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
+    }
+}

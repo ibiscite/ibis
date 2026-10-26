@@ -457,3 +457,27 @@ fn private_location_changes_publish_a_new_owner_even_if_public_hashes_match() {
             .is_some_and(|raw| raw.contains("two.pdf"))
     );
 }
+
+#[test]
+fn long_identity_attachment_limits_keep_last_good_owner_until_recovery() {
+    let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(&path, r#"[{"id":"initial","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
+    let (initial, observation) = ibis_sources::load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
+    let (tx, rx) = mpsc::channel();
+    let _watch = SourceWatch::with_snapshot(&path, observation, move |candidate| {
+        let _ = tx.send(candidate);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let limited = serde_json::json!([{"id":"x".repeat(1024),"citation-key":"long","type":"book","file":"https://example.invalid/x;".repeat(256)}]);
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&limited).unwrap_or_else(|error| panic!("{error}")),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(next(&rx).err(), Some(SourceError::LoadLimit));
+    assert_eq!(records(&initial)[0].citation_keys[0].value, "initial");
+    std::fs::write(&path, r#"[{"id":"recovered","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
+    let recovered = next(&rx).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(records(&recovered)[0].citation_keys[0].value, "recovered");
+}
