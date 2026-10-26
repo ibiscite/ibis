@@ -1,0 +1,38 @@
+[package]
+name = "ibis-sources"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+ibis-core = { path = "../ibis-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+ibis-zotero-local = { path = "../ibis-zotero-local" }
+rusqlite = { version = "0.41.0", features = ["bundled", "hooks"] }
+tempfile = "3.27.0"
+sha2 = "0.10.9"
+biblatex = "0.12.0"
+notify = "8.2.0"
+unicode-normalization = "0.1.26"
+miniz_oxide = { version = "0.8.9", features = ["with-alloc"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+rustix = { version = "1.1.5", features = ["fs"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["fs"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["event"] }
+
+[dev-dependencies]
+insta = { version = "1.49.0", features = ["json"] }
+proptest = "1.12.0"
+
+[lints]
+workspace = true
