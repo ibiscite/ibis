@@ -18,9 +18,9 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0012 | Ship 0.1 as a single process; split out an engine only if measurements require it | accepted (amends 0004) |
 | 0013 | Permit NCSA for the isolated fuzzing dependency | accepted |
 | 0014 | Share one lockfile with fuzz infrastructure | accepted (amends 0013 workspace layout) |
-| 0015 | Autonomous agents work under standing maintainer authorization | accepted (amends 0011; amended by 0017; one tracking issue since 2026-10-25) |
+| 0015 | Autonomous agents work under standing maintainer authorization | accepted (amends 0011; amended by 0017 and 0027; one tracking issue since 2026-10-25) |
 | 0016 | Keep versioned, human-editable settings in the platform configuration folder | accepted (library field and migration superseded by 0018; amended by 0022; location superseded by 0023) |
-| 0017 | Lighter review for documentation and test changes | accepted (amends 0015) |
+| 0017 | Lighter review for documentation and test changes | accepted (amends 0015; amended by 0027) |
 | 0018 | Settings format 2: the library names its kind | accepted (supersedes part of 0016) |
 | 0019 | Signed in-app updates from GitHub Releases, with separate Stable and Nightly apps | accepted (applies 0008) |
 | 0020 | Remember picker preferences in settings format 2 | accepted (adds fields to 0018) |
@@ -30,3 +30,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0024 | Restrict desktop commands by window | accepted |
 | 0025 | Structured citation input for the engine and CLI | accepted |
 | 0026 | Keep typed locator interpretation and selection in Rust | accepted |
+| 0027 | Move fast until 1.0: no compatibility code, review by risk | accepted (amends 0015 and 0017; suspends the upgrade rules of 0016, 0018, 0022 and 0023 until 1.0) |

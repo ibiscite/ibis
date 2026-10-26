@@ -5,8 +5,8 @@
 //                                      the "Repository hygiene report" issue
 //
 // Needs the GitHub CLI signed in (GH_TOKEN in CI) and GITHUB_REPOSITORY or
-// --repo owner/name. The label set below mirrors "Labels" in the contribution
-// standard in docs/development.md; change both together.
+// --repo owner/name. The label set below is the allowed list that "Labels" in
+// docs/development.md points to.
 
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";

@@ -1,6 +1,6 @@
 # 0018. Settings format 2: the library names its kind
 
-Status: accepted (2026-10-19); supersedes the `library` field and migration rule of 0016
+Status: accepted (2026-10-19); supersedes the `library` field and migration rule of 0016; migration rule suspended until 1.0 by [0027](0027-fast-until-1-0.md)
 
 ## Context
 

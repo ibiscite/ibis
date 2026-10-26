@@ -1,6 +1,6 @@
 # Development process
 
-This project favours small, verified, reversible steps.
+Until 1.0 this project moves fast and keeps only the rules that prevent real damage: a broken `main`, lost work, silent reverts, wrong citations, and security or privacy mistakes ([ADR 0027](adr/0027-fast-until-1-0.md)).
 
 ## Contribution standard
 
@@ -15,16 +15,10 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 
 ### Labels
 
-| Family | Labels | Rule |
-| --- | --- | --- |
-| Type | `type:bug`, `type:feature`, `type:task`, `type:docs` | Exactly one on every issue. `task` covers tests, CI, build, performance, refactoring and maintenance. |
-| Area | `area:core`, `area:desktop`, `area:cli`, `area:formatting`, `area:zotero`, `area:infra`, `area:a11y`, `area:security` | Only when it narrows the issue down. `infra` is CI, test harnesses, packaging and release tooling; `security` includes privacy. |
-| Platform | `platform:linux`, `platform:macos`, `platform:windows` | Only when it affects some platforms, not all. |
-| Status | `status:accepted`, `status:needs-info`, `status:needs-design`, `status:blocked`, `status:needs-maintainer` | `accepted`: an outside contributor may open a pull request for it. `needs-info`: waiting on the reporter; closed after 30 days without an answer. `needs-design`: a short plan is reviewed before code. `needs-maintainer`: a reserved decision or the maintainer's own hands. |
-| Other | `tracking`, `upstream`, `good first issue`, `help wanted` | `good first issue`: small, with the outcome and the files named, for people new to the code; solve it yourself, without an AI tool. |
-| Bots | `autorelease: pending`, `autorelease: tagged`, `dependencies` | Added by Release Please and Dependabot; leave them alone. |
-
-No other labels; each family has one colour. Pull requests need no labels: the title's type says it. There are no priority labels: the milestone and the order of the tracking issue's Queue say what comes first.
+- **Type**, exactly one on every issue: `type:bug`, `type:feature`, `type:task` (tests, CI, build, performance, refactoring, maintenance) or `type:docs`.
+- `status:needs-maintainer` marks a reserved decision or something needing the maintainer's own hands; `tracking` marks the tracking issue; `good first issue` and `help wanted` invite outside help.
+- Area, platform and other status labels are optional; add one only when it helps someone find the issue. The allowed names are `LABELS` in `scripts/hygiene.mjs`.
+- Release Please and Dependabot add their own labels; leave them alone. Pull requests need no labels: the title's type says it. There are no priority labels: the milestone and the order of the Queue say what comes first.
 
 ### Milestones
 
@@ -54,11 +48,11 @@ There is one, labelled `tracking` and titled `Ibis plan, queue and decisions`. I
 - **YYYY-MM-DD** one line
 ```
 
-Keep the body current (Now and Queue), with at most two lanes and five items each. Decisions older than a week leave the body; the edit history keeps them. Comment on the issue only for decisions and handoffs.
+Keep the body current (Now and Queue), with at most five items per lane. Decisions older than a week leave the body; the edit history keeps them. Comment on the issue only for decisions and handoffs.
 
 ### Branches and worktrees
 
-- One short-lived branch per pull request, `<type>/<issue>-<short-name>` from `origin/main`, for example `feat/22-setup-library`; `<type>` is the pull request title's type. No other prefixes.
+- One short-lived branch per pull request from `origin/main`, named `<type>/<issue>-<short-name>` where possible, for example `feat/22-setup-library`.
 - One writer per worktree: `git fetch origin main && git worktree add ../wt/<name> -b <branch> origin/main`. Remove the worktree after merging.
 - Long-lived branches: `main`, the bots' `release-please--*` and `dependabot/*`, and `evidence`, a data branch where CI publishes synthetic native screenshots (`scripts/publish-evidence.mjs`); never open pull requests from `evidence` or delete it.
 - Merged branches are deleted automatically, and the weekly hygiene run deletes head branches of closed pull requests. `main` history is never rewritten.
@@ -78,25 +72,17 @@ The subject is a Conventional Commit (`feat`, `fix`, `perf`, `docs`, `test`, `ci
 
 ### Pull requests
 
-- **Title:** a Conventional Commit, because it becomes the commit on `main`: `fix: keep good entries when a .bib file has a duplicate key`.
-- **Body:** the template in `.github/pull_request_template.md`, **at most 250 words** excluding images: `Closes #N` (or `Part of #N`), What and why, How it works (plain words for a maintainer who did not write it), Verification, and Screenshots for interface changes. A pull request closes at most one issue.
-- **Evidence** (CI run links, hashes, logs) goes in a pull request comment or the review, never in the body or the commits.
-- **Interface changes** link CI's synthetic screenshots on the `evidence` branch, or attach before/after images made with synthetic data. Do not commit them to `docs/images/` unless a document uses them.
-- **Checked automatically:** `node scripts/pr-lint.mjs --title … --branch … --body-file …` checks the title, branch, issue link, length, evidence and template sections before you open the pull request; the "Pull request conventions" job runs the same check on every pull request and re-runs when the description is edited.
+- **Title:** a Conventional Commit, because it becomes the commit on `main` and the release notes: `fix: keep good entries when a .bib file has a duplicate key`. This is the one pull request rule CI enforces.
+- **Body:** `Closes #N` or `Part of #N`, then what changes for a user and how it was checked, in plain words. The template is a suggestion, not a form. Screenshots with synthetic data for interface changes; CI's gallery screenshots on the `evidence` branch count.
+- `node scripts/pr-lint.mjs --title … --branch … --body-file …` runs the same check as the "Pull request conventions" job: errors only for the title, commit identities and weakened tests; everything else is a warning.
 
 ### Review and merge
 
-- **Code:** an independent review of the exact head commit by another session, preferably another model, posted as a comment that starts `Independent review of <full SHA> by <tool and model>`, gives the verdict and lists the P1 and P2 findings. After a small fix the reviewer re-checks only the changed lines and names the new commit; a large fix or a design change needs a new full review. A rebase with an identical tree keeps the review.
-- **Documentation only, or tests and synthetic fixtures only:** the author's adversarial check (step 5 of the loop in AGENTS.md), recorded in the pull request body or a comment, replaces the independent review (ADR 0017).
-- **Merge** by squash only when all required checks pass on that commit. The squash commit's title is the pull request title plus ` (#N)`, and its message is short: `Closes #N`, the `Assisted-by:` trailer, and `Signed-off-by:` naming whoever actually signed the branch's commits, never someone else. Never use `--admin` or another bypass. The release pull request goes through the merge queue like any other.
-
-#### Free-first review tools
-
-Ibis uses only free review services, before and after the CodeRabbit trial ends on **2026-11-06**. Never add payment details, start a paid plan, use credits or enable overages; losing a trial feature is no reason to upgrade.
-
-- Request `@coderabbitai full review` once on a settled, meaningful code change, while CI and the independent review run. Skip it for cosmetic, documentation or asset changes. CodeRabbit stays manual and advisory: no automatic fixes, approvals or runs on every push.
-- Request `@codex review` only for a concrete open correctness question, and `@codex security review` for untrusted input, persistence, permissions, network, updater trust or other security-sensitive code. Automatic Codex reviews stay off.
-- Check each finding against the code with a triggering case: fix every P1 and P2 with a test, and answer rejected findings with evidence. A bot report never replaces the independent exact-head review, and a free limit or outage adds no merge gate.
+- **Risky areas** need one independent review of the final head by a session that did not write the change, preferably another model ([ADR 0027](adr/0027-fast-until-1-0.md)): the updater, release signing and CI permissions; settings and other files Ibis writes; the clipboard, escaping and pasting; window permissions, native input and the shortcut portal; BibTeX and Zotero reading, citation syntaxes and formatting; untrusted input, network and security boundaries. Post it as a comment starting `Independent review of <full SHA>`, with the verdict and the P1 and P2 findings. After a small fix the reviewer re-checks only the changed lines.
+- **Everything else** merges on green required checks plus the author's own adversarial check (step 5 of the loop in AGENTS.md), recorded in the pull request.
+- Every P1 and P2 is fixed with a test before merging; filing it does not count.
+- **Merge** by squash only when all required checks pass on that commit, with the pull request title plus ` (#N)` as the commit title and a short message: `Closes #N`, the `Assisted-by:` trailer, and `Signed-off-by:` naming whoever actually signed the branch's commits. Never use `--admin` or another bypass. The release pull request goes through the merge queue like any other.
+- **Review tools:** free ones only, before and after the CodeRabbit trial ends on 2026-11-06. Never add payment details, start a paid plan, use credits or enable overages. `@coderabbitai full review`, `@codex review` and `@codex security review` are optional extra eyes for a risky change; check each finding against the code before acting on it.
 
 ### Versions and releases
 
