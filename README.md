@@ -93,7 +93,8 @@ cargo run -p ibis -- serve --stdio --file fixtures/bibtex/fidelity.bib
 
 The command line calls the same typed engine methods as the app: `libraries`,
 `search`, `show`, `cite`, `styles`, `schema` and `call`. Repeat `--file` to open
-several BibTeX, BibLaTeX or CSL-JSON libraries; `--zotero` explicitly opens Zotero.
+several BibTeX, BibLaTeX or CSL-JSON libraries. This first engine stage opens files;
+Zotero provider selection follows in the rebuild.
 Library IDs are opaque and source paths stay private. `libraries` reports typed
 source warnings; loading never writes to a library.
 
@@ -115,8 +116,9 @@ are rejected. Responses are bounded to 16 MiB, with space reserved for envelope
 fields; oversized results return `resource-limit` (exit 5). Reduce the selection
 or search limit when that happens. Human key arguments resolve in the engine as well.
 
-Use `--format csl-json` for CSL-JSON citation output or `--style STYLE_ID` for CSL
-formatting; `styles` lists bundled style IDs. `ibis call METHOD --stdin` reads
+Use `--format csl-json` to export selected records. `styles` lists the CSL style
+IDs available for `--style`; an empty list means formatted output is unsupported,
+reported as per-item `unsupported-output` refusals in citation JSON. `ibis call METHOD --stdin` reads
 method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
 Content-Length frames, progress/library-change notifications and
 `$/cancelRequest`; it writes no terminal text to that stream.

@@ -254,3 +254,28 @@ fn typed_search_refuses_oversized_results_before_public_object_cloning() {
     request.limit = 1;
     assert_eq!(engine.search(&request, &Cancellation::default()).unwrap().hits.len(), 1);
 }
+
+#[test]
+fn unsupported_formatting_is_an_honest_per_item_refusal() {
+    let mut case = case();
+    let engine = Engine::from_snapshot(Arc::new(case.library));
+    let cancel = Cancellation::default();
+    assert_eq!(
+        engine.dispatch(Method::Styles, &json!({}), &cancel).unwrap().data,
+        json!({"styles":[]})
+    );
+    case.request.output = OutputSpec::Csl { style: "apa".into() };
+    let result = engine
+        .dispatch(Method::Cite, &serde_json::to_value(&case.request).unwrap(), &cancel)
+        .unwrap();
+    assert_eq!(result.exit_code, ExitCode::Findings);
+    let citation: CitationResult = serde_json::from_value(result.data).unwrap();
+    assert_eq!(
+        citation.outcomes,
+        vec![ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::UnsupportedOutput
+        }]
+    );
+    assert!(citation.copy_content(1).is_none());
+}
