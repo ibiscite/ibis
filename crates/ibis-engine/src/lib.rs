@@ -12,3 +12,5 @@ mod service;
 pub use service::*;
 
 pub mod wire;
+
+pub mod server;

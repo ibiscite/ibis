@@ -217,7 +217,11 @@ impl Engine {
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
         let mut exit_code = ExitCode::Ok;
         let data = match method {
-            Method::Libraries => match parameters::<LibrariesRequest>(params)? {
+            Method::Libraries => match if params.is_null() {
+                LibrariesRequest::List
+            } else {
+                parameters::<LibrariesRequest>(params)?
+            } {
                 LibrariesRequest::List => value(self.libraries()?)?,
                 _ => return Err(error(ErrorCode::SourceUnavailable)),
             },

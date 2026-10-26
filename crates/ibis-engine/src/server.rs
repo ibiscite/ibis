@@ -1,0 +1,419 @@
+//! Bounded concurrent JSON-RPC execution. A token belongs to one request lifetime.
+use crate::{
+    Cancellation, DispatchResult, Engine, Method,
+    protocol::{self, FrameError},
+    rpc::{self, Message, RequestId},
+};
+use ibis_core::contract::{EngineError, ErrorCode};
+use serde_json::{Value, json};
+use std::{
+    collections::HashMap,
+    io::{BufRead, Write},
+    panic::{AssertUnwindSafe, catch_unwind},
+    sync::{Arc, mpsc},
+    thread,
+};
+
+const MAX_WORKERS: usize = 8;
+const MAX_BATCH: usize = 32;
+type Dispatch = dyn Fn(Method, &Value, &Cancellation) -> Result<DispatchResult, EngineError> + Send + Sync;
+struct Job {
+    id: Option<RequestId>,
+    method: Method,
+    params: Value,
+    cancel: Cancellation,
+    generation: u64,
+}
+struct Active {
+    generation: u64,
+    cancel: Cancellation,
+}
+
+pub fn serve<R: BufRead, W: Write + Send>(engine: Engine, reader: R, writer: W) -> Result<(), FrameError> {
+    run(
+        Arc::new(move |method, params, cancel| engine.dispatch(method, params, cancel)),
+        reader,
+        writer,
+    )
+}
+fn run<R: BufRead, W: Write + Send>(dispatch: Arc<Dispatch>, mut reader: R, writer: W) -> Result<(), FrameError> {
+    thread::scope(|scope| {
+        let (output, frames) = mpsc::sync_channel::<Value>(64);
+        let writing = scope.spawn(move || {
+            let mut writer = writer;
+            for message in frames {
+                protocol::write_frame(&mut writer, &message)?;
+            }
+            Ok(())
+        });
+        let (completed, finished) = mpsc::channel::<(RequestId, u64)>();
+        let mut workers: Vec<thread::JoinHandle<()>> = vec![];
+        let mut active = HashMap::<RequestId, Active>::new();
+        let mut generation = 0_u64;
+        let mut transport = Ok(());
+        loop {
+            let frame = match protocol::read_frame(&mut reader) {
+                Ok(Some(frame)) => frame,
+                Ok(None) => break,
+                Err(error) => {
+                    if output.send(rpc::parse_error()).is_err() {
+                        transport = Err(FrameError::Io);
+                        break;
+                    }
+                    if error == FrameError::InvalidJson {
+                        continue;
+                    }
+                    transport = Err(error);
+                    break;
+                }
+            };
+            while let Ok((id, generation)) = finished.try_recv() {
+                if active.get(&id).is_some_and(|request| request.generation == generation) {
+                    active.remove(&id);
+                }
+            }
+            let mut at = 0;
+            while at < workers.len() {
+                if workers[at].is_finished() {
+                    let _ = workers.swap_remove(at).join();
+                } else {
+                    at += 1;
+                }
+            }
+            let batch = frame.is_array();
+            let messages = match frame {
+                Value::Array(messages) if messages.is_empty() || messages.len() > MAX_BATCH => {
+                    if output.send(rpc::invalid_request(None)).is_err() {
+                        transport = Err(FrameError::Io);
+                        break;
+                    }
+                    continue;
+                }
+                Value::Array(messages) => messages,
+                message => vec![message],
+            };
+            let mut replies = vec![];
+            let mut jobs = vec![];
+            for message in &messages {
+                match rpc::parse_message(message) {
+                    Message::Cancel(id) => {
+                        if let Some(request) = active.get(&id) {
+                            request.cancel.cancel();
+                        }
+                    }
+                    Message::Ignore => {}
+                    Message::Reply(reply) => replies.push(reply),
+                    Message::Request(request) => {
+                        if request.id.as_ref().is_some_and(|id| active.contains_key(id)) {
+                            replies.push(rpc::invalid_request(None));
+                            continue;
+                        }
+                        if workers.len() >= MAX_WORKERS {
+                            if let Some(id) = request.id {
+                                replies.push(rpc::busy(&id));
+                            }
+                            continue;
+                        }
+                        generation = generation.wrapping_add(1);
+                        let cancel = Cancellation::default();
+                        if let Some(id) = &request.id {
+                            active.insert(
+                                id.clone(),
+                                Active {
+                                    generation,
+                                    cancel: cancel.clone(),
+                                },
+                            );
+                        }
+                        jobs.push(Job {
+                            id: request.id,
+                            method: request.method,
+                            params: request.params.clone(),
+                            cancel,
+                            generation,
+                        });
+                    }
+                }
+            }
+            if jobs.is_empty() {
+                if let Some(reply) = response(batch, replies)
+                    && output.send(reply).is_err()
+                {
+                    transport = Err(FrameError::Io);
+                    break;
+                }
+                continue;
+            }
+            let dispatch = dispatch.clone();
+            let output = output.clone();
+            let completed = completed.clone();
+            // At most MAX_WORKERS batches (MAX_BATCH jobs each) can execute.
+            match thread::Builder::new().name("ibis-rpc".into()).spawn(move || {
+                let budget = protocol::MAX_FRAME_BYTES / (jobs.len() + replies.len() + 1);
+                for job in jobs {
+                    if let Some(id) = &job.id {
+                        let _ = output.send(progress(id, job.generation, "begin"));
+                    }
+                    let result = catch_unwind(AssertUnwindSafe(|| {
+                        job.cancel.check()?;
+                        let result = dispatch(job.method, &job.params, &job.cancel)?;
+                        job.cancel.check()?;
+                        Ok(result)
+                    }))
+                    .unwrap_or(Err(EngineError {
+                        code: ErrorCode::Internal,
+                    }));
+                    if let Some(id) = job.id {
+                        let reply = match result {
+                            Ok(result) => rpc::success(&id, result.data),
+                            Err(error) => rpc::failure(Some(&id), error),
+                        };
+                        replies.push(if crate::wire::encode(&reply, budget).is_ok() {
+                            reply
+                        } else {
+                            rpc::failure(
+                                Some(&id),
+                                EngineError {
+                                    code: ErrorCode::BadInput,
+                                },
+                            )
+                        });
+                        let _ = output.send(progress(&id, job.generation, "end"));
+                        let _ = completed.send((id, job.generation));
+                    }
+                }
+                if let Some(reply) = response(batch, replies) {
+                    let _ = output.send(reply);
+                }
+            }) {
+                Ok(worker) => workers.push(worker),
+                Err(_) => {
+                    transport = Err(FrameError::Io);
+                    break;
+                }
+            }
+        }
+        // EOF drains accepted work. A new use of an ID always gets a new token.
+        for worker in workers {
+            let _ = worker.join();
+        }
+        drop(output);
+        let result = writing.join().map_err(|_| FrameError::Io)?;
+        transport.and(result)
+    })
+}
+fn response(batch: bool, mut replies: Vec<Value>) -> Option<Value> {
+    if replies.is_empty() {
+        None
+    } else if batch {
+        Some(Value::Array(replies))
+    } else {
+        replies.pop()
+    }
+}
+fn progress(id: &RequestId, generation: u64, kind: &str) -> Value {
+    json!({"jsonrpc":"2.0","method":"$/progress","params":{"token":format!("ibis:{generation}"),"value":{"kind":kind,"title":"Processing","request":id.value()}}})
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use std::{
+        io::{self, BufReader, Cursor, Read},
+        time::{Duration, Instant},
+    };
+    struct Input {
+        chunks: mpsc::Receiver<Vec<u8>>,
+        current: Cursor<Vec<u8>>,
+    }
+    impl Read for Input {
+        fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+            loop {
+                let count = self.current.read(bytes)?;
+                if count > 0 {
+                    return Ok(count);
+                }
+                match self.chunks.recv() {
+                    Ok(chunk) => self.current = Cursor::new(chunk),
+                    Err(_) => return Ok(0),
+                }
+            }
+        }
+    }
+    struct Output {
+        frames: mpsc::Sender<Vec<u8>>,
+        current: Vec<u8>,
+    }
+    impl Write for Output {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.current.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            self.frames
+                .send(std::mem::take(&mut self.current))
+                .map_err(|_| io::Error::other("closed"))
+        }
+    }
+    fn send(input: &mpsc::Sender<Vec<u8>>, message: Value) {
+        let mut bytes = vec![];
+        protocol::write_frame(&mut bytes, &message).unwrap();
+        input.send(bytes).unwrap();
+    }
+    fn reply(output: &mpsc::Receiver<Vec<u8>>) -> Value {
+        loop {
+            let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
+            let message = protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap();
+            if message.get("id").is_some() || message.is_array() {
+                return message;
+            }
+        }
+    }
+    #[test]
+    fn cancelled_ids_are_fresh_on_reuse_and_duplicates_do_not_replace_active_work() {
+        let (input, chunks) = mpsc::channel();
+        let (frames, output) = mpsc::channel();
+        let (started, ready) = mpsc::channel();
+        let dispatch = Arc::new(move |_: Method, params: &Value, cancel: &Cancellation| {
+            if params["wait"] == true {
+                started.send(()).unwrap();
+                let began = Instant::now();
+                while !cancel.is_cancelled() {
+                    assert!(began.elapsed() < Duration::from_secs(5));
+                    thread::yield_now();
+                }
+                cancel.check()?;
+            }
+            Ok(DispatchResult {
+                data: json!("fresh"),
+                exit_code: ibis_core::contract::ExitCode::Ok,
+            })
+        });
+        let server = thread::spawn(move || {
+            run(
+                dispatch,
+                BufReader::new(Input {
+                    chunks,
+                    current: Cursor::new(vec![]),
+                }),
+                Output {
+                    frames,
+                    current: vec![],
+                },
+            )
+        });
+        send(
+            &input,
+            json!({"jsonrpc":"2.0","id":7,"method":"search","params":{"wait":true}}),
+        );
+        ready.recv_timeout(Duration::from_secs(5)).unwrap();
+        send(&input, json!({"jsonrpc":"2.0","id":7,"method":"libraries"}));
+        let duplicate = reply(&output);
+        assert!(duplicate["id"].is_null());
+        assert_eq!(duplicate["error"]["code"], -32600);
+        send(
+            &input,
+            json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":7}}),
+        );
+        let cancelled = reply(&output);
+        assert_eq!(cancelled["id"], 7);
+        assert_eq!(cancelled["error"]["data"]["code"], "cancelled");
+        // A cancellation after completion does not persist into the next lifetime.
+        send(
+            &input,
+            json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":7}}),
+        );
+        send(&input, json!({"jsonrpc":"2.0","id":7,"method":"libraries"}));
+        assert_eq!(reply(&output)["result"], "fresh");
+        drop(input);
+        assert!(server.join().unwrap().is_ok());
+    }
+    #[test]
+    fn in_flight_work_and_batches_are_bounded() {
+        let (input, chunks) = mpsc::channel();
+        let (frames, output) = mpsc::channel();
+        let (started, ready) = mpsc::channel();
+        let dispatch = Arc::new(move |_: Method, _: &Value, cancel: &Cancellation| {
+            started.send(()).unwrap();
+            let began = Instant::now();
+            while !cancel.is_cancelled() {
+                assert!(began.elapsed() < Duration::from_secs(5));
+                thread::yield_now();
+            }
+            Err(EngineError {
+                code: ErrorCode::Cancelled,
+            })
+        });
+        let server = thread::spawn(move || {
+            run(
+                dispatch,
+                BufReader::new(Input {
+                    chunks,
+                    current: Cursor::new(vec![]),
+                }),
+                Output {
+                    frames,
+                    current: vec![],
+                },
+            )
+        });
+        for id in 0..MAX_WORKERS {
+            send(&input, json!({"jsonrpc":"2.0","id":id,"method":"search"}));
+            ready.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        send(&input, json!({"jsonrpc":"2.0","id":"busy","method":"libraries"}));
+        assert_eq!(reply(&output)["error"]["message"], "Server busy");
+        send(
+            &input,
+            Value::Array(vec![
+                json!({"jsonrpc":"2.0","id":0,"method":"libraries"});
+                MAX_BATCH + 1
+            ]),
+        );
+        assert_eq!(reply(&output)["error"]["code"], -32600);
+        for id in 0..MAX_WORKERS {
+            send(
+                &input,
+                json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":id}}),
+            );
+        }
+        drop(input);
+        for _ in 0..MAX_WORKERS {
+            assert_eq!(reply(&output)["error"]["data"]["code"], "cancelled");
+        }
+        assert!(server.join().unwrap().is_ok());
+    }
+    #[test]
+    fn worker_panics_are_fixed_errors_and_other_batch_members_complete() {
+        let dispatch = Arc::new(|_: Method, params: &Value, _: &Cancellation| {
+            assert!(params["panic"] != true, "synthetic worker failure");
+            Ok(DispatchResult {
+                data: json!([]),
+                exit_code: ibis_core::contract::ExitCode::Ok,
+            })
+        });
+        let mut input = vec![];
+        protocol::write_frame(
+            &mut input,
+            &json!([
+                {"jsonrpc":"2.0","id":1,"method":"search","params":{"panic":true}},
+                {"jsonrpc":"2.0","id":2,"method":"libraries"}
+            ]),
+        )
+        .unwrap();
+        let mut output = vec![];
+        run(dispatch, Cursor::new(input), &mut output).unwrap();
+        let mut reader = Cursor::new(output);
+        let mut batch = None;
+        while let Some(message) = protocol::read_frame(&mut reader).unwrap() {
+            if message.is_array() {
+                batch = Some(message);
+            }
+        }
+        let batch = batch.unwrap();
+        assert_eq!(batch[0]["error"]["data"]["code"], "internal");
+        assert_eq!(batch[1]["result"], json!([]));
+        assert!(!batch.to_string().contains("synthetic worker failure"));
+    }
+}
