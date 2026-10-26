@@ -1,0 +1,15 @@
+[
+  {"type":"book","title":"Synthetic signals","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"article-journal","title":"Über Ärger & <Kram> {x}","author":[{"family":"Müller","given":"Zoë"}],"issued":{"date-parts":[[2020]]},"container-title":"Journal of Synthetic Examples","volume":"3","page":"12-14"},
+  {"type":"book","title":"ıslak IŞIK ve İSİM","author":[{"family":"Işık","given":"İlker"}],"issued":{"date-parts":[[2022]]},"publisher":"Synthetic Press","language":"tr"},
+  {"type":"book","title":"Í J̀ synthetic Lithuanian","author":[{"family":"Įvardis","given":"Jonas"}],"issued":{"date-parts":[[2023]]},"publisher":"Synthetic Press","language":"lt"},
+  {"type":"book","title":"合成の記録","author":[{"family":"例","given":"花子"}],"issued":{"date-parts":[[2024]]},"publisher":"架空出版","language":"ja"},
+  {"type":"book","title":"عنوان اصطناعي","author":[{"family":"مثال","given":"نور"}],"issued":{"date-parts":[[2025]]},"publisher":"Synthetic Press","language":"ar"},
+  {"type":"book","title":"Synthetic area in m²","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2027]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic  area","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2028]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic CO<sub>2</sub>","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2029]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic\t\tarea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic \tarea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic　　area","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic\r\narea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"}
+]

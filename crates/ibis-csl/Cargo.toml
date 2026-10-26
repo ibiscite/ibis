@@ -15,6 +15,7 @@ thiserror = "2.0.21"
 rquickjs = "0.14.0"
 icu_collator = "2.4.0"
 icu_locale_core = "2.4.0"
+icu_casemap = "2.4.0"
 
 [lints]
 workspace = true

@@ -1,0 +1,4 @@
+[
+  {"locale":"tr","input":"Iİ iı","lower":"ıi iı","upper":"Iİ İI"},
+  {"locale":"lt","input":"I\u0301 J\u0300","lower":"i\u0307\u0301 j\u0307\u0300","upper":"I\u0301 J\u0300"}
+]
