@@ -3,6 +3,7 @@ import type { Copied, Density, LibraryStatus, LocatorQuery, SearchResult, Update
 import type { Sources } from "./bindings";
 import type { PickerApi, PickerPreview } from "./App";
 import type { Platform } from "./nativeAppearance";
+import { DEFAULT_PICKER_SHORTCUT } from "./keys";
 
 // All names and references on this page are synthetic. Providers never call IPC.
 type GalleryLibrary = LibraryStatus;
@@ -262,7 +263,7 @@ export function galleryProvider(state: GalleryState): { api: PickerApi; preview:
       copyFormat: async () => "pandoc",
       pickerPreferences: async () => ({ citation_style: state.formatted ? "apa" : null, density: state.density ?? "comfortable", larger_text: state.largerTextSetting ?? false, show_paste_preview: state.showPastePreview ?? true, search_mark: state.searchMark ?? false }),
       setPickerPreferences: async () => null,
-      shortcutStatus: async () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
+      shortcutStatus: async () => ({ shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null }),
       chooseLibrary: async () => undefined,
       useZotero: async () => undefined,
       ...(state.library.zotero ? { useZoteroLibraries: async () => null } : {}),

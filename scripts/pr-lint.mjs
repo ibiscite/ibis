@@ -5,9 +5,11 @@
 //                                       from GITHUB_EVENT_PATH (no API, no token)
 //
 // Errors exit 1; warnings are printed and do not fail. Bot pull requests
-// (Release Please, Dependabot) and GitHub's Revert button are skipped.
+// (Release Please, Dependabot) and GitHub's Revert button skip conventions,
+// but their commit identities are still checked.
 
 import { testDiff, testTamper } from "./test-tamper.mjs";
+import { checkAgentIdentities } from "./check-agent-identity.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -96,6 +98,8 @@ function main() {
   const argv = process.argv.slice(2);
   const input = argv.length === 0 && process.env.GITHUB_EVENT_PATH ? fromEvent(process.env.GITHUB_EVENT_PATH) : fromArgs(argv);
   const { errors, warnings } = lint(input);
+  try { errors.push(...checkAgentIdentities().errors); }
+  catch (error) { errors.push(error.message); }
   if (!BOT_BRANCH.test(input.branch) && !(REVERT.branch.test(input.branch) && REVERT.title.test(input.title.trim()))) {
     try {
       const event = argv.length === 0 && process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : null;

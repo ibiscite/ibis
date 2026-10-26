@@ -27,7 +27,7 @@ export function useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks,
     );
     return () => {
       active = false;
-      void stop.then((unlisten) => unlisten()).catch(() => undefined);
+      void stop.then((unlisten) => unlisten()).catch(() => undefined); // Subscription failures are handled above; teardown has no active view for cleanup errors.
     };
   }, []);
   // Asks for the opposite of what is shown, never a flip of whatever the

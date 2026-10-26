@@ -24,24 +24,28 @@ const desktop = { cwd: "apps/desktop" };
 const scriptFiles = readdirSync(new URL(".", import.meta.url)).sort();
 const scriptTests = scriptFiles
   .filter((name) => /\.test\.(mjs|cjs)$/.test(name))
-  .filter((name) => args[0] !== "--platform-script-tests" || name !== "ui-imports.test.mjs")
+  .filter((name) => args[0] !== "--platform-script-tests" || !["ui-imports.test.mjs", "swallowed-errors.test.mjs"].includes(name))
   .map((name) => `scripts/${name}`);
 const scriptSteps = [
-  // Small repository guards run in CI's script-only modes too.
-  ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name)).map((name) => [
-    `Repository guard: ${name}`, "node", [`scripts/${name}`],
-  ]),
+  // AST guards need Vite; the identity guard needs the Web job's full history.
+  ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name))
+    .filter((name) => args[0] !== "--platform-script-tests" || !["check-swallowed-errors.mjs", "check-agent-identity.mjs"].includes(name))
+    .map((name) => [`Repository guard: ${name}`, "node", [`scripts/${name}`]]),
   ["Script tests", "node", ["--test", ...scriptTests]],
   ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [
     `Python script tests: ${name}`, process.platform === "win32" ? "python" : "python3", ["-B", `scripts/${name}`],
   ]),
 ];
 const brandSteps = [["Brand assets", process.platform === "win32" ? "python" : "python3", ["brand/build.py", "--check"]]];
+// Verified against https://clippy.rust-lang.org/stable/index.html:
+// unused_result_ok (restriction): discarded .ok(); enabled below (zero hits).
+// let_underscore_must_use / let_underscore_untyped (restriction): many current
+// deliberate discards; do not enable wholesale without resolving those cases.
 const steps = [
   ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
   ...brandSteps,
   ["Format", "cargo", ["fmt", "--all", "--check"]],
-  ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]],
+  ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"]],
   ["Test", "cargo", ["test", "--locked"]],
   ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
   ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
@@ -53,7 +57,7 @@ const steps = [
   ["Desktop: type check", "pnpm", ["typecheck"], desktop],
   ["Desktop: hook dependencies", "pnpm", ["lint"], desktop],
   ["Desktop: interface tests", "pnpm", ["test"], desktop],
-  ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings"]],
+  ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"]],
 ];
 
 // On Windows commands run through a shell so that pnpm.cmd resolves; a missing

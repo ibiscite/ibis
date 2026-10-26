@@ -122,7 +122,7 @@ pub enum Density {
 #[serde(default)]
 pub struct Settings {
     pub schema_version: u32,
-    /// Global shortcut, e.g. `"Control+Command+R"`. `None` uses the default.
+    /// Explicit global shortcut, e.g. `"CommandOrControl+Shift+Y"`; `None` stays unwritten.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shortcut: Option<String>,
     /// Library to open at start.

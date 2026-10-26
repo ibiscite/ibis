@@ -1,8 +1,8 @@
 //! macOS registers a shortcut's physical key, so a letter is first moved to the
-//! key that types it on the active layout: ⌘⇧Y stays the key labelled Y on
-//! QWERTZ, AZERTY, Dvorak and Colemak (#196). Other keys pass through.
+//! key that types it on the active layout, including its Command layer: ⌘⇧Y
+//! follows Y on QWERTZ, AZERTY, Dvorak and Colemak (#196). Other keys pass through.
 
-use tauri_plugin_global_shortcut::{Code, Shortcut};
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
 /// Every printable key position: the macOS virtual key global-hotkey registers
 /// for each code, and what it types on a US keyboard.
@@ -23,36 +23,43 @@ const POSITIONS: [(Code, u16, char); 47] = [
 ];
 
 /// The shortcut whose key types `shortcut`'s letter, given what each key
-/// position types now; `None` when no key types it. Only letters move.
-pub(super) fn translate(shortcut: Shortcut, typed: impl Fn(u16) -> Option<char>) -> Option<Shortcut> {
+/// position types now; `None` when no key types it. Only letters move. Query
+/// Command when configured, excluding modifiers that alter text or control codes.
+pub(super) fn translate(shortcut: Shortcut, typed: impl Fn(u16, Modifiers) -> Option<char>) -> Option<Shortcut> {
     let Some(&(_, own, letter)) = POSITIONS
         .iter()
         .find(|(code, _, us)| *code == shortcut.key && us.is_ascii_lowercase())
     else {
         return Some(shortcut);
     };
-    if typed(own) == Some(letter) {
+    let modifiers = shortcut.mods.intersection(Modifiers::SUPER);
+    if typed(own, modifiers) == Some(letter) {
         return Some(shortcut);
     }
     POSITIONS
         .iter()
-        .find(|(_, key, _)| typed(*key) == Some(letter))
+        .find(|(_, key, _)| typed(*key, modifiers) == Some(letter))
         .map(|&(code, ..)| Shortcut::new(Some(shortcut.mods), code))
 }
 
-/// What the key at each position types on the active layout, with no
-/// modifiers: a private event source ignores keys the person is holding, so
-/// a held Shift cannot move the shortcut. Layout queries need the main thread.
+/// Set a private key event’s Command layer before AppKit translates it.
+/// characters() keeps Command (Dvorak–QWERTY ⌘); ignoring modifiers loses it.
+/// These APIs predate macOS 10.13, unlike charactersByApplyingModifiers (10.15).
+/// Layout queries need the main thread; events are never posted.
 #[cfg(target_os = "macos")]
-pub(super) fn typing() -> impl Fn(u16) -> Option<char> {
+pub(super) fn typing() -> impl Fn(u16, Modifiers) -> Option<char> {
+    use objc2_app_kit::NSEvent;
     use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID};
     let source = CGEventSource::new(CGEventSourceStateID::Private);
-    move |key| {
+    move |key, modifiers: Modifiers| {
         let event = CGEvent::new_keyboard_event(source.as_deref(), key, true)?;
-        CGEvent::set_flags(Some(&event), CGEventFlags::empty());
-        let text = objc2_app_kit::NSEvent::eventWithCGEvent(&event)?
-            .charactersIgnoringModifiers()?
-            .to_string();
+        let flags = if modifiers.contains(Modifiers::SUPER) {
+            CGEventFlags::MaskCommand
+        } else {
+            CGEventFlags::empty()
+        };
+        CGEvent::set_flags(Some(&event), flags);
+        let text = NSEvent::eventWithCGEvent(&event)?.characters()?.to_string();
         let mut chars = text.chars().flat_map(char::to_lowercase);
         match (chars.next(), chars.next()) {
             (Some(letter), None) => Some(letter),
@@ -64,11 +71,10 @@ pub(super) fn typing() -> impl Fn(u16) -> Option<char> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tauri_plugin_global_shortcut::Modifiers;
 
     /// A layout as the US characters whose keys type something else.
-    fn layout(changes: &'static [(char, char)]) -> impl Fn(u16) -> Option<char> {
-        move |key| {
+    fn layout(changes: &'static [(char, char)]) -> impl Fn(u16, Modifiers) -> Option<char> {
+        move |key, _modifiers| {
             let us = POSITIONS.iter().find(|(_, k, _)| *k == key).map(|&(.., us)| us)?;
             Some(changes.iter().find(|(from, _)| *from == us).map_or(us, |&(_, to)| to))
         }
@@ -78,6 +84,11 @@ mod tests {
     const QWERTZ: &[(char, char)] = &[('y', 'z'), ('z', 'y')];
     const AZERTY: &[(char, char)] = &[('a', 'q'), ('q', 'a'), ('z', 'w'), ('w', 'z'), (';', 'm'), ('m', ',')];
     const TURKISH_Q: &[(char, char)] = &[('i', 'ı'), ('\'', 'i')];
+    #[rustfmt::skip]
+    const COLEMAK: &[(char, char)] = &[
+        ('e', 'f'), ('r', 'p'), ('t', 'g'), ('y', 'j'), ('u', 'l'), ('i', 'u'), ('o', 'y'), ('p', ';'),
+        ('s', 'r'), ('d', 's'), ('f', 't'), ('g', 'd'), ('j', 'n'), ('k', 'e'), ('l', 'i'), (';', 'o'), ('n', 'k'),
+    ];
     #[rustfmt::skip]
     const DVORAK: &[(char, char)] = &[
         ('q', '\''), ('w', ','), ('e', '.'), ('r', 'p'), ('t', 'y'), ('y', 'f'), ('u', 'g'), ('i', 'c'), ('o', 'r'),
@@ -104,6 +115,7 @@ mod tests {
             (AZERTY, Code::KeyM, Code::Semicolon),
             (AZERTY, Code::KeyA, Code::KeyQ),
             (DVORAK, Code::KeyY, Code::KeyT),
+            (COLEMAK, Code::KeyY, Code::KeyO),
             (DVORAK, Code::KeyS, Code::Semicolon),
             (DVORAK, Code::KeyW, Code::Comma),
             (DVORAK, Code::KeyV, Code::Period),
@@ -114,22 +126,59 @@ mod tests {
             assert_eq!(translate(key(letter), layout(changes)), Some(key(place)), "{letter:?}");
         }
         // Every letter has a key on each of these layouts, so none falls back.
-        for changes in [QWERTZ, AZERTY, DVORAK, TURKISH_Q] {
+        for changes in [QWERTZ, AZERTY, DVORAK, COLEMAK, TURKISH_Q] {
             let typed = layout(changes);
             for &(code, ..) in POSITIONS.iter().filter(|(.., us)| us.is_ascii_lowercase()) {
                 let moved = translate(key(code), &typed).unwrap_or_else(|| panic!("{code:?} has no key"));
                 let place = POSITIONS.iter().find(|(c, ..)| *c == moved.key).map(|&(_, k, _)| k);
                 let letter = POSITIONS.iter().find(|(c, ..)| *c == code).map(|&(.., us)| us);
-                assert_eq!(place.and_then(&typed), letter);
+                assert_eq!(place.and_then(|key| typed(key, MODS)), letter);
             }
         }
     }
 
     #[test]
+    fn a_hybrid_layout_uses_its_command_layer_only_for_command_shortcuts() {
+        let hybrid = |key, modifiers: Modifiers| {
+            assert!(
+                modifiers.difference(Modifiers::SUPER).is_empty(),
+                "text/control modifiers must be excluded"
+            );
+            layout(if modifiers.contains(Modifiers::SUPER) {
+                &[]
+            } else {
+                DVORAK
+            })(key, modifiers)
+        };
+        for modifiers in [
+            MODS,
+            Modifiers::SUPER | Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT,
+        ] {
+            let shortcut = Shortcut::new(Some(modifiers), Code::KeyY);
+            assert_eq!(
+                translate(shortcut, hybrid),
+                Some(shortcut),
+                "Command uses QWERTY's Y, never T"
+            );
+        }
+        for modifiers in [
+            Modifiers::empty(),
+            Modifiers::SHIFT,
+            Modifiers::CONTROL | Modifiers::ALT,
+        ] {
+            let shortcut = Shortcut::new(Some(modifiers), Code::KeyY);
+            assert_eq!(
+                translate(shortcut, hybrid),
+                Some(Shortcut::new(Some(modifiers), Code::KeyT))
+            );
+        }
+    }
+
+    #[test]
     fn a_layout_without_the_letter_says_so_and_other_keys_pass_through() {
-        let cyrillic = |_| Some('я');
+        let cyrillic = |_, _| Some('я');
         assert_eq!(translate(key(Code::KeyY), cyrillic), None);
-        assert_eq!(translate(key(Code::KeyY), |_| None), None);
+        assert_eq!(translate(key(Code::KeyY), |_, _| None), None);
         for other in [Code::Space, Code::Digit1, Code::Semicolon] {
             assert_eq!(translate(key(other), cyrillic), Some(key(other)));
         }

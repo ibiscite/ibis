@@ -13,7 +13,7 @@ Ibis is free and open source. Searching and copying work offline after setup. Ib
 
 Ibis is an early preview.
 
-- Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Control+Command+R** on macOS, if the shortcut is available. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
+- Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Command+Shift+Y** on macOS, if the shortcut is available. Existing custom shortcuts are kept. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
 - Search a `.bib` file or your Zotero library and any group libraries you choose, even while Zotero is closed.
 - Copy a citation key for Pandoc, BibLaTeX, LaTeX or Typst, a formatted citation in APA, Chicago, Harvard or MLA, or an IEEE reference entry, then paste it where you write.
 - Works offline and never changes your library.
@@ -59,6 +59,11 @@ volumes and verses are supported. Times such as `01:23` stay literal search text
 ## Use with Zotero
 
 With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library, and any group libraries you choose, through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. When Zotero is closed, Ibis reads a private copy of Zotero's database instead, so your library is there without opening Zotero; SQLite opens only that copy. Raw file handles briefly exclude writers while copying, and Ibis never changes Zotero's own files. A simultaneous Zotero start may need to try again. Read-only disks, network or unsupported filesystems (including FUSE and overlay), pending rollback recovery, and read-only groups whose citation keys live only in Better BibTeX’s separate cache require Zotero to be open.
+
+If any selected library fails during a refresh, Ibis keeps the whole previous
+snapshot searchable and reports that it could not be updated. Even libraries
+that did respond wait until all selected libraries can be read again. The first
+load can still show available libraries with a warning naming any skipped ones.
 
 The first time, turn on Zotero's local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis tries Zotero's own Citation Key field first, then a `Citation Key:` line in Extra, then the citation key in Zotero's CSL export (for example a Better BibTeX key).
 

@@ -1404,7 +1404,7 @@ def first_run_preferences_main(args):
         settings = settings_path(system, folder, native, args.identifier)
         owned_settings = claim_settings(settings)
         env = real_app_environment(os.environ, library, folder / "config")
-        shortcut = args.shortcut or ("ctrl+super+r" if system == "Darwin" else "ctrl+shift+y")
+        shortcut = args.shortcut or ("super+shift+y" if system == "Darwin" else "ctrl+shift+y")
 
         def launch(label, with_library=False):
             nonlocal app, log
@@ -1522,7 +1522,7 @@ def main():
     parser.add_argument("--app", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--identifier", default="io.github.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
-    parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Control+Command+R on macOS")
+    parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Command+Shift+Y on macOS")
     performance = parser.add_mutually_exclusive_group()
     performance.add_argument("--budgets", type=Path, help="Measured per-platform baseline JSON, with startup_ms, first_result_ms, memory_bytes ceilings")
     performance.add_argument("--skip-performance", action="store_true", help="Keep correctness checks but skip the four 100,000-reference launches")
@@ -1634,7 +1634,7 @@ def main():
                     native.text(text)
                 wait_for_query(snapshot, text, expected, report)
 
-            shortcut = args.shortcut or ("ctrl+super+r" if system == "Darwin" else "ctrl+shift+y")
+            shortcut = args.shortcut or ("super+shift+y" if system == "Darwin" else "ctrl+shift+y")
             launch("small")
             check("startup", lambda: wait_for(lambda: shows_count(snapshot(), "3 references"), "synthetic library startup"))
             check("accessibility named search/count/list", lambda: require_tree(snapshot()))
