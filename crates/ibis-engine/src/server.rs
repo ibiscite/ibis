@@ -1,6 +1,6 @@
 //! Bounded concurrent JSON-RPC execution. A token belongs to one request lifetime.
 use crate::{
-    Cancellation, DispatchResult, Engine, Method,
+    Cancellation, DispatchResult, Engine, LibrarySubscription, Method,
     protocol::{self, FrameError},
     rpc::{self, Message, RequestId},
 };
@@ -30,13 +30,23 @@ struct Active {
 }
 
 pub fn serve<R: BufRead, W: Write + Send>(engine: Engine, reader: R, writer: W) -> Result<(), FrameError> {
-    run(
+    let changes = engine.subscribe().map_err(|_| FrameError::Io)?;
+    run_with_changes(
         Arc::new(move |method, params, cancel| engine.dispatch(method, params, cancel)),
         reader,
         writer,
+        Some(changes),
     )
 }
-fn run<R: BufRead, W: Write + Send>(dispatch: Arc<Dispatch>, mut reader: R, writer: W) -> Result<(), FrameError> {
+#[cfg(test)]
+fn run<R: BufRead, W: Write + Send>(dispatch: Arc<Dispatch>, reader: R, writer: W) -> Result<(), FrameError> {
+    run_with_changes(dispatch, reader, writer, None)
+}
+fn run_with_changes<R: BufRead, W: Write + Send>(
+    dispatch: Arc<Dispatch>,
+    mut reader: R,
+    writer: W,
+) -> Result<(), FrameError> {
     thread::scope(|scope| {
         let (output, frames) = mpsc::sync_channel::<Value>(64);
         let writing = scope.spawn(move || {
@@ -45,6 +55,35 @@ fn run<R: BufRead, W: Write + Send>(dispatch: Arc<Dispatch>, mut reader: R, writ
                 protocol::write_frame(&mut writer, &message)?;
             }
             Ok(())
+        });
+        let stopping = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let forwarding = changes.map(|changes| {
+            let output = output.clone();
+            let stopping = stopping.clone();
+            scope.spawn(move || {
+                loop {
+                    let stopped = stopping.load(std::sync::atomic::Ordering::Acquire);
+                    let event = if stopped {
+                        changes.try_recv().ok()
+                    } else {
+                        match changes.recv_timeout(std::time::Duration::from_millis(20)) {
+                            Ok(event) => Some(event),
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                            Err(_) => None,
+                        }
+                    };
+                    let Some(event) = event else { break };
+                    if output
+                        .send(json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":event}))
+                        .is_err()
+                    {
+                        break;
+                    }
+                    if stopped {
+                        break;
+                    }
+                }
+            })
         });
         let (completed, finished) = mpsc::channel::<(RequestId, u64)>();
         let mut workers: Vec<thread::JoinHandle<()>> = vec![];
@@ -197,6 +236,10 @@ fn run<R: BufRead, W: Write + Send>(dispatch: Arc<Dispatch>, mut reader: R, writ
         for worker in workers {
             let _ = worker.join();
         }
+        stopping.store(true, std::sync::atomic::Ordering::Release);
+        if let Some(forwarding) = forwarding {
+            forwarding.join().map_err(|_| FrameError::Io)?;
+        }
         drop(output);
         let result = writing.join().map_err(|_| FrameError::Io)?;
         transport.and(result)
@@ -288,6 +331,7 @@ mod tests {
             Ok(DispatchResult {
                 data: json!("fresh"),
                 exit_code: ibis_core::contract::ExitCode::Ok,
+                text: None,
             })
         });
         let server = thread::spawn(move || {
@@ -326,6 +370,40 @@ mod tests {
         );
         send(&input, json!({"jsonrpc":"2.0","id":7,"method":"libraries"}));
         assert_eq!(reply(&output)["result"], "fresh");
+        drop(input);
+        assert!(server.join().unwrap().is_ok());
+    }
+    #[test]
+    fn library_changes_are_native_notifications_without_paths() {
+        let engine = Engine::new().unwrap();
+        let changes = engine.subscribe().unwrap();
+        let (input, chunks) = mpsc::channel();
+        let (frames, output) = mpsc::channel();
+        let dispatch_engine = engine.clone();
+        let server = thread::spawn(move || {
+            run_with_changes(
+                Arc::new(move |method, params, cancel| dispatch_engine.dispatch(method, params, cancel)),
+                BufReader::new(Input {
+                    chunks,
+                    current: Cursor::new(vec![]),
+                }),
+                Output {
+                    frames,
+                    current: vec![],
+                },
+                Some(changes),
+            )
+        });
+        engine
+            .publish_library(
+                ibis_core::contract::LibraryId::file(b"synthetic event"),
+                Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
+            )
+            .unwrap();
+        let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
+        let message = protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap();
+        assert_eq!(message["method"], "ibis/libraryChanged");
+        assert_eq!(message["params"]["sequence"], 1);
         drop(input);
         assert!(server.join().unwrap().is_ok());
     }
@@ -391,6 +469,7 @@ mod tests {
             Ok(DispatchResult {
                 data: json!([]),
                 exit_code: ibis_core::contract::ExitCode::Ok,
+                text: None,
             })
         });
         let mut input = vec![];

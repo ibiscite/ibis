@@ -10,8 +10,9 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc, Mutex, RwLock,
-        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, RwLock, Weak,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc,
     },
 };
 
@@ -56,8 +57,55 @@ pub struct SearchResult {
 pub struct DispatchResult {
     pub data: Value,
     pub exit_code: ExitCode,
+    /// Literal terminal citation only after the canonical completeness/hash gate.
+    pub text: Option<String>,
+}
+impl DispatchResult {
+    pub fn citation(result: CitationResult, expected_items: usize) -> Result<Self, EngineError> {
+        let text = result
+            .copy_content(expected_items)
+            .map(|content| content.text.to_owned());
+        let exit_code = if result.losses.is_empty() && text.is_some() {
+            ExitCode::Ok
+        } else {
+            ExitCode::Findings
+        };
+        Ok(Self {
+            data: value(result)?,
+            exit_code,
+            text,
+        })
+    }
 }
 
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct LibraryChange {
+    pub sequence: u64,
+    pub libraries: Vec<LibraryId>,
+    pub snapshot: Fingerprints,
+}
+pub struct LibrarySubscription {
+    id: u64,
+    owner: Weak<Shared>,
+    receiver: mpsc::Receiver<LibraryChange>,
+}
+impl LibrarySubscription {
+    pub fn recv_timeout(&self, timeout: std::time::Duration) -> Result<LibraryChange, mpsc::RecvTimeoutError> {
+        self.receiver.recv_timeout(timeout)
+    }
+    pub fn try_recv(&self) -> Result<LibraryChange, mpsc::TryRecvError> {
+        self.receiver.try_recv()
+    }
+}
+impl Drop for LibrarySubscription {
+    fn drop(&mut self) {
+        if let Some(owner) = self.owner.upgrade()
+            && let Ok(mut subscribers) = owner.subscribers.lock()
+        {
+            subscribers.remove(&self.id);
+        }
+    }
+}
 struct State {
     index: SnapshotIndex,
     libraries: BTreeMap<LibraryId, LibraryInfo>,
@@ -66,6 +114,9 @@ struct Shared {
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
     publication: Mutex<()>,
+    subscribers: Mutex<BTreeMap<u64, mpsc::SyncSender<LibraryChange>>>,
+    next_subscription: AtomicU64,
+    publication_sequence: AtomicU64,
 }
 #[derive(Clone)]
 pub struct Engine {
@@ -93,6 +144,9 @@ impl Engine {
                     libraries,
                 })),
                 publication: Mutex::new(()),
+                subscribers: Mutex::new(BTreeMap::new()),
+                next_subscription: AtomicU64::new(0),
+                publication_sequence: AtomicU64::new(0),
             }),
         }
     }
@@ -105,6 +159,34 @@ impl Engine {
     }
     pub fn snapshot(&self) -> Result<Arc<Snapshot>, EngineError> {
         Ok(self.state()?.index.snapshot().clone())
+    }
+    pub fn subscribe(&self) -> Result<LibrarySubscription, EngineError> {
+        let (sender, receiver) = mpsc::sync_channel(16);
+        let mut subscribers = self.shared.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
+        if subscribers.len() >= 64 {
+            return Err(error(ErrorCode::SourceUnavailable));
+        }
+        let id = self.shared.next_subscription.fetch_add(1, Ordering::Relaxed);
+        subscribers.insert(id, sender);
+        Ok(LibrarySubscription {
+            id,
+            owner: Arc::downgrade(&self.shared),
+            receiver,
+        })
+    }
+    fn notify(&self, libraries: Vec<LibraryId>, snapshot: Fingerprints) -> Result<(), EngineError> {
+        let event = LibraryChange {
+            sequence: self.shared.publication_sequence.fetch_add(1, Ordering::Relaxed) + 1,
+            libraries,
+            snapshot,
+        };
+        let mut subscribers = self.shared.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
+        subscribers.retain(|_, sender| match sender.try_send(event.clone()) {
+            // Events invalidate caches: a queued event is enough to fetch newest state.
+            Ok(()) | Err(mpsc::TrySendError::Full(_)) => true,
+            Err(mpsc::TrySendError::Disconnected(_)) => false,
+        });
+        Ok(())
     }
     pub fn publish_library(&self, library: LibraryId, snapshot: Arc<Snapshot>) -> Result<(), EngineError> {
         if snapshot
@@ -130,7 +212,7 @@ impl Engine {
         libraries.insert(
             library.clone(),
             LibraryInfo {
-                id: library,
+                id: library.clone(),
                 objects: snapshot.objects().len(),
             },
         );
@@ -138,8 +220,9 @@ impl Engine {
             index: SnapshotIndex::new(combined),
             libraries,
         });
+        let fingerprints = next.index.snapshot().fingerprints().clone();
         *self.shared.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
-        Ok(())
+        self.notify(vec![library], fingerprints)
     }
     pub fn libraries(&self) -> Result<LibrariesResult, EngineError> {
         Ok(LibrariesResult {
@@ -241,7 +324,6 @@ impl Engine {
     ) -> Result<DispatchResult, EngineError> {
         cancel.check()?;
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
-        let mut exit_code = ExitCode::Ok;
         let data = match method {
             Method::Libraries => match if params.is_null() {
                 LibrariesRequest::List
@@ -256,10 +338,7 @@ impl Engine {
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
                 let result = self.cite(&request, cancel)?;
-                if !result.losses.is_empty() || result.copy_content(request.items.len()).is_none() {
-                    exit_code = ExitCode::Findings;
-                }
-                value(result)?
+                return DispatchResult::citation(result, request.items.len());
             }
             Method::Styles => {
                 let _: StylesRequest = parameters(params)?;
@@ -281,7 +360,11 @@ impl Engine {
             }
         };
         cancel.check()?;
-        Ok(DispatchResult { data, exit_code })
+        Ok(DispatchResult {
+            data,
+            exit_code: ExitCode::Ok,
+            text: None,
+        })
     }
 }
 fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {

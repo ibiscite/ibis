@@ -118,3 +118,17 @@ fn human_key_arguments_are_resolved_only_inside_the_engine() {
         ErrorCode::NotFound
     );
 }
+
+#[test]
+fn library_changes_invalidate_subscribers_without_mutating_previous_snapshots() {
+    let case = case();
+    let engine = Engine::new().unwrap();
+    let events = engine.subscribe().unwrap();
+    let library = case.library.objects()[0].object.id().library.clone();
+    engine.publish_library(library.clone(), Arc::new(case.library)).unwrap();
+    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(event.libraries, [library]);
+    assert_eq!(event.snapshot, engine.snapshot().unwrap().fingerprints().clone());
+    drop(events);
+    assert!(engine.subscribe().is_ok());
+}
