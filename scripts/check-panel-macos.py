@@ -103,7 +103,7 @@ def main():
             smoke.wait_for(native.editor_focused, "synthetic editor focused")
             native.call("set-editor-fullscreen", "true")
             smoke.wait_for(lambda: fullscreen_ready(editor_state()), "editor visibly entered its full-screen Space")
-            native.key("ctrl+super+r")
+            native.key("super+shift+y")
             smoke.wait_for(picker_ready, "picker visible with focused search over full-screen editor")
             assert fullscreen_ready(editor_state()), "Summoning the picker switched away from the full-screen editor"
             passed("picker appears over the editor in its full-screen Space")
@@ -117,7 +117,7 @@ def main():
             smoke.wait_for(lambda: native.editor_focused() and fullscreen_ready(editor_state()), "copy returns to the visible full-screen editor")
             passed("Enter copies, hides, and returns to the full-screen editor")
 
-            native.key("ctrl+super+r")
+            native.key("super+shift+y")
             smoke.wait_for(picker_ready, "panel reopens over the full-screen editor")
             assert fullscreen_ready(editor_state()), "Reopening the picker switched away from the full-screen editor"
             smoke.escape_to_hide(native, snapshot, "Escape hides the panel")
@@ -126,7 +126,7 @@ def main():
 
             native.call("set-editor-fullscreen", "false")
             smoke.wait_for(lambda: fullscreen_ready(editor_state(), False), "editor leaves full screen")
-            native.key("ctrl+super+r")
+            native.key("super+shift+y")
             smoke.wait_for(picker_ready, "panel search focused before opening its chooser")
             smoke.menu_action(native, "Choose library…")
             smoke.wait_for(lambda: chooser_ready(chooser_state()), "native chooser receives focus while the picker stays visible")

@@ -43,6 +43,7 @@ export function releaseNotes(tag, generated, repo = "ibiscite/ibis") {
   const base = `https://github.com/${repo}/releases/download/${tag}`;
   const rows = DOWNLOADS.map(([system, file, extra = ""]) => `| ${system} | [${file}](${base}/${file})${extra} |`);
   const list = changes(generated);
+  const upgrade = /^v0\.2\./.test(tag) ? "\n**macOS shortcut:** the default is now Command+Shift+Y. Ibis keeps every explicitly stored shortcut, including Control+Command+R. To keep that old chord, set `\"shortcut\": \"Control+Command+R\"`. To use the new default, remove the `shortcut` setting and restart Ibis. Windows and Linux keep Ctrl+Shift+Y.\n" : "";
   return `Ibis ${tag.replace(/^v/, "")}: press a shortcut in any app, find a reference, and copy its citation.
 
 ## Download
@@ -54,6 +55,7 @@ ${rows.join("\n")}
 **Preview build. Not signed.** Ibis is not signed by Apple or Microsoft yet. On macOS, if it says the app cannot be checked, open System Settings → Privacy & Security and choose Open Anyway. On Windows, if SmartScreen warns, choose More info, then Run anyway. In-app updates are opt-in and signed, and Ibis checks the signature before installing one.
 
 **Windows installation:** if Microsoft WebView2 Runtime is missing, the installer downloads it once, which needs an internet connection. Ibis works offline after that.
+${upgrade}
 
 Tell us what works and what doesn't: [report a problem or suggest an idea](https://github.com/${repo}/issues/new/choose).
 

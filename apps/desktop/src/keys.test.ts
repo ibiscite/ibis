@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ariaKeys, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
+import { ariaKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
 import { keyText } from "./messages";
 
 test("key labels follow the platform", () => {
@@ -104,6 +104,20 @@ test("keep-open uses its own shifted command on both platform key models", () =>
 test("shortcut labels read settings in any case and alias", () => {
   expect(shortcutLabel("Control+Command+R", true)).toBe("⌃⌘R");
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
+});
+
+test("the default shortcut follows Y across Latin layouts and falls back only without a Latin letter", () => {
+  expect(keyLabel(DEFAULT_PICKER_SHORTCUT, true)).toBe("⇧⌘Y");
+  expect(keyLabel(DEFAULT_PICKER_SHORTCUT, false)).toBe("Ctrl+Shift+Y");
+  for (const mac of [false, true]) {
+    const modifiers = mac ? { metaKey: true } : { ctrlKey: true };
+    for (const code of ["KeyY", "KeyZ", "KeyT", "KeyO"]) expect(matchesAccelerator(press("Y", { code, ...modifiers, shiftKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(true);
+    expect(matchesAccelerator(press("Z", { code: "KeyY", ...modifiers, shiftKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(false);
+    expect(matchesAccelerator(press("Н", { code: "KeyY", ...modifiers, shiftKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(true);
+    expect(matchesAccelerator(press("Y", modifiers), DEFAULT_PICKER_SHORTCUT, mac)).toBe(false);
+    expect(matchesAccelerator(press("Y", { ...modifiers, shiftKey: true, altKey: true }), DEFAULT_PICKER_SHORTCUT, mac)).toBe(false);
+  }
+  expect(matchesAccelerator(press("r", { code: "KeyR", ctrlKey: true, metaKey: true }), DEFAULT_PICKER_SHORTCUT, true)).toBe(false);
 });
 
 test("macOS displays modifiers in native order without changing other platforms", () => {

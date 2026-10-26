@@ -4,6 +4,8 @@ export type KeyRegion = keyof typeof keyText.regions;
 export type KeyAction = keyof typeof keyText.actions;
 /** One key binding the picker really handles, in accelerator syntax. */
 export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[] };
+/** The app's unset shortcut setting, also used by the website demo. */
+export const DEFAULT_PICKER_SHORTCUT = "CmdOrCtrl+Shift+Y";
 
 /** Every key the picker handles. The keys overlay, the footer hints and the
  * More menu read their labels from here, so the list cannot drift from them.
@@ -61,7 +63,7 @@ export function ariaKeys(accelerator: string, mac: boolean): string {
     part === "CmdOrCtrl" ? (mac ? "Meta" : "Control") : part.length === 1 ? part.toUpperCase() : part).join("+");
 }
 
-/** A shortcut as people read it: `⌃⌘R` on macOS, `Ctrl+Shift+Y` elsewhere. */
+/** A shortcut as people read it: `⇧⌘Y` on macOS, `Ctrl+Shift+Y` elsewhere. */
 export function shortcutLabel(shortcut: string, mac: boolean): string {
   // Settings may spell keys in any case and with the aliases the shortcut
   // parser accepts, such as `CmdOrCtrl` or `KeyR`.

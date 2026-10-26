@@ -2,6 +2,13 @@ console.error('MACOS HID CONTRACT start');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+// objc2 does not enforce Objective-C selector availability. Tauri's unchanged
+// macOS 10.13 default must not dispatch this macOS 10.15-only selector.
+const shortcutLayout = fs.readFileSync(`${__dirname}/../apps/desktop/src-tauri/src/picker/layout.rs`, 'utf8');
+assert.doesNotMatch(shortcutLayout, /\.charactersByApplyingModifiers\s*\(/,
+    'picker letter queries must remain available on macOS 10.13 and 10.14');
+assert.doesNotMatch(shortcutLayout, /\.charactersIgnoringModifiers\s*\(/,
+    'picker letter queries must retain the configured Command layer');
 const context = {ObjC: {import() {}}};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(`${__dirname}/smoke-macos.js`, 'utf8'), context);
@@ -153,6 +160,14 @@ assert.deepEqual(events, [
     [59, true, 1 << 18], [55, true, (1 << 18) | (1 << 20)],
     [15, true, (1 << 18) | (1 << 20)], [15, false, (1 << 18) | (1 << 20)],
     [55, false, 1 << 18], [59, false, 0],
+]);
+
+const defaultShortcut = [];
+context.sendPhysicalChord('super+shift+y', (...event) => defaultShortcut.push(event));
+assert.deepEqual(defaultShortcut, [
+    [55, true, 1 << 20], [56, true, (1 << 20) | (1 << 17)],
+    [16, true, (1 << 20) | (1 << 17)], [16, false, (1 << 20) | (1 << 17)],
+    [56, false, 1 << 20], [55, false, 0],
 ]);
 
 const goToFolder = [];

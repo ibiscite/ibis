@@ -69,3 +69,14 @@ test("still cleans notes that only mention a download heading inside an item", (
 test("says where to look when the change list is empty", () => {
   assert.match(releaseNotes("v0.2.0", ":robot: I have created a release *beep* *boop*\n---\n"), /See the commits since the previous release\./);
 });
+
+test("0.2 upgrade notes explain the new default and preserve explicitly stored shortcuts", () => {
+  for (const tag of ["v0.2.0", "v0.2.1"]) {
+    const notes = releaseNotes(tag, generated);
+    assert.match(notes, /default.*Command\+Shift\+Y/);
+    assert.match(notes, /explicitly stored shortcut.*Control\+Command\+R/);
+    assert.match(notes, /keep that old chord.*`"shortcut": "Control\+Command\+R"`/);
+    assert.match(notes, /remove.*`shortcut`.*restart/);
+  }
+  for (const tag of ["v0.1.1", "v0.3.0"]) assert.doesNotMatch(releaseNotes(tag, generated), /macOS shortcut/);
+});

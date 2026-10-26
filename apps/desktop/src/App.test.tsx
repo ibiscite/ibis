@@ -451,9 +451,9 @@ test("identical copy warnings are both listed without duplicate React keys", asy
 test("a rejected shortcut setting is explained even when the default works", async () => {
   backend({
     shortcut_status: () => ({
-      shortcut: "Control+Command+R",
+      shortcut: "Command+Shift+Y",
       registered: true,
-      error: 'the shortcut "Control+Nonsense" in settings is not valid; using Control+Command+R',
+      error: 'the shortcut "Control+Nonsense" in settings is not valid; using Command+Shift+Y',
     }),
   });
   render(<App />);
@@ -2699,7 +2699,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);
   expect(groups[2]).toContainEqual(["Go to the first or last item", "Home or End"]);
   // The global shortcut, labelled for this platform, is listed once it works.
-  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Open IbisCtrl+Super+R"));
+  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Open IbisCtrl+Shift+Y"));
   // Focus stays in the dialog, and the picker's keys wait until it closes.
   fireEvent.keyDown(close, { key: "Tab" });
   expect(dialog.contains(document.activeElement)).toBe(true);
