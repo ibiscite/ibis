@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 const SHA = /^[a-f0-9]{40}$/;
 const maintainer = (name) => ["diyanko bhowmik", "diyanko", "@diyanko"].includes(name.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase());
 const publicEmail = (email) => /^(?:diyanko@ibiscite\.org|noreply@github\.com|[^\s<>@]+@users\.noreply\.github\.com)$/i.test(email);
-const ai = /^(?:Assisted-by:|Co-authored-by:[ \t]*(?:Codex|Claude|ChatGPT|GitHub Copilot|OpenAI|Anthropic)\b)/im;
+// Co-authorship can disclose any AI product; never depend on a brand allowlist.
+const assisted = /^(?:Assisted-by|Co-authored-by)[ \t]*:/im;
 const fail = (message) => { throw new Error(`Commit identity check: ${message}`); };
 
 function git(args) {
@@ -72,9 +73,9 @@ export function checkAgentIdentities(event = eventInput()) {
     if (parts.length !== 5) fail("commit metadata is malformed.");
     const [author, authorEmail, committer, committerEmail, body] = parts;
     const message = body.replace(/\r?\n[ \t]+/g, " "); // Git trailers can fold onto continuation lines.
-    if (commit !== candidate && !ai.test(message) && !/^(?:Codex|Claude|ChatGPT|GitHub Copilot)\b/i.test(author)) continue;
+    if (commit !== candidate && !assisted.test(message) && !/^(?:Codex|Claude|ChatGPT|GitHub Copilot)\b/i.test(author)) continue;
     const identities = [["author", author, authorEmail], ["committer", committer, committerEmail]];
-    for (const match of message.matchAll(/^(Signed-off-by|Co-authored-by):[ \t]*([^\r\n]*)/gim)) {
+    for (const match of message.matchAll(/^(Signed-off-by|Co-authored-by)[ \t]*:[ \t]*([^\r\n]*)/gim)) {
       const identity = match[2].match(/^(.*?)\s*<([^<>]*)>\s*$/);
       identities.push([match[1].toLowerCase(), identity?.[1]?.trim() ?? match[2].split("<")[0].trim(), identity?.[2] ?? ""]);
     }

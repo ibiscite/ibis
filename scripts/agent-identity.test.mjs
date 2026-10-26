@@ -108,6 +108,20 @@ test("valid PR and merge-group candidates accept complete intended ranges", (t) 
   assert.equal(f.run([], f.event({ merge_group: { base_sha: newerBase, head_sha: merge } }, "merge_group")).status, 0);
 });
 
+test("Git-valid spaced trailer separators cannot hide candidate identities", (t) => {
+  for (const key of ["Signed-off-by", "Co-authored-by"]) {
+    const f = fixture(t); const head = f.commit(publicEmail, `${key} : Diyanko <${rejected}>`);
+    assert.equal(f.run([], f.event({ merge_group: { base_sha: f.base, head_sha: head } }, "merge_group")).status, 1);
+  }
+});
+
+test("co-author disclosures do not depend on a fixed AI product-name list", (t) => {
+  for (const name of ["Copilot", "Cursor", "Example Future Tool"]) {
+    const f = fixture(t); f.commit(rejected, `Co-authored-by: ${name} <agent@example.invalid>`);
+    assert.equal(f.run().status, 1);
+  }
+});
+
 test("missing, mismatched, shallow and empty intended inputs fail without sensitive diagnostics", (t) => {
   const f = fixture(t); const head = f.commit();
   for (const [event, name, pattern] of [
