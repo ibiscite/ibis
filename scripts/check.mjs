@@ -27,9 +27,9 @@ const scriptTests = scriptFiles
   .filter((name) => args[0] !== "--platform-script-tests" || !["ui-imports.test.mjs", "swallowed-errors.test.mjs"].includes(name))
   .map((name) => `scripts/${name}`);
 const scriptSteps = [
-  // AST guards share Vite's parser; native runners have only the built UI.
+  // AST guards need Vite; the identity guard needs the Web job's full history.
   ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name))
-    .filter((name) => args[0] !== "--platform-script-tests" || name !== "check-swallowed-errors.mjs")
+    .filter((name) => args[0] !== "--platform-script-tests" || !["check-swallowed-errors.mjs", "check-agent-identity.mjs"].includes(name))
     .map((name) => [`Repository guard: ${name}`, "node", [`scripts/${name}`]]),
   ["Script tests", "node", ["--test", ...scriptTests]],
   ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [
