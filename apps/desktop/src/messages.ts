@@ -68,6 +68,8 @@ function signIn(platform: Platform) {
 export const setupText = {
   sourcesTitle: "Where do your references live?",
   sourcesLine: "Ibis reads your library and never changes it.",
+  emptyLine: "Choose a library with references.",
+  dropFile: "You can drop a file here too.",
   zotero: "Zotero",
   zoteroHelp: "Reads your library while Zotero is open",
   foundOn: (platform: Platform) => `Found on this ${platform === "macos" ? "Mac" : platform === "windows" ? "PC" : "computer"}`,

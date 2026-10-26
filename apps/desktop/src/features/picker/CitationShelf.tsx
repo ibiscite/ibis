@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type Ref } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { SearchResult } from "../../api";
 import type { FormattedCitation } from "../../format/formatted";
 import { copiesEntry } from "../../format/styles";
@@ -33,7 +33,7 @@ export function chipLabels(records: SearchResult[]): string[] {
 /** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, outputRef }: {
+export function CitationShelf({ announce, selected, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, fallbackFocusRef }: {
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
   selected: Map<string, CitationReference>;
@@ -50,8 +50,18 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
   problem?: string;
   /** A built citation can be focused, to read it whole. */
   focusable: boolean;
-  outputRef?: Ref<HTMLElement>;
+  /** Where focus goes before a focused chip, overflow control or preview disappears. */
+  fallbackFocusRef?: RefObject<HTMLElement | null>;
 }) {
+  const preserveFocus = useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    // Ref cleanup runs before removal, while focus still identifies its owner.
+    return () => {
+      if (node.contains(document.activeElement) && fallbackFocusRef?.current?.isConnected) {
+        fallbackFocusRef.current.focus({ preventScroll: true });
+      }
+    };
+  }, [fallbackFocusRef]);
   const records = [...selected.values()];
   const keysOf = [...selected.keys()];
   const labels = chipLabels(records);
@@ -62,6 +72,11 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
   const chips = useRef<HTMLUListElement>(null);
   const more = useRef<HTMLLIElement>(null);
   const sizes = useRef<HTMLLIElement>(null);
+  const moreRef = useCallback((node: HTMLLIElement | null) => {
+    more.current = node;
+    const cleanup = preserveFocus(node);
+    return () => { cleanup?.(); more.current = null; };
+  }, [preserveFocus]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: each of these changes which chips render, so the fit is measured again.
   useLayoutEffect(() => {
     const list = chips.current;
@@ -104,7 +119,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
         {announce ? pickerText.selectionCount(selected.size) : ""}
       </p>
       {(records.length > 0 || shown !== undefined) && (
-        <div className="shelf">
+        <div className="shelf" ref={preserveFocus}>
           {records.length > 0 && (
             <ul ref={chips} className="shelf-chips" aria-label={pickerText.selectedReferences} data-expanded={(folded > 0 && expanded) || undefined}>
               <li ref={sizes} className="chip-more chip-fit-measure" aria-hidden="true" inert>
@@ -113,7 +128,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
                 ))}
               </li>
               {shownChips.map((r, i) => (
-                <li key={keysOf[i]} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
+                <li key={keysOf[i]} ref={preserveFocus} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
                   <bdi className="chip-label">{labels[i]}</bdi>
                   {r.locator && onRemoveLocator && <LocatorToken text={`${r.locator.label} ${r.locator.value}`}
                     removeLabel={pickerText.removeLocator(r.locator.label, r.locator.value, r.key)} onRemove={() => onRemoveLocator(r)} />}
@@ -121,7 +136,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
                 </li>
               ))}
               {folded > 0 && (
-                <li ref={more} className="chip-more">
+                <li ref={moreRef} className="chip-more">
                   <Button variant="quiet" size="small" aria-expanded={expanded} onPress={() => setExpanded(!expanded)}
                     aria-label={expanded ? pickerText.fewerChosen : pickerText.allChosen(records.length)}>
                     {expanded ? pickerText.fewerChosenShort : pickerText.moreChosen(folded)}
@@ -131,7 +146,7 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
             </ul>
           )}
           {shown !== undefined && (
-            <section ref={outputRef} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
+            <section ref={preserveFocus} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
               data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
               tabIndex={focusable && shown && typeof shown === "object" ? 0 : undefined}>
               {/* Static generated artwork, never user or library markup. */}

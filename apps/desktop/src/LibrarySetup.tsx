@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Choice as Format } from "./features/picker/choice";
 import type { Sources } from "./bindings";
 import { ChoiceIcon } from "./icons";
@@ -13,6 +13,8 @@ type SetupApi = {
   openFoundLibrary?: (list: number, index: number) => Promise<unknown>;
 };
 
+export type EmptyLibraryChoices = { title: ReactNode; zotero: boolean };
+
 type Action = "choose" | "zotero" | "findSources" | "openFound";
 
 /** Where people write, and the copy format that suits each (first run, step 2). */
@@ -25,11 +27,12 @@ const WRITING_PLACES = [
 /** First run, step 1, and the screen while no library is chosen: Zotero, a
  * .bib file through the system chooser, and, only when asked, libraries found
  * nearby. Only names are shown; nothing is read until one is picked (#998). */
-export function LibrarySetup({ api, perform, autoFocus = false }: {
+export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
   api: SetupApi;
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
   /** Focus the first row on mount, when the row that led here is gone. */
   autoFocus?: boolean;
+  empty?: EmptyLibraryChoices;
 }) {
   const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
   // Undefined while looking; null before an explicit search or after failure.
@@ -59,12 +62,12 @@ export function LibrarySetup({ api, perform, autoFocus = false }: {
 
   const choices: Choice[] = [
     { id: "zotero", title: setupText.zotero, help: setupText.zoteroHelp, icon: <ChoiceIcon name="library" />,
-      tag: zotero === "available" ? setupText.foundOn(currentPlatform()) : undefined },
+      tag: zotero === "available" || empty?.zotero ? setupText.foundOn(currentPlatform()) : undefined },
     { id: "file", title: setupText.file, help: setupText.fileHelp, icon: <ChoiceIcon name="file" /> },
-    ...files.map((file, index): Choice => ({
+    ...(empty ? [] : files).map((file, index): Choice => ({
       id: `found-${index}`, title: file.name, tag: file.folder || undefined, icon: <ChoiceIcon name="file" />,
     })),
-    ...(findSources ? [{
+    ...(!empty && findSources ? [{
       id: "find", title: search === 0 ? setupText.findLibraries : setupText.lookAgain, help: outcome,
       // Stays enabled while looking so keyboard focus stays on it; presses wait.
       icon: <ChoiceIcon name="find" />,
@@ -86,8 +89,8 @@ export function LibrarySetup({ api, perform, autoFocus = false }: {
   const notes = [zotero === "access_off" && setupText.zoteroAccessOff, sources?.cut_short && setupText.cutShort].filter(Boolean);
   return (
     <div className="library-setup">
-      <ChoiceList title={setupText.sourcesTitle} line={setupText.sourcesLine} choices={choices} onChoose={choose} autoFocus={autoFocus}
-        footnote={notes.length > 0 ? notes.join(" ") : undefined} />
+      <ChoiceList title={empty?.title ?? setupText.sourcesTitle} line={empty ? setupText.emptyLine : setupText.sourcesLine} choices={choices} onChoose={choose} autoFocus={autoFocus}
+        footnote={empty ? setupText.dropFile : notes.length > 0 ? notes.join(" ") : undefined} />
       {/* Search progress and outcome, announced once; the row shows the same words. */}
       {findSources && search > 0 && <p className="visually-hidden" role="status">{outcome}</p>}
     </div>

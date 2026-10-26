@@ -53,6 +53,9 @@ export function setupDemo() {
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, format),
     el("p", { className: "picker-meta" }, "Best matches", count), interpretation, list, locatorTokens, shelf, warnings,
     el("div", { className: "picker-foot" }, el("span", {}, "sample.bib · 6 invented references"), add, copy));
+  // C12 source choices require an actually empty or missing library. This
+  // fixed invented library stays loaded; an unmatched query keeps search
+  // feedback and any references already chosen, as in the app (#949).
   const empty = el("li", { textContent: "Nothing matches. Try an author, title, year or journal.", className: "picker-empty" });
   empty.setAttribute("role", "none"); list.append(empty);
   const rows = new Map(references.map((ref, index) => {

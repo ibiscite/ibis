@@ -18,7 +18,7 @@ export type Choice = {
  * [C12]): a title and one line on the tile column's edge, then result-style
  * rows. Arrow keys move, Enter or a click chooses, and focus stays on the row. */
 export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus = false }: {
-  title: string;
+  title: ReactNode;
   line?: ReactNode;
   choices: readonly Choice[];
   onChoose: (id: string) => void;

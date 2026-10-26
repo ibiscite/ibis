@@ -137,3 +137,15 @@ test("the writing step offers three places, marks the current format and reports
   expect(option(/^Typst/).textContent).toContain("Now");
   expect(screen.queryByText(/Open Ibis from any app/)).toBeNull();
 });
+
+
+test("empty-library choices show a known Zotero tag without searching or adding source types", () => {
+  const findSources = vi.fn();
+  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findSources }}
+    perform={perform} empty={{ title: "No references in My Library", zotero: true }} />);
+  expect(screen.getByRole("heading", { name: "No references in My Library" })).toBeTruthy();
+  expect(screen.getAllByRole("option")).toHaveLength(2);
+  expect(option(/^Zotero/).textContent).toMatch(/Found on this (Mac|PC|computer)/);
+  expect(screen.getByText("You can drop a file here too.")).toBeTruthy();
+  expect(findSources).not.toHaveBeenCalled();
+});
