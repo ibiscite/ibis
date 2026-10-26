@@ -19,7 +19,6 @@
 mod convert;
 mod dates;
 mod lexer;
-mod panic_guard;
 mod resolve;
 
 use std::cell::Cell;
@@ -29,6 +28,7 @@ use biblatex::Bibliography;
 
 use crate::{ParsedLibrary, SourceWarning, WarningCode};
 use ibis_core::contract::{LibraryId, Record};
+use ibis_core::panic_guard;
 use lexer::{RawEntry, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
 
