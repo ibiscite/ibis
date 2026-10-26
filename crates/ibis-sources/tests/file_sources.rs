@@ -428,21 +428,28 @@ fn relative_file_urls_stay_in_private_provenance() -> Result<(), Box<dyn std::er
         let LibraryObject::Record(record) = &loaded.snapshot.objects()[0].object else {
             return Err("missing record".into());
         };
-        assert!(
-            record
-                .raw
-                .as_ref()
-                .and_then(|raw| raw.data.as_str())
-                .is_some_and(|raw| raw.contains("invented"))
-        );
+        let raw = record
+            .raw
+            .as_ref()
+            .and_then(|raw| raw.data.as_str())
+            .ok_or("missing raw provenance")?;
+        let original: serde_json::Value = serde_json::from_str(raw)?;
+        assert_eq!(original["URL"].as_str(), Some(url));
     }
-    std::fs::write(
-        &path,
-        r#"[{"id":"online","type":"book","URL":"https://example.invalid/invented.pdf"}]"#,
-    )?;
-    let online = ibis_sources::load_file(&path)?;
-    assert!(serde_json::to_string(&online.snapshot)?.contains("https://example.invalid/invented.pdf"));
-    assert!(online.warnings.is_empty());
+    for url in [
+        "https://example.invalid/invented.pdf",
+        "ftp://example.invalid/paper.pdf",
+        "mailto:invented@example.invalid",
+        "https://doi.org/10.1000/invented",
+    ] {
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!([{"id":"online","type":"book","URL":url}]))?,
+        )?;
+        let online = ibis_sources::load_file(&path)?;
+        assert!(serde_json::to_string(&online.snapshot)?.contains(url));
+        assert!(online.warnings.is_empty());
+    }
     Ok(())
 }
 

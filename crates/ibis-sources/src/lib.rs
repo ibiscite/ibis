@@ -74,6 +74,8 @@ fn remove_local_urls(csl: &mut BTreeMap<String, Value>, problems: &mut Vec<Strin
                 .iter()
                 .any(|prefix| url.starts_with(prefix))
             || attachments::windows_drive(url)
+            || url.contains('\\')
+            || url.contains('/') && attachments::scheme(url).is_none()
     }) {
         csl.remove("URL");
         problems.push("local file URL omitted".into());
