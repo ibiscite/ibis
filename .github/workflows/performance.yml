@@ -3,9 +3,6 @@ name: Release performance
 on:
   pull_request:
     paths: ["crates/**", "apps/desktop/**", "Cargo.*", "rust-toolchain.toml", "scripts/**", ".github/workflows/performance.yml"]
-  push:
-    branches: [main]
-    paths: ["crates/**", "apps/desktop/**", "Cargo.*", "rust-toolchain.toml", "scripts/**", ".github/workflows/performance.yml"]
   workflow_dispatch:
 
 permissions:
@@ -18,6 +15,7 @@ concurrency:
 jobs:
   performance:
     name: Release performance (Linux, diagnostic)
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     # Deliberately separate from CI result; neither it nor publication needs this job.
     continue-on-error: true
     runs-on: ubuntu-24.04
@@ -28,15 +26,16 @@ jobs:
       - name: Check out candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
+          fetch-depth: 2
           path: candidate
           persist-credentials: false
 
       - name: Check out main baseline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Main pushes compare the previous main head; PRs compare current main.
-          ref: ${{ github.event_name == 'push' && github.event.before || 'main' }}
+          # The merge candidate's first parent is exactly the main source it includes.
+          ref: ${{ github.sha }}
           fetch-depth: 2
           path: baseline
           persist-credentials: false
@@ -46,10 +45,7 @@ jobs:
         run: |
           mkdir -p performance
           candidate_sha=$(git -C candidate rev-parse HEAD)
-          if [ "$(git -C baseline rev-parse HEAD)" = "$candidate_sha" ]; then
-            # Manual runs on main compare the preceding main commit.
-            git -C baseline checkout --detach HEAD^
-          fi
+          git -C baseline checkout --detach HEAD^1
           main_sha=$(git -C baseline rev-parse HEAD)
           printf 'CANDIDATE_SHA=%s\nMAIN_SHA=%s\n' "$candidate_sha" "$main_sha" >> "$GITHUB_ENV"
           printf 'candidate=%s\nmain=%s\n' "$candidate_sha" "$main_sha" > performance/sources.txt
@@ -99,9 +95,7 @@ jobs:
         run: |
           # Each source uses its own toolchain, lockfile, interface and target dir.
           # One candidate harness observes both; the old source need not contain it.
-          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 -B candidate/scripts/release-performance.py --app baseline/target-performance/release/ibis-desktop --sha "$MAIN_SHA" --output performance/main.json
-          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 -B candidate/scripts/release-performance.py --app candidate/target-performance/release/ibis-desktop --sha "$CANDIDATE_SHA" --output performance/candidate.json
-          /usr/bin/python3 -B candidate/scripts/release-performance.py --compare performance/candidate.json performance/main.json --output performance/comparison.json | tee performance/comparison.md
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 -B candidate/scripts/release-performance.py --app candidate/target-performance/release/ibis-desktop --sha "$CANDIDATE_SHA" --baseline-app baseline/target-performance/release/ibis-desktop --main-sha "$MAIN_SHA" --output performance
           cat performance/comparison.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Note an unavailable diagnostic

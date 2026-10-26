@@ -1,5 +1,7 @@
 """Synthetic contracts for the diagnostic release-build comparison."""
 import importlib.util
+import json
+import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -49,6 +51,7 @@ class ReleasePerformanceTests(unittest.TestCase):
         before = {(10, 100): 20, (11, 101): 5}
         after = {(10, 100): 23, (11, 101): 7}
         self.assertEqual(perf.wakeup_delta(before, after), 5)
+        self.assertEqual(perf.wakeup_delta(before, after | {(12, 102): 3}), 8)
         for invalid in ({(10, 100): 23}, {(10, 100): 23, (11, 102): 7},
                         {(10, 100): 19, (11, 101): 7}):
             with self.subTest(invalid=invalid), self.assertRaises(perf.smoke.Unavailable):
@@ -56,7 +59,7 @@ class ReleasePerformanceTests(unittest.TestCase):
 
     def test_wakeups_are_scheduler_wakeups_not_context_switches(self):
         self.assertEqual(perf.parse_wakeups("synthetic (123, #threads: 1)\nnr_switches : 900\nnr_wakeups : 12\n"), 12)
-        for text in ("nr_switches : 900\n", "nr_wakeups : -1\n", "nr_wakeups : unknown\n"):
+        for text in ("nr_wakeups_sync : 42\n", "nr_switches : 900\n", "nr_wakeups : -1\n", "nr_wakeups : unknown\n"):
             with self.subTest(text=text), self.assertRaises(perf.smoke.Unavailable):
                 perf.parse_wakeups(text)
 
@@ -67,6 +70,7 @@ class ReleasePerformanceTests(unittest.TestCase):
             self.stale = stale
             self.shows = 0
             self.typed = []
+            self.app = type("App", (), {"pid": 123})()
 
         def key(self, chord):
             if chord == "Escape":
@@ -76,6 +80,9 @@ class ReleasePerformanceTests(unittest.TestCase):
                 self.shows += 1
             elif chord == "ctrl+a":
                 self.selected = True
+
+        def window(self, pid):
+            return "42" if self.visible else None
 
         def focus_editor(self):
             assert not self.visible
@@ -96,22 +103,32 @@ class ReleasePerformanceTests(unittest.TestCase):
 
     def test_native_samples_require_real_show_and_unique_completed_query(self):
         native = self.Native()
-        def observation(action, ready, timeout=20):
+        def observation(action, ready, timeout=20, phases=None):
             action()
             self.assertTrue(ready())
             return 1.25
-        with patch.object(perf, "observe", side_effect=observation):
-            summon, typing = perf.interaction_samples(native)
-        self.assertEqual(summon, [1.25] * 20)
-        self.assertEqual(typing, [1.25] * 20)
-        self.assertEqual(native.shows, 21)
-        self.assertEqual(len([text for text in native.typed if len(text) == 1]), 21)
-        with patch.object(perf, "observe", side_effect=observation), self.assertRaises(AssertionError):
+        def titles(model):
+            def read():
+                if len(model.value) == 10:
+                    return {f"Ibis smoke reference {i:06d}" for i in range(10)}
+                return {"Ibis smoke reference 00000" + ("x" if model.stale else model.value[-1:])}
+            return read
+        with patch.object(perf, "observe", side_effect=observation), patch.object(perf, "result_reader", side_effect=titles), \
+             patch.object(perf.smoke, "run", return_value="42"), patch.object(perf.smoke, "wait_for_query"), patch.object(perf.time, "sleep"):
+            summon, typing, probes = perf.interaction_samples(native)
+        self.assertEqual(summon, [1.25] * 10)
+        self.assertEqual(typing, [1.25] * 10)
+        self.assertEqual(native.shows, 11)
+        self.assertEqual(len(probes["typing"]), 10)
+        self.assertEqual(len([text for text in native.typed if len(text) == 1]), 11)
+        with patch.object(perf, "observe", side_effect=observation), patch.object(perf, "result_reader", side_effect=titles), \
+             patch.object(perf.smoke, "run", return_value="42"), patch.object(perf.smoke, "wait_for_query"), \
+             patch.object(perf.time, "sleep"), self.assertRaises(AssertionError):
             perf.interaction_samples(self.Native(stale=True))
 
     def test_native_observation_waits_for_evidence_and_never_subtracts_overhead(self):
         states = iter((False, False, True))
-        ticks = iter((0, .001, .020, .040, .045))
+        ticks = iter((0, .001, .002, .003, .020, .021, .022, .040, .041, .045))
         with patch.object(perf.time, "monotonic", side_effect=lambda: next(ticks)), patch.object(perf.time, "sleep") as sleep:
             elapsed = perf.observe(lambda: None, lambda: next(states))
         self.assertEqual(elapsed, 45)
@@ -120,6 +137,27 @@ class ReleasePerformanceTests(unittest.TestCase):
     def test_native_observation_has_a_deadline(self):
         with patch.object(perf.time, "monotonic", side_effect=(0, 21)), self.assertRaises(AssertionError):
             perf.observe(lambda: None, lambda: False)
+
+
+    def test_pair_uses_abba_twenty_samples_and_source_executable_hashes(self):
+        order = []
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            candidate, baseline = root / "candidate-app", root / "main-app"
+            candidate.write_bytes(b"synthetic candidate executable")
+            baseline.write_bytes(b"synthetic baseline executable")
+            def measure(app, sha):
+                order.append(app.name)
+                value = self.report(sha, len(order))
+                value["summon_samples_ms"] = value["summon_samples_ms"][:10]
+                value["typing_samples_ms"] = value["typing_samples_ms"][:10]
+                return value
+            with patch.object(perf, "measure", side_effect=measure):
+                perf.paired_measurements(candidate, "b" * 40, baseline, "a" * 40, root / "reports")
+            self.assertEqual(order, ["main-app", "candidate-app", "candidate-app", "main-app"])
+            reports = [json.loads((root / "reports" / f"{key}.json").read_text()) for key in ("candidate", "main")]
+            self.assertNotEqual(reports[0]["executable_sha256"], reports[1]["executable_sha256"])
+            self.assertTrue(all(len(report["summon_samples_ms"]) == 20 for report in reports))
 
 
 if __name__ == "__main__":

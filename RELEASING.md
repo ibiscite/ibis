@@ -41,13 +41,14 @@ checks still gate publication.
 ## Diagnostic release performance
 
 The optional **Release performance** workflow compares Linux release executables
-with an exact `main` source on the same runner (previous `main` for a main push or
-manual run at its head). Its artifact records both SHAs, twenty warm summon and
-single-keystroke samples at 100,000 synthetic references, hidden idle process-tree
+with their exact `main` parent on the same runner. Pull requests build the merge
+candidate, so unrelated main changes cannot enter the delta; manual runs are
+limited to main and compare its previous commit. Its artifact records both SHAs, twenty warm summon and
+single-keystroke samples in alternating ABBA launches at 100,000 synthetic references, hidden idle process-tree
 RSS and scheduler wakeups, and the comparison. It never gates `CI result` or
 publication. Keyboard delivery, accessibility reads and polling are included in
 the observed timings; these do not certify the app's internal latency budgets.
-Idle wakeups cover threads present at both endpoints; census changes invalidate
+Idle wakeups include the accessibility bridge; disappeared or reused threads invalidate
 the measurement, and threads that start and exit inside the interval are not
 observed. Missing capabilities produce an unavailable diagnostic, never a zero
 or a pass. No personal libraries or app logs are collected.
