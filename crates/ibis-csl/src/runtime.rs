@@ -196,6 +196,14 @@ mod tests {
             background: false,
         }
     }
+    fn synthetic(count: usize, bibliography: bool) -> Prepared {
+        let items: Vec<_> = (0..count).map(|index| serde_json::json!({"id":format!("ibis-{index}"), "type":"book", "title":format!("Synthetic title {index}"), "author":[{"family":if index==0 {"Taylor".into()} else {format!("Invented{index}")},"given":"Avery"}], "issued":{"date-parts":[[2026]]}, "publisher":"Imaginary Press"})).collect();
+        let cites: Vec<_> = (0..count)
+            .map(|index| serde_json::json!({"id":format!("ibis-{index}")}))
+            .collect();
+        Prepared {json:serde_json::json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(), outcomes:(0..count).map(|item|ibis_core::contract::ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![],empty:false}
+    }
+
     #[test]
     fn interrupts_unbounded_script_and_fresh_runtime_recovers() {
         let limits = Limits::default();
@@ -223,6 +231,91 @@ mod tests {
         let session = Session::new(&limits, &control).unwrap();
         let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
         assert_eq!(session.render(&prepared.json), Err(JsFailure::BridgeRefusal));
+    }
+
+    #[test]
+    fn measured_software_stack_budget_on_synthetic_apa() {
+        use std::io::Write;
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mut minimum = 0;
+                for kib in [64, 128, 256, 384, 512, 768, 1024] {
+                    let limits = Limits {
+                        stack_bytes: kib * 1024,
+                        ..Limits::default()
+                    };
+                    assert!(limits.valid());
+                    let outcome = match Session::new(&limits, &control()) {
+                        Ok(session) => match session.render(&synthetic(1, false).json) {
+                            Ok(json) => {
+                                let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+                                assert!(value["text"] == "(Taylor, 2026)", "synthetic probe output changed");
+                                if minimum == 0 {
+                                    minimum = kib;
+                                }
+                                "success"
+                            }
+                            Err(error) => error.label(),
+                        },
+                        Err(_) => "bootstrap-refused",
+                    };
+                    writeln!(
+                        std::io::stdout(),
+                        "CSL stack probe {}: budget-kib={kib} result={outcome}",
+                        std::env::consts::OS
+                    )
+                    .unwrap();
+                }
+                // Use a separate minimal context: the recursion probe has no formatter or user data.
+                let runtime = Runtime::new().unwrap();
+                runtime.set_max_stack_size(Limits::default().stack_bytes);
+                install_interrupt(&runtime, &control());
+                let context = Context::full(&runtime).unwrap();
+                let depth = context.with(|ctx| {
+                    let error = ctx
+                        .eval::<(), _>("globalThis.__ibisProbeDepth=0;(function recur(){__ibisProbeDepth++;recur()})()")
+                        .unwrap_err();
+                    assert_eq!(failure(&ctx, "recursion-probe", &error), JsFailure::StackLimit);
+                    ctx.globals().get::<_, usize>("__ibisProbeDepth").unwrap()
+                });
+                writeln!(
+                    std::io::stdout(),
+                    "CSL stack probe {}: minimum-success-kib={minimum} default-recursion-depth={depth}",
+                    std::env::consts::OS
+                )
+                .unwrap();
+                assert!(
+                    minimum > 0,
+                    "no validated software stack budget formatted synthetic APA"
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+
+        // One representative large request, with finite software/native headroom.
+        std::thread::Builder::new()
+            .stack_size(4 * 1024 * 1024)
+            .spawn(|| {
+                let limits = Limits {
+                    stack_bytes: 1024 * 1024,
+                    ..Limits::default()
+                };
+                let mut control = control();
+                control.deadline = Instant::now() + Duration::from_secs(30);
+                let mut session = Session::new(&limits, &control).unwrap();
+                assert!(
+                    session
+                        .run(&synthetic(100, true), &limits, &control)
+                        .unwrap()
+                        .copy_content(100)
+                        .is_some()
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]
