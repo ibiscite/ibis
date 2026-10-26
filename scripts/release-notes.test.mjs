@@ -75,6 +75,7 @@ test("0.2 upgrade notes explain the new default and preserve explicitly stored s
     const notes = releaseNotes(tag, generated);
     assert.match(notes, /default.*Command\+Shift\+Y/);
     assert.match(notes, /explicitly stored shortcut.*Control\+Command\+R/);
+    assert.match(notes, /keep that old chord.*`"shortcut": "Control\+Command\+R"`/);
     assert.match(notes, /remove.*`shortcut`.*restart/);
   }
   for (const tag of ["v0.1.1", "v0.3.0"]) assert.doesNotMatch(releaseNotes(tag, generated), /macOS shortcut/);

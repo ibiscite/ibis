@@ -279,6 +279,9 @@ test("the demo opens with the platform's Y shortcut across keyboard layouts", { 
       assert.equal(await page.locator("html").getAttribute("data-platform"), mac ? "macos" : platform === "Win32" ? "windows" : "linux");
       const cases = [
         ...["KeyY", "KeyZ", "KeyT", "KeyO"].map(code => [{ key: "Y", code, ...modifiers }, true]),
+        // The hybrid Dvorak–QWERTY Command layer sends T from physical T;
+        // its Y arrives from physical Y, already accepted above.
+        [{ key: "T", code: "KeyT", ...modifiers }, false],
         [{ key: "Z", code: "KeyY", ...modifiers }, false],
         [{ key: "Н", code: "KeyY", ...modifiers }, true],
         [{ key: "r", code: "KeyR", ctrlKey: true, metaKey: true }, false],

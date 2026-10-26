@@ -114,8 +114,10 @@ default, remove the `shortcut` setting and restart Ibis.
 On Windows and X11 a shortcut letter follows the key labelled with it. On
 macOS Ibis moves a letter to the key that types it on the active layout, so it
 stays the labelled key on QWERTZ, AZERTY, Dvorak and Colemak, and follows a
-layout switch within about two seconds. When no key types the letter (for
-example on a Cyrillic layout), the shortcut uses the letter's US-keyboard
+layout switch within about two seconds. Command shortcuts use the layout’s
+Command layer: Dvorak–QWERTY ⌘ therefore uses QWERTY while Command is held;
+custom shortcuts without Command still follow Dvorak. When no key types the
+letter (for example on a Cyrillic layout), the shortcut uses the letter's US-keyboard
 place and the picker says so. Non-English keyboard coverage remains
 incomplete. Avoid Ctrl+Alt combinations on Windows because many layouts use
 them as AltGr.

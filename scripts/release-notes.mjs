@@ -43,7 +43,7 @@ export function releaseNotes(tag, generated, repo = "ibiscite/ibis") {
   const base = `https://github.com/${repo}/releases/download/${tag}`;
   const rows = DOWNLOADS.map(([system, file, extra = ""]) => `| ${system} | [${file}](${base}/${file})${extra} |`);
   const list = changes(generated);
-  const upgrade = /^v0\.2\./.test(tag) ? "\n**macOS shortcut:** the default is now Command+Shift+Y. Ibis keeps every explicitly stored shortcut, including Control+Command+R. To use the new default, remove the `shortcut` setting and restart Ibis. Windows and Linux keep Ctrl+Shift+Y.\n" : "";
+  const upgrade = /^v0\.2\./.test(tag) ? "\n**macOS shortcut:** the default is now Command+Shift+Y. Ibis keeps every explicitly stored shortcut, including Control+Command+R. To keep that old chord, set `\"shortcut\": \"Control+Command+R\"`. To use the new default, remove the `shortcut` setting and restart Ibis. Windows and Linux keep Ctrl+Shift+Y.\n" : "";
   return `Ibis ${tag.replace(/^v/, "")}: press a shortcut in any app, find a reference, and copy its citation.
 
 ## Download

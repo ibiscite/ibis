@@ -43,8 +43,8 @@ export function setupDemo() {
   const labels = { copy: "copy", add: "add", move: "choose", escape: "step back", preview: "show output" };
   const touch = matchMedia("(hover: none)").matches;
   // The app's default shortcut also opens this example, so visitors learn it by using it.
-  // On macOS the app follows the key that types the letter; only a layout
-  // without Latin letters (such as Cyrillic) keeps its US place (#196).
+  // The event key includes the layout’s Command layer (Dvorak–QWERTY ⌘);
+  // only a layer without Latin letters keeps its US place (#196).
   const opens = event => matchesAccelerator(event, DEFAULT_PICKER_SHORTCUT, mac);
   if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then Copy.";
   else hint.append(el("kbd", { textContent: keyLabel(DEFAULT_PICKER_SHORTCUT, mac) }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));

@@ -414,8 +414,10 @@ where they work (search box, anywhere in Ibis, a menu, any app), with the action
 first and its keys at the end of the row, as system shortcut lists do.
 
 The global default is Command+Shift+Y on macOS and Ctrl+Shift+Y elsewhere.
-On macOS its letter follows the active keyboard layout. Defaults stay unset
-in settings, and an explicitly stored custom shortcut is never replaced.
+On macOS its letter follows the active keyboard layout; a Command shortcut
+uses that layout’s Command layer (including Dvorak–QWERTY ⌘), without Shift,
+Option or Control changing the letter. Defaults stay unset in settings, and
+an explicitly stored custom shortcut is never replaced.
 
 | Input | Does |
 |---|---|
