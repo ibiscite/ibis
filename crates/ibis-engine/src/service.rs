@@ -21,6 +21,8 @@ mod sources;
 
 mod formatting;
 pub use formatting::Cancellation;
+mod prepared;
+pub use prepared::{CitationCommitError, PreparedCitation};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LibraryInfo {
@@ -373,9 +375,8 @@ impl Engine {
         )
     }
     pub fn cite(&self, request: &CitationRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
-        cancel.check()?;
-        let snapshot = self.snapshot()?;
-        self.cite_snapshot(&snapshot, request, cancel)
+        self.prepare_citation(request, cancel)
+            .map(PreparedCitation::into_result)
     }
     fn cite_snapshot(
         &self,

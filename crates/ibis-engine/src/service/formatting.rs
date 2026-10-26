@@ -102,6 +102,29 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         cancel.check()?;
+        let annotations: Vec<_> = request
+            .items
+            .iter()
+            .map(|pick| super::prepared::annotation_error(snapshot, pick, None))
+            .collect();
+        if annotations.iter().any(Option::is_some) {
+            return Ok(CitationResult::new(
+                String::new(),
+                None,
+                None,
+                DisplayTree::default(),
+                annotations
+                    .into_iter()
+                    .enumerate()
+                    .map(|(item, error)| ItemOutcome::Refused {
+                        item,
+                        error: error.unwrap_or(CitationError::UnsupportedForm),
+                    })
+                    .collect(),
+                vec![],
+                vec![],
+            ));
+        }
         let formatter = {
             let mut current = self.shared.formatter.lock().map_err(|_| error(ErrorCode::Internal))?;
             if let Some(formatter) = current.as_ref() {
