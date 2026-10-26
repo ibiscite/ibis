@@ -17,6 +17,7 @@
     let engine = engines.get(key);
     if (!engine) {
       engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id) }, xml, request.locale ?? undefined, request.locale !== null);
+      engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];
       if (engines.size >= 8) engines.delete(engines.keys().next().value);
       engines.set(key, engine);

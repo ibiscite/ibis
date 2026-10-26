@@ -35,6 +35,26 @@ pub(crate) fn prepare(
         return Err(FormatError::InvalidLocale);
     }
     bounded_json(request, limits.input_bytes)?;
+    if request
+        .input_language
+        .as_deref()
+        .is_some_and(crate::output::unsupported_controls)
+        || request.items.iter().any(|pick| {
+            crate::output::unsupported_controls(&pick.item.key)
+                || pick
+                    .annotation
+                    .as_ref()
+                    .is_some_and(|id| crate::output::unsupported_controls(&id.key))
+                || pick
+                    .prefix
+                    .iter()
+                    .chain(&pick.suffix)
+                    .any(|run| crate::output::unsupported_controls(&run.text))
+        })
+    {
+        return Err(FormatError::InvalidRequest);
+    }
+
     let bibliography = style == "ieee" || matches!(request.form, CitationForm::BibliographyOnly | CitationForm::Full);
     let mut items = Vec::new();
     let mut cites = Vec::new();
@@ -48,7 +68,8 @@ pub(crate) fn prepare(
     let mut remaining = limits.input_bytes;
     for (index, pick) in request.items.iter().enumerate() {
         let form = pick.form.unwrap_or(request.form);
-        let refusal = if form == CitationForm::Narrative
+        let refusal = if (form == CitationForm::AuthorOnly && pick.suppress_author)
+            || form == CitationForm::Narrative
             || (style == "ieee" && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
             || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography
                 && style != "ieee")
@@ -67,11 +88,34 @@ pub(crate) fn prepare(
         let LibraryObject::Record(record) = &object.object else {
             return Err(FormatError::InvalidRequest);
         };
+        if form == CitationForm::AuthorOnly
+            && !record.csl.get("author").and_then(Value::as_array).is_some_and(|names| {
+                names.iter().any(|name| {
+                    ["literal", "family", "given"].into_iter().any(|field| {
+                        name.get(field)
+                            .and_then(Value::as_str)
+                            .is_some_and(|text| !text.trim().is_empty())
+                    })
+                })
+            })
+        {
+            outcomes.push(ItemOutcome::Refused {
+                item: index,
+                error: CitationError::UnsupportedForm,
+            });
+            continue;
+        }
         let id = if let Some(id) = ids.get(&pick.item) {
             id.clone()
         } else {
             let id = format!("ibis-{}", items.len());
             let bytes = bounded_json(&record.csl, remaining)?;
+            if record.csl.keys().any(|key| crate::output::unsupported_controls(key))
+                || record_controls(record.csl.values())
+            {
+                return Err(FormatError::InvalidRequest);
+            }
+
             remaining = remaining.saturating_sub(bytes.len());
             let mut value: serde_json::Map<String, Value> =
                 serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
@@ -132,7 +176,7 @@ pub(crate) fn prepare(
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
     }
-    if !bibliography && style != "modern-language-association" {
+    if style != "ieee" && style != "modern-language-association" {
         notices.push(Notice::YearSuffixWithheld);
     }
     if bibliography && request.keep_order {
@@ -198,6 +242,24 @@ fn validate_pick(snapshot: &Snapshot, pick: &CitationItem) -> Option<CitationErr
         return Some(CitationError::AnnotationMismatch);
     }
     None
+}
+
+fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
+    let mut pending: Vec<_> = values.collect();
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::String(text) if crate::output::unsupported_controls(text) => return true,
+            Value::Object(map) => {
+                if map.keys().any(|key| crate::output::unsupported_controls(key)) {
+                    return true;
+                }
+                pending.extend(map.values());
+            }
+            Value::Array(values) => pending.extend(values),
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Abort serialization at the boundary instead of allocating an unbounded JSON copy.

@@ -1,6 +1,7 @@
 use crate::{FormatError, input::Prepared};
 use ibis_core::contract::*;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,14 +22,23 @@ pub(crate) fn refused(input: &Prepared) -> CitationResult {
         input.notices.clone(),
     )
 }
-pub(crate) fn result(json: &str, input: &Prepared) -> Result<CitationResult, FormatError> {
+pub(crate) fn result(
+    json: &str,
+    input: &Prepared,
+    superscripts: &BTreeMap<char, String>,
+) -> Result<CitationResult, FormatError> {
     let output: Outputs = serde_json::from_str(json).map_err(|_| FormatError::Runtime)?;
-    if output.text.trim().is_empty() {
+    if output.text.trim().is_empty()
+        || [&output.text, &output.html, &output.rtf]
+            .into_iter()
+            .any(|text| unsupported_controls(text))
+    {
         return Err(FormatError::Runtime);
     }
     let runs = parse_html(&output.html)?;
-    let display_text: String = runs.iter().map(|run| run.text.as_str()).collect();
-    if display_text.trim() != output.text.trim() {
+    if runs.iter().any(|run| unsupported_controls(&run.text))
+        || !presentation_matches(&output.text, &runs, superscripts)
+    {
         return Err(FormatError::Runtime);
     }
     Ok(CitationResult::new(
@@ -45,6 +55,52 @@ pub(crate) fn result(json: &str, input: &Prepared) -> Result<CitationResult, For
         input.losses.clone(),
         input.notices.clone(),
     ))
+}
+
+/// Unicode paragraph/line separators and conventional text whitespace remain data.
+pub(crate) fn unsupported_controls(text: &str) -> bool {
+    text.chars()
+        .any(|ch| ch.is_control() && !matches!(ch, '\t' | '\r' | '\n' | '\u{85}'))
+}
+
+/// Consume exact text, allowing only processor-known glyph presentation and
+/// nonbreaking spaces. Do not fold case, compatibility characters or space counts.
+fn presentation_matches(text: &str, runs: &RichText, superscripts: &BTreeMap<char, String>) -> bool {
+    let mut shown = runs
+        .iter()
+        .flat_map(|run| run.text.chars().map(move |ch| (ch, run.script)))
+        .peekable();
+    for original in text.chars() {
+        let Some(&(ch, script)) = shown.peek() else {
+            return false;
+        };
+        if original == ch || matches!((original, ch), (' ', '\u{a0}') | ('\u{a0}', ' ')) {
+            shown.next();
+            continue;
+        }
+        let expansion = match script {
+            Script::Superscript => superscripts.get(&original).cloned(),
+            Script::Subscript => match original {
+                '₀'..='₉' => char::from_u32(original as u32 - '₀' as u32 + '0' as u32).map(|ch| ch.to_string()),
+                '₊' => Some("+".into()),
+                '₋' => Some("−".into()),
+                '₌' => Some("=".into()),
+                '₍' => Some("(".into()),
+                '₎' => Some(")".into()),
+                _ => None,
+            },
+            Script::Normal => None,
+        };
+        let Some(expansion) = expansion else {
+            return false;
+        };
+        for expected in expansion.chars() {
+            if shown.next() != Some((expected, script)) {
+                return false;
+            }
+        }
+    }
+    shown.next().is_none()
 }
 
 /// Only processor-generated passive tags are permitted in canonical clipboard HTML.
@@ -177,5 +233,68 @@ mod tests {
         let runs = parse_html("<i>例 &#38; &#x1F600; &amp;lt;</i>").unwrap();
         assert_eq!(runs[0].text, "例 & 😀 &lt;");
         assert!(runs[0].italic);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod review_tests {
+    use super::*;
+    use serde_json::json;
+    fn prepared() -> Prepared {
+        Prepared {
+            json: String::new(),
+            outcomes: vec![ItemOutcome::Rendered { item: 0 }],
+            losses: vec![],
+            notices: vec![],
+            empty: false,
+        }
+    }
+    fn output(text: &str, html: &str, rtf: &str) -> Result<CitationResult, FormatError> {
+        result(
+            &json!({"text":text,"html":html,"rtf":rtf}).to_string(),
+            &prepared(),
+            &BTreeMap::from([('²', "2".into()), ('™', "TM".into())]),
+        )
+    }
+    #[test]
+    fn presentation_equivalents_preserve_canonical_representations() {
+        for (text, html) in [
+            ("m²", "m<sup>2</sup>"),
+            ("™", "<sup>TM</sup>"),
+            ("CO2", "CO<sub>2</sub>"),
+            ("Synthetic  area", "Synthetic \u{a0}area"),
+            ("Synthetic\u{2028}one\u{2029}two", "Synthetic\u{2028}one\u{2029}two"),
+        ] {
+            let result = output(text, html, "{\\rtf1 canonical}").unwrap();
+            assert_eq!(result.text, text);
+            assert_eq!(result.html.as_deref(), Some(html));
+            assert_eq!(result.rtf.as_deref(), Some("{\\rtf1 canonical}"));
+        }
+    }
+    #[test]
+    fn visible_text_changes_are_not_presentation_equivalents() {
+        for (text, html) in [
+            ("m²", "m2"),
+            ("m²", "m<sub>2</sub>"),
+            ("m²", "m<sup>3</sup>"),
+            ("m2", "m<sup>3</sup>"),
+            ("Synthetic area", "Synthetic  area"),
+            ("Synthetic  area", "Synthetic area"),
+            ("Word", "word"),
+            ("Ａ", "A"),
+        ] {
+            assert!(output(text, html, "{\\rtf1 canonical}").is_err());
+        }
+    }
+    #[test]
+    fn nul_in_any_canonical_representation_is_rejected() {
+        for (text, html, rtf) in [
+            ("Synthetic\0text", "Synthetic\0text", "{\\rtf1 canonical}"),
+            ("Synthetic text", "Synthetic\0text", "{\\rtf1 canonical}"),
+            ("Synthetic text", "Synthetic text", "{\\rtf1\0canonical}"),
+        ] {
+            assert!(output(text, html, rtf).is_err());
+        }
     }
 }

@@ -5,6 +5,7 @@ use crate::{
     service::{Control, WorkError},
 };
 use rquickjs::{Context, Module, Runtime};
+use std::collections::BTreeMap;
 
 const PROCESSOR: &str = include_str!("../../../apps/desktop/vendor/csl/citeproc.mjs");
 const EN_US: &str = include_str!("../../../apps/desktop/vendor/csl/locales/en-US.xml");
@@ -28,6 +29,7 @@ const STYLE_XML: [(&str, &str); 5] = [
 pub(crate) struct Session {
     context: Context,
     runtime: Runtime,
+    superscripts: BTreeMap<char, String>,
 }
 impl Session {
     pub(crate) fn new(limits: &Limits, control: &Control) -> Result<Self, WorkError> {
@@ -36,7 +38,7 @@ impl Session {
         runtime.set_max_stack_size(limits.stack_bytes);
         install_interrupt(&runtime, control);
         let context = Context::full(&runtime).map_err(|_| FormatError::ResourceLimit)?;
-        context
+        let superscripts = context
             .with(|ctx| {
                 crate::locale::install(&ctx)?;
                 let (module, promise) = Module::declare(ctx.clone(), "citeproc", PROCESSOR)?.eval()?;
@@ -48,10 +50,17 @@ impl Session {
                     ctx.json_parse(serde_json::to_string(&STYLE_XML).map_err(|_| rquickjs::Error::Unknown)?)?,
                 )?;
                 ctx.globals().set("__ibisLocale", EN_US)?;
-                ctx.eval::<(), _>(include_str!("bridge.js"))
+                ctx.eval::<(), _>(include_str!("bridge.js"))?;
+                // Snapshot trusted presentation data before any reference is supplied.
+                let table: String = ctx.eval("JSON.stringify(CSL.SUPERSCRIPTS)")?;
+                serde_json::from_str::<BTreeMap<char, String>>(&table).map_err(|_| rquickjs::Error::Unknown)
             })
             .map_err(|_| control.error().unwrap_or(WorkError::Public(FormatError::Runtime)))?;
-        Ok(Self { context, runtime })
+        Ok(Self {
+            context,
+            runtime,
+            superscripts,
+        })
     }
     pub(crate) fn run(
         &mut self,
@@ -85,7 +94,7 @@ impl Session {
         if json.len() > limits.output_bytes {
             return Err(FormatError::ResourceLimit.into());
         }
-        output::result(&json, prepared).map_err(Into::into)
+        output::result(&json, prepared, &self.superscripts).map_err(Into::into)
     }
 }
 fn install_interrupt(runtime: &Runtime, control: &Control) {
@@ -124,6 +133,18 @@ mod tests {
         let fresh = Session::new(&limits, &super::tests::control()).unwrap();
         assert_eq!(fresh.context.with(|ctx| ctx.eval::<i32, _>("1+1")).unwrap(), 2);
     }
+    #[test]
+    fn processor_empty_form_throws_instead_of_returning_a_copyable_sentinel() {
+        let limits = Limits::default();
+        let control = control();
+        let mut session = Session::new(&limits, &control).unwrap();
+        let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
+        assert!(matches!(
+            session.run(&prepared, &limits, &control),
+            Err(WorkError::Public(FormatError::Runtime))
+        ));
+    }
+
     #[test]
     fn memory_and_stack_limits_refuse_before_native_failure() {
         let limits = Limits::default();

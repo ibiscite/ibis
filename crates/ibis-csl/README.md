@@ -6,6 +6,15 @@ returns a cancellable task; dropping a task cancels it. Callers use the result's
 `copy_content(request.items.len())` gate before copying. Diagnostics are fixed
 codes, with no reference text or JavaScript exception messages.
 
+Canonical representations stay byte-identical to the processor's output.
+Validation accepts only known script-glyph presentation equivalents and
+space/nonbreaking-space substitutions, with exact character and space counts.
+Contradictory or unavailable author-only intent is refused; processor empty-form
+errors throw instead of becoming copyable sentinel text. NUL and unsupported
+controls are rejected in inputs and outputs; ordinary text whitespace and
+Unicode paragraph separators remain valid. The shared copy gate independently
+rejects embedded NUL in text, HTML or RTF.
+
 Two worker threads own separate QuickJS runtimes. Interactive work takes
 priority; a running background operation is interrupted and restarted after
 interactive work finishes, keeping its original deadline. Queued cancellation

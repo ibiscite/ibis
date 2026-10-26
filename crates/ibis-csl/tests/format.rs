@@ -375,3 +375,88 @@ fn numeric_style_refuses_forms_its_reference_fallback_cannot_carry() {
     ));
     assert!(result.copy_content(1).is_none());
 }
+
+#[test]
+fn presentation_equivalent_titles_are_valid_without_rewriting_canonical_output() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for title in [
+        "Synthetic area in m²",
+        "Synthetic  area",
+        "Synthetic\u{a0}area",
+        "Synthetic H₂O",
+        "Synthetic CO<sub>2</sub>",
+        "Synthetic paragraphs\u{2028}one\u{2029}two",
+    ] {
+        let snapshot = library(&[
+            json!({"type":"book","title":title,"author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}),
+        ]);
+        let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
+        assert!(result.copy_content(1).is_some());
+        if title == "Synthetic area in m²" {
+            assert!(result.text.contains("m²"));
+            assert!(result.html.as_ref().unwrap().contains("<sup>2</sup>"));
+        }
+        if title == "Synthetic  area" {
+            assert!(result.text.contains("Synthetic  area"));
+            assert!(result.html.as_ref().unwrap().contains("\u{a0}"));
+        }
+    }
+}
+
+#[test]
+fn bibliography_reports_document_year_suffixes_withheld() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let items:Vec<_>=["First synthetic book","Second synthetic book"].into_iter().map(|title|json!({"type":"book","title":title,"author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}})).collect();
+    let snapshot = library(&items);
+    let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
+    assert!(!result.text.contains("2026a"));
+    assert!(!result.text.contains("2026b"));
+    assert!(result.notices.contains(&Notice::YearSuffixWithheld));
+}
+
+#[test]
+fn contradictory_and_missing_author_forms_never_copy_processor_sentinels() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let (snapshot, mut request) = sample();
+    request.form = CitationForm::AuthorOnly;
+    request.items[0].suppress_author = true;
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert!(matches!(
+        result.outcomes[0],
+        ItemOutcome::Refused {
+            error: CitationError::UnsupportedForm,
+            ..
+        }
+    ));
+    assert!(result.copy_content(1).is_none());
+    let authorless = library(&[json!({"type":"book","title":"Synthetic title","issued":{"date-parts":[[2026]]}})]);
+    let mut request = selection(&authorless, "apa", false);
+    request.form = CitationForm::AuthorOnly;
+    let result = formatter.format(&authorless, &request).unwrap();
+    assert!(result.copy_content(1).is_none());
+    let legitimate = library(&[
+        json!({"type":"book","title":"Synthetic [NO_PRINTED_FORM] and [CSL STYLE ERROR: reference with no printed form.] title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}),
+    ]);
+    let result = formatter
+        .format(&legitimate, &selection(&legitimate, "apa", true))
+        .unwrap();
+    assert!(result.copy_content(1).is_some());
+    assert!(result.text.contains("[NO_PRINTED_FORM]"));
+}
+
+#[test]
+fn unsupported_record_controls_are_rejected_before_copy() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for bad in [
+        json!({"type":"book","title":"Synthetic\u{0}title"}),
+        json!({"type":"book","title":"Synthetic title","author":[{"family":"Taylor\u{0}bad"}]}),
+        json!({"type":"book","title":"Synthetic\u{1b}title"}),
+    ] {
+        let snapshot = library(&[bad]);
+        assert!(formatter.format(&snapshot, &selection(&snapshot, "apa", true)).is_err());
+    }
+}
