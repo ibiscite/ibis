@@ -38,6 +38,24 @@ A known earlier identity skips qualification with a notice (ADR 0023).
 Published source is read as text, never executed. Current package installation
 checks still gate publication.
 
+## Diagnostic release performance
+
+The optional **Release performance** workflow compares Linux release executables
+with their exact `main` parent on the same runner. Pull requests build the merge
+candidate, so unrelated main changes cannot enter the delta; manual runs are
+limited to main and compare its previous commit. Its artifact records both SHAs, twenty warm summon and
+single-keystroke samples in alternating ABBA launches at 100,000 synthetic references, hidden idle process-tree
+RSS and scheduler wakeups, and the comparison. It never gates `CI result` or
+publication. Keyboard delivery, accessibility reads and polling are included in
+the observed timings; these do not certify the app's internal latency budgets.
+Idle wakeups count kernel scheduler events targeting the app and its descendants,
+including short-lived workers and the accessibility bridge, over a fixed 30-second
+window after settling. A private tracefs instance captures fork/exit lineage from
+before app launch; only numeric counts leave the privileged observer. Raw host
+trace text is never retained. Missing tracing capabilities or dropped events
+produce an unavailable diagnostic, never a zero
+or a pass. No personal libraries or app logs are collected.
+
 ## Update keys (ADR 0019)
 
 Two keys in two environments: the stable key in `updates` (only `v*` tags, after approval) and the nightly key in `nightly` (only `main`). Ibis trusts only the stable key and Ibis Nightly only the nightly key (`NIGHTLY_PUBKEY` in `scripts/update-feed.mjs`), so a key used on every push can never sign a stable update. Key-holding jobs restore no shared cache. Each signature names the build version, which the app checks before installing. Losing a key means that channel's users reinstall once by hand; the maintainer keeps an offline backup of each key. A daily `update-e2e` job installs the previous nightly on each platform and checks that it updates itself to the newest.
