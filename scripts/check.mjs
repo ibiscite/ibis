@@ -24,12 +24,12 @@ const desktop = { cwd: "apps/desktop" };
 const scriptFiles = readdirSync(new URL(".", import.meta.url)).sort();
 const scriptTests = scriptFiles
   .filter((name) => /\.test\.(mjs|cjs)$/.test(name))
-  .filter((name) => args[0] !== "--platform-script-tests" || !["ui-imports.test.mjs", "swallowed-errors.test.mjs"].includes(name))
+  .filter((name) => args[0] !== "--platform-script-tests" || name !== "ui-imports.test.mjs")
   .map((name) => `scripts/${name}`);
 const scriptSteps = [
-  // AST guards need Vite; the identity guard needs the Web job's full history.
+  // The identity guard needs the Web job's full history.
   ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name))
-    .filter((name) => args[0] !== "--platform-script-tests" || !["check-swallowed-errors.mjs", "check-agent-identity.mjs"].includes(name))
+    .filter((name) => args[0] !== "--platform-script-tests" || name !== "check-agent-identity.mjs")
     .map((name) => [`Repository guard: ${name}`, "node", [`scripts/${name}`]]),
   ["Script tests", "node", ["--test", ...scriptTests]],
   ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [

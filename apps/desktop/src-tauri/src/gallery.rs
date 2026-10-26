@@ -428,16 +428,4 @@ mod tests {
             assert!(gallery_url(parse("http://localhost:5173/"), enabled, Some("loaded")).is_none());
         }
     }
-
-    #[test]
-    fn the_native_gallery_accepts_every_state_the_capture_script_asks_for() {
-        // A state missing here is refused silently and the capture times out (#531).
-        let script = include_str!("../../../../scripts/capture-gallery.py");
-        let start = script
-            .find("STATES = (")
-            .unwrap_or_else(|| panic!("the capture script lists its states"));
-        let list = &script[start..start + script[start..].find(')').unwrap_or_else(|| panic!("closed list"))];
-        let captured: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
-        assert_eq!(captured, STATES);
-    }
 }

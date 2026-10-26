@@ -16,7 +16,7 @@ test("website headline and planned features come from the canonical sources", as
   const design = await readFile(new URL("../docs/design.md", import.meta.url), "utf8");
   const highlights = [...html.matchAll(/<li><strong>([^<]+)<\/strong>/g)];
   assert.equal(highlights.length, 3);
-  for (const name of ["Page numbers and locators", "Zotero while closed", "Bibliography export"]) assert.ok(design.includes(name));
+  for (const name of ["Zotero while closed", "Paste into the app you came from", "Browse"]) assert.ok(design.includes(name));
   assert.match(html, /not a stable release/);
   assert.match(html, /does not generate your document’s bibliography/);
   assert.ok(html.indexOf("not a stable release") < html.indexOf("/releases/download/"));

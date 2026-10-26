@@ -1,8 +1,0 @@
-{
-  "plugins": {
-    "updater": {
-      "pubkey": "",
-      "endpoints": []
-    }
-  }
-}

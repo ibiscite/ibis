@@ -18,18 +18,13 @@ on:
         required: false
         type: string
         default: ""
-  # Weekly drift check of the pinned Nix inputs. That run also does the Linux
-  # checks but skips the native app build (see the changes job).
-  schedule:
-    - cron: "23 4 * * 1"
 
 # On a pull request, a newer push cancels the run in progress. On main, a run
 # that has started always finishes, so its caches are saved and its evidence is
 # collected; GitHub keeps only the newest waiting push and replaces older ones
-# before they start, so a burst of merges never runs every commit. The weekly
-# run has its own group so it never replaces a waiting run for a main commit.
+# before they start, so a burst of merges never runs every commit.
 concurrency:
-  group: ci-${{ github.event_name == 'schedule' && 'schedule' || github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -40,64 +35,6 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  nix:
-    name: Nix package (Linux)
-    needs: changes
-    # Not required. Pull requests run it only when packaging inputs change.
-    if: needs.changes.outputs.nix == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
-        with:
-          enable_kvm: false
-          extra_nix_config: |
-            sandbox = true
-            max-jobs = 2
-            cores = 2
-
-      - name: Evaluate the pinned package
-        run: |
-          mkdir -p nix-evidence
-          git rev-parse HEAD > nix-evidence/source-commit.txt
-          nix config show sandbox | tee nix-evidence/sandbox.txt
-          test "$(cat nix-evidence/sandbox.txt)" = true
-          nix flake check --no-build --no-update-lock-file
-          nix eval --raw --no-update-lock-file .#ibis.drvPath > nix-evidence/derivation.txt
-
-      - name: Build and inspect the installed package
-        run: |
-          nix flake check -L --no-update-lock-file 2>&1 | tee nix-evidence/build.log
-          nix build -L --out-link result --no-update-lock-file .#ibis 2>&1 | tee -a nix-evidence/build.log
-          nix path-info --no-update-lock-file .#ibis > nix-evidence/store-path.txt
-          nix profile add --profile "$RUNNER_TEMP/ibis-profile" --no-update-lock-file .#ibis
-          test -x "$RUNNER_TEMP/ibis-profile/bin/ibis-desktop"
-
-      - name: Exercise the packaged app with synthetic data
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb xauth xdotool xclip xterm openbox x11-utils python3-pyatspi at-spi2-core
-          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/smoke-native.py --app result/bin/ibis-desktop --output nix-evidence/runtime --skip-performance
-
-      - name: Preserve Nix build and runtime evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: nix-package-${{ github.sha }}
-          path: nix-evidence
-          if-no-files-found: warn
-          retention-days: 14
-
   changes:
     name: Changed files
     runs-on: ubuntu-24.04
@@ -108,15 +45,11 @@ jobs:
     outputs:
       native: ${{ steps.classify.outputs.native }}
       web: ${{ steps.classify.outputs.web }}
-      nix: ${{ steps.classify.outputs.nix }}
     steps:
       # Interface-only and website-only pull requests keep web validation
       # without native jobs and without building the interface for them.
       # A Linux Desktop placeholder still reports success for "CI result".
       # Main, the merge queue and unclear file lists build the complete app.
-      # The Nix package is rebuilt only when its inputs change (a stale
-      # nix/pnpm-deps-hash fails on the pull request that causes it), weekly
-      # and on manual runs. The weekly run skips the native app build.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -162,15 +95,12 @@ jobs:
           cache: true
           cache_dependency_path: apps/desktop/pnpm-lock.yaml
 
-      # The evidence build adds gallery.html, which the native gallery
-      # captures load; the Web interface job type-checks the same source.
       - name: Build the web interface
         if: steps.classify.outputs.native == 'true'
         working-directory: apps/desktop
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec vite build --mode evidence
-          test -f dist/gallery.html
+          pnpm exec vite build
 
       - name: Share the web interface
         if: steps.classify.outputs.native == 'true'
@@ -222,7 +152,6 @@ jobs:
         run: |
           rustup toolchain install 1.90.0 --profile minimal
           cargo +1.90.0 test --locked
-
 
   web:
     name: Web interface
@@ -284,12 +213,48 @@ jobs:
           pnpm test
           pnpm build
           test ! -e dist/gallery.html
+
+  gallery:
+    name: Browser gallery
+    # Optional visual evidence; PRs and the merge queue use Web interface.
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
+      options: --init
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+          cache: true
+          cache_dependency_path: apps/desktop/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the browser gallery
+        run: |
           pnpm exec vite build --mode evidence
           test -f dist/gallery.html
 
       - name: Render every browser gallery frame
         id: gallery
-        if: env.WEB == 'true'
         working-directory: .
         shell: bash
         env:
@@ -302,7 +267,7 @@ jobs:
           node scripts/gallery-contact-sheet.mjs --no-build
 
       - name: Keep browser gallery evidence
-        if: ${{ !cancelled() && env.WEB == 'true' && steps.gallery.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.gallery.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: picker-browser-${{ github.sha }}-attempt-${{ github.run_attempt }}
@@ -464,12 +429,6 @@ jobs:
             } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
 
-      - name: Capture every synthetic picker state (Linux)
-        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
-        run: |
-          python3 -B scripts/test_capture_gallery.py
-          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-Linux
-
       - name: Exercise the native picker (Linux)
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
@@ -482,7 +441,7 @@ jobs:
 
       # The Native UI job exercises this exact build on macOS and Windows.
       - name: Keep the built app for Native UI
-        if: env.NATIVE == 'true' && runner.os != 'Linux' && steps.native_build.outcome == 'success'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && env.NATIVE == 'true' && runner.os != 'Linux' && steps.native_build.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-app-${{ github.sha }}-${{ runner.os }}
@@ -492,7 +451,7 @@ jobs:
           retention-days: 1
 
       # Uploads still run after a job timeout (which counts as cancelled) so
-      # a hang leaves its logs; publishing happens only in the screenshots job.
+      # a hang leaves its logs.
       - name: Keep screenshots and startup logs
         if: always() && env.NATIVE == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -504,18 +463,11 @@ jobs:
 
   native-ui:
     name: Native UI (${{ matrix.os }})
-    # Not a required check. macOS and Windows UI automation on hosted runners
-    # is the flakiest part of CI (#361, #410, #464), so it runs here, beside
-    # the required Desktop jobs instead of inside them: a failure turns this
-    # job red where everyone can see it without holding a pull request, and
-    # on main it also opens or updates an issue.
-    # The merge queue skips it: the queue waits only for required checks, and
-    # the push to main runs it on the same commit. Skipping frees the scarce
-    # macOS runners for the queue's required Desktop jobs.
+    # Optional smoke on main pushes and manual runs; failures report an issue.
     needs: [changes, desktop]
     # Desktop is one matrix, so its result is failed if any system failed.
     # Run whenever it ran; a system whose build failed has no app to exercise.
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.native == 'true' && needs.desktop.result != 'skipped' }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.native == 'true' && needs.desktop.result != 'skipped' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
@@ -524,10 +476,6 @@ jobs:
       actions: read
       # Only to open or update the issue when native UI smoke fails on main.
       issues: write
-    env:
-      # The slow macOS and Windows evidence (all gallery states, appearance
-      # changes) runs on main and on manual runs, where it covers each merge.
-      EVIDENCE: ${{ github.event_name != 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
@@ -574,28 +522,6 @@ jobs:
           chmod +x target/debug/ibis-desktop* || true
           mkdir -p screenshots
 
-      # Add to the Desktop job's screenshots and logs so evidence publication
-      # still sees one artifact per system.
-      - name: Download the Desktop screenshots
-        id: shots
-        if: steps.app.outcome == 'success'
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: picker-${{ github.sha }}-${{ runner.os }}
-          path: screenshots
-
-      - name: Capture every synthetic picker state
-        if: ${{ !cancelled() && env.EVIDENCE == 'true' && steps.app.outcome == 'success' }}
-        run: |
-          if [ "$RUNNER_OS" = Windows ]; then
-            python -B scripts/test_capture_gallery.py
-            python scripts/capture-gallery.py --app target/debug/ibis-desktop.exe --output screenshots/gallery-Windows
-          else
-            python3 -B scripts/test_capture_gallery.py
-            python3 scripts/capture-gallery.py --app target/debug/ibis-desktop --output screenshots/gallery-macOS
-          fi
-
       - name: Exercise the native picker (macOS)
         id: native_macos
         if: ${{ !cancelled() && steps.app.outcome == 'success' && runner.os == 'macOS' }}
@@ -633,12 +559,6 @@ jobs:
           python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/smoke-Windows --budgets scripts/smoke-budgets.json
           python scripts/smoke-native.py --app target/debug/ibis-desktop.exe --output screenshots/preferences-Windows --first-run-preferences
 
-      - name: Observe native materials and accessibility changes (macOS)
-        if: ${{ !cancelled() && env.EVIDENCE == 'true' && steps.app.outcome == 'success' && runner.os == 'macOS' }}
-        run: |
-          python3 -B scripts/test_native_appearance_macos.py
-          python3 scripts/check-native-appearance-macos.py --app target/debug/ibis-desktop --output screenshots/appearance-macOS
-
       - name: Report native UI failures on main
         if: ${{ !cancelled() && github.event_name != 'pull_request' && (steps.missing.outcome == 'failure' || steps.native_macos.outcome == 'failure' || steps.native_panel.outcome == 'failure' || steps.native_windows.outcome == 'failure') }}
         env:
@@ -654,72 +574,14 @@ jobs:
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label type:task --label area:infra --body "$body"
           fi
 
-      # Replaces the Desktop job's artifact with the same files plus these,
-      # but only when those files were downloaded first.
       - name: Keep screenshots and logs
-        if: always() && steps.shots.outcome == 'success'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: picker-${{ github.sha }}-${{ runner.os }}
-          path: screenshots/*
-          if-no-files-found: warn
-          overwrite: true
-          retention-days: 14
-
-      # Without them, keep this job's files apart so Desktop's are never
-      # replaced; evidence publication does not read this name.
-      - name: Keep screenshots and logs separately
-        if: always() && steps.app.outcome == 'success' && steps.shots.outcome != 'success'
+        if: always() && steps.app.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-ui-${{ github.sha }}-${{ runner.os }}
           path: screenshots/*
           if-no-files-found: warn
-          overwrite: true
           retention-days: 14
-
-  screenshots:
-    name: Collect picker screenshots
-    needs: [changes, desktop, native-ui]
-    # A failed interface build skips every Desktop job, so there is nothing to
-    # publish. One failed Desktop platform still leaves the others to publish.
-    if: ${{ !cancelled() && needs.changes.outputs.native == 'true' && needs.desktop.result != 'skipped' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    # GitHub cannot restrict GITHUB_TOKEN to a branch. Keep write permission in
-    # this job only, gate all untrusted forks out, and pin pushes in the script.
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout evidence publisher
-        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Download native screenshots for publication
-        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: picker-${{ github.sha }}-*
-          path: evidence-input
-
-      - name: Publish synthetic screenshots to evidence
-        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          EVIDENCE_SHA: ${{ github.sha }}
-          EVIDENCE_INPUT: evidence-input
-        run: node scripts/publish-evidence.mjs
-
-      - name: Combine platform artifacts
-        uses: actions/upload-artifact/merge@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          # Preserve earlier outputs on retries and keep them outside the input glob.
-          name: picker-combined-${{ github.sha }}-attempt-${{ github.run_attempt }}
-          pattern: picker-${{ github.sha }}-*
-          retention-days: 14
-          delete-merged: true
 
   fidelity:
     name: Citation fidelity
