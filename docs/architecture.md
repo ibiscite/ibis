@@ -108,6 +108,10 @@ may show the picker, then releases consent ownership before downloading. Retaine
 byte snapshots refresh only during that operation and replay on presentation;
 progress never focuses the picker. Download completion precedes signature
 verification, so it displays checking/installing rather than success (#48).
+Package downloads have a 15-minute overall HTTP deadline and a 60-second
+read-stall timeout. Either timeout uses the existing installation-failure
+notice. A drop guard owns the busy state through checking, consent and
+installation, so errors and dropped callbacks or futures permit another check.
 
 Library status carries the failure reason, retained-reference flag and unsaved
 choice provenance separately for native presentation. The tray derives its
