@@ -2,7 +2,7 @@
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type CommandError, type KeyFormat, type LibraryStatus } from "./bindings";
+import { commands, type CommandError, type KeyFormat, type LibraryStatus, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
@@ -56,6 +56,11 @@ export function pickerVisible(): Promise<boolean> {
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
 export function onPickerShown(handler: () => void): Promise<UnlistenFn> {
   return listen("picker:shown", handler);
+}
+
+/** Called when the shortcut's status changes, such as after a keyboard layout switch on macOS. */
+export function onShortcutStatus(handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> {
+  return listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload));
 }
 
 /** Called whenever the picker is hidden, by any route. */

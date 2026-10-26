@@ -1,7 +1,7 @@
 // What the picker copies and which references it acts on. Pure; no React.
 import type { CopyFormat, Locator, RecordId, SearchResult, ZoteroLibrary } from "../../api";
-import { copyFormatNames } from "../../messages";
-import { STYLE_NAMES, type StyleId } from "../../format/styles";
+import { copyFormatNames, keyText } from "../../messages";
+import { copiesEntry, STYLE_NAMES, type StyleId } from "../../format/styles";
 
 /** A citation-key syntax, or a citation style written as `style:<id>`. */
 export type Choice = CopyFormat | `style:${StyleId}`;
@@ -30,4 +30,12 @@ export function idKey(id: RecordId): string {
 
 export function sameLibrary(a: ZoteroLibrary, b: ZoteroLibrary) {
   return a === b || (typeof a === "object" && typeof b === "object" && a.group === b.group);
+}
+
+/** What Enter copies in `choice`; numeric styles copy reference entries (#1129). */
+export function copyLabel(choice: Choice, count: number): string {
+  const name = choiceName(choice);
+  const style = styleOf(choice);
+  if (style && copiesEntry(style)) return keyText.copyEntries(count, name);
+  return count > 1 ? keyText.copySeveralAs(count, name) : keyText.copyAs(name);
 }

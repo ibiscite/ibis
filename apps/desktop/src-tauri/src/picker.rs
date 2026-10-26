@@ -5,16 +5,19 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
 use crate::diagnostics::{NativeIssue, checked, report};
 use crate::placement::place_on_active_display;
 
 mod dialogs;
 mod full_screen;
+#[cfg(any(target_os = "macos", test))]
+mod layout;
 #[cfg(target_os = "linux")]
 #[expect(dead_code, reason = "portal transport is wired to the picker in the next #782 slice")]
 mod portal;
+mod registration;
 #[cfg_attr(
     not(test),
     expect(dead_code, reason = "visible-row activation will consume this policy (#756)")
@@ -27,6 +30,9 @@ mod x11_focus;
 pub(crate) use dialogs::ChooserLease;
 pub(crate) use dialogs::ChooserOpen;
 pub(crate) use full_screen::FullScreenGuard;
+#[cfg(target_os = "macos")]
+pub(crate) use registration::follow_layout;
+pub(crate) use registration::{Registered, register_shortcut};
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
@@ -72,33 +78,6 @@ pub(crate) fn configured_shortcut(setting: Option<&str>) -> (Shortcut, String, O
         },
         None => (default_shortcut(), shortcut_label().to_string(), None),
     }
-}
-
-const SHORTCUT_BACKEND_UNAVAILABLE: &str =
-    "Global shortcuts need a working X11 connection with XKB. Open Ibis from your application launcher.";
-const SHORTCUT_REGISTRATION_FAILED: &str =
-    "The shortcut could not be registered. Another app may be using it; choose a different shortcut in settings.";
-
-/// The Linux plugin can return success after its X11 worker exits. Confirm its
-/// required backend first; session labels alone do not identify usable X11.
-pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(), &'static str> {
-    register_with(
-        || {
-            #[cfg(target_os = "linux")]
-            return x11_focus::shortcut_ready();
-            #[cfg(not(target_os = "linux"))]
-            Ok(())
-        },
-        || app.global_shortcut().register(shortcut),
-    )
-}
-
-fn register_with<E>(
-    backend: impl FnOnce() -> Result<(), ()>,
-    register: impl FnOnce() -> Result<(), E>,
-) -> Result<(), &'static str> {
-    backend().map_err(|()| SHORTCUT_BACKEND_UNAVAILABLE)?;
-    register().map_err(|_| SHORTCUT_REGISTRATION_FAILED)
 }
 
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
@@ -413,32 +392,6 @@ mod tests {
         let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap_or_default();
         assert_eq!(config["app"]["windows"][0]["label"], "main");
         assert_eq!(config["app"]["windows"][0]["skipTaskbar"], true);
-    }
-
-    #[test]
-    fn unavailable_shortcut_backend_never_calls_the_registration_plugin() {
-        assert_eq!(
-            register_with::<()>(
-                || Err(()),
-                || panic!("a disconnected plugin can falsely return success")
-            ),
-            Err(SHORTCUT_BACKEND_UNAVAILABLE)
-        );
-        assert_eq!(register_with(|| Ok(()), || Ok::<(), ()>(())), Ok(()));
-    }
-
-    #[test]
-    fn shortcut_registration_conflicts_remain_visible_without_raw_errors() {
-        struct PrivateError;
-        impl std::fmt::Display for PrivateError {
-            fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                panic!("never format a native error");
-            }
-        }
-        assert_eq!(
-            register_with(|| Ok(()), || Err(PrivateError)),
-            Err(SHORTCUT_REGISTRATION_FAILED)
-        );
     }
 
     #[cfg(target_os = "linux")]

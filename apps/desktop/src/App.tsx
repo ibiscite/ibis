@@ -10,7 +10,7 @@ import { afterCopy } from "./copyFeedback";
 import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
-import { choiceKey, choiceName, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
+import { choiceKey, copyLabel, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
 import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
@@ -26,6 +26,7 @@ import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useLoginItem } from "./features/picker/useLoginItem";
+import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import {
   type Copied,
@@ -33,7 +34,6 @@ import {
   type LibraryStatus,
   type Locator,
   type SearchResult,
-  type ShortcutStatus,
 } from "./api";
 
 // A search comes back if the picker returns within a minute, as in Raycast.
@@ -46,7 +46,7 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -55,7 +55,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
     hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, onShortcutStatus } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
@@ -67,6 +67,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
   const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
+  const { shortcut, readShortcut } = useShortcutStatus({ shortcutStatus, onShortcutStatus, report });
   useEffect(() => {
     let mounted = true;
     setFailures((old) => old.updateEvents ? { ...old, updateEvents: false } : old);
@@ -86,7 +87,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = cslItems && copyFormatted ? styleOf(format) : null;
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
   const [libraryVersion, setLibraryVersion] = useState(0);
   const statusReads = useRef(0);
@@ -218,6 +218,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }
       hiddenAt.current = null;
       readLoginItem();
+      readShortcut();
       input.current?.focus();
       input.current?.select();
     };
@@ -260,9 +261,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
-    shortcutStatus()
-      .then(setShortcut)
-      .catch(() => { setShortcut(null); report("shortcut"); });
     preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;
@@ -495,7 +493,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A formatted citation still being made, or one that failed, is not copied.
   const enterAction = showWriting || chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
-    : chosen.length > 1 ? keyText.copySeveralAs(chosen.length, choiceName(format)) : keyText.copyAs(choiceName(format));
+    : copyLabel(format, chosen.length);
   const highlighted = current[active];
   const usingLocator = current === results && interpretLocators ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
