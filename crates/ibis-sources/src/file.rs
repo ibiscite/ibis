@@ -178,13 +178,16 @@ fn parse_with_budget(
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
     let mut attachment_paths = BTreeMap::new();
-    attachments::append(
+    let attachment_limited = attachments::append(
         source.parent().ok_or(SourceError::Unavailable)?,
         parsed.attachments,
         &mut objects,
         &mut attachment_paths,
         &mut warnings,
     );
+    if reload && attachment_limited {
+        return Err(SourceError::LoadLimit);
+    }
     let snapshot = Snapshot::new(objects).map_err(|_| SourceError::InvalidData)?;
     Ok(LoadedLibrary {
         library,

@@ -434,6 +434,13 @@ fn relative_file_urls_stay_in_private_provenance() -> Result<(), Box<dyn std::er
                 .is_some_and(|raw| raw.contains("invented"))
         );
     }
+    std::fs::write(
+        &path,
+        r#"[{"id":"online","type":"book","URL":"https://example.invalid/invented.pdf"}]"#,
+    )?;
+    let online = ibis_sources::load_file(&path)?;
+    assert!(serde_json::to_string(&online.snapshot)?.contains("https://example.invalid/invented.pdf"));
+    assert!(online.warnings.is_empty());
     Ok(())
 }
 

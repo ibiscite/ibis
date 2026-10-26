@@ -4,14 +4,47 @@ use ibis_core::contract::{Attachment, Availability, ItemRef, LibraryObject};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+const MAX_RECORD_TOKENS: usize = 256;
+const MAX_LIBRARY_ATTACHMENTS: usize = 100_000;
+const MAX_LIBRARY_TOKENS: usize = 200_000;
+const MAX_LIBRARY_BYTES: usize = 64 * 1024 * 1024;
+const MAX_FIELD_BYTES: usize = 64 * 1024;
+const MAX_TOKEN_BYTES: usize = 16 * 1024;
+const MAX_PATH_BYTES: usize = 4096;
+
+#[derive(Default)]
+struct AttachmentBudget {
+    tokens: usize,
+    attachments: usize,
+    bytes: usize,
+    limited: bool,
+}
+impl AttachmentBudget {
+    fn warn(&mut self, warnings: &mut Vec<SourceWarning>, line: Option<usize>) {
+        self.limited = true;
+        warnings.push(SourceWarning {
+            code: WarningCode::WorkLimit,
+            line,
+        });
+    }
+}
+
 pub(crate) fn append(
     base: &Path,
     fields: Vec<(ItemRef, String, Option<usize>)>,
     objects: &mut Vec<LibraryObject>,
     paths: &mut BTreeMap<ItemRef, PathBuf>,
     warnings: &mut Vec<SourceWarning>,
-) {
-    append_with(base, fields, objects, paths, warnings, availability);
+) -> bool {
+    append_with(
+        base,
+        fields,
+        objects,
+        paths,
+        warnings,
+        &mut AttachmentBudget::default(),
+        availability,
+    )
 }
 
 fn append_with(
@@ -20,18 +53,57 @@ fn append_with(
     objects: &mut Vec<LibraryObject>,
     paths: &mut BTreeMap<ItemRef, PathBuf>,
     warnings: &mut Vec<SourceWarning>,
+    budget: &mut AttachmentBudget,
     mut probe: impl FnMut(&Path) -> Availability,
-) {
+) -> bool {
     for (parent, field, line) in fields {
-        for (index, encoded) in split_escaped(&field, ';').into_iter().enumerate() {
+        if field.is_empty() {
+            continue;
+        }
+        if field.len() > MAX_FIELD_BYTES || field.len() > MAX_LIBRARY_BYTES.saturating_sub(budget.bytes) {
+            budget.warn(warnings, line);
+            continue;
+        }
+        budget.bytes += field.len();
+        let mut rest = Some(field.as_str());
+        let mut index = 0;
+        while rest.is_some() {
+            if index >= MAX_RECORD_TOKENS
+                || budget.tokens >= MAX_LIBRARY_TOKENS
+                || budget.attachments >= MAX_LIBRARY_ATTACHMENTS
+            {
+                if rest.is_some_and(|rest| !rest.is_empty()) {
+                    budget.warn(warnings, line);
+                }
+                break;
+            }
+            let encoded = match next_encoded(&mut rest, b';') {
+                Ok(Some(encoded)) => encoded,
+                Ok(None) => break,
+                Err(()) => {
+                    budget.warn(warnings, line);
+                    break;
+                }
+            };
+            let attachment_index = index;
+            index += 1;
+            budget.tokens += 1;
             if encoded.trim().is_empty() {
                 continue;
             }
+            let encoded = encoded.replace("\\;", ";");
             let id = ItemRef {
                 library: parent.library.clone(),
-                key: format!("attachment:{}:{index}", parent.key),
+                key: format!("attachment:{}:{attachment_index}", parent.key),
             };
             let parsed = decode(&encoded);
+            if parsed
+                .as_ref()
+                .is_some_and(|(_, location, _)| location.len() > MAX_PATH_BYTES)
+            {
+                budget.warn(warnings, line);
+                continue;
+            }
             let (title, media_type, path, availability) = match parsed {
                 Some((title, location, kind)) => match location_kind(&location) {
                     LocationKind::Online => (title, kind, None, Availability::Online),
@@ -49,6 +121,10 @@ fn append_with(
                         } else {
                             base.join(relative)
                         };
+                        if path.as_os_str().as_encoded_bytes().len() > MAX_PATH_BYTES {
+                            budget.warn(warnings, line);
+                            continue;
+                        }
                         let availability = probe(&path);
                         (title, kind, Some(path), availability)
                     }
@@ -64,6 +140,7 @@ fn append_with(
             if let Some(path) = path {
                 paths.insert(id.clone(), path);
             }
+            budget.attachments += 1;
             objects.push(LibraryObject::Attachment(Attachment {
                 id,
                 parent: Some(parent.clone()),
@@ -74,6 +151,7 @@ fn append_with(
             }));
         }
     }
+    budget.limited
 }
 
 enum LocationKind {
@@ -147,7 +225,7 @@ fn location_kind(text: &str) -> LocationKind {
 }
 fn decode(text: &str) -> Option<(String, String, String)> {
     let text = text.trim();
-    if text.chars().any(char::is_control) {
+    if text.len() > MAX_TOKEN_BYTES || text.chars().any(char::is_control) {
         return None;
     }
     // Recognise URI syntax before colons can be mistaken for MIME separators.
@@ -158,7 +236,7 @@ fn decode(text: &str) -> Option<(String, String, String)> {
     if windows_drive(text) {
         return (!text[2..].contains(':')).then(|| (String::new(), text.into(), mime(text)));
     }
-    let fields = split_escaped(text, ':');
+    let fields = split_escaped(text, ':')?;
     let (title, location, media_type) = match fields.as_slice() {
         [path] => (String::new(), path.trim().to_owned(), mime(path)),
         [title, path, kind] if is_media_type(kind) => {
@@ -220,24 +298,46 @@ fn mime(path: &str) -> String {
     }
     .into()
 }
-// Only delimiter escapes are decoded. Ordinary Windows backslashes remain literal.
-fn split_escaped(text: &str, delimiter: char) -> Vec<String> {
-    let mut values = vec![String::new()];
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\\' && chars.peek().is_some_and(|next| *next == delimiter) {
-            if let Some(next) = chars.next()
-                && let Some(value) = values.last_mut()
-            {
-                value.push(next);
-            }
-        } else if c == delimiter {
-            values.push(String::new());
-        } else if let Some(value) = values.last_mut() {
-            value.push(c);
+// Scan lazily with a byte bound; never allocate all semicolon-separated tokens.
+// ASCII delimiter positions are UTF-8 boundaries, even though this scans bytes.
+fn next_encoded<'a>(rest: &mut Option<&'a str>, delimiter: u8) -> Result<Option<&'a str>, ()> {
+    let Some(text) = rest.take() else {
+        return Ok(None);
+    };
+    let bytes = text.as_bytes();
+    let mut position = 0;
+    while position < bytes.len() {
+        if position > MAX_TOKEN_BYTES {
+            return Err(());
+        }
+        if bytes[position] == b'\\' && bytes.get(position + 1) == Some(&delimiter) {
+            position += 2;
+        } else if bytes[position] == delimiter {
+            *rest = Some(&text[position + 1..]);
+            return Ok(Some(&text[..position]));
+        } else {
+            position += 1;
         }
     }
-    values
+    if text.len() > MAX_TOKEN_BYTES {
+        return Err(());
+    }
+    Ok(Some(text))
+}
+// Only delimiter escapes are decoded; ordinary Windows backslashes stay literal.
+fn split_escaped(text: &str, delimiter: char) -> Option<Vec<String>> {
+    let mut rest = Some(text);
+    let mut values = Vec::with_capacity(3);
+    while let Some(value) = next_encoded(&mut rest, delimiter as u8).ok()? {
+        if values.len() == 3 {
+            return None;
+        }
+        values.push(value.replace(
+            if delimiter == ':' { "\\:" } else { "\\;" },
+            if delimiter == ':' { ":" } else { ";" },
+        ));
+    }
+    Some(values)
 }
 fn availability(path: &Path) -> Availability {
     let metadata = match std::fs::metadata(path) {
@@ -293,7 +393,7 @@ mod tests {
         assert!(decode("ambiguous:thing:else").is_none());
         assert_eq!(
             split_escaped(r"one\;two.pdf;three.pdf", ';'),
-            ["one;two.pdf", "three.pdf"]
+            Some(vec!["one;two.pdf".into(), "three.pdf".into()])
         );
     }
 }
@@ -303,7 +403,13 @@ mod adversarial_tests {
     use super::*;
     use ibis_core::contract::LibraryId;
 
-    fn check(text: &str) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
+    pub(super) fn check(text: &str) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
+        check_with_budget(text, &mut AttachmentBudget::default())
+    }
+    pub(super) fn check_with_budget(
+        text: &str,
+        budget: &mut AttachmentBudget,
+    ) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
         let parent = ItemRef {
             library: LibraryId::file(b"invented"),
             key: "record:one".into(),
@@ -318,6 +424,7 @@ mod adversarial_tests {
             &mut objects,
             &mut paths,
             &mut warnings,
+            budget,
             |_| {
                 probes += 1;
                 Availability::BrokenLink
@@ -355,7 +462,7 @@ mod adversarial_tests {
     }
 
     #[test]
-    fn paths_cannot_become_media_types() {
+    fn paths_cannot_become_media_types() -> Result<(), serde_json::Error> {
         for text in [
             "file:///invented/private.pdf",
             "synthetic.pdf:/invented/private.pdf",
@@ -365,13 +472,10 @@ mod adversarial_tests {
         ] {
             let (objects, probes, warnings) = check(text);
             assert_eq!(probes, 0, "ambiguous attachment must not be probed");
-            assert!(
-                !serde_json::to_string(&objects)
-                    .expect("synthetic objects serialize")
-                    .contains("invented/private")
-            );
+            assert!(!serde_json::to_string(&objects)?.contains("invented/private"));
             assert!(!warnings.is_empty());
         }
+        Ok(())
     }
 
     #[test]
@@ -380,5 +484,82 @@ mod adversarial_tests {
         assert!(objects.len() <= 256);
         assert!(probes <= 256);
         assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
+    }
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::adversarial_tests::{check, check_with_budget};
+    use super::*;
+
+    #[test]
+    fn library_count_work_and_byte_limits_stop_before_probing() {
+        for mut budget in [
+            AttachmentBudget {
+                attachments: MAX_LIBRARY_ATTACHMENTS - 1,
+                ..AttachmentBudget::default()
+            },
+            AttachmentBudget {
+                tokens: MAX_LIBRARY_TOKENS - 1,
+                ..AttachmentBudget::default()
+            },
+            AttachmentBudget {
+                bytes: MAX_LIBRARY_BYTES - 1,
+                ..AttachmentBudget::default()
+            },
+        ] {
+            let (objects, probes, warnings) = check_with_budget("x.pdf;y.pdf", &mut budget);
+            assert!(objects.len() <= 1);
+            assert!(probes <= 1);
+            assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
+        }
+        // A library with exactly 100k ordinary single-attachment references fits.
+        let mut last_slot = AttachmentBudget {
+            attachments: MAX_LIBRARY_ATTACHMENTS - 1,
+            tokens: MAX_LIBRARY_ATTACHMENTS - 1,
+            ..AttachmentBudget::default()
+        };
+        let (objects, probes, warnings) = check_with_budget("last.pdf", &mut last_slot);
+        assert_eq!((objects.len(), probes, warnings.len()), (1, 1, 0));
+    }
+
+    #[test]
+    fn oversized_paths_tokens_and_fields_never_reach_metadata() {
+        for text in [
+            "x".repeat(MAX_PATH_BYTES + 1),
+            "x".repeat(MAX_TOKEN_BYTES + 1),
+            ";".repeat(MAX_FIELD_BYTES + 1),
+        ] {
+            let (objects, probes, warnings) = check(&text);
+            assert!(objects.is_empty());
+            assert_eq!(probes, 0);
+            assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
+        }
+    }
+
+    #[test]
+    fn valid_mime_tokens_and_naked_drive_paths_keep_their_meaning() {
+        for kind in ["PDF", "application/pdf", "application/vnd.synthetic+json", "TEXT/PLAIN"] {
+            assert!(is_media_type(kind));
+        }
+        for kind in [
+            "/private.pdf",
+            "application/",
+            "/pdf",
+            "application//pdf",
+            "application/pdf/path",
+            "application/pdf;name=x",
+        ] {
+            assert!(!is_media_type(kind));
+        }
+        assert!(!is_media_type(&format!("application/{}", "x".repeat(128))));
+        for location in [r"C:\invented\private.pdf", "C:/invented/private.pdf"] {
+            let (objects, probes, _) = check(location);
+            assert_eq!(probes, usize::from(cfg!(windows)));
+            let LibraryObject::Attachment(attachment) = &objects[0] else {
+                panic!("synthetic attachment")
+            };
+            assert_eq!(attachment.media_type, "application/pdf");
+        }
     }
 }

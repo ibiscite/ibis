@@ -38,8 +38,18 @@ private in the source owner; snapshots and diagnostics never contain them.
 Availability checks inspect filesystem metadata without reading attachment
 contents. Explicit network locations are left unknown without filesystem
 access; HTTP(S) links are marked online and never fetched. Ambiguous encodings
-produce an attachment warning rather than a guessed location. Known local
-file URLs and vendor location fields are omitted from public CSL data.
+produce an attachment warning rather than a guessed location. Windows UNC,
+network/device namespaces (including mixed separators), drive-relative paths and
+file URIs never trigger metadata probes. MIME values require bounded type/subtype
+tokens. Local absolute/relative file URLs and vendor location fields are omitted
+from public CSL data and retained only in raw provenance.
+
+Attachment fields are scanned lazily: at most 256 tokens and 64 KiB per record,
+16 KiB per token and 4096 bytes per decoded/native location. A library permits
+100,000 attachments, 200,000 tokens and 64 MiB of attachment-field work, allowing
+100,000 ordinary single-attachment records. Exceeding a limit warns with
+`work-limit` and preserves citable records; strict reloads refuse the replacement
+so the caller retains its last good owner/snapshot.
 
 The existing CLI and picker are cut over in #1199/#1201. These readers emit
 `Record` directly and do not adapt the old `Reference` model.
