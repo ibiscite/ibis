@@ -2,7 +2,18 @@
 (() => {
   "use strict";
   CSL.debug = () => {};
-  CSL.error = () => { throw Error("citation formatting failed"); };
+  CSL.error = (message) => {
+    // The pinned processor catches native errors while building trusted style
+    // attributes (and previews). Preserve only those exact forwarding shapes.
+    const cause = typeof message === "string" && /^(?:@[a-z-]+ attribute: |Error running CSL processor for preview: )(RangeError: Maximum call stack size exceeded|InternalError: out of memory(?: in regexp execution)?)$/.exec(message)?.[1];
+    if (cause === "RangeError: Maximum call stack size exceeded") throw RangeError("Maximum call stack size exceeded");
+    if (cause) {
+      const error = Error("out of memory");
+      error.name = "InternalError";
+      throw error;
+    }
+    throw Error("citation formatting failed");
+  };
   const styles = new Map(__ibisStyles);
   const engines = new Map();
   let activeItems = new Map();

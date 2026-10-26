@@ -15,7 +15,9 @@ Contradictory, multi-item or unavailable author-only intent is refused; processo
 empty-form errors throw instead of becoming copyable sentinel text. NUL and unsupported
 controls are rejected in inputs and outputs; ordinary text whitespace and
 Unicode paragraph separators remain valid. The shared copy gate independently
-rejects embedded NUL in text, HTML or RTF.
+rejects embedded NUL in text, HTML or RTF. JavaScript stack and heap exhaustion,
+including the processor's exact native-error forwarding forms, return the fixed
+`ResourceLimit` code; arbitrary exception text never crosses the boundary.
 
 Two worker threads own separate QuickJS runtimes. Interactive work takes
 priority; a running background operation is interrupted and restarted after

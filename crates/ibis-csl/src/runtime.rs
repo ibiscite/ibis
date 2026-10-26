@@ -40,28 +40,25 @@ impl Session {
         let context = Context::full(&runtime).map_err(|_| FormatError::ResourceLimit)?;
         let superscripts = context
             .with(|ctx| {
-                crate::locale::install(&ctx).inspect_err(|error| diagnostic(&ctx, "locale", error))?;
-                let (module, promise) = Module::declare(ctx.clone(), "citeproc", PROCESSOR)
-                    .inspect_err(|error| diagnostic(&ctx, "processor-declare", error))?
-                    .eval()
-                    .inspect_err(|error| diagnostic(&ctx, "processor-eval", error))?;
-                promise
-                    .finish::<()>()
-                    .inspect_err(|error| diagnostic(&ctx, "processor-finish", error))?;
-                ctx.globals()
-                    .set("CSL", module.get::<_, rquickjs::Object>("default")?)?;
-                ctx.globals().set(
-                    "__ibisStyles",
-                    ctx.json_parse(serde_json::to_string(&STYLE_XML).map_err(|_| rquickjs::Error::Unknown)?)?,
-                )?;
-                ctx.globals().set("__ibisLocale", EN_US)?;
-                ctx.eval::<(), _>(include_str!("bridge.js"))
-                    .inspect_err(|error| diagnostic(&ctx, "bridge", error))?;
-                // Snapshot trusted presentation data before any reference is supplied.
-                let table: String = ctx.eval("JSON.stringify(CSL.SUPERSCRIPTS)")?;
-                serde_json::from_str::<BTreeMap<char, String>>(&table).map_err(|_| rquickjs::Error::Unknown)
+                let initialized = (|| {
+                    crate::locale::install(&ctx)?;
+                    let (module, promise) = Module::declare(ctx.clone(), "citeproc", PROCESSOR)?.eval()?;
+                    promise.finish::<()>()?;
+                    ctx.globals()
+                        .set("CSL", module.get::<_, rquickjs::Object>("default")?)?;
+                    ctx.globals().set(
+                        "__ibisStyles",
+                        ctx.json_parse(serde_json::to_string(&STYLE_XML).map_err(|_| rquickjs::Error::Unknown)?)?,
+                    )?;
+                    ctx.globals().set("__ibisLocale", EN_US)?;
+                    ctx.eval::<(), _>(include_str!("bridge.js"))?;
+                    // Snapshot trusted presentation data before any reference is supplied.
+                    let table: String = ctx.eval("JSON.stringify(CSL.SUPERSCRIPTS)")?;
+                    serde_json::from_str::<BTreeMap<char, String>>(&table).map_err(|_| rquickjs::Error::Unknown)
+                })();
+                initialized.map_err(|error| failure(&ctx, "bootstrap", &error))
             })
-            .map_err(|_| control.error().unwrap_or(WorkError::Public(FormatError::Runtime)))?;
+            .map_err(|error| control.error().unwrap_or(WorkError::Public(error.public())))?;
         Ok(Self {
             context,
             runtime,
@@ -79,23 +76,8 @@ impl Session {
         }
         install_interrupt(&self.runtime, control);
         let json = self
-            .context
-            .with(|ctx| {
-                let function: rquickjs::Function = ctx.globals().get("__ibisFormat")?;
-                let value = ctx.json_parse(prepared.json.as_bytes())?;
-                function
-                    .call::<_, String>((value,))
-                    .inspect_err(|error| diagnostic(&ctx, "render", error))
-            })
-            .map_err(|error| {
-                control.error().unwrap_or({
-                    WorkError::Public(if matches!(error, rquickjs::Error::Allocation) {
-                        FormatError::ResourceLimit
-                    } else {
-                        FormatError::Runtime
-                    })
-                })
-            })?;
+            .render(&prepared.json)
+            .map_err(|error| control.error().unwrap_or(WorkError::Public(error.public())))?;
         if let Some(error) = control.error() {
             return Err(error);
         }
@@ -109,32 +91,89 @@ impl Session {
             })
             .map_err(Into::into)
     }
-}
-// Fixed test diagnostics distinguish resource boundaries without logging JS content.
-fn diagnostic(ctx: &rquickjs::Ctx<'_>, phase: &'static str, error: &rquickjs::Error) {
-    #[cfg(test)]
-    {
-        let class = match error {
-            rquickjs::Error::Allocation => "allocation",
-            rquickjs::Error::Exception => {
-                let exception = ctx.catch();
-                if exception
-                    .as_object()
-                    .and_then(|object| object.get::<_, String>("message").ok())
-                    .as_deref()
-                    == Some("stack overflow")
-                {
-                    "stack-limit"
-                } else {
-                    "exception"
-                }
-            }
-            _ => "conversion",
-        };
-        eprintln!("CSL failure phase={phase} class={class}");
+    fn render(&self, json: &str) -> Result<String, JsFailure> {
+        self.context.with(|ctx| {
+            let rendered = (|| {
+                let function: rquickjs::Function = ctx.globals().get("__ibisFormat")?;
+                let value = ctx.json_parse(json.as_bytes())?;
+                function.call::<_, String>((value,))
+            })();
+            rendered.map_err(|error| failure(&ctx, "render", &error))
+        })
     }
+}
+/// Only fixed classes cross the JavaScript boundary. Exception content is discarded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JsFailure {
+    StackLimit,
+    MemoryLimit,
+    Interrupted,
+    BridgeRefusal,
+    TypeError,
+    Other,
+}
+impl JsFailure {
+    fn public(self) -> FormatError {
+        match self {
+            Self::StackLimit | Self::MemoryLimit => FormatError::ResourceLimit,
+            Self::Interrupted => FormatError::Cancelled,
+            Self::BridgeRefusal | Self::TypeError | Self::Other => FormatError::Runtime,
+        }
+    }
+    #[cfg(test)]
+    fn label(self) -> &'static str {
+        match self {
+            Self::StackLimit => "stack-limit",
+            Self::MemoryLimit => "memory-limit",
+            Self::Interrupted => "interrupted",
+            Self::BridgeRefusal => "bridge-refusal",
+            Self::TypeError => "type-error",
+            Self::Other => "exception",
+        }
+    }
+}
+
+fn failure(ctx: &rquickjs::Ctx<'_>, phase: &'static str, error: &rquickjs::Error) -> JsFailure {
+    let class = if matches!(error, rquickjs::Error::Allocation) {
+        JsFailure::MemoryLimit
+    } else if matches!(error, rquickjs::Error::Exception) {
+        let exception = ctx.catch();
+        // QuickJS throws null if even constructing its out-of-memory Error fails.
+        if exception.is_null() {
+            JsFailure::MemoryLimit
+        } else {
+            let object = exception.as_object();
+            let name = object.and_then(|value| value.get::<_, String>("name").ok());
+            let message = object.and_then(|value| value.get::<_, String>("message").ok());
+            match (name.as_deref(), message.as_deref()) {
+                (Some("RangeError"), Some("Maximum call stack size exceeded")) => JsFailure::StackLimit,
+                (Some("InternalError"), Some(message)) if message.starts_with("stack overflow (op=") => {
+                    JsFailure::StackLimit
+                }
+                (Some("InternalError"), Some("out of memory" | "out of memory in regexp execution")) => {
+                    JsFailure::MemoryLimit
+                }
+                (Some("InternalError"), Some("interrupted")) => JsFailure::Interrupted,
+                (
+                    Some("Error"),
+                    Some(
+                        "citation formatting failed"
+                        | "style could not format the bibliography"
+                        | "style could not format the citation",
+                    ),
+                ) => JsFailure::BridgeRefusal,
+                (Some("TypeError"), _) => JsFailure::TypeError,
+                _ => JsFailure::Other,
+            }
+        }
+    } else {
+        JsFailure::Other
+    };
+    #[cfg(test)]
+    eprintln!("CSL failure phase={phase} class={}", class.label());
     #[cfg(not(test))]
-    let _ = (ctx, phase, error);
+    let _ = phase;
+    class
 }
 
 fn install_interrupt(runtime: &Runtime, control: &Control) {
@@ -164,7 +203,11 @@ mod tests {
         let session = Session::new(&limits, &control).unwrap();
         control.deadline = Instant::now() + Duration::from_millis(5);
         install_interrupt(&session.runtime, &control);
-        assert!(session.context.with(|ctx| ctx.eval::<(), _>("while(true){} ")).is_err());
+        let interrupted = session.context.with(|ctx| {
+            let error = ctx.eval::<(), _>("while(true){} ").unwrap_err();
+            failure(&ctx, "interrupt-test", &error)
+        });
+        assert_eq!(interrupted, JsFailure::Interrupted);
         assert!(matches!(
             control.error(),
             Some(WorkError::Public(FormatError::TimedOut))
@@ -177,12 +220,9 @@ mod tests {
     fn processor_empty_form_throws_instead_of_returning_a_copyable_sentinel() {
         let limits = Limits::default();
         let control = control();
-        let mut session = Session::new(&limits, &control).unwrap();
+        let session = Session::new(&limits, &control).unwrap();
         let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
-        assert!(matches!(
-            session.run(&prepared, &limits, &control),
-            Err(WorkError::Public(FormatError::Runtime))
-        ));
+        assert_eq!(session.render(&prepared.json), Err(JsFailure::BridgeRefusal));
     }
 
     #[test]
@@ -204,6 +244,64 @@ mod tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    #[test]
+    fn trusted_processor_error_forwarding_preserves_resource_classes() {
+        let session = Session::new(&Limits::default(), &control()).unwrap();
+        let class = session.context.with(|ctx| {
+            let error = ctx.eval::<(), _>("null.invalid()").unwrap_err();
+            failure(&ctx, "type-test", &error)
+        });
+        assert_eq!(class, JsFailure::TypeError);
+        for (message, expected) in [
+            (
+                "@macro attribute: RangeError: Maximum call stack size exceeded",
+                JsFailure::StackLimit,
+            ),
+            ("@macro attribute: InternalError: out of memory", JsFailure::MemoryLimit),
+            (
+                "Synthetic title RangeError: Maximum call stack size exceeded",
+                JsFailure::BridgeRefusal,
+            ),
+            (
+                "@macro attribute: RangeError: Maximum call stack size exceeded and more",
+                JsFailure::BridgeRefusal,
+            ),
+        ] {
+            let actual = session.context.with(|ctx| {
+                ctx.globals().set("__ibisProbeMessage", message).unwrap();
+                let error = ctx.eval::<(), _>("CSL.error(__ibisProbeMessage)").unwrap_err();
+                failure(&ctx, "forwarding-test", &error)
+            });
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn javascript_resource_exhaustion_has_a_resource_error() {
+        for script in [
+            "globalThis.__ibisFormat=()=>{new ArrayBuffer(8*1024*1024);return 'unreachable';}",
+            "globalThis.__ibisFormat=()=>{function recurse(){recurse()}recurse();}",
+        ] {
+            let limits = Limits::default();
+            let control = control();
+            let mut session = Session::new(&limits, &control).unwrap();
+            session.context.with(|ctx| ctx.eval::<(), _>(script)).unwrap();
+            let used = session.runtime.memory_usage().malloc_size as usize;
+            session.runtime.set_memory_limit(used + 1024 * 1024);
+            let prepared = Prepared {
+                json: "{}".into(),
+                outcomes: vec![],
+                losses: vec![],
+                notices: vec![],
+                empty: false,
+            };
+            assert!(matches!(
+                session.run(&prepared, &limits, &control),
+                Err(WorkError::Public(FormatError::ResourceLimit))
+            ));
+        }
     }
 
     #[test]
