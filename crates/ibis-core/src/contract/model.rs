@@ -137,6 +137,10 @@ pub struct Record {
     pub citation_keys: Vec<CitationKey>,
     #[serde(default)]
     pub aliases: Vec<String>,
+    /// Search-only identifiers (for example arXiv eprints), never invented as
+    /// printed CSL fields. They invalidate display/search, not citation picks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub identifiers: Vec<crate::identifier::Identifier>,
     /// Kept in the engine, excluded from the public JSON projection and hashes.
     #[serde(skip)]
     #[schemars(skip)]
@@ -268,6 +272,29 @@ impl LibraryObject {
     fn fingerprints(&self) -> Result<Fingerprints, ModelError> {
         let full = digest_json(self)?;
         let cite = match self {
+            Self::Record(record) => {
+                #[derive(Serialize)]
+                struct CiteRecord<'a> {
+                    id: &'a ItemRef,
+                    csl: &'a BTreeMap<String, Value>,
+                    citation_keys: &'a [CitationKey],
+                    aliases: &'a [String],
+                }
+                #[derive(Serialize)]
+                struct CiteObject<'a> {
+                    kind: &'static str,
+                    data: CiteRecord<'a>,
+                }
+                digest_json(&CiteObject {
+                    kind: "record",
+                    data: CiteRecord {
+                        id: &record.id,
+                        csl: &record.csl,
+                        citation_keys: &record.citation_keys,
+                        aliases: &record.aliases,
+                    },
+                })?
+            }
             // Availability and presentation metadata cannot change a citation.
             Self::Attachment(object) => digest_json(&(&object.id, &object.parent, &object.content_hash))?,
             _ => full.clone(),
@@ -495,6 +522,7 @@ mod tests {
                 source: CitationKeySource::Bibtex,
             }],
             aliases: vec!["Earlier2026".into()],
+            identifiers: vec![],
             raw: None,
         }
     }

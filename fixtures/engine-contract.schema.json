@@ -554,6 +554,79 @@
         "expected"
       ]
     },
+    "Identifier": {
+      "description": "A recognized identifier in canonical form.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "doi"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "isbn"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "arxiv"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "pmid"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
     "ItemOutcome": {
       "oneOf": [
         {
@@ -984,6 +1057,13 @@
         },
         "id": {
           "$ref": "#/$defs/ItemRef"
+        },
+        "identifiers": {
+          "description": "Search-only identifiers (for example arXiv eprints), never invented as\nprinted CSL fields. They invalidate display/search, not citation picks.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
         }
       },
       "additionalProperties": false,

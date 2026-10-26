@@ -84,6 +84,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                     csl: BTreeMap::new(),
                     citation_keys: vec![],
                     aliases: vec![],
+                    identifiers: vec![],
                     raw: None,
                 };
                 if mode == 1 {
@@ -104,6 +105,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                         csl: BTreeMap::new(),
                         citation_keys: vec![],
                         aliases: vec![],
+                        identifiers: vec![],
                         raw: None,
                     }));
                 }
