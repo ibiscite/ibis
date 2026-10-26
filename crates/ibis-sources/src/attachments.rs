@@ -9,6 +9,7 @@ const MAX_LIBRARY_ATTACHMENTS: usize = 100_000;
 const MAX_LIBRARY_TOKENS: usize = 200_000;
 const MAX_LIBRARY_BYTES: usize = 64 * 1024 * 1024;
 const MAX_FIELD_BYTES: usize = 64 * 1024;
+const MAX_RECORD_WORK_BYTES: usize = 256 * 1024;
 const MAX_TOKEN_BYTES: usize = 16 * 1024;
 const MAX_PATH_BYTES: usize = 4096;
 
@@ -20,6 +21,16 @@ struct AttachmentBudget {
     limited: bool,
 }
 impl AttachmentBudget {
+    fn charge(&mut self, record_work: &mut usize, bytes: usize) -> bool {
+        if bytes > MAX_RECORD_WORK_BYTES.saturating_sub(*record_work)
+            || bytes > MAX_LIBRARY_BYTES.saturating_sub(self.bytes)
+        {
+            return false;
+        }
+        *record_work += bytes;
+        self.bytes += bytes;
+        true
+    }
     fn warn(&mut self, warnings: &mut Vec<SourceWarning>, line: Option<usize>) {
         self.limited = true;
         warnings.push(SourceWarning {
@@ -65,6 +76,7 @@ fn append_with(
             continue;
         }
         budget.bytes += field.len();
+        let mut record_work = field.len();
         let mut rest = Some(field.as_str());
         let mut index = 0;
         while rest.is_some() {
@@ -91,11 +103,22 @@ fn append_with(
             if encoded.trim().is_empty() {
                 continue;
             }
+            let digits = attachment_index
+                .checked_ilog10()
+                .map_or(1, |digits| digits as usize + 1);
+            let id_bytes = parent.key.len().saturating_add("attachment:".len() + 1 + digits);
+            // Reserve ID + parent + possible private-map key, including each
+            // library String, before any identity cloning or formatting.
+            let reference_work = id_bytes
+                .saturating_mul(2)
+                .saturating_add(parent.key.len())
+                .saturating_add(parent.library.as_str().len().saturating_mul(3))
+                .saturating_add(digits);
+            if !budget.charge(&mut record_work, reference_work) {
+                budget.warn(warnings, line);
+                break;
+            }
             let encoded = encoded.replace("\\;", ";");
-            let id = ItemRef {
-                library: parent.library.clone(),
-                key: format!("attachment:{}:{attachment_index}", parent.key),
-            };
             let parsed = decode(&encoded);
             if parsed
                 .as_ref()
@@ -116,15 +139,28 @@ fn append_with(
                     }
                     LocationKind::File => {
                         let relative = Path::new(&location);
+                        let native_bytes = if relative.is_absolute() {
+                            relative.as_os_str().as_encoded_bytes().len()
+                        } else {
+                            base.as_os_str()
+                                .as_encoded_bytes()
+                                .len()
+                                .saturating_add(1)
+                                .saturating_add(location.len())
+                        };
+                        // PathBuf joining may grow capacity; charge its upper
+                        // bound before allocating or probing the native path.
+                        if native_bytes > MAX_PATH_BYTES
+                            || !budget.charge(&mut record_work, native_bytes.saturating_mul(2))
+                        {
+                            budget.warn(warnings, line);
+                            continue;
+                        }
                         let path = if relative.is_absolute() {
                             relative.to_path_buf()
                         } else {
                             base.join(relative)
                         };
-                        if path.as_os_str().as_encoded_bytes().len() > MAX_PATH_BYTES {
-                            budget.warn(warnings, line);
-                            continue;
-                        }
                         let availability = probe(&path);
                         (title, kind, Some(path), availability)
                     }
@@ -136,6 +172,17 @@ fn append_with(
                     });
                     (String::new(), String::new(), None, Availability::Unknown)
                 }
+            };
+            // Exact reservation avoids geometric growth while appending a long
+            // native key followed by its numeric attachment suffix.
+            let mut key = String::with_capacity(id_bytes);
+            key.push_str("attachment:");
+            key.push_str(&parent.key);
+            key.push(':');
+            key.push_str(&attachment_index.to_string());
+            let id = ItemRef {
+                library: parent.library.clone(),
+                key,
             };
             if let Some(path) = path {
                 paths.insert(id.clone(), path);
@@ -184,7 +231,7 @@ fn windows_namespace(text: &str) -> bool {
                     .any(|name| part.eq_ignore_ascii_case(name))
             })
 }
-fn scheme(text: &str) -> Option<(&str, &str)> {
+pub(crate) fn scheme(text: &str) -> Option<(&str, &str)> {
     let (name, rest) = text.split_once(':')?;
     (name.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
         && name

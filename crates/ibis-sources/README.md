@@ -41,13 +41,18 @@ access; HTTP(S) links are marked online and never fetched. Ambiguous encodings
 produce an attachment warning rather than a guessed location. Windows UNC,
 network/device namespaces (including mixed separators), drive-relative paths and
 file URIs never trigger metadata probes. MIME values require bounded type/subtype
-tokens. Local absolute/relative file URLs and vendor location fields are omitted
+tokens. Local absolute/relative file URLs (including bare relative paths without
+an absolute URI scheme) and vendor location fields are omitted
 from public CSL data and retained only in raw provenance.
 
 Attachment fields are scanned lazily: at most 256 tokens and 64 KiB per record,
 16 KiB per token and 4096 bytes per decoded/native location. A library permits
-100,000 attachments, 200,000 tokens and 64 MiB of attachment-field work, allowing
-100,000 ordinary single-attachment records. Exceeding a limit warns with
+100,000 attachments, 200,000 tokens and 64 MiB of total attachment allocation
+work, with 256 KiB of allocation work per record. This includes field bytes,
+generated IDs, cloned parent references, possible private-map keys and native
+path capacity, reserved before cloning or allocation. Long native IDs cannot
+multiply into unbounded attachment keys. The count budget allows 100,000
+ordinary single-attachment records. Exceeding a limit warns with
 `work-limit` and preserves citable records; strict reloads refuse the replacement
 so the caller retains its last good owner/snapshot.
 
