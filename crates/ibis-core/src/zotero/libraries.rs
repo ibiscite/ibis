@@ -1,7 +1,7 @@
 //! Several Zotero libraries read as one: the personal library and the groups
 //! the user chose. Each library keeps its own version, so a change check
-//! costs one small request per library, and a library that cannot be read is
-//! reported by name while the others still load.
+//! costs one small request per library. Initial reads report skipped libraries;
+//! a failed refresh keeps the whole previously loaded snapshot.
 
 use serde_json::Value;
 
@@ -99,11 +99,9 @@ pub type Snapshots = Vec<(Library, Option<Snapshot>)>;
 /// The outcome of [`refresh`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refresh {
-    /// No library changed and none that failed can be read now; keep the
-    /// references already loaded.
+    /// Every library was checked and no library changed; keep the loaded references.
     Unchanged,
-    /// Every library read again, combined. A library that could not be read
-    /// is a warning naming it.
+    /// Every library read again, combined. Initial reads may warn about skipped libraries.
     Loaded { result: LoadResult, snapshots: Snapshots },
 }
 
@@ -112,8 +110,10 @@ pub enum Refresh {
 ///
 /// Errors that mean Zotero itself cannot be reached or used (not running,
 /// access off, another API version) fail the whole read. Anything else
-/// fails only that library, unless every library fails. Probes, scans and
-/// rereads share one byte/time budget; refusal prevents further requests.
+/// fails only that library on an initial read, unless every library fails.
+/// With `previous`, any failure aborts the replacement so callers retain the
+/// whole prior snapshot, including its versions and last-check time. Probes,
+/// scans and rereads share one byte/time budget; refusal prevents further requests.
 pub fn refresh(
     transport: &mut impl Transport,
     libraries: &[Library],
@@ -159,12 +159,10 @@ fn refresh_with_budget(
             _ => api::refresh_with_budget(transport, library, None, budget),
         };
         let outcome = match outcome {
-            Err(error) if fatal(error) => return Err(error),
+            Err(error) if previous.is_some() || fatal(error) => return Err(error),
             outcome => outcome,
         };
-        // A library that failed before and fails again is no change.
-        let failed_again = matches!(before(library), Some(None)) && outcome.is_err();
-        if !matches!(outcome, Ok(api::Refresh::Unchanged)) && !failed_again {
+        if !matches!(outcome, Ok(api::Refresh::Unchanged)) {
             changed = true;
         }
         outcomes.push((library, outcome));
@@ -192,7 +190,7 @@ fn refresh_with_budget(
                 snapshots.push((library, Some(snapshot)));
             }
             Ok(api::Refresh::Unchanged) => return Err(ZoteroError::Incomplete),
-            Err(error) if fatal(error) => return Err(error),
+            Err(error) if previous.is_some() || fatal(error) => return Err(error),
             Err(error) => {
                 first_error.get_or_insert(error);
                 result.warnings.push(LoadWarning {
@@ -376,19 +374,10 @@ mod tests {
             body_bytes + b"{}".len() + b"{\"ITEM\":10}".len() - 1,
             std::time::Duration::from_secs(60),
         );
-        let (result, snapshots) = loaded(
-            refresh_with_budget(&mut zotero, &BOTH, Some(&previous), &mut budget).unwrap_or_else(|e| panic!("{e}")),
+        assert_eq!(
+            refresh_with_budget(&mut zotero, &BOTH, Some(&previous), &mut budget),
+            Err(ZoteroError::TooLarge)
         );
-        assert_eq!(result.references.len(), 1);
-        assert_eq!(result.references[0].id.native_key, "NEW");
-        assert_eq!(result.warnings.len(), 1);
-        assert!(
-            result.warnings[0]
-                .message
-                .starts_with("Your Zotero library was skipped:")
-        );
-        assert_eq!(snapshots[0], (Library::User, None));
-        assert!(matches!(&snapshots[1], (Library::Group(42), Some(snapshot)) if snapshot.version == 10));
         assert_eq!(zotero.asked.len(), 4);
         assert!(zotero.asked[0].contains("since=5"));
         assert!(zotero.asked[1].contains("since=9"));
@@ -514,9 +503,12 @@ mod tests {
         assert!(result.warnings[0].message.contains("not found"));
         assert_eq!(snapshots[1], (Library::Group(42), None));
 
-        // Still gone: no change, and the personal library is not read again.
+        // Still gone: retain the old partial snapshot without claiming a fresh check.
         zotero.asked.clear();
-        assert_eq!(refresh(&mut zotero, &BOTH, Some(&snapshots)), Ok(Refresh::Unchanged));
+        assert_eq!(
+            refresh(&mut zotero, &BOTH, Some(&snapshots)),
+            Err(ZoteroError::GroupNotFound)
+        );
         assert_eq!(zotero.asked.len(), 2);
 
         // Back again: everything is read and the warning goes away.
@@ -565,11 +557,11 @@ mod tests {
     fn zotero_stopping_while_unchanged_libraries_are_reread_is_an_error() {
         // The personal library is unchanged, the group changed, and Zotero
         // goes away before the personal library is read again.
-        struct StopsOnFullRead(Zotero);
-        impl Transport for StopsOnFullRead {
+        struct StopsOnFullRead<'a>(&'a mut Zotero, TransportError);
+        impl Transport for StopsOnFullRead<'_> {
             fn get(&mut self, path: &str) -> Result<Response, TransportError> {
                 if path.starts_with("users/0/items") && !path.contains("since=") {
-                    return Err(TransportError::Unreachable);
+                    return Err(self.1);
                 }
                 self.0.get(path)
             }
@@ -579,9 +571,11 @@ mod tests {
             .with("groups/42", 9, &["THEIRS"]);
         let (_, snapshots) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
         zotero.libraries.insert("groups/42".into(), (10, vec!["NEW".into()]));
-        assert_eq!(
-            refresh(&mut StopsOnFullRead(zotero), &BOTH, Some(&snapshots)),
-            Err(ZoteroError::Transport(TransportError::Unreachable))
-        );
+        for error in [TransportError::Unreachable, TransportError::TimedOut] {
+            assert_eq!(
+                refresh(&mut StopsOnFullRead(&mut zotero, error), &BOTH, Some(&snapshots)),
+                Err(ZoteroError::Transport(error))
+            );
+        }
     }
 }

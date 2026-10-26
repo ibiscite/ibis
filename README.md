@@ -60,6 +60,11 @@ volumes and verses are supported. Times such as `01:23` stay literal search text
 
 With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library, and any group libraries you choose, through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. It never changes anything in Zotero.
 
+If any selected library fails during a refresh, Ibis keeps the whole previous
+snapshot searchable and reports that it could not be updated. Even libraries
+that did respond wait until all selected libraries can be read again. The first
+load can still show available libraries with a warning naming any skipped ones.
+
 The first time, turn on Zotero's local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis tries Zotero's own Citation Key field first, then a `Citation Key:` line in Extra, then the citation key in Zotero's CSL export (for example a Better BibTeX key).
 
 If you prefer a file, or Zotero is usually closed, let Zotero keep a `.bib` file up to date instead:
