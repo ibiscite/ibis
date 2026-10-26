@@ -17,7 +17,7 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 
 - **Type**, exactly one on every issue: `type:bug`, `type:feature`, `type:task` (tests, CI, build, performance, refactoring, maintenance) or `type:docs`.
 - `status:needs-maintainer` marks a reserved decision or something needing the maintainer's own hands; `tracking` marks the tracking issue; `good first issue` and `help wanted` invite outside help.
-- Area, platform and other status labels are optional; add one only when it helps someone find the issue.
+- Area, platform and other status labels are optional; add one only when it helps someone find the issue. The allowed names are `LABELS` in `scripts/hygiene.mjs`.
 - Release Please and Dependabot add their own labels; leave them alone. Pull requests need no labels: the title's type says it. There are no priority labels: the milestone and the order of the Queue say what comes first.
 
 ### Milestones

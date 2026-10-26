@@ -4,14 +4,14 @@ Status: accepted (2026-10-26); amends 0015 and 0017; suspends the upgrade rules 
 
 ## Context
 
-Ibis has no users who depend on older versions. Its maintainer works alone through several AI agents in parallel and asked, on 2026-10-26, for a process that keeps only what prevents real damage and lets the product be rebuilt freely until 1.0. Two rules cost the most for the least protection at this stage:
+Ibis has only preview testers, who accept losing settings between pre-1.0 versions. Its maintainer works alone through several AI agents in parallel and asked, on 2026-10-26, for a process that keeps only what prevents real damage and lets the product be rebuilt freely until 1.0. Two rules cost the most for the least protection at this stage:
 
 - Compatibility code. About 1,800 lines (`identity.rs`, the settings format 1 to 2 upgrade, `.bak` handling) exist only to carry settings from older versions. Every settings change has to extend them.
 - Review of every code change. ADR 0015 requires an independent review of the exact head for every code change, and the loop added a second-model attack before the pull request and a routine bot review on top. Most changes are low risk and already covered by tests and CI.
 
 ## Decision
 
-**No backward compatibility before 1.0.** Settings, other persisted files, the command line and internal formats may change without migrations, upgrade paths or compatibility shims. When Ibis finds settings it cannot read, it keeps the old file as a copy, starts from defaults and says so in plain words; saves stay atomic, and Ibis never silently overwrites a file it could not read. Existing migration code is deleted when its area is next rebuilt. From 1.0, ADRs 0016, 0018, 0022 and 0023 describe the baseline again: a persisted format change then needs an upgrade path.
+**No backward compatibility before 1.0.** Settings, other persisted files, the command line and internal formats may change without migrations, upgrade paths or compatibility shims. When Ibis finds settings it cannot read, it keeps the old file as a copy, starts from defaults and says so in plain words. Saves stay atomic and flushed, and Ibis never silently overwrites a file it could not read. Suspended until 1.0: format upgrades (0016, 0018), preserving unknown fields (0022) and carrying settings to a new app identity (0023). Existing migration code, including the app identifier move in #695, keeps working until its area is next rebuilt and is then deleted rather than extended. From 1.0, these ADRs describe the baseline again: a persisted format change then needs an upgrade path.
 
 **One review, only where risk is real.** An independent review of the final head (by a session that did not write the change, preferably another model) is required for changes to:
 
