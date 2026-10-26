@@ -88,6 +88,13 @@ test("CLI enforces and writes reductions against the committed base", (t) => {
   writeFileSync(source, text(650)); record(650);
   const merged = spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
   assert.equal(merged.status, 0, merged.stderr || "main's lowered baseline in the merge checkout must pass");
+  // CI checks out the merge commit alone, without its parents.
+  git("branch", "merge-checkout");
+  const shallow = join(root, "shallow");
+  git("clone", "-q", "--depth=1", "--branch", "merge-checkout", `file://${root}`, shallow);
+  writeFileSync(join(shallow, "src/資料.ts"), text(650)); writeFileSync(join(shallow, "scripts/file-size-baseline.json"), JSON.stringify({ "src/資料.ts": 650 }));
+  const fromShallow = spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: shallow, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
+  assert.equal(fromShallow.status, 0, fromShallow.stderr || "a shallow merge checkout must still find its first parent");
   writeFileSync(source, text(701)); record(701);
   assert.match(run().stderr, /exceptions cannot be added or grow/);
   assert.equal(run("--write-baseline").status, 1, "write mode also refuses inflation");

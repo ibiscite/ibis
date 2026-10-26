@@ -13,7 +13,7 @@ export const sourceFile = (name) => /\.(?:rs|[cm]?[jt]sx?|py|css|sh|ps1|html|nix
   && !normalized(name).startsWith("brand/exports/") && normalized(name) !== "apps/desktop/src/bindings.ts";
 export const lineCount = (text) => text === "" ? 0 : text.split("\n").length - Number(text.endsWith("\n"));
 
-// base: line counts on main for the files checked (absent = new file), or null.
+// base: line counts on main for files above 600 lines (absent = new file), or null.
 export function sizeErrors(files, baseline, previous = null, base = null) {
   const errors = [];
   const names = new Set();
@@ -63,7 +63,8 @@ function commit(sha) {
 export function baseReference() {
   const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
   if (event.pull_request) {
-    const [, first, second] = git(["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ");
+    // Read the parents from the commit itself: a shallow checkout hides them from rev-list.
+    const [first, second] = [...git(["cat-file", "-p", "HEAD"]).matchAll(/^parent ([a-f0-9]{40})$/gm)].map((match) => match[1]);
     return commit(second && second === event.pull_request.head?.sha ? first : event.pull_request.base?.sha);
   }
   return commit(event.merge_group?.base_sha ?? event.before);
