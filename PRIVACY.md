@@ -6,7 +6,8 @@ and its local data. New Ibis data flows need an ADR and an update here.
 ## What Ibis reads and writes
 
 - **Reads:** files passed to the `ibis` command, the desktop library you choose,
-  or your selected Zotero libraries through Zotero's local API. First-run setup
+  or your selected Zotero libraries through Zotero's local API (or, while
+  Zotero is closed, from a copy of its database). First-run setup
   looks for `.bib` names and modification times in Documents, Desktop, Downloads
   and a few levels of subfolders; it opens a file only after you choose it.
 - **Clipboard:** copying writes the citation to your system clipboard. Clipboard
@@ -44,7 +45,10 @@ the same as Ibis's settings.
 - **Zotero:** Ibis connects to `127.0.0.1:23119` on your computer. Setup checks
   Zotero's greeting; choosing Zotero reads the selected libraries and refreshes
   them when the picker opens. Zotero's local API must be enabled. These requests
-  do not leave your computer.
+  do not leave your computer. When Zotero is closed, Ibis copies Zotero's
+  database files into a private folder in your system's temporary folder,
+  reads the copy and deletes it straight away; Zotero's own files are only
+  read, never changed.
 - **App updates:** automatic checks are off until you agree. When enabled,
   Ibis requests a small GitHub update file a few times a day. **Check for
   Updates…** makes a check on request. GitHub sees your IP address and Ibis

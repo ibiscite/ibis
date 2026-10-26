@@ -261,6 +261,12 @@ fn read_text(path: &Path, limit: u64) -> Result<Option<String>, Warning> {
         .map_err(|_| Warning::UnreadableConfiguration)
 }
 
+/// Open a regular file without following a final symbolic link or blocking
+/// on a special file, as configuration is opened.
+pub(crate) fn open_regular(path: &Path) -> Result<File, Warning> {
+    open_configuration(path)
+}
+
 fn open_configuration(path: &Path) -> Result<File, Warning> {
     if cfg!(not(any(
         target_os = "macos",

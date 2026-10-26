@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Runs the real-Zotero test (crates/ibis-zotero-local/tests/real_zotero.rs)
+# Runs the real-Zotero tests (crates/ibis-zotero-local/tests/real_zotero*.rs)
 # against an actual Zotero: downloads the current Linux release, starts it
 # with a fresh, throwaway profile and data directory and the local API
-# turned on, then runs the test. Linux only; needs xvfb-run and network
+# turned on, runs the tests, then stops Zotero and reads its database. Linux only; needs xvfb-run and network
 # access to zotero.org. Zotero listens on a port of its own (not 23119), so a
 # Zotero you have open is never touched. The ordinary run writes only to a
 # temporary directory; --capture retains a synthetic bundle in fresh output.
@@ -466,3 +466,23 @@ cd "$root"
 if ! IBIS_ZOTERO_PORT=$port IBIS_THROWAWAY_ZOTERO=1 cargo test -p ibis-zotero-local --locked --test real_zotero -- --ignored --nocapture; then
   echo "Zotero log:" >&2; tail -n 80 "$work/zotero.log" >&2; exit 1
 fi
+
+# Read the same library from Zotero's database with Zotero stopped (#14):
+# save what the local API sent, stop Zotero without a clean shutdown (so its
+# WAL may still hold the last transactions), and compare.
+if ! IBIS_ZOTERO_PORT=$port IBIS_PARITY_FILE="$work/api.json" cargo test -p ibis-zotero-local --locked \
+  --test real_zotero_closed -- --ignored --exact the_live_answer_is_saved_for_comparison; then
+  echo "Zotero log:" >&2; tail -n 80 "$work/zotero.log" >&2; exit 1
+fi
+kill -- "-$zotero_pid" 2>/dev/null || true
+for _ in $(seq 60); do
+  kill -0 -- "-$zotero_pid" 2>/dev/null || break
+  sleep 0.5
+done
+kill -9 -- "-$zotero_pid" 2>/dev/null || true
+zotero_pid=
+if curl -s -m 2 -o /dev/null "http://127.0.0.1:$port/"; then
+  echo "Zotero still answers after it was stopped" >&2; exit 1
+fi
+IBIS_ZOTERO_DATA="$work/data" IBIS_PARITY_FILE="$work/api.json" cargo test -p ibis-zotero-local --locked \
+  --test real_zotero_closed -- --ignored --exact a_closed_zotero_reads_the_same_as_its_local_api --nocapture

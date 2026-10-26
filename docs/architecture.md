@@ -7,7 +7,7 @@
  small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [0.4]
                       └─ Browser extension, launcher integrations, web build  [later]
    │
-   ├─ Sources: BibTeX/BibLaTeX · Zotero (open) · Zotero closed [0.3] · RIS, CSL-JSON [after 1.0]
+   ├─ Sources: BibTeX/BibLaTeX · Zotero (open or closed) · RIS, CSL-JSON [after 1.0]
    ├─ Search index in memory
    ├─ Key-based syntaxes in Rust (CSL styles: citeproc-js in the web UI for now)
    ├─ Insertion: state machine + destination profiles              [after 1.0]
@@ -42,7 +42,7 @@ Each record has an identity (source + native key), normalized fields that map to
   Clean first-parent inheritance snapshots are shared across references within a 4 MiB cache, including retained field allocations and empty-entry metadata.
   Only complete, warning-free walks qualify; roots still compute their own diagnostics. Replay preserves the per-root evaluation quota, while actual cache metadata work and subsequent field copies consume load credits.
   The desktop watches the containing directory using `notify`, so save-by-rename keeps working. Selected symlinks also watch the resolved target directory and update that watch when the selected link changes. An absent target file in an existing directory is watched by its parent so creating the file recovers automatically. A bounded worker coalesces changes, waits for a quiet interval and requires two identical reads before publishing an indexed replacement. Unreadable, missing or unclosed files retain the last loaded references and show a safe error. Initial opens remain tolerant of damaged entries. A stable empty file replaces the index with an empty library. Writer intent cannot be inferred from a syntactically valid prefix; stability checks bound the observation period rather than guaranteeing that a paused writer has finished. Network filesystems may not deliver notifications; Reload remains available.
-- **Zotero:** the local API while Zotero is running, or a Better BibTeX export as a `.bib` file. Reading a consistent read-only snapshot of Zotero's database while Zotero is closed is planned for 0.3 (#14). See ADR 0006.
+- **Zotero:** the local API while Zotero is running; while it is closed, a private copy of its database, checked and read with Zotero's own CSL mapping and then deleted (`ibis-zotero-local::snapshot`, `ibis_core::zotero::database`). The original is never opened. A data folder inside a cloud-synced folder gets a reading notice. A Better BibTeX export as a `.bib` file also works. See ADRs 0006 and 0027.
 
 ## Search
 

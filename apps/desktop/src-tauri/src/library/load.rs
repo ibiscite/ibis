@@ -1,11 +1,16 @@
 //! Reading a library file or Zotero into a new library, off the main thread.
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
+use ibis_core::model::{LoadWarning, WarningKind};
 use ibis_core::settings::ZoteroLibraries;
 use ibis_core::source::load_library_snapshot;
+use ibis_core::zotero::api::{self, TransportError, ZoteroError};
 use ibis_core::zotero::{self, libraries};
 use ibis_zotero_local::LocalZotero;
+use ibis_zotero_local::discovery::{DiscoveryRoots, Platform, discover};
+use ibis_zotero_local::snapshot::{self, Fingerprint};
 
 use super::error::LoadError;
 use super::source::{Source, zotero_library};
@@ -28,20 +33,109 @@ pub(crate) enum Loaded {
 }
 
 /// Read the Zotero libraries, or only check for changes when `previous`
-/// holds the versions already loaded.
+/// holds the versions already loaded. When Zotero is not running, a copy of
+/// its database is read instead (ADR 0027).
 pub(super) fn load_zotero(
     chosen: ZoteroLibraries,
     previous: Option<&libraries::Snapshots>,
+    reload: bool,
 ) -> Result<Loaded, LoadError> {
     let mut zotero = LocalZotero::default();
     let wanted: Vec<zotero::Library> = chosen.libraries().iter().copied().map(zotero_library).collect();
-    match libraries::refresh(&mut zotero, &wanted, previous)? {
+    match libraries::refresh(&mut zotero, &wanted, previous) {
+        Err(ZoteroError::Transport(TransportError::Unreachable)) => {
+            load_closed(chosen, &wanted, reload && previous.is_none(), zotero_data())
+        }
+        outcome => installed(chosen, outcome?),
+    }
+}
+
+fn installed(chosen: ZoteroLibraries, refresh: libraries::Refresh) -> Result<Loaded, LoadError> {
+    match refresh {
         libraries::Refresh::Unchanged => Ok(Loaded::Unchanged),
         libraries::Refresh::Loaded { result, snapshots } => {
             let mut new = candidate(Source::Zotero(chosen), result);
             new.zotero = Some(snapshots);
             Ok(Loaded::New(Box::new(new)))
         }
+    }
+}
+
+/// The last library read while Zotero was closed, with the state of the
+/// database files it came from, so showing the picker again does not copy
+/// an unchanged database. Only a reload of that same choice may use it.
+static LAST_CLOSED: Mutex<Option<(ZoteroLibraries, PathBuf, Fingerprint)>> = Mutex::new(None);
+
+/// Read Zotero's libraries from a copy of its database. Any failure reads
+/// as "Zotero is closed", whose remedy (open Zotero) always works.
+fn load_closed(
+    chosen: ZoteroLibraries,
+    wanted: &[zotero::Library],
+    reload: bool,
+    data: Option<PathBuf>,
+) -> Result<Loaded, LoadError> {
+    let closed = LoadError::Zotero(ZoteroError::Transport(TransportError::Unreachable));
+    let data = data.ok_or(closed)?;
+    let mut last = LAST_CLOSED.lock().map_err(|_| closed)?;
+    let previous = last
+        .as_ref()
+        .filter(|(seen, folder, _)| reload && seen == &chosen && folder == &data)
+        .map(|(_, _, fingerprint)| fingerprint);
+    let outcome = snapshot::read(&data, &std::env::temp_dir(), wanted, previous);
+    // Zotero may have started meanwhile; then only its own answer counts.
+    if api::presence(&mut LocalZotero::default()) != api::Presence::Absent {
+        return installed(
+            chosen.clone(),
+            libraries::refresh(&mut LocalZotero::default(), wanted, None)?,
+        );
+    }
+    match outcome {
+        Ok(snapshot::Refresh::Unchanged) => Ok(Loaded::Unchanged),
+        Ok(snapshot::Refresh::Loaded {
+            mut result,
+            fingerprint,
+        }) => {
+            if snapshot::cloud_synced(&data) {
+                result.warnings.push(LoadWarning {
+                    kind: WarningKind::Field,
+                    line: None,
+                    key: None,
+                    message: CLOUD_SYNCED.to_string(),
+                });
+            }
+            *last = Some((chosen.clone(), data, fingerprint));
+            Ok(Loaded::New(Box::new(candidate(Source::Zotero(chosen), result))))
+        }
+        Err(error) => {
+            eprintln!("ibis-zotero-closed: {error}");
+            Err(closed)
+        }
+    }
+}
+
+const CLOUD_SYNCED: &str = "Zotero's data folder is inside a folder a cloud service syncs. Zotero advises \
+     against this: syncing can damage its database. Ibis changes nothing; move the folder in Zotero's \
+     settings to keep it safe.";
+
+/// Zotero's data folder on this computer, when exactly one is found and it
+/// holds a database. Several are a choice for the user, never a guess.
+fn zotero_data() -> Option<PathBuf> {
+    let platform = if cfg!(target_os = "macos") {
+        Platform::MacOs
+    } else if cfg!(windows) {
+        Platform::Windows
+    } else {
+        Platform::Linux
+    };
+    let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
+    let found = discover(&DiscoveryRoots::new(platform, std::env::home_dir()?, roaming), None);
+    let mut folders = found
+        .directories
+        .into_iter()
+        .filter(|d| d.path().join("zotero.sqlite").is_file());
+    match (folders.next(), folders.next()) {
+        (Some(one), None) => Some(one.path().to_path_buf()),
+        _ => None,
     }
 }
 
@@ -52,7 +146,7 @@ pub(super) fn load_source(
 ) -> Result<Loaded, LoadError> {
     match source {
         Source::File(path) => load_library(path, reload).map(|library| Loaded::New(Box::new(library))),
-        Source::Zotero(chosen) => load_zotero(chosen, previous.as_ref().filter(|_| reload)),
+        Source::Zotero(chosen) => load_zotero(chosen, previous.as_ref().filter(|_| reload), reload),
     }
 }
 
@@ -81,5 +175,17 @@ mod tests {
         assert!(library.snapshot.is_some());
         assert_eq!(library.index.search("sleep", 10).len(), 1);
         assert!(load_library(std::env::temp_dir().join("ibis-missing-library.bib"), false).is_err());
+    }
+
+    #[test]
+    fn without_a_zotero_data_folder_a_closed_zotero_stays_closed() {
+        let chosen = ZoteroLibraries::from(ibis_core::settings::ZoteroLibrary::User);
+        let missing = std::env::temp_dir().join(format!("ibis-no-zotero-{}", std::process::id()));
+        for data in [None, Some(missing)] {
+            assert_eq!(
+                load_closed(chosen.clone(), &[zotero::Library::User], false, data).err(),
+                Some(super::super::error::ZOTERO_OFFLINE)
+            );
+        }
     }
 }

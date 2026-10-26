@@ -3,8 +3,8 @@
 //! Zotero describes each item twice: its own record (`data`: item key, type,
 //! citation key, Extra, tags, trash state) and a CSL-JSON rendering
 //! (`csljson`). Both access paths, the local API while Zotero runs (#13) and
-//! a copy of its database while it is closed (#14), produce that pair, so
-//! this one mapping serves both and they cannot drift apart.
+//! a copy of its database while it is closed ([`database`]), produce that
+//! pair, so this one mapping serves both and they cannot drift apart.
 //!
 //! Notes, attachments, annotations and items in the trash are not citable
 //! references and are left out without a warning, as Zotero's own citation
@@ -19,8 +19,8 @@ use std::fmt;
 use serde_json::{Map, Value};
 
 pub mod api;
+pub mod database;
 pub mod libraries;
-
 #[cfg(test)]
 mod test_support;
 

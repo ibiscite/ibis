@@ -1,6 +1,6 @@
 [package]
 name = "ibis-zotero-local"
-description = "Talks to Zotero's local API on this computer only"
+description = "Reads Zotero on this computer: its local API, or a copy of its database while it is closed"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,13 @@ publish = false
 
 [dependencies]
 ibis-core = { path = "../ibis-core" }
+miniz_oxide = { version = "0.8.9", features = ["with-alloc"] }
+rusqlite = { version = "0.41.0", default-features = false, features = ["bundled", "hooks"] }
+thiserror = "2.0.21"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+serde_json = "1.0.154"
+tempfile = "3.27.0"

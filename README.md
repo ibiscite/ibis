@@ -14,12 +14,12 @@ Ibis is free and open source. Searching and copying work offline after setup. Ib
 Ibis is an early preview.
 
 - Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Control+Command+R** on macOS, if the shortcut is available. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
-- Search a `.bib` file or, while Zotero is open, your Zotero library and any group libraries you choose.
+- Search a `.bib` file or your Zotero library and any group libraries you choose, even while Zotero is closed.
 - Copy a citation key for Pandoc, BibLaTeX, LaTeX or Typst, or a formatted citation in APA, Chicago, Harvard, IEEE or MLA, then paste it where you write.
 - Works offline and never changes your library.
 - **Nightly only, until the next release:** start Ibis when you log in, and paste a DOI, ISBN, PubMed ID (`PMID:…`) or arXiv ID to find that record in your library (Ibis does not fetch it from the internet).
 
-Ibis copies the citation for you to paste; inserting it directly is planned. See the [roadmap](ROADMAP.md) for what comes next, including any citation style, Zotero while it is closed, exporting a document's bibliography and checking a manuscript's citations.
+Ibis copies the citation for you to paste; inserting it directly is planned. See the [roadmap](ROADMAP.md) for what comes next, including any citation style, exporting a document's bibliography and checking a manuscript's citations.
 
 ## Install
 
@@ -58,7 +58,7 @@ volumes and verses are supported. Times such as `01:23` stay literal search text
 
 ## Use with Zotero
 
-With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library, and any group libraries you choose, through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. It never changes anything in Zotero.
+With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library, and any group libraries you choose, through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. When Zotero is closed, Ibis reads a private copy of Zotero's database instead, so your library is there without opening Zotero; it never opens or changes Zotero's own files.
 
 The first time, turn on Zotero's local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis tries Zotero's own Citation Key field first, then a `Citation Key:` line in Extra, then the citation key in Zotero's CSL export (for example a Better BibTeX key).
 

@@ -30,3 +30,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0024 | Restrict desktop commands by window | accepted |
 | 0025 | Structured citation input for the engine and CLI | accepted |
 | 0026 | Keep typed locator interpretation and selection in Rust | accepted |
+| 0027 | Read a closed Zotero from a private copy of its database | accepted (applies 0006) |
