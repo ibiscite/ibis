@@ -9,7 +9,7 @@ Everything needed to continue is in this repository and on GitHub: these rules, 
 ## Commands
 
 ```sh
-node scripts/check.mjs          # everything CI checks: formatting, lints, tests, dependency policy
+node scripts/check.mjs          # formatting, lints, tests, dependency policy
 cargo test -p ibis-core         # fast core tests
 cargo test -p ibis-desktop      # desktop crate tests (plain cargo test skips them)
 pnpm -C apps/desktop test       # interface tests
@@ -35,7 +35,7 @@ Anyone (Claude, Codex, another tool or a human) can do any part of the work. Who
 1. **Pick** the first untaken item in your lane of the tracking issue's Queue; your draft pull request is the claim. A red `main` comes first: when the required "CI result" fails on `main` for a real failure, revert the merge whose own run first turned it red, then fix it in a new pull request. Diagnose a runner, network or service outage before reverting anything. A failing job that is not required never triggers a revert or a queue hold by itself: record it in the issue CI opened for it, and if it fails twice on `main` for the same reason, treat it as a P2 bug.
 2. **Branch** `<type>/<issue>-<short-name>` from `origin/main` in your own worktree; never share a checkout. Start with a failing test or a fixture in `fixtures/`.
 3. **Build** one user-visible feature per pull request, with its tests, docs and closely related small fixes; split only when parts can ship on their own. Use explicit working directories, inspect the diff before testing, and update docs and snapshots in the same change (review snapshot diffs like code).
-4. **Check** with the fast commands and focused tests. The full check is the required "CI result" on the exact head, then the merge queue; run `node scripts/check.mjs` locally only to diagnose a failure or for what CI cannot cover. Report each step as passed, failed or blocked, never "passed" for something that did not run.
+4. **Check** with the fast commands and focused tests. Native UI and browser gallery jobs run only on `main` pushes and manual dispatch; neither blocks "CI result". The full check is the required "CI result" on the exact head, then the merge queue; run `node scripts/check.mjs` locally only to diagnose a failure or for what CI cannot cover. Report each step as passed, failed or blocked, never "passed" for something that did not run.
 5. **Attack your own change once:** hostile, huge or empty input, other scripts and locales, concurrency, each platform, silent failure. P1 = crash, hang, data loss, security; P2 = wrong or silently changed output. Fix P1, P2 and regressions with a test; file P3s as one follow-up issue.
 6. **Open** the pull request with the template. Push unfinished work early as a draft so nothing lives on one machine; mark it ready once the check passes.
 7. **Review and merge** by the [review rule](docs/development.md#review-and-merge): changes in a risky area (the list in [ADR 0027](docs/adr/0027-fast-until-1-0.md): updater, signing and CI permissions, files Ibis writes, clipboard, escaping and pasting, window permissions, native input and the shortcut portal, library reading, citation output, untrusted input, network and security boundaries) need one independent review of the final head with every P1 and P2 fixed (filing them does not count). Everything else needs only your recorded step 5. Squash-merge when all required checks pass. Never use `--admin` or another bypass.

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { classify } from "./ci-paths.mjs";
 
-const full = { native: true, web: true, nix: true };
+const full = { native: true, web: true };
 const row = (filename, previous_filename = null) => ({ filename, previous_filename, status: previous_filename ? "renamed" : "modified" });
 const pr = (files, expected = files.length) => classify("pull_request", expected, files);
 
@@ -22,15 +22,15 @@ function workflowStep() {
 
 test("interface-only changes retain web checks without native jobs", () => {
   for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/messages.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html", "apps/desktop/gallery.html", "scripts/gallery-contact-sheet.mjs", "scripts/gallery-geometry.mjs", "scripts/gallery-geometry.test.mjs"]) {
-    assert.deepEqual(pr([row(path), row("docs/design.md")]), { native: false, web: true, nix: false }, path);
+    assert.deepEqual(pr([row(path), row("docs/design.md")]), { native: false, web: true }, path);
   }
 });
 
 test("website-only changes keep web checks without native jobs", () => {
   for (const path of ["website/index.html", "website/demo.js", "website/_headers"]) {
-    assert.deepEqual(pr([row(path)]), { native: false, web: true, nix: false }, path);
+    assert.deepEqual(pr([row(path)]), { native: false, web: true }, path);
   }
-  assert.deepEqual(pr([row("website/demo.js"), row("apps/desktop/src-tauri/src/lib.rs")]), { native: true, web: true, nix: false });
+  assert.deepEqual(pr([row("website/demo.js"), row("apps/desktop/src-tauri/src/lib.rs")]), { native: true, web: true });
   assert.equal(pr([row("websites/demo.js")]).native, true, "only the website directory itself");
 });
 
@@ -43,36 +43,29 @@ test("without native inputs only a Linux Desktop placeholder runs", () => {
 test("the gallery geometry fixture keeps web checks without native jobs", () => {
   const fixture = "docs/design-geometry.json";
   for (const files of [[row(fixture)], [row(fixture), row("apps/desktop/src/tokens.css"), row("docs/design.md")]]) {
-    assert.deepEqual(pr(files), { native: false, web: true, nix: false });
+    assert.deepEqual(pr(files), { native: false, web: true });
   }
-  assert.deepEqual(pr([row("docs/old.md", fixture)]), { native: false, web: true, nix: false });
+  assert.deepEqual(pr([row("docs/old.md", fixture)]), { native: false, web: true });
   assert.equal(pr([row(fixture, "apps/desktop/src-tauri/tauri.conf.json")]).native, true);
   for (const event of ["push", "merge_group"]) {
-    assert.deepEqual(classify(event, 1, [row(fixture)]), { native: true, web: true, nix: false });
+    assert.deepEqual(classify(event, 1, [row(fixture)]), { native: true, web: true });
   }
 });
 
 test("documentation keeps its existing fast path, except synthetic fixtures", () => {
-  assert.deepEqual(pr([row("README.md"), row("docs/design/menu.md"), row("LICENSE"), row(".github/ISSUE_TEMPLATE/task.yml")]), { native: false, web: false, nix: false });
+  assert.deepEqual(pr([row("README.md"), row("docs/design/menu.md"), row("LICENSE"), row(".github/ISSUE_TEMPLATE/task.yml")]), { native: false, web: false });
   assert.equal(pr([row("fixtures/README.md")]).native, true);
 });
 
 test("native, tooling and unknown changes stay conservative", () => {
   for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "apps/desktop/vite.config.ts", "apps/desktop/src/unknown.rs", "apps/desktop/src-tauri/tauri.conf.json", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", "unknown/file", "docs/design-settings.json", "docs/design-geometry.json.bak"]) {
-    assert.deepEqual(pr([row("apps/desktop/src/App.tsx"), row(path)]), { native: true, web: true, nix: false }, path);
-  }
-});
-
-test("Nix inputs retain their dedicated build", () => {
-  for (const path of ["flake.nix", "flake.lock", "nix/pnpm-deps-hash", "Cargo.lock", "apps/desktop/package.json", "apps/desktop/pnpm-lock.yaml"]) {
-    assert.deepEqual(pr([row(path)]), full, path);
+    assert.deepEqual(pr([row("apps/desktop/src/App.tsx"), row(path)]), { native: true, web: true }, path);
   }
 });
 
 test("both sides of a rename determine the required checks", () => {
-  assert.deepEqual(pr([row("apps/desktop/src/Renamed.tsx", "apps/desktop/src/App.tsx")]), { native: false, web: true, nix: false });
+  assert.deepEqual(pr([row("apps/desktop/src/Renamed.tsx", "apps/desktop/src/App.tsx")]), { native: false, web: true });
   assert.equal(pr([row("docs/old.md", "crates/ibis-desktop/src/lib.rs")]).native, true);
-  assert.equal(pr([row("docs/old.md", "Cargo.lock")]).nix, true);
   assert.deepEqual(pr([{ filename: "README.md", status: "renamed" }]), full);
 });
 
@@ -85,20 +78,19 @@ test("empty, incomplete, malformed or ambiguous file lists run everything", () =
 });
 
 test("Unicode paths work without interpreting markup or shell syntax", () => {
-  assert.deepEqual(pr([row("apps/desktop/src/研究.tsx"), row("apps/desktop/src/مرحبا.css"), row("docs/$(false)`x`.md")]), { native: false, web: true, nix: false });
+  assert.deepEqual(pr([row("apps/desktop/src/研究.tsx"), row("apps/desktop/src/مرحبا.css"), row("docs/$(false)`x`.md")]), { native: false, web: true });
 });
 
 test("main and merge queue always validate the complete app", () => {
-  for (const event of ["push", "merge_group", "unknown"]) assert.deepEqual(classify(event, 1, [row("README.md")]), { native: true, web: true, nix: false });
+  for (const event of ["push", "merge_group", "unknown"]) assert.deepEqual(classify(event, 1, [row("README.md")]), { native: true, web: true });
   assert.deepEqual(classify("workflow_dispatch"), full);
-  assert.deepEqual(classify("schedule"), { native: false, web: false, nix: true });
 });
 
 test("the CLI emits only fixed decisions for valid, missing and malformed metadata", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-paths-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, "synthetic.ndjson");
-  for (const [contents, expected] of [[JSON.stringify(row("apps/desktop/src/研究.tsx")), "native=false\nweb=true\nnix=false\n"], ["private-資料: invalid metadata", "native=true\nweb=true\nnix=true\n"], ["", "native=true\nweb=true\nnix=true\n"], [null, "native=true\nweb=true\nnix=true\n"]]) {
+  for (const [contents, expected] of [[JSON.stringify(row("apps/desktop/src/研究.tsx")), "native=false\nweb=true\n"], ["private-資料: invalid metadata", "native=true\nweb=true\n"], ["", "native=true\nweb=true\n"], [null, "native=true\nweb=true\n"]]) {
     if (contents !== null) writeFileSync(file, contents);
     else rmSync(file);
     const result = spawnSync(process.execPath, [fileURLToPath(new URL("./ci-paths.mjs", import.meta.url))], { encoding: "utf8", env: { ...process.env, EVENT: "pull_request", EXPECTED: "1", FILES: file }, timeout: 5000 });
@@ -117,26 +109,29 @@ test("workflow retains web validation and gates native-only Windows bootstrap", 
   assert.equal(workflow.match(/= "\$EXPECTED_REFS"/g)?.length, 2);
 });
 
-test("Desktop starts after classification, and the queue skips the optional Native UI", () => {
+test("Desktop starts after classification; Native UI runs only on main pushes and manual runs", () => {
   const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const changes = workflow.match(/\n  changes:\n([\s\S]*?)\n  test:/)[1];
-  assert.match(changes, /pnpm exec vite build --mode evidence\n          test -f dist\/gallery\.html/, "native gallery captures need the evidence build");
+  assert.match(changes, /pnpm exec vite build\n/);
+  assert.doesNotMatch(changes, /--mode evidence/, "Desktop embeds the ordinary app build");
   assert.match(changes, /- name: Share the web interface\n        if: steps\.classify\.outputs\.native == 'true'[\s\S]*name: desktop-web/);
   assert.match(workflow.match(/\n  desktop:\n([\s\S]*?)\n    steps:/)[1], /\n    needs: changes\n/);
-  assert.match(workflow.match(/\n  native-ui:\n([\s\S]*?)\n    steps:/)[1], /if: .*github\.event_name != 'merge_group'/);
+  assert.match(workflow.match(/\n  native-ui:\n([\s\S]*?)\n    steps:/)[1], /if: .*\(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\)/);
   assert.match(workflow, /result:[\s\S]*needs: \[changes, test, web, desktop, fidelity, dependencies\]/, "CI result still needs every required job");
 });
 
-test("the required Web job renders the full browser gallery and keeps every failure", { skip: process.platform === "win32" }, (t) => {
+test("the optional main-only gallery renders every frame and keeps every failure", { skip: process.platform === "win32" }, (t) => {
   const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-  const web = workflow.match(/\n  web:\n([\s\S]*?)\n  desktop:/)[1];
-  const step = web.match(/- name: Render every browser gallery frame\n([\s\S]*?)\n      - name:/)?.[1];
-  assert.ok(step, "all gallery looks and states run inside the required Web job");
-  assert.match(step, /if: env.WEB == 'true'/);
+  const web = workflow.match(/\n  web:\n([\s\S]*?)\n  gallery:/)[1];
+  assert.doesNotMatch(web, /gallery-contact-sheet|--mode evidence/);
+  const gallery = workflow.match(/\n  gallery:\n([\s\S]*?)\n  desktop:/)[1];
+  assert.match(gallery, /if: .*\(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\)/);
+  const step = gallery.match(/- name: Render every browser gallery frame\n([\s\S]*?)\n      - name:/)?.[1];
+  assert.ok(step, "all gallery looks and states run inside the optional gallery job");
   assert.match(step, /shell: bash/);
-  assert.match(web, /container:\n      image: mcr\.microsoft\.com\/playwright\/python:v1\.62\.0-noble@sha256:[a-f0-9]{64}/);
-  assert.ok(web.indexOf("- name: Set up Node.js") < web.indexOf("- name: Set up pnpm"), "the image supplies Python; Node/npm must precede pnpm");
-  assert.match(web, /cache_dependency_path: apps\/desktop\/pnpm-lock\.yaml/);
+  assert.match(gallery, /container:\n      image: mcr\.microsoft\.com\/playwright\/python:v1\.62\.0-noble@sha256:[a-f0-9]{64}/);
+  assert.ok(gallery.indexOf("- name: Set up Node.js") < gallery.indexOf("- name: Set up pnpm"), "the image supplies Python; Node/npm must precede pnpm");
+  assert.match(gallery, /cache_dependency_path: apps\/desktop\/pnpm-lock\.yaml/);
   assert.match(workflow, /needs: \[changes, test, web, desktop, fidelity, dependencies\]/);
   const command = step.match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, "");
   assert.doesNotMatch(command, /apt-get|install-deps|--with-deps/, "the preinstalled image needs no system-package installer");
@@ -198,7 +193,7 @@ test("the real workflow shell falls back on failed reads or changing refs", { sk
       env: { ...process.env, EVENT: "pull_request", EXPECTED: scenario === "partial" ? "2" : "1", EXPECTED_REFS: `${"a".repeat(40)}:${"b".repeat(40)}`, RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, "output"), SCENARIO: scenario, METADATA: scenario === "malformed" ? "invalid-private-資料" : JSON.stringify(row("apps/desktop/src/App.tsx")) },
     });
     assert.equal(result.status, 0, scenario);
-    assert.equal(result.stdout, scenario === "valid" ? "native=false\nweb=true\nnix=false\n" : "native=true\nweb=true\nnix=true\n", scenario);
+    assert.equal(result.stdout, scenario === "valid" ? "native=false\nweb=true\n" : "native=true\nweb=true\n", scenario);
     assert.equal(result.stderr, "", scenario);
   }
 });
@@ -207,7 +202,7 @@ test("a classifier crash fails the configured workflow shell, even after partial
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-crash-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const { command, args } = workflowStep();
-  for (const partial of ["", "native=false\\nweb=false\\nnix=false\\n"]) {
+  for (const partial of ["", "native=false\\nweb=false\\n"]) {
     const result = spawnSync("bash", [...args, "-c", `node() { printf '%b' "$PARTIAL"; return 17; }\n${command}`], {
       cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8", timeout: 5000,
       env: { ...process.env, EVENT: "merge_group", RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, "output"), PARTIAL: partial },

@@ -28,7 +28,7 @@ There are two builds. Both are free, run on Windows, macOS and Linux, and instal
 - **Ibis** is the numbered preview release: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage) ([all releases](https://github.com/ibiscite/ibis/releases)).
 - **Ibis Nightly** has the newest work and is rebuilt regularly from main, so it may be unfinished: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage) ([release page](https://github.com/ibiscite/ibis/releases/tag/nightly)).
 
-On Linux you can also use the `.deb` on either release page or [install Ibis with Nix](docs/nix.md). See [compatibility](docs/compatibility.md) for tested systems, runtime requirements and AppImage FUSE help.
+On Linux you can also use the `.deb` on either release page. See [compatibility](docs/compatibility.md) for tested systems, runtime requirements and AppImage FUSE help.
 
 **The first time you open it.** The apps are not signed by Apple or Microsoft yet, so your system warns before opening them:
 
