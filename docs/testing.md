@@ -22,7 +22,7 @@ Citation software fails at the edges: unusual names, damaged files, rare item ty
 ## Rules
 
 - **A bug fix starts with a failing test or fixture.** The smallest input that reproduces the problem is added to `fixtures/` or a test, so it can never return unnoticed.
-- **Compare with an established implementation where one exists.** Pandoc for BibTeX reading and CSL rendering today; citeproc-js and the CSL test suite for formatting (0.3). Intentional differences are documented next to the normalization that hides them.
+- **Compare with an established implementation where one exists.** Pandoc for BibTeX reading and CSL rendering today; citeproc-js and the CSL test suite for formatting (0.4). Intentional differences are documented next to the normalization that hides them.
 - **Never report success for a step that did not run.** `node scripts/check.mjs` exits with status 2 (incomplete) when a required tool is missing.
 - **Bounded work on hostile input.** Any loop or recursion driven by input has a limit, and a test proves the limit holds.
 - **Synthetic or openly licensed data only.** No personal libraries. Open-data files record their source and licence.
@@ -68,7 +68,7 @@ xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- \
 # (Windows: python and target/debug/ibis-desktop.exe)
 ```
 
-Exit 0 is a pass, 1 a failure and 2 unavailable, never a pass; `--self-test` tests the harness alone. Linux smoke runs in the required `Desktop (ubuntu-24.04)` check. macOS and Windows smoke run in the `Native UI (…)` jobs, which are not required: a failure turns the job red without blocking a merge, and on `main` opens or updates an issue.
+Exit 0 is a pass, 1 a failure and 2 unavailable, never a pass; `--self-test` tests the harness alone. Linux smoke runs in the required `Desktop (ubuntu-24.04)` check. macOS and Windows smoke run in the `Native UI (…)` jobs on pull requests and `main` (the merge queue skips them), which are not required: a failure turns the job red without blocking a merge, and on `main` opens or updates an issue.
 
 - **First run:** `--first-run-preferences` (instead of `--budgets`) chooses a writing format, quits, restarts and copies; the copy must use the saved format (#486, gaps in #238).
 - **Performance:** four fresh launches with 100,000 synthetic references (the first a warm-up) measure launch to accessible count, query to late result and process-tree memory. The gate in [smoke-budgets.json](../scripts/smoke-budgets.json) uses the median of three launches for timings and the maximum for memory; any launch over 1.5 times a budget fails (#464). The numbers include polling overhead and warm caches and exclude cold-disk and lifetime-peak claims; calibration is in [#9](https://github.com/ibiscite/ibis/issues/9#issuecomment-6282578839). `--skip-performance` skips only these launches, for Nix and installed-package smoke.

@@ -1,7 +1,7 @@
 // Formatted citations with Zotero's build of citeproc-js (ADR 0007). This
 // module runs anywhere, including the worker and tests; it never touches the
 // network, and styles are data, not code.
-import CSL from "../../vendor/csl/citeproc.mjs";
+import CSL, { type CslName, type CslNameOutput } from "../../vendor/csl/citeproc.mjs";
 import enUS from "../../vendor/csl/locales/en-US.xml?raw";
 import apa from "../../vendor/csl/styles/apa.csl?raw";
 import chicago from "../../vendor/csl/styles/chicago-author-date.csl?raw";
@@ -242,9 +242,75 @@ function engineKeys(items: CslItem[]): { keyed: CslItem[]; keyOf: Map<string, st
   const keyed = items.map((item, index) => {
     const key = `ibis-${index}`;
     if (typeof item.id === "string" && !keyOf.has(item.id)) keyOf.set(item.id, key);
-    return { ...item, id: key };
+    // fromEntries defines fields, so a "__proto__" field stays a plain field.
+    return { ...Object.fromEntries(Object.entries(item).map(([field, value]) => [field, truncated(value)])), id: key };
   });
   return { keyed, keyOf };
+}
+
+/**
+ * A name list that ends in "others" (BibTeX's "and others") is truncated, and
+ * citeproc-js has no data form for that. The list ends in a marker name
+ * instead; once the style has chosen which names to show, the marker is
+ * dropped, so fewer names remain than the list holds and the style writes
+ * its own "et al.", with its own delimiter, term and formatting. Counting the
+ * marker as a name keeps the style's et al. rule right: the real list is at
+ * least that long.
+ */
+const OTHERS = "\u2063ibis others\u2063";
+
+function truncated(value: unknown): unknown {
+  if (!Array.isArray(value) || value.length < 2 || !isOthers(value[value.length - 1])) return value;
+  return [...value.slice(0, -1), { family: OTHERS }];
+}
+
+function isOthers(name: unknown): boolean {
+  if (!name || typeof name !== "object") return false;
+  const { literal, family, given } = name as Record<string, unknown>;
+  const text = literal ?? (given === undefined || given === "" ? family : undefined);
+  return typeof text === "string" && text.trim().toLowerCase() === "others";
+}
+
+const output = CSL.NameOutput.prototype;
+// Lists that lost their marker: each may only end in "et al.".
+const cut = new WeakSet<CslName[]>();
+if (!output.ibisOthers) {
+  output.ibisOthers = true;
+  const impose = output._imposeNameConstraints;
+  output._imposeNameConstraints = function (this: CslNameOutput, lists, count, key, pos) {
+    impose.call(this, lists, count, key, pos);
+    const names = lists[key] ?? [];
+    // A sort key keeps the marker, so "Smith et al." sorts after "Smith".
+    if (this.state.tmp.sort_key_flag || !names.some((name) => name?.family === OTHERS)) return;
+    lists[key] = names.filter((name) => name?.family !== OTHERS);
+    cut.add(lists[key]);
+  };
+  const renderAll = output.renderAllNames;
+  output.renderAllNames = function (this: CslNameOutput) {
+    // Read before rendering: does any list here end in "et al."?
+    const etAl = this.variables.some((v) => {
+      const spec = this.etal_spec[v];
+      return spec !== undefined && (spec.freeters > 0 || spec.institutions > 0 || spec.persons.some((p) => p > 0));
+    });
+    renderAll.call(this);
+    const rendered = this.state.tmp.rendered_name;
+    // Substituting a repeated author ("———" in MLA) compares the names shown;
+    // "Smith et al." is not the same author as "Smith".
+    if (etAl && this.state.tmp.area === "bibliography" && Array.isArray(rendered)) rendered.push(OTHERS);
+  };
+  const setEtAl = output._setEtAlParameter;
+  output._setEtAlParameter = function (this: CslNameOutput, type, v, j) {
+    setEtAl.call(this, type, v, j);
+    const spec = this.etal_spec[v];
+    const list = type === "persons" ? this.persons[v]?.[j ?? -1] : this[type][v];
+    if (!spec || !list || !cut.has(list)) return;
+    // Without its true last name, "et al." is all a style can write.
+    if (type !== "persons") {
+      if (spec[type] === 2) spec[type] = 1;
+    } else if (j !== undefined && spec.persons[j] === 2) {
+      spec.persons[j] = 1;
+    }
+  };
 }
 
 function callerId(items: CslItem[], key: string): string {
