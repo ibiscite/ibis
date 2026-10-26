@@ -226,6 +226,8 @@ pub(super) fn create_private(path: &Path) -> Result<(), ClosedError> {
             .mode(0o700)
             .create(path)
             .map_err(|_| ClosedError::PrivateStorage)?;
+        #[cfg(target_os = "macos")]
+        output(Command::new("/bin/chmod").arg("-N").arg(path)).map_err(|_| ClosedError::PrivateStorage)?;
         secure(path)?;
     }
     #[cfg(windows)]
@@ -247,6 +249,17 @@ pub(super) fn secure(path: &Path) -> Result<(), ClosedError> {
             || m.uid() != rustix::process::geteuid().as_raw()
             || m.mode() & 0o777 != 0o700
         {
+            return Err(ClosedError::PrivateStorage);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Darwin extended ACLs can grant access despite mode0700. Refuse any
+        // existing ACL; only freshly created empty directories are stripped.
+        // -b escapes filename newlines, so an ACL-free listing has one line.
+        let report =
+            output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(path)).map_err(|_| ClosedError::PrivateStorage)?;
+        if report.split(|b| *b == b'\n').filter(|line| !line.is_empty()).count() != 1 {
             return Err(ClosedError::PrivateStorage);
         }
     }
@@ -347,5 +360,36 @@ mod tests {
         for name in ["ibis_zotero_local-test", "zotero_reader_test", "ps", "/tmp/zotero/test"] {
             assert!(!super::zotero_process(name));
         }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_acl_tests {
+    use super::*;
+    #[test]
+    fn owner_only_creation_drops_inherited_extended_acl() {
+        let parent = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic ACL parent"));
+        let status = Command::new("/bin/chmod")
+            .args(["+a", "everyone allow list,search,directory_inherit,file_inherit"])
+            .arg(parent.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap_or_else(|_| panic!("synthetic inherited ACL"));
+        assert!(status.success());
+        let child = parent.path().join("private");
+        create_private(&child).unwrap_or_else(|e| panic!("{e}"));
+        let report = output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(&child)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(report.split(|b| *b == b'\n').filter(|line| !line.is_empty()).count(), 1);
+        // Existing roots with an unexpected ACL are refused, never repaired.
+        let status = Command::new("/bin/chmod")
+            .args(["+a", "everyone allow list,search"])
+            .arg(&child)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap_or_else(|_| panic!("synthetic existing ACL"));
+        assert!(status.success());
+        assert_eq!(secure(&child), Err(ClosedError::PrivateStorage));
     }
 }
