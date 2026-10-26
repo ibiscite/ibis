@@ -465,9 +465,10 @@ fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
 #[path = "../../ibis-core/tests/support/subprocess_watchdog.rs"]
 mod subprocess_watchdog;
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     #[test]
     fn a_file_replaced_by_a_fifo_after_metadata_cannot_block() {
         const CHILD: &str = "IBIS_SOURCE_FIFO_CHILD";
@@ -492,5 +493,40 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         let file = open_readonly(&path).unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(read_open_file(file), Err(SourceError::NotRegular));
+    }
+    #[test]
+    fn exhausted_bibtex_work_keeps_prefix_but_refuses_reload() {
+        let fields = (0..100)
+            .map(|index| format!("field{index}={{value}}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let text =
+            format!("@xdata{{parent,{fields}}}\n@book{{good}}\n@book{{limited,xdata={{parent}}}}\n@book{{suffix}}");
+        let parse_limited = |reload| {
+            parse_with_budget(
+                Path::new("synthetic.bib"),
+                &text,
+                reload,
+                bibtex::Budget::new(32 * 1024),
+            )
+        };
+        let initial = parse_limited(false).unwrap_or_else(|error| panic!("{error}"));
+        let keys: Vec<_> = initial
+            .snapshot
+            .objects()
+            .iter()
+            .filter_map(|item| match &item.object {
+                LibraryObject::Record(record) => record.citation_key().ok().flatten(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(keys, ["good"]);
+        assert!(
+            initial
+                .warnings
+                .iter()
+                .any(|warning| warning.code == crate::WarningCode::WorkLimit)
+        );
+        assert_eq!(parse_limited(true).err(), Some(SourceError::LoadLimit));
     }
 }

@@ -407,3 +407,53 @@ fn a_long_exclusive_lock_recovers_without_a_followup_save() {
         }
     }
 }
+
+#[test]
+fn json_reloads_retain_failed_snapshot_and_accept_stable_empty_array() {
+    let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(&path, r#"[{"id":"old","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
+    let (tx, rx) = mpsc::channel();
+    let _watch = SourceWatch::new(&path, move |result| {
+        let _ = tx.send(result);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    let first = next(&rx).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(records(&first).len(), 1);
+    std::fs::write(&path, "[{\"id\":").unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(next(&rx).err(), Some(SourceError::Incomplete));
+    assert_eq!(records(&first).len(), 1);
+    let replacement = dir.path().join("replacement.tmp");
+    std::fs::write(&replacement, r#"[{"id":"new","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
+    std::fs::rename(replacement, &path).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        records(&next(&rx).unwrap_or_else(|error| panic!("{error}")))[0].citation_key(),
+        Ok(Some("new"))
+    );
+    std::fs::write(&path, "[]").unwrap_or_else(|error| panic!("{error}"));
+    assert!(records(&next(&rx).unwrap_or_else(|error| panic!("{error}"))).is_empty());
+}
+
+#[test]
+fn private_location_changes_publish_a_new_owner_even_if_public_hashes_match() {
+    use ibis_sources::load_file_snapshot;
+    let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(&path, "@book{one,file={one.pdf}}").unwrap_or_else(|error| panic!("{error}"));
+    let (initial, observation) = load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
+    let (tx, rx) = mpsc::channel();
+    let _watch = SourceWatch::with_snapshot(&path, observation, move |result| {
+        let _ = tx.send(result);
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    std::fs::write(&path, "@book{one,file={two.pdf}}").unwrap_or_else(|error| panic!("{error}"));
+    let changed = next(&rx).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(initial.snapshot.fingerprints(), changed.snapshot.fingerprints());
+    assert!(
+        records(&changed)[0]
+            .raw
+            .as_ref()
+            .and_then(|raw| raw.data.as_str())
+            .is_some_and(|raw| raw.contains("two.pdf"))
+    );
+}
