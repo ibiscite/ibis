@@ -28,3 +28,176 @@ fn damaged_bibtex_keeps_records_and_private_attachments() -> Result<(), Box<dyn 
     assert!(!wire.contains("synthetic.pdf"));
     Ok(())
 }
+
+#[test]
+fn csl_json_uses_citation_key_then_id_and_reports_exact_lines() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::WarningCode;
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(
+        &path,
+        "[\n {\"id\":\"native\",\"citation-key\":\"Chosen2026\",\"type\":\"book\",\"title\":\"Invented\",\"custom\":{\"path\":\"/invented/private\"}},\n {\"id\":7,\"type\":\"article-journal\"},\n {\"id\":\"native\",\"type\":\"book\"},\n {\"type\":\"book\"},\n {\"id\":\"partial\",\"type\":\"book\",\"title\":{}},\n {\"id\":\"last\",\"type\":\"book\",\"URL\":\"file:///invented/private\"}\n]",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    let records: Vec<_> = loaded
+        .snapshot
+        .objects()
+        .iter()
+        .filter_map(|item| match &item.object {
+            LibraryObject::Record(record) => Some(record),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(records.len(), 4);
+    assert_eq!(
+        records
+            .iter()
+            .find(|record| record.id.key == "record:native")
+            .and_then(|record| record.citation_key().ok().flatten()),
+        Some("Chosen2026")
+    );
+    assert_eq!(
+        records
+            .iter()
+            .find(|record| record.id.key == "record:7")
+            .and_then(|record| record.citation_key().ok().flatten()),
+        Some("7")
+    );
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == WarningCode::DuplicateKey && warning.line == Some(4))
+    );
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == WarningCode::Syntax && warning.line == Some(5))
+    );
+    let wire = serde_json::to_string(&loaded.snapshot)?;
+    assert!(!wire.contains("/invented/private"));
+    let record = records
+        .iter()
+        .find(|record| record.id.key == "record:native")
+        .ok_or("missing record")?;
+    assert!(
+        record
+            .raw
+            .as_ref()
+            .and_then(|raw| raw.data.as_str())
+            .is_some_and(|raw| raw.contains("custom"))
+    );
+    Ok(())
+}
+
+#[test]
+fn file_identity_survives_edits_and_follows_the_canonical_location() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(&path, "@book{one,title={First}}")?;
+    let first = ibis_sources::load_file(&path)?;
+    std::fs::write(&path, "@book{one,title={Changed}}")?;
+    let second = ibis_sources::load_file(&path)?;
+    assert_eq!(first.library, second.library);
+    assert_ne!(first.snapshot.fingerprints(), second.snapshot.fingerprints());
+    let moved = dir.path().join("moved.bib");
+    std::fs::rename(path, &moved)?;
+    assert_ne!(second.library, ibis_sources::load_file(&moved)?.library);
+    Ok(())
+}
+
+#[test]
+fn record_keys_cannot_collide_with_generated_attachment_keys() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(
+        &path,
+        "@book{one,file={missing.pdf}}\n@book{attachment:record:one:0,title={Synthetic}}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 3);
+    assert!(loaded.snapshot.objects().iter().any(|item|matches!(&item.object,LibraryObject::Attachment(attachment) if attachment.availability==Availability::BrokenLink)));
+    Ok(())
+}
+
+#[test]
+fn preserved_parser_keeps_exact_csl_meaning_of_invented_examples() -> Result<(), Box<dyn std::error::Error>> {
+    use std::collections::BTreeMap;
+    let examples = [
+        "@book{one,title={An Invented {DNA} Study},author={Example, Ada and {Synthetic Organization} and others},date={2024-02-29},publisher={Invented Press},isbn={9780000000002},langid={english}}",
+        "@article{two,title={Synthetic \\emph{in vivo} Study},journaltitle={Invented Journal},author={van Example, Ada},date={2023-02-30},pages={12--20},volume={2},number={3},doi={10.0000/synthetic},url={https://example.invalid/synthetic},keywords={one,two}}",
+        "@xdata{base,publisher={Synthetic Press},date={2020-02-05}}\n@incollection{three,title={Invented Chapter},booktitle={Synthetic Book},xdata={base},month=mar,editor={Example, Bert},translator={Example, Cora}}",
+        "@string{press={Invented Press}}\n@book{four,title={Synthetic},publisher=press,date={2001/2003},origdate={1900~},urldate={2026-10-26}}",
+        "@book{five,title={Étude fictive},language={fr-FR},author={范, 明},shorttitle={Fictive},abstract={Invented abstract}}",
+    ];
+    let dir = tempfile::tempdir()?;
+    for (index, text) in examples.into_iter().enumerate() {
+        let expected = ibis_core::bibtex::load_str("synthetic-normalization", text);
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, text)?;
+        let actual = ibis_sources::load_file(&path)?;
+        let expected: BTreeMap<_, _> = expected
+            .references
+            .into_iter()
+            .map(|record| (record.citekey.clone().unwrap_or_default(), record.to_csl_json()))
+            .collect();
+        let actual: BTreeMap<_, _> = actual
+            .snapshot
+            .objects()
+            .iter()
+            .filter_map(|item| match &item.object {
+                LibraryObject::Record(record) => Some((
+                    record.citation_key().ok().flatten().unwrap_or_default().to_owned(),
+                    serde_json::to_value(&record.csl),
+                )),
+                _ => None,
+            })
+            .map(|(key, value)| value.map(|value| (key, value)))
+            .collect::<Result<_, _>>()?;
+        assert_eq!(actual, expected, "invented case {index}");
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_native_keys_do_not_discard_other_records() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(
+        &path,
+        "@book{good,title={One}}\n@book{bad\u{0000}key,title={Bad}}\n@book{last,title={Last}}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert!(
+        loaded.snapshot.objects().iter().any(
+            |item| matches!(&item.object,LibraryObject::Record(record) if record.citation_key()==Ok(Some("good")))
+        )
+    );
+    assert!(
+        loaded.snapshot.objects().iter().any(
+            |item| matches!(&item.object,LibraryObject::Record(record) if record.citation_key()==Ok(Some("last")))
+        )
+    );
+    assert!(!loaded.warnings.is_empty());
+    Ok(())
+}
+
+#[test]
+fn deeply_nested_custom_json_is_private_and_does_not_hide_other_records() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    let depth = 20_000;
+    let text = format!(
+        "[{{\"id\":\"deep\",\"type\":\"book\",\"custom\":{}null{}}},{{\"id\":\"good\",\"type\":\"book\",\"title\":\"Synthetic\"}}]",
+        "[".repeat(depth),
+        "]".repeat(depth)
+    );
+    std::fs::write(&path, text)?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 2);
+    assert!(!loaded.warnings.is_empty());
+    let wire = serde_json::to_string(&loaded.snapshot)?;
+    assert!(!wire.contains("custom"));
+    Ok(())
+}
