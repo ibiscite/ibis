@@ -237,6 +237,9 @@ describe("formatted citations", () => {
     const mla = formatter.bibliography("modern-language-association", [alone, later], "text").output;
     expect(mla).toContain("Smith, Alex, et al. “Truncated");
     expect(mla).not.toContain("———. “Truncated");
+    const longer: CslItem = { ...later, author: [smith, { family: "Jones", given: "Bea" }, others] };
+    const cutByStyle = formatter.bibliography("modern-language-association", [alone, longer], "text").output;
+    expect(cutByStyle).toContain("Smith, Alex, et al. “Truncated");
     const directors = Array.from({ length: 21 }, (_, i) => ({ family: `Director${i}`, given: "A" }));
     const broadcast: CslItem = { ...garcia, type: "broadcast", author: undefined, "script-writer": [smith, others], director: directors };
     const shown = formatter.bibliography("apa", [broadcast], "text").output;

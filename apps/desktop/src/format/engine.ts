@@ -280,15 +280,16 @@ if (!output.ibisOthers) {
   };
   const renderAll = output.renderAllNames;
   output.renderAllNames = function (this: CslNameOutput) {
-    // Read before rendering, which replaces the lists with their output.
-    const truncated = this.variables.some(
-      (v) => cut.has(this.freeters[v] ?? []) || cut.has(this.institutions[v] ?? []) || this.persons[v]?.some((list) => cut.has(list)),
-    );
+    // Read before rendering: does any list here end in "et al."?
+    const etAl = this.variables.some((v) => {
+      const spec = this.etal_spec[v];
+      return spec !== undefined && (spec.freeters > 0 || spec.institutions > 0 || spec.persons.some((p) => p > 0));
+    });
     renderAll.call(this);
     const rendered = this.state.tmp.rendered_name;
     // Substituting a repeated author ("———" in MLA) compares the names shown;
     // "Smith et al." is not the same author as "Smith".
-    if (truncated && this.state.tmp.area === "bibliography" && Array.isArray(rendered)) rendered.push(OTHERS);
+    if (etAl && this.state.tmp.area === "bibliography" && Array.isArray(rendered)) rendered.push(OTHERS);
   };
   const setEtAl = output._setEtAlParameter;
   output._setEtAlParameter = function (this: CslNameOutput, type, v, j) {
