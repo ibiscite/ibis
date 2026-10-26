@@ -211,6 +211,17 @@ impl Copy {
         platform::exclude_backups(&result.path)?;
         let mut marker = private_file(&result.path.join(".ibis-copy"))?;
         marker.write_all(MARKER).map_err(|_| ClosedError::PrivateStorage)?;
+        // The cleanup proof must reach stable storage before any library file.
+        marker.sync_all().map_err(|_| ClosedError::PrivateStorage)?;
+        #[cfg(unix)]
+        {
+            File::open(&result.path)
+                .and_then(|d| d.sync_all())
+                .map_err(|_| ClosedError::PrivateStorage)?;
+            File::open(root)
+                .and_then(|d| d.sync_all())
+                .map_err(|_| ClosedError::PrivateStorage)?;
+        }
         Ok(result)
     }
 }

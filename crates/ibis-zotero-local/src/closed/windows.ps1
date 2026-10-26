@@ -70,11 +70,27 @@ try {
             # Windows Backup excludes %TEMP%\* /s by default. Require the
             # actual user Temp beneath LocalAppData rather than an arbitrary
             # caller-supplied/environment-redirected cache path.
+            Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class IbisClosedLongPath {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern uint GetLongPathName(string path, StringBuilder output, uint capacity);
+}
+'@ -ErrorAction Stop
+            function Long-Path([string] $Value) {
+                $buffer = [System.Text.StringBuilder]::new(32768)
+                $length = [IbisClosedLongPath]::GetLongPathName($Value, $buffer, [uint32] $buffer.Capacity)
+                if ($length -eq 0 -or $length -ge $buffer.Capacity) { throw 'path identity' }
+                return $buffer.ToString().TrimEnd('\')
+            }
             $local = [Environment]::GetFolderPath('LocalApplicationData')
-            $temp = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($local, 'Temp')).TrimEnd('\')
-            $configured = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\')
+            $temp = Long-Path ([System.IO.Path]::Combine($local, 'Temp'))
+            $configured = Long-Path ([System.IO.Path]::GetTempPath())
+            $expanded = Long-Path $path
             if (-not $temp.Equals($configured, [StringComparison]::OrdinalIgnoreCase)) { throw 'temp redirected' }
-            if (-not $path.StartsWith($temp + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'not temp' }
+            if (-not $expanded.StartsWith($temp + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'not temp' }
             [System.IO.File]::SetAttributes($path, [System.IO.File]::GetAttributes($path) -bor [System.IO.FileAttributes]::NotContentIndexed)
         }
         'local' { Assert-Local $path }

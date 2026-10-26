@@ -293,9 +293,21 @@ pub(super) fn space(path: &Path, needed: u64) -> Result<(), ClosedError> {
 }
 
 #[cfg(windows)]
+fn drive_path(path: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    let mut parts = path.components();
+    matches!(parts.next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_)))
+        && matches!(parts.next(), Some(Component::RootDir))
+        && parts.all(|p| matches!(p, Component::Normal(_)))
+}
+
+#[cfg(windows)]
 fn windows(action: &str, path: &Path, needed: u64) -> Result<Vec<u8>, ClosedError> {
     use std::os::windows::process::CommandExt;
     let system = std::env::var_os("SystemRoot").ok_or(ClosedError::ProcessCheck)?;
+    if !drive_path(Path::new(&system)) {
+        return Err(ClosedError::ProcessCheck);
+    }
     let mut cmd = Command::new(PathBuf::from(system).join(r"System32\WindowsPowerShell\v1.0\powershell.exe"));
     cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", SCRIPT])
         .env("IBIS_CLOSED_ACTION", action)
