@@ -172,7 +172,7 @@ class ReleasePerformanceTests(unittest.TestCase):
              patch.object(perf.subprocess, "Popen", return_value=process) as launch, \
              patch.object(perf, "interaction_samples", return_value=([1] * 10, [2] * 10, {})), \
              patch.object(perf.smoke, "escape_to_hide"), patch.object(perf.time, "sleep"), \
-             patch.object(perf.os, "killpg") as kill, patch.object(perf, "wakeup_census", side_effect=(before, after)):
+             patch.object(perf.os, "killpg", create=True) as kill, patch.object(perf, "wakeup_census", side_effect=(before, after)):
             result = perf.measure(Path("synthetic-executable"), "a" * 40)
         self.assertTrue(launch.call_args.kwargs["start_new_session"])
         kill.assert_called_once_with(123, perf.signal.SIGTERM)
