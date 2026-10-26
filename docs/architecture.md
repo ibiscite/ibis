@@ -39,6 +39,14 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([ADR 0028]
 - **Snapshots are immutable.** A refresh builds a new snapshot and reuses unchanged libraries. Each object has two fingerprints: `cite` (what a citation depends on) and `full` (everything shown). A picker session keeps the snapshot it started from. At copy time, in one step against the newest snapshot, each pick is checked by `ItemRef` and `cite` fingerprint and its key is checked to still name exactly that one item across all loaded libraries; a pick that was deleted, changed what it cites or lost its key to another item is refused with the reason. The picker shows the snapshot's age when it is old and says when a refresh failed.
 - **Source identity lifecycle:** a file library's ID follows its canonical path (a moved file is a new library; an edited file keeps its ID), and a Zotero library's ID follows profile, data directory and library ID, so a replaced database or another profile is a different library.
 
+The initial shared vocabulary is in `ibis_core::contract`; its generated schema is
+`fixtures/engine-contract.schema.json`. Source adapters, formatters and front ends
+adopt it in the ordered rebuild issues. Raw provenance stays engine-only and is
+excluded from the public projection and both fingerprints. Non-item objects use
+source-namespaced native keys so tags and collections cannot collide with item
+keys. Rich text is a fixed-depth tree of styled text runs; strings remain
+untrusted data and are never injected as markup.
+
 ## Sources (ibis-sources)
 
 - **Capabilities are a fixed list per source kind**, not a plugin system. Zotero open and Zotero closed declare the same list, and a test enforces it; anything only one path can provide is not offered.
@@ -57,6 +65,12 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([ADR 0028]
 - **Key syntaxes** are pure Rust, each with a capability table (which fields and forms it carries, its escaping, a fixture checked against its own tool): Pandoc, BibLaTeX (any command, multicite), natbib, LaTeX `\cite`, Typst, org-cite, MyST, MultiMarkdown, AsciiDoc, Jupyter, Jekyll Scholar, Scannable Cite, bare keys, CSL-JSON, Better BibTeX's CAYW JSON.
 - **Formatted output:** Zotero's citeproc-js runs in embedded QuickJS (`rquickjs`) with collation from ICU4X, so the command line and the app give byte-identical output on every system. Two formatter runtimes on their own threads: one for interactive previews and copies, which always goes first, and one for bibliographies and batches. Each has a bounded queue, cancellation through QuickJS's interrupt handler, memory and time limits, and is restarted after an interruption. Any official style and locale. Before formatting, Ibis applies Zotero's own data conversions (Extra fields, creators, dates, URL stripping for printed articles with pages); differential fixtures compare the result with pinned Zotero output.
 - **What a citation cannot know:** selected items (or even the whole library) cannot establish a document's numbering, year suffixes or ibid. Numeric styles give the reference entry with a notice (today's fallback), note styles give the full first note, and 2020a/2020b suffixes are withheld with a notice. Byte-identical output across front ends is necessary, not sufficient: correctness is checked against Zotero.
+
+A result may report partial outcomes for inspection, but clipboard clients must
+use `copy_content(expected_items)` to require all requested items, no refusals and
+a matching content hash. An annotation pick carries its own cite fingerprint.
+Omitted input language means `en-US`; omitted output locale means the style's
+default, never the operating system's locale.
 
 ## Engine interface (ibis-engine, ibis-cli)
 

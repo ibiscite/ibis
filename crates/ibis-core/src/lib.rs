@@ -6,6 +6,7 @@
 
 pub mod bibtex;
 pub mod cite;
+pub mod contract;
 pub mod find;
 pub mod identifier;
 pub mod library;

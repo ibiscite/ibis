@@ -1,0 +1,104 @@
+{
+  "expected": {
+    "data": {
+      "content_hash": "83143699613af4ee608902766125a4b9f8f705c8ee1061d5051819b7d46931cd",
+      "display": {
+        "nodes": []
+      },
+      "html": null,
+      "losses": [],
+      "notices": [],
+      "outcomes": [
+        {
+          "error": "conflicting-key",
+          "item": 0,
+          "outcome": "refused"
+        }
+      ],
+      "rtf": null,
+      "text": ""
+    },
+    "ibis": 1,
+    "ok": true
+  },
+  "library": {
+    "fingerprints": {
+      "cite": "ba0a1693e39c64135eaaa6359a4f67fd57a6df15c6095a1a3c8689e846f915b3",
+      "full": "ba0a1693e39c64135eaaa6359a4f67fd57a6df15c6095a1a3c8689e846f915b3"
+    },
+    "objects": [
+      {
+        "fingerprints": {
+          "cite": "91975f45eccacf9227f7f4939fb2d58ae1ccf0d185540f881958b349d3661f56",
+          "full": "91975f45eccacf9227f7f4939fb2d58ae1ccf0d185540f881958b349d3661f56"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "Example2026"
+              },
+              {
+                "source": "extra",
+                "value": "Different2026"
+              }
+            ],
+            "csl": {
+              "author": [
+                {
+                  "family": "Taylor",
+                  "given": "Avery"
+                }
+              ],
+              "issued": {
+                "date-parts": [
+                  [
+                    2026
+                  ]
+                ]
+              },
+              "publisher": "Imaginary Press",
+              "title": "Synthetic signals",
+              "type": "book"
+            },
+            "id": {
+              "key": "work-1",
+              "library": "file:159acb77b9ff3cbd146b2b03055a16b3d6798aa12165374df6b81a8ce2d64ed2"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    ]
+  },
+  "name": "09-conflicting-key",
+  "request": {
+    "form": "normal",
+    "input_language": "en",
+    "items": [
+      {
+        "annotation": null,
+        "expected_annotation_cite": null,
+        "expected_cite": null,
+        "form": null,
+        "item": {
+          "key": "work-1",
+          "library": "file:159acb77b9ff3cbd146b2b03055a16b3d6798aa12165374df6b81a8ce2d64ed2"
+        },
+        "locator": null,
+        "prefix": [],
+        "suffix": [],
+        "suppress_author": false
+      }
+    ],
+    "keep_order": false,
+    "output": {
+      "command": null,
+      "kind": "key",
+      "syntax": "pandoc"
+    },
+    "output_locale": "en-US"
+  }
+}

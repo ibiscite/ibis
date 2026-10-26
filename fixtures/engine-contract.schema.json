@@ -1,0 +1,1156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EngineContract",
+  "type": "object",
+  "properties": {
+    "case": {
+      "$ref": "#/$defs/GoldenCase"
+    },
+    "exit_code": {
+      "$ref": "#/$defs/ExitCode"
+    }
+  },
+  "required": [
+    "case",
+    "exit_code"
+  ],
+  "$defs": {
+    "Annotation": {
+      "type": "object",
+      "properties": {
+        "comment": {
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/ItemRef"
+        },
+        "page_index": {
+          "description": "Zero-based physical index, distinct from the printed page label.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "page_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent": {
+          "description": "The attachment, not an invented bibliographic parent.",
+          "$ref": "#/$defs/ItemRef"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "parent",
+        "text",
+        "comment"
+      ]
+    },
+    "Attachment": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "$ref": "#/$defs/Availability"
+        },
+        "content_hash": {
+          "description": "Identifies the file contents without exposing a path or attachment URL.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/ItemRef"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "media_type",
+        "availability"
+      ]
+    },
+    "Availability": {
+      "type": "string",
+      "enum": [
+        "on-disk",
+        "cloud-placeholder",
+        "not-downloaded",
+        "online",
+        "broken-link",
+        "unreadable",
+        "unknown"
+      ]
+    },
+    "CitationError": {
+      "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+      "type": "string",
+      "enum": [
+        "empty-selection",
+        "too-many-items",
+        "invalid-locator",
+        "invalid-rich-text",
+        "unsupported-form",
+        "missing-item",
+        "changed-item",
+        "missing-key",
+        "ambiguous-key",
+        "conflicting-key",
+        "invalid-key",
+        "unsupported-output",
+        "invalid-locale",
+        "cancelled",
+        "formatter-unavailable",
+        "annotation-mismatch",
+        "not-citable"
+      ]
+    },
+    "CitationForm": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "narrative",
+        "author-only",
+        "year-only",
+        "full",
+        "bibliography-only"
+      ]
+    },
+    "CitationItem": {
+      "type": "object",
+      "properties": {
+        "annotation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expected_annotation_cite": {
+          "description": "Captures the annotation page/parent intent separately from its cited work.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expected_cite": {
+          "description": "A picked item carries its original cite fingerprint for atomic copy-time validation.\nDirect requests may omit it when they intentionally use the current snapshot.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "form": {
+          "description": "Overrides the request form, allowing mixed forms in one citation.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationForm"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "item": {
+          "$ref": "#/$defs/ItemRef"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "prefix": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TextRun"
+          }
+        },
+        "suffix": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TextRun"
+          }
+        },
+        "suppress_author": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "item"
+      ]
+    },
+    "CitationKey": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/CitationKeySource"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "source"
+      ]
+    },
+    "CitationKeySource": {
+      "type": "string",
+      "enum": [
+        "bibtex",
+        "csl-json-citation-key",
+        "csl-json-id",
+        "zotero",
+        "extra",
+        "better-bibtex"
+      ]
+    },
+    "CitationRequest": {
+      "type": "object",
+      "properties": {
+        "form": {
+          "$ref": "#/$defs/CitationForm",
+          "default": "normal"
+        },
+        "input_language": {
+          "description": "None uses en-US, never the process or operating-system locale.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "items": {
+          "description": "Input order and duplicate references are meaningful and must be preserved.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CitationItem"
+          }
+        },
+        "keep_order": {
+          "type": "boolean",
+          "default": false
+        },
+        "output": {
+          "$ref": "#/$defs/OutputSpec"
+        },
+        "output_locale": {
+          "description": "None uses the style default. Engines validate locale strings as data.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "output"
+      ]
+    },
+    "CitationResult": {
+      "type": "object",
+      "properties": {
+        "content_hash": {
+          "description": "Digest of the exact clipboard representations, including their presence.",
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "display": {
+          "$ref": "#/$defs/DisplayTree"
+        },
+        "html": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "losses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Loss"
+          }
+        },
+        "notices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Notice"
+          }
+        },
+        "outcomes": {
+          "description": "Exactly one outcome per request item, addressed by its zero-based index.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ItemOutcome"
+          }
+        },
+        "rtf": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "display",
+        "outcomes",
+        "losses",
+        "notices",
+        "content_hash"
+      ]
+    },
+    "Collection": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ItemRef"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ItemRef"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "items"
+      ]
+    },
+    "DisplayNode": {
+      "description": "One display group owns ordered text leaves; shared punctuation has no item.",
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TextRun"
+          }
+        },
+        "item": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "content"
+      ]
+    },
+    "DisplayTree": {
+      "description": "A bounded-depth tree: root -> ownership groups -> styled text leaves.",
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayNode"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "nodes"
+      ]
+    },
+    "EngineError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code"
+      ]
+    },
+    "Envelope": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Success"
+        },
+        {
+          "$ref": "#/$defs/Failure"
+        }
+      ]
+    },
+    "EnvelopeVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "usage",
+        "bad-input",
+        "not-found",
+        "source-unavailable",
+        "newer-format",
+        "internal",
+        "cancelled"
+      ]
+    },
+    "ExitCode": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        70,
+        130
+      ]
+    },
+    "Failure": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/EngineError"
+        },
+        "ibis": {
+          "$ref": "#/$defs/EnvelopeVersion"
+        },
+        "ok": {
+          "$ref": "#/$defs/FailureStatus"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "ibis",
+        "ok",
+        "error"
+      ]
+    },
+    "FailureStatus": {
+      "type": "boolean",
+      "const": false
+    },
+    "Fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "Fingerprints": {
+      "type": "object",
+      "properties": {
+        "cite": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "full": {
+          "$ref": "#/$defs/Fingerprint"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cite",
+        "full"
+      ]
+    },
+    "GoldenCase": {
+      "description": "Shared fixture format, replayed by each front end as it adopts the contract.",
+      "type": "object",
+      "properties": {
+        "expected": {
+          "$ref": "#/$defs/Envelope"
+        },
+        "library": {
+          "$ref": "#/$defs/Snapshot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/CitationRequest"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "library",
+        "request",
+        "expected"
+      ]
+    },
+    "ItemOutcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "item": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "outcome": {
+              "type": "string",
+              "const": "rendered"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "outcome",
+            "item"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/CitationError"
+            },
+            "item": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "outcome": {
+              "type": "string",
+              "const": "refused"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "outcome",
+            "item",
+            "error"
+          ]
+        }
+      ]
+    },
+    "ItemRef": {
+      "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "library": {
+          "$ref": "#/$defs/LibraryId"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "library",
+        "key"
+      ]
+    },
+    "KeySyntax": {
+      "type": "string",
+      "enum": [
+        "pandoc",
+        "biblatex",
+        "natbib",
+        "latex",
+        "typst",
+        "org-cite",
+        "myst",
+        "multi-markdown",
+        "ascii-doc",
+        "jupyter",
+        "jekyll-scholar",
+        "scannable-cite",
+        "keys",
+        "csl-json",
+        "cayw-json"
+      ]
+    },
+    "LibraryId": {
+      "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
+      "type": "string",
+      "pattern": "^(file|zotero):[0-9a-f]{64}$"
+    },
+    "LibraryObject": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "$ref": "#/$defs/Record"
+            },
+            "kind": {
+              "type": "string",
+              "const": "record"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "$ref": "#/$defs/Attachment"
+            },
+            "kind": {
+              "type": "string",
+              "const": "attachment"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "$ref": "#/$defs/Note"
+            },
+            "kind": {
+              "type": "string",
+              "const": "note"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "$ref": "#/$defs/Annotation"
+            },
+            "kind": {
+              "type": "string",
+              "const": "annotation"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "$ref": "#/$defs/Collection"
+            },
+            "kind": {
+              "type": "string",
+              "const": "collection"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "$ref": "#/$defs/Tag"
+            },
+            "kind": {
+              "type": "string",
+              "const": "tag"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "$ref": "#/$defs/SavedSearch"
+            },
+            "kind": {
+              "type": "string",
+              "const": "saved-search"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ]
+    },
+    "Locator": {
+      "type": "object",
+      "properties": {
+        "term": {
+          "$ref": "#/$defs/LocatorTerm"
+        },
+        "value": {
+          "description": "Literal range or pinpointer, never interpreted as markup.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "term",
+        "value"
+      ]
+    },
+    "LocatorTerm": {
+      "description": "CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.\nhttps://github.com/citation-style-language/schema/blob/v1.0.2/schemas/input/csl-citation.json",
+      "type": "string",
+      "enum": [
+        "act",
+        "appendix",
+        "article-locator",
+        "book",
+        "canon",
+        "chapter",
+        "column",
+        "elocation",
+        "equation",
+        "figure",
+        "folio",
+        "issue",
+        "line",
+        "note",
+        "opus",
+        "page",
+        "paragraph",
+        "part",
+        "rule",
+        "scene",
+        "section",
+        "sub-verbo",
+        "supplement",
+        "table",
+        "timestamp",
+        "title-locator",
+        "verse",
+        "version",
+        "volume"
+      ]
+    },
+    "Loss": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "$ref": "#/$defs/LossField"
+        },
+        "item": {
+          "description": "Zero-based request index; None describes a request-wide loss.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "reason": {
+          "$ref": "#/$defs/LossReason"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "reason"
+      ]
+    },
+    "LossField": {
+      "type": "string",
+      "enum": [
+        "locator",
+        "prefix",
+        "suffix",
+        "author-suppression",
+        "rich-text",
+        "order"
+      ]
+    },
+    "LossReason": {
+      "type": "string",
+      "enum": [
+        "unsupported",
+        "flattened"
+      ]
+    },
+    "Note": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ItemRef"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "description": "Untrusted plain text; front ends must never inject this as HTML.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text"
+      ]
+    },
+    "Notice": {
+      "type": "string",
+      "enum": [
+        "needs-document-context",
+        "reference-entry",
+        "full-first-note",
+        "year-suffix-withheld",
+        "input-language-unsupported"
+      ]
+    },
+    "OutputSpec": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "description": "A command name for syntaxes that support it; engines validate its grammar.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "kind": {
+              "type": "string",
+              "const": "key"
+            },
+            "syntax": {
+              "$ref": "#/$defs/KeySyntax"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "syntax"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "csl"
+            },
+            "style": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "style"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "preset"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "name"
+          ]
+        }
+      ]
+    },
+    "Record": {
+      "type": "object",
+      "properties": {
+        "aliases": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "citation_keys": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CitationKey"
+          }
+        },
+        "csl": {
+          "description": "Normalised CSL data; all variables may affect a chosen style.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "id": {
+          "$ref": "#/$defs/ItemRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "csl"
+      ]
+    },
+    "SavedSearch": {
+      "type": "object",
+      "properties": {
+        "conditions": {
+          "description": "Source conditions are data only; this contract never executes them.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SearchCondition"
+          }
+        },
+        "id": {
+          "$ref": "#/$defs/ItemRef"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "conditions"
+      ]
+    },
+    "Script": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "subscript",
+        "superscript"
+      ]
+    },
+    "SearchCondition": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "operator",
+        "value"
+      ]
+    },
+    "Snapshot": {
+      "description": "No mutable object access is exposed. Refresh constructs a new value while\nexisting picker sessions retain their original value.",
+      "type": "object",
+      "properties": {
+        "fingerprints": {
+          "$ref": "#/$defs/Fingerprints"
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotObject"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "objects",
+        "fingerprints"
+      ]
+    },
+    "SnapshotObject": {
+      "type": "object",
+      "properties": {
+        "fingerprints": {
+          "$ref": "#/$defs/Fingerprints"
+        },
+        "object": {
+          "$ref": "#/$defs/LibraryObject"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "object",
+        "fingerprints"
+      ]
+    },
+    "Success": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/CitationResult"
+        },
+        "ibis": {
+          "$ref": "#/$defs/EnvelopeVersion"
+        },
+        "ok": {
+          "$ref": "#/$defs/SuccessStatus"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "ibis",
+        "ok",
+        "data"
+      ]
+    },
+    "SuccessStatus": {
+      "type": "boolean",
+      "const": true
+    },
+    "Tag": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ItemRef"
+        },
+        "items": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ItemRef"
+          }
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "TextRun": {
+      "description": "Fixed-depth rich text: styling is data, never arbitrary HTML or executable markup.",
+      "type": "object",
+      "properties": {
+        "bold": {
+          "type": "boolean",
+          "default": false
+        },
+        "italic": {
+          "type": "boolean",
+          "default": false
+        },
+        "script": {
+          "$ref": "#/$defs/Script",
+          "default": "normal"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ]
+    }
+  }
+}

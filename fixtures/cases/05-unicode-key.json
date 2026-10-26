@@ -1,0 +1,111 @@
+{
+  "expected": {
+    "data": {
+      "content_hash": "f42621eff181a50bec5df6ac9e373bf802ffd7b6d5997054cc9800c3138862ac",
+      "display": {
+        "nodes": [
+          {
+            "content": [
+              {
+                "bold": false,
+                "italic": false,
+                "script": "normal",
+                "text": "[@{例2026}]"
+              }
+            ],
+            "item": 0
+          }
+        ]
+      },
+      "html": null,
+      "losses": [],
+      "notices": [],
+      "outcomes": [
+        {
+          "item": 0,
+          "outcome": "rendered"
+        }
+      ],
+      "rtf": null,
+      "text": "[@{例2026}]"
+    },
+    "ibis": 1,
+    "ok": true
+  },
+  "library": {
+    "fingerprints": {
+      "cite": "94d1a5a4d845f0759d002062c16faf1e2f2c85a57597b20d3bfed8df17fc294a",
+      "full": "94d1a5a4d845f0759d002062c16faf1e2f2c85a57597b20d3bfed8df17fc294a"
+    },
+    "objects": [
+      {
+        "fingerprints": {
+          "cite": "4b5d237c9328f0608b044b3c94639cf09c144e3be52c32697c807881d1cdab3f",
+          "full": "4b5d237c9328f0608b044b3c94639cf09c144e3be52c32697c807881d1cdab3f"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "例2026"
+              }
+            ],
+            "csl": {
+              "author": [
+                {
+                  "family": "Taylor",
+                  "given": "Avery"
+                }
+              ],
+              "issued": {
+                "date-parts": [
+                  [
+                    2026
+                  ]
+                ]
+              },
+              "publisher": "Imaginary Press",
+              "title": "合成の記録",
+              "type": "book"
+            },
+            "id": {
+              "key": "work-1",
+              "library": "file:159acb77b9ff3cbd146b2b03055a16b3d6798aa12165374df6b81a8ce2d64ed2"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    ]
+  },
+  "name": "05-unicode-key",
+  "request": {
+    "form": "normal",
+    "input_language": "en",
+    "items": [
+      {
+        "annotation": null,
+        "expected_annotation_cite": null,
+        "expected_cite": null,
+        "form": null,
+        "item": {
+          "key": "work-1",
+          "library": "file:159acb77b9ff3cbd146b2b03055a16b3d6798aa12165374df6b81a8ce2d64ed2"
+        },
+        "locator": null,
+        "prefix": [],
+        "suffix": [],
+        "suppress_author": false
+      }
+    ],
+    "keep_order": false,
+    "output": {
+      "command": null,
+      "kind": "key",
+      "syntax": "pandoc"
+    },
+    "output_locale": "en-US"
+  }
+}
