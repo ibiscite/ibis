@@ -23,3 +23,10 @@ fetches upstream data at runtime.
 pinned conversion code. To change a pin, replace these files from their exact
 upstream revisions, record the new hashes, regenerate the fixtures and review
 both source and expected-output differences.
+
+The manifest's `oracleProfile` pins the harness's en-US/UTC client context and
+the ordinal suffix resource value. That one string comes from
+`chrome/locale/en-US/zotero/zotero.properties` at the Zotero revision above;
+the profile records the exact path and upstream file digest without vendoring
+the unrelated localization strings. It also documents Ibis's deliberate
+literal fallback for clock-dependent, nonzero unpadded two-digit years.

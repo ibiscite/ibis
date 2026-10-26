@@ -9901,5 +9901,606 @@
     "expected": {
       "type": "book"
     }
+  },
+  {
+    "name": "access-malformed-tail-0",
+    "item": {
+      "key": "S0000240",
+      "itemType": "book",
+      "accessDate": "2026-10-25 nonsense"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "literal": ""
+      }
+    }
+  },
+  {
+    "name": "access-malformed-tail-1",
+    "item": {
+      "key": "S0000241",
+      "itemType": "book",
+      "accessDate": "2026-10-25T99:99:99Z"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "literal": ""
+      }
+    }
+  },
+  {
+    "name": "access-malformed-tail-2",
+    "item": {
+      "key": "S0000242",
+      "itemType": "book",
+      "accessDate": "2026-10-25TbadZ"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "literal": ""
+      }
+    }
+  },
+  {
+    "name": "access-malformed-tail-3",
+    "item": {
+      "key": "S0000243",
+      "itemType": "book",
+      "accessDate": "2026-10-25 99:99:99"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "literal": ""
+      }
+    }
+  },
+  {
+    "name": "access-malformed-tail-4",
+    "item": {
+      "key": "S0000244",
+      "itemType": "book",
+      "accessDate": "2026-10-25 12:34:56Z"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "literal": ""
+      }
+    }
+  },
+  {
+    "name": "creator-family-line-0",
+    "item": {
+      "key": "S0000245",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van de\nSynthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "van de\nSynthetic",
+          "given": "Example"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-family-leading-line-0",
+    "item": {
+      "key": "S0000246",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van\nde Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "van\nde"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-line-0",
+    "item": {
+      "key": "S0000247",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example\nvan de",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example\nvan de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-particle-line-0",
+    "item": {
+      "key": "S0000248",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example van\nde",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "van\nde"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-family-line-1",
+    "item": {
+      "key": "S0000249",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van de\rSynthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "van de\rSynthetic",
+          "given": "Example"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-family-leading-line-1",
+    "item": {
+      "key": "S0000250",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van\rde Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "van\rde"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-line-1",
+    "item": {
+      "key": "S0000251",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example\rvan de",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example\rvan de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-particle-line-1",
+    "item": {
+      "key": "S0000252",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example van\rde",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "van\rde"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-family-line-2",
+    "item": {
+      "key": "S0000253",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van de Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "van de Synthetic",
+          "given": "Example"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-family-leading-line-2",
+    "item": {
+      "key": "S0000254",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van de Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "van de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-line-2",
+    "item": {
+      "key": "S0000255",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example van de",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example van de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-particle-line-2",
+    "item": {
+      "key": "S0000256",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example van de",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "van de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-family-line-3",
+    "item": {
+      "key": "S0000257",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van de Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "van de Synthetic",
+          "given": "Example"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-family-leading-line-3",
+    "item": {
+      "key": "S0000258",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "van de Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "van de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-line-3",
+    "item": {
+      "key": "S0000259",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example van de",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example van de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-given-particle-line-3",
+    "item": {
+      "key": "S0000260",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example van de",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "van de"
+        }
+      ]
+    }
+  },
+  {
+    "name": "date-profile-May 3rd, 2026",
+    "item": {
+      "key": "S0000261",
+      "itemType": "book",
+      "date": "May 3rd, 2026"
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "date-parts": [
+          [
+            "2026",
+            5,
+            3
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "date-profile-200 BC Spring",
+    "item": {
+      "key": "S0000262",
+      "itemType": "book",
+      "date": "200 BC Spring"
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "date-parts": [
+          [
+            -200
+          ]
+        ],
+        "season": "Spring"
+      }
+    }
+  },
+  {
+    "name": "date-profile-200 BCE January 3",
+    "item": {
+      "key": "S0000263",
+      "itemType": "book",
+      "date": "200 BCE January 3"
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "date-parts": [
+          [
+            -200,
+            1,
+            3
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "date-profile-5/3/00",
+    "item": {
+      "key": "S0000264",
+      "itemType": "book",
+      "date": "5/3/00"
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "date-parts": [
+          [
+            "0",
+            5,
+            3
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-short-2026-10",
+    "item": {
+      "key": "S0000265",
+      "itemType": "book",
+      "accessDate": "2026-10"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "2026",
+            10,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-short-2026",
+    "item": {
+      "key": "S0000266",
+      "itemType": "book",
+      "accessDate": "2026"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "2026",
+            1,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "url-schemeless-www.example.invalid/invented",
+    "item": {
+      "key": "S0000267",
+      "itemType": "book",
+      "url": "www.example.invalid/invented"
+    },
+    "expected": {
+      "type": "book",
+      "URL": "www.example.invalid/invented"
+    }
+  },
+  {
+    "name": "url-schemeless-doi.org/10.0000/invented",
+    "item": {
+      "key": "S0000268",
+      "itemType": "book",
+      "url": "doi.org/10.0000/invented"
+    },
+    "expected": {
+      "type": "book",
+      "URL": "doi.org/10.0000/invented"
+    }
+  },
+  {
+    "name": "url-schemeless-example.invalid/invented",
+    "item": {
+      "key": "S0000269",
+      "itemType": "book",
+      "url": "example.invalid/invented"
+    },
+    "expected": {
+      "type": "book",
+      "URL": "example.invalid/invented"
+    }
   }
 ]

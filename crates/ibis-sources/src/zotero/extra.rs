@@ -130,17 +130,58 @@ pub(super) fn date_overrides(note: &str) -> (String, BTreeMap<String, Value>) {
 }
 
 pub(super) fn without_private_urls(note: &str, warnings: &mut Vec<MappingWarning>) -> String {
-    note.split('\n')
-        .map(|line| {
-            // Removing the value, but retaining a blank line, keeps Zotero's first
-            // line/prose boundary behavior for remaining note-field overrides.
-            if field_line(line).is_some_and(|(label, value)| label == "URL" && !public_url(value)) {
+    let mut safe = String::with_capacity(note.len());
+    let mut cursor = 0;
+    let mut line_start = true;
+    while cursor < note.len() {
+        let rest = &note[cursor..];
+        let inline = rest.starts_with("{:");
+        let label_start = if inline { 2 } else { 0 };
+        if (inline || line_start)
+            && rest
+                .get(label_start..label_start + 4)
+                .is_some_and(|label| label.eq_ignore_ascii_case("URL:"))
+        {
+            let start = label_start + 4;
+            let value_start = start + rest[start..].len() - rest[start..].trim_start().len();
+            let value_end = value_start
+                + rest[value_start..]
+                    .find(['{', '}', '\r', '\n', '\u{2028}', '\u{2029}'])
+                    .unwrap_or(rest.len() - value_start);
+            let value = rest[value_start..value_end].trim();
+            if !value.is_empty() && !public_url(value) {
                 warn(warnings, MappingWarning::PrivateUrl);
-                ""
-            } else {
-                line
+                let end = value_end + usize::from(inline && rest.as_bytes().get(value_end) == Some(&b'}'));
+                // Keep line boundaries: deleting a field cannot turn following
+                // prose into the first line accepted by citeproc's field hacks.
+                for ch in rest[..end]
+                    .chars()
+                    .filter(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'))
+                {
+                    safe.push(ch);
+                }
+                line_start = rest[..end]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'));
+                cursor += end;
+                continue;
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+            if !value.is_empty() {
+                // Consume each segment once, including adversarial repeated
+                // inline fields with no closing brace. Nested fields start a
+                // new segment and receive the same URL check.
+                safe.push_str(&rest[..value_end]);
+                cursor += value_end;
+                line_start = false;
+                continue;
+            }
+        }
+        if let Some(ch) = rest.chars().next() {
+            safe.push(ch);
+            cursor += ch.len_utf8();
+            line_start = matches!(ch, '\r' | '\n' | '\u{2028}' | '\u{2029}');
+        }
+    }
+    safe
 }

@@ -284,3 +284,65 @@ proptest::proptest! {
         proptest::prop_assert!(Snapshot::new(vec![LibraryObject::Record(result.record)]).is_ok());
     }
 }
+
+#[test]
+fn embedded_extra_url_hacks_cannot_expose_local_file_locations() {
+    for extra in [
+        "{:URL: file:///invented/private.pdf}",
+        "Invented prefix {:URL: C:/invented/private.pdf}",
+        "URL: \\\\invented\\private.pdf\nTitle: Invented title",
+        "{:URL: ../private.pdf}{:issued: 2026}",
+    ] {
+        let data = mapped(json!({"extra": extra}));
+        assert!(!serde_json::to_string(&data.record).unwrap().contains("private.pdf"));
+        assert!(data.warnings.contains(&zotero::MappingWarning::PrivateUrl));
+        assert!(
+            serde_json::to_string(data.record.raw.as_ref().unwrap())
+                .unwrap()
+                .contains("private.pdf")
+        );
+    }
+}
+
+#[test]
+fn canonical_extra_key_labels_do_not_hide_conflicts() {
+    use ibis_core::contract::ModelError;
+    for label in ["Citation Key", "citation-key", "citationKey", " Citation-Key "] {
+        let record = mapped(json!({"citationKey": "Field2026", "extra": format!("{label}: Different2026")})).record;
+        assert_eq!(record.citation_key(), Err(ModelError::ConflictingCitationKeys));
+        assert_eq!(record.citation_keys.len(), 2);
+    }
+}
+
+#[test]
+fn printed_url_suppression_keeps_search_identifiers_and_bare_domains_survive() {
+    use ibis_core::identifier::Identifier;
+    let result =
+        mapped(json!({"itemType": "journalArticle", "pages": "1–9", "url": "https://arxiv.org/abs/2401.00001v2"}));
+    assert!(!result.record.csl.contains_key("URL"));
+    assert_eq!(result.record.identifiers, vec![Identifier::Arxiv("2401.00001".into())]);
+    for url in [
+        "www.example.invalid/invented",
+        "doi.org/10.0000/invented",
+        "example.invalid/invented",
+    ] {
+        let result = mapped(json!({"url": url, "extra": format!("URL: {url}")}));
+        assert_eq!(result.record.csl["URL"], url);
+        assert!(!result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
+    }
+}
+
+#[test]
+fn maximum_length_particle_and_date_inputs_have_bounded_work() {
+    let started = std::time::Instant::now();
+    let family = format!("{}Synthetic", "a ".repeat(100_000));
+    let given = format!("Example {}a", "a ".repeat(100_000));
+    let date = "jan-".repeat(60_000);
+    let result =
+        mapped(json!({"date": date, "creators": [{"creatorType": "author", "firstName": given, "lastName": family}]}));
+    assert_eq!(result.record.csl["issued"], json!({"literal": date}));
+    assert!(result.warnings.contains(&zotero::MappingWarning::DateParseLimit));
+    assert_eq!(result.record.csl["author"][0]["family"], "Synthetic");
+    assert_eq!(result.record.csl["author"][0]["given"], "Example");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}

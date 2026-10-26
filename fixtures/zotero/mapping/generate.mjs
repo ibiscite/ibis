@@ -9,10 +9,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import vm from "node:vm";
 
-process.env.TZ = "UTC";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const vendor = path.resolve(here, "../../../crates/ibis-sources/vendor/zotero");
 const manifest = JSON.parse(await readFile(path.join(vendor, "manifest.json"), "utf8"));
+process.env.TZ = manifest.oracleProfile.timeZone;
 for (const { out, sha256 } of manifest.files) {
   const bytes = await readFile(path.join(vendor, out));
   if (createHash("sha256").update(bytes).digest("hex") !== sha256) {
@@ -24,8 +24,8 @@ const types = new Map(schema.itemTypes.map(type => [type.itemType, type]));
 const fieldNames = new Set(schema.itemTypes.flatMap(type => type.fields.flatMap(field => [field.field, field.baseField].filter(Boolean))));
 let currentItem;
 const zotero = {
-  locale: "en-US", isClient: true, debug() {},
-  getString(key) { if (key === "date.daySuffixes") return "st, nd, rd, th"; throw new Error(`Unexpected string: ${key}`); },
+  locale: manifest.oracleProfile.locale, isClient: manifest.oracleProfile.isClient, debug() {},
+  getString(key) { if (key === "date.daySuffixes") return manifest.oracleProfile.strings[key].value; throw new Error(`Unexpected string: ${key}`); },
   Utilities: {
     XRegExp(pattern, flags) { return new RegExp(pattern, flags); },
     trimInternal(value) { return value.replace(/[\xA0\r\n\s]+/g, " ").trim(); },
@@ -170,6 +170,23 @@ add("base-collision-case", { itemType: "case", title: "Invented base title", cas
 add("base-collision-program", { itemType: "computerProgram", title: "Invented title", versionNumber: "", version: "Invented old version", company: "", publisher: "Invented base publisher" });
 add("base-collision-presentation", { itemType: "presentation", title: "", date: "", place: "Invented original place", eventPlace: "Invented new place", presentationType: "", type: "Invented base type" });
 add("empty-text-fields", { title: "", abstractNote: "", date: "", citationKey: "", url: "", accessDate: "", extra: "", shortTitle: "", ISBN: "", creators: [] });
+for (const [index, accessDate] of [
+  "2026-10-25 nonsense", "2026-10-25T99:99:99Z", "2026-10-25TbadZ",
+  "2026-10-25 99:99:99", "2026-10-25 12:34:56Z",
+].entries()) add(`access-malformed-tail-${index}`, { accessDate });
+for (const [index, separator] of ["\n", "\r", "\u2028", "\u2029"].entries()) {
+  add(`creator-family-line-${index}`, { creators: [{ creatorType: "author", firstName: "Example", lastName: `van de${separator}Synthetic` }] });
+  add(`creator-family-leading-line-${index}`, { creators: [{ creatorType: "author", firstName: "Example", lastName: `van${separator}de Synthetic` }] });
+  add(`creator-given-line-${index}`, { creators: [{ creatorType: "author", firstName: `Example${separator}van de`, lastName: "Synthetic" }] });
+  add(`creator-given-particle-line-${index}`, { creators: [{ creatorType: "author", firstName: `Example van${separator}de`, lastName: "Synthetic" }] });
+}
+for (const date of ["May 3rd, 2026", "200 BC Spring", "200 BCE January 3", "5/3/00"]) {
+  add(`date-profile-${date}`, { date });
+}
+for (const accessDate of ["2026-10", "2026"]) add(`access-short-${accessDate}`, { accessDate });
+for (const url of ["www.example.invalid/invented", "doi.org/10.0000/invented", "example.invalid/invented"]) {
+  add(`url-schemeless-${url}`, { url });
+}
 const output = `${JSON.stringify(cases, null, 2)}\n`;
 const outputPath = path.join(here, "cases.json");
 if (process.argv.includes("--check")) {

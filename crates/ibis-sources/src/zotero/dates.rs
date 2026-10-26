@@ -7,9 +7,15 @@
 
 use serde_json::{Value, json};
 
+/// Natural-language fallback does not run on arbitrarily long source text.
+pub(super) const MAX_PARSE_BYTES: usize = 4096;
+
 /// Source dates are data: no operating-system locale, timezone or current year
 /// participates in their interpretation. Ambiguous two-digit years stay literal.
 pub(super) fn to_csl(value: &str, accessed: bool) -> Value {
+    if value.len() > MAX_PARSE_BYTES {
+        return json!({"literal": value});
+    }
     if !accessed {
         if let Some(date) = extra_date(value) {
             return date;
@@ -31,6 +37,9 @@ pub(super) fn to_csl(value: &str, accessed: bool) -> Value {
 /// Zotero handles only quoted literals and valid EDTF here. Other Extra date
 /// lines remain in `note` for citeproc-js's own field-hack parser.
 pub(super) fn extra_date(value: &str) -> Option<Value> {
+    if value.len() > MAX_PARSE_BYTES {
+        return None;
+    }
     let text = value.trim();
     let mut chars = text.chars();
     if matches!(chars.next(), Some('"' | '“')) && matches!(chars.next_back(), Some('"' | '”')) {
@@ -545,35 +554,85 @@ fn natural_date(value: &str) -> Option<Value> {
 /// Zotero shifts access timestamps through the computer's timezone. The neutral
 /// engine instead fixes that conversion to UTC, keeping both access paths equal.
 fn access_calendar(value: &str) -> Option<String> {
+    // Zotero's ISO date constructor fills reduced-precision dates with the
+    // first calendar day, before the normal string-year conversion.
+    if matches!(value.len(), 4 | 7) {
+        let (parts, _) = edtf_parts(value)?;
+        if parts.len() <= 2 {
+            return Some(format!("{:04}-{:02}-01", parts[0], parts.get(1).copied().unwrap_or(1)));
+        }
+        return None;
+    }
     let date = value.get(..10)?;
     let (parts, _) = edtf_parts(date)?;
     if parts.len() != 3 {
         return None;
     }
-    if value.len() == 10 || value.as_bytes().get(10) == Some(&b' ') {
+    if value.len() == 10 {
         return Some(date.into());
     }
-    if value.as_bytes().get(10) != Some(&b'T') {
-        return None;
-    }
+    let iso = match value.as_bytes().get(10) {
+        Some(b'T') => true,
+        Some(b' ') => false,
+        _ => return None,
+    };
     let time = value.get(11..)?;
-    if time.ends_with('Z') {
-        return Some(date.into());
-    }
-    let offset_start = time.find(['+', '-'])?;
-    let offset = time.get(offset_start..)?;
-    let hours = offset.get(1..3)?.parse::<i32>().ok()?;
-    let minutes = offset.get(4..6)?.parse::<i32>().ok()?;
-    if offset.len() != 6 || offset.as_bytes()[3] != b':' || hours > 23 || minutes > 59 {
+    let two_digits = |text: &str| -> Option<i32> {
+        (text.len() == 2 && text.bytes().all(|byte| byte.is_ascii_digit()))
+            .then(|| text.parse().ok())
+            .flatten()
+    };
+    let hour = two_digits(time.get(..2)?)?;
+    let minute = two_digits(time.get(3..5)?)?;
+    if time.as_bytes().get(2) != Some(&b':') || minute > 59 {
         return None;
     }
-    let hour = time.get(..2)?.parse::<i32>().ok()?;
-    let minute = time.get(3..5)?.parse::<i32>().ok()?;
-    if hour > 23 || minute > 59 {
+    let mut end = 5;
+    let mut second = 0;
+    if time.as_bytes().get(end) == Some(&b':') {
+        second = two_digits(time.get(end + 1..end + 3)?)?;
+        if second > 59 {
+            return None;
+        }
+        end += 3;
+    }
+    let mut fractional_nonzero = false;
+    if iso && end == 8 && time.as_bytes().get(end) == Some(&b'.') {
+        let fraction_start = end + 1;
+        end = fraction_start;
+        while time.as_bytes().get(end).is_some_and(u8::is_ascii_digit) {
+            fractional_nonzero |= time.as_bytes()[end] != b'0';
+            end += 1;
+        }
+        if end == fraction_start {
+            return None;
+        }
+    }
+    // SQL timestamps have no zone or fractional component. Checking the entire
+    // tail prevents malformed data from becoming a plausible access date.
+    if !iso {
+        return (hour <= 23 && end == time.len()).then(|| date.into());
+    }
+    // JavaScript Date accepts 24:00 as midnight on the next day, but no other
+    // hour-24 time. Zotero passes ISO values through that constructor.
+    if hour > 24 || hour == 24 && (minute != 0 || second != 0 || fractional_nonzero) {
         return None;
     }
-    let sign = if offset.starts_with('+') { 1 } else { -1 };
-    let utc_minutes = hour * 60 + minute - sign * (hours * 60 + minutes);
+    let zone = time.get(end..)?;
+    let offset = match zone {
+        "" | "Z" => 0,
+        _ if zone.len() == 6 && matches!(zone.as_bytes()[0], b'+' | b'-') && zone.as_bytes()[3] == b':' => {
+            let hours = two_digits(zone.get(1..3)?)?;
+            let minutes = two_digits(zone.get(4..6)?)?;
+            if hours > 23 || minutes > 59 {
+                return None;
+            }
+            let sign = if zone.starts_with('+') { 1 } else { -1 };
+            sign * (hours * 60 + minutes)
+        }
+        _ => return None,
+    };
+    let utc_minutes = hour * 60 + minute - offset;
     let delta = utc_minutes.div_euclid(1440);
     let [mut year, mut month, mut day] = [parts[0], parts[1], parts[2]];
     day += delta;
@@ -673,6 +732,42 @@ mod tests {
         ] {
             assert_eq!(to_csl(source, true), expected, "{source}");
         }
+    }
+
+    #[test]
+    fn malformed_access_timestamp_tails_follow_zotero_empty_literal() {
+        for source in [
+            "2026-10-25 nonsense",
+            "2026-10-25T99:99:99Z",
+            "2026-10-25TbadZ",
+            "2026-10-25 99:99:99",
+            "2026-10-25 12:34:56Z",
+            "2026-10-25T12:34:56+0230",
+            "2026-10-25T12:34:56.123badZ",
+            "2026-10-25T12:34:56.Z",
+            "2026-10-25T12:34:60Z",
+            "2026-10-25T24:00:01Z",
+        ] {
+            assert_eq!(to_csl(source, true), json!({"literal": ""}), "{source}");
+        }
+        for source in [
+            "2026-10-25 12:34",
+            "2026-10-25 12:34:56",
+            "2026-10-25T12:34",
+            "2026-10-25T12:34Z",
+            "2026-10-25T12:34:56.123Z",
+            "2026-10-25T12:34:56.123+02:00",
+        ] {
+            assert_eq!(
+                to_csl(source, true),
+                json!({"date-parts": [["2026",10,25]]}),
+                "{source}"
+            );
+        }
+        assert_eq!(
+            to_csl("2026-10-25T24:00:00Z", true),
+            json!({"date-parts": [["2026",10,26]]})
+        );
     }
 
     #[test]

@@ -16,6 +16,13 @@ mod extra;
 /// Access adapters construct this same neutral shape. Metadata such as API
 /// versions, database IDs, and locations do not masquerade as citation fields.
 /// BBT values must already have been obtained by its separate versioned adapter.
+/// Date fields contain the typed text (Zotero's `multipartToStr`), never the
+/// database's sortable multipart prefix. `accessDate` is a SQL UTC or ISO value.
+/// This is not a raw API response: adapters select bibliographic string fields.
+///
+/// As in Zotero's CSL export, non-date Extra overrides remain in CSL `note`
+/// for citeproc to consume once. Inspecting `csl` does not apply those overrides;
+/// their complete content still participates in the citation fingerprint.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZoteroItem {
     pub key: String,
@@ -57,6 +64,7 @@ pub enum MappingWarning {
     InvalidCitationKey,
     InvalidAlias,
     PrivateUrl,
+    DateParseLimit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
@@ -200,6 +208,9 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
                     .map(String::as_str)
             });
         if let Some(value) = value.filter(|value| !value.is_empty()) {
+            if value.len() > dates::MAX_PARSE_BYTES {
+                warn(&mut warnings, MappingWarning::DateParseLimit);
+            }
             csl.insert(variable.clone(), dates::to_csl(value, field == "accessDate"));
         }
     }
@@ -208,6 +219,14 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
         csl.insert("note".into(), json!(note));
         csl.extend(overrides);
     }
+    // Search identifiers survive citation-only URL suppression without printing
+    // a URL that Zotero would omit from a printed article.
+    let identifiers = item
+        .fields
+        .get("url")
+        .and_then(|url| ibis_core::identifier::parse_query(url))
+        .into_iter()
+        .collect();
     // Zotero's default cite.js behavior: printed periodical articles with pages
     // omit both URL and access date, even if an access timestamp was supplied.
     if matches!(
@@ -243,7 +262,7 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
             csl,
             citation_keys,
             aliases,
-            identifiers: Vec::new(),
+            identifiers,
             raw: Some(RawProvenance {
                 format: SourceFormat::Zotero,
                 data: raw,
@@ -341,7 +360,7 @@ fn keys(
     let extra = item.fields.get("extra").map(String::as_str).unwrap_or_default();
     for line in extra.lines() {
         if let Some((label, value)) = line.split_once(':')
-            && label.trim().eq_ignore_ascii_case("citation key")
+            && citation_key_label(label)
         {
             add(value, CitationKeySource::Extra)?;
         }
@@ -373,6 +392,14 @@ fn valid_key(value: &str) -> bool {
     !value.is_empty() && !value.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
+fn citation_key_label(label: &str) -> bool {
+    // Zotero's extraToCSL maps written-out and camel-case field labels to
+    // citation-key. Retain those same explicit sources before citeproc reads note.
+    label.trim().eq_ignore_ascii_case("citation key")
+        || label.trim().eq_ignore_ascii_case("citation-key")
+        || label.trim().eq_ignore_ascii_case("citationKey")
+}
+
 fn warn(warnings: &mut Vec<MappingWarning>, warning: MappingWarning) {
     if !warnings.contains(&warning) {
         warnings.push(warning);
@@ -381,8 +408,22 @@ fn warn(warnings: &mut Vec<MappingWarning>, warning: MappingWarning) {
 
 fn public_url(url: &str) -> bool {
     let url = url.trim();
-    let Some((scheme, rest)) = url.split_once(':') else {
+    if url.is_empty() || url.contains('\\') || url.chars().any(char::is_control) {
         return false;
+    }
+    let Some((scheme, rest)) = url.split_once(':') else {
+        // Zotero accepts a domain without a scheme. Require a domain-shaped
+        // host so relative paths with separators remain engine-only.
+        let host = url.split('/').next().unwrap_or_default();
+        let labels: Vec<_> = host.split('.').collect();
+        return labels.len() >= 2
+            && labels
+                .iter()
+                .all(|label| !label.is_empty() && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+            && labels
+                .last()
+                .is_some_and(|label| label.len() >= 2 && label.bytes().all(|b| b.is_ascii_alphabetic()))
+            && !url.chars().any(char::is_whitespace);
     };
     scheme.len() > 1
         && !scheme.eq_ignore_ascii_case("file")
@@ -391,8 +432,6 @@ fn public_url(url: &str) -> bool {
             .bytes()
             .enumerate()
             .all(|(i, b)| b.is_ascii_alphabetic() || (i > 0 && (b.is_ascii_digit() || matches!(b, b'+' | b'-' | b'.'))))
-        && !url.contains('\\')
-        && !url.chars().any(char::is_control)
 }
 
 fn first_isbn(value: &str) -> &str {

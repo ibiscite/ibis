@@ -56,5 +56,19 @@
       "out": "cite.js",
       "sha256": "a7891bf1da2aafadab1f4d52987aebf2f8d8415e6ee3c4dddfeb18410aad7157"
     }
-  ]
+  ],
+  "oracleProfile": {
+    "locale": "en-US",
+    "timeZone": "UTC",
+    "isClient": true,
+    "strings": {
+      "date.daySuffixes": {
+        "value": "st, nd, rd, th",
+        "source": "zotero",
+        "path": "chrome/locale/en-US/zotero/zotero.properties",
+        "sourceSha256": "e5b7ae0922ef1dee43d51d1bac6df5135535faee3167c890976eed8e15eca9d4"
+      }
+    },
+    "twoDigitYearPolicy": "Nonzero unpadded two-digit years depend on the clock in Zotero; differential corpus omits them. Ibis deliberately retains them as literal dates."
+  }
 }

@@ -83,8 +83,9 @@ fn family_prefix(value: &str) -> Option<usize> {
 fn particles(name: &mut BTreeMap<String, Value>, family: &str, given: &str) {
     let mut remaining = family;
     let mut end = 0;
+    let last_family_break = family.rfind(['\r', '\n', '\u{2028}', '\u{2029}']);
     while let Some(length) = family_prefix(remaining) {
-        if !lower_particle(&remaining[..length]) {
+        if !lower_particle(&remaining[..length]) || last_family_break.is_some_and(|index| index >= end + length) {
             break;
         }
         end += length;
@@ -125,9 +126,10 @@ fn particles(name: &mut BTreeMap<String, Value>, family: &str, given: &str) {
     }
     let mut remaining_given = given;
     let mut particle_start = given.len();
+    let first_given_break = given.find(['\r', '\n', '\u{2028}', '\u{2029}']);
     while let Some(space) = remaining_given.rfind(' ') {
         let part = &remaining_given[space + 1..];
-        if part.is_empty() || !lower_particle(part) {
+        if part.is_empty() || !lower_particle(part) || first_given_break.is_some_and(|index| index < space) {
             break;
         }
         remaining_given = remaining_given[..space].trim_end_matches(' ');
