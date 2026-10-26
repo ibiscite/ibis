@@ -121,6 +121,90 @@ fn malformed_separate_date_parts_retain_references_with_warnings() {
 }
 
 #[test]
+fn a_separate_day_is_kept_when_valid_and_named_when_not() {
+    let loaded = load_str(
+        "synthetic.bib",
+        "@article{bad, title={T}, year={2024}, month={3}, day={32}}\n\
+         @article{short, title={T}, year={95}, month={3}, day={5}}\n\
+         @article{nomonth, title={T}, year={2024}, day={5}}\n\
+         @article{season, title={T}, year={2024}, month={Spring}, day={5}}\n\
+         @article{feb31, title={T}, year={95}, month={2}, day={31}}\n\
+         @article{signed, title={T}, year={-50}, month={4}, day={31}}\n\
+         @article{leap, title={T}, year={2024}, month={2}, day={29}}\n\
+         @xdata{parent, date={2024-02-29}}\n\
+         @article{child, title={T}, year={95}, xdata={parent}}\n\
+         @article{era, title={T}, year={2024 BC}, month={2}, day={29}}\n\
+         @xdata{plain, year={2023}, month={2}, day={29}}\n\
+         @article{override, title={T}, year={2024}, xdata={plain}}\n\
+         @article{spaced, title={T}, year={- 2024}, month={2}, day={29}}\n\
+         @article{braced, title={T}, year={{2023}}, month={2}, day={29}}\n\
+         @article{named, title={T}, year={2024}, month={February}, day={5}}\n\
+         @xdata{wrong, year={2024}, month={3}, day={32}}\n\
+         @article{inherits, title={T}, xdata={wrong}}\n\
+         @xdata{dayonly, day={29}}\n\
+         @article{supplies, title={T}, year={2024}, month={2}, xdata={dayonly}}\n\
+         @book{dated, title={B}, date={2024-03}}\n\
+         @xdata{dayfive, day={05}}\n\
+         @inbook{mixed, title={T}, crossref={dated}, xdata={dayfive}}\n\
+         @xdata{daybad, day={32}}\n\
+         @inbook{mixedbad, title={T}, crossref={dated}, xdata={daybad}}\n\
+         @article{grouped, title={T}, year={2024}, month={3}, day={0{5}}}\n\
+         @article{good, title={T}, year={2024}, month=mar, day={5}}",
+    );
+    let date = |key: &str| {
+        let issued = loaded
+            .references
+            .iter()
+            .find(|r| r.id.native_key == key)
+            .and_then(|r| r.issued.as_ref());
+        issued.map(|i| (i.start.year, i.start.month, i.start.day))
+    };
+    assert_eq!(date("bad"), Some((2024, Some(3), None)));
+    assert_eq!(date("short"), Some((95, Some(3), Some(5))));
+    assert_eq!(date("nomonth"), Some((2024, None, None)));
+    assert_eq!(date("good"), Some((2024, Some(3), Some(5))));
+    assert_eq!(date("leap"), Some((2024, Some(2), Some(29))));
+    // The entry's own year decides whether its parent's 29 February exists.
+    assert_eq!(date("override"), Some((2024, Some(2), Some(29))));
+    assert_eq!(date("named"), Some((2024, Some(2), Some(5))));
+    assert_eq!(date("supplies"), Some((2024, Some(2), Some(29))));
+    assert_eq!(date("mixed"), Some((2024, Some(3), Some(5))));
+    assert_eq!(date("grouped"), Some((2024, Some(3), Some(5))));
+    assert!(
+        loaded.references.iter().any(|r| r.id.native_key == "spaced"),
+        "{:?}",
+        loaded.warnings
+    );
+    let warned = |key: &str| {
+        loaded
+            .warnings
+            .iter()
+            .filter(|w| w.key.as_deref() == Some(key) && w.kind == WarningKind::Field)
+            .map(|w| w.message.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(warned("bad").len(), 1, "{:?}", loaded.warnings);
+    assert!(warned("bad")[0].contains("`day`"), "{:?}", warned("bad"));
+    assert_eq!(warned("nomonth").len(), 1, "{:?}", loaded.warnings);
+    assert!(
+        warned("season").iter().any(|w| w.contains("`day`")),
+        "{:?}",
+        loaded.warnings
+    );
+    assert!(
+        ["short", "good", "override", "named", "supplies", "mixed", "grouped"]
+            .iter()
+            .all(|k| warned(k).is_empty()),
+        "{:?}",
+        loaded.warnings
+    );
+    for key in ["feb31", "signed", "child", "era", "braced", "inherits", "mixedbad"] {
+        assert_eq!(date(key).and_then(|(_, _, day)| day), None, "{key}");
+        assert_eq!(warned(key).len(), 1, "{key}: {:?}", loaded.warnings);
+    }
+}
+
+#[test]
 fn unsafe_separate_parts_are_checked_after_macro_expansion_for_every_date_prefix() {
     for (prefix, csl_field) in [
         ("", "issued"),

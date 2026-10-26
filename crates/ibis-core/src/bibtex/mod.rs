@@ -17,6 +17,7 @@
 //! the entry that caused it.
 
 mod convert;
+mod dates;
 mod lexer;
 mod panic_guard;
 mod resolve;
