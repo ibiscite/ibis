@@ -13,8 +13,8 @@ use serde::Serialize;
 pub(crate) enum LoadError {
     Source(SourceError),
     Zotero(ZoteroError),
-    /// A selected read-only group keeps its citation keys outside the database.
-    ZoteroClosedKeys,
+    /// A closed read failed; preserve its fixed, actionable reason.
+    ZoteroClosed(ibis_zotero_local::snapshot::SnapshotError),
     /// The file dialog returned something that is not a local file.
     NotLocal,
     /// The background load ended without a result.
@@ -38,7 +38,7 @@ impl LoadError {
                     | SourceError::LoadLimit
                     | SourceError::Changing
             ) | LoadError::Zotero(_)
-                | LoadError::ZoteroClosedKeys
+                | LoadError::ZoteroClosed(_)
         )
     }
 }
@@ -60,9 +60,7 @@ impl fmt::Display for LoadError {
         match self {
             LoadError::Source(error) => error.fmt(f),
             LoadError::Zotero(error) => error.fmt(f),
-            LoadError::ZoteroClosedKeys => f.write_str(
-                "this library uses Better BibTeX’s separate read-only citation keys; open Zotero to read it",
-            ),
+            LoadError::ZoteroClosed(error) => error.fmt(f),
             LoadError::NotLocal => f.write_str("the chosen file is not on this computer"),
             LoadError::Stopped => f.write_str("loading the library stopped unexpectedly"),
             LoadError::RevisionExhausted => f.write_str("the library could not be updated; restart Ibis"),
@@ -138,6 +136,16 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_closed_schemas_reach_the_picker_as_actionable_fixed_text() {
+        use ibis_zotero_local::snapshot::SnapshotError;
+        let newer = LoadError::ZoteroClosed(SnapshotError::TooNew).to_string();
+        assert!(newer.contains("newer than Ibis"));
+        assert!(newer.contains("update Ibis"));
+        let older = LoadError::ZoteroClosed(SnapshotError::TooOld).to_string();
+        assert!(older.contains("update Zotero"));
+    }
+
+    #[test]
     fn retention_follows_the_kind_of_failure_not_its_wording() {
         for kept in [
             SourceError::Unavailable,
@@ -156,7 +164,13 @@ mod tests {
             assert!(!LoadError::from(not_kept).keeps_references(), "{not_kept}");
         }
         assert!(LoadError::from(ZoteroError::GroupNotFound).keeps_references());
-        assert!(LoadError::ZoteroClosedKeys.keeps_references());
+        for error in [
+            ibis_zotero_local::snapshot::SnapshotError::TooNew,
+            ibis_zotero_local::snapshot::SnapshotError::TooOld,
+            ibis_zotero_local::snapshot::SnapshotError::UnsupportedKeys,
+        ] {
+            assert!(LoadError::ZoteroClosed(error).keeps_references());
+        }
         for own in [LoadError::NotLocal, LoadError::Stopped, LoadError::RevisionExhausted] {
             assert!(!own.keeps_references(), "{own}");
         }

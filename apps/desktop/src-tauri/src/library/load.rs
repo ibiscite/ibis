@@ -197,11 +197,7 @@ fn load_closed(
         }
         Err(error) => {
             eprintln!("ibis-zotero-closed: {error}");
-            return Err(if error == snapshot::SnapshotError::UnsupportedKeys {
-                LoadError::ZoteroClosedKeys
-            } else {
-                closed
-            });
+            return Err(LoadError::ZoteroClosed(error));
         }
     };
     check_cancelled(&|| cancelled())?;
@@ -480,6 +476,11 @@ mod tests {
         let chosen = ZoteroLibraries::from(ibis_core::settings::ZoteroLibrary::User);
         let missing = std::env::temp_dir().join(format!("ibis-no-zotero-{}", std::process::id()));
         for data in [None, Some(missing)] {
+            let expected = if data.is_some() {
+                LoadError::ZoteroClosed(snapshot::SnapshotError::NotLocal)
+            } else {
+                super::super::error::ZOTERO_OFFLINE
+            };
             assert_eq!(
                 load_closed(
                     chosen.clone(),
@@ -490,7 +491,7 @@ mod tests {
                     &mut Closed,
                 )
                 .err(),
-                Some(super::super::error::ZOTERO_OFFLINE)
+                Some(expected)
             );
         }
     }

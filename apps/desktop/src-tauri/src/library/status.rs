@@ -84,7 +84,8 @@ impl From<LoadError> for LibraryProblem {
             LoadError::Zotero(ZoteroError::Transport(TransportError::Unreachable | TransportError::TimedOut)) => {
                 LibraryProblem::ZoteroClosed
             }
-            LoadError::ZoteroClosedKeys => LibraryProblem::ZoteroClosed,
+            // Recovery must show this reason instead of a generic instruction to open Zotero.
+            LoadError::ZoteroClosed(_) => LibraryProblem::Unreadable,
             LoadError::Zotero(ZoteroError::NotAllowed) => LibraryProblem::ZoteroAccessOff,
             _ => LibraryProblem::Other,
         }
@@ -277,7 +278,10 @@ mod tests {
             (SourceError::Unreadable.into(), LibraryProblem::Unreadable),
             (SourceError::TooLarge.into(), LibraryProblem::Unreadable),
             (ZOTERO_OFFLINE, LibraryProblem::ZoteroClosed),
-            (LoadError::ZoteroClosedKeys, LibraryProblem::ZoteroClosed),
+            (
+                LoadError::ZoteroClosed(ibis_zotero_local::snapshot::SnapshotError::UnsupportedKeys),
+                LibraryProblem::Unreadable,
+            ),
             (ZoteroError::NotAllowed.into(), LibraryProblem::ZoteroAccessOff),
             (LoadError::Stopped, LibraryProblem::Other),
         ];
