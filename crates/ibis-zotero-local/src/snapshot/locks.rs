@@ -6,10 +6,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
-use super::{Control, DATABASES, Fingerprint, MAX_DATABASE_BYTES, SnapshotError, copy_bounded, names, resident};
+use super::{
+    Control, DATABASES, Fingerprint, MAX_DATABASE_BYTES, ScratchBudget, SnapshotError, copy_bounded, names, resident,
+};
 
-// POSIX record locks belong to the process. Another in-process acquisition
-// must not close a descriptor for an inode whose lock this read still owns.
+// Windows remains a draft implementation: its sharing mode still interferes
+// with startup. Unix uses the separate passive witness implementation.
 static ACQUISITION: Mutex<()> = Mutex::new(());
 
 pub(super) struct Sources {
@@ -50,9 +52,6 @@ impl Sources {
         for main in DATABASES {
             if present.iter().any(|name| name == main) {
                 let file = open(&data.join(main), true)?;
-                #[cfg(unix)]
-                rustix::fs::fcntl_lock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-                    .map_err(|_| SnapshotError::Changing)?;
                 files.push((main.to_string(), file));
             }
         }
@@ -78,7 +77,23 @@ impl Sources {
         })
     }
 
+    #[cfg(test)]
     pub(super) fn copy_to(&mut self, target: &Path, control: &Control) -> Result<Vec<u64>, SnapshotError> {
+        self.copy_to_budget(
+            target,
+            control,
+            &mut ScratchBudget {
+                remaining: MAX_DATABASE_BYTES,
+            },
+        )
+    }
+
+    pub(super) fn copy_to_budget(
+        &mut self,
+        target: &Path,
+        control: &Control,
+        budget: &mut ScratchBudget,
+    ) -> Result<Vec<u64>, SnapshotError> {
         let mut hashes = Vec::new();
         for (name, source) in &mut self.files {
             control.check()?;
@@ -93,28 +108,13 @@ impl Sources {
             #[cfg(unix)]
             std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
             let output = options.open(target.join(name)).map_err(|_| SnapshotError::CopyFailed)?;
-            hashes.push(copy_bounded(source, Some(output), MAX_DATABASE_BYTES, control)?);
+            hashes.push(copy_bounded(source, output, budget, control, &mut || Ok(()))?.hash);
         }
         Ok(hashes)
     }
 }
 
 fn open(path: &Path, main: bool) -> Result<File, SnapshotError> {
-    #[cfg(unix)]
-    let file = {
-        use rustix::fs::{Mode, OFlags};
-        // A writable descriptor is required for F_WRLCK; it is used only for
-        // that lock and reads. No source write or chmod is ever attempted.
-        let access = if main { OFlags::RDWR } else { OFlags::RDONLY };
-        File::from(
-            rustix::fs::open(
-                path,
-                access | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|_| SnapshotError::Unreadable)?,
-        )
-    };
     #[cfg(windows)]
     let file = {
         use std::os::windows::fs::OpenOptionsExt;
@@ -128,7 +128,7 @@ fn open(path: &Path, main: bool) -> Result<File, SnapshotError> {
             .open(path)
             .map_err(|_| SnapshotError::Changing)?
     };
-    #[cfg(not(any(unix, windows)))]
+    #[cfg(not(windows))]
     let file: File = {
         let _ = (path, main);
         return Err(SnapshotError::NotLocal);

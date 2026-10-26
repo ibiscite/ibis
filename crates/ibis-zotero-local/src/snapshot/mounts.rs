@@ -215,6 +215,10 @@ fn cached() -> Option<Vec<Mount>> {
 }
 
 pub(super) fn check(path: &Path) -> Result<(), SnapshotError> {
+    resolved(path).map(|_| ())
+}
+
+pub(super) fn resolved(path: &Path) -> Result<PathBuf, SnapshotError> {
     let mounts = cached().ok_or(SnapshotError::NotLocal)?;
     walk(
         path,
@@ -229,7 +233,7 @@ fn walk(
     mounts: &[Mount],
     metadata: impl Fn(&Path) -> std::io::Result<std::fs::Metadata>,
     read_link: impl Fn(&Path) -> std::io::Result<PathBuf>,
-) -> Result<(), SnapshotError> {
+) -> Result<PathBuf, SnapshotError> {
     if !path.is_absolute() {
         return Err(SnapshotError::NotLocal);
     }
@@ -283,7 +287,7 @@ fn walk(
             return Err(SnapshotError::NotLocal);
         }
     }
-    Ok(())
+    Ok(current)
 }
 
 #[cfg(test)]

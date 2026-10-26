@@ -24,3 +24,10 @@ tempfile = "3.27.0"
 # Whether Zotero's data folder is on a local disk (ADR 0027).
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 rustix = { version = "1.1.5", features = ["fs"] }
+
+# #14: passive F_GETLK probes; kqueue retains mutation evidence without blocking Zotero.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["fs"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["event"] }

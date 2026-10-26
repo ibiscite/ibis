@@ -1,16 +1,15 @@
 //! Reading Zotero's libraries while Zotero is closed (#14, ADR 0027).
 //!
-//! SQLite opens only a private copy. Raw source handles briefly exclude
-//! SQLite writers while the database and its WAL/journal are copied; they
-//! never write, create or remove source files. On Unix an exclusive POSIX
-//! record lock requires a writable descriptor, so read-only sources fail
-//! closed. On Windows read-only sharing excludes writes and deletion.
-//! A simultaneous Zotero launch may wait or fail until copying finishes.
+//! SQLite opens only a private copy. Unix retains read-only source handles
+//! and mutation witnesses, and passively queries SQLite lock ownership. It
+//! never blocks a concurrent Zotero launch. All WAL bytes are copied before
+//! main databases, then compared byte-for-byte through recorded EOF. Mutation,
+//! witness loss/error and namespace replacement discard the whole candidate.
+//! Windows acquisition is unfinished and remains a draft release gate.
 //!
-//! Source identity and metadata are checked around acquisition. The private
-//! copy is validated and read after source locks are released, then removed.
-//! Callers use this only when the local API does not answer and check again
-//! afterwards, so a running Zotero is read through its API.
+//! No source write, create, delete or chmod is attempted. Private SQLite reads
+//! start only after source validation. Callers check the local API again so
+//! a running Zotero is read through its API.
 //!
 //! Only local files are read: network paths, and cloud files that are not on
 //! this computer (which Windows and macOS would download first), are refused.
@@ -26,15 +25,27 @@ use ibis_core::model::LoadResult;
 use ibis_core::zotero::Library;
 use thiserror::Error;
 
+#[cfg(not(unix))]
 mod locks;
+#[cfg(unix)]
+mod unix;
+#[cfg(unix)]
+use unix as locks;
+#[cfg(target_os = "macos")]
+mod kqueue;
+#[cfg(target_os = "macos")]
+use kqueue as witness;
+#[cfg(target_os = "linux")]
+mod inotify;
+#[cfg(target_os = "linux")]
+use inotify as witness;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod mounts;
 mod read;
 #[cfg(windows)]
 mod windows;
 
-/// Largest database copied: far beyond any real library, small enough to
-/// leave room on the disk.
+/// Maximum actual scratch bytes written across all files and attempts in one read.
 pub const MAX_DATABASE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// Copies made before the database is reported as changing.
 const MAX_ATTEMPTS: usize = 3;
@@ -144,6 +155,9 @@ pub fn read_cancellable(
     };
     #[cfg(not(windows))]
     let _ = shadow;
+    let mut budget = ScratchBudget {
+        remaining: MAX_DATABASE_BYTES,
+    };
     for _ in 0..MAX_ATTEMPTS {
         control.check()?;
         if shadow_present(data)? != has_shadow {
@@ -161,8 +175,8 @@ pub fn read_cancellable(
         {
             return Err(SnapshotError::NeedsRecovery);
         }
-        // Hold SQLite-conflicting locks before opening any sidecar, including
-        // when -shm does not exist yet. Only raw handles touch the originals.
+        // Unix retains directory/inode witnesses before content reads; no
+        // source-conflicting lock is acquired. Only raw handles touch sources.
         let mut sources = locks::Sources::acquire(data, &before, &control)?;
         if shadow_present(data)? != has_shadow
             || fingerprint_with_shadow(data, has_shadow)? != before
@@ -171,15 +185,14 @@ pub fn read_cancellable(
             continue;
         }
         let copy = Copy::new(scratch)?;
-        let hashes = sources.copy_to(&copy.path, &control)?;
+        let hashes = sources.copy_to_budget(&copy.path, &control, &mut budget)?;
         if shadow_present(data)? != has_shadow
             || fingerprint_with_shadow(data, has_shadow)? != before
             || !sources.same_files(data)
         {
             continue;
         }
-        // Lock ownership ends before SQLite checks/conversion. Never re-open
-        // a main DB while a POSIX record lock is owned: closing it drops locks.
+        // Source validation ends before SQLite checks/conversion of the copy.
         drop(sources);
         #[cfg(windows)]
         drop(_source_directories);
@@ -343,38 +356,49 @@ fn fingerprint_with_shadow(data: &Path, has_shadow: bool) -> Result<Fingerprint,
         .map(|metadata| Fingerprint(metadata, Vec::new()))
 }
 
+/// One allowance for actual bytes written across every file and attempt.
+struct ScratchBudget {
+    remaining: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Copied {
+    hash: u64,
+    bytes: u64,
+}
+
 fn copy_bounded(
     source: &mut File,
-    mut target: Option<File>,
-    limit: u64,
+    mut target: File,
+    budget: &mut ScratchBudget,
     control: &Control,
-) -> Result<u64, SnapshotError> {
+    unchanged: &mut dyn FnMut() -> Result<(), SnapshotError>,
+) -> Result<Copied, SnapshotError> {
     use std::hash::Hasher;
     let mut hash = std::hash::DefaultHasher::new();
-    let mut source = source.take(limit + 1);
     let mut buffer = vec![0u8; CHUNK];
-    let mut copied = 0u64;
+    let mut copied = 0;
     loop {
         control.check()?;
-        let n = match source.read(&mut buffer) {
+        unchanged()?;
+        let allowance = (budget.remaining.saturating_add(1)).min(CHUNK as u64) as usize;
+        let n = match source.read(&mut buffer[..allowance]) {
             Ok(0) => break,
             Ok(n) => n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(_) => return Err(SnapshotError::Unreadable),
         };
-        copied += n as u64;
-        if copied > limit {
-            return Err(SnapshotError::TooLarge);
-        }
+        budget.remaining = budget.remaining.checked_sub(n as u64).ok_or(SnapshotError::TooLarge)?;
+        target.write_all(&buffer[..n]).map_err(|_| SnapshotError::CopyFailed)?;
         hash.write(&buffer[..n]);
-        if let Some(target) = &mut target {
-            target.write_all(&buffer[..n]).map_err(|_| SnapshotError::CopyFailed)?;
-        }
+        copied += n as u64;
     }
-    if let Some(target) = target {
-        target.sync_all().map_err(|_| SnapshotError::CopyFailed)?;
-    }
-    Ok(hash.finish())
+    target.sync_all().map_err(|_| SnapshotError::CopyFailed)?;
+    unchanged()?;
+    Ok(Copied {
+        hash: hash.finish(),
+        bytes: copied,
+    })
 }
 
 /// Whether a discovered candidate holds a regular, resident database. Windows

@@ -93,6 +93,7 @@ fn a_superseded_read_stops_during_copy_and_removes_its_private_copy() {
 }
 
 #[test]
+#[cfg(windows)]
 fn coordination_excludes_sqlite_writers_even_when_wal_sidecars_are_absent() {
     for wal in [false, true] {
         let (data, scratch) = temp();
@@ -156,6 +157,68 @@ fn coordination_excludes_sqlite_writers_even_when_wal_sidecars_are_absent() {
 }
 
 #[test]
+#[cfg(unix)]
+fn sqlite_startup_succeeds_while_acquisition_is_paused_and_mutation_rejects_the_copy() {
+    for wal in [false, true] {
+        let (data, scratch) = temp();
+        let mut fixture = Fixture::new(&data.path().join("zotero.sqlite"), 125);
+        fixture.item(1, 1, 1, "START001", "2024-01-01 00:00:00", &[(1, "Before")]);
+        if wal {
+            fixture.sql("PRAGMA journal_mode = WAL;");
+        }
+        drop(fixture);
+        let seen = fingerprint(data.path()).unwrap_or_else(|e| panic!("{e}"));
+        let control = Control {
+            deadline: Instant::now() + Duration::from_secs(10),
+            cancelled: Arc::new(|| false),
+        };
+        let mut sources = locks::Sources::acquire(data.path(), &seen, &control).unwrap_or_else(|e| panic!("{e}"));
+        let child = std::process::Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
+            .args(["--exact", "snapshot::tests::hostile::sqlite_writer_child", "--ignored"])
+            .env("IBIS_SNAPSHOT_CHILD_DATA", data.path())
+            .env("IBIS_SNAPSHOT_CHILD_EXPECT", "write")
+            .output()
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(
+            child.status.success(),
+            "SQLite startup must not be busy: {}",
+            String::from_utf8_lossy(&child.stdout)
+        );
+        assert_eq!(sources.copy_to(scratch.path(), &control), Err(SnapshotError::Changing));
+    }
+}
+
+#[test]
+fn actual_growth_is_charged_across_all_scratch_files() {
+    use std::io::Write;
+    let (data, scratch) = temp();
+    let a = data.path().join("first");
+    let b = data.path().join("second");
+    std::fs::write(&a, [1; 20]).unwrap_or_else(|e| panic!("{e}"));
+    std::fs::write(&b, [2; 20]).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(std::fs::metadata(&a).map(|m| m.len()).ok(), Some(20));
+    assert_eq!(std::fs::metadata(&b).map(|m| m.len()).ok(), Some(20));
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&b)
+        .and_then(|mut f| f.write_all(&[3; 20]))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let control = Control {
+        deadline: Instant::now() + Duration::from_secs(10),
+        cancelled: Arc::new(|| false),
+    };
+    let mut first = File::open(a).unwrap_or_else(|e| panic!("{e}"));
+    let mut second = File::open(b).unwrap_or_else(|e| panic!("{e}"));
+    let output = |name| File::create(scratch.path().join(name)).unwrap_or_else(|e| panic!("{e}"));
+    let mut budget = ScratchBudget { remaining: 48 };
+    copy_bounded(&mut first, output("first"), &mut budget, &control, &mut || Ok(())).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        copy_bounded(&mut second, output("second"), &mut budget, &control, &mut || Ok(())),
+        Err(SnapshotError::TooLarge)
+    );
+}
+
+#[test]
 #[ignore = "subprocess used by coordination_excludes_sqlite_writers"]
 fn sqlite_writer_child() {
     let data = std::env::var_os("IBIS_SNAPSHOT_CHILD_DATA").unwrap_or_else(|| panic!("synthetic child data"));
@@ -169,7 +232,7 @@ fn sqlite_writer_child() {
         Err(error) => panic!("{error}"),
     };
     db.busy_timeout(Duration::ZERO).unwrap_or_else(|e| panic!("{e}"));
-    let outcome = db.execute_batch("BEGIN IMMEDIATE; UPDATE itemDataValues SET value = 'After!' WHERE value = 'Before'; COMMIT; PRAGMA wal_checkpoint(TRUNCATE);");
+    let outcome = db.execute_batch("PRAGMA cache_size = 2000; BEGIN IMMEDIATE; UPDATE itemDataValues SET value = 'After!' WHERE value = 'Before'; COMMIT; PRAGMA wal_checkpoint(TRUNCATE);");
     if blocked {
         assert!(matches!(
             outcome.err().and_then(|e| e.sqlite_error_code()),
