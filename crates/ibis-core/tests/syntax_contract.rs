@@ -621,6 +621,71 @@ fn literal_punctuation_across_runs_cannot_create_smart_typography() {
 }
 
 #[test]
+fn pandoc_superscript_affixes_stay_inside_the_citation() {
+    if !pandoc_available() {
+        return;
+    }
+    let plain = |text: &str| TextRun {
+        text: text.into(),
+        ..TextRun::default()
+    };
+    let sup = |text: &str, italic| TextRun {
+        text: text.into(),
+        script: Script::Superscript,
+        italic,
+        ..TextRun::default()
+    };
+    for (form, prefix, suffix, field, expected) in [
+        (
+            CitationForm::Normal,
+            vec![],
+            vec![plain("x"), sup("2", false), plain("y")],
+            "citationSuffix",
+            ", x2y",
+        ),
+        (
+            CitationForm::Normal,
+            vec![sup("th", false), plain(" see")],
+            vec![],
+            "citationPrefix",
+            "th see",
+        ),
+        (
+            CitationForm::Normal,
+            vec![sup("a", true), plain("b")],
+            vec![],
+            "citationPrefix",
+            "ab",
+        ),
+        (
+            CitationForm::Narrative,
+            vec![],
+            vec![sup("2", false)],
+            "citationSuffix",
+            "2",
+        ),
+    ] {
+        let mut case = seed();
+        case.request.form = form;
+        case.request.items[0].prefix = prefix;
+        case.request.items[0].suffix = suffix;
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert!(!result.text.contains("[^"), "{}", result.text);
+        let ast = consumer_ast("markdown", &result.text);
+        let affix = &first_citation(&ast).unwrap()[field];
+        assert!(
+            affix.to_string().contains("\"t\":\"Superscript\""),
+            "{}: {affix}",
+            result.text
+        );
+        assert_eq!(inline_text(affix), expected, "{}", result.text);
+        if result.text.contains("*a*") {
+            assert!(affix.to_string().contains("\"t\":\"Emph\""));
+        }
+    }
+}
+
+#[test]
 fn control_characters_are_refused_in_every_affix_target() {
     let mut case = seed();
     for control in ['\0', '\n', '\r', '\t', '\u{7f}'] {
