@@ -34,20 +34,6 @@ fn command() -> Command {
                 .value_parser(clap::value_parser!(PathBuf))
                 .action(ArgAction::Append)
                 .help("Open a BibTeX, BibLaTeX or CSL-JSON file; repeat for several libraries"),
-        )
-        .arg(
-            Arg::new("zotero")
-                .long("zotero")
-                .global(true)
-                .action(ArgAction::SetTrue)
-                .help("Open Zotero through the engine"),
-        )
-        .arg(
-            Arg::new("data-directory")
-                .long("data-directory")
-                .global(true)
-                .requires("zotero")
-                .value_parser(clap::value_parser!(PathBuf)),
         );
     for method in Method::ALL {
         let subcommand = Command::new(method.as_str());
@@ -180,6 +166,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                         Ok(DispatchResult {
                             data: json!({"help":error.to_string()}),
                             text: None,
+                            source_findings: false,
                             exit_code: ibis_core::contract::ExitCode::Ok,
                         }),
                         &mut output,
@@ -229,6 +216,7 @@ fn execute<R: BufRead, W: Write + Send>(
         return Ok(Execution::Result(DispatchResult {
             data: json!({"toggled":true}),
             text: None,
+            source_findings: false,
             exit_code: ibis_core::contract::ExitCode::Ok,
         }));
     }
@@ -238,15 +226,6 @@ fn execute<R: BufRead, W: Write + Send>(
             serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| EngineError {
                 code: ErrorCode::BadInput,
             })?;
-        engine.dispatch(Method::Libraries, &params, &cancel)?;
-    }
-    if matches.get_flag("zotero") {
-        let params = serde_json::to_value(LibrariesRequest::OpenZotero {
-            data_directory: matches.get_one::<PathBuf>("data-directory").cloned(),
-        })
-        .map_err(|_| EngineError {
-            code: ErrorCode::BadInput,
-        })?;
         engine.dispatch(Method::Libraries, &params, &cancel)?;
     }
     if name == "serve" {
@@ -305,7 +284,9 @@ fn execute<R: BufRead, W: Write + Send>(
                 },
                 &cancel,
             )?;
-            return DispatchResult::citation(result, keys.len()).map(Execution::Result);
+            return engine
+                .finalize(DispatchResult::citation(result, keys.len())?)
+                .map(Execution::Result);
         }
         Method::Styles => json!({}),
         Method::Schema => {
@@ -339,6 +320,12 @@ fn emit(
     errors: &mut impl Write,
     mode: OutputMode,
 ) -> u8 {
+    if result.as_ref().is_ok_and(|result| result.source_findings) {
+        let _ = writeln!(
+            errors,
+            "ibis: source warnings or failed refresh; inspect libraries --json"
+        );
+    }
     let (code, envelope, text) = match result.and_then(DispatchResult::bounded) {
         Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),
         Err(error) => (error.code.exit_code(), Envelope::failure(error.code), None),
@@ -411,6 +398,7 @@ mod tests {
         let result = DispatchResult {
             data: json!("x".repeat(protocol::MAX_RESPONSE_BYTES + 1)),
             text: None,
+            source_findings: false,
             exit_code: ibis_core::contract::ExitCode::Ok,
         };
         assert_eq!(

@@ -15,10 +15,6 @@ pub enum LibrariesRequest {
     OpenFile {
         path: PathBuf,
     },
-    OpenZotero {
-        #[serde(default)]
-        data_directory: Option<PathBuf>,
-    },
     Reload {
         #[serde(default)]
         library: Option<LibraryId>,

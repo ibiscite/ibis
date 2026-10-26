@@ -388,6 +388,7 @@ mod tests {
                 data: json!("fresh"),
                 exit_code: ibis_core::contract::ExitCode::Ok,
                 text: None,
+                source_findings: false,
             })
         });
         let server = thread::spawn(move || {
@@ -436,6 +437,7 @@ mod tests {
                 Ok(DispatchResult {
                     data: json!("x".repeat(size)),
                     text: None,
+                    source_findings: false,
                     exit_code: ibis_core::contract::ExitCode::Ok,
                 })
             });
@@ -599,6 +601,7 @@ mod tests {
                 data: json!([]),
                 exit_code: ibis_core::contract::ExitCode::Ok,
                 text: None,
+                source_findings: false,
             })
         });
         let mut input = vec![];

@@ -17,6 +17,8 @@ use std::{
     },
 };
 
+mod sources;
+
 #[derive(Clone, Default)]
 pub struct Cancellation(Arc<AtomicBool>);
 impl Cancellation {
@@ -38,6 +40,22 @@ impl Cancellation {
 pub struct LibraryInfo {
     pub id: LibraryId,
     pub objects: usize,
+    pub warnings: Vec<ibis_sources::SourceWarning>,
+    pub warnings_total: usize,
+    pub refresh_error: Option<ErrorCode>,
+    pub updated_at_ms: u64,
+}
+impl LibraryInfo {
+    fn clean(id: LibraryId, objects: usize) -> Self {
+        Self {
+            id,
+            objects,
+            warnings: vec![],
+            warnings_total: 0,
+            refresh_error: None,
+            updated_at_ms: now_ms(),
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct LibrariesResult {
@@ -54,12 +72,22 @@ pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
 }
+#[derive(Debug, Clone, Default, Serialize, JsonSchema)]
+pub struct StylesResult {
+    pub styles: Vec<StyleInfo>,
+}
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct StyleInfo {
+    pub id: String,
+    pub title: String,
+}
 #[derive(Debug)]
 pub struct DispatchResult {
     pub data: Value,
     pub exit_code: ExitCode,
     /// Literal terminal citation only after the canonical completeness/hash gate.
     pub text: Option<String>,
+    pub source_findings: bool,
 }
 impl DispatchResult {
     /// Every frontend shares the same serialized result budget.
@@ -81,6 +109,7 @@ impl DispatchResult {
             data: value(result)?,
             exit_code,
             text,
+            source_findings: false,
         }
         .bounded()
     }
@@ -157,7 +186,7 @@ impl Drop for LibrarySubscription {
     }
 }
 struct State {
-    index: SnapshotIndex,
+    index: Arc<SnapshotIndex>,
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
 struct Shared {
@@ -168,10 +197,12 @@ struct Shared {
     next_subscription: AtomicU64,
     publication_sequence: AtomicU64,
     latest_change: Mutex<Option<LibraryChange>>,
+    sources: Mutex<sources::Registry>,
 }
 #[derive(Clone)]
 pub struct Engine {
     shared: Arc<Shared>,
+    resources: Arc<sources::Owners>,
 }
 impl Engine {
     pub fn new() -> Result<Self, EngineError> {
@@ -185,13 +216,13 @@ impl Engine {
             let id = item.object.id().library.clone();
             libraries
                 .entry(id.clone())
-                .or_insert(LibraryInfo { id, objects: 0 })
+                .or_insert_with(|| LibraryInfo::clean(id, 0))
                 .objects += 1;
         }
         Self {
             shared: Arc::new(Shared {
                 state: RwLock::new(Arc::new(State {
-                    index: SnapshotIndex::new(snapshot),
+                    index: Arc::new(SnapshotIndex::new(snapshot)),
                     libraries,
                 })),
                 publication: Mutex::new(()),
@@ -199,15 +230,13 @@ impl Engine {
                 next_subscription: AtomicU64::new(0),
                 publication_sequence: AtomicU64::new(0),
                 latest_change: Mutex::new(None),
+                sources: Mutex::new(sources::Registry::default()),
             }),
+            resources: Arc::new(sources::Owners::default()),
         }
     }
     fn state(&self) -> Result<Arc<State>, EngineError> {
-        self.shared
-            .state
-            .read()
-            .map(|state| state.clone())
-            .map_err(|_| error(ErrorCode::Internal))
+        self.shared.state_view()
     }
     pub fn snapshot(&self) -> Result<Arc<Snapshot>, EngineError> {
         Ok(self.state()?.index.snapshot().clone())
@@ -227,61 +256,21 @@ impl Engine {
             last_sequence: Cell::new(self.shared.publication_sequence.load(Ordering::Acquire)),
         })
     }
-    fn notify(&self, libraries: Vec<LibraryId>, snapshot: Fingerprints) -> Result<(), EngineError> {
-        let event = LibraryChange {
-            sequence: self.shared.publication_sequence.fetch_add(1, Ordering::Relaxed) + 1,
-            libraries,
-            snapshot,
-            resync: false,
-        };
-        *self
-            .shared
-            .latest_change
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))? = Some(event.clone());
-        let mut subscribers = self.shared.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
-        subscribers.retain(|_, sender| match sender.try_send(event.clone()) {
-            // A queued wake pulls latest_change; gaps explicitly require full resync.
-            Ok(()) | Err(mpsc::TrySendError::Full(_)) => true,
-            Err(mpsc::TrySendError::Disconnected(_)) => false,
-        });
-        Ok(())
-    }
     pub fn publish_library(&self, library: LibraryId, snapshot: Arc<Snapshot>) -> Result<(), EngineError> {
-        if snapshot
-            .objects()
-            .iter()
-            .any(|item| item.object.id().library != library)
-        {
-            return Err(error(ErrorCode::BadInput));
+        self.shared
+            .install(LibraryInfo::clean(library, snapshot.objects().len()), &snapshot, None)
+    }
+    /// Apply source health to the process outcome while preserving canonical data.
+    pub fn finalize(&self, mut result: DispatchResult) -> Result<DispatchResult, EngineError> {
+        result.source_findings = self
+            .state()?
+            .libraries
+            .values()
+            .any(|library| library.warnings_total > 0 || library.refresh_error.is_some());
+        if result.source_findings && result.exit_code == ExitCode::Ok {
+            result.exit_code = ExitCode::Findings;
         }
-        let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
-        let old = self.state()?;
-        let mut objects: Vec<_> = old
-            .index
-            .snapshot()
-            .objects()
-            .iter()
-            .filter(|item| item.object.id().library != library)
-            .map(|item| item.object.clone())
-            .collect();
-        objects.extend(snapshot.objects().iter().map(|item| item.object.clone()));
-        let combined = Arc::new(Snapshot::new(objects).map_err(|_| error(ErrorCode::BadInput))?);
-        let mut libraries = old.libraries.clone();
-        libraries.insert(
-            library.clone(),
-            LibraryInfo {
-                id: library.clone(),
-                objects: snapshot.objects().len(),
-            },
-        );
-        let next = Arc::new(State {
-            index: SnapshotIndex::new(combined),
-            libraries,
-        });
-        let fingerprints = next.index.snapshot().fingerprints().clone();
-        *self.shared.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
-        self.notify(vec![library], fingerprints)
+        result.bounded()
     }
     pub fn libraries(&self) -> Result<LibrariesResult, EngineError> {
         Ok(LibrariesResult {
@@ -406,7 +395,28 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
-        let result = ibis_core::syntax::cite(snapshot, request).map_err(|_| error(ErrorCode::BadInput))?;
+        if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let result = match &request.output {
+            OutputSpec::Key { .. } => {
+                ibis_core::syntax::cite(snapshot, request).map_err(|_| error(ErrorCode::BadInput))?
+            }
+            OutputSpec::Csl { .. } | OutputSpec::Preset { .. } => CitationResult::new(
+                String::new(),
+                None,
+                None,
+                DisplayTree::default(),
+                (0..request.items.len())
+                    .map(|item| ItemOutcome::Refused {
+                        item,
+                        error: CitationError::UnsupportedOutput,
+                    })
+                    .collect(),
+                vec![],
+                vec![],
+            ),
+        };
         cancel.check()?;
         ensure_budget(&result)?;
         Ok(result)
@@ -426,18 +436,25 @@ impl Engine {
                 parameters::<LibrariesRequest>(params)?
             } {
                 LibrariesRequest::List => value(self.libraries()?)?,
-                _ => return Err(error(ErrorCode::SourceUnavailable)),
+                LibrariesRequest::OpenFile { path } => {
+                    self.open_file(&path, cancel)?;
+                    value(self.libraries()?)?
+                }
+                LibrariesRequest::Reload { library } => {
+                    self.reload_files(library.as_ref(), cancel)?;
+                    value(self.libraries()?)?
+                }
             },
             Method::Search => value(self.search(&parameters(params)?, cancel)?)?,
             Method::Show => value(self.show(&parameters(params)?)?)?,
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
                 let result = self.cite(&request, cancel)?;
-                return DispatchResult::citation(result, request.items.len());
+                return self.finalize(DispatchResult::citation(result, request.items.len())?);
             }
             Method::Styles => {
                 let _: StylesRequest = parameters(params)?;
-                return Err(error(ErrorCode::SourceUnavailable));
+                value(StylesResult::default())?
             }
             Method::Schema => {
                 let request: SchemaRequest = parameters(params)?;
@@ -455,14 +472,103 @@ impl Engine {
             }
         };
         cancel.check()?;
-        DispatchResult {
+        self.finalize(DispatchResult {
             data,
             exit_code: ExitCode::Ok,
             text: None,
-        }
-        .bounded()
+            source_findings: false,
+        })
     }
 }
+impl Shared {
+    fn state_view(&self) -> Result<Arc<State>, EngineError> {
+        self.state
+            .read()
+            .map(|state| state.clone())
+            .map_err(|_| error(ErrorCode::Internal))
+    }
+    fn notify(&self, libraries: Vec<LibraryId>, snapshot: Fingerprints) -> Result<(), EngineError> {
+        let event = LibraryChange {
+            sequence: self.publication_sequence.fetch_add(1, Ordering::Relaxed) + 1,
+            libraries,
+            snapshot,
+            resync: false,
+        };
+        *self.latest_change.lock().map_err(|_| error(ErrorCode::Internal))? = Some(event.clone());
+        let mut subscribers = self.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
+        subscribers.retain(|_, sender| match sender.try_send(event.clone()) {
+            // A queued wake pulls latest_change; gaps explicitly require full resync.
+            Ok(()) | Err(mpsc::TrySendError::Full(_)) => true,
+            Err(mpsc::TrySendError::Disconnected(_)) => false,
+        });
+        Ok(())
+    }
+
+    fn install(&self, info: LibraryInfo, snapshot: &Snapshot, remove: Option<LibraryId>) -> Result<(), EngineError> {
+        let library = info.id.clone();
+        if snapshot
+            .objects()
+            .iter()
+            .any(|item| item.object.id().library != library)
+        {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let old = self.state_view()?;
+        let mut objects: Vec<_> = old
+            .index
+            .snapshot()
+            .objects()
+            .iter()
+            .filter(|item| {
+                item.object.id().library != library && remove.as_ref().is_none_or(|id| item.object.id().library != *id)
+            })
+            .map(|item| item.object.clone())
+            .collect();
+        objects.extend(snapshot.objects().iter().map(|item| item.object.clone()));
+        let combined = Arc::new(Snapshot::new(objects).map_err(|_| error(ErrorCode::BadInput))?);
+        let mut libraries = old.libraries.clone();
+        if let Some(remove) = &remove {
+            libraries.remove(remove);
+        }
+        libraries.insert(library.clone(), info);
+        let next = Arc::new(State {
+            index: Arc::new(SnapshotIndex::new(combined)),
+            libraries,
+        });
+        let fingerprints = next.index.snapshot().fingerprints().clone();
+        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
+        let mut changed = vec![library];
+        if let Some(remove) = remove
+            && !changed.contains(&remove)
+        {
+            changed.push(remove);
+        }
+        self.notify(changed, fingerprints)
+    }
+    fn failed(&self, library: &LibraryId, code: ErrorCode) -> Result<(), EngineError> {
+        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let old = self.state_view()?;
+        let mut libraries = old.libraries.clone();
+        libraries
+            .get_mut(library)
+            .ok_or_else(|| error(ErrorCode::NotFound))?
+            .refresh_error = Some(code);
+        let fingerprints = old.index.snapshot().fingerprints().clone();
+        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
+            index: old.index.clone(),
+            libraries,
+        });
+        self.notify(vec![library.clone()], fingerprints)
+    }
+}
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|time| u64::try_from(time.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
+
 fn ensure_budget(value: &impl Serialize) -> Result<(), EngineError> {
     crate::wire::serialized_size(value, crate::protocol::MAX_RESULT_BYTES)
         .map(|_| ())
@@ -524,6 +630,7 @@ fn response_schema(method: Method) -> Value {
         Method::Search => schema_for!(SearchResult),
         Method::Show => schema_for!(SnapshotObject),
         Method::Cite => schema_for!(CitationResult),
+        Method::Styles => schema_for!(StylesResult),
         _ => schema_for!(Value),
     }
     .into()
