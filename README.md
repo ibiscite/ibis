@@ -83,26 +83,45 @@ Ask questions and suggest ideas in [GitHub Discussions](https://github.com/ibisc
 ## Try the command line tool (developers)
 
 ```sh
-cargo run -p ibis -- search "garcia sleep" --bib fixtures/bibtex/real-world.bib
-cargo run -p ibis -- cite mueller2021 vanderberg2019 --page mueller2021=12-14 --format autocite
-cargo run -p ibis -- check fixtures/bibtex/damaged.bib
+cargo run -p ibis -- libraries --file fixtures/bibtex/fidelity.bib --json
+cargo run -p ibis -- search "garcia" --file fixtures/bibtex/fidelity.bib
+cargo run -p ibis -- cite accents2021 protected2020 --file fixtures/bibtex/fidelity.bib --format autocite
+cargo run -p ibis -- schema cite --json
+cargo run -p ibis -- call search --params '{"query":"garcia"}' --file fixtures/bibtex/fidelity.bib --json
+cargo run -p ibis -- serve --stdio --file fixtures/bibtex/fidelity.bib
 ```
 
-For scripts and agents, `cite --items` reads a UTF-8 JSON array from standard
-input. Each item has a `key`, optional `locator` (`label` and `value`), `prefix`,
-`suffix` and `suppress_author`. For example, in a POSIX shell:
+The command line calls the same typed engine methods as the app: `libraries`,
+`search`, `show`, `cite`, `styles`, `schema` and `call`. Repeat `--file` to open
+several BibTeX, BibLaTeX or CSL-JSON libraries. This first engine stage opens files;
+Zotero provider selection follows in the rebuild.
+Library IDs are opaque and source paths stay private. `libraries` reports typed
+source warnings; loading never writes to a library.
 
-```sh
-printf '%s' '[{"key":"example","locator":{"label":"chapter","value":"3"},"prefix":"see"}]' |
-  cargo run -p ibis -- cite --items --json
-```
+Every command accepts `--json`, including help and argument errors. It writes
+one versioned envelope to stdout: `{"ibis":1,"ok":true,"data":…}` or
+`{"ibis":1,"ok":false,"error":{"code":…}}`. Diagnostics go to stderr. Exit codes
+are 0 for success (including empty searches), 1 for findings, 2 for usage,
+3 for bad input, 4 for a missing item/library, 5 for an unavailable source or exhausted resources,
+6 for a newer unsupported format, 70 for an internal error and 130 for cancellation.
 
-Locator labels are page, chapter, section, paragraph, figure, line, note, volume
-and verse. Order and repeated keys are preserved. All seven key syntaxes work;
-warnings explain intent a syntax cannot carry. Input is limited to 1 MiB and
-1,000 items; unknown fields and empty locators are errors. Use `--bib` to check
-membership. `--items` cannot be combined with positional keys or `--page`.
-This formats key-based citations; CSL style formatting remains in the desktop app.
+`cite --request` reads a canonical `CitationRequest` JSON object from stdin.
+Use `schema cite` for its fields and `search --json` or `show --json` for item
+identities and cite fingerprints. Requests preserve order and repeated items,
+carry typed locators and styled affixes, and return the canonical citation text,
+display tree, per-item outcomes, losses and content hash. Incomplete results stay
+inspectable in JSON; plain citation text is printed only after the engine's
+completeness and hash check. Input JSON is bounded to 1 MiB and duplicate members
+are rejected. Responses are bounded to 16 MiB, with space reserved for envelope
+fields; oversized results return `resource-limit` (exit 5). Reduce the selection
+or search limit when that happens. Human key arguments resolve in the engine as well.
+
+Use `--format csl-json` to export selected records. `styles` lists the CSL style
+IDs available for `--style`; an empty list means formatted output is unsupported,
+reported as per-item `unsupported-output` refusals in citation JSON. `ibis call METHOD --stdin` reads
+method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
+Content-Length frames, progress/library-change notifications and
+`$/cancelRequest`; it writes no terminal text to that stream.
 
 ## Contributing
 

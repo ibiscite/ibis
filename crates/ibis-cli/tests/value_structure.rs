@@ -1,39 +1,32 @@
-//! Loading diagnostics and CSL export agree about rejected field structure.
-
-use std::path::Path;
-use std::process::Command;
-
+//! Typed loading diagnostics and citation export agree about rejected fields.
+use serde_json::Value;
+use std::{path::Path, process::Command};
 #[test]
 fn unbalanced_values_are_reported_and_never_export_injected_metadata() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/unbalanced-values.bib");
-    let check = Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .arg("check")
+    let report = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .args(["libraries", "--file"])
         .arg(&path)
-        .args(["--json"])
+        .arg("--json")
         .output()
-        .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(check.status.code(), Some(2));
-    let report: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(report[0]["loaded"], 6);
-    assert_eq!(report[0]["warnings"].as_array().map(Vec::len), Some(4));
-    assert!(
-        report[0]["warnings"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|w| w["kind"] == "field"
-                && w["key"] == "paren-quoted"
-                && w["message"] == "field `title` has unbalanced braces; it is omitted")
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(report.status.code(), Some(1));
+    let value: Value = serde_json::from_slice(&report.stdout).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(value["data"]["libraries"][0]["objects"], 6);
+    assert_eq!(
+        value["data"]["libraries"][0]["warnings"].as_array().map(Vec::len),
+        Some(4)
     );
-    let export = Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .args(["csl", "paren-quoted", "--bib"])
+    let shown = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .args(["show", "paren-quoted", "--file"])
         .arg(&path)
+        .arg("--json")
         .output()
-        .unwrap_or_else(|e| panic!("{e}"));
-    assert!(export.status.success());
-    let csl: serde_json::Value = serde_json::from_slice(&export.stdout).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(csl[0]["publisher"], "Synthetic Press");
+        .unwrap_or_else(|error| panic!("{error}"));
+    let value: Value = serde_json::from_slice(&shown.stdout).unwrap_or_else(|error| panic!("{error}"));
+    let csl = &value["data"]["object"]["data"]["csl"];
+    assert_eq!(csl["publisher"], "Synthetic Press");
     for field in ["title", "author", "issued"] {
-        assert!(csl[0].get(field).is_none(), "{field}: {csl}");
+        assert!(csl.get(field).is_none(), "{field}");
     }
 }

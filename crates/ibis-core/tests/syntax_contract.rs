@@ -319,7 +319,7 @@ fn hostile_empty_and_large_inputs_have_bounded_fixed_diagnostics() {
     case.request.items = vec![case.request.items[0].clone(); 20];
     assert_eq!(
         syntax::cite(&snapshot, &case.request),
-        Err(CitationError::InvalidRichText)
+        Err(CitationError::OutputTooLarge)
     );
 }
 

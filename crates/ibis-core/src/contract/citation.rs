@@ -229,6 +229,7 @@ pub enum CitationError {
     TooManyItems,
     InvalidLocator,
     InvalidRichText,
+    OutputTooLarge,
     UnsupportedForm,
     MissingItem,
     ChangedItem,
@@ -245,11 +246,12 @@ pub enum CitationError {
 }
 
 impl CitationError {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::EmptySelection,
         Self::TooManyItems,
         Self::InvalidLocator,
         Self::InvalidRichText,
+        Self::OutputTooLarge,
         Self::UnsupportedForm,
         Self::MissingItem,
         Self::ChangedItem,

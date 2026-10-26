@@ -120,6 +120,7 @@
         "too-many-items",
         "invalid-locator",
         "invalid-rich-text",
+        "output-too-large",
         "unsupported-form",
         "missing-item",
         "changed-item",
@@ -466,6 +467,7 @@
         "bad-input",
         "not-found",
         "source-unavailable",
+        "resource-limit",
         "newer-format",
         "internal",
         "cancelled"

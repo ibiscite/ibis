@@ -103,11 +103,19 @@ page label; LaTeX locator quotes remain literal while range dashes stay intentio
 
 ## Engine interface (ibis-engine, ibis-cli)
 
+The rollout starts with the file-based engine and CLI, then ports today's picker
+onto that surface. Zotero mapping and the closed/live readers proceed in parallel
+on raw item data; #1197 integrates both providers, and #1200 gates full parity.
+Advanced mixed citation editing remains in 0.4; unsupported intents are refused
+explicitly rather than approximated. The 0.2 release still requires all sources,
+formatting and the picker.
+
 - **Typed engine methods** are the source of truth for the command line, `ibis serve --stdio` (JSON-RPC 2.0, the way Codex's app-server and language servers work), `ibis mcp` for AI agents, and the app. Each front end lists which methods it exposes; the app keeps per-window command permissions (ADR 0024), so a generic dispatcher never widens what a window may call.
 - **Every `--json` output is a versioned envelope** `{ "ibis": 1, "ok": …, "data" | "error": … }` with stable error codes, including argument errors. `data` carries partial results with per-item outcomes, losses and refusals; an empty search is `ok` with no results. Only the envelope goes to stdout; logs go to stderr.
-- **Exit codes** describe how a command line run ended: 0 ok (including empty results), 1 done with findings (some items refused or lossy, or `ibis check` found problems), 2 usage, 3 bad input, 4 a named item or library not found, 5 source unavailable, 6 newer format than Ibis knows, 70 internal error, 130 cancelled.
+- **Exit codes** describe how a command line run ended: 0 ok (including empty results), 1 done with findings (refusals, losses, source warnings or refresh failures), 2 usage, 3 bad input, 4 a named item or library not found, 5 source unavailable or resource limit exceeded, 6 newer format than Ibis knows, 70 internal error, 130 cancelled.
 - **`ibis serve --stdio`** uses JSON-RPC 2.0 with LSP-style `Content-Length` framing, notifications for progress and library changes, `$/cancelRequest`, a message size limit and nothing else on stdout. Its errors are JSON-RPC errors whose `data` carries the Ibis error code; exit codes do not apply per request. `ibis mcp` keeps MCP's own envelope over the same methods.
 - **`ibis schema`** prints the JSON Schema of every method (generated with `schemars`); TypeScript types for the app are generated from it. `ibis call <method>` reaches any method from a shell.
+- **Bounds and invalidation:** request JSON is at most 1 MiB and request IDs at most 1,024 UTF-8 bytes. Results share a 16 MiB response budget with 8 KiB reserved for ID/envelope overhead; oversized results return `resource-limit` (exit 5). Batches aggregate actual serialized bytes. Library notifications are bounded and coalesced; a sequence gap produces `resync: true` with the newest snapshot, requiring a full library refresh. Refresh failures retain the prior snapshot and report its last successful update time plus a fixed error code.
 - **Golden cases** (a new `cases` folder in `fixtures`: library, request, exact expected result) are replayed through every front end that exposes the method and must match byte for byte.
 
 ## Desktop app

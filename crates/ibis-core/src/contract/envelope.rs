@@ -118,6 +118,7 @@ pub enum ErrorCode {
     BadInput,
     NotFound,
     SourceUnavailable,
+    ResourceLimit,
     NewerFormat,
     Internal,
     Cancelled,
@@ -161,11 +162,12 @@ impl ExitCode {
     }
 }
 impl ErrorCode {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Usage,
         Self::BadInput,
         Self::NotFound,
         Self::SourceUnavailable,
+        Self::ResourceLimit,
         Self::NewerFormat,
         Self::Internal,
         Self::Cancelled,
@@ -175,7 +177,7 @@ impl ErrorCode {
             Self::Usage => ExitCode::Usage,
             Self::BadInput => ExitCode::BadInput,
             Self::NotFound => ExitCode::NotFound,
-            Self::SourceUnavailable => ExitCode::SourceUnavailable,
+            Self::SourceUnavailable | Self::ResourceLimit => ExitCode::SourceUnavailable,
             Self::NewerFormat => ExitCode::NewerFormat,
             Self::Internal => ExitCode::Internal,
             Self::Cancelled => ExitCode::Cancelled,
@@ -233,7 +235,7 @@ mod tests {
         assert_eq!(ExitCode::ALL.map(ExitCode::value), [0, 1, 2, 3, 4, 5, 6, 70, 130]);
         assert_eq!(
             ErrorCode::ALL.map(|code| code.exit_code().value()),
-            [2, 3, 4, 5, 6, 70, 130]
+            [2, 3, 4, 5, 5, 6, 70, 130]
         );
         Ok(())
     }
