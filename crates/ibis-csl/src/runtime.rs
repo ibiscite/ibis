@@ -40,9 +40,14 @@ impl Session {
         let context = Context::full(&runtime).map_err(|_| FormatError::ResourceLimit)?;
         let superscripts = context
             .with(|ctx| {
-                crate::locale::install(&ctx)?;
-                let (module, promise) = Module::declare(ctx.clone(), "citeproc", PROCESSOR)?.eval()?;
-                promise.finish::<()>()?;
+                crate::locale::install(&ctx).inspect_err(|error| diagnostic(&ctx, "locale", error))?;
+                let (module, promise) = Module::declare(ctx.clone(), "citeproc", PROCESSOR)
+                    .inspect_err(|error| diagnostic(&ctx, "processor-declare", error))?
+                    .eval()
+                    .inspect_err(|error| diagnostic(&ctx, "processor-eval", error))?;
+                promise
+                    .finish::<()>()
+                    .inspect_err(|error| diagnostic(&ctx, "processor-finish", error))?;
                 ctx.globals()
                     .set("CSL", module.get::<_, rquickjs::Object>("default")?)?;
                 ctx.globals().set(
@@ -50,7 +55,8 @@ impl Session {
                     ctx.json_parse(serde_json::to_string(&STYLE_XML).map_err(|_| rquickjs::Error::Unknown)?)?,
                 )?;
                 ctx.globals().set("__ibisLocale", EN_US)?;
-                ctx.eval::<(), _>(include_str!("bridge.js"))?;
+                ctx.eval::<(), _>(include_str!("bridge.js"))
+                    .inspect_err(|error| diagnostic(&ctx, "bridge", error))?;
                 // Snapshot trusted presentation data before any reference is supplied.
                 let table: String = ctx.eval("JSON.stringify(CSL.SUPERSCRIPTS)")?;
                 serde_json::from_str::<BTreeMap<char, String>>(&table).map_err(|_| rquickjs::Error::Unknown)
@@ -77,7 +83,9 @@ impl Session {
             .with(|ctx| {
                 let function: rquickjs::Function = ctx.globals().get("__ibisFormat")?;
                 let value = ctx.json_parse(prepared.json.as_bytes())?;
-                function.call::<_, String>((value,))
+                function
+                    .call::<_, String>((value,))
+                    .inspect_err(|error| diagnostic(&ctx, "render", error))
             })
             .map_err(|error| {
                 control.error().unwrap_or({
@@ -94,9 +102,41 @@ impl Session {
         if json.len() > limits.output_bytes {
             return Err(FormatError::ResourceLimit.into());
         }
-        output::result(&json, prepared, &self.superscripts).map_err(Into::into)
+        output::result(&json, prepared, &self.superscripts)
+            .inspect_err(|_| {
+                #[cfg(test)]
+                eprintln!("CSL failure phase=output class=validation");
+            })
+            .map_err(Into::into)
     }
 }
+// Fixed test diagnostics distinguish resource boundaries without logging JS content.
+fn diagnostic(ctx: &rquickjs::Ctx<'_>, phase: &'static str, error: &rquickjs::Error) {
+    #[cfg(test)]
+    {
+        let class = match error {
+            rquickjs::Error::Allocation => "allocation",
+            rquickjs::Error::Exception => {
+                let exception = ctx.catch();
+                if exception
+                    .as_object()
+                    .and_then(|object| object.get::<_, String>("message").ok())
+                    .as_deref()
+                    == Some("stack overflow")
+                {
+                    "stack-limit"
+                } else {
+                    "exception"
+                }
+            }
+            _ => "conversion",
+        };
+        eprintln!("CSL failure phase={phase} class={class}");
+    }
+    #[cfg(not(test))]
+    let _ = (ctx, phase, error);
+}
+
 fn install_interrupt(runtime: &Runtime, control: &Control) {
     let control = control.clone();
     runtime.set_interrupt_handler(Some(Box::new(move || control.error().is_some())));
@@ -143,6 +183,27 @@ mod tests {
             session.run(&prepared, &limits, &control),
             Err(WorkError::Public(FormatError::Runtime))
         ));
+    }
+
+    #[test]
+    fn successful_formatting_on_test_and_worker_stacks() {
+        fn format() {
+            let limits = Limits::default();
+            let control = control();
+            let mut session = Session::new(&limits, &control).unwrap();
+            let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0"}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
+            assert_eq!(
+                session.run(&prepared, &limits, &control).unwrap().text,
+                "(Taylor, 2026)"
+            );
+        }
+        format();
+        std::thread::Builder::new()
+            .stack_size(4 * 1024 * 1024)
+            .spawn(format)
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]
