@@ -41,6 +41,8 @@ export interface Formatted {
   preview?: string;
   /** Items shown with a plain fallback because the style could not format them. */
   problems: { id: string; reason: string }[];
+  /** For a bibliography without problems: the caller's item index for each entry, in output order. */
+  order?: number[];
 }
 
 const FALLBACK_REASON = "this style could not format the reference, so its title is shown instead";
@@ -181,15 +183,18 @@ export class Formatter {
   bibliography(style: StyleId, items: CslItem[], format: OutputFormat): Formatted {
     const { keyed } = engineKeys(items);
     const run = (chosen: CslItem[]) =>
-      chosen.length === 0 ? [] : this.attempt(style, chosen, format, (engine) => entries(engine));
+      chosen.length === 0 ? { lines: [], ids: [] } : this.attempt(style, chosen, format, (engine) => entries(engine));
+    const index = (id: string) => Number(id.slice("ibis-".length));
     try {
-      return { output: wrap(run(keyed).join("\n"), format, "bibliography"), problems: [] };
+      const all = run(keyed);
+      const order = all.ids?.map(index);
+      return { output: wrap(all.lines.join("\n"), format, "bibliography"), problems: [], ...(order ? { order } : {}) };
     } catch {
       // Format the references that work together, so numbering, sorting and
       // disambiguation stay right, and show the others by title.
       const failing = keyed.filter((item) => !succeeds(() => run([item])));
       let good = keyed.filter((item) => !failing.includes(item));
-      let formatted: string[] = [];
+      let formatted: { lines: string[]; ids: string[] | null } = { lines: [], ids: [] };
       try {
         formatted = run(good);
       } catch {
@@ -199,8 +204,10 @@ export class Formatter {
       const shown = keyed.filter((item) => !good.includes(item));
       const problems = shown.map((item) => ({ id: callerId(items, item.id), reason: FALLBACK_REASON }));
       const fallback = shown.map((item) => entry(escape(oneLine(item.title || callerId(items, item.id)), format), format));
-      const output = [...formatted, ...fallback].join("\n");
-      return { output: wrap(output, format, "bibliography"), problems };
+      const output = [...formatted.lines, ...fallback].join("\n");
+      // Keep each entry tied to its reference here too, so callers can still name or remove it.
+      const order = formatted.ids && [...formatted.ids, ...shown.map((item) => item.id)].map(index);
+      return { output: wrap(output, format, "bibliography"), problems, ...(order ? { order } : {}) };
     }
   }
 }
@@ -245,11 +252,15 @@ function callerId(items: CslItem[], key: string): string {
   return typeof id === "string" ? id : "";
 }
 
-function entries(engine: Engine): string[] {
+function entries(engine: Engine): { lines: string[]; ids: string[] | null } {
   const bibliography = engine.makeBibliography();
   if (!bibliography) throw new Error("the style has no bibliography");
+  const groups = bibliography[0].entry_ids;
+  // Each entry names the items it shows; Ibis's engine keys are never merged.
+  const ids: unknown[] = Array.isArray(groups) ? groups.map((group) => (Array.isArray(group) ? group[0] : group)) : [];
+  const known = ids.length === bibliography[1].length && ids.every((id) => typeof id === "string" && /^ibis-\d+$/.test(id));
   // One line per entry: a line break inside a field must not split it.
-  return bibliography[1].map(oneLine);
+  return { lines: bibliography[1].map(oneLine), ids: known ? (ids as string[]) : null };
 }
 
 function oneLine(text: string): string {
