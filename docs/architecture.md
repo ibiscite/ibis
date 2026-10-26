@@ -93,7 +93,13 @@ Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
 report a typed prefix/flattened loss, since a footnote-style citation cannot
 carry that prefix in the same position. Capability tables list forms restricted to one item;
 multi-item Pandoc narrative requests are refused until mixed clusters are built
-in 0.4, rather than silently becoming several citation clusters.
+in 0.4, rather than silently becoming several citation clusters. Pandoc affixes
+isolate superscripts from citation brackets and use explicit locator boundaries,
+so a literal suffix cannot become a page number. Locators containing braces,
+brackets or backslashes alongside a suffix are refused when Pandoc cannot
+preserve that boundary. Empty affixes add no punctuation.
+BibLaTeX page locators followed by literal suffixes carry an explicit localized
+page label; LaTeX locator quotes remain literal while range dashes stay intentional.
 
 ## Engine interface (ibis-engine, ibis-cli)
 

@@ -28,12 +28,16 @@ fn pandoc(picks: &[Pick<'_>]) -> String {
         .iter()
         .map(|pick| {
             let prefix = rich(&pick.item.prefix, Escaping::Pandoc);
-            let suffix = rich(&pick.item.suffix, Escaping::Pandoc);
-            let locator = pick
-                .item
-                .locator
-                .as_ref()
-                .map(|locator| pandoc_escape(&locator_text(locator, "-", " ")));
+            let mut suffix = rich(&pick.item.suffix, Escaping::Pandoc);
+            let locator = pick.item.locator.as_ref().map(|locator| {
+                let text = pandoc_escape(&locator_text(locator, "-", " "));
+                if suffix.is_empty() { text } else { format!("{{{text}}}") }
+            });
+            if locator.is_none() && !suffix.is_empty() {
+                // Pandoc's explicit empty locator prevents literal numbers
+                // (including styled numbers) from becoming page locators.
+                suffix.insert_str(0, "{}");
+            }
             let key = pandoc_key(pick.key);
             if pick.form == Narrative {
                 let notes = locator
@@ -78,7 +82,17 @@ fn biblatex(command: &str, picks: &[Pick<'_>]) -> String {
         let suffix = rich(&pick.item.suffix, Escaping::Latex);
         let locator = pick.item.locator.as_ref().map(|locator| {
             if locator.term == LocatorTerm::Page {
-                latex_escape(&normalize_dashes(locator.value.trim(), "--"))
+                let value = latex_locator_escape(&normalize_dashes(locator.value.trim(), "--"));
+                if suffix.is_empty() {
+                    value
+                } else {
+                    // A mixed numeric/text postnote disables BibLaTeX's
+                    // automatic page label; keep the typed page explicit.
+                    format!(
+                        "\\bibstring{{{}}}~{value}",
+                        if is_range(&locator.value) { "pages" } else { "page" }
+                    )
+                }
             } else {
                 latex_escape_locator(locator)
             }
@@ -225,6 +239,9 @@ fn typst_literal(text: &str, isolate: bool) -> String {
 }
 
 fn rich(runs: &RichText, escaping: Escaping) -> String {
+    if runs.iter().all(|run| run.text.trim().is_empty()) {
+        return String::new();
+    }
     runs.iter()
         .map(|run| {
             let mut text = match escaping {
@@ -247,7 +264,10 @@ fn rich(runs: &RichText, escaping: Escaping) -> String {
                     }
                     if run.script != Script::Normal && !run.text.chars().any(char::is_whitespace) {
                         let mark = if run.script == Script::Subscript { '~' } else { '^' };
-                        body = format!("{mark}{body}{mark}");
+                        // A leading `[^` is a Pandoc footnote, including inside
+                        // a rich span or narrative suffix bracket. An empty
+                        // span separates the bracket without visible content.
+                        body = format!("{}{mark}{body}{mark}", if mark == '^' { "[]{}" } else { "" });
                     }
                     if runs.len() > 1 && (run.italic || run.bold || run.script != Script::Normal) && !body.is_empty() {
                         // Empty-attribute spans isolate adjacent emphasis delimiters
@@ -315,7 +335,7 @@ fn latex_escape_locator(locator: &Locator) -> String {
     format!(
         "{}~{}",
         latex_escape(locator_label(locator.term, is_range(&locator.value))),
-        latex_escape(&normalize_dashes(locator.value.trim(), "--"))
+        latex_locator_escape(&normalize_dashes(locator.value.trim(), "--"))
     )
 }
 

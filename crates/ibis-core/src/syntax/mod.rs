@@ -363,6 +363,15 @@ fn resolve<'a>(
     {
         return Err(CitationError::InvalidLocator);
     }
+    if caps.escaping == Escaping::Pandoc
+        && item.suffix.iter().any(|run| !run.text.trim().is_empty())
+        && let Some(locator) = &item.locator
+        && locator.value.contains(['{', '}', '[', ']', '\\'])
+    {
+        // Pandoc reparses the Markdown inlines as a braced locator. Nested
+        // delimiters or escapes cannot preserve its boundary with a suffix.
+        return Err(CitationError::InvalidLocator);
+    }
     if item
         .prefix
         .iter()
