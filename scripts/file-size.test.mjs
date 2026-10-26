@@ -15,14 +15,19 @@ test("caps new files at 600 lines and existing large files at their baseline", (
   assert.match(sizeErrors({ "src/a.ts": text(701) }, { "src/a.ts": 700 }, { "src/a.ts": 700 })[0], /split|grow/i);
 });
 
-test("shrinking lowers the baseline and inflation cannot buy more lines", () => {
+test("a shrink needs no baseline edit, files never grow past main, and inflation cannot buy more lines", () => {
   const old = { "src/a.ts": 700 };
-  assert.match(sizeErrors({ "src/a.ts": text(650) }, old, old)[0], /baseline.*650/i);
-  assert.deepEqual(sizeErrors({ "src/a.ts": text(650) }, { "src/a.ts": 650 }, old), []);
-  assert.ok(sizeErrors({ "src/a.ts": text(701) }, { "src/a.ts": 701 }, old).length);
-  assert.ok(sizeErrors({ "src/new.ts": text(700) }, { "src/new.ts": 700 }, old).length);
-  assert.ok(sizeErrors({}, old, old).length, "deleted or renamed files must lose their old baseline");
-  assert.deepEqual(sizeErrors({ "src/a.ts": text(599) }, {}, old), []);
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(650) }, old, old, { "src/a.ts": 700 }), [], "a shrink lands without touching the shared baseline");
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(650) }, { "src/a.ts": 650 }, old, { "src/a.ts": 700 }), []);
+  assert.match(sizeErrors({ "src/a.ts": text(660) }, old, old, { "src/a.ts": 650 })[0], /split.*650/i, "main's smaller size is the limit even before the baseline is lowered");
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(645) }, old, old, { "src/a.ts": 650 }), [], "two shrinks merged together still pass");
+  assert.ok(sizeErrors({ "src/a.ts": text(701) }, { "src/a.ts": 701 }, old, { "src/a.ts": 700 }).length);
+  assert.ok(sizeErrors({ "src/new.ts": text(700) }, { "src/new.ts": 700 }, old, {}).length);
+  assert.ok(sizeErrors({ "src/renamed.ts": text(700) }, old, old, {}).length, "a renamed file is new on main and gets 600 lines");
+  assert.deepEqual(sizeErrors({}, old, old, {}), [], "a stale entry for a deleted file grants nothing");
+  assert.ok(sizeErrors({ "src/a.ts": text(700) }, old, old, { "src/a.ts": 500 }).length, "a file that was small on main cannot grow back to an old baseline");
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(599) }, {}, old, {}), []);
+  assert.ok(sizeErrors({ "src/a.ts": text(650) }, { "src/a.ts": 600 }, old, {}).length, "entries at or below 600 are invalid");
 });
 
 test("line counts handle empty, huge, CRLF, Unicode and trailing newlines", () => {
@@ -59,21 +64,74 @@ test("CLI enforces and writes reductions against the committed base", (t) => {
   const oldSha = git("rev-parse", "HEAD");
   assert.equal(run().status, 0);
   writeFileSync(source, text(650));
-  assert.match(run().stderr, /lower the baseline to 650/);
+  assert.equal(run().status, 0, "a shrink passes before the baseline is lowered");
+  writeFileSync(source, text(701));
+  assert.match(run().stderr, /split the file to fit 700/);
+  writeFileSync(source, text(650));
   assert.equal(run("--write-baseline").status, 0);
   assert.equal(JSON.parse(readFileSync(baseline))["src/資料.ts"], 650);
   git("add", "."); git("commit", "-qm", "lower baseline");
-  git("switch", "-qc", "change"); git("remote", "add", "origin", root);
+  const mainSha = git("rev-parse", "HEAD");
+  git("switch", "-qc", "change", oldSha); git("remote", "add", "origin", root);
+  writeFileSync(join(root, "src/other.ts"), "synthetic\n"); git("add", "."); git("commit", "-qm", "synthetic change");
+  const headSha = git("rev-parse", "HEAD");
+  // GitHub checks out the head merged into a newer main than the event's base SHA.
+  git("switch", "-q", "--detach", mainSha); git("merge", "-q", "--no-edit", headSha);
   const eventFile = join(root, "event.json");
-  writeFileSync(eventFile, JSON.stringify({ pull_request: { base: { sha: oldSha } } }));
+  writeFileSync(eventFile, JSON.stringify({ pull_request: { base: { sha: oldSha }, head: { sha: headSha } } }));
   writeFileSync(source, text(680)); record(680);
   const stale = spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
-  assert.equal(stale.status, 1, "stale PR base must not resurrect main's old limit");
+  assert.equal(stale.status, 1, "a stale event base must not resurrect main's old limit");
+  // Main lowers the limit again after GitHub built the merge checkout.
+  git("switch", "-q", "main"); writeFileSync(source, text(640)); record(640); git("commit", "-qam", "lower again");
+  const laterSha = git("rev-parse", "HEAD");
+  git("switch", "-q", "--detach", "HEAD@{1}"); git("merge", "-q", "--no-edit", headSha);
+  writeFileSync(source, text(650)); record(650);
+  const merged = spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
+  assert.equal(merged.status, 0, merged.stderr || "main's lowered baseline in the merge checkout must pass");
+  // CI checks out the merge commit alone, without its parents.
+  git("branch", "merge-checkout");
+  const shallow = join(root, "shallow");
+  git("clone", "-q", "--depth=1", "--branch", "merge-checkout", `file://${root}`, shallow);
+  writeFileSync(join(shallow, "src/資料.ts"), text(650)); writeFileSync(join(shallow, "scripts/file-size-baseline.json"), JSON.stringify({ "src/資料.ts": 650 }));
+  // An event base other than the checkout's parent must not decide the limit.
+  const shallowEvent = join(root, "shallow-event.json");
+  writeFileSync(shallowEvent, JSON.stringify({ pull_request: { base: { sha: laterSha }, head: { sha: headSha } } }));
+  const fromShallow = spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: shallow, env: { ...env, GITHUB_EVENT_PATH: shallowEvent }, encoding: "utf8" });
+  assert.equal(fromShallow.status, 0, fromShallow.stderr || "a shallow merge checkout must still find its first parent");
   writeFileSync(source, text(701)); record(701);
   assert.match(run().stderr, /exceptions cannot be added or grow/);
   assert.equal(run("--write-baseline").status, 1, "write mode also refuses inflation");
 });
 
+
+test("a pull request is sized against its own base, so a later shrink on main cannot fail it", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "ibis-size-base-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "scripts")); mkdirSync(join(root, "src"));
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+  const git = (...args) => {
+    const result = spawnSync("git", ["-c", "core.hooksPath=", "-c", "commit.gpgsign=false", "-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid", ...args], { cwd: root, env, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
+  };
+  const source = join(root, "src/a.ts");
+  writeFileSync(join(root, "scripts/file-size-baseline.json"), JSON.stringify({ "src/a.ts": 700 }));
+  git("init", "-q", "-b", "main"); writeFileSync(source, text(700)); git("add", "."); git("commit", "-qm", "synthetic base");
+  const oldSha = git("rev-parse", "HEAD");
+  git("switch", "-qc", "change"); writeFileSync(join(root, "src/b.ts"), text(10)); git("add", "."); git("commit", "-qm", "untouched file");
+  git("switch", "-q", "main"); writeFileSync(source, text(650)); git("commit", "-qam", "shrink on main");
+  git("switch", "-q", "change"); git("remote", "add", "origin", root);
+  const eventFile = join(root, "event.json");
+  const check = (sha) => {
+    writeFileSync(eventFile, JSON.stringify({ pull_request: { base: { sha } } }));
+    return spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
+  };
+  const result = check(oldSha);
+  assert.equal(result.status, 0, result.stderr);
+  writeFileSync(source, text(701)); git("commit", "-qam", "grow");
+  assert.match(check(oldSha).stderr, /split the file to fit 700/, "growth past the base still fails");
+});
 
 test("colliding normalized filenames cannot overwrite a larger count", () => {
   assert.ok(sizeErrors({ "src/a.ts": text(601), "src\\a.ts": text(1) }, {}, {}).length);
