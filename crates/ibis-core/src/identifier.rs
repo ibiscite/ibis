@@ -7,9 +7,12 @@
 //! explicit prefixes), so ordinary search words are never taken for one.
 
 use crate::model::Reference;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// A recognized identifier in canonical form.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", content = "value", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Identifier {
     Doi(String),
     Isbn(String),
@@ -98,6 +101,10 @@ pub fn of_reference(r: &Reference) -> Vec<Identifier> {
             _ => {}
         }
     }
+    with_equivalents(ids)
+}
+
+fn with_equivalents(mut ids: Vec<Identifier>) -> Vec<Identifier> {
     // An arXiv ID and its arXiv DOI name the same work.
     let mut equivalents = Vec::new();
     for id in &ids {
@@ -115,6 +122,54 @@ pub fn of_reference(r: &Reference) -> Vec<Identifier> {
     ids.sort();
     ids.dedup();
     ids
+}
+
+/// Normalised CSL fields and source-neutral search-only identifiers, without
+/// parsing raw provenance or requiring knowledge of a particular source.
+pub fn of_record(record: &crate::contract::Record) -> Vec<Identifier> {
+    let mut ids = record
+        .identifiers
+        .iter()
+        .filter_map(|id| match id {
+            Identifier::Doi(value) if value.len() <= MAX_QUERY_LEN => doi(value).map(Identifier::Doi),
+            Identifier::Isbn(value) if value.len() <= MAX_QUERY_LEN => isbn(value).map(Identifier::Isbn),
+            Identifier::Arxiv(value) if value.len() <= MAX_QUERY_LEN => arxiv(value).map(Identifier::Arxiv),
+            Identifier::Pmid(value) if value.len() <= MAX_QUERY_LEN => {
+                digits(value.trim()).or_else(|| pmid(value)).map(Identifier::Pmid)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    for (field, value) in &record.csl {
+        let Some(value) = value.as_str() else {
+            continue;
+        };
+        match field.as_str() {
+            "DOI" => ids.extend(doi(value).map(Identifier::Doi)),
+            "URL" => {
+                ids.extend(doi(value).map(Identifier::Doi));
+                ids.extend(arxiv(value).map(Identifier::Arxiv));
+                ids.extend(pmid(value).map(Identifier::Pmid));
+            }
+            "ISBN" => {
+                for part in value.split([',', ';']) {
+                    match isbn(part) {
+                        Some(found) => ids.push(Identifier::Isbn(found)),
+                        None => ids.extend(part.split_whitespace().filter_map(isbn).map(Identifier::Isbn)),
+                    }
+                }
+            }
+            "PMID" => ids.extend(digits(value.trim()).map(Identifier::Pmid)),
+            "number" | "archive_location" | "note" => ids.extend(
+                value
+                    .lines()
+                    .filter_map(|line| arxiv_prefixed(line.trim()))
+                    .map(Identifier::Arxiv),
+            ),
+            _ => {}
+        }
+    }
+    with_equivalents(ids)
 }
 
 fn strip_prefix_ci<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
