@@ -114,6 +114,12 @@ choice provenance separately for native presentation. The tray derives its
 wording from these facts rather than parsing the picker's error or note text.
 These native-only facts are excluded from the serialized picker payload.
 
+Library choices, reloads and Zotero checks share one import worker with one
+replaceable pending request. A newer choice cancels obsolete work before I/O,
+between Zotero requests and before indexing; its generation also prevents stale
+results from being installed or saved. An in-flight read, parse or index cannot
+be interrupted, so the latest choice waits for that operation to finish.
+
 Shared interactive web controls live in `apps/desktop/src/ui/` (ADR 0021).
 Only that directory imports React Aria; `scripts/ui-imports.mjs` checks static
 imports, re-exports and literal dynamic imports/require calls. It reuses Vite's
