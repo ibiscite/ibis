@@ -36,7 +36,7 @@ export const {
   showCopiedNotice,
   rowContext,
   updateChecks,
-  setUpdateChecks,
+  toggleUpdateChecks,
   checkForUpdates,
 } = commands;
 
@@ -97,4 +97,9 @@ export function newerUpdate(old: UpdateProgress | null, next: UpdateProgress): U
 
 export function onUpdateProgress(handler: (progress: UpdateProgress) => void): Promise<UnlistenFn> {
   return listen<UpdateProgress>("update:progress", (event) => handler(event.payload));
+}
+
+/** Whether update checks run on their own, sent after each change is saved. */
+export function onUpdateChecks(handler: (automatic: boolean) => void): Promise<UnlistenFn> {
+  return listen<boolean>("update:automatic", (event) => handler(event.payload));
 }

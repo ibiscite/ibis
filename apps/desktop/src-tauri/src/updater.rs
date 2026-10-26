@@ -123,7 +123,7 @@ fn ask(app: &AppHandle) {
             "Not Now".into(),
         ))
         .show(move |yes| {
-            setting::change(&handle, Some(yes));
+            setting::change(&handle, yes);
         });
 }
 

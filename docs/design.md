@@ -585,7 +585,8 @@ in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
 the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).
 **Check for updates…** and **Check for updates automatically** sit in both
 menus with the same commands, so desktops without a tray reach them; builds
-without an update key show neither.
+without an update key show neither. Both show only the saved choice, and clicks in
+either are saved in the order they were made.
 
 ## Brand and mark
 
