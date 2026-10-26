@@ -232,6 +232,11 @@ describe("formatted citations", () => {
       const shown = formatter.bibliography("apa", [cut, alone], format).output;
       expect(shown.indexOf("2022")).toBeLessThan(shown.indexOf("et al."));
     }
+    // A repeated author is substituted only when the whole list matches.
+    const later: CslItem = { ...garcia, id: "later", title: "Truncated work", author: [smith, others] };
+    const mla = formatter.bibliography("modern-language-association", [alone, later], "text").output;
+    expect(mla).toContain("Smith, Alex, et al. “Truncated");
+    expect(mla).not.toContain("———. “Truncated");
     const directors = Array.from({ length: 21 }, (_, i) => ({ family: `Director${i}`, given: "A" }));
     const broadcast: CslItem = { ...garcia, type: "broadcast", author: undefined, "script-writer": [smith, others], director: directors };
     const shown = formatter.bibliography("apa", [broadcast], "text").output;
