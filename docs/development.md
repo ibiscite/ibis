@@ -173,9 +173,9 @@ pnpm tauri dev
 
 Choose a library from the picker or from the menu bar (tray) item. The choice and other preferences are saved in `settings.json` in the app's configuration folder:
 
-- macOS: `~/Library/Application Support/io.github.ibiscite.ibis/`
-- Windows: `%APPDATA%\io.github.ibiscite.ibis\`
-- Linux: `$XDG_CONFIG_HOME/io.github.ibiscite.ibis/`, or `~/.config/io.github.ibiscite.ibis/` when `XDG_CONFIG_HOME` is not set
+- macOS: `~/Library/Application Support/com.ibiscite.ibis/`
+- Windows: `%APPDATA%\com.ibiscite.ibis\`
+- Linux: `$XDG_CONFIG_HOME/com.ibiscite.ibis/`, or `~/.config/com.ibiscite.ibis/` when `XDG_CONFIG_HOME` is not set
 
 ```json
 { "schema_version": 2, "shortcut": "CommandOrControl+Shift+Y", "library": { "bibtex": "/path/to/refs.bib" }, "copy_format": "pandoc", "citation_style": "apa", "density": "compact", "larger_text": true, "update_checks": false }

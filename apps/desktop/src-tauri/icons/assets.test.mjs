@@ -33,7 +33,7 @@ test("bundle icons have valid shared depth, small-size art and declared sizes", 
   const sizes = { "32x32.png": 32, "128x128.png": 128, "128x128@2x.png": 256 };
   expect(config.bundle.icon).toEqual([
     ...Object.keys(sizes).map((name) => `icons/${name}`), "icons/icon.icns", "icons/icon.ico",
-    "icons/linux/512x512/io.github.ibiscite.ibis.png",
+    "icons/linux/512x512/com.ibiscite.ibis.png",
   ]);
   for (const [name, size] of Object.entries({ ...sizes, "source.png": 1024, "icon.png": 1024 })) {
     expect(pngSize(read(name))).toEqual([size, size]);
@@ -43,7 +43,7 @@ test("bundle icons have valid shared depth, small-size art and declared sizes", 
     expect(small).toContain('stroke-width="10.5"');
     expect(small).not.toMatch(/<filter|<mask/);
   }
-  const symbolic = read("source/io.github.ibiscite.ibis-symbolic.svg").toString();
+  const symbolic = read("source/com.ibiscite.ibis-symbolic.svg").toString();
   expect(symbolic).toContain('width="16" height="16"');
   expect(symbolic).toContain('stroke="currentColor"');
   expect(symbolic).not.toMatch(/gradient|<filter|#[0-9a-f]{3,6}\b/i);
@@ -53,14 +53,14 @@ test("both Linux packages install named icons and macOS ships only its reviewed 
   for (const platform of ["deb", "appimage"]) {
     const files = config.bundle.linux[platform].files;
     for (const size of [128, 256, 512]) {
-      const source = files[`/usr/share/icons/hicolor/${size}x${size}/apps/io.github.ibiscite.ibis.png`];
+      const source = files[`/usr/share/icons/hicolor/${size}x${size}/apps/com.ibiscite.ibis.png`];
       expect(pngSize(read(source.replace("icons/", "")))).toEqual([size, size]);
     }
-    expect(files["/usr/share/icons/hicolor/symbolic/apps/io.github.ibiscite.ibis-symbolic.svg"])
-      .toBe("icons/source/io.github.ibiscite.ibis-symbolic.svg");
+    expect(files["/usr/share/icons/hicolor/symbolic/apps/com.ibiscite.ibis-symbolic.svg"])
+      .toBe("icons/source/com.ibiscite.ibis-symbolic.svg");
   }
   expect(read(config.bundle.linux.deb.desktopTemplate.replace("icons/", "")).toString())
-    .toContain("Icon=io.github.ibiscite.ibis");
+    .toContain("Icon=com.ibiscite.ibis");
   expect(config.bundle.icon).not.toContain("icons/source/Ibis.icon");
 });
 

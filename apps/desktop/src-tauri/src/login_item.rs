@@ -772,10 +772,6 @@ mod tests {
                 let entry = windows_entry(&name, program).ok_or("build without registry access")?;
                 assert_eq!(entry.get_app_name(), name);
                 assert_ne!(entry.get_app_name(), identifier);
-                assert_ne!(
-                    entry.get_app_name(),
-                    identifier.replacen("io.github.ibiscite", "com.ibiscite", 1)
-                );
                 assert_eq!(entry.get_app_path(), r#""C:\Synthetic Apps\Ibis\ibis.exe""#);
                 assert_eq!(entry.get_args(), &[AT_LOGIN_ARG]);
             }

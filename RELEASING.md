@@ -11,7 +11,12 @@ Versions follow [Semantic Versioning](https://semver.org/). Before 1.0, `0.N.0` 
 | Release | **Ibis X.Y.Z** | `vX.Y.Z`; the rolling `stable` tag mirrors the newest | Release Please's pull request, merged like any other |
 | Nightly | **Ibis Nightly X.Y.Z-nightly.YYYYMMDDHHMMSS** | rolling `nightly` | every push to `main` that changes more than documentation |
 
-No other tags. Ibis Nightly is a separate app (`io.github.ibiscite.ibis.nightly`) without the MSI and `.rpm`, whose version formats cannot carry its version. Before 1.0 every release is marked as a preview.
+No other tags. Ibis uses `com.ibiscite.ibis`; Ibis Nightly is a separate app (`com.ibiscite.ibis.nightly`) without the MSI and `.rpm`, whose version formats cannot carry its version. Before 1.0 every release is marked as a preview.
+
+Linux packages use separate channel icon names and desktop templates. The Stable
+executable remains `ibis-desktop`; Nightly uses `ibis-nightly`, including Tauri's
+automatically named icons. Nightly's config removes inherited Stable icon
+destinations through Tauri's JSON merge patch before adding its own.
 
 Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. Release notes come from Conventional Commits ([commits](docs/development.md#commits)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
 
@@ -25,6 +30,13 @@ Release Please keeps a pull request titled `chore: release X.Y.Z`. Merging it up
 4. The `stable-feed` job copies the packages and `latest.json` to the rolling `stable` pre-release, which the app reads. It can be re-run on its own.
 
 A nightly follows the same build, install and verify steps without approval, signs with the nightly key in the `nightly` environment, and replaces the `nightly` pre-release only if its commit is still the head of `main`. A failure leaves the previous nightly in place. To refresh it by hand, run Preview builds on `main` with publication checked; with it unchecked the run is a dry run whose packages stay as workflow artifacts for 14 days.
+
+Keeping the previous nightly's identity never blocks publication. The separate
+daily update qualification job fails when its previous feed and package exist
+but identity evidence is missing or unknown, so failure reporting opens an issue.
+A known earlier identity skips qualification with a notice (ADR 0023).
+Published source is read as text, never executed. Current package installation
+checks still gate publication.
 
 ## Update keys (ADR 0019)
 

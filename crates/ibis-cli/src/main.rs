@@ -476,6 +476,19 @@ mod toggle_tests {
     }
 
     #[test]
+    fn linux_nightly_is_selected_explicitly_instead_of_the_stable_default() {
+        let nightly = Path::new("/synthetic/bin/ibis-nightly");
+        let stable = Path::new("/synthetic/bin/ibis-desktop");
+        for sibling in [None, Some(stable)] {
+            let command = desktop_command("linux", sibling, Some(nightly), &[], |_| false);
+            assert_eq!(command.get_program(), nightly);
+            assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
+        }
+        let command = desktop_command("linux", None, None, &[], |_| false);
+        assert_eq!(command.get_program(), "ibis-desktop");
+    }
+
+    #[test]
     fn toggle_windows_lookup_prefers_override_then_sibling_then_install_folders_then_path() {
         let user = PathBuf::from("/synthetic/Local 文献");
         let machine = PathBuf::from("/synthetic/Program Files");

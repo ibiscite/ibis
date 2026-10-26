@@ -2,8 +2,8 @@
 
 These are platform adaptations of the [final brand kit](../../../../../brand/README.md),
 not separate logo masters. `generate.py` reads `brand/master.svg`, `settings.json`
-and the drawing helpers in `brand/build.py`. Never edit the generated SVGs or
-packaged images by hand.
+and the drawing helpers in `brand/build.py`. Never edit the generated SVGs,
+desktop templates or packaged images by hand.
 
 From the repository root, with Python 3 and librsvg's `rsvg-convert`:
 
@@ -23,7 +23,9 @@ pnpm -C apps/desktop exec vitest run src-tauri/icons/assets.test.mjs
   and 256px images; entries below 48px are flat, with the thicker neck.
 - **Linux:** the existing GNOME 104px face and 4px front on a 128px grid, adapted
   to the final light tile. The 128/256/512px hicolor images and one-colour symbolic
-  SVG retain their existing names and package paths.
+  SVG and desktop templates use each channel's `desktop_identifiers` value from
+  `brand/settings.json`. Stable and Nightly install separate icon paths; Nightly
+  removes inherited Stable destinations through Tauri's JSON merge patch.
 
 Each target size is rendered directly from vector art; no large bitmap is
 downscaled to make a small entry. The shelf's small beak is generated from the same brand
