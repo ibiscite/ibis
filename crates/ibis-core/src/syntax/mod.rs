@@ -363,6 +363,19 @@ fn resolve<'a>(
     {
         return Err(CitationError::InvalidLocator);
     }
+    if caps.escaping == Escaping::Pandoc
+        && item.suffix.iter().any(|run| !run.text.trim().is_empty())
+        && let Some(locator) = &item.locator
+        && locator.value.chars().try_fold(0_usize, |depth, c| match c {
+            '{' => Some(depth + 1),
+            '}' => depth.checked_sub(1),
+            _ => Some(depth),
+        }) != Some(0)
+    {
+        // Pandoc parses braced locators after Markdown unescapes their text;
+        // an unmatched brace cannot preserve the locator/suffix boundary.
+        return Err(CitationError::InvalidLocator);
+    }
     if item
         .prefix
         .iter()

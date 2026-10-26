@@ -552,7 +552,7 @@ fn default_consumers_preserve_literal_affix_text() {
             };
             assert_eq!(prefix.trim(), note, "{caps:?}: {}", result.text);
             let expected = if caps.escaping == Escaping::Pandoc {
-                format!(", {note}")
+                format!(", {{}}{note}")
             } else {
                 note.to_string()
             };
@@ -616,12 +616,13 @@ fn literal_punctuation_across_runs_cannot_create_smart_typography() {
             &result.text,
         );
         let suffix = inline_text(&first_citation(&ast).unwrap()["citationSuffix"]);
-        assert_eq!(
-            suffix.strip_prefix(", ").unwrap_or(&suffix),
-            "--...\"'`",
-            "{}",
-            result.text
-        );
+        let suffix = suffix.strip_prefix(", ").unwrap_or(&suffix);
+        let suffix = if caps.escaping == Escaping::Pandoc {
+            suffix.strip_prefix("{}").unwrap()
+        } else {
+            suffix
+        };
+        assert_eq!(suffix, "--...\"'`", "{}", result.text);
     }
 }
 
@@ -646,7 +647,7 @@ fn pandoc_superscript_affixes_stay_inside_the_citation() {
             vec![],
             vec![plain("x"), sup("2", false), plain("y")],
             "citationSuffix",
-            ", x2y",
+            ", {}x2y",
         ),
         (
             CitationForm::Normal,
@@ -667,7 +668,7 @@ fn pandoc_superscript_affixes_stay_inside_the_citation() {
             vec![],
             vec![sup("2", false)],
             "citationSuffix",
-            "2",
+            "{}2",
         ),
     ] {
         let mut case = seed();
@@ -749,6 +750,62 @@ fn suffixes_never_create_empty_punctuation_or_invented_locators() {
             let result = syntax::cite(&case.library, &case.request).unwrap();
             assert_eq!(processed_pandoc_citation(&result.text), expected, "{}", result.text);
         }
+    }
+}
+
+#[test]
+fn pandoc_locator_braces_cannot_swallow_a_literal_suffix() {
+    if !pandoc_available() {
+        return;
+    }
+    let mut case = seed();
+    case.request.items[0].suffix = vec![TextRun {
+        text: "34".into(),
+        ..TextRun::default()
+    }];
+    for value in ["{12", "12}"] {
+        case.request.items[0].locator = Some(Locator {
+            term: LocatorTerm::Page,
+            value: value.into(),
+        });
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert_eq!(
+            result.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::InvalidLocator
+            }]
+        );
+        assert!(result.copy_content(1).is_none());
+    }
+    case.request.items[0].locator.as_mut().unwrap().value = "{12}".into();
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(processed_pandoc_citation(&result.text), "(Taylor, 2026, p. {12}, 34)");
+}
+
+#[test]
+fn biblatex_page_labels_survive_a_literal_suffix() {
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Biblatex,
+        command: None,
+    };
+    case.request.items[0].suffix = vec![TextRun {
+        text: "note".into(),
+        ..TextRun::default()
+    }];
+    for (value, label) in [("33", "page"), ("33-35", "pages")] {
+        case.request.items[0].locator = Some(Locator {
+            term: LocatorTerm::Page,
+            value: value.into(),
+        });
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert!(
+            result.text.contains(&format!("\\bibstring{{{label}}}~")),
+            "{}",
+            result.text
+        );
+        assert!(result.losses.is_empty());
     }
 }
 
@@ -952,7 +1009,7 @@ proptest! {
                         let expected = note.split_whitespace().collect::<Vec<_>>().join(" ");
                         prop_assert_eq!(prefix.split_whitespace().collect::<Vec<_>>().join(" "), expected.clone(), "{:?}: {}", caps, result.text);
                         let suffix = inline_text(&citation["citationSuffix"]);
-                        let suffix = if caps.escaping == Escaping::Pandoc { suffix.strip_prefix(",").unwrap_or(&suffix) } else { &suffix };
+                        let suffix = if caps.escaping == Escaping::Pandoc && !note.trim().is_empty() { suffix.strip_prefix(",").unwrap_or(&suffix).trim_start().strip_prefix("{}").unwrap() } else { &suffix };
                         prop_assert_eq!(suffix.split_whitespace().collect::<Vec<_>>().join(" "), expected, "{:?}: {}", caps, result.text);
                     }
                 },
