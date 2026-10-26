@@ -256,15 +256,16 @@ fn typed_search_refuses_oversized_results_before_public_object_cloning() {
 }
 
 #[test]
-fn unsupported_formatting_is_an_honest_per_item_refusal() {
+fn bundled_styles_are_available_and_unknown_styles_are_explicit_refusals() {
     let mut case = case();
     let engine = Engine::from_snapshot(Arc::new(case.library));
     let cancel = Cancellation::default();
-    assert_eq!(
-        engine.dispatch(Method::Styles, &json!({}), &cancel).unwrap().data,
-        json!({"styles":[]})
-    );
-    case.request.output = OutputSpec::Csl { style: "apa".into() };
+    let catalog = engine.dispatch(Method::Styles, &json!({}), &cancel).unwrap().data;
+    assert_eq!(catalog["styles"].as_array().unwrap().len(), 5);
+    assert_eq!(catalog["styles"][0]["id"], "apa");
+    case.request.output = OutputSpec::Csl {
+        style: "unknown-style".into(),
+    };
     let result = engine
         .dispatch(Method::Cite, &serde_json::to_value(&case.request).unwrap(), &cancel)
         .unwrap();

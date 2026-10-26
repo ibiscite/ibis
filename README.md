@@ -116,10 +116,12 @@ are rejected. Responses are bounded to 16 MiB, with space reserved for envelope
 fields; oversized results return `resource-limit` (exit 5). Reduce the selection
 or search limit when that happens. Human key arguments resolve in the engine as well.
 
-Use `--format csl-json` to export selected records. `styles` lists the CSL style
-IDs available for `--style`; an empty list means formatted output is unsupported,
-reported as per-item `unsupported-output` refusals in citation JSON. `ibis call METHOD --stdin` reads
-method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
+Use `--format csl-json` to export selected records. `styles` lists the five bundled
+CSL styles. `cite KEY --style apa` formats a citation; add `--bibliography` for
+bibliography entries, sorted by the style. The same text, HTML, RTF, notices and
+typed refusals are available through `--json`, `cite --request` and `call cite`.
+Unsupported styles remain explicit per-item `unsupported-output` refusals.
+`ibis call METHOD --stdin` reads method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
 Content-Length frames, progress/library-change notifications and
 `$/cancelRequest`; it writes no terminal text to that stream.
 

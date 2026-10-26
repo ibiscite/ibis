@@ -64,7 +64,7 @@ fn command() -> Command {
                     Arg::new("request")
                         .long("request")
                         .action(ArgAction::SetTrue)
-                        .conflicts_with_all(["keys", "format", "style", "form", "locale"])
+                        .conflicts_with_all(["keys", "format", "style", "form", "locale", "bibliography"])
                         .help("Read a canonical CitationRequest JSON object from stdin"),
                 )
                 .arg(Arg::new("format").long("format").conflicts_with("style").value_parser([
@@ -78,6 +78,14 @@ fn command() -> Command {
                     "csl-json",
                 ]))
                 .arg(Arg::new("style").long("style").value_name("STYLE_ID"))
+                .arg(
+                    Arg::new("bibliography")
+                        .long("bibliography")
+                        .action(ArgAction::SetTrue)
+                        .requires("style")
+                        .conflicts_with("form")
+                        .help("Format bibliography entries using --style"),
+                )
                 .arg(Arg::new("form").long("form").value_parser([
                     "normal",
                     "narrative",
@@ -265,10 +273,14 @@ fn execute<R: BufRead, W: Write + Send>(
                     command: command.map(str::to_owned),
                 }
             };
-            let form = serde_json::from_value(json!(
-                args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
-            ))
-            .map_err(|_| EngineError { code: ErrorCode::Usage })?;
+            let form = if args.get_flag("bibliography") {
+                CitationForm::BibliographyOnly
+            } else {
+                serde_json::from_value(json!(
+                    args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
+                ))
+                .map_err(|_| EngineError { code: ErrorCode::Usage })?
+            };
             let keys = args
                 .get_many::<String>("keys")
                 .into_iter()

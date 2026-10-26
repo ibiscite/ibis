@@ -107,8 +107,11 @@ The rollout starts with the file-based engine and CLI, then ports today's picker
 onto that surface. Zotero mapping and the closed/live readers proceed in parallel
 on raw item data; #1197 integrates both providers, and #1200 gates full parity.
 Advanced mixed citation editing remains in 0.4; unsupported intents are refused
-explicitly rather than approximated. The 0.2 release still requires all sources,
-formatting and the picker.
+explicitly rather than approximated. The 0.2 release still requires all sources and the picker. Engine `cite` routes
+`OutputSpec::Csl` to the shared bounded formatter on the same immutable snapshot;
+`styles` lists the five offline styles. Human CLI citation/bibliography options,
+canonical JSON requests and stdio use those same results. RPC cancellation reaches
+the formatter task, and exhaustion remains a typed resource-limit error.
 
 - **Typed engine methods** are the source of truth for the command line, `ibis serve --stdio` (JSON-RPC 2.0, the way Codex's app-server and language servers work), `ibis mcp` for AI agents, and the app. Each front end lists which methods it exposes; the app keeps per-window command permissions (ADR 0024), so a generic dispatcher never widens what a window may call.
 - **Every `--json` output is a versioned envelope** `{ "ibis": 1, "ok": …, "data" | "error": … }` with stable error codes, including argument errors. `data` carries partial results with per-item outcomes, losses and refusals; an empty search is `ok` with no results. Only the envelope goes to stdout; logs go to stderr.
