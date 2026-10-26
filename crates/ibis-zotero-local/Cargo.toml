@@ -12,6 +12,7 @@ publish = false
 ibis-core = { path = "../ibis-core" }
 rusqlite = { version = "0.41.0", default-features = false, features = ["bundled", "hooks", "limits"] }
 thiserror = "2.0.21"
+serde_json = "1.0.154"
 
 [dev-dependencies]
 tempfile = "3.27.0"
