@@ -250,3 +250,46 @@ fn null_item_values_are_absent_and_exact_numbers_stay_private() {
     );
     assert!(!format!("{:?}", item.metadata).contains("9007199254740993"));
 }
+
+#[test]
+fn fifty_thousand_realistic_articles_fit_the_closed_reader() {
+    let dir = fixture(10);
+    edit(
+        dir.path(),
+        r#"
+        BEGIN;
+        DELETE FROM items; DELETE FROM itemData; DELETE FROM itemDataValues;
+        DELETE FROM itemCreators; DELETE FROM deletedItems;
+        INSERT INTO fieldsCombined VALUES(6,'abstractNote'),(7,'publicationTitle'),(8,'volume'),(9,'issue'),(10,'pages'),(11,'DOI'),(12,'url');
+        INSERT INTO itemDataValues VALUES
+          (1,'Synthetic large-library article'),(2,'2020-00-00 2020'),(3,'2020-01-01 00:00:00'),
+          (4,'SyntheticLargeKey'),(5,'Invented metadata for a bounded library test'),
+          (6,printf('%.*c',1700,'a')),(7,'Journal of Invented Scale'),(8,'12'),(9,'3'),
+          (10,'101-120'),(11,'10.0000/synthetic-scale'),(12,'https://example.invalid/synthetic');
+        WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<50000)
+          INSERT INTO items SELECT 100+x,1,printf('S%07d',x),1,2,'2020-01-01 00:00:00','2020-02-01 00:00:00' FROM n;
+        INSERT INTO itemData SELECT itemID,fieldID,fieldID FROM items CROSS JOIN fieldsCombined;
+        INSERT INTO creators VALUES(3,'Bea','Invented',0);
+        INSERT INTO creatorTypes VALUES(3,'translator');
+        INSERT INTO itemCreators SELECT itemID,1,1,0 FROM items;
+        INSERT INTO itemCreators SELECT itemID,2,2,1 FROM items;
+        INSERT INTO itemCreators SELECT itemID,3,3,2 FROM items;
+        COMMIT;
+    "#,
+    );
+    let snapshot = read_fixture(dir.path()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(snapshot.libraries[0].items.len(), 50000);
+    let last = &snapshot.libraries[0].items[49999];
+    assert_eq!(last.data.key, "S0050000");
+    assert_eq!(last.data.fields.len(), 12);
+    assert_eq!(last.data.fields.get("abstractNote").map(String::len), Some(1700));
+    assert_eq!(last.data.creators.len(), 3);
+    assert_eq!(
+        last.metadata
+            .stored_fields
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec!["date"]
+    );
+}

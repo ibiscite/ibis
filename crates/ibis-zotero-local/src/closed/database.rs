@@ -10,7 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_ITEMS: usize = 1_000_000;
 const MAX_VALUE: usize = 256 * 1024;
-const MAX_TEXT: usize = 256 * 1024 * 1024;
+// Retained strings plus conservative container overhead. Separate from the
+// source-file cap: allow room for a 512MiB live payload's allocation overhead.
+const MAX_RETAINED_BYTES: usize = 1024 * 1024 * 1024;
 // Independent work ceiling; only retained bibliographic rows consume it.
 const MAX_ROWS: usize = MAX_ITEMS * 64;
 
@@ -62,7 +64,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
         validate_table(&db, table, fields)?;
     }
     let budget = Budget {
-        text: Cell::new(MAX_TEXT),
+        text: Cell::new(MAX_RETAINED_BYTES),
         rows: Cell::new(MAX_ROWS),
         exceeded: Cell::new(false),
     };
@@ -141,7 +143,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
         let Some(item) = items.get_mut(&id) else {
             return Ok(());
         };
-        if item.metadata.stored_fields.len()
+        if item.data.fields.len()
             + item
                 .metadata
                 .stored_values
@@ -153,7 +155,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
             return budget.limit();
         }
         let field = budget.text(r, 1)?;
-        if item.metadata.stored_fields.contains_key(&field) || item.metadata.stored_values.contains_key(&field) {
+        if item.data.fields.contains_key(&field) || item.metadata.stored_values.contains_key(&field) {
             return Err(rusqlite::Error::InvalidQuery);
         }
         if r.get::<_, Option<i64>>(3)?.is_none() {
@@ -161,6 +163,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
         }
         let (stored, original) = budget.value(r, 2)?;
         if let Some(original) = original {
+            budget.charge(field.len().saturating_add(128))?;
             item.metadata.stored_values.insert(field.clone(), original);
         }
         let Some(stored) = stored else {
@@ -170,17 +173,22 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
         if field.is_empty() || ["key", "itemType", "creators", "better_bibtex_keys"].contains(&field.as_str()) {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let typed = if date_field(&item.data.item_type, &field) {
-            multipart(&stored).to_owned()
+        let decoded = if date_field(&item.data.item_type, &field) {
+            multipart(&stored)
         } else {
-            stored.clone()
+            &stored
         };
-        budget.charge(typed.len().saturating_add(stored.len()).saturating_add(field.len()))?;
-        if item.metadata.stored_fields.insert(field.clone(), stored).is_some()
-            || item.data.fields.insert(field, typed).is_some()
-        {
-            return Err(rusqlite::Error::InvalidQuery);
-        }
+        let typed = if decoded != stored {
+            // Only changed text needs a second retained string. Unchanged
+            // source text is already preserved by the neutral mapper input.
+            budget.charge(decoded.len().saturating_add(field.len()).saturating_add(128))?;
+            let typed = decoded.to_owned();
+            item.metadata.stored_fields.insert(field.clone(), stored);
+            typed
+        } else {
+            stored
+        };
+        item.data.fields.insert(field, typed);
         Ok(())
     })?;
     let mut creators = BTreeMap::<i64, BTreeMap<i64, RawCreator>>::new();

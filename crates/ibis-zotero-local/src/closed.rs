@@ -86,7 +86,8 @@ pub struct SourceMetadata {
     pub version: i64,
     pub date_added: String,
     pub date_modified: String,
-    /// Original stored strings, before multipart date decoding.
+    /// Original text only where multipart decoding changed it. Unchanged text
+    /// remains in RawItem.fields; combine both to reconstruct stored strings.
     pub stored_fields: BTreeMap<String, String>,
     /// Exact non-text SQLite storage values, before JavaScript string coercion.
     pub stored_values: BTreeMap<String, StoredValue>,
