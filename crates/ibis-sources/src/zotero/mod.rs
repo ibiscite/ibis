@@ -365,6 +365,34 @@ fn keys(
             add(value, CitationKeySource::Extra)?;
         }
     }
+    let mut remaining = extra;
+    while let Some(start) = remaining.find("{:") {
+        remaining = &remaining[start + 2..];
+        // Match the same field-label grammar as citeproc. An invalid outer
+        // opening cannot hide a valid nested field; a valid outer field owns
+        // its complete value, including any nested opening, through `}`.
+        let label_end = remaining
+            .bytes()
+            .take_while(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'-' | b'_'))
+            .count();
+        let label = &remaining[..label_end];
+        if label.is_empty()
+            || remaining.as_bytes().get(label_end) != Some(&b':')
+            || !(label.bytes().all(|byte| byte.is_ascii_uppercase())
+                || label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || matches!(byte, b'-' | b'_')))
+        {
+            continue;
+        }
+        let Some(end) = remaining.find('}') else {
+            break;
+        };
+        if citation_key_label(label) {
+            add(&remaining[label_end + 1..end], CitationKeySource::Extra)?;
+        }
+        remaining = &remaining[end + 1..];
+    }
     for value in &item.better_bibtex_keys {
         add(value, CitationKeySource::BetterBibtex)?;
     }
@@ -416,7 +444,38 @@ fn public_url(url: &str) -> bool {
         // host so relative paths with separators remain engine-only.
         let host = url.split('/').next().unwrap_or_default();
         let labels: Vec<_> = host.split('.').collect();
-        return labels.len() >= 2
+        let document_suffix = labels.last().is_some_and(|label| {
+            matches!(
+                label.to_ascii_lowercase().as_str(),
+                "pdf"
+                    | "epub"
+                    | "djvu"
+                    | "doc"
+                    | "docx"
+                    | "odt"
+                    | "rtf"
+                    | "txt"
+                    | "md"
+                    | "tex"
+                    | "bib"
+                    | "ris"
+                    | "json"
+                    | "sqlite"
+                    | "html"
+                    | "htm"
+                    | "png"
+                    | "jpg"
+                    | "jpeg"
+                    | "gif"
+                    | "svg"
+                    | "webp"
+                    | "mp3"
+                    | "mp4"
+                    | "zip"
+            )
+        });
+        return !document_suffix
+            && labels.len() >= 2
             && labels
                 .iter()
                 .all(|label| !label.is_empty() && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
@@ -426,7 +485,9 @@ fn public_url(url: &str) -> bool {
             && !url.chars().any(char::is_whitespace);
     };
     scheme.len() > 1
-        && !scheme.eq_ignore_ascii_case("file")
+        && !["file", "smb", "afp", "nfs", "jar"]
+            .iter()
+            .any(|private| scheme.eq_ignore_ascii_case(private))
         && !rest.is_empty()
         && scheme
             .bytes()

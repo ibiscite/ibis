@@ -1,7 +1,6 @@
 //! Invented data only. No Zotero process or library is used.
 #![allow(clippy::unwrap_used)]
-#[path = "../src/zotero/mod.rs"]
-mod zotero;
+use ibis_sources::zotero;
 
 use ibis_core::contract::LibraryId;
 use serde_json::json;
@@ -345,4 +344,64 @@ fn maximum_length_particle_and_date_inputs_have_bounded_work() {
     assert_eq!(result.record.csl["author"][0]["family"], "Synthetic");
     assert_eq!(result.record.csl["author"][0]["given"], "Example");
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}
+
+#[test]
+fn bare_document_filenames_stay_engine_only() {
+    for url in [
+        "private.pdf",
+        "invented.bib",
+        "notes.md",
+        "sample.json",
+        "invented.sqlite",
+        "private.PDF",
+    ] {
+        let result = mapped(json!({"url": url, "extra": format!("{{:URL: {url}}}")}));
+        let public = serde_json::to_string(&result.record).unwrap();
+        assert!(!public.contains(url));
+        assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
+        assert!(
+            serde_json::to_string(result.record.raw.as_ref().unwrap())
+                .unwrap()
+                .contains(url)
+        );
+    }
+}
+
+#[test]
+fn extra_url_scanning_tracks_citeproc_field_boundaries() {
+    for extra in [
+        "URL:\nURL: file:///invented/private.pdf",
+        "URL: \nURL: \nURL: file:///invented/private.pdf",
+        "{:issued: 2026}URL: file:///invented/private.pdf",
+        "{:URL: ../a}URL: file:///invented/private.pdf",
+        "{:issued: 2026}{:URL: https://example.invalid/work}URL: file:///invented/private.pdf",
+    ] {
+        let result = mapped(json!({"extra": extra}));
+        assert!(!serde_json::to_string(&result.record).unwrap().contains("private.pdf"));
+        assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
+    }
+}
+
+#[test]
+fn file_transport_urls_and_inline_key_conflicts_are_not_hidden() {
+    use ibis_core::contract::ModelError;
+    for url in [
+        "smb://invented/private.pdf",
+        "afp://invented/private.pdf",
+        "nfs:/invented/private.pdf",
+        "jar:file:/invented/private.pdf",
+    ] {
+        let result = mapped(json!({"url": url, "extra": format!("{{:URL: {url}}}")}));
+        assert!(!serde_json::to_string(&result.record).unwrap().contains("private.pdf"));
+        assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
+    }
+    for extra in [
+        "{:citation-key: Extra2026}",
+        "{:{:citation-key: Extra2026}",
+        "{:citation-key: Invalid{:citation-key: Extra2026}",
+    ] {
+        let result = mapped(json!({"citationKey": "Field2026", "extra": extra}));
+        assert_eq!(result.record.citation_key(), Err(ModelError::ConflictingCitationKeys));
+    }
 }

@@ -10502,5 +10502,501 @@
       "type": "book",
       "URL": "example.invalid/invented"
     }
+  },
+  {
+    "name": "access-calendar-2026-02-30",
+    "item": {
+      "key": "S0000270",
+      "itemType": "book",
+      "accessDate": "2026-02-30"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "2026",
+            2,
+            30
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-calendar-2026-02-30T00:00:00Z",
+    "item": {
+      "key": "S0000271",
+      "itemType": "book",
+      "accessDate": "2026-02-30T00:00:00Z"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "2026",
+            3,
+            2
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-calendar-2026-02-30 12:00:00",
+    "item": {
+      "key": "S0000272",
+      "itemType": "book",
+      "accessDate": "2026-02-30 12:00:00"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "2026",
+            3,
+            2
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-calendar-0001",
+    "item": {
+      "key": "S0000273",
+      "itemType": "book",
+      "accessDate": "0001"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "1901",
+            1,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-calendar-0001-01-01",
+    "item": {
+      "key": "S0000274",
+      "itemType": "book",
+      "accessDate": "0001-01-01"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "1",
+            1,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-calendar-0001-01-01T00:00:00Z",
+    "item": {
+      "key": "S0000275",
+      "itemType": "book",
+      "accessDate": "0001-01-01T00:00:00Z"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "1901",
+            1,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "access-calendar-0001-01-01 00:00:00",
+    "item": {
+      "key": "S0000276",
+      "itemType": "book",
+      "accessDate": "0001-01-01 00:00:00"
+    },
+    "expected": {
+      "type": "book",
+      "accessed": {
+        "date-parts": [
+          [
+            "1901",
+            1,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "extra-greedy-blank-publisher",
+    "item": {
+      "key": "S0000277",
+      "itemType": "book",
+      "date": "2026",
+      "extra": "Title: Invented title\nPublisher: \nissued: 2001/2003"
+    },
+    "expected": {
+      "type": "book",
+      "note": "title: Invented title\npublisher: \n",
+      "issued": {
+        "date-parts": [
+          [
+            2001
+          ],
+          [
+            2003
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "date-era-review-27 BC–AD 14",
+    "item": {
+      "key": "S0000278",
+      "itemType": "book",
+      "date": "27 BC–AD 14"
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "literal": "27 BC–AD 14"
+      }
+    }
+  },
+  {
+    "name": "date-era-review-March 15 44BC",
+    "item": {
+      "key": "S0000279",
+      "itemType": "book",
+      "date": "March 15 44BC"
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "date-parts": [
+          [
+            -44,
+            3,
+            15
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "date-era-review-Spring 200BC",
+    "item": {
+      "key": "S0000280",
+      "itemType": "book",
+      "date": "Spring 200BC"
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "date-parts": [
+          [
+            -200
+          ]
+        ],
+        "season": "Spring"
+      }
+    }
+  },
+  {
+    "name": "extra-era-review",
+    "item": {
+      "key": "S0000281",
+      "itemType": "book",
+      "date": "2026",
+      "extra": "Issued: 27 BC–AD 14"
+    },
+    "expected": {
+      "type": "book",
+      "note": "issued: 27 BC–AD 14",
+      "issued": {
+        "date-parts": [
+          [
+            2026
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "creator-uppercase-family-line-0",
+    "item": {
+      "key": "S0000282",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "Van\nder Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "Van\nder"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-uppercase-given-line-0",
+    "item": {
+      "key": "S0000283",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example Van\nder",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "Van\nder"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-uppercase-family-line-1",
+    "item": {
+      "key": "S0000284",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "Van\rder Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "Van\rder"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-uppercase-given-line-1",
+    "item": {
+      "key": "S0000285",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example Van\rder",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "Van\rder"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-uppercase-family-line-2",
+    "item": {
+      "key": "S0000286",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "Van der Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "Van der"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-uppercase-given-line-2",
+    "item": {
+      "key": "S0000287",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example Van der",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "Van der"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-uppercase-family-line-3",
+    "item": {
+      "key": "S0000288",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example",
+          "lastName": "Van der Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "non-dropping-particle": "Van der"
+        }
+      ]
+    }
+  },
+  {
+    "name": "creator-uppercase-given-line-3",
+    "item": {
+      "key": "S0000289",
+      "itemType": "book",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Example Van der",
+          "lastName": "Synthetic"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "author": [
+        {
+          "family": "Synthetic",
+          "given": "Example",
+          "dropping-particle": "Van der"
+        }
+      ]
+    }
+  },
+  {
+    "name": "date-quoted-line-0",
+    "item": {
+      "key": "S0000290",
+      "itemType": "book",
+      "date": "\"Invented date\""
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "literal": "\"Invented date\""
+      }
+    }
+  },
+  {
+    "name": "extra-quoted-line-0",
+    "item": {
+      "key": "S0000291",
+      "itemType": "book",
+      "date": "2026",
+      "extra": "Issued: \"Invented date\""
+    },
+    "expected": {
+      "type": "book",
+      "note": "issued: \"Invented date\"",
+      "issued": {
+        "date-parts": [
+          [
+            2026
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "date-quoted-line-1",
+    "item": {
+      "key": "S0000292",
+      "itemType": "book",
+      "date": "\"Invented date\""
+    },
+    "expected": {
+      "type": "book",
+      "issued": {
+        "literal": "\"Invented date\""
+      }
+    }
+  },
+  {
+    "name": "extra-quoted-line-1",
+    "item": {
+      "key": "S0000293",
+      "itemType": "book",
+      "date": "2026",
+      "extra": "Issued: \"Invented date\""
+    },
+    "expected": {
+      "type": "book",
+      "note": "issued: \"Invented date\"",
+      "issued": {
+        "date-parts": [
+          [
+            2026
+          ]
+        ]
+      }
+    }
   }
 ]

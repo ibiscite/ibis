@@ -59,6 +59,11 @@ pub(super) fn map(
 }
 
 fn lower_particle(value: &str) -> bool {
+    // JS's dot-based first-character replacement is a no-op across a line
+    // terminator; upstream then compares the casing of the entire candidate.
+    if value.contains(['\r', '\n', '\u{2028}', '\u{2029}']) {
+        return value.to_uppercase() != value;
+    }
     value
         .chars()
         .find(|c| !matches!(c, '-' | '\'' | 'ʻ' | '’') && !c.is_whitespace())

@@ -44,7 +44,7 @@ pub(super) fn extra_date(value: &str) -> Option<Value> {
     let mut chars = text.chars();
     if matches!(chars.next(), Some('"' | '“')) && matches!(chars.next_back(), Some('"' | '”')) {
         let literal = chars.as_str();
-        if !literal.is_empty() && !literal.contains(['\r', '\n']) {
+        if !literal.is_empty() && !literal.contains(['\r', '\n', '\u{2028}', '\u{2029}']) {
             return Some(json!({"literal": literal}));
         }
     }
@@ -119,7 +119,14 @@ fn era_edtf(value: &str) -> Option<String> {
     };
     let (begin, begin_era) = era_year_parts(left)?;
     let end = match right {
-        Some(right) => Some(era_year_parts(right)?),
+        Some(right) => {
+            // Zotero accepts an era suffix on the interval's right-hand year,
+            // but no prefix there (`27 BC-AD 14` remains a literal).
+            if !right.trim_start().as_bytes().first().is_some_and(u8::is_ascii_digit) {
+                return None;
+            }
+            Some(era_year_parts(right)?)
+        }
         None => None,
     };
     let end_era = end.and_then(|(_, marker)| marker);
@@ -294,8 +301,9 @@ fn word(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
-/// Byte ranges for digit runs at JavaScript-style ASCII word boundaries.
-fn numbers(value: &str) -> Vec<(usize, usize)> {
+/// Digit runs beginning at JavaScript-style ASCII word boundaries. A year
+/// followed immediately by an era marker defers its end-boundary check.
+fn numbers(value: &str, require_end_boundary: bool) -> Vec<(usize, usize)> {
     let bytes = value.as_bytes();
     let mut runs = Vec::new();
     let mut pos = 0;
@@ -305,7 +313,9 @@ fn numbers(value: &str) -> Vec<(usize, usize)> {
             while pos < bytes.len() && bytes[pos].is_ascii_digit() {
                 pos += 1;
             }
-            if (start == 0 || !word(bytes[start - 1])) && (pos == bytes.len() || !word(bytes[pos])) {
+            if (start == 0 || !word(bytes[start - 1]))
+                && (!require_end_boundary || pos == bytes.len() || !word(bytes[pos]))
+            {
                 runs.push((start, pos));
             }
         } else {
@@ -333,7 +343,7 @@ struct NumericDate {
 }
 
 fn numeric_date(value: &str) -> Option<NumericDate> {
-    let (start, end) = numbers(value).into_iter().find(|(start, end)| end - start <= 4)?;
+    let (start, end) = numbers(value, true).into_iter().find(|(start, end)| end - start <= 4)?;
     let first = &value[start..end];
     let mut cursor = end;
     let mut separators = Vec::new();
@@ -388,7 +398,7 @@ fn numeric_date(value: &str) -> Option<NumericDate> {
 }
 
 fn fallback_year(value: &str) -> Option<(usize, usize, Value)> {
-    for (start, end) in numbers(value) {
+    for (start, end) in numbers(value, false) {
         let digits = &value[start..end];
         if digits.len() > 4 {
             continue;
@@ -414,7 +424,7 @@ fn fallback_year(value: &str) -> Option<(usize, usize, Value)> {
         {
             return Some((start, end + marker_end, json!(year * sign)));
         }
-        if (3..=4).contains(&digits.len()) {
+        if (3..=4).contains(&digits.len()) && value.as_bytes().get(end).is_none_or(|byte| !word(*byte)) {
             return Some((start, end, json!(digits)));
         }
     }
@@ -554,18 +564,34 @@ fn natural_date(value: &str) -> Option<Value> {
 /// Zotero shifts access timestamps through the computer's timezone. The neutral
 /// engine instead fixes that conversion to UTC, keeping both access paths equal.
 fn access_calendar(value: &str) -> Option<String> {
-    // Zotero's ISO date constructor fills reduced-precision dates with the
-    // first calendar day, before the normal string-year conversion.
+    let two_digits = |text: &str| -> Option<i32> {
+        (text.len() == 2 && text.bytes().all(|byte| byte.is_ascii_digit()))
+            .then(|| text.parse().ok())
+            .flatten()
+    };
+    // Reduced-precision ISO dates pass through Date and then Date.UTC. The
+    // latter treats years 0..99 as 1900..1999, as Zotero's conversion does.
     if matches!(value.len(), 4 | 7) {
         let (parts, _) = edtf_parts(value)?;
         if parts.len() <= 2 {
-            return Some(format!("{:04}-{:02}-01", parts[0], parts.get(1).copied().unwrap_or(1)));
+            let year = access_utc_year(parts[0]);
+            return Some(format!("{year:04}-{:02}-01", parts.get(1).copied().unwrap_or(1)));
         }
         return None;
     }
     let date = value.get(..10)?;
-    let (parts, _) = edtf_parts(date)?;
-    if parts.len() != 3 {
+    if date.as_bytes().get(4) != Some(&b'-')
+        || date.as_bytes().get(7) != Some(&b'-')
+        || !date.as_bytes()[..4].iter().all(u8::is_ascii_digit)
+    {
+        return None;
+    }
+    let year = date[..4].parse::<i32>().ok()?;
+    let month = two_digits(date.get(5..7)?)?;
+    let day = two_digits(date.get(8..10)?)?;
+    // Zotero's SQL-date predicate checks the field ranges, not calendar-day
+    // validity. A date alone bypasses Date, retaining e.g. February 30.
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
     if value.len() == 10 {
@@ -577,11 +603,6 @@ fn access_calendar(value: &str) -> Option<String> {
         _ => return None,
     };
     let time = value.get(11..)?;
-    let two_digits = |text: &str| -> Option<i32> {
-        (text.len() == 2 && text.bytes().all(|byte| byte.is_ascii_digit()))
-            .then(|| text.parse().ok())
-            .flatten()
-    };
     let hour = two_digits(time.get(..2)?)?;
     let minute = two_digits(time.get(3..5)?)?;
     if time.as_bytes().get(2) != Some(&b':') || minute > 59 {
@@ -611,7 +632,11 @@ fn access_calendar(value: &str) -> Option<String> {
     // SQL timestamps have no zone or fractional component. Checking the entire
     // tail prevents malformed data from becoming a plausible access date.
     if !iso {
-        return (hour <= 23 && end == time.len()).then(|| date.into());
+        if hour > 23 || end != time.len() {
+            return None;
+        }
+        let (year, month, day) = access_normalize_calendar(access_utc_year(year), month, day);
+        return Some(format!("{year:04}-{month:02}-{day:02}"));
     }
     // JavaScript Date accepts 24:00 as midnight on the next day, but no other
     // hour-24 time. Zotero passes ISO values through that constructor.
@@ -634,8 +659,22 @@ fn access_calendar(value: &str) -> Option<String> {
     };
     let utc_minutes = hour * 60 + minute - offset;
     let delta = utc_minutes.div_euclid(1440);
-    let [mut year, mut month, mut day] = [parts[0], parts[1], parts[2]];
-    day += delta;
+    // ISO timestamps first normalize through Date's parser (including UTC
+    // offset/day overflow), then Zotero formats SQL and invokes Date.UTC. Apply
+    // its 0..99-year rule after that first normalization, not before it.
+    let (year, month, day) = access_normalize_calendar(year, month, day + delta);
+    if !(0..=9999).contains(&year) {
+        return None;
+    }
+    let (year, month, day) = access_normalize_calendar(access_utc_year(year), month, day);
+    Some(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+fn access_utc_year(year: i32) -> i32 {
+    if (0..=99).contains(&year) { year + 1900 } else { year }
+}
+
+fn access_normalize_calendar(mut year: i32, mut month: i32, mut day: i32) -> (i32, i32, i32) {
     if day < 1 {
         month -= 1;
         if month == 0 {
@@ -651,7 +690,7 @@ fn access_calendar(value: &str) -> Option<String> {
             month = 1;
         }
     }
-    Some(format!("{year:04}-{month:02}-{day:02}"))
+    (year, month, day)
 }
 
 #[cfg(test)]
@@ -729,6 +768,43 @@ mod tests {
             ("2026-10-25T00:01:00Z", json!({"date-parts": [["2026",10,25]]})),
             ("2026-01-01T00:01:00+02:00", json!({"date-parts": [["2025",12,31]]})),
             ("2024-02-28T23:59:00-02:00", json!({"date-parts": [["2024",2,29]]})),
+        ] {
+            assert_eq!(to_csl(source, true), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn era_boundaries_match_zotero_and_preserve_invalid_range_prefixes() {
+        assert_eq!(to_csl("27 BC–AD 14", false), json!({"literal": "27 BC–AD 14"}));
+        assert_eq!(extra_date("27 BC–AD 14"), None);
+        assert_eq!(to_csl("March 15 44BC", false), json!({"date-parts": [[-44,3,15]]}));
+        assert_eq!(
+            to_csl("Spring 200BC", false),
+            json!({"date-parts": [[-200]], "season": "Spring"})
+        );
+    }
+
+    #[test]
+    fn quoted_dates_reject_every_javascript_line_terminator() {
+        for separator in ['\r', '\n', '\u{2028}', '\u{2029}'] {
+            let value = format!("\"Invented{separator}date\"");
+            assert_eq!(extra_date(&value), None);
+            assert_eq!(to_csl(&value, false), json!({"literal": value}));
+        }
+    }
+
+    #[test]
+    fn access_calendar_matches_zotero_constructor_order() {
+        for (source, expected) in [
+            ("2026-02-30", json!({"date-parts": [["2026",2,30]]})),
+            ("2026-02-30T00:00:00Z", json!({"date-parts": [["2026",3,2]]})),
+            ("2026-02-30 12:00:00", json!({"date-parts": [["2026",3,2]]})),
+            ("0001", json!({"date-parts": [["1901",1,1]]})),
+            ("0001-01-01", json!({"date-parts": [["1",1,1]]})),
+            ("0001-01-01T00:00:00Z", json!({"date-parts": [["1901",1,1]]})),
+            ("0001-01-01 00:00:00", json!({"date-parts": [["1901",1,1]]})),
+            ("0000-02-29T00:00:00Z", json!({"date-parts": [["1900",3,1]]})),
+            ("0099-12-31T23:00:00-02:00", json!({"date-parts": [["100",1,1]]})),
         ] {
             assert_eq!(to_csl(source, true), expected, "{source}");
         }

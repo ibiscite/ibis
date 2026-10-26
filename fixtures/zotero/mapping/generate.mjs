@@ -187,6 +187,21 @@ for (const accessDate of ["2026-10", "2026"]) add(`access-short-${accessDate}`, 
 for (const url of ["www.example.invalid/invented", "doi.org/10.0000/invented", "example.invalid/invented"]) {
   add(`url-schemeless-${url}`, { url });
 }
+for (const accessDate of [
+  "2026-02-30", "2026-02-30T00:00:00Z", "2026-02-30 12:00:00",
+  "0001", "0001-01-01", "0001-01-01T00:00:00Z", "0001-01-01 00:00:00",
+]) add(`access-calendar-${accessDate}`, { accessDate });
+add("extra-greedy-blank-publisher", { date: "2026", extra: "Title: Invented title\nPublisher: \nissued: 2001/2003" });
+for (const date of ["27 BC–AD 14", "March 15 44BC", "Spring 200BC"]) add(`date-era-review-${date}`, { date });
+add("extra-era-review", { date: "2026", extra: "Issued: 27 BC–AD 14" });
+for (const [index, separator] of ["\n", "\r", "\u2028", "\u2029"].entries()) {
+  add(`creator-uppercase-family-line-${index}`, { creators: [{ creatorType: "author", firstName: "Example", lastName: `Van${separator}der Synthetic` }] });
+  add(`creator-uppercase-given-line-${index}`, { creators: [{ creatorType: "author", firstName: `Example Van${separator}der`, lastName: "Synthetic" }] });
+}
+for (const [index, separator] of ["\u2028", "\u2029"].entries()) {
+  add(`date-quoted-line-${index}`, { date: `"Invented${separator}date"` });
+  add(`extra-quoted-line-${index}`, { date: "2026", extra: `Issued: "Invented${separator}date"` });
+}
 const output = `${JSON.stringify(cases, null, 2)}\n`;
 const outputPath = path.join(here, "cases.json");
 if (process.argv.includes("--check")) {

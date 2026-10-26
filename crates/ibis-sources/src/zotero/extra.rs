@@ -97,7 +97,7 @@ fn field_line(line: &str) -> Option<(&str, &str)> {
             .all(|b| b.is_ascii_lowercase() || matches!(b, b'-' | b'_'))
             || label.bytes().all(|b| b.is_ascii_uppercase()))
         || value.contains('}')
-        || value.trim_start().is_empty()
+        || value.is_empty()
     {
         return None;
     }
@@ -144,6 +144,18 @@ pub(super) fn without_private_urls(note: &str, warnings: &mut Vec<MappingWarning
         {
             let start = label_start + 4;
             let value_start = start + rest[start..].len() - rest[start..].trim_start().len();
+            if rest[start..value_start].contains(['\r', '\n', '\u{2028}', '\u{2029}'])
+                && rest
+                    .get(value_start..value_start + 4)
+                    .is_some_and(|label| label.eq_ignore_ascii_case("URL:"))
+            {
+                // A blank URL line cannot swallow the next URL field as if
+                // its label were a URI scheme. Recheck that field separately.
+                safe.push_str(&rest[..value_start]);
+                cursor += value_start;
+                line_start = true;
+                continue;
+            }
             let value_end = value_start
                 + rest[value_start..]
                     .find(['{', '}', '\r', '\n', '\u{2028}', '\u{2029}'])
@@ -160,10 +172,11 @@ pub(super) fn without_private_urls(note: &str, warnings: &mut Vec<MappingWarning
                 {
                     safe.push(ch);
                 }
-                line_start = rest[..end]
-                    .chars()
-                    .next_back()
-                    .is_some_and(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'));
+                line_start = inline
+                    || rest[..end]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'));
                 cursor += end;
                 continue;
             }
@@ -180,7 +193,7 @@ pub(super) fn without_private_urls(note: &str, warnings: &mut Vec<MappingWarning
         if let Some(ch) = rest.chars().next() {
             safe.push(ch);
             cursor += ch.len_utf8();
-            line_start = matches!(ch, '\r' | '\n' | '\u{2028}' | '\u{2029}');
+            line_start = matches!(ch, '}' | '\r' | '\n' | '\u{2028}' | '\u{2029}');
         }
     }
     safe
