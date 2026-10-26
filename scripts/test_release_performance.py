@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("release_performance", Path(__file__).with_name("release-performance.py"))
 perf = importlib.util.module_from_spec(spec)
@@ -58,6 +59,67 @@ class ReleasePerformanceTests(unittest.TestCase):
         for text in ("nr_switches : 900\n", "nr_wakeups : -1\n", "nr_wakeups : unknown\n"):
             with self.subTest(text=text), self.assertRaises(perf.smoke.Unavailable):
                 perf.parse_wakeups(text)
+
+
+    class Native:
+        def __init__(self, stale=False):
+            self.value, self.visible, self.selected = "", True, False
+            self.stale = stale
+            self.shows = 0
+            self.typed = []
+
+        def key(self, chord):
+            if chord == "Escape":
+                self.visible = False
+            elif chord == "ctrl+shift+y":
+                self.visible = True
+                self.shows += 1
+            elif chord == "ctrl+a":
+                self.selected = True
+
+        def focus_editor(self):
+            assert not self.visible
+
+        def text(self, text):
+            self.value = text if self.selected else self.value + text
+            self.selected = False
+            self.typed.append(text)
+
+        def snapshot(self):
+            query = self.value
+            count = "1 result" if len(query) == 11 else "10 results"
+            title = "Ibis smoke reference 00000" + ("x" if self.stale else query[-1:])
+            return {"visible": self.visible, "nodes": [
+                {"name": "Search references", "role": "combo box", "value": query, "focused": self.visible},
+                {"name": "100,000 references", "role": "label"},
+                {"name": count, "role": "status"}, {"name": title, "role": "list item"}]}
+
+    def test_native_samples_require_real_show_and_unique_completed_query(self):
+        native = self.Native()
+        def observation(action, ready, timeout=20):
+            action()
+            self.assertTrue(ready())
+            return 1.25
+        with patch.object(perf, "observe", side_effect=observation):
+            summon, typing = perf.interaction_samples(native)
+        self.assertEqual(summon, [1.25] * 20)
+        self.assertEqual(typing, [1.25] * 20)
+        self.assertEqual(native.shows, 21)
+        self.assertEqual(len([text for text in native.typed if len(text) == 1]), 21)
+        with patch.object(perf, "observe", side_effect=observation), self.assertRaises(AssertionError):
+            perf.interaction_samples(self.Native(stale=True))
+
+    def test_native_observation_waits_for_evidence_and_never_subtracts_overhead(self):
+        states = iter((False, False, True))
+        ticks = iter((0, .001, .020, .040, .045))
+        with patch.object(perf.time, "monotonic", side_effect=lambda: next(ticks)), patch.object(perf.time, "sleep") as sleep:
+            elapsed = perf.observe(lambda: None, lambda: next(states))
+        self.assertEqual(elapsed, 45)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_native_observation_has_a_deadline(self):
+        with patch.object(perf.time, "monotonic", side_effect=(0, 21)), self.assertRaises(AssertionError):
+            perf.observe(lambda: None, lambda: False)
 
 
 if __name__ == "__main__":

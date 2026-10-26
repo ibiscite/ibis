@@ -1,0 +1,118 @@
+name: Release performance
+
+on:
+  pull_request:
+    paths: ["crates/**", "apps/desktop/**", "Cargo.*", "rust-toolchain.toml", "scripts/**", ".github/workflows/performance.yml"]
+  push:
+    branches: [main]
+    paths: ["crates/**", "apps/desktop/**", "Cargo.*", "rust-toolchain.toml", "scripts/**", ".github/workflows/performance.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  performance:
+    name: Release performance (Linux, diagnostic)
+    # Deliberately separate from CI result; neither it nor publication needs this job.
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Check out candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Check out main baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Main pushes compare the previous main head; PRs compare current main.
+          ref: ${{ github.event_name == 'push' && github.event.before || 'main' }}
+          fetch-depth: 2
+          path: baseline
+          persist-credentials: false
+
+      - name: Record exact sources
+        shell: bash
+        run: |
+          mkdir -p performance
+          candidate_sha=$(git -C candidate rev-parse HEAD)
+          if [ "$(git -C baseline rev-parse HEAD)" = "$candidate_sha" ]; then
+            # Manual runs on main compare the preceding main commit.
+            git -C baseline checkout --detach HEAD^
+          fi
+          main_sha=$(git -C baseline rev-parse HEAD)
+          printf 'CANDIDATE_SHA=%s\nMAIN_SHA=%s\n' "$candidate_sha" "$main_sha" >> "$GITHUB_ENV"
+          printf 'candidate=%s\nmain=%s\n' "$candidate_sha" "$main_sha" > performance/sources.txt
+
+      - name: Install existing native test prerequisites
+        run: |
+          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
+          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth fonts-inter fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core
+          sudo sysctl kernel.sched_schedstats=1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Set up baseline pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: baseline/apps/desktop/package.json
+
+      - name: Build main in release mode
+        working-directory: baseline
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/baseline/target-performance
+        run: |
+          pnpm -C apps/desktop install --frozen-lockfile
+          pnpm -C apps/desktop build
+          cargo build -p ibis-desktop --release --locked --features tauri/custom-protocol
+
+      - name: Set up candidate pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: candidate/apps/desktop/package.json
+
+      - name: Build candidate in release mode
+        working-directory: candidate
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/candidate/target-performance
+        run: |
+          pnpm -C apps/desktop install --frozen-lockfile
+          pnpm -C apps/desktop build
+          cargo build -p ibis-desktop --release --locked --features tauri/custom-protocol
+
+      - name: Observe both release executables with the same harness
+        shell: bash
+        run: |
+          # Each source uses its own toolchain, lockfile, interface and target dir.
+          # One candidate harness observes both; the old source need not contain it.
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 -B candidate/scripts/release-performance.py --app baseline/target-performance/release/ibis-desktop --sha "$MAIN_SHA" --output performance/main.json
+          xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 -B candidate/scripts/release-performance.py --app candidate/target-performance/release/ibis-desktop --sha "$CANDIDATE_SHA" --output performance/candidate.json
+          /usr/bin/python3 -B candidate/scripts/release-performance.py --compare performance/candidate.json performance/main.json --output performance/comparison.json | tee performance/comparison.md
+          cat performance/comparison.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Note an unavailable diagnostic
+        if: failure()
+        run: echo '::warning::Release performance did not complete. Inspect source IDs and any partial reports; this is diagnostic only.'
+
+      - name: Keep source-qualified observations
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-performance-${{ github.event.pull_request.head.sha || github.sha }}
+          path: performance/
+          if-no-files-found: warn
+          retention-days: 14

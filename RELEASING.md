@@ -38,6 +38,20 @@ A known earlier identity skips qualification with a notice (ADR 0023).
 Published source is read as text, never executed. Current package installation
 checks still gate publication.
 
+## Diagnostic release performance
+
+The optional **Release performance** workflow compares Linux release executables
+with an exact `main` source on the same runner (previous `main` for a main push or
+manual run at its head). Its artifact records both SHAs, twenty warm summon and
+single-keystroke samples at 100,000 synthetic references, hidden idle process-tree
+RSS and scheduler wakeups, and the comparison. It never gates `CI result` or
+publication. Keyboard delivery, accessibility reads and polling are included in
+the observed timings; these do not certify the app's internal latency budgets.
+Idle wakeups cover threads present at both endpoints; census changes invalidate
+the measurement, and threads that start and exit inside the interval are not
+observed. Missing capabilities produce an unavailable diagnostic, never a zero
+or a pass. No personal libraries or app logs are collected.
+
 ## Update keys (ADR 0019)
 
 Two keys in two environments: the stable key in `updates` (only `v*` tags, after approval) and the nightly key in `nightly` (only `main`). Ibis trusts only the stable key and Ibis Nightly only the nightly key (`NIGHTLY_PUBKEY` in `scripts/update-feed.mjs`), so a key used on every push can never sign a stable update. Key-holding jobs restore no shared cache. Each signature names the build version, which the app checks before installing. Losing a key means that channel's users reinstall once by hand; the maintainer keeps an offline backup of each key. A daily `update-e2e` job installs the previous nightly on each platform and checks that it updates itself to the newest.
