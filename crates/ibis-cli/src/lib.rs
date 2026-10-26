@@ -188,18 +188,22 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
         }
     };
     match execute(&engine, &matches, &mut input, &mut output) {
-        Ok(None) => 0,
-        result => emit(
-            json,
-            result.and_then(|result| {
-                result.ok_or(EngineError {
-                    code: ErrorCode::Internal,
-                })
-            }),
-            &mut output,
-            &mut errors,
-        ),
+        Ok(Execution::Stdio(code)) => code,
+        Ok(Execution::Result(result)) => emit(json, Ok(result), &mut output, &mut errors),
+        Err(error) if matches.subcommand_name() == Some("serve") => {
+            if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
+                70
+            } else {
+                error.code.exit_code().value()
+            }
+        }
+        Err(error) => emit(json, Err(error), &mut output, &mut errors),
     }
+}
+
+enum Execution {
+    Result(DispatchResult),
+    Stdio(u8),
 }
 
 fn execute<R: BufRead, W: Write + Send>(
@@ -207,11 +211,11 @@ fn execute<R: BufRead, W: Write + Send>(
     matches: &ArgMatches,
     input: &mut R,
     output: &mut W,
-) -> Result<Option<DispatchResult>, EngineError> {
+) -> Result<Execution, EngineError> {
     let (name, args) = matches.subcommand().ok_or(EngineError { code: ErrorCode::Usage })?;
     if name == "toggle" {
         toggle::run(args.get_one::<PathBuf>("app").map(PathBuf::as_path))?;
-        return Ok(Some(DispatchResult {
+        return Ok(Execution::Result(DispatchResult {
             data: json!({"toggled":true}),
             text: None,
             exit_code: ibis_core::contract::ExitCode::Ok,
@@ -235,10 +239,13 @@ fn execute<R: BufRead, W: Write + Send>(
         engine.dispatch(Method::Libraries, &params, &cancel)?;
     }
     if name == "serve" {
-        ibis_engine::server::serve(engine.clone(), input, output).map_err(|_| EngineError {
-            code: ErrorCode::Internal,
-        })?;
-        return Ok(None);
+        return Ok(Execution::Stdio(
+            match ibis_engine::server::serve(engine.clone(), input, output) {
+                Ok(()) => 0,
+                Err(protocol::FrameError::Io) => 70,
+                Err(_) => 3,
+            },
+        ));
     }
     let method = Method::parse(name).map_err(|code| EngineError { code })?;
     let params = match method {
@@ -287,7 +294,7 @@ fn execute<R: BufRead, W: Write + Send>(
                 },
                 &cancel,
             )?;
-            return DispatchResult::citation(result, keys.len()).map(Some);
+            return DispatchResult::citation(result, keys.len()).map(Execution::Result);
         }
         Method::Styles => json!({}),
         Method::Schema => {
@@ -297,7 +304,7 @@ fn execute<R: BufRead, W: Write + Send>(
             json!({"method":Method::parse(args.get_one::<String>("method").ok_or(EngineError {code:ErrorCode::Usage})?).map_err(|code|EngineError {code})?,"params":if args.get_flag("stdin") {stdin_json(input)?} else {args.get_one::<String>("params").map(|params|parse_json(params.as_bytes())).transpose()?.unwrap_or(Value::Null)}})
         }
     };
-    engine.dispatch(method, &params, &cancel).map(Some)
+    engine.dispatch(method, &params, &cancel).map(Execution::Result)
 }
 fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
     protocol::parse_json(bytes).map_err(|_| EngineError {
