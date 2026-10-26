@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App } from "./App";
-import { galleryProvider, galleryStates } from "./gallery-fixtures";
+import { testProvider, testStates } from "./test-fixtures";
 import { platformOf, setPlatform } from "./nativeAppearance";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
@@ -13,7 +13,6 @@ const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8"
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
 const toolbar = readFileSync(new FileURL("./ui/ToolbarMenu.css", import.meta.url), "utf8");
-const gallery = readFileSync(new FileURL("./gallery.css", import.meta.url), "utf8");
 const corners = readFileSync(new FileURL("../src-tauri/src/native_corners.rs", import.meta.url), "utf8");
 
 afterEach(() => { cleanup(); clearMocks(); delete document.documentElement.dataset.platform; });
@@ -84,7 +83,7 @@ test("the selected row follows each platform", () => {
   // Windows: the full Fluent accent with its paired text, no side pill (#1020);
   // Linux: GTK's selection colour (the Highlight pair).
   expect(rules(tokens, ':root[data-platform="windows"]')).not.toMatch(/--row-active-|--tile-active-/);
-  const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
+  const windows = rules(tokens, ':root[data-platform="windows"]');
   expect(windows).toMatch(/--accent:\s*light-dark\(#005FB8, #60CDFF\);\s*--text-on-accent:\s*light-dark\(#fff, #000\);/);
   // Selection takes the deeper accent shade with white text, calm in dark mode.
   expect(windows).toMatch(/--selected-background:\s*light-dark\(#005FB8, #0067C0\);\s*--selected-text:\s*#fff;/);
@@ -210,7 +209,7 @@ test("per-OS overlay roles keep their shapes, easing, scrims and shadow-free con
   for (const [platform, alpha] of [["macos", "20%"], ["linux", "25%"]]) expect(rules(tokens, `:root[data-platform="${platform}"]`)).toContain(`--scrim: light-dark(rgb(0 0 0 / ${alpha})`);
   const at = tokens.indexOf("@media (prefers-contrast: more), (forced-colors: active)");
   expect(at).toBeGreaterThan(0);
-  for (const block of [rules(tokens.slice(at), ":root, :root[data-platform]"), rules(tokens, ':root[data-gallery-theme="contrast"]')]) {
+  for (const block of [rules(tokens.slice(at), ":root, :root[data-platform]")]) {
     for (const level of ["card", "raised", "overlay", "dialog", "toast"]) expect(block).toContain(`--shadow-${level}: none;`);
     expect(block).toContain("--scrim: Canvas;");
   }
@@ -257,7 +256,7 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
 });
 
 test("the Windows selected row keeps 4.5:1 text and the added tile 3:1 in both themes", () => {
-  const windows = rules(tokens, ':root[data-platform="windows"]:not([data-gallery-theme="contrast"])');
+  const windows = rules(tokens, ':root[data-platform="windows"]');
   const pair = (token: string) => windows.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`, "i"))!.slice(1, 3);
   const full = (hex: string) => hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join("")}` : hex;
   const fill = pair("--selected-background");
@@ -294,7 +293,6 @@ test("an added row shows only its scarlet tile with a check: no wash, ring or sc
   // High contrast inverts the tile on the active row instead of drawing a ring.
   const contrast = styles.slice(styles.indexOf("@media (prefers-contrast: more)"));
   expect(rules(contrast, '[role="option"][data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\);\s*color:\s*var\(--row-active-background\)/);
-  expect(rules(gallery, ':root[data-gallery-theme="contrast"] [data-active][data-citation-selected] .result-tile')).toMatch(/background:\s*var\(--row-active-text\)/);
 });
 
 /** WCAG relative luminance contrast of two #rrggbb colours. */
@@ -327,8 +325,8 @@ test("the added tile's white check keeps 4.5:1 and the tile stands 3:1 off the s
 
 test("the tile is a pointer-only control: no button, no Tab stop, hidden from the accessibility tree", async () => {
   mockIPC(() => { throw new Error("Native commands must not run here"); }, { shouldMockEvents: true });
-  const state = galleryStates.find((candidate) => candidate.id === "many-results")!;
-  render(<App {...galleryProvider(state)} />);
+  const state = testStates.find((candidate) => candidate.id === "many-results")!;
+  render(<App {...testProvider(state)} />);
   await waitFor(() => expect(document.querySelectorAll("#results .result-tile").length).toBe(20));
   for (const option of document.querySelectorAll('#results [role="option"]')) {
     expect(option.querySelector("button, a, input, [tabindex]")).toBeNull();
@@ -355,8 +353,8 @@ test("no active row has an edge or ring outside contrast and forced colours", ()
 
 test("the framed-box icon overlap moves only the search glyph, never the pin icon", async () => {
   mockIPC(() => { throw new Error("Native commands must not run here"); }, { shouldMockEvents: true });
-  const state = galleryStates.find((candidate) => candidate.id === "many-results")!;
-  render(<App {...galleryProvider(state)} />);
+  const state = testStates.find((candidate) => candidate.id === "many-results")!;
+  render(<App {...testProvider(state)} />);
   await screen.findAllByRole("option");
   const searchIcon = document.querySelector(".search-bar")!.firstElementChild;
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
@@ -375,8 +373,8 @@ test("the framed-box icon overlap moves only the search glyph, never the pin ico
 
 test("the framed-box icon overlap moves only the search glyph, never the pin icon", async () => {
   mockIPC(() => { throw new Error("Native commands must not run here"); }, { shouldMockEvents: true });
-  const state = galleryStates.find((candidate) => candidate.id === "many-results")!;
-  render(<App {...galleryProvider(state)} />);
+  const state = testStates.find((candidate) => candidate.id === "many-results")!;
+  render(<App {...testProvider(state)} />);
   await screen.findAllByRole("option");
   const searchIcon = document.querySelector(".search-bar")!.firstElementChild;
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
@@ -448,8 +446,8 @@ test("under forced colours an active added row differs from an active row in its
   sheet.textContent = forced;
   document.head.append(sheet);
   try {
-    const state = galleryStates.find((candidate) => candidate.id === "many-results")!;
-    render(<App {...galleryProvider(state)} />);
+    const state = testStates.find((candidate) => candidate.id === "many-results")!;
+    render(<App {...testProvider(state)} />);
     const row = (n: number) => document.querySelectorAll<HTMLElement>('#results [role="option"]')[n]!;
     await waitFor(() => expect(row(2)).toBeTruthy());
     const box = screen.getByLabelText("Search references");
@@ -503,9 +501,6 @@ test("close and clear buttons share one drawn glyph, and contrast restores the s
   expect(rules(forced, '.ui-button[data-glyph="close"]::before')).toMatch(/background:\s*ButtonText/);
   // No screen draws its own copy of the glyph.
   expect(styles).not.toMatch(/\.search-clear::before/);
-  // The gallery's contrast preview restores the ring as prefers-contrast does.
-  expect(rules(gallery, ':root[data-gallery-theme="contrast"] #search:focus-visible'))
-    .toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
 });
 
 test("under forced colours the active row opts out of the backplate so HighlightText stays on Highlight", () => {
@@ -555,7 +550,7 @@ test("Windows and GNOME use their own type and neutrals, never under contrast mo
   expect(rules(tokens, ':root[data-platform="windows"]')).toMatch(/--font-family:\s*"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif/);
   expect(rules(tokens, ':root[data-platform="linux"]')).toMatch(/--font-family:\s*system-ui, "Adwaita Sans", Cantarell, sans-serif/);
   for (const [platform, surface] of [["windows", "#f3f3f3, #202020"], ["linux", "#fafafb, #222226"]] as const) {
-    const head = `:root[data-platform="${platform}"]:not([data-gallery-theme="contrast"]) {`;
+    const head = `:root[data-platform="${platform}"] {`;
     const at = tokens.indexOf(head);
     expect(at, platform).toBeGreaterThan(0);
     expect(tokens.slice(at, tokens.indexOf("}", at))).toContain(`--surface: light-dark(${surface})`);
@@ -573,7 +568,7 @@ test("secondary text keeps 4.5:1 on each look's surface", () => {
   const value = (block: string, token: string) => block.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`))?.slice(1, 3);
   const base = tokens.slice(tokens.indexOf("@supports (color: light-dark(white, black))"));
   for (const platform of ["windows", "linux"]) {
-    const at = tokens.indexOf(`:root[data-platform="${platform}"]:not([data-gallery-theme="contrast"]) {`);
+    const at = tokens.indexOf(`:root[data-platform="${platform}"] {`);
     const block = tokens.slice(at, tokens.indexOf("}", at));
     const surface = value(block, "--surface")!, text = value(block, "--text")!, muted = value(block, "--muted") ?? value(base, "--muted")!;
     for (const mode of [0, 1]) {
@@ -585,7 +580,7 @@ test("secondary text keeps 4.5:1 on each look's surface", () => {
 
 test("spacing tokens, direct gaps/padding and resolved formulas keep the 4 px grid", () => {
   const off: string[] = [];
-  for (const platform of ["macos", "windows", "linux"]) for (const mode of ["normal", "more", "forced", "gallery"]) for (const coarse of [false, true]) {
+  for (const platform of ["macos", "windows", "linux"]) for (const mode of ["normal", "more", "forced"]) for (const coarse of [false, true]) {
     const blocks = tokenBlocks(appSheets, platform, mode, true, false, false, coarse), scopes = tokenScopes(blocks);
     for (const block of blocks) for (const [name, value] of block.values) {
       // Website prose follows its own approved rhythm, not the native 4 px grid.
@@ -727,7 +722,6 @@ function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = 
   const doc = document.implementation.createHTMLDocument();
   doc.documentElement.dataset.platform = platform;
   if (notice) doc.documentElement.classList.add("notice-window");
-  if (mode === "gallery") doc.documentElement.dataset.galleryTheme = "contrast";
   if (material) doc.documentElement.dataset.nativeAppearance = "vibrancy";
   const blocks: TokenBlock[] = [];
   const media = (query: string) => query.split(",").some((part) => [...part.matchAll(/\((prefers-[\w-]+|forced-colors|pointer):\s*([\w-]+)\)/g)].every(([, feature, value]) =>
@@ -800,7 +794,7 @@ test.each(["macos", "windows", "linux"])("every application var resolves on %s i
   expect(Object.keys(appSheets).length).toBeGreaterThanOrEqual(8);
   expect(tokenBlocks(appSheets).flatMap((block) => block.values).length).toBeGreaterThan(500);
   const errors: string[] = [];
-  for (const mode of ["normal", "more", "forced", "gallery", "reduced", "transparency"]) for (const advanced of [true, false]) for (const material of [false, true]) for (const notice of [false, true]) for (const coarse of [false, true]) {
+  for (const mode of ["normal", "more", "forced", "reduced", "transparency"]) for (const advanced of [true, false]) for (const material of [false, true]) for (const notice of [false, true]) for (const coarse of [false, true]) {
     const blocks = tokenBlocks(appSheets, platform, mode, advanced, material, notice, coarse), scopes = tokenScopes(blocks);
     for (const block of blocks) for (const [name, value] of block.values) {
       const definitions = scopes.get(block.scope)!;

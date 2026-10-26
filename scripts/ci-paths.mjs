@@ -7,7 +7,7 @@ const validPath = (path) => typeof path === "string" && path.length > 0 && !/[\x
   && path.split("/").every((part) => part && part !== "." && part !== "..");
 const documentation = (path) => !path.startsWith("fixtures/") && (path.endsWith(".md") || path.startsWith("LICENSE") || path.startsWith(".github/ISSUE_TEMPLATE/"));
 const interfaceFile = (path) => /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path)
-  || ["apps/desktop/index.html", "apps/desktop/gallery.html", "scripts/gallery-contact-sheet.mjs", "scripts/gallery-geometry.mjs", "scripts/gallery-geometry.test.mjs", "docs/design-geometry.json"].includes(path);
+  || path === "apps/desktop/index.html";
 // The website is plain files checked by the script tests in the Web job.
 const websiteFile = (path) => path.startsWith("website/");
 

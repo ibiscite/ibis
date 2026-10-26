@@ -16,7 +16,7 @@ pub fn exercise(data: &[u8]) {
     };
     // A known-good neighbor must survive any malformed items before it. Pick
     // a key absent from the page so arbitrary duplicate keys cannot hide it.
-    let mut sentinel_key = "FUZZGOOD".to_string();
+    let mut sentinel_key = "SYNTHETICGOOD".to_string();
     while page
         .iter()
         .any(|item| item.get("key").and_then(Value::as_str) == Some(&sentinel_key))
@@ -75,5 +75,20 @@ pub fn exercise(data: &[u8]) {
             }
             Err(error) => panic!("unexpected CSL export failure: {error}"),
         }
+    }
+}
+
+#[test]
+fn synthetic_zotero_payload_seeds() {
+    for seed in [
+        include_bytes!("../../../fixtures/zotero/payloads/mixed.json").as_slice(),
+        include_bytes!("../../../fixtures/zotero/payloads/export-text.json").as_slice(),
+        include_bytes!("../../../fixtures/zotero/payloads/neighbors.json").as_slice(),
+        b"null",
+        b"[]",
+        b"{}",
+        b"[false,0,\"bad\",[]]",
+    ] {
+        exercise(seed);
     }
 }

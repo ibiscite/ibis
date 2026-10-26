@@ -47,10 +47,6 @@ test("script-only discovery covers Node and Python names without starting build 
     for (const name of ["new.test.mjs", "new.test.cjs", "test_new.py", "new.test.py"]) assert.match(result.stdout, new RegExp(name));
     assert.doesNotMatch(result.stdout, /unrelated\.py|== Format:|== Lint:|== Desktop:|== Workflow/);
   }
-  // Only the package-dependent boundary suite is omitted on native runners.
-  writeFileSync(join(scripts, "ui-imports.test.mjs"), 'throw Error("synthetic UI dependency missing");');
-  assert.equal(run("--platform-script-tests").status, 0);
-  const failedUi = run("--script-tests"); assert.equal(failedUi.status, 1, failedUi.stdout + failedUi.stderr);
   writeFileSync(join(scripts, "new.test.cjs"), 'throw Error("synthetic script failure");');
   assert.equal(run("--platform-script-tests").status, 1);
   writeFileSync(join(scripts, "new.test.cjs"), "");

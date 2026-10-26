@@ -29,7 +29,7 @@ does not authorize signing or publication.
   changes in a risky area ([ADR 0027](adr/0027-fast-until-1-0.md)) need an
   independent review with every P1 and P2 finding fixed, and other changes need
   the author's recorded adversarial check
-  ([development.md](development.md#review-and-merge)). Authorized agents may merge
+  ([contribution guide](../CONTRIBUTING.md#commits-and-pull-requests)). Authorized agents may merge
   changes under those rules; AI assistance does not bypass them.
 - **The maintainer** has final responsibility for the project and explicitly
   authorizes releases, tags and publication. Agents cannot grant themselves release

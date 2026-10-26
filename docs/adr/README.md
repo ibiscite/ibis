@@ -16,8 +16,6 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0010 | Search: instant keyword first, meaning-based search added later | proposed (awaiting measurements) |
 | 0011 | AI-assisted contributions with guardrails | accepted (amended by 0015) |
 | 0012 | Ship 0.1 as a single process; split out an engine only if measurements require it | accepted (amends 0004) |
-| 0013 | Permit NCSA for the isolated fuzzing dependency | accepted |
-| 0014 | Share one lockfile with fuzz infrastructure | accepted (amends 0013 workspace layout) |
 | 0015 | Autonomous agents work under standing maintainer authorization | accepted (amends 0011; amended by 0017 and 0027; one tracking issue since 2026-10-25) |
 | 0016 | Keep versioned, human-editable settings in the platform configuration folder | accepted (library field and migration superseded by 0018; amended by 0022; location superseded by 0023) |
 | 0017 | Lighter review for documentation and test changes | accepted (amends 0015; amended by 0027) |

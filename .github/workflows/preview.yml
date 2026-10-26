@@ -328,7 +328,6 @@ jobs:
           codesign --verify --deep --strict "$installed"
           app=$(find "$installed/Contents/MacOS" -type f -perm -u+x | head -n 1)
           echo "installed at $app"
-          show python3 scripts/smoke-native.py --app "$app" --output screenshots/install-macOS --identifier "$IDENTIFIER" --skip-performance
           show python3 "$RUNNER_TEMP/stays-up.py" "$app"
           rm -rf "$installed"
 
@@ -348,7 +347,6 @@ jobs:
           app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
           test -n "$app" || { echo "::error::The setup executable installed no app in $dir"; exit 1; }
           echo "installed at $app"
-          show python scripts/smoke-native.py --app "$app" --output screenshots/install-Windows --identifier "$IDENTIFIER" --skip-performance
           show python "$RUNNER_TEMP/stays-up.py" "$app"
           "$dir/uninstall.exe" //S
           # The uninstaller copies itself and returns early; wait for removal.

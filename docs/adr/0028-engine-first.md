@@ -17,4 +17,4 @@ On 2026-10-26 the maintainer chose one independent Ibis picker that covers what 
 
 ## Consequences
 
-The command line, agents and the app see the same behaviour, and tests compare them byte for byte. The engine grows by about 5–6 MB for QuickJS, ICU collation data and the bundled styles. A 100-entry bibliography takes seconds in QuickJS rather than under one in V8, so bibliographies run in the background. QuickJS runs style and record data in the main process, so the formatter gets memory and time limits and fuzzing. `tauri-specta` is replaced by types generated from the JSON Schema.
+The command line, agents and the app see the same behaviour, and tests compare them byte for byte. The engine grows by about 5–6 MB for QuickJS, ICU collation data and the bundled styles. A 100-entry bibliography takes seconds in QuickJS rather than under one in V8, so bibliographies run in the background. QuickJS runs style and record data in the main process, so the formatter gets memory and time limits and hostile-input tests. `tauri-specta` is replaced by types generated from the JSON Schema.

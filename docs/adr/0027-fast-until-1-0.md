@@ -24,7 +24,7 @@ Ibis has only preview testers, who accept losing settings between pre-1.0 versio
 
 It replaces the separate pre-pull-request attack and the routine bot review. All other changes merge when the required checks pass and the author has recorded their own adversarial check (the rule ADR 0017 set for documentation and tests). Every P1 and P2 finding is still fixed before merging.
 
-Everything that prevents real damage stays: the required "CI result" on the exact head, the merge queue, no stacked branches, one writer per set of files, tests for every fix, revert first when a real failure turns `main` red, privacy rules, licence checks, signed-off commits with public identities, and no bypasses.
+Everything that prevents real damage stays: the required "CI result" on the exact head, no stacked branches, one writer per set of files, tests for every fix, revert first when a real failure turns `main` red, privacy rules, licence checks, signed-off commits with public identities, and no bypasses.
 
 ## Consequences
 

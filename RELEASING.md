@@ -18,7 +18,7 @@ executable remains `ibis-desktop`; Nightly uses `ibis-nightly`, including Tauri'
 automatically named icons. Nightly's config removes inherited Stable icon
 destinations through Tauri's JSON merge patch before adding its own.
 
-Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. Release notes come from Conventional Commits ([commits](docs/development.md#commits)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
+Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. Release notes come from Conventional Commits ([commits](CONTRIBUTING.md#commits-and-pull-requests)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
 
 ## How a release is built
 
@@ -48,7 +48,7 @@ Two keys in two environments: the stable key in `updates` (only `v*` tags, after
 - The Actions variable `RELEASE_PLEASE` set to `enabled`.
 - The `updates` environment (tag rule `v*`, the maintainer as required reviewer) and the `nightly` environment (branch `main`), each holding its key and password.
 
-When changing Release Please's config, rehearse it in a temporary checkout and check that only the workspace version, the four release package entries in `Cargo.lock` and the version in `apps/desktop/package.json` change (`ibis-fuzz` stays as it is), and that `cargo metadata --locked --offline --format-version 1` passes for the workspace and for `fuzz/Cargo.toml`. TOML name filters use `@.name.value` ([why](https://github.com/googleapis/release-please/issues/2455)).
+When changing Release Please's config, rehearse it in a temporary checkout and check that only the workspace version, the four release package entries in `Cargo.lock` and the version in `apps/desktop/package.json` change, and that `cargo metadata --locked --offline --format-version 1` passes for the workspace. TOML name filters use `@.name.value` ([why](https://github.com/googleapis/release-please/issues/2455)).
 
 ## Before approving a stable release
 

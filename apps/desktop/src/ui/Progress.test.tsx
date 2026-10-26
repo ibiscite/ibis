@@ -40,14 +40,11 @@ test.each(["@media (prefers-contrast: more) {", "@media (forced-colors: active) 
   expect(block).toContain("--progress-border-width: var(--border-width);");
 });
 
-test("progress uses role colours, preserves them in forced colours and mirrors them in the contrast gallery", () => {
+test("progress uses role colours, preserves them in forced colours", () => {
   expect(css).toContain("background: var(--progress-track)");
   expect(css).toContain("background: var(--progress-fill)");
   expect(css).toContain("border: var(--progress-border-width) solid var(--progress-border)");
   expect(css).toMatch(/forced-colors: active[^}]*forced-color-adjust: none/s);
-  const gallery = tokens.match(/^:root\[data-gallery-theme="contrast"\][^\n]*--progress-track:[^\n]*/m)?.[0];
-  expect(gallery).toContain("--progress-track: Canvas;");
-  expect(gallery).toContain("--progress-fill: CanvasText;");
 });
 
 test("indeterminate motion becomes a full-width dashed indicator with reduced motion", () => {

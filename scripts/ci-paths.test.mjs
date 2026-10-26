@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -21,17 +21,17 @@ function workflowStep() {
 }
 
 test("interface-only changes retain web checks without native jobs", () => {
-  for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/messages.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html", "apps/desktop/gallery.html", "scripts/gallery-contact-sheet.mjs", "scripts/gallery-geometry.mjs", "scripts/gallery-geometry.test.mjs"]) {
+  for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/messages.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html"]) {
     assert.deepEqual(pr([row(path), row("docs/design.md")]), { native: false, web: true }, path);
   }
 });
 
 test("website-only changes keep web checks without native jobs", () => {
-  for (const path of ["website/index.html", "website/demo.js", "website/_headers"]) {
+  for (const path of ["website/index.html", "website/site.js", "website/_headers"]) {
     assert.deepEqual(pr([row(path)]), { native: false, web: true }, path);
   }
-  assert.deepEqual(pr([row("website/demo.js"), row("apps/desktop/src-tauri/src/lib.rs")]), { native: true, web: true });
-  assert.equal(pr([row("websites/demo.js")]).native, true, "only the website directory itself");
+  assert.deepEqual(pr([row("website/site.js"), row("apps/desktop/src-tauri/src/lib.rs")]), { native: true, web: true });
+  assert.equal(pr([row("websites/site.js")]).native, true, "only the website directory itself");
 });
 
 test("without native inputs only a Linux Desktop placeholder runs", () => {
@@ -40,25 +40,13 @@ test("without native inputs only a Linux Desktop placeholder runs", () => {
   assert.match(desktop, /os: \$\{\{ needs\.changes\.outputs\.native == 'true' && fromJSON\('\["ubuntu-24\.04", "macos-15", "windows-2025"\]'\) \|\| fromJSON\('\["ubuntu-24\.04"\]'\) \}\}/);
 });
 
-test("the gallery geometry fixture keeps web checks without native jobs", () => {
-  const fixture = "docs/design-geometry.json";
-  for (const files of [[row(fixture)], [row(fixture), row("apps/desktop/src/tokens.css"), row("docs/design.md")]]) {
-    assert.deepEqual(pr(files), { native: false, web: true });
-  }
-  assert.deepEqual(pr([row("docs/old.md", fixture)]), { native: false, web: true });
-  assert.equal(pr([row(fixture, "apps/desktop/src-tauri/tauri.conf.json")]).native, true);
-  for (const event of ["push", "merge_group"]) {
-    assert.deepEqual(classify(event, 1, [row(fixture)]), { native: true, web: true });
-  }
-});
-
 test("documentation keeps its existing fast path, except synthetic fixtures", () => {
-  assert.deepEqual(pr([row("README.md"), row("docs/design/menu.md"), row("LICENSE"), row(".github/ISSUE_TEMPLATE/task.yml")]), { native: false, web: false });
+  assert.deepEqual(pr([row("README.md"), row("docs/design/menu.md"), row("LICENSE"), row(".github/ISSUE_TEMPLATE/bug_report.yml")]), { native: false, web: false });
   assert.equal(pr([row("fixtures/README.md")]).native, true);
 });
 
 test("native, tooling and unknown changes stay conservative", () => {
-  for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "apps/desktop/vite.config.ts", "apps/desktop/src/unknown.rs", "apps/desktop/src-tauri/tauri.conf.json", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", "unknown/file", "docs/design-settings.json", "docs/design-geometry.json.bak"]) {
+  for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "apps/desktop/vite.config.ts", "apps/desktop/src/unknown.rs", "apps/desktop/src-tauri/tauri.conf.json", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", "unknown/file", "docs/design-settings.json", "docs/design-settings.json.bak"]) {
     assert.deepEqual(pr([row("apps/desktop/src/App.tsx"), row(path)]), { native: true, web: true }, path);
   }
 });
@@ -109,67 +97,13 @@ test("workflow retains web validation and gates native-only Windows bootstrap", 
   assert.equal(workflow.match(/= "\$EXPECTED_REFS"/g)?.length, 2);
 });
 
-test("Desktop starts after classification; Native UI runs only on main pushes and manual runs", () => {
+test("Desktop starts after classification and CI result retains the required jobs", () => {
   const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const changes = workflow.match(/\n  changes:\n([\s\S]*?)\n  test:/)[1];
   assert.match(changes, /pnpm exec vite build\n/);
-  assert.doesNotMatch(changes, /--mode evidence/, "Desktop embeds the ordinary app build");
   assert.match(changes, /- name: Share the web interface\n        if: steps\.classify\.outputs\.native == 'true'[\s\S]*name: desktop-web/);
   assert.match(workflow.match(/\n  desktop:\n([\s\S]*?)\n    steps:/)[1], /\n    needs: changes\n/);
-  assert.match(workflow.match(/\n  native-ui:\n([\s\S]*?)\n    steps:/)[1], /if: .*\(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\)/);
   assert.match(workflow, /result:[\s\S]*needs: \[changes, test, web, desktop, fidelity, dependencies\]/, "CI result still needs every required job");
-});
-
-test("the optional main-only gallery renders every frame and keeps every failure", { skip: process.platform === "win32" }, (t) => {
-  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-  const web = workflow.match(/\n  web:\n([\s\S]*?)\n  gallery:/)[1];
-  assert.doesNotMatch(web, /gallery-contact-sheet|--mode evidence/);
-  const gallery = workflow.match(/\n  gallery:\n([\s\S]*?)\n  desktop:/)[1];
-  assert.match(gallery, /if: .*\(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\)/);
-  const step = gallery.match(/- name: Render every browser gallery frame\n([\s\S]*?)\n      - name:/)?.[1];
-  assert.ok(step, "all gallery looks and states run inside the optional gallery job");
-  assert.match(step, /shell: bash/);
-  assert.match(gallery, /container:\n      image: mcr\.microsoft\.com\/playwright\/python:v1\.62\.0-noble@sha256:[a-f0-9]{64}/);
-  assert.ok(gallery.indexOf("- name: Set up Node.js") < gallery.indexOf("- name: Set up pnpm"), "the image supplies Python; Node/npm must precede pnpm");
-  assert.match(gallery, /cache_dependency_path: apps\/desktop\/pnpm-lock\.yaml/);
-  assert.match(workflow, /needs: \[changes, test, web, desktop, fidelity, dependencies\]/);
-  const command = step.match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, "");
-  assert.doesNotMatch(command, /apt-get|install-deps|--with-deps/, "the preinstalled image needs no system-package installer");
-  const dir = mkdtempSync(join(tmpdir(), "ibis gallery-ci-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const calls = join(dir, "calls");
-  const stubs = 'npm() { printf "npm %s\\n" "$*" >> "$CALLS"; return "$INSTALL_STATUS"; }\nnode() { printf "node %s\\n" "$*" >> "$CALLS"; return "$FRAME_STATUS"; }';
-  for (const [install, frame, expected] of [[0, 0, 0], [17, 0, 17], [0, 1, 1], [0, 2, 2]]) {
-    writeFileSync(calls, "");
-    const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", stubs + "\n" + command], {
-      cwd: dir, encoding: "utf8", timeout: 5000,
-      env: { ...process.env, RUNNER_TEMP: dir, CALLS: calls, INSTALL_STATUS: String(install), FRAME_STATUS: String(frame) },
-    });
-    assert.equal(result.status, expected, result.stderr);
-    const log = readFileSync(calls, "utf8").trim().split("\n");
-    assert.match(log[0], /--ignore-scripts .*playwright@1\.62\.0$/);
-    assert.equal(log.length, install ? 1 : 2);
-    if (!install) assert.equal(log[1], "node scripts/gallery-contact-sheet.mjs --no-build", "no look, text or state filter can omit a frame");
-  }
-});
-
-test("container gallery Git trust covers only its checkout and changes no config file", { skip: process.platform === "win32" }, (t) => {
-  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-  const step = workflow.match(/- name: Render every browser gallery frame\n([\s\S]*?)\n      - name:/)[1];
-  const dir = mkdtempSync(join(tmpdir(), "ibis gallery-owner-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const checkout = join(dir, "checkout");
-  const other = join(dir, "other");
-  for (const path of [checkout, other]) assert.equal(spawnSync("git", ["init", "-q", path], { cwd: dir, timeout: 5000 }).status, 0);
-  const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(dir, "absent-config"), GIT_CONFIG_COUNT: "0", GIT_TEST_ASSUME_DIFFERENT_OWNER: "1" };
-  const probe = (cwd, config) => spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd, env: { ...env, ...config }, encoding: "utf8", timeout: 5000 });
-  assert.equal(probe(checkout, {}).status, 128, "a foreign-owned checkout starts untrusted");
-  const config = Object.fromEntries([...step.matchAll(/^          (GIT_CONFIG_(?:COUNT|KEY_0|VALUE_0)): (.+)$/gm)].map(([, key, value]) => [key, value.replace("${{ github.workspace }}", checkout)]));
-  const trusted = probe(checkout, config);
-  assert.equal(trusted.status, 0, trusted.stderr);
-  assert.equal(trusted.stdout.trim(), realpathSync(checkout));
-  assert.equal(probe(other, config).status, 128, "a different checkout remains untrusted");
-  assert.equal(existsSync(env.GIT_CONFIG_GLOBAL), false, "no global config was written");
 });
 
 test("the real workflow shell falls back on failed reads or changing refs", { skip: process.platform === "win32" }, (t) => {

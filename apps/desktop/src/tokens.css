@@ -206,14 +206,6 @@
   --row-active-background: var(--selected-background);
   --row-active-text: var(--selected-text);
   --row-active-muted: currentColor;
-  --gallery-padding: 1rem;
-  --gallery-gap: 1.5rem;
-  --gallery-heading-size: 1.5rem;
-  --gallery-state-title-size: 1rem;
-  --gallery-title-gap: .5rem;
-  --gallery-frame-min-width: 36rem;
-  --gallery-frame-height: 30rem;
-  --gallery-large-text-size: 200%;
 }
 
 /* Older system webviews retain usable system colours. */
@@ -231,7 +223,7 @@
     /* Windows 11 (Fluent 2): SolidBackgroundFillColorBase, TextFillColorPrimary
        and Secondary; controls and the text box on ControlFillColorDefault, list
        hover on SubtleFillColorSecondary; a focused text box turns solid. */
-    :root[data-platform="windows"]:not([data-gallery-theme="contrast"]) {
+    :root[data-platform="windows"] {
       --surface: light-dark(#f3f3f3, #202020);
       --text: light-dark(#1b1b1b, #ffffff);
       --muted: light-dark(#606060, #cfcfcf);
@@ -250,7 +242,7 @@
     }
     /* GNOME (libadwaita): window_bg and window_fg; buttons and the entry on
        the control fill (the text colour at 8%). */
-    :root[data-platform="linux"]:not([data-gallery-theme="contrast"]) {
+    :root[data-platform="linux"] {
       --surface: light-dark(#fafafb, #222226);
       --text: light-dark(#323236, #ffffff);
       --fill-control: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 8%));
@@ -317,7 +309,7 @@
    its own look (notice.css). */
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root[data-platform="macos"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+    :root[data-platform="macos"]:not(.notice-window) {
       --text: light-dark(#16181d, #f5f5f7);
       --muted: light-dark(#4c5260, #c0c3cc);
       --line: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
@@ -332,8 +324,8 @@
     }
     /* Over the veiled material, colour roles one step deeper (lighter in dark
        mode) keep 4.5:1; the opaque surface keeps Ibis scarlet as it is. */
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window):not([data-gallery-theme="contrast"]),
-    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window):not([data-gallery-theme="contrast"]) {
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
+    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
       --citation: light-dark(#982d16, #ff9d87);
       --status-done: light-dark(#135f29, #6fca81);
       --status-look: light-dark(#734b00, #f0c25a);
@@ -373,7 +365,6 @@
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --scrim: Canvas; }
 }
-:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --scrim: Canvas; }
 
 @media (prefers-contrast: more) {
   :root, :root[data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
@@ -385,11 +376,6 @@
   :root, :root[data-platform] { --separator: CanvasText; --stroke-control: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
 }
-
-/* Explicit contrast preview in the development states gallery. */
-:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
-:root[data-gallery-theme="contrast"], :root[data-gallery-theme="contrast"][data-platform] { --separator: CanvasText; --stroke-control: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; }
-:root[data-gallery-theme="contrast"] { --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
 
 /* Semantic roles preserve platform values.
    Per-look shape, elevation and motion roles are defined above.

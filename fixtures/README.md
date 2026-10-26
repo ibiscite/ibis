@@ -1,4 +1,4 @@
-# Fixture corpus
+# Test fixtures
 
 Synthetic inputs that reproduce real-world problems. Inspired by FFmpeg's FATE suite: every bug fix adds the smallest fixture that reproduces it, so the same problem can never return unnoticed.
 
@@ -14,8 +14,8 @@ Rules:
 | `updates/` | A synthetic package with unversioned, Stable and Nightly signatures from CLI 2.12.3, a forged trusted comment, and an unrelated public key; throwaway private keys were discarded |
 | `zotero/` | Synthetic Zotero local-API item envelopes (`key`, `links`, `data`, `csljson`); database snapshots for Zotero 7–10, including trashed parents and children, are still planned |
 
-`locator-queries.json` is the shared trailing-locator corpus for the Rust parser
-and synthetic website demo. It covers nine locator types, non-Latin text and
+`locator-queries.json` is the shared trailing-locator fixture set for the Rust parser
+and interface tests. It covers nine locator types, non-Latin text and
 literal ambiguous/time inputs; production interpretation remains in Rust.
 
 `bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input
@@ -50,3 +50,6 @@ has malformed `links` values (numbers, arrays, oversized or empty MIME types,
 links as text) and sentinel private values (href, key, title, path, URL,
 size) that must never appear outside `raw`. `crates/ibis-core/tests/zotero_attachments.rs`
 loads both in the object and the local-API text CSL form.
+
+`zotero/payloads/` holds the three synthetic mapper regression inputs used by
+`crates/ibis-core/tests/zotero_payload.rs`.

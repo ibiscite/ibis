@@ -24,6 +24,5 @@ commands cannot reach an application handler.
 
 New commands require an explicit manifest and capability decision. Generated
 permission files are build output, recreated from the checked inventory.
-This is a window boundary: the debug gallery reuses `main` and receives the
-picker's permissions. Pages sharing a window are not isolated from one another.
+This is a window boundary: pages sharing a window are not isolated from one another.
 The web interface still has no filesystem, shell or network plugin permissions.

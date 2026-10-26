@@ -36,8 +36,6 @@ pub(crate) enum NativeIssue {
     AutomaticMenuUpdate,
     LibraryEvent,
     Notice,
-    #[cfg(debug_assertions)]
-    GalleryNavigation,
 }
 
 impl NativeIssue {
@@ -75,8 +73,6 @@ impl NativeIssue {
             Self::AutomaticMenuUpdate => "the automatic update menu check could not be updated",
             Self::LibraryEvent => "the library-changed event could not be sent",
             Self::Notice => "the Copied notice could not be shown",
-            #[cfg(debug_assertions)]
-            Self::GalleryNavigation => "the debug gallery could not be opened",
         }
     }
 }
@@ -177,8 +173,6 @@ mod tests {
             NativeIssue::Pointer,
             NativeIssue::TrayLibrary,
             NativeIssue::LibraryEvent,
-            #[cfg(debug_assertions)]
-            NativeIssue::GalleryNavigation,
         ] {
             let mut messages = Vec::new();
             let value = checked_with(Err::<(), _>(PrivateError), issue, |message| messages.push(message));

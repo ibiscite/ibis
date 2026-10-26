@@ -4,7 +4,7 @@ export type KeyRegion = keyof typeof keyText.regions;
 export type KeyAction = keyof typeof keyText.actions;
 /** One key binding the picker really handles, in accelerator syntax. */
 export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[] };
-/** The app's unset shortcut setting, also used by the website demo. */
+/** The app's unset shortcut setting. */
 export const DEFAULT_PICKER_SHORTCUT = "CmdOrCtrl+Shift+Y";
 
 /** Every key the picker handles. The keys overlay, the footer hints and the

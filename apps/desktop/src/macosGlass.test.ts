@@ -22,7 +22,7 @@ function macSkinRules(): CSSRule[] {
 
 /** The macOS glass token block: one rule, inside its contrast guard. */
 function macBlock(): { guard: string; body: string } {
-  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root\[data-platform="macos"\]:not\(\.notice-window\):not\(\[data-gallery-theme="contrast"\]\) \{([^{}]*)\}/);
+  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root\[data-platform="macos"\]:not\(\.notice-window\) \{([^{}]*)\}/);
   expect(match, "macOS glass tokens").toBeTruthy();
   return { guard: match![1]!.trim(), body: match![2]! };
 }
@@ -54,7 +54,7 @@ test("the macOS glass look applies only to macOS and never under increased contr
   const scoped = "\n" + macSkinRules().map((rule) => rule.cssText).join("\n");
   for (const [, head] of scoped.matchAll(/\n\s*([^{}\n/][^{}]*)\{/g)) {
     if (head!.trim().startsWith("@supports")) continue;
-    expect(head!.trim()).toMatch(/^:root\[data-platform="macos"\][^ ]*:not\(\[data-gallery-theme="contrast"\]\)/);
+    expect(head!.trim()).toMatch(/^:root\[data-platform="macos"\][^ ]*/);
   }
   // Windows and Linux rules are untouched by the macOS block.
   expect(macBlock().body).not.toMatch(/data-platform="(windows|linux)"/);
@@ -86,9 +86,9 @@ test("only native success shows the material, under a veil; reduced transparency
 });
 
 test("Acrylic text roles keep contrast over black and white backdrops in both themes", () => {
-  const selector = ':root[data-platform="windows"][data-native-appearance="acrylic"]:not(.notice-window):not([data-gallery-theme="contrast"])';
+  const selector = ':root[data-platform="windows"][data-native-appearance="acrylic"]:not(.notice-window)';
   const roles = native.slice(native.indexOf(selector)).match(/^[^{]+\{([^{}]*)\}/)?.[1] ?? "";
-  const windows = tokens.match(/:root\[data-platform="windows"\]:not\(\[data-gallery-theme="contrast"\]\) \{([^{}]*)\}/)?.[1] ?? "";
+  const windows = tokens.match(/:root\[data-platform="windows"\] \{([^{}]*)\}/)?.[1] ?? "";
   const tints = rgba(roles, "--acrylic-tint");
   expect(tints).toHaveLength(2);
   for (const [theme, tint] of tints.entries()) {
@@ -126,7 +126,7 @@ test("secondary text keeps 4.5:1 over the veiled material, on the brightest and 
 
 /** Native macOS colour roles, inside the same guard. */
 function materialRoles(mode: string): string {
-  const body = tokens.match(new RegExp(String.raw`:root\[data-platform="macos"\]\[data-native-appearance="${mode}"\]:not\(\.notice-window\):not\(\[data-gallery-theme="contrast"\]\)[^{]*\{([^{}]*)\}`))?.[1];
+  const body = tokens.match(new RegExp(String.raw`:root\[data-platform="macos"\]\[data-native-appearance="${mode}"\]:not\(\.notice-window\)[^{]*\{([^{}]*)\}`))?.[1];
   expect(body, "vibrancy colour roles").toBeTruthy();
   return body!;
 }
@@ -163,7 +163,7 @@ test("the Copied notice window keeps its own pill border and colours", () => {
   document.documentElement.className = "notice-window";
   document.documentElement.dataset.platform = "macos";
   try {
-    const selector = ':root[data-platform="macos"]:not(.notice-window):not([data-gallery-theme="contrast"])';
+    const selector = ':root[data-platform="macos"]:not(.notice-window)';
     expect(document.documentElement.matches(selector)).toBe(false);
     document.documentElement.className = "";
     expect(document.documentElement.matches(selector)).toBe(true);
@@ -228,7 +228,7 @@ function overlayRules(source: string, preferences: Set<string>): string {
 test.each([
   ["macos", "opaque", "normal"], ["macos", undefined, "normal"],
   ["macos", "opaque", "reduce"], ["macos", "vibrancy", "reduce"], ["macos", "liquid-glass", "reduce"],
-  ["macos", "liquid-glass", "contrast"], ["macos", "liquid-glass", "forced"], ["macos", "liquid-glass", "gallery"],
+  ["macos", "liquid-glass", "contrast"], ["macos", "liquid-glass", "forced"],
   ["macos", "vibrancy", "normal"], ["macos", "liquid-glass", "normal"],
   ["windows", "acrylic", "reduce"], ["linux", "opaque", "reduce"],
 ] as const)("%s overlay cascade: %s material with %s preferences", (platform, mode, preference) => {
@@ -244,7 +244,6 @@ test.each([
   document.head.append(sheet);
   document.documentElement.dataset.platform = platform;
   if (mode) document.documentElement.dataset.nativeAppearance = mode;
-  if (preference === "gallery") document.documentElement.dataset.galleryTheme = "contrast";
   document.body.innerHTML = '<div class="menu-popover">Menu</div><div class="keys-dialog">Shortcuts</div>';
   try {
     const solid = preference !== "normal" || mode !== "vibrancy" && mode !== "liquid-glass";
@@ -261,6 +260,5 @@ test.each([
     sheet.remove(); document.body.innerHTML = "";
     delete document.documentElement.dataset.platform;
     delete document.documentElement.dataset.nativeAppearance;
-    delete document.documentElement.dataset.galleryTheme;
   }
 });
