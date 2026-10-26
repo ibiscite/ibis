@@ -227,7 +227,7 @@ pub(super) fn create_private(path: &Path) -> Result<(), ClosedError> {
             .create(path)
             .map_err(|_| ClosedError::PrivateStorage)?;
         #[cfg(target_os = "macos")]
-        output(Command::new("/bin/chmod").arg("-N").arg(path)).map_err(|_| ClosedError::PrivateStorage)?;
+        clear_inherited_acl(path)?;
         secure(path)?;
     }
     #[cfg(windows)]
@@ -237,6 +237,13 @@ pub(super) fn create_private(path: &Path) -> Result<(), ClosedError> {
     #[cfg(not(any(unix, windows)))]
     return Err(ClosedError::PrivateStorage);
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn clear_inherited_acl(path: &Path) -> Result<(), ClosedError> {
+    output(Command::new("/bin/chmod").args(["-h", "-N"]).arg(path))
+        .map(|_| ())
+        .map_err(|_| ClosedError::PrivateStorage)
 }
 
 pub(super) fn secure(path: &Path) -> Result<(), ClosedError> {
@@ -273,11 +280,36 @@ pub(super) fn secure(path: &Path) -> Result<(), ClosedError> {
 pub(super) fn exclude_backups(path: &Path) -> Result<(), ClosedError> {
     // Standard cachedir signature: recognized by Unix backup tools. macOS also
     // gets Time Machine's native exclusion; Windows root is restricted to TEMP.
-    std::fs::write(
-        path.join("CACHEDIR.TAG"),
-        b"Signature: 8a477f597d28d172789f06886806bc55\n# Disposable Ibis Zotero copies.\n",
-    )
-    .map_err(|_| ClosedError::PrivateStorage)?;
+    use std::io::Write;
+    const TAG: &[u8] = b"Signature: 8a477f597d28d172789f06886806bc55\n# Disposable Ibis Zotero copies.\n";
+    let tag = path.join("CACHEDIR.TAG");
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    match options.open(&tag) {
+        Ok(mut file) => {
+            file.write_all(TAG)
+                .and_then(|_| file.sync_all())
+                .map_err(|_| ClosedError::PrivateStorage)?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Never overwrite or follow a pre-existing tag, including a link
+            // inserted before inherited ACLs were removed from a new directory.
+            let file = open_source(&tag).map_err(|_| ClosedError::PrivateStorage)?;
+            let mut bytes = Vec::new();
+            file.take(TAG.len() as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| ClosedError::PrivateStorage)?;
+            if bytes != TAG {
+                return Err(ClosedError::PrivateStorage);
+            }
+        }
+        Err(_) => return Err(ClosedError::PrivateStorage),
+    }
     #[cfg(target_os = "macos")]
     xattr::set(
         path,
@@ -367,6 +399,27 @@ mod tests {
 mod macos_acl_tests {
     use super::*;
     #[test]
+    fn acl_removal_does_not_follow_a_replaced_final_symlink() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic ACL root"));
+        let target = root.path().join("outside");
+        std::fs::create_dir(&target).unwrap_or_else(|_| panic!("synthetic ACL target"));
+        let status = Command::new("/bin/chmod")
+            .args(["+a", "everyone allow list,search"])
+            .arg(&target)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap_or_else(|_| panic!("synthetic target ACL"));
+        assert!(status.success());
+        let link = root.path().join("replaced");
+        std::os::unix::fs::symlink(&target, &link).unwrap_or_else(|_| panic!("synthetic ACL link"));
+        let _ = clear_inherited_acl(&link);
+        let report =
+            output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(&target)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(report.split(|b| *b == b'\n').filter(|l| !l.is_empty()).count(), 2);
+    }
+
+    #[test]
     fn owner_only_creation_drops_inherited_extended_acl() {
         let parent = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic ACL parent"));
         let status = Command::new("/bin/chmod")
@@ -391,5 +444,21 @@ mod macos_acl_tests {
             .unwrap_or_else(|_| panic!("synthetic existing ACL"));
         assert!(status.success());
         assert_eq!(secure(&child), Err(ClosedError::PrivateStorage));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod cache_tag_tests {
+    use super::*;
+    #[test]
+    fn backup_tag_never_overwrites_an_existing_link_target() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic tag root"));
+        let outside = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic sentinel root"));
+        let target = outside.path().join("sentinel");
+        std::fs::write(&target, b"synthetic sentinel").unwrap_or_else(|_| panic!("synthetic sentinel"));
+        std::os::unix::fs::symlink(&target, root.path().join("CACHEDIR.TAG"))
+            .unwrap_or_else(|_| panic!("synthetic tag link"));
+        assert_eq!(exclude_backups(root.path()), Err(ClosedError::PrivateStorage));
+        assert_eq!(std::fs::read(target).unwrap_or_default(), b"synthetic sentinel");
     }
 }
