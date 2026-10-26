@@ -68,20 +68,19 @@ xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- \
 # (Windows: python and target/debug/ibis-desktop.exe)
 ```
 
-Exit 0 is a pass, 1 a failure and 2 unavailable, never a pass; `--self-test` tests the harness alone. Linux smoke runs in the required `Desktop (ubuntu-24.04)` check. macOS and Windows smoke run in the `Native UI (…)` jobs on pull requests and `main` (the merge queue skips them), which are not required: a failure turns the job red without blocking a merge, and on `main` opens or updates an issue.
+Exit 0 is a pass, 1 a failure and 2 unavailable, never a pass; `--self-test` tests the harness alone. Linux smoke runs in the required `Desktop (ubuntu-24.04)` check. macOS and Windows smoke run in the `Native UI (…)` jobs only on pushes to `main` and manual dispatch, which are not required: a failure turns the job red without blocking a merge, and on `main` opens or updates an issue.
 
 - **First run:** `--first-run-preferences` (instead of `--budgets`) chooses a writing format, quits, restarts and copies; the copy must use the saved format (#486, gaps in #238).
-- **Performance:** four fresh launches with 100,000 synthetic references (the first a warm-up) measure launch to accessible count, query to late result and process-tree memory. The gate in [smoke-budgets.json](../scripts/smoke-budgets.json) uses the median of three launches for timings and the maximum for memory; any launch over 1.5 times a budget fails (#464). The numbers include polling overhead and warm caches and exclude cold-disk and lifetime-peak claims; calibration is in [#9](https://github.com/ibiscite/ibis/issues/9#issuecomment-6282578839). `--skip-performance` skips only these launches, for Nix and installed-package smoke.
+- **Performance:** four fresh launches with 100,000 synthetic references (the first a warm-up) measure launch to accessible count, query to late result and process-tree memory. The gate in [smoke-budgets.json](../scripts/smoke-budgets.json) uses the median of three launches for timings and the maximum for memory; any launch over 1.5 times a budget fails (#464). The numbers include polling overhead and warm caches and exclude cold-disk and lifetime-peak claims; calibration is in [#9](https://github.com/ibiscite/ibis/issues/9#issuecomment-6282578839). `--skip-performance` skips only these launches, for installed-package smoke.
 - **Offline:** `scripts/check-offline.py` (Linux, macOS) and `scripts/check-offline.ps1` (Windows) fail if the running app connects outside the computer. Sampling cannot see connections shorter than its polling interval.
-- **macOS:** `scripts/check-panel-macos.py` checks the picker over a full-screen app (#198); `scripts/check-native-appearance-macos.py` captures the picker under each system appearance, and the captures must be looked at (#232).
+- **macOS:** `scripts/check-panel-macos.py` checks the picker over a full-screen app (#198).
 
 ## Picker screenshots
 
-- **Native captures:** CI captures the gallery states in `scripts/capture-gallery.py` from the real app on each platform with the synthetic `real-world.bib`. Look at all three in the `picker-combined-<SHA>-attempt-<n>` artifact (14 days). There is no automatic verdict, and Linux images come from Xvfb.
-- **Browser contact sheet:** `node scripts/gallery-contact-sheet.mjs` renders every gallery state in each look, theme and text size in Playwright's Chromium at 720×480, into `target/gallery-contact-sheet` (narrow with `--state`, `--platform`, `--theme`, `--text`). It never downloads a browser; exit 2 means Chromium is unavailable. Label these "browser render": they show layout and colour, not native appearance. The same switches work at `/gallery.html` under `pnpm -C apps/desktop dev`. The required Web interface job runs the full sheet on interface changes, main and the merge queue, and a failed frame fails "CI result".
+- **Browser contact sheet:** `node scripts/gallery-contact-sheet.mjs` renders every gallery state in each look, theme and text size in Playwright's Chromium at 720×480, into `target/gallery-contact-sheet` (narrow with `--state`, `--platform`, `--theme`, `--text`). It never downloads a browser; exit 2 means Chromium is unavailable. Label these "browser render": they show layout and colour, not native appearance. The same switches work at `/gallery.html` under `pnpm -C apps/desktop dev`. The optional Browser gallery job runs the full sheet only on pushes to `main` and manual dispatch, and keeps its artifact for 14 days. It does not block "CI result".
 - **Geometry check:** `node scripts/gallery-geometry.mjs` compares the rendered picker with `tokens.css` and [`design-geometry.json`](design-geometry.json), and checks that regions do not overlap, chips are not cut and the list scrolls on its own. It reports only until #576 lands (`--enforce` fails on a mismatch); `scripts/gallery-geometry.test.mjs` keeps it in step with `docs/design.md`.
 
-Before and after images for a visual pull request belong in that pull request or on the `evidence` branch, not in `docs/`.
+Before and after images for a visual pull request belong in that pull request, not in `docs/`.
 
 ## Manual-only checks
 
