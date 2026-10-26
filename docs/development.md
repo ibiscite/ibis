@@ -22,7 +22,7 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 
 ### Milestones
 
-- Milestones are releases, named as in `ROADMAP.md` (`0.2 Cite anywhere, trust the key`, `1.0 Stable`); `Later` holds anything not scheduled. A milestone closes when its release ships.
+- Milestones are releases, named as in `ROADMAP.md` (`0.2 The new engine`, `1.0 Stable`); `Later` holds anything not scheduled. A milestone closes when its release ships.
 - Closed work is filed in the release that shipped it: every merged pull request and every issue closed as completed carries that release's milestone. Issues closed as not planned or duplicate, and pull requests closed without merging, carry none.
 - A release milestone holds only work that blocks that release. If it would not stop the release, move it to the next milestone or `Later`.
 - **An open issue without a milestone is untriaged.** Triage means: fix the title and labels, then set a milestone or close the issue.
