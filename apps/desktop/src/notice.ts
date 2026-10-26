@@ -4,13 +4,14 @@ import { listen } from "@tauri-apps/api/event";
 import { commands } from "./bindings";
 import { leaveNotice, noticePlatform, renderNotice } from "./copyFeedback";
 import { copiedNoticeText } from "./messages";
+import { setPlatform } from "./nativeAppearance";
 import "./tokens.css";
 import "./notice.css";
 
 const root = document.getElementById("notice");
 if (root) {
   const platform = noticePlatform(navigator.platform);
-  document.documentElement.dataset.platform = platform;
+  setPlatform();
   // Without a compositor the window is opaque and square (see notice.rs).
   if (new URLSearchParams(window.location.search).get("surface") === "opaque") {
     document.documentElement.dataset.surface = "opaque";

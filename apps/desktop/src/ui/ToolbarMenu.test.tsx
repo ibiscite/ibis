@@ -4,6 +4,7 @@ import axe from "axe-core";
 import { createRef, StrictMode } from "react";
 import type { KeyboardEvent } from "react";
 import { ToolbarMenu, type ToolbarMenuSection } from "./ToolbarMenu";
+import { setPlatform } from "../nativeAppearance";
 
 const sections: ToolbarMenuSection[] = [{ id: "keys", label: "Key formats", items: [
   { id: "pandoc", label: "Pandoc", sample: "[@key]" },
@@ -16,6 +17,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   delete document.documentElement.dataset.platform;
+  delete document.documentElement.dataset.system;
 });
 
 function mount(items = sections) {
@@ -32,15 +34,16 @@ function mount(items = sections) {
 
 test.each([
   ["macos", "0 0 8 12"],
-  ["windows", "0 0 12 12"],
-  ["linux", "0 0 16 16"],
-])("%s popup uses its bundled decorative indicator without changing the button name", async (platform, viewBox) => {
-  document.documentElement.dataset.platform = platform;
+  ["windows", "0 0 8 12"],
+  ["linux", "0 0 8 12"],
+])("%s popup uses the existing macOS decorative indicator without changing the button name", async (platform, viewBox) => {
+  setPlatform(platform === "macos" ? "MacIntel" : platform === "windows" ? "Win32" : "Linux x86_64");
   const { trigger } = mount();
   expect(trigger.classList.contains("ui-button")).toBe(true);
   expect(trigger.getAttribute("data-variant")).toBe("secondary");
   const indicator = trigger.querySelector("svg")!;
   expect(indicator.getAttribute("viewBox")).toBe(viewBox);
+  expect(indicator.querySelector("path")!.getAttribute("d")).toBe("m1 4 3-3 3 3m-6 4 3 3 3-3");
   expect(indicator.getAttribute("aria-hidden")).toBe("true");
   expect(indicator.getAttribute("focusable")).toBe("false");
   const drawing = indicator.outerHTML;
@@ -53,7 +56,7 @@ test.each([
 });
 
 test.each(["macos", "windows", "linux"])("%s menu has named sections, radio items, keyboard navigation and no axe violations", async (platform) => {
-  document.documentElement.dataset.platform = platform;
+  setPlatform(platform === "macos" ? "MacIntel" : platform === "windows" ? "Win32" : "Linux x86_64");
   const { trigger, search, onAction } = mount();
   act(() => trigger.focus());
   fireEvent.click(trigger);

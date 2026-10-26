@@ -4,34 +4,35 @@ import { KeyCaps, KeyHint } from "./KeyCaps";
 import { PickerFooter } from "../features/picker/PickerFooter";
 import { MoreMenu } from "../features/picker/MoreMenu";
 import { KeysDialog } from "../features/picker/KeysDialog";
+import { setPlatform } from "../nativeAppearance";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 const caps = (container: HTMLElement) => [...container.querySelectorAll("kbd")].map((cap) => cap.textContent);
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); delete document.documentElement.dataset.platform; });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); delete document.documentElement.dataset.platform; delete document.documentElement.dataset.system; });
 
-test("implicit key caps follow the rendered look when it differs from the host and changes", () => {
+test("implicit key caps retain actual system modifiers under the shared macOS look", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-  document.documentElement.dataset.platform = "windows";
+  setPlatform("Win32");
   const { container, rerender } = render(<KeyCaps accelerator="CmdOrCtrl+K" />);
   expect(caps(container)).toEqual(["Ctrl", "K"]);
-  document.documentElement.dataset.platform = "macos";
+  setPlatform("MacIntel");
   rerender(<KeyCaps accelerator="CmdOrCtrl+K" />);
   expect(caps(container)).toEqual(["⌘K"]);
-  document.documentElement.dataset.platform = "linux";
+  setPlatform("Linux x86_64");
   rerender(<KeyCaps accelerator="CmdOrCtrl+K" />);
   expect(caps(container)).toEqual(["Ctrl", "K"]);
   expect(container.querySelectorAll(".key-plus")).toHaveLength(1);
 });
 
-test("footer and More pair visible keys with their accessible shortcut after a look change", () => {
+test("footer and More pair actual system keys with their accessible shortcuts", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   const footer = () => <PickerFooter library={null} groupName={() => ""} hints={{ enter: "Copy", shiftEnter: "Add", escape: "Hide" }} altHeld={false}
     actions={{ copy: vi.fn(), add: vi.fn(), escape: vi.fn(), keys: vi.fn() }}
     more={<MoreMenu isOpen={false} onOpenChange={vi.fn()} buttonRef={{ current: null }} searchRef={{ current: null }} keys="CmdOrCtrl+K">{null}</MoreMenu>} />;
-  document.documentElement.dataset.platform = "windows";
+  setPlatform("Win32");
   const { container, rerender } = render(footer());
   const check = (shortcut: string, more: string, keyCaps: string[], moreCaps: string[]) => {
     const shortcuts = container.querySelector<HTMLButtonElement>('.shortcuts-hint')!;
@@ -42,10 +43,10 @@ test("footer and More pair visible keys with their accessible shortcut after a l
     expect(caps(trigger)).toEqual(moreCaps);
   };
   check("Control+/", "Control+K", ["Ctrl", "/"], ["Ctrl", "K"]);
-  document.documentElement.dataset.platform = "macos";
+  setPlatform("MacIntel");
   rerender(footer());
   check("Meta+/", "Meta+K", ["⌘/"], ["⌘K"]);
-  document.documentElement.dataset.platform = "linux";
+  setPlatform("Linux x86_64");
   rerender(footer());
   check("Control+/", "Control+K", ["Ctrl", "/"], ["Ctrl", "K"]);
 });

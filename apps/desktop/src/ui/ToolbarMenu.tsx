@@ -4,7 +4,6 @@ import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
 import { Button } from "./Button";
 import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
-import { currentPlatform } from "../platform";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
@@ -122,11 +121,8 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   </span>;
 }
 
-/** Bundled masters for each system's popup indicator; opening never turns it. */
+/** The existing macOS popup indicator is shared on every system; opening never turns it. */
 function PopupIndicator() {
-  const platform = currentPlatform();
-  const [viewBox, path] = platform === "macos" ? ["0 0 8 12", "m1 4 3-3 3 3m-6 4 3 3 3-3"]
-    : platform === "windows" ? ["0 0 12 12", "m3 4.5 3 3 3-3"] : ["0 0 16 16", "m4 6 4 4 4-4"];
-  return <svg className={`popup-indicator popup-indicator-${platform}`} aria-hidden="true" focusable="false"
-    viewBox={viewBox} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d={path} /></svg>;
+  return <svg className="popup-indicator popup-indicator-macos" aria-hidden="true" focusable="false"
+    viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="m1 4 3-3 3 3m-6 4 3 3 3-3" /></svg>;
 }

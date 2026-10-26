@@ -55,48 +55,14 @@
 }
 .copied-notice-source { display: none; }
 
-/* macOS: a pill near the top of the screen. */
-.copied-notice[data-platform="macos"] {
+/* The existing macOS pill on every system. */
+.copied-notice {
   width: max-content;
   height: 2.75rem;
   margin: 1rem auto;
   padding: 0 1.125rem 0 .5rem;
   border-radius: 1.375rem;
-}
-
-/* Windows: a notification card at the bottom right. */
-.copied-notice[data-platform="windows"] {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-content: center;
-  column-gap: .5rem;
-  row-gap: .25rem;
-  width: calc(100% - 2rem);
-  height: calc(100% - 2rem);
-  margin: 1rem;
-  padding: .75rem 1rem;
-  border-radius: 8px;
-}
-.copied-notice[data-platform="windows"] .copied-notice-source {
-  display: block;
-  grid-column: 1 / -1;
-  font-weight: 400;
-  font-size: var(--type-label-size);
-  color: var(--muted);
-}
-.copied-notice[data-platform="windows"] code { grid-column: 1 / -1; }
-
-/* Linux: a dark toast at the bottom, as GNOME draws them. */
-.copied-notice[data-platform="linux"] {
-  --notice-surface: #3a3a3e;
-  --notice-text: #ffffff;
-  --notice-citation: #ffb39f;
-  --notice-done: #8ff0a4;
-  width: 100%;
-  height: 100%;
-  padding: 0 1.125rem 0 .5rem;
-  border: 0;
-  border-radius: 1.375rem;
+  --notice-from: -.5rem;
 }
 
 /* 2.8 s in view, as in the prototype: a 120 ms fade in when shown, then a
@@ -120,18 +86,15 @@
   from { transform: translateY(var(--notice-from, 0)); }
   to { transform: none; }
 }
-.copied-notice[data-platform="macos"] { --notice-from: -.5rem; }
-.copied-notice[data-platform="linux"] { --notice-from: 0; }
 /* Reduced motion: fades only, nothing moves. */
 @media (prefers-reduced-motion: reduce) {
   :root { --notice-rise: 1ms; }
-  .copied-notice[data-platform] { --notice-from: 0; }
+  .copied-notice { --notice-from: 0; }
 }
 
 /* High contrast and reduced transparency: the opaque system surface, a full border, no colour-only meaning. */
 @media (prefers-contrast: more), (forced-colors: active), (prefers-reduced-transparency: reduce) {
-  .copied-notice,
-  .copied-notice[data-platform="linux"] {
+  .copied-notice {
     --notice-surface: Canvas;
     --notice-text: CanvasText;
     --notice-citation: CanvasText;
@@ -143,8 +106,8 @@
 
 /* Linux without a compositor: an opaque window, so the toast fills it with square corners. */
 :root.notice-window[data-surface="opaque"],
-:root.notice-window[data-surface="opaque"] body { background: #3a3a3e; }
-:root.notice-window[data-surface="opaque"] .copied-notice { border-radius: 0; }
+:root.notice-window[data-surface="opaque"] body { background: var(--surface); }
+:root.notice-window[data-surface="opaque"] .copied-notice { width: 100%; height: 100%; margin: 0; border-radius: 0; }
 @media (prefers-contrast: more), (forced-colors: active), (prefers-reduced-transparency: reduce) {
   :root.notice-window[data-surface="opaque"],
   :root.notice-window[data-surface="opaque"] body { background: Canvas; }
