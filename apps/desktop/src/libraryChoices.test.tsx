@@ -110,6 +110,40 @@ test("an empty first library offers library recovery before asking where you wri
   expect(screen.getAllByRole("option")).toHaveLength(2);
 });
 
+test.each(["chip", "preview", "elsewhere"])("an empty replacement returns only removed citation focus to Search (%s)", async (destination) => {
+  let empty = false;
+  const status = () => ({
+    revision: empty ? "2" : "1", state: "loaded", has_snapshot: true, zotero: false,
+    name: "requested.bib", snapshot_name: "requested.bib", references: empty ? 0 : 1,
+    warnings: 0, error: null, problem: null, note: null,
+  });
+  backend({
+    library_status: status,
+    search: () => ({ revision: empty ? "2" : "1", results: empty ? [] : [result("old", "Previously chosen reference")] }),
+  });
+  render(<App />);
+  await screen.findByText("Previously chosen reference");
+  const search = screen.getByLabelText("Search references");
+  fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
+  const preview = await screen.findByRole("region", { name: "Preview" });
+  await waitFor(() => expect(preview.tabIndex).toBe(0));
+  const announcement = screen.getByRole("status", { name: "Citation selection" });
+  expect(announcement.textContent).toBe("1 reference selected for citation");
+  const target = destination === "chip" ? screen.getByRole("button", { name: "Remove old from the selection" })
+    : destination === "preview" ? preview : screen.getByRole("button", { name: /^More/ });
+  act(() => target.focus());
+  expect(document.activeElement).toBe(target);
+
+  empty = true;
+  await act(async () => { await emit("library:changed", status()); });
+  await screen.findByRole("heading", { name: "No references in requested.bib" });
+  expect(document.querySelector(".shelf")).toBeNull();
+  expect(document.activeElement).toBe(destination === "elsewhere" ? target : search);
+  expect(screen.getByRole("status", { name: "Citation selection" })).toBe(announcement);
+  expect(announcement.getAttribute("aria-live")).toBe("polite");
+  expect(announcement.textContent).toBe("0 references selected for citation");
+});
+
 test("an unmatched search and a failed switch retaining a good index keep the chosen citation", async () => {
   const calls = backend({ search: ({ query }) => query.text ? [] : [result("old", "Previously chosen reference")] });
   render(<App />);

@@ -567,6 +567,8 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   its searchable snapshot and failure notice. No shelf or Copy is shown on
   these choice screens, and the window fits the content. An empty first
   library offers recovery before asking where the person writes.
+  When a focused citation control disappears, the shelf returns focus to
+  Search and keeps its selection announcement mounted; unrelated focus stays.
 - **Could not open, nothing kept:** the title names the library and the fix;
   the backend sorts each failure by `problem`:
 

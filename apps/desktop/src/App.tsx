@@ -1,7 +1,7 @@
 import * as nativeApi from "./api";
 import { copiedNoticeText, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { KEY_TABLE, shortcutLabel, type KeyBinding } from "./keys";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LibrarySetup, WritingSetup } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
@@ -42,6 +42,7 @@ import {
 const KEEP_SEARCH_MS = 60_000;
 
 const noLibrary = () => null;
+const noSelection = new Map<string, CitationReference>();
 
 // A stable provider lets the development gallery use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
@@ -118,13 +119,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
     useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, cslItems, citationText, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
-  const output = useRef<HTMLElement | null>(null);
-  const outputRef = useCallback((node: HTMLElement | null) => {
-    // Saved choices can hide output too. Hand off before removing its focus,
-    // without taking focus from More, chips or another control.
-    if (!node && output.current?.contains(document.activeElement) && input.current?.isConnected) input.current.focus({ preventScroll: true });
-    output.current = node;
-  }, []);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
@@ -680,11 +674,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         {!busy && emptyState}
       </div>
       </div>
-      {showCitations && <CitationShelf announce={selectionChanged} selected={selected} removeLabel={removeLabel} onRemove={(r) => {
+      {/* Keep the selection live region mounted when choices remove citation controls. */}
+      <CitationShelf announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
         toggle(r);
         input.current?.focus({ preventScroll: true });
       }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
-        shown={displayedOutput} problem={previewProblem} focusable={selected.size > 0} outputRef={outputRef} />}
+        shown={showCitations ? displayedOutput : undefined} problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}

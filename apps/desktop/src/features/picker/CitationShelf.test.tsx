@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { useState } from "react";
+import { createRef, useState } from "react";
 import type { SearchResult } from "../../api";
 import { chipLabels, CitationShelf } from "./CitationShelf";
 
@@ -230,6 +230,25 @@ test("proportional overflow digits cannot cycle the fitted count, and growth res
 test("nothing chosen and nothing to show draws no shelf", () => {
   const { container } = render(shelf({}));
   expect(container.querySelector(".shelf")).toBeNull();
+});
+
+test.each(["removed", "retained"])("a programmatically removed chip hands off only its own focus (%s)", (focus) => {
+  const fallbackFocusRef = createRef<HTMLInputElement>();
+  const records = [record("a"), record("b")];
+  const picker = (remaining: SearchResult[]) => <>
+    <input aria-label="Search" ref={fallbackFocusRef} />
+    {shelf({ selected: chosen(remaining), announce: true, fallbackFocusRef })}
+  </>;
+  const view = render(picker(records));
+  const target = screen.getByRole("button", { name: focus === "removed" ? "Remove a" : "Remove b" });
+  act(() => target.focus());
+  // An ordinary rerender must keep focus on the current chip.
+  view.rerender(picker([...records]));
+  expect(document.activeElement).toBe(target);
+  view.rerender(picker(records.slice(1)));
+  expect(document.activeElement).toBe(focus === "removed" ? fallbackFocusRef.current : target);
+  expect(screen.getByRole("button", { name: "Remove b" })).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("1 reference selected for citation");
 });
 
 test("the beak quote is decorative, unfocusable and confined to the output line", () => {
