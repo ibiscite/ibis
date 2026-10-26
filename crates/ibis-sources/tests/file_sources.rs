@@ -308,6 +308,10 @@ fn numeric_json_ids_use_consistent_citation_processor_spelling() -> Result<(), B
         ("1e-7", "1e-7"),
         ("1.25", "1.25"),
         ("51.248178375505404", "51.248178375505404"),
+        ("5e-324", "5e-324"),
+        ("1e-324", "0"),
+        ("2.2250738585072014e-308", "2.2250738585072014e-308"),
+        ("9007199254740991", "9007199254740991"),
     ] {
         std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
         let loaded = ibis_sources::load_file(&path)?;
@@ -316,6 +320,17 @@ fn numeric_json_ids_use_consistent_citation_processor_spelling() -> Result<(), B
             _ => None,
         });
         assert_eq!(key_from_source, Some(key), "numeric identifier {id}");
+    }
+    for id in ["1e20", "1e21", "9007199254740992", "9007199254740993"] {
+        std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
+        let loaded = ibis_sources::load_file(&path)?;
+        assert!(loaded.snapshot.objects().is_empty(), "unsafe identifier {id}");
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|warning| warning.code == ibis_sources::WarningCode::Field)
+        );
     }
     Ok(())
 }
