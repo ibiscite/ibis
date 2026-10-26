@@ -28,6 +28,6 @@ pub const APP_COMMANDS: &[&str] = &[
     "native_appearance",
     "row_context",
     "update_checks",
-    "toggle_update_checks",
+    "set_update_checks",
     "check_for_updates",
 ];

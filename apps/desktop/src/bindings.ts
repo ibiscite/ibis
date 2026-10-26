@@ -125,11 +125,11 @@ export const commands = {
 	/**  Whether update checks run on their own; `None` when this build has no updates. */
 	updateChecks: () => __TAURI_INVOKE<boolean | null>("update_checks"),
 	/**
-	 *  Flip automatic checks, as the tray item does. The saved answer arrives
-	 *  as the `update:automatic` event. Not async, so it runs on the main thread
-	 *  in click order with the tray's clicks.
+	 *  Turn automatic checks on or off, as asked in More. The saved answer
+	 *  arrives as the `update:automatic` event. Not async, so it runs on the main
+	 *  thread and is queued in click order with the tray's clicks.
 	 */
-	toggleUpdateChecks: () => __TAURI_INVOKE<void>("toggle_update_checks"),
+	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**  "Check for Updates…": the same check the tray starts. */
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
 };

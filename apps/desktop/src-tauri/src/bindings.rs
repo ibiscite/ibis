@@ -31,7 +31,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::native_feel::native_appearance,
             crate::row_context::row_context,
             crate::updater::setting::update_checks,
-            crate::updater::setting::toggle_update_checks,
+            crate::updater::setting::set_update_checks,
             crate::updater::setting::check_for_updates
         ])
         // Match Tauri's existing Promise rejection behavior.

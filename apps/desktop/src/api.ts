@@ -36,7 +36,7 @@ export const {
   showCopiedNotice,
   rowContext,
   updateChecks,
-  toggleUpdateChecks,
+  setUpdateChecks,
   checkForUpdates,
 } = commands;
 

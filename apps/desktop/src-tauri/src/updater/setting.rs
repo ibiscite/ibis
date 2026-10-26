@@ -1,8 +1,9 @@
 //! Whether update checks run on their own. First launch, the tray and the
-//! picker's More menu (#1130) all queue changes, in the order they were
-//! made, to one worker that saves them off the main thread. A change is
-//! saved before it is applied, and the menus show only saved choices: the
-//! tray tick and More follow the `update:automatic` event sent after each save.
+//! picker's More menu (#1130) all queue the choice the person made, in the
+//! order they made it, to one worker that saves it off the main thread. A
+//! change is saved before it is applied, and the menus show only saved
+//! choices: the tray tick and More follow the `update:automatic` event sent
+//! after each save.
 
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
@@ -35,13 +36,16 @@ fn show(app: &AppHandle, on: bool) {
     }
 }
 
-/// The tray item or More was clicked: ask for the opposite of what both show.
-/// Both clicks arrive on the main thread, so they are queued in click order.
+/// The tray item was clicked. It ticks itself first, so its tick is what the
+/// person asked for; it goes back to the saved choice until that is saved.
 pub(crate) fn toggle_automatic(app: &AppHandle) {
     let saved = automatic(app);
-    // The tray ticks its item itself on a click; it shows only saved choices.
+    let asked = app
+        .try_state::<AutomaticMenuItem>()
+        .and_then(|item| item.0.is_checked().ok())
+        .unwrap_or(!saved);
     show(app, saved);
-    change(app, !saved);
+    change(app, asked);
 }
 
 /// The worker's queue, started on first use and again after a failure.
@@ -96,7 +100,10 @@ fn save(app: &AppHandle, on: bool) {
             &format!("Your choice could not be saved, so nothing changed: {problem}."),
         ),
     }
-    report(app.emit_to("main", "update:automatic", automatic(app)), NativeIssue::AutomaticMenuUpdate);
+    report(
+        app.emit_to("main", "update:automatic", automatic(app)),
+        NativeIssue::AutomaticMenuUpdate,
+    );
 }
 
 /// Whether update checks run on their own; `None` when this build has no updates.
@@ -106,14 +113,14 @@ pub(crate) async fn update_checks(app: AppHandle) -> Option<bool> {
     available(&app).then(|| automatic(&app))
 }
 
-/// Flip automatic checks, as the tray item does. The saved answer arrives
-/// as the `update:automatic` event. Not async, so it runs on the main thread
-/// in click order with the tray's clicks.
+/// Turn automatic checks on or off, as asked in More. The saved answer
+/// arrives as the `update:automatic` event. Not async, so it runs on the main
+/// thread and is queued in click order with the tray's clicks.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn toggle_update_checks(app: AppHandle) {
+pub(crate) fn set_update_checks(app: AppHandle, enabled: bool) {
     if available(&app) {
-        toggle_automatic(&app);
+        change(&app, enabled);
     }
 }
 

@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { useOperations } from "./useOperations";
 
-export function useUpdateChecks({ updateChecks, toggleUpdateChecks, onUpdateChecks, perform, report }: {
+export function useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, perform, report }: {
   updateChecks?: typeof nativeApi.updateChecks;
-  toggleUpdateChecks?: typeof nativeApi.toggleUpdateChecks;
+  setUpdateChecks?: typeof nativeApi.setUpdateChecks;
   onUpdateChecks?: typeof nativeApi.onUpdateChecks;
   perform: ReturnType<typeof useOperations>["perform"];
   report: ReturnType<typeof useOperations>["report"];
@@ -30,8 +30,12 @@ export function useUpdateChecks({ updateChecks, toggleUpdateChecks, onUpdateChec
       void stop.then((unlisten) => unlisten()).catch(() => undefined);
     };
   }, []);
-  const toggle = () => { if (toggleUpdateChecks) void perform("updateChecksChange", toggleUpdateChecks); };
+  // Asks for the opposite of what is shown, never a flip of whatever the
+  // native side holds by then, which a tray change may have overtaken.
+  const toggle = () => {
+    if (setUpdateChecks && automatic !== null) void perform("updateChecksChange", () => setUpdateChecks(!automatic));
+  };
   // The More menu's items, given how "Check for Updates…" runs there.
   return (check: (() => void) | undefined) =>
-    toggleUpdateChecks && check && automatic !== null ? { automatic, toggle, check } : null;
+    setUpdateChecks && check && automatic !== null ? { automatic, toggle, check } : null;
 }

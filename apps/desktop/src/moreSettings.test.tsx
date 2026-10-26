@@ -65,9 +65,10 @@ test("systems without login items, and pickers without the commands, offer no ch
 });
 
 test("More has the tray's update controls, in builds that have updates", async () => {
+  const asked: unknown[] = [];
   const calls = backend({
     update_checks: () => false,
-    toggle_update_checks: () => null,
+    set_update_checks: ({ enabled }) => { asked.push(enabled); return null; },
     check_for_updates: () => null,
   });
   render(<App />);
@@ -75,17 +76,20 @@ test("More has the tray's update controls, in builds that have updates", async (
   const box = () => screen.getByRole("menuitemcheckbox", { name: "Check for updates automatically" });
   await screen.findByRole("menuitemcheckbox", { name: "Check for updates automatically" });
   expect(box().getAttribute("aria-checked")).toBe("false");
-  // Each click is queued natively at once; nothing shows until it is saved.
+  // Each click asks natively, at once, for the opposite of what More shows,
+  // even if a newer saved choice is still on its way; nothing shows until saved.
   fireEvent.click(box());
   if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   fireEvent.click(box());
-  await waitFor(() => expect(calls.filter((c) => c === "toggle_update_checks")).toHaveLength(2));
+  await waitFor(() => expect(asked).toEqual([true, true]));
   expect(box().getAttribute("aria-checked")).toBe("false");
   await act(async () => { await emit("update:automatic", true); });
   expect(box().getAttribute("aria-checked")).toBe("true");
   // Turned off from the tray while More is open.
   await act(async () => { await emit("update:automatic", false); });
   expect(box().getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(box());
+  await waitFor(() => expect(asked).toEqual([true, true, true]));
   await chooseFromMore("Check for updates…");
   await waitFor(() => expect(calls.filter((c) => c === "check_for_updates")).toHaveLength(1));
   expect(screen.queryByRole("menu")).toBeNull();
@@ -94,7 +98,7 @@ test("More has the tray's update controls, in builds that have updates", async (
 
 test("a saved change heard before the first read answers is kept", async () => {
   let answer!: (on: boolean) => void;
-  backend({ update_checks: () => new Promise((resolve) => { answer = resolve; }), toggle_update_checks: () => null, check_for_updates: () => null });
+  backend({ update_checks: () => new Promise((resolve) => { answer = resolve; }), set_update_checks: () => null, check_for_updates: () => null });
   render(<App />);
   await waitFor(() => expect(answer).toBeDefined());
   await act(async () => { await emit("update:automatic", true); });
