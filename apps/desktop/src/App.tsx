@@ -25,7 +25,9 @@ import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
+import { useAskWriting } from "./features/picker/useAskWriting";
 import { useLoginItem } from "./features/picker/useLoginItem";
+import { useUpdateChecks } from "./features/picker/useUpdateChecks";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import {
@@ -46,7 +48,7 @@ const noLibrary = () => null;
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "onShortcutStatus">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -55,7 +57,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
     hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, onShortcutStatus } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, checkForUpdates, onShortcutStatus } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
@@ -120,6 +122,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
+  const updateMenu = useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, perform, report });
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
   // Where focus goes back to when the keys overlay closes.
@@ -432,17 +435,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [pendingCopy, chosenKey, shown, queryKey]);
 
   const busy = library?.state === "loading" || library?.state === "reloading";
-  // First run, step 2: once a library first opens after none was chosen, ask
-  // once where the person writes, which picks the copy format [C12].
-  const [askWriting, setAskWriting] = useState(false);
-  const sawNoLibrary = useRef(false);
-  useEffect(() => {
-    if (library?.state === "none") sawNoLibrary.current = true;
-    else if (library?.has_snapshot && library.state === "loaded" && sawNoLibrary.current) {
-      sawNoLibrary.current = false;
-      setAskWriting(true);
-    }
-  }, [library?.state, library?.has_snapshot]);
+  const [askWriting, setAskWriting] = useAskWriting(library);
   const showWriting = askWriting && !busy && !query && Boolean(library?.has_snapshot);
   // A library that could not be opened, with nothing earlier to search.
   const blocked = library?.state === "error" && !library.has_snapshot;
@@ -707,6 +700,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             } : null}
             density={density} largerText={largerText} searchMark={searchMark} showPastePreview={showPastePreview} pinned={pinned}
             startAtLogin={loginItemOffered && startAtLogin ? { item: startAtLogin, toggle: toggleStartAtLogin } : null}
+            updates={updateMenu(checkForUpdates && (() => runFromMenu("checkForUpdates", checkForUpdates)))}
             actions={{
               choose: () => runFromMenu("choose", chooseLibrary),
               useZotero: () => runFromMenu("zotero", useZotero),

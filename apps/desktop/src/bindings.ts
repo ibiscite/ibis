@@ -122,6 +122,16 @@ export const commands = {
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
 	/**  Show only native Copy and Add/Remove actions. Cancellation returns no action. */
 	rowContext: (added: boolean) => __TAURI_INVOKE<"copy" | "toggle" | null>("row_context", { added }),
+	/**  Whether update checks run on their own; `None` when this build has no updates. */
+	updateChecks: () => __TAURI_INVOKE<boolean | null>("update_checks"),
+	/**
+	 *  Turn automatic checks on or off, as asked in More. The saved answer
+	 *  arrives as the `update:automatic` event. Not async, so it runs on the main
+	 *  thread and is queued in click order with the tray's clicks.
+	 */
+	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
+	/**  "Check for Updates…": the same check the tray starts. */
+	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
 };
 
 /* Types */

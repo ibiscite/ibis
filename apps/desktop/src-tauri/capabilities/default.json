@@ -36,6 +36,9 @@
     "allow-shortcut-status",
     "allow-show-copied-notice",
     "allow-native-appearance",
-    "allow-row-context"
+    "allow-row-context",
+    "allow-update-checks",
+    "allow-set-update-checks",
+    "allow-check-for-updates"
   ]
 }
