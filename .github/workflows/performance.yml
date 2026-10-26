@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
           sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth fonts-inter fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core
-          if [ ! -d /sys/kernel/tracing/instances ]; then
+          if ! sudo test -d /sys/kernel/tracing/instances; then
             sudo mount -t tracefs tracefs /sys/kernel/tracing
           fi
 

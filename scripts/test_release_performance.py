@@ -1,6 +1,10 @@
 """Synthetic contracts for the diagnostic release-build comparison."""
 import importlib.util
 import json
+import os
+import re
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 import unittest
@@ -230,6 +234,26 @@ class ReleasePerformanceTests(unittest.TestCase):
         for name in ("../other", "/tmp/private", "ibis-perf-../other", "ibis-perf-x"):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 perf.trace_instance(name)
+
+
+    @unittest.skipIf(sys.platform == "win32", "Linux workflow shell")
+    def test_tracefs_mount_uses_the_privileged_capability_probe(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/performance.yml").read_text()
+        match = re.search(r"          if .*tracing/instances.*\n.*\n          fi", workflow)
+        self.assertIsNotNone(match)
+        block = match[0].replace("/sys/kernel/tracing/instances", "/synthetic-unsearchable-tracefs/instances")
+        stub = '''sudo() {
+  if [ "$1" = test ]; then [ "$ROOT_READY" = yes ];
+  elif [ "$1" = mount ]; then echo mounted;
+  else return 99; fi
+}
+'''
+        for ready, expected in (("yes", ""), ("no", "mounted\n")):
+            result = subprocess.run(["bash", "-ec", stub + block], text=True, capture_output=True,
+                                    env=dict(os.environ, ROOT_READY=ready), timeout=5)
+            with self.subTest(ready=ready):
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, expected)
 
 
 if __name__ == "__main__":
