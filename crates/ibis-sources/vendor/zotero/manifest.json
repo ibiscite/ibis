@@ -1,0 +1,60 @@
+{
+  "sources": {
+    "schema": {
+      "repo": "zotero/zotero-schema",
+      "commit": "b86c79b56479cadac3288e1f122cf34ef04e8809"
+    },
+    "utilities": {
+      "repo": "zotero/utilities",
+      "commit": "4051881d59c6c12d34417d4c226f37218051be90"
+    },
+    "zotero": {
+      "repo": "zotero/zotero",
+      "commit": "db41b99fddcc52d38897c59c161b6adaca036afb"
+    }
+  },
+  "files": [
+    {
+      "source": "schema",
+      "path": "schema.json",
+      "out": "schema.json",
+      "sha256": "80014a0bf4aec5f2a82b5b70372d9b820a6d2deae4af9fc403d6aac7fbb8d42f"
+    },
+    {
+      "source": "utilities",
+      "path": "utilities_item.js",
+      "out": "utilities_item.js",
+      "sha256": "4f67d130efaee73c52c42d01497c689b9064dcd0faaf785ee32ffec6146255b2"
+    },
+    {
+      "source": "utilities",
+      "path": "date.js",
+      "out": "date.js",
+      "sha256": "bad7c54d793bae0c92219d0fd21fd0f79866087f839e3c023e13ccbb3f43e0af"
+    },
+    {
+      "source": "utilities",
+      "path": "schema.js",
+      "out": "schema.js",
+      "sha256": "f74ef596778d19c4525c284bbcf538ee0392959954ff493f65a43fb7ffb56a12"
+    },
+    {
+      "source": "utilities",
+      "path": "resource/dateFormats.json",
+      "out": "dateFormats.json",
+      "sha256": "b678e45178d242b3fca859e9fbeffc36926df01c7a6453c0e94e66ea6c24f376"
+    },
+    {
+      "source": "utilities",
+      "path": "COPYING",
+      "out": "COPYING",
+      "sha256": "c97f1925ce31549ed01eb29eec2226f17b9adcb3956669ea204d226a0c746831"
+    },
+    {
+      "source": "zotero",
+      "path": "chrome/content/zotero/xpcom/cite.js",
+      "out": "cite.js",
+      "sha256": "a7891bf1da2aafadab1f4d52987aebf2f8d8415e6ee3c4dddfeb18410aad7157"
+    }
+  ]
+}
