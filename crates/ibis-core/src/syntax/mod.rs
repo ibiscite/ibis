@@ -39,11 +39,21 @@ pub struct SyntaxCapabilities {
     pub forms: &'static [CitationForm],
     pub single_item_forms: &'static [CitationForm],
     pub locator: FieldSupport,
-    pub prefix: FieldSupport,
+    /// Prefix placement depends on the citation form as well as the syntax.
+    pub prefix: &'static [(CitationForm, FieldSupport)],
     pub suffix: FieldSupport,
     pub rich_text: FieldSupport,
     pub author_suppression: FieldSupport,
     pub escaping: Escaping,
+}
+
+impl SyntaxCapabilities {
+    pub fn prefix_support(&self, form: CitationForm) -> FieldSupport {
+        self.prefix
+            .iter()
+            .find_map(|(candidate, support)| (*candidate == form).then_some(*support))
+            .unwrap_or(FieldSupport::Unsupported)
+    }
 }
 
 use CitationForm::{Narrative, Normal, YearOnly};
@@ -56,7 +66,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         forms: &[Normal, Narrative, YearOnly],
         single_item_forms: &[Narrative],
         locator: Native,
-        prefix: Native,
+        prefix: &[(Normal, Native), (Narrative, Flattened), (YearOnly, Native)],
         suffix: Native,
         rich_text: Native,
         author_suppression: Native,
@@ -68,7 +78,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         forms: &[Normal, YearOnly],
         single_item_forms: &[YearOnly],
         locator: Native,
-        prefix: Native,
+        prefix: &[(Normal, Native), (YearOnly, Native)],
         suffix: Native,
         rich_text: Native,
         author_suppression: SingleItem,
@@ -80,7 +90,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         forms: &[Normal, YearOnly],
         single_item_forms: &[YearOnly],
         locator: Native,
-        prefix: Native,
+        prefix: &[(Normal, Native), (YearOnly, Native)],
         suffix: Native,
         rich_text: Native,
         author_suppression: SingleItem,
@@ -92,7 +102,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         forms: &[Normal, Narrative],
         single_item_forms: &[],
         locator: Native,
-        prefix: Native,
+        prefix: &[(Normal, Native), (Narrative, Native)],
         suffix: Native,
         rich_text: Native,
         author_suppression: Unsupported,
@@ -104,7 +114,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
-        prefix: Flattened,
+        prefix: &[(Normal, Flattened)],
         suffix: Native,
         rich_text: Native,
         author_suppression: Unsupported,
@@ -122,7 +132,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         ],
         single_item_forms: &[],
         locator: Native,
-        prefix: Flattened,
+        prefix: &[
+            (Normal, Flattened),
+            (Narrative, Flattened),
+            (CitationForm::AuthorOnly, Flattened),
+            (YearOnly, Flattened),
+            (CitationForm::Full, Flattened),
+        ],
         suffix: Native,
         rich_text: Native,
         author_suppression: Native,
@@ -134,7 +150,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
-        prefix: Unsupported,
+        prefix: &[(Normal, Unsupported)],
         suffix: Unsupported,
         rich_text: Unsupported,
         author_suppression: Unsupported,
@@ -146,7 +162,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
-        prefix: Unsupported,
+        prefix: &[(Normal, Unsupported)],
         suffix: Unsupported,
         rich_text: Unsupported,
         author_suppression: Unsupported,
@@ -205,7 +221,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
                 let supports = |support| support == Native || support == SingleItem && request.items.len() == 1;
                 for (field, present, support) in [
                     (LossField::Locator, item.locator.is_some(), caps.locator),
-                    (LossField::Prefix, !item.prefix.is_empty(), caps.prefix),
+                    (LossField::Prefix, !item.prefix.is_empty(), caps.prefix_support(form)),
                     (LossField::Suffix, !item.suffix.is_empty(), caps.suffix),
                     (
                         LossField::AuthorSuppression,

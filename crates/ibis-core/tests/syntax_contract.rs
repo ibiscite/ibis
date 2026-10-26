@@ -436,38 +436,67 @@ fn first_citation(value: &Value) -> Option<&Value> {
 }
 
 #[test]
-fn prefix_relocation_is_reported_as_a_typed_loss() {
+fn prefix_support_matches_every_supported_output_and_form() {
+    use syntax::FieldSupport::{Flattened, Native, Unsupported};
     let mut case = seed();
+    case.request.items[0].locator = None;
+    case.request.items[0].suffix.clear();
     case.request.items[0].prefix = vec![TextRun {
         text: "see".into(),
         ..TextRun::default()
     }];
-    for syntax in [KeySyntax::Latex, KeySyntax::Typst] {
-        case.request.output = OutputSpec::Key { syntax, command: None };
-        assert_ne!(
-            syntax::capabilities(&case.request.output).unwrap().prefix,
-            syntax::FieldSupport::Native
-        );
-        let result = syntax::cite(&case.library, &case.request).unwrap();
-        assert_eq!(
-            result.losses,
-            [Loss {
-                item: Some(0),
-                field: LossField::Prefix,
-                reason: LossReason::Flattened
-            }]
-        );
-        if pandoc_available() {
-            let ast = consumer_ast(if syntax == KeySyntax::Latex { "latex" } else { "typst" }, &result.text);
-            assert_eq!(inline_text(&first_citation(&ast).unwrap()["citationPrefix"]), "");
-            let before = ast["blocks"][0]["c"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .take_while(|inline| inline["t"] != "Cite")
-                .map(inline_text)
-                .collect::<String>();
-            assert_eq!(before.trim(), "see");
+    let consumer_available = pandoc_available();
+    for caps in &CAPABILITIES {
+        case.request.output = output(caps);
+        assert_eq!(caps.prefix.len(), caps.forms.len(), "{caps:?}");
+        for &form in caps.forms {
+            case.request.form = form;
+            let expected = match (caps.syntax, form) {
+                (KeySyntax::Pandoc, CitationForm::Narrative) | (KeySyntax::Latex | KeySyntax::Typst, _) => Flattened,
+                (KeySyntax::Keys | KeySyntax::CslJson, _) => Unsupported,
+                _ => Native,
+            };
+            assert_eq!(caps.prefix_support(form), expected, "{caps:?} {form:?}");
+            let result = syntax::cite(&case.library, &case.request).unwrap();
+            let expected_losses = if expected == Native {
+                vec![]
+            } else {
+                vec![Loss {
+                    item: Some(0),
+                    field: LossField::Prefix,
+                    reason: if expected == Flattened {
+                        LossReason::Flattened
+                    } else {
+                        LossReason::Unsupported
+                    },
+                }]
+            };
+            assert_eq!(result.losses, expected_losses, "{caps:?} {form:?}");
+            if consumer_available && expected != Unsupported {
+                let ast = consumer_ast(
+                    match caps.escaping {
+                        Escaping::Pandoc => "markdown",
+                        Escaping::Latex => "latex",
+                        _ => "typst",
+                    },
+                    &result.text,
+                );
+                let citation = first_citation(&ast).unwrap();
+                let native = inline_text(&citation["citationPrefix"]);
+                let outside = ast["blocks"][0]["c"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .take_while(|inline| inline["t"] != "Cite")
+                    .map(inline_text)
+                    .collect::<String>();
+                assert_eq!(
+                    (native.trim(), outside.trim()),
+                    if expected == Native { ("see", "") } else { ("", "see") },
+                    "{caps:?} {form:?}: {}",
+                    result.text
+                );
+            }
         }
     }
 }

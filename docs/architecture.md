@@ -89,9 +89,9 @@ those cutovers delete the old entrypoints. Both pipelines share scalar escaping,
 without adapters between the two contracts.
 
 Literal affixes escape default consumer smart punctuation as well as markup.
-Plain LaTeX and Typst place prefixes outside the citation and report a typed
-prefix/flattened loss, since a footnote-style citation cannot carry that prefix
-in the same position. Capability tables list forms restricted to one item;
+Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
+report a typed prefix/flattened loss, since a footnote-style citation cannot
+carry that prefix in the same position. Capability tables list forms restricted to one item;
 multi-item Pandoc narrative requests are refused until mixed clusters are built
 in 0.4, rather than silently becoming several citation clusters.
 
