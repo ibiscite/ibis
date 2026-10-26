@@ -1,8 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { App } from "./App";
 import type { SearchQuery } from "./api";
+import { usePointerSelection } from "./pointerSelection";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -202,4 +203,19 @@ test("clicking a row's tile adds or removes it without copying, and keeps the se
   await waitFor(() => expect(row("Beta").hasAttribute("data-citation-selected")).toBe(false));
   // A result from an older payload without a type still draws an icon (other).
   expect(row("Alpha").querySelector(".type-icon")).not.toBeNull();
+});
+
+test("a click is used up only when its own row renders, not by a highlight change that renders first", () => {
+  const { result, rerender } = renderHook(({ active }) => usePointerSelection(active, () => undefined), { initialProps: { active: 19 } });
+  // New results reset the highlight to the first row; the row clicked just
+  // after renders only once that reset has.
+  rerender({ active: 0 });
+  act(() => result.current.choose(19));
+  expect(result.current.cameFrom(0)).toBe("waiting");
+  expect(result.current.cameFrom(19)).toBe("click");
+  expect(result.current.cameFrom(19)).toBe("other");
+  // An arrow key after a click whose row never rendered owns the highlight.
+  act(() => result.current.choose(5));
+  result.current.forgetClick();
+  expect(result.current.cameFrom(5)).toBe("other");
 });
