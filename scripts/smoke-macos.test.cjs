@@ -155,6 +155,14 @@ assert.deepEqual(events, [
     [55, false, 1 << 18], [59, false, 0],
 ]);
 
+const defaultShortcut = [];
+context.sendPhysicalChord('super+shift+y', (...event) => defaultShortcut.push(event));
+assert.deepEqual(defaultShortcut, [
+    [55, true, 1 << 20], [56, true, (1 << 20) | (1 << 17)],
+    [16, true, (1 << 20) | (1 << 17)], [16, false, (1 << 20) | (1 << 17)],
+    [56, false, 1 << 20], [55, false, 0],
+]);
+
 const goToFolder = [];
 context.sendPhysicalChord('super+shift+g', (...event) => goToFolder.push(event));
 assert.deepEqual(goToFolder, [

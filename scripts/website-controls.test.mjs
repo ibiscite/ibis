@@ -230,7 +230,7 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce", permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
-    await page.addInitScript(() => { delete Navigator.prototype.share; });
+    await page.addInitScript(() => { delete Navigator.prototype.share; Object.defineProperty(navigator, "platform", { get: () => "Linux x86_64" }); Object.defineProperty(navigator, "userAgentData", { get: () => ({ platform: "Linux" }) }); });
     await page.goto(process.env.IBIS_WEBSITE_URL);
     const [ink, chip] = await page.evaluate(() => {
       const logo = document.querySelector(".logo-light img, .logo img:not([hidden])").getBoundingClientRect();
@@ -258,6 +258,41 @@ test("logo ink aligns, the app shortcut opens the example and sharing uses the b
     await page.mouse.move(0, 0);
     assert.equal(await signature.textContent(), "@diyanko", "a chip returns to its key when the pointer leaves");
     await context.close();
+  } finally { await browser.close(); }
+});
+
+test("the demo opens with the platform's Y shortcut across keyboard layouts", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { loadPlaywright } = await import("./gallery-contact-sheet.mjs");
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+      await page.addInitScript(platform => {
+        Object.defineProperty(navigator, "platform", { get: () => platform });
+        Object.defineProperty(navigator, "userAgentData", { get: () => ({ platform: platform === "MacIntel" ? "macOS" : platform === "Win32" ? "Windows" : "Linux" }) });
+      }, platform);
+      await page.goto(url.href); await page.locator(".demo-hint").waitFor();
+      const mac = platform === "MacIntel", modifiers = { metaKey: mac, ctrlKey: !mac, shiftKey: true };
+      assert.equal(await page.locator("html").getAttribute("data-platform"), mac ? "macos" : platform === "Win32" ? "windows" : "linux");
+      const cases = [
+        ...["KeyY", "KeyZ", "KeyT", "KeyO"].map(code => [{ key: "Y", code, ...modifiers }, true]),
+        [{ key: "Z", code: "KeyY", ...modifiers }, false],
+        [{ key: "Н", code: "KeyY", ...modifiers }, true],
+        [{ key: "r", code: "KeyR", ctrlKey: true, metaKey: true }, false],
+        [{ key: "Y", code: "KeyY", ...modifiers, repeat: true }, false],
+        [{ key: "Y", code: "KeyY", ...modifiers, isComposing: true }, false],
+      ];
+      for (const [event, expected] of cases) {
+        await page.locator('.index nav a[href="#how"]').focus();
+        await page.evaluate(event => document.dispatchEvent(new KeyboardEvent("keydown", { ...event, bubbles: true, cancelable: true })), event);
+        assert.equal(await page.locator(".picker input").evaluate(input => input === document.activeElement), expected, `${platform}: ${JSON.stringify(event)}`);
+      }
+      assert.match(await page.locator(".demo-hint").textContent(), mac ? /⇧⌘Y/ : /Ctrl\+Shift\+Y/);
+      await page.close();
+    }
   } finally { await browser.close(); }
 });
 

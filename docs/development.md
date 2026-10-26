@@ -203,7 +203,7 @@ Every field is optional. `citation_style`, `density`, `larger_text`, `show_paste
 after declining. Omitted or `null` means the question has not been answered;
 Ibis makes no update check until the person opts in (ADR 0019).
 
-The picker shortcut defaults to Control+Command+R on macOS and Ctrl+Shift+Y on Windows and Linux. For layout limitations, conflicts and custom shortcuts, see [compatibility.md](compatibility.md#picker-shortcuts).
+The picker shortcut defaults to Command+Shift+Y on macOS and Ctrl+Shift+Y on Windows and Linux. Defaults remain unwritten; every explicitly stored shortcut is kept, including the old macOS chord. For layout limitations, conflicts and switching back to the default, see [compatibility.md](compatibility.md#picker-shortcuts).
 
 For development, `IBIS_LIBRARY=/path/to/file.bib` opens a library without saving it. A development build registers for start at login as "Ibis (development)", so it never replaces an installed Ibis's entry. For a debug preview on a particular display, pass Tauri's `--config` with finite `x` and `y` and `center: false` on the `main` window.
 

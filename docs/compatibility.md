@@ -100,11 +100,16 @@ Native Linux toggle smoke and real GNOME/KDE/Sway/Hyprland focus checks remain f
 
 ## Picker shortcuts
 
-The defaults are **Control+Command+R** on macOS and **Ctrl+Shift+Y** on
+The defaults are **Command+Shift+Y** on macOS and **Ctrl+Shift+Y** on
 Windows/X11. Registration can fail if another app owns the shortcut; check the
 picker's shortcut warning. A shortcut setting uses modifiers and one key
 joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere.
 Invalid settings report a warning and use the default.
+
+Earlier Ibis versions never saved the default shortcut. An unset or `null`
+`shortcut` therefore picks up the new default automatically. Every explicitly
+stored shortcut is kept, including `Control+Command+R`. To switch to the new
+default, remove the `shortcut` setting and restart Ibis.
 
 On Windows and X11 a shortcut letter follows the key labelled with it. On
 macOS Ibis moves a letter to the key that types it on the active layout, so it

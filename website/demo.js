@@ -1,4 +1,4 @@
-import { KEY_TABLE, keysFor, keyLabel, commandKey, matchesAccelerator } from "./keys.js";
+import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keysFor, keyLabel, commandKey, matchesAccelerator } from "./keys.js";
 import { typePaths } from "./icon-paths.js";
 import { createDemo, references, formats } from "./demo-model.mjs";
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
@@ -45,10 +45,9 @@ export function setupDemo() {
   // The app's default shortcut also opens this example, so visitors learn it by using it.
   // On macOS the app follows the key that types the letter; only a layout
   // without Latin letters (such as Cyrillic) keeps its US place (#196).
-  const opens = mac ? event => event.ctrlKey && event.metaKey && !event.altKey && !event.shiftKey && (/^[\x21-\x7e]$/.test(event.key) ? event.key.toLowerCase() === "r" : event.code === "KeyR")
-    : event => event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyY";
+  const opens = event => matchesAccelerator(event, DEFAULT_PICKER_SHORTCUT, mac);
   if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then Copy.";
-  else hint.append(el("kbd", { textContent: mac ? "⌃⌘R" : "Ctrl+Shift+Y" }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
+  else hint.append(el("kbd", { textContent: keyLabel(DEFAULT_PICKER_SHORTCUT, mac) }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
   const beak = el("img", { src: "assets/ibis-quote-beak.svg", alt: "", width: 22, height: 19 });
   const shelf = el("div", { className: "picker-shelf" }, beak, output, status);
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, format),

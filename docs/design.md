@@ -413,6 +413,10 @@ only together with the code that handles it. The keys overlay groups them under
 where they work (search box, anywhere in Ibis, a menu, any app), with the action
 first and its keys at the end of the row, as system shortcut lists do.
 
+The global default is Command+Shift+Y on macOS and Ctrl+Shift+Y elsewhere.
+On macOS its letter follows the active keyboard layout. Defaults stay unset
+in settings, and an explicitly stored custom shortcut is never replaced.
+
 | Input | Does |
 |---|---|
 | Click a row | Selects it; the shelf shows its citation [C5] |
@@ -697,7 +701,7 @@ beside it by its ink, not its export clear space.
 its keys, styles or paste) updates it in the same pull request, and it grows as
 the app gains features worth showing. It uses invented references, says Ibis
 does not build the document bibliography, follows **Interaction** and takes its
-default shortcuts from `keys.ts`; the app's default shortcut (⌃⌘R, or
+default shortcuts from `keys.ts`; the app's default shortcut (⇧⌘Y, or
 Ctrl+Shift+Y) opens and focuses it from anywhere on the page. Its selected row
 is the system accent, never scarlet; without a known desktop platform (phones)
 it uses the macOS accent pair, because WebKit's AccentColorText is black. The

@@ -79,6 +79,11 @@ mod tests {
     const AZERTY: &[(char, char)] = &[('a', 'q'), ('q', 'a'), ('z', 'w'), ('w', 'z'), (';', 'm'), ('m', ',')];
     const TURKISH_Q: &[(char, char)] = &[('i', 'ı'), ('\'', 'i')];
     #[rustfmt::skip]
+    const COLEMAK: &[(char, char)] = &[
+        ('e', 'f'), ('r', 'p'), ('t', 'g'), ('y', 'j'), ('u', 'l'), ('i', 'u'), ('o', 'y'), ('p', ';'),
+        ('s', 'r'), ('d', 's'), ('f', 't'), ('g', 'd'), ('j', 'n'), ('k', 'e'), ('l', 'i'), (';', 'o'), ('n', 'k'),
+    ];
+    #[rustfmt::skip]
     const DVORAK: &[(char, char)] = &[
         ('q', '\''), ('w', ','), ('e', '.'), ('r', 'p'), ('t', 'y'), ('y', 'f'), ('u', 'g'), ('i', 'c'), ('o', 'r'),
         ('p', 'l'), ('[', '/'), (']', '='), ('s', 'o'), ('d', 'e'), ('f', 'u'), ('g', 'i'), ('h', 'd'), ('j', 'h'),
@@ -104,6 +109,7 @@ mod tests {
             (AZERTY, Code::KeyM, Code::Semicolon),
             (AZERTY, Code::KeyA, Code::KeyQ),
             (DVORAK, Code::KeyY, Code::KeyT),
+            (COLEMAK, Code::KeyY, Code::KeyO),
             (DVORAK, Code::KeyS, Code::Semicolon),
             (DVORAK, Code::KeyW, Code::Comma),
             (DVORAK, Code::KeyV, Code::Period),
@@ -114,7 +120,7 @@ mod tests {
             assert_eq!(translate(key(letter), layout(changes)), Some(key(place)), "{letter:?}");
         }
         // Every letter has a key on each of these layouts, so none falls back.
-        for changes in [QWERTZ, AZERTY, DVORAK, TURKISH_Q] {
+        for changes in [QWERTZ, AZERTY, DVORAK, COLEMAK, TURKISH_Q] {
             let typed = layout(changes);
             for &(code, ..) in POSITIONS.iter().filter(|(.., us)| us.is_ascii_lowercase()) {
                 let moved = translate(key(code), &typed).unwrap_or_else(|| panic!("{code:?} has no key"));
