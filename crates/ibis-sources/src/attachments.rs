@@ -33,25 +33,17 @@ fn append_with(
             };
             let parsed = decode(&encoded);
             let (title, media_type, path, availability) = match parsed {
-                Some((title, location, kind))
-                    if location.starts_with("https://") || location.starts_with("http://") =>
-                {
-                    (title, kind, None, Availability::Online)
-                }
-                Some((title, location, kind)) => {
-                    let relative = Path::new(&location);
-                    // Explicit network locations are never touched implicitly.
-                    if location.starts_with("\\\\")
-                        || location.starts_with("//")
-                        || location.contains("://")
-                        || cfg!(not(windows)) && windows_drive(&location)
-                    {
+                Some((title, location, kind)) => match location_kind(&location) {
+                    LocationKind::Online => (title, kind, None, Availability::Online),
+                    LocationKind::Unsupported => {
                         warnings.push(SourceWarning {
                             code: WarningCode::InvalidAttachment,
                             line,
                         });
                         (title, kind, None, Availability::Unknown)
-                    } else {
+                    }
+                    LocationKind::File => {
+                        let relative = Path::new(&location);
                         let path = if relative.is_absolute() {
                             relative.to_path_buf()
                         } else {
@@ -60,7 +52,7 @@ fn append_with(
                         let availability = probe(&path);
                         (title, kind, Some(path), availability)
                     }
-                }
+                },
                 None => {
                     warnings.push(SourceWarning {
                         code: WarningCode::InvalidAttachment,
@@ -84,20 +76,87 @@ fn append_with(
     }
 }
 
-fn windows_drive(text: &str) -> bool {
+enum LocationKind {
+    File,
+    Online,
+    Unsupported,
+}
+fn separator(byte: u8) -> bool {
+    matches!(byte, b'/' | b'\\')
+}
+pub(crate) fn windows_drive(text: &str) -> bool {
     let bytes = text.as_bytes();
-    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && matches!(bytes[2], b'/' | b'\\')
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+fn windows_namespace(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    // Windows accepts either slash in a UNC/device prefix, including mixed
+    // pairs. Single backslash roots and NT device namespaces are unsupported.
+    if bytes.first() == Some(&b'\\') || bytes.len() >= 2 && separator(bytes[0]) && separator(bytes[1]) {
+        return true;
+    }
+    bytes.first().is_some_and(|byte| separator(*byte))
+        && text
+            .trim_start_matches(['/', '\\'])
+            .split(['/', '\\'])
+            .next()
+            .is_some_and(|part| {
+                ["??", "device", "global??", "globalroot"]
+                    .iter()
+                    .any(|name| part.eq_ignore_ascii_case(name))
+            })
+}
+fn scheme(text: &str) -> Option<(&str, &str)> {
+    let (name, rest) = text.split_once(':')?;
+    (name.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"+.-".contains(&byte)))
+    .then_some((name, rest))
+}
+fn direct_uri(text: &str) -> bool {
+    scheme(text).is_some_and(|(name, rest)| {
+        rest.starts_with("//")
+            || [
+                "file", "http", "https", "ftp", "sftp", "smb", "nfs", "ssh", "dav", "davs", "data", "mailto", "urn",
+                "about",
+            ]
+            .iter()
+            .any(|known| name.eq_ignore_ascii_case(known))
+    })
+}
+fn location_kind(text: &str) -> LocationKind {
+    if windows_namespace(text) {
+        return LocationKind::Unsupported;
+    }
+    if windows_drive(text) {
+        return if cfg!(windows) && text.as_bytes().get(2).is_some_and(|byte| separator(*byte)) {
+            LocationKind::File
+        } else {
+            LocationKind::Unsupported
+        };
+    }
+    if let Some((name, rest)) = scheme(text) {
+        return if (name.eq_ignore_ascii_case("http") || name.eq_ignore_ascii_case("https")) && rest.starts_with("//") {
+            LocationKind::Online
+        } else {
+            LocationKind::Unsupported
+        };
+    }
+    LocationKind::File
 }
 fn decode(text: &str) -> Option<(String, String, String)> {
     let text = text.trim();
     if text.chars().any(char::is_control) {
         return None;
     }
-    if text.starts_with("https://") || text.starts_with("http://") {
-        return Some((String::new(), text.into(), String::new()));
+    // Recognise URI syntax before colons can be mistaken for MIME separators.
+    if direct_uri(text) {
+        return matches!(location_kind(text), LocationKind::Online)
+            .then(|| (String::new(), text.into(), String::new()));
     }
     if windows_drive(text) {
-        return Some((String::new(), text.into(), mime(text)));
+        return (!text[2..].contains(':')).then(|| (String::new(), text.into(), mime(text)));
     }
     let fields = split_escaped(text, ':');
     let (title, location, media_type) = match fields.as_slice() {
@@ -116,11 +175,26 @@ fn decode(text: &str) -> Option<(String, String, String)> {
 }
 fn is_media_type(text: &str) -> bool {
     let text = text.trim();
-    matches!(text.to_ascii_lowercase().as_str(), "pdf" | "html" | "epub" | "txt")
-        || text.contains('/')
+    if text.len() > 255 {
+        return false;
+    }
+    if ["pdf", "html", "epub", "txt"]
+        .iter()
+        .any(|kind| text.eq_ignore_ascii_case(kind))
+    {
+        return true;
+    }
+    let Some((kind, subtype)) = text.split_once('/') else {
+        return false;
+    };
+    fn token(text: &str) -> bool {
+        (1..=127).contains(&text.len())
+            && text.as_bytes()[0].is_ascii_alphanumeric()
             && text
                 .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"/-+._".contains(&byte))
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$&-^_.+".contains(&byte))
+    }
+    token(kind) && token(subtype)
 }
 fn normalize_media(text: &str) -> String {
     match text.trim().to_ascii_lowercase().as_str() {
