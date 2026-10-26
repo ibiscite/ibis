@@ -9,6 +9,8 @@ function icon(kind) {
   return svg;
 }
 export function setupDemo() {
+  // The hosted demo has no native updater; like an app build without an
+  // update key, it omits the update controls offered in the app's More menu.
   const figure = document.querySelector("[data-picker]"), result = document.querySelector("[data-result]");
   if (!figure || !result) return;
   const section = figure.closest("section"), anchorBottom = section.getBoundingClientRect().bottom;
