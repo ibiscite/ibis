@@ -3,6 +3,7 @@ mod attachments;
 mod bibtex;
 mod csl_json;
 mod file;
+pub mod zotero;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
