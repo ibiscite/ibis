@@ -1,5 +1,7 @@
 //! Query only the disposable copy. No CSL/legacy model adapters live here.
-use super::{ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, Control, RawCreator, RawItem, SourceMetadata};
+use super::{
+    ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, Control, RawCreator, RawItem, SourceMetadata, StoredValue,
+};
 use rusqlite::config::DbConfig;
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, OpenFlags, Row};
@@ -9,46 +11,37 @@ use std::collections::{BTreeMap, BTreeSet};
 const MAX_ITEMS: usize = 1_000_000;
 const MAX_VALUE: usize = 256 * 1024;
 const MAX_TEXT: usize = 256 * 1024 * 1024;
-const MAX_ROWS: usize = 4_000_000;
+// Independent work ceiling; only retained bibliographic rows consume it.
+const MAX_ROWS: usize = MAX_ITEMS * 64;
 
 pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Result<ClosedSnapshot, ClosedError> {
     control.check()?;
+    super::database_bounds::check(copy, control)?;
     let path = copy.database_path();
     let dir = path.parent().ok_or(ClosedError::PrivateStorage)?;
-    // A rollback journal may name an external super-journal. Never let SQLite
-    // recovery interpret a copied journal's path instructions. Zotero repairs
-    // the original on next launch; WAL-only recovery is safe in private storage.
-    if std::fs::metadata(dir.join("zotero.sqlite-journal")).is_ok_and(|m| m.len() != 0) {
-        return Err(ClosedError::NeedsRecovery);
+    // A hot rollback journal may name an external super-journal. A zeroed
+    // PERSIST journal is not hot (SQLite pager.c hasHotJournal); discard only
+    // that private journal so SQLite never interprets its path instructions.
+    match std::fs::File::open(dir.join("zotero.sqlite-journal")) {
+        Ok(mut journal) => {
+            use std::io::Read;
+            let mut first = [0];
+            let count = journal.read(&mut first).map_err(|_| ClosedError::PrivateStorage)?;
+            if count != 0 && first[0] != 0 {
+                return Err(ClosedError::NeedsRecovery);
+            }
+            drop(journal);
+            std::fs::remove_file(dir.join("zotero.sqlite-journal")).map_err(|_| ClosedError::PrivateStorage)?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+        Err(_) => return Err(ClosedError::PrivateStorage),
     }
     let mut db = Connection::open_with_flags(
         &path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(failure)?;
-    for (config, enabled) in [
-        (DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true),
-        (DbConfig::SQLITE_DBCONFIG_ENABLE_TRIGGER, false),
-        (DbConfig::SQLITE_DBCONFIG_ENABLE_VIEW, false),
-        (DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false),
-    ] {
-        db.set_db_config(config, enabled).map_err(failure)?;
-    }
-    for (limit, value) in [
-        (Limit::SQLITE_LIMIT_LENGTH, MAX_VALUE as i32),
-        (Limit::SQLITE_LIMIT_SQL_LENGTH, 65536),
-        (Limit::SQLITE_LIMIT_COLUMN, 256),
-        (Limit::SQLITE_LIMIT_EXPR_DEPTH, 64),
-        (Limit::SQLITE_LIMIT_ATTACHED, 0),
-        (Limit::SQLITE_LIMIT_VDBE_OP, 100000),
-    ] {
-        db.set_limit(limit, value).map_err(failure)?;
-    }
-    let progress = control.clone();
-    db.progress_handler(10000, Some(move || progress.check().is_err()))
-        .map_err(failure)?;
-    db.execute_batch("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-2048; PRAGMA query_only=ON;")
-        .map_err(failure)?;
+    configure(&mut db, control)?;
     let check: String = db
         .query_row("PRAGMA quick_check(1)", [], |r| r.get(0))
         .map_err(failure)?;
@@ -74,159 +67,172 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
         exceeded: Cell::new(false),
     };
     let mut libraries = BTreeMap::new();
-    each(
-        &db,
-        "SELECT L.libraryID,L.type,G.groupID FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group') ORDER BY L.libraryID",
-        &budget,
-        |r| {
-            let id: i64 = r.get(0)?;
-            let kind = budget.text(r, 1)?;
-            let group_id: Option<i64> = r.get(2)?;
-            if id < 1
-                || (kind == "group" && group_id.is_none_or(|id| id < 1))
-                || (kind == "user" && group_id.is_some())
-                || libraries.len() >= 4096
-            {
-                return Err(rusqlite::Error::InvalidQuery);
-            }
-            if libraries
-                .insert(
-                    id,
-                    ClosedLibrary {
-                        library_id: id,
-                        group_id,
-                        items: Vec::new(),
-                    },
-                )
-                .is_some()
-            {
-                return Err(rusqlite::Error::InvalidQuery);
-            }
-            Ok(())
-        },
-    )?;
+    each(&db, READ_SQL[0], &budget, |r| {
+        let id: i64 = r.get(0)?;
+        let kind = budget.text(r, 1)?;
+        let group_id: Option<i64> = r.get(2)?;
+        if id < 1
+            || (kind == "group" && group_id.is_none_or(|id| id < 1))
+            || (kind == "user" && group_id.is_some())
+            || libraries.len() >= 4096
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if libraries
+            .insert(
+                id,
+                ClosedLibrary {
+                    library_id: id,
+                    group_id,
+                    items: Vec::new(),
+                },
+            )
+            .is_some()
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(())
+    })?;
     let mut items = BTreeMap::<i64, ClosedItem>::new();
     let mut identities = BTreeSet::new();
-    each(
-        &db,
-        "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID) ORDER BY I.itemID",
-        &budget,
-        |r| {
-            let id: i64 = r.get(0)?;
-            let library: i64 = r.get(1)?;
-            if !libraries.contains_key(&library) {
-                return Ok(());
+    each(&db, READ_SQL[1], &budget, |r| {
+        let id: i64 = r.get(0)?;
+        let library: i64 = r.get(1)?;
+        if !libraries.contains_key(&library) {
+            return Ok(());
+        }
+        if items.len() >= MAX_ITEMS {
+            return budget.limit();
+        }
+        let key = budget.text(r, 2)?;
+        let item_type = budget.text(r, 4)?;
+        if id < 1
+            || key.is_empty()
+            || key.len() > 128
+            || key.chars().any(|c| c.is_whitespace() || c.is_control())
+            || item_type.is_empty()
+            || !identities.insert((library, key.clone()))
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let item = ClosedItem {
+            data: RawItem {
+                key,
+                item_type,
+                ..RawItem::default()
+            },
+            metadata: SourceMetadata {
+                item_id: id,
+                library_id: library,
+                version: r.get(3)?,
+                date_added: budget.text(r, 5)?,
+                date_modified: budget.text(r, 6)?,
+                stored_fields: BTreeMap::new(),
+                stored_values: BTreeMap::new(),
+            },
+        };
+        if items.insert(id, item).is_some() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(())
+    })?;
+    each(&db, READ_SQL[2], &budget, |r| {
+        let id = r.get(0)?;
+        let Some(item) = items.get_mut(&id) else {
+            return Ok(());
+        };
+        if item.metadata.stored_fields.len()
+            + item
+                .metadata
+                .stored_values
+                .values()
+                .filter(|v| matches!(v, StoredValue::Null))
+                .count()
+            >= 256
+        {
+            return budget.limit();
+        }
+        let field = budget.text(r, 1)?;
+        if item.metadata.stored_fields.contains_key(&field) || item.metadata.stored_values.contains_key(&field) {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if r.get::<_, Option<i64>>(3)?.is_none() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let (stored, original) = budget.value(r, 2)?;
+        if let Some(original) = original {
+            item.metadata.stored_values.insert(field.clone(), original);
+        }
+        let Some(stored) = stored else {
+            return Ok(());
+        };
+        // Metadata cannot overwrite mapper envelope fields through flattening.
+        if field.is_empty() || ["key", "itemType", "creators", "better_bibtex_keys"].contains(&field.as_str()) {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let typed = if date_field(&item.data.item_type, &field) {
+            multipart(&stored).to_owned()
+        } else {
+            stored.clone()
+        };
+        budget.charge(typed.len().saturating_add(stored.len()).saturating_add(field.len()))?;
+        if item.metadata.stored_fields.insert(field.clone(), stored).is_some()
+            || item.data.fields.insert(field, typed).is_some()
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(())
+    })?;
+    let mut creators = BTreeMap::<i64, BTreeMap<i64, RawCreator>>::new();
+    each(&db, READ_SQL[3], &budget, |r| {
+        let id = r.get(0)?;
+        if !items.contains_key(&id) {
+            return Ok(());
+        }
+        let ordered = creators.entry(id).or_default();
+        if ordered.len() >= 4096 {
+            return budget.limit();
+        }
+        let creator_type = budget.text(r, 1)?;
+        let first = budget.text(r, 2)?;
+        let last = budget.text(r, 3)?;
+        let mode: i64 = r.get(4)?;
+        let index: i64 = r.get(5)?;
+        if ![0, 1].contains(&mode) || !(0..4096).contains(&index) || creator_type.is_empty() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        budget.charge(256)?;
+        let creator = if mode == 1 {
+            RawCreator {
+                creator_type,
+                name: last,
+                field_mode: 1,
+                ..RawCreator::default()
             }
-            if items.len() >= MAX_ITEMS {
-                return budget.limit();
+        } else {
+            RawCreator {
+                creator_type,
+                first_name: first,
+                last_name: last,
+                ..RawCreator::default()
             }
-            let key = budget.text(r, 2)?;
-            let item_type = budget.text(r, 4)?;
-            if id < 1
-                || key.is_empty()
-                || key.len() > 128
-                || key.chars().any(|c| c.is_whitespace() || c.is_control())
-                || item_type.is_empty()
-                || !identities.insert((library, key.clone()))
+        };
+        if ordered.insert(index, creator).is_some() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(())
+    })?;
+    for (id, mut item) in items {
+        if let Some(ordered) = creators.remove(&id) {
+            if ordered
+                .keys()
+                .enumerate()
+                .any(|(expected, actual)| expected as i64 != *actual)
             {
-                return Err(rusqlite::Error::InvalidQuery);
+                return Err(ClosedError::Damaged);
             }
-            let item = ClosedItem {
-                data: RawItem {
-                    key,
-                    item_type,
-                    ..RawItem::default()
-                },
-                metadata: SourceMetadata {
-                    item_id: id,
-                    library_id: library,
-                    version: r.get(3)?,
-                    date_added: budget.text(r, 5)?,
-                    date_modified: budget.text(r, 6)?,
-                    stored_fields: BTreeMap::new(),
-                },
-            };
-            if items.insert(id, item).is_some() {
-                return Err(rusqlite::Error::InvalidQuery);
-            }
-            Ok(())
-        },
-    )?;
-    each(
-        &db,
-        "SELECT D.itemID,F.fieldName,V.value FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) ORDER BY D.itemID,D.fieldID",
-        &budget,
-        |r| {
-            let id = r.get(0)?;
-            let Some(item) = items.get_mut(&id) else {
-                return Ok(());
-            };
-            if item.data.fields.len() >= 256 {
-                return budget.limit();
-            }
-            let field = budget.text(r, 1)?;
-            let stored = budget.text(r, 2)?;
-            // Metadata cannot overwrite mapper envelope fields through flattening.
-            if field.is_empty() || ["key", "itemType", "creators", "better_bibtex_keys"].contains(&field.as_str()) {
-                return Err(rusqlite::Error::InvalidQuery);
-            }
-            let typed = if date_field(&item.data.item_type, &field) {
-                multipart(&stored).to_owned()
-            } else {
-                stored.clone()
-            };
-            budget.charge(typed.len().saturating_add(stored.len()).saturating_add(field.len()))?;
-            if item.metadata.stored_fields.insert(field.clone(), stored).is_some()
-                || item.data.fields.insert(field, typed).is_some()
-            {
-                return Err(rusqlite::Error::InvalidQuery);
-            }
-            Ok(())
-        },
-    )?;
-    each(
-        &db,
-        "SELECT IC.itemID,CT.creatorType,C.firstName,C.lastName,C.fieldMode,IC.orderIndex FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) ORDER BY IC.itemID,IC.orderIndex",
-        &budget,
-        |r| {
-            let id = r.get(0)?;
-            let Some(item) = items.get_mut(&id) else {
-                return Ok(());
-            };
-            if item.data.creators.len() >= 4096 {
-                return budget.limit();
-            }
-            let creator_type = budget.text(r, 1)?;
-            let first = budget.text(r, 2)?;
-            let last = budget.text(r, 3)?;
-            let mode: i64 = r.get(4)?;
-            let index: i64 = r.get(5)?;
-            if ![0, 1].contains(&mode)
-                || index < 0
-                || index as usize != item.data.creators.len()
-                || creator_type.is_empty()
-            {
-                return Err(rusqlite::Error::InvalidQuery);
-            }
-            item.data.creators.push(if mode == 1 {
-                RawCreator {
-                    creator_type,
-                    name: last,
-                    field_mode: 1,
-                    ..RawCreator::default()
-                }
-            } else {
-                RawCreator {
-                    creator_type,
-                    first_name: first,
-                    last_name: last,
-                    ..RawCreator::default()
-                }
-            });
-            Ok(())
-        },
-    )?;
-    for (_, item) in items {
+            item.data.creators = ordered.into_values().collect();
+        }
         libraries
             .get_mut(&item.metadata.library_id)
             .ok_or(ClosedError::Damaged)?
@@ -240,6 +246,45 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
         warnings: Vec::new(),
     })
 }
+
+fn configure(db: &mut Connection, control: &Control) -> Result<(), ClosedError> {
+    for (config, enabled) in [
+        (DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true),
+        (DbConfig::SQLITE_DBCONFIG_ENABLE_TRIGGER, false),
+        (DbConfig::SQLITE_DBCONFIG_ENABLE_VIEW, false),
+        (DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false),
+    ] {
+        db.set_db_config(config, enabled).map_err(failure)?;
+    }
+    for (limit, value) in [
+        (Limit::SQLITE_LIMIT_LENGTH, MAX_VALUE as i32),
+        (Limit::SQLITE_LIMIT_SQL_LENGTH, 65536),
+        (Limit::SQLITE_LIMIT_COLUMN, 256),
+        (Limit::SQLITE_LIMIT_EXPR_DEPTH, 64),
+        (Limit::SQLITE_LIMIT_ATTACHED, 0),
+        (Limit::SQLITE_LIMIT_VDBE_OP, 100000),
+        (Limit::SQLITE_LIMIT_SCHEMA, 1024),
+        (Limit::SQLITE_LIMIT_PARSER_DEPTH, 100),
+        (Limit::SQLITE_LIMIT_TRIGGER_STEPS, 256),
+    ] {
+        db.set_limit(limit, value).map_err(failure)?;
+    }
+    let progress = control.clone();
+    db.progress_handler(10000, Some(move || progress.check().is_err()))
+        .map_err(failure)?;
+    db.execute_batch(
+        "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-2048; PRAGMA query_only=ON; PRAGMA automatic_index=OFF;",
+    )
+    .map_err(failure)?;
+    Ok(())
+}
+
+const READ_SQL: [&str; 4] = [
+    "SELECT L.libraryID,L.type,G.groupID FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group')",
+    "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID)",
+    "SELECT D.itemID,F.fieldName,V.value,V.valueID FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=D.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
+    "SELECT IC.itemID,CT.creatorType,C.firstName,C.lastName,C.fieldMode,IC.orderIndex FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=IC.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
+];
 
 const TABLES: &[(&str, &[&str])] = &[
     ("libraries", &["libraryID", "type"]),
@@ -332,6 +377,23 @@ impl Budget {
         } else {
             self.limit()
         }
+    }
+    fn value(&self, r: &Row<'_>, i: usize) -> rusqlite::Result<(Option<String>, Option<StoredValue>)> {
+        use rusqlite::types::ValueRef;
+        let (number, original) = match r.get_ref(i)? {
+            ValueRef::Text(_) => return self.text(r, i).map(|s| (Some(s), None)),
+            ValueRef::Integer(n) => (n as f64, StoredValue::Integer(n)),
+            ValueRef::Real(n) => (n, StoredValue::RealBits(n.to_bits())),
+            ValueRef::Null => {
+                self.charge(128)?;
+                return Ok((None, Some(StoredValue::Null)));
+            }
+            _ => return Err(rusqlite::Error::InvalidQuery),
+        };
+        let mut formatter = ryu_js::Buffer::new();
+        let value = formatter.format(number);
+        self.charge(value.len().saturating_add(128))?;
+        Ok((Some(value.to_owned()), Some(original)))
     }
     fn text(&self, r: &Row<'_>, i: usize) -> rusqlite::Result<String> {
         let value = r.get_ref(i)?.as_str()?;

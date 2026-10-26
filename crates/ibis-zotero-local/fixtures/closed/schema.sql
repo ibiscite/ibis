@@ -7,7 +7,7 @@ CREATE TABLE itemTypesCombined(itemTypeID INTEGER PRIMARY KEY,typeName TEXT);
 CREATE TABLE fieldsCombined(fieldID INTEGER PRIMARY KEY,fieldName TEXT);
 CREATE TABLE items(itemID INTEGER PRIMARY KEY,libraryID INTEGER,key TEXT,version INTEGER,itemTypeID INTEGER,dateAdded TEXT,dateModified TEXT);
 CREATE TABLE itemData(itemID INTEGER,fieldID INTEGER,valueID INTEGER);
-CREATE TABLE itemDataValues(valueID INTEGER PRIMARY KEY,value TEXT);
+CREATE TABLE itemDataValues(valueID INTEGER PRIMARY KEY,value UNIQUE);
 CREATE TABLE creators(creatorID INTEGER PRIMARY KEY,firstName TEXT,lastName TEXT,fieldMode INTEGER);
 CREATE TABLE creatorTypes(creatorTypeID INTEGER PRIMARY KEY,creatorType TEXT);
 CREATE TABLE itemCreators(itemID INTEGER,creatorID INTEGER,creatorTypeID INTEGER,orderIndex INTEGER);

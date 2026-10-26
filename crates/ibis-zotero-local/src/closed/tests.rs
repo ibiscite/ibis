@@ -120,3 +120,17 @@ fn reports_cloud_sync_without_disclosing_content_in_debug() {
         assert!(!e.to_string().contains("synthetic"));
     }
 }
+
+#[test]
+fn cloud_synced_synthetic_directory_returns_a_fixed_warning() {
+    let source = fixture(10);
+    let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic cloud root"));
+    let data = root.path().join("Dropbox").join("Zotero");
+    std::fs::create_dir_all(&data).unwrap_or_else(|_| panic!("synthetic cloud dir"));
+    std::fs::copy(source.path().join("zotero.sqlite"), data.join("zotero.sqlite"))
+        .unwrap_or_else(|_| panic!("synthetic cloud db"));
+    assert_eq!(
+        read_fixture(&data).map(|s| s.warnings),
+        Ok(vec![ClosedWarning::CloudSyncedDirectory])
+    );
+}

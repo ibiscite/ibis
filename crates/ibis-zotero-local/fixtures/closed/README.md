@@ -11,7 +11,15 @@ It does not infer a version from a filename or installed application.
 
 Multipart date decoding follows Zotero utilities' `multipartToStr` at commit
 [4051881](https://github.com/zotero/utilities/blob/4051881d59c6c12d34417d4c226f37218051be90/date.js).
-Stored strings remain in engine-private provenance; only typed text reaches mapping.
+Stored strings and exact numeric storage values remain in engine-private provenance;
+only typed text reaches mapping. The value column is deliberately untyped, matching
+Zotero. Numeric values follow Zotero's JavaScript Number coercion via `ryu-js`.
+
+The private reader rejects hot rollback journals without interpreting any
+super-journal pathname. Empty or zero-header copied journals are discarded before
+SQLite opens; the source journal is untouched. Logical page claims in the main
+header and WAL frames are bounded before SQLite can allocate integrity-check
+structures; queries stream without automatic indexes or unbounded sorts.
 
 Copy tests create WALs, journals, source mutations and process holders using only
 these disposable databases. No test discovers a user profile or installed Zotero.

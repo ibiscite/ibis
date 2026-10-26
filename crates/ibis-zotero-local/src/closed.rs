@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 
 mod database;
+mod database_bounds;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod mounts;
 mod platform;
@@ -86,6 +87,15 @@ pub struct SourceMetadata {
     pub date_modified: String,
     /// Original stored strings, before multipart date decoding.
     pub stored_fields: BTreeMap<String, String>,
+    /// Exact non-text SQLite storage values, before JavaScript string coercion.
+    pub stored_values: BTreeMap<String, StoredValue>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum StoredValue {
+    Null,
+    Integer(i64),
+    RealBits(u64),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -128,6 +138,7 @@ private_debug!(
     RawItem,
     RawCreator,
     SourceMetadata,
+    StoredValue,
     ClosedItem,
     ClosedLibrary,
     ClosedSnapshot
@@ -140,7 +151,8 @@ pub struct ClosedReader {
 
 impl ClosedReader {
     /// `cache` must be an application cache/temporary parent, never library
-    /// storage. Ibis creates and verifies its own child with backup exclusion.
+    /// storage. On Windows it must be inside the current user Temp folder.
+    /// Ibis creates and verifies its own child with backup exclusion.
     pub fn new(cache: &Path) -> Result<Self, ClosedError> {
         Ok(Self {
             store: private_copy::Store::open(cache)?,
