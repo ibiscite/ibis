@@ -1,0 +1,200 @@
+// Derived from Zotero utilities_item.js extraToCSL (AGPL-3.0-or-later),
+// Copyright © 2021 Corporation for Digital Scholarship. See vendor/zotero.
+use std::collections::BTreeMap;
+
+use super::{MappingWarning, Schema, dates, public_url, warn};
+use serde_json::Value;
+
+const STANDARD: &str = "abstract accessed annote archive archive-place author authority call-number chapter-number citation-label citation-number collection-editor collection-number collection-title composer container container-author container-title container-title-short dimensions director edition editor editorial-director event event-date event-place first-reference-note-number genre illustrator interviewer issue issued jurisdiction keyword language locator medium note number number-of-pages number-of-volumes original-author original-date original-publisher original-publisher-place original-title page page-first publisher publisher-place recipient references reviewed-author reviewed-title scale section source status submitted title title-short translator type version volume year-suffix";
+
+pub(super) fn normalize(extra: &str, schema: &Schema) -> String {
+    let lines: Vec<_> = extra.split_inclusive(['\n', '\r', '\u{2028}', '\u{2029}']).collect();
+    let mut consumed_through = None;
+    lines
+        .iter()
+        .enumerate()
+        .map(|(index, &line)| {
+            if consumed_through.is_some_and(|end| index <= end) {
+                return line.to_owned();
+            }
+            let Some((label, value)) = line.split_once(':') else {
+                return line.to_owned();
+            };
+            if !label.chars().all(|c| c.is_ascii_alphabetic() || c == ' ' || c == '-')
+                || label.is_empty()
+                || value.is_empty() && index + 1 == lines.len()
+            {
+                return line.to_owned();
+            }
+            // The upstream /m expression allows whitespace after the colon to span
+            // lines. Its greedy match consumes the next nonblank line unchanged.
+            if value.trim().is_empty() {
+                consumed_through = lines
+                    .iter()
+                    .enumerate()
+                    .skip(index + 1)
+                    .find(|(_, next)| !next.trim().is_empty())
+                    .map(|(end, _)| end);
+                if consumed_through.is_none()
+                    && !value
+                        .chars()
+                        .any(|c| !matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'))
+                {
+                    return line.to_owned();
+                }
+            }
+            let lower = label.to_ascii_lowercase().replace(' ', "-");
+            let field = if STANDARD.split_ascii_whitespace().any(|field| field == lower) {
+                lower
+            } else if matches!(lower.as_str(), "doi" | "isbn" | "issn" | "pmcid" | "pmid" | "url") {
+                lower.to_ascii_uppercase()
+            } else if lower == "archive-location" {
+                "archive_location".into()
+            } else {
+                let mut zotero_field = label.to_owned();
+                if let Some(index) = label
+                    .as_bytes()
+                    .windows(2)
+                    .position(|pair| pair[0] == b' ' && pair[1].is_ascii_uppercase())
+                {
+                    zotero_field.remove(index);
+                }
+                if zotero_field.as_bytes().get(1).is_some_and(|b| b.is_ascii_lowercase()) {
+                    zotero_field[..1].make_ascii_lowercase();
+                }
+                // As in schema.js, the final mapping wins; date mappings follow text.
+                schema
+                    .csl
+                    .fields
+                    .date
+                    .iter()
+                    .find(|(_, field)| **field == zotero_field)
+                    .map(|(variable, _)| variable.clone())
+                    .or_else(|| {
+                        schema
+                            .csl
+                            .fields
+                            .text
+                            .iter()
+                            .rev()
+                            .find(|(_, fields)| fields.contains(&zotero_field))
+                            .map(|(variable, _)| variable.clone())
+                    })
+                    .unwrap_or_else(|| label.into())
+            };
+            format!("{field}:{value}")
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+fn field_line(line: &str) -> Option<(&str, &str)> {
+    let (label, value) = line.split_once(':')?;
+    // citeproc's note-field syntax; unparsed prose stops overrides after line 1.
+    if label.is_empty()
+        || !(label
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || matches!(b, b'-' | b'_'))
+            || label.bytes().all(|b| b.is_ascii_uppercase()))
+        || value.contains('}')
+        || value.is_empty()
+    {
+        return None;
+    }
+    Some((label, value.trim()))
+}
+
+pub(super) fn date_overrides(note: &str) -> (String, BTreeMap<String, Value>) {
+    let mut lines: Vec<_> = note.split('\n').map(str::to_owned).collect();
+    let mut overrides = BTreeMap::new();
+    for (index, line) in lines.iter_mut().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Some((label, value)) = field_line(line) else {
+            if index == 0 {
+                continue;
+            }
+            break;
+        };
+        if matches!(
+            label,
+            "issued" | "event-date" | "original-date" | "publication-date" | "available-date" | "submitted"
+        ) && let Some(date) = dates::extra_date(value)
+        {
+            overrides.insert(label.into(), date);
+            line.clear();
+        }
+    }
+    (lines.join("\n"), overrides)
+}
+
+pub(super) fn without_private_urls(note: &str, warnings: &mut Vec<MappingWarning>) -> String {
+    let mut safe = String::with_capacity(note.len());
+    let mut cursor = 0;
+    let mut line_start = true;
+    while cursor < note.len() {
+        let rest = &note[cursor..];
+        let inline = rest.starts_with("{:");
+        let label_start = if inline { 2 } else { 0 };
+        if (inline || line_start)
+            && rest
+                .get(label_start..label_start + 4)
+                .is_some_and(|label| label.eq_ignore_ascii_case("URL:"))
+        {
+            let start = label_start + 4;
+            let value_start = start + rest[start..].len() - rest[start..].trim_start().len();
+            if rest[start..value_start].contains(['\r', '\n', '\u{2028}', '\u{2029}'])
+                && rest
+                    .get(value_start..value_start + 4)
+                    .is_some_and(|label| label.eq_ignore_ascii_case("URL:"))
+            {
+                // A blank URL line cannot swallow the next URL field as if
+                // its label were a URI scheme. Recheck that field separately.
+                safe.push_str(&rest[..value_start]);
+                cursor += value_start;
+                line_start = true;
+                continue;
+            }
+            let value_end = value_start
+                + rest[value_start..]
+                    .find(['{', '}', '\r', '\n', '\u{2028}', '\u{2029}'])
+                    .unwrap_or(rest.len() - value_start);
+            let value = rest[value_start..value_end].trim();
+            if !value.is_empty() && !public_url(value) {
+                warn(warnings, MappingWarning::PrivateUrl);
+                let end = value_end + usize::from(inline && rest.as_bytes().get(value_end) == Some(&b'}'));
+                // Keep line boundaries: deleting a field cannot turn following
+                // prose into the first line accepted by citeproc's field hacks.
+                for ch in rest[..end]
+                    .chars()
+                    .filter(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'))
+                {
+                    safe.push(ch);
+                }
+                line_start = inline
+                    || rest[..end]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'));
+                cursor += end;
+                continue;
+            }
+            if !value.is_empty() {
+                // Consume each segment once, including adversarial repeated
+                // inline fields with no closing brace. Nested fields start a
+                // new segment and receive the same URL check.
+                safe.push_str(&rest[..value_end]);
+                cursor += value_end;
+                line_start = false;
+                continue;
+            }
+        }
+        if let Some(ch) = rest.chars().next() {
+            safe.push(ch);
+            cursor += ch.len_utf8();
+            line_start = matches!(ch, '}' | '\r' | '\n' | '\u{2028}' | '\u{2029}');
+        }
+    }
+    safe
+}
