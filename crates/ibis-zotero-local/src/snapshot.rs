@@ -1,19 +1,16 @@
 //! Reading Zotero's libraries while Zotero is closed (#14, ADR 0027).
 //!
-//! Zotero's database is never opened where it lies. Its files are copied
-//! into a fresh private directory, the copy is checked and read, and the
-//! directory is removed, whatever happens. Opening the original, even read
-//! only, would take SQLite locks that make a Zotero starting at that moment
-//! fail with "database is locked", and could leave `-wal` or `-shm` files
-//! beside it. The `-shm` index is not copied: SQLite rebuilds it from the
-//! copied `-wal`, which holds the last transactions of a Zotero that did not
-//! shut down cleanly. A rollback `-journal` is copied too, so SQLite can
-//! undo the interrupted transaction it records.
+//! SQLite opens only a private copy. Raw source handles briefly exclude
+//! SQLite writers while the database and its WAL/journal are copied; they
+//! never write, create or remove source files. On Unix an exclusive POSIX
+//! record lock requires a writable descriptor, so read-only sources fail
+//! closed. On Windows read-only sharing excludes writes and deletion.
+//! A simultaneous Zotero launch may wait or fail until copying finishes.
 //!
-//! A copy is only trusted when every file looked the same before and after
-//! it was made; otherwise it is made again, a few times at most. Callers use
-//! this only when Zotero's local API does not answer, and check again
-//! afterwards, so a Zotero that is running is always read through its API.
+//! Source identity and metadata are checked around acquisition. The private
+//! copy is validated and read after source locks are released, then removed.
+//! Callers use this only when the local API does not answer and check again
+//! afterwards, so a running Zotero is read through its API.
 //!
 //! Only local files are read: network paths, and cloud files that are not on
 //! this computer (which Windows and macOS would download first), are refused.
@@ -22,13 +19,17 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use ibis_core::model::LoadResult;
 use ibis_core::zotero::Library;
 use thiserror::Error;
 
+mod locks;
 mod read;
+#[cfg(windows)]
+mod windows;
 
 /// Largest database copied: far beyond any real library, small enough to
 /// leave room on the disk.
@@ -66,24 +67,30 @@ pub enum SnapshotError {
     TooNew,
     #[error("Zotero's database is larger than Ibis reads")]
     TooLarge,
+    #[error("Zotero's database needs rollback recovery; open Zotero first")]
+    NeedsRecovery,
     #[error("reading Zotero's database took too long")]
     TimedOut,
+    #[error("a chosen library uses Better BibTeX's separate read-only keys; open Zotero to read it")]
+    UnsupportedKeys,
+    #[error("reading Zotero's database was cancelled")]
+    Cancelled,
     #[error("a chosen Zotero library is not in Zotero's database")]
     NoLibrary,
 }
 
-/// The state of the database files when they were read: equal fingerprints
-/// mean the files did not change in between.
+/// Source metadata plus content digests, compared only after coordinated
+/// acquisition; coarse timestamps alone never suppress an update.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fingerprint(Vec<Option<(u64, SystemTime)>>);
+pub struct Fingerprint(Vec<Option<(u64, SystemTime)>>, Vec<u64>);
 
 /// The outcome of [`read`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refresh {
     /// The files are as they were at `previous`; keep the references loaded.
     Unchanged,
-    /// The chosen libraries, read from one consistent copy. A chosen group
-    /// the database does not have is a warning naming it.
+    /// The chosen libraries, read from one consistent copy. Missing selected
+    /// libraries fail the whole candidate.
     Loaded {
         result: LoadResult,
         fingerprint: Fingerprint,
@@ -91,44 +98,120 @@ pub enum Refresh {
 }
 
 /// Read `libraries` from the Zotero data folder `data`, copying the files
-/// into a fresh directory inside `scratch`, unless they are unchanged since
-/// `previous`. The caller makes sure Zotero's local API did not answer.
+/// into a fresh directory inside `scratch`. `previous` avoids conversion
+/// only after the acquired content also matches. The caller makes sure Zotero's local API did not answer.
 pub fn read(
     data: &Path,
     scratch: &Path,
     libraries: &[Library],
     previous: Option<&Fingerprint>,
 ) -> Result<Refresh, SnapshotError> {
-    let deadline = Instant::now() + DEADLINE;
-    if !local(data) {
+    read_cancellable(data, scratch, libraries, previous, Arc::new(|| false))
+}
+
+/// As [`read`], stopping obsolete loads during acquisition and conversion.
+pub fn read_cancellable(
+    data: &Path,
+    scratch: &Path,
+    libraries: &[Library],
+    previous: Option<&Fingerprint>,
+    cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+) -> Result<Refresh, SnapshotError> {
+    let control = Control {
+        deadline: Instant::now() + DEADLINE,
+        cancelled,
+    };
+    control.check()?;
+    if !local(data) || !local(scratch) {
         return Err(SnapshotError::NotLocal);
     }
+    #[cfg(windows)]
+    let _source_directories = locks::directory_guards(data)?;
+    #[cfg(windows)]
+    let _scratch_directories = locks::directory_guards(scratch)?;
+    // A nested cache directory is opened without following its final link
+    // before any descendant is probed. If absent, never probe its descendants
+    // during this acquisition; a newly appearing directory fails the read.
+    let shadow = data.join("better-bibtex");
+    let has_shadow = shadow_present(data)?;
+    #[cfg(windows)]
+    let _shadow_directory = if has_shadow {
+        Some(locks::directory_guard(&shadow)?)
+    } else {
+        None
+    };
+    #[cfg(not(windows))]
+    let _ = shadow;
     for _ in 0..MAX_ATTEMPTS {
-        let before = fingerprint(data)?;
+        control.check()?;
+        if shadow_present(data)? != has_shadow {
+            return Err(SnapshotError::Changing);
+        }
+        let before = fingerprint_with_shadow(data, has_shadow)?;
         if before.0.first().is_none_or(Option::is_none) {
             return Err(SnapshotError::NotFound);
         }
-        if previous == Some(&before) {
-            return Ok(Refresh::Unchanged);
+        // A rollback journal can contain an external super-journal pathname.
+        // Never let SQLite recovery interpret that untrusted VFS instruction.
+        if names()
+            .zip(&before.0)
+            .any(|(name, state)| name.ends_with("-journal") && state.is_some_and(|(len, _)| len > 0))
+        {
+            return Err(SnapshotError::NeedsRecovery);
+        }
+        // Hold SQLite-conflicting locks before opening any sidecar, including
+        // when -shm does not exist yet. Only raw handles touch the originals.
+        let mut sources = locks::Sources::acquire(data, &before, &control)?;
+        if shadow_present(data)? != has_shadow
+            || fingerprint_with_shadow(data, has_shadow)? != before
+            || !sources.same_files(data)
+        {
+            continue;
         }
         let copy = Copy::new(scratch)?;
-        let copied = copy_files(data, Some(&copy.0), &before, deadline);
-        // A file that went away or changed while it was copied is a change,
-        // even one that kept its size and time (a reused WAL, a coarse clock):
-        // the files are read again and must be byte for byte the same.
-        if fingerprint(data)? != before {
+        let hashes = sources.copy_to(&copy.path, &control)?;
+        if shadow_present(data)? != has_shadow
+            || fingerprint_with_shadow(data, has_shadow)? != before
+            || !sources.same_files(data)
+        {
             continue;
         }
-        if copied? != copy_files(data, None, &before, deadline)? {
-            continue;
+        // Lock ownership ends before SQLite checks/conversion. Never re-open
+        // a main DB while a POSIX record lock is owned: closing it drops locks.
+        drop(sources);
+        #[cfg(windows)]
+        drop(_source_directories);
+        #[cfg(windows)]
+        drop(_shadow_directory);
+        let fingerprint = Fingerprint(before.0, hashes);
+        if previous == Some(&fingerprint) {
+            return Ok(Refresh::Unchanged);
         }
-        let result = read::libraries(&copy.0, libraries, deadline)?;
-        return Ok(Refresh::Loaded {
-            result,
-            fingerprint: before,
-        });
+        let result = read::libraries(&copy.path, libraries, control.clone());
+        control.check()?;
+        let result = result?;
+        control.check()?;
+        return Ok(Refresh::Loaded { result, fingerprint });
     }
     Err(SnapshotError::Changing)
+}
+
+#[derive(Clone)]
+struct Control {
+    deadline: Instant,
+    cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+}
+
+impl Control {
+    fn check(&self) -> Result<(), SnapshotError> {
+        if (self.cancelled)() {
+            Err(SnapshotError::Cancelled)
+        } else if Instant::now() > self.deadline {
+            Err(SnapshotError::TimedOut)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 /// Whether the folder holding Zotero's data is in a folder a cloud service
@@ -165,49 +248,52 @@ pub fn cloud_synced(data: &Path) -> bool {
 }
 
 /// A fresh directory only this user can read, removed when dropped.
-struct Copy(PathBuf);
+struct Copy {
+    path: PathBuf,
+    _guard: Option<File>,
+}
 
-/// A copy left behind by an Ibis that was stopped mid-read is removed once
-/// it is this old; no read lasts this long.
-const STALE: Duration = Duration::from_secs(10 * 60);
 const PREFIX: &str = "ibis-zotero-";
 
 impl Copy {
     fn new(scratch: &Path) -> Result<Copy, SnapshotError> {
-        remove_stale(scratch);
         let nanos = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
         let dir = scratch.join(format!("{PREFIX}{}-{nanos:x}", std::process::id()));
-        let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-        builder.create(&dir).map_err(|_| SnapshotError::CopyFailed)?;
-        Ok(Copy(dir))
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&dir)
+                .map_err(|_| SnapshotError::CopyFailed)?;
+        }
+        #[cfg(windows)]
+        windows::create_private(&dir)?;
+        #[cfg(not(any(unix, windows)))]
+        return Err(SnapshotError::CopyFailed);
+        #[cfg(windows)]
+        let guard = {
+            let guard = locks::directory_guard(&dir)?;
+            if !windows::private(&dir) {
+                return Err(SnapshotError::CopyFailed);
+            }
+            Some(guard)
+        };
+        #[cfg(not(windows))]
+        let guard = None;
+        Ok(Copy {
+            path: dir,
+            _guard: guard,
+        })
     }
 }
 
 impl Drop for Copy {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-/// Remove old copies, so no copy of a library outlives the read for long.
-fn remove_stale(scratch: &Path) {
-    let Ok(entries) = std::fs::read_dir(scratch) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let old = entry
-            .metadata()
-            .ok()
-            .filter(|m| m.is_dir())
-            .and_then(|m| m.modified().ok());
-        let old = old.and_then(|time| time.elapsed().ok()).is_some_and(|age| age > STALE);
-        if old && entry.file_name().to_string_lossy().starts_with(PREFIX) {
-            let _ = std::fs::remove_dir_all(entry.path());
-        }
+        drop(self._guard.take());
+        let _ = std::fs::remove_dir_all(&self.path);
     }
 }
 
@@ -215,64 +301,59 @@ fn names() -> impl Iterator<Item = String> {
     DATABASES
         .iter()
         .flat_map(|db| std::iter::once(db.to_string()).chain(SIDECARS.iter().map(move |s| format!("{db}{s}"))))
+        .chain(std::iter::once("better-bibtex/read-only.json".to_string()))
 }
 
+#[cfg(test)]
 fn fingerprint(data: &Path) -> Result<Fingerprint, SnapshotError> {
+    fingerprint_with_shadow(data, shadow_present(data)?)
+}
+
+fn shadow_present(data: &Path) -> Result<bool, SnapshotError> {
+    let path = data.join("better-bibtex");
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata)
+            if metadata.is_dir() && !metadata.file_type().is_symlink() && resident(&metadata) && local(&path) =>
+        {
+            Ok(true)
+        }
+        Ok(_) => Err(SnapshotError::NotLocal),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(SnapshotError::Unreadable),
+    }
+}
+
+fn fingerprint_with_shadow(data: &Path, has_shadow: bool) -> Result<Fingerprint, SnapshotError> {
     names()
-        .map(|name| match std::fs::symlink_metadata(data.join(&name)) {
-            Ok(m) if !m.is_file() => Err(SnapshotError::Unreadable),
-            Ok(m) if !resident(&m) => Err(SnapshotError::NotLocal),
-            Ok(m) => Ok(Some((m.len(), m.modified().map_err(|_| SnapshotError::Unreadable)?))),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(_) => Err(SnapshotError::Unreadable),
+        .map(|name| {
+            if name.contains('/') && !has_shadow {
+                return Ok(None);
+            }
+            match std::fs::symlink_metadata(data.join(&name)) {
+                Ok(m) if !m.is_file() => Err(SnapshotError::Unreadable),
+                Ok(m) if !resident(&m) => Err(SnapshotError::NotLocal),
+                Ok(m) => Ok(Some((m.len(), m.modified().map_err(|_| SnapshotError::Unreadable)?))),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(_) => Err(SnapshotError::Unreadable),
+            }
         })
         .collect::<Result<_, _>>()
-        .map(Fingerprint)
+        .map(|metadata| Fingerprint(metadata, Vec::new()))
 }
 
-/// Copy the files seen into `copy`, or with `None` only read them, and
-/// return a hash of each file's bytes.
-fn copy_files(
-    data: &Path,
-    copy: Option<&Path>,
-    seen: &Fingerprint,
-    deadline: Instant,
-) -> Result<Vec<u64>, SnapshotError> {
-    let total: u64 = seen.0.iter().flatten().map(|(len, _)| len).sum();
-    if total > MAX_DATABASE_BYTES {
-        return Err(SnapshotError::TooLarge);
-    }
-    let mut hashes = Vec::new();
-    for (name, state) in names().zip(&seen.0) {
-        if state.is_none() || name.ends_with("-shm") {
-            continue;
-        }
-        let source = crate::discovery::open_regular(&data.join(&name)).map_err(|_| SnapshotError::Unreadable)?;
-        let target = match copy {
-            Some(copy) => {
-                let mut options = std::fs::OpenOptions::new();
-                options.write(true).create_new(true);
-                #[cfg(unix)]
-                std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-                Some(options.open(copy.join(&name)).map_err(|_| SnapshotError::CopyFailed)?)
-            }
-            None => None,
-        };
-        hashes.push(copy_bounded(source, target, MAX_DATABASE_BYTES, deadline)?);
-    }
-    Ok(hashes)
-}
-
-fn copy_bounded(source: File, mut target: Option<File>, limit: u64, deadline: Instant) -> Result<u64, SnapshotError> {
+fn copy_bounded(
+    source: &mut File,
+    mut target: Option<File>,
+    limit: u64,
+    control: &Control,
+) -> Result<u64, SnapshotError> {
     use std::hash::Hasher;
     let mut hash = std::hash::DefaultHasher::new();
     let mut source = source.take(limit + 1);
     let mut buffer = vec![0u8; CHUNK];
     let mut copied = 0u64;
     loop {
-        if Instant::now() > deadline {
-            return Err(SnapshotError::TimedOut);
-        }
+        control.check()?;
         let n = match source.read(&mut buffer) {
             Ok(0) => break,
             Ok(n) => n,
@@ -292,6 +373,29 @@ fn copy_bounded(source: File, mut target: Option<File>, limit: u64, deadline: In
         target.sync_all().map_err(|_| SnapshotError::CopyFailed)?;
     }
     Ok(hash.finish())
+}
+
+/// Guard a profile configuration's parent before metadata or content probes.
+/// Missing ancestors are a missing optional configuration, never a reason to
+/// probe a remote or unguarded descendant.
+pub(crate) fn configuration_guards(path: &Path) -> Result<Option<Vec<File>>, SnapshotError> {
+    let parent = path.parent().ok_or(SnapshotError::NotLocal)?;
+    #[cfg(windows)]
+    {
+        match locks::directory_guards(parent) {
+            Ok(guards) => Ok(Some(guards)),
+            Err(SnapshotError::NotFound) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    match rustix::fs::statfs(parent) {
+        Err(rustix::io::Errno::NOENT) => Ok(None),
+        Ok(_) if local(parent) => Ok(Some(Vec::new())),
+        _ => Err(SnapshotError::NotLocal),
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+    Err(SnapshotError::NotLocal)
 }
 
 /// Whether a folder is on this computer's own disks. Windows network shares
@@ -333,9 +437,14 @@ fn local_file_system(path: &Path) -> bool {
     rustix::fs::statfs(path).is_ok_and(|fs| !NETWORK.contains(&(fs.f_type as u32)))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(windows)]
+fn local_file_system(path: &Path) -> bool {
+    windows::local(path)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn local_file_system(_: &Path) -> bool {
-    true
+    false
 }
 
 /// Whether a file's contents are on this computer, so reading it does not

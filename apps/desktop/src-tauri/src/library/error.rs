@@ -13,6 +13,8 @@ use serde::Serialize;
 pub(crate) enum LoadError {
     Source(SourceError),
     Zotero(ZoteroError),
+    /// A selected read-only group keeps its citation keys outside the database.
+    ZoteroClosedKeys,
     /// The file dialog returned something that is not a local file.
     NotLocal,
     /// The background load ended without a result.
@@ -36,6 +38,7 @@ impl LoadError {
                     | SourceError::LoadLimit
                     | SourceError::Changing
             ) | LoadError::Zotero(_)
+                | LoadError::ZoteroClosedKeys
         )
     }
 }
@@ -57,6 +60,9 @@ impl fmt::Display for LoadError {
         match self {
             LoadError::Source(error) => error.fmt(f),
             LoadError::Zotero(error) => error.fmt(f),
+            LoadError::ZoteroClosedKeys => f.write_str(
+                "this library uses Better BibTeX’s separate read-only citation keys; open Zotero to read it",
+            ),
             LoadError::NotLocal => f.write_str("the chosen file is not on this computer"),
             LoadError::Stopped => f.write_str("loading the library stopped unexpectedly"),
             LoadError::RevisionExhausted => f.write_str("the library could not be updated; restart Ibis"),
@@ -150,6 +156,7 @@ mod tests {
             assert!(!LoadError::from(not_kept).keeps_references(), "{not_kept}");
         }
         assert!(LoadError::from(ZoteroError::GroupNotFound).keeps_references());
+        assert!(LoadError::ZoteroClosedKeys.keeps_references());
         for own in [LoadError::NotLocal, LoadError::Stopped, LoadError::RevisionExhausted] {
             assert!(!own.keeps_references(), "{own}");
         }

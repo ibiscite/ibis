@@ -253,3 +253,22 @@ proptest::proptest! {
         }
     }
 }
+
+#[test]
+fn checked_streaming_keeps_duplicate_key_diagnostics_and_rejects_partial_results() {
+    let schema = schema();
+    let items = [
+        item("FIRST001", "book", &[("citationKey", "shared")]),
+        item("SECOND01", "book", &[("citationKey", "shared")]),
+    ];
+    let expected = load(Library::User, &schema, &items);
+    let checked = load_checked(Library::User, &schema, &items, |_| Ok::<_, ()>(())).unwrap_or_else(|_| panic!("load"));
+    assert_eq!(checked, expected);
+    assert_eq!(checked.warnings.len(), 1);
+    let mut calls = 0;
+    let stopped = load_checked(Library::User, &schema, &items, |_| {
+        calls += 1;
+        if calls == 2 { Err("stopped") } else { Ok(()) }
+    });
+    assert_eq!(stopped, Err("stopped"));
+}

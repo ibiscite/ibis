@@ -166,6 +166,77 @@ pub fn load(library: Library, schema: &Schema, items: &[Item]) -> LoadResult {
     load_items(library, &items)
 }
 
+/// Convert one item at a time while retaining the shared API mapper's
+/// duplicate checks. A failed budget or cancellation returns no partial data.
+pub fn load_checked<E>(
+    library: Library,
+    schema: &Schema,
+    items: &[Item],
+    mut check: impl FnMut(&Item) -> Result<(), E>,
+) -> Result<LoadResult, E> {
+    let mut error = None;
+    let values = items.iter().map_while(|item| match check(item) {
+        Ok(()) => Some(api_item(schema, item)),
+        Err(failure) => {
+            error = Some(failure);
+            None
+        }
+    });
+    let result = super::items::load_items_iter(library, values);
+    match error {
+        Some(error) => Err(error),
+        None => Ok(result),
+    }
+}
+
+/// Conservative space reserved before converting a database item. Includes
+/// repeated schema mappings, JSON escaping and the normalized/raw copies.
+/// The reader debits this from its cumulative budget before calling `load`.
+pub fn allocation_bound(schema: &Schema, item: &Item) -> usize {
+    let mut bytes = item
+        .key
+        .len()
+        .saturating_add(item.item_type.len())
+        .saturating_add(item.date_added.len())
+        .saturating_add(item.date_modified.len());
+    let mut slots = 16usize;
+    for (field, value) in &item.fields {
+        bytes = bytes.saturating_add(field.len()).saturating_add(value.len());
+        slots = slots.saturating_add(1);
+    }
+    for creator in &item.creators {
+        bytes = bytes
+            .saturating_add(creator.creator_type.len())
+            .saturating_add(creator.first_name.len())
+            .saturating_add(creator.last_name.len());
+        slots = slots.saturating_add(8);
+    }
+    for (tag, _) in &item.tags {
+        bytes = bytes.saturating_add(tag.len());
+        slots = slots.saturating_add(2);
+    }
+    for (variable, fields) in &schema.text {
+        // Include every possible mapping, not just the first present one;
+        // event-place remapping and Extra expansion then remain covered.
+        for field in fields {
+            if let Some(value) = schema.field(item, field) {
+                bytes = bytes.saturating_add(variable.len()).saturating_add(value.len());
+                slots = slots.saturating_add(1);
+            }
+        }
+    }
+    for (variable, field) in &schema.dates {
+        if let Some(value) = schema.field(item, field) {
+            bytes = bytes.saturating_add(variable.len()).saturating_add(value.len());
+            slots = slots.saturating_add(8);
+        }
+    }
+    bytes = bytes
+        .saturating_add(item.better_bibtex_key.as_ref().map_or(0, String::len))
+        .saturating_add(item.attachment_type.as_ref().map_or(0, String::len));
+    bytes.saturating_mul(32).saturating_add(slots.saturating_mul(512))
+}
+
 /// The item as the local API returns it with `include=data,csljson`.
 fn api_item(schema: &Schema, item: &Item) -> Value {
     let mut data = Map::new();

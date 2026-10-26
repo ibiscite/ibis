@@ -42,7 +42,7 @@ Each record has an identity (source + native key), normalized fields that map to
   Clean first-parent inheritance snapshots are shared across references within a 4 MiB cache, including retained field allocations and empty-entry metadata.
   Only complete, warning-free walks qualify; roots still compute their own diagnostics. Replay preserves the per-root evaluation quota, while actual cache metadata work and subsequent field copies consume load credits.
   The desktop watches the containing directory using `notify`, so save-by-rename keeps working. Selected symlinks also watch the resolved target directory and update that watch when the selected link changes. An absent target file in an existing directory is watched by its parent so creating the file recovers automatically. A bounded worker coalesces changes, waits for a quiet interval and requires two identical reads before publishing an indexed replacement. Unreadable, missing or unclosed files retain the last loaded references and show a safe error. Initial opens remain tolerant of damaged entries. A stable empty file replaces the index with an empty library. Writer intent cannot be inferred from a syntactically valid prefix; stability checks bound the observation period rather than guaranteeing that a paused writer has finished. Network filesystems may not deliver notifications; Reload remains available.
-- **Zotero:** the local API while Zotero is running; while it is closed, a private copy of its database, checked and read with Zotero's own CSL mapping and then deleted (`ibis-zotero-local::snapshot`, `ibis_core::zotero::database`). The original is never opened. A data folder inside a cloud-synced folder gets a reading notice. A Better BibTeX export as a `.bib` file also works. See ADRs 0006 and 0027.
+- **Zotero:** the local API while Zotero is running; while it is closed, a private copy of its database, checked and read with Zotero's own CSL mapping and then deleted (`ibis-zotero-local::snapshot`, `ibis_core::zotero::database`). SQLite never opens the original. Raw source handles briefly exclude SQLite writers while copying; no source write, creation or deletion is attempted. Windows snapshots receive a protected owner-only DACL before any contents are copied. A data folder inside a cloud-synced folder gets a reading notice. A Better BibTeX export as a `.bib` file also works. See ADRs 0006 and 0027.
 
 ## Search
 
@@ -113,6 +113,11 @@ Library status carries the failure reason, retained-reference flag and unsaved
 choice provenance separately for native presentation. The tray derives its
 wording from these facts rather than parsing the picker's error or note text.
 These native-only facts are excluded from the serialized picker payload.
+
+Library choices, reloads and Zotero checks share one import worker with one
+replaceable pending request. A newer choice cancels obsolete work before I/O,
+between Zotero requests and before indexing; its generation also prevents stale
+results from being installed or saved. Closed-Zotero acquisition checks cancellation between copy chunks, SQLite operations, conversion and indexed records, under one 60-second deadline. A single filesystem operation or reference normalization cannot be interrupted. Other in-flight file reads and parsing finish before the latest choice proceeds.
 
 Shared interactive web controls live in `apps/desktop/src/ui/` (ADR 0021).
 Only that directory imports React Aria; `scripts/ui-imports.mjs` checks static

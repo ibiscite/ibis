@@ -84,6 +84,7 @@ impl From<LoadError> for LibraryProblem {
             LoadError::Zotero(ZoteroError::Transport(TransportError::Unreachable | TransportError::TimedOut)) => {
                 LibraryProblem::ZoteroClosed
             }
+            LoadError::ZoteroClosedKeys => LibraryProblem::ZoteroClosed,
             LoadError::Zotero(ZoteroError::NotAllowed) => LibraryProblem::ZoteroAccessOff,
             _ => LibraryProblem::Other,
         }
@@ -271,11 +272,12 @@ mod tests {
     #[test]
     fn problems_group_failures_by_the_fix_they_need() {
         use ibis_core::zotero::api::ZoteroError;
-        let cases: [(LoadError, LibraryProblem); 6] = [
+        let cases: [(LoadError, LibraryProblem); 7] = [
             (SourceError::Unavailable.into(), LibraryProblem::Missing),
             (SourceError::Unreadable.into(), LibraryProblem::Unreadable),
             (SourceError::TooLarge.into(), LibraryProblem::Unreadable),
             (ZOTERO_OFFLINE, LibraryProblem::ZoteroClosed),
+            (LoadError::ZoteroClosedKeys, LibraryProblem::ZoteroClosed),
             (ZoteroError::NotAllowed.into(), LibraryProblem::ZoteroAccessOff),
             (LoadError::Stopped, LibraryProblem::Other),
         ];

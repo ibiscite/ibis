@@ -163,6 +163,15 @@ impl Discovery {
 /// manual override is returned alone and bypasses all profile reads, even when
 /// the roots are unavailable. Bad configuration never silently becomes default.
 pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
+    discover_until(roots, manual, &|| false).unwrap_or_default()
+}
+
+/// Discover while this import remains current. Cancellation yields no partial
+/// candidate list and is checked before every configuration read.
+pub fn discover_until(roots: &DiscoveryRoots, manual: Option<&Path>, stop: &dyn Fn() -> bool) -> Option<Discovery> {
+    if stop() {
+        return None;
+    }
     let mut result = Discovery::default();
     if let Some(path) = manual {
         if absolute(path, roots.platform) {
@@ -170,25 +179,31 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
         } else {
             result.warn(Warning::InvalidPath);
         }
-        return result;
+        return Some(result);
     }
     if !roots.home.is_absolute() || !roots.profiles.is_absolute() {
         result.warn(Warning::InvalidPath);
-        return result;
+        return Some(result);
+    }
+    if stop() {
+        return None;
     }
     let registry = read_text(&roots.profiles.join("profiles.ini"), MAX_REGISTRY_BYTES);
     let profiles = match registry.and_then(|text| text.map(|text| profile_paths(&text, roots)).transpose()) {
         Ok(Some(profiles)) => profiles,
         Ok(None) => {
             result.add(roots.home.join("Zotero"), Origin::Default);
-            return result;
+            return Some(result);
         }
         Err(warning) => {
             result.warn(warning);
-            return result;
+            return Some(result);
         }
     };
     for profile in profiles {
+        if stop() {
+            return None;
+        }
         match read_text(&profile.join("prefs.js"), MAX_PREFERENCES_BYTES).and_then(|text| {
             preferences::data_directory(text.as_deref().unwrap_or_default())
                 .map_err(|()| Warning::UnsupportedPreferences)
@@ -201,9 +216,8 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
             Err(warning) => result.warn(warning),
         }
     }
-    result
+    if stop() { None } else { Some(result) }
 }
-
 fn absolute(path: &Path, platform: Platform) -> bool {
     if path.as_os_str().as_encoded_bytes().iter().any(u8::is_ascii_control) {
         return false;
@@ -237,6 +251,11 @@ fn absolute(path: &Path, platform: Platform) -> bool {
 }
 
 fn read_text(path: &Path, limit: u64) -> Result<Option<String>, Warning> {
+    let _guards = match crate::snapshot::configuration_guards(path) {
+        Ok(Some(guards)) => guards,
+        Ok(None) => return Ok(None),
+        Err(_) => return Err(Warning::UnreadableConfiguration),
+    };
     let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -259,12 +278,6 @@ fn read_text(path: &Path, limit: u64) -> Result<Option<String>, Warning> {
     String::from_utf8(bytes)
         .map(Some)
         .map_err(|_| Warning::UnreadableConfiguration)
-}
-
-/// Open a regular file without following a final symbolic link or blocking
-/// on a special file, as configuration is opened.
-pub(crate) fn open_regular(path: &Path) -> Result<File, Warning> {
-    open_configuration(path)
 }
 
 fn open_configuration(path: &Path) -> Result<File, Warning> {

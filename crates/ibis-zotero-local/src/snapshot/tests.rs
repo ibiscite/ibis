@@ -8,6 +8,9 @@ use rusqlite::{Connection, params};
 
 use super::*;
 
+#[path = "hostile_tests.rs"]
+mod hostile;
+
 const LAYOUT: &str = "
 CREATE TABLE version (schema TEXT PRIMARY KEY, version INT NOT NULL);
 CREATE TABLE settings (setting TEXT, key TEXT, value, PRIMARY KEY (setting, key));
@@ -327,6 +330,44 @@ fn a_huge_stored_value_and_missing_libraries_are_refused_clearly() {
     );
 }
 
+#[test]
+fn schema_values_are_bounded_before_mapping_rows_are_materialized() {
+    let (data, scratch) = temp();
+    let f = Fixture::new(&data.path().join("zotero.sqlite"), 125);
+    f.db.execute(
+        "UPDATE fieldsCombined SET fieldName = ?1 WHERE fieldID = 1",
+        ["x".repeat(2 << 20)],
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    f.sql("INSERT INTO baseFieldMappingsCombined VALUES (1, 1, 1)");
+    drop(f);
+    assert_eq!(
+        read(data.path(), scratch.path(), &[Library::User], None),
+        Err(SnapshotError::TooLarge)
+    );
+}
+
+#[test]
+fn equal_size_and_timestamp_do_not_hide_a_committed_update() {
+    let (data, scratch) = temp();
+    let path = data.path().join("zotero.sqlite");
+    let mut f = Fixture::new(&path, 125);
+    f.item(1, 1, 1, "SAME0001", "2024-01-01 00:00:00", &[(1, "Before")]);
+    drop(f);
+    let metadata = std::fs::metadata(&path).unwrap_or_else(|e| panic!("{e}"));
+    let (_, fingerprint) = loaded(read(data.path(), scratch.path(), &[Library::User], None));
+    let db = Connection::open(&path).unwrap_or_else(|e| panic!("{e}"));
+    db.execute("UPDATE itemDataValues SET value = 'After!' WHERE value = 'Before'", [])
+        .unwrap_or_else(|e| panic!("{e}"));
+    drop(db);
+    File::open(&path)
+        .and_then(|f| f.set_modified(metadata.modified()?))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(std::fs::metadata(&path).map(|m| m.len()).ok(), Some(metadata.len()));
+    let (result, _) = loaded(read(data.path(), scratch.path(), &[Library::User], Some(&fingerprint)));
+    assert_eq!(result.references[0].title.as_deref(), Some("After!"));
+}
+
 #[cfg(unix)]
 #[test]
 fn a_linked_database_is_not_followed() {
@@ -346,21 +387,26 @@ fn a_linked_database_is_not_followed() {
 
 #[cfg(unix)]
 #[test]
-fn copies_left_by_a_stopped_read_are_removed_later() {
+fn old_copy_lookalikes_are_never_deleted_by_a_later_read() {
     let (data, scratch) = temp();
     library(data.path());
-    let old = scratch.path().join("ibis-zotero-1-0");
+    let old = scratch.path().join("ibis-zotero-personal-notes");
     let other = scratch.path().join("someone-elses");
     for dir in [&old, &other] {
         std::fs::create_dir(dir).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(dir.join("synthetic-notes.txt"), b"keep synthetic notes").unwrap_or_else(|e| panic!("{e}"));
         let hour_ago = SystemTime::now() - Duration::from_secs(3600);
         File::open(dir)
             .and_then(|d| d.set_modified(hour_ago))
             .unwrap_or_else(|e| panic!("{e}"));
     }
     loaded(read(data.path(), scratch.path(), &[Library::User], None));
-    assert!(!old.exists());
+    assert!(old.exists(), "a prefix and old timestamp do not prove ownership");
     assert!(other.exists());
+    assert_eq!(
+        std::fs::read(old.join("synthetic-notes.txt")).ok().as_deref(),
+        Some(b"keep synthetic notes".as_slice())
+    );
 }
 
 #[test]

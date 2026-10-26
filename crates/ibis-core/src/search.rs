@@ -79,22 +79,9 @@ pub struct OwnedIndex {
     source_counts: BTreeMap<String, usize>,
 }
 
-impl OwnedIndex {
-    pub fn new(references: Vec<Reference>) -> Self {
-        let fields = references.iter().map(prepare).collect();
-        let mut source_counts = BTreeMap::new();
-        for reference in &references {
-            *source_counts.entry(reference.id.source.clone()).or_default() += 1;
-        }
-        let identifiers = references.iter().map(identifier::of_reference).collect();
-        OwnedIndex {
-            references,
-            fields,
-            identifiers,
-            source_counts,
-        }
-    }
+mod build;
 
+impl OwnedIndex {
     /// Counts by unchanged record source ID, computed once with the snapshot.
     /// Sources with no records have no entry.
     pub fn source_counts(&self) -> &BTreeMap<String, usize> {

@@ -58,7 +58,7 @@ volumes and verses are supported. Times such as `01:23` stay literal search text
 
 ## Use with Zotero
 
-With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library, and any group libraries you choose, through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. When Zotero is closed, Ibis reads a private copy of Zotero's database instead, so your library is there without opening Zotero; it never opens or changes Zotero's own files.
+With Zotero open, choose **Use Zotero** in the picker (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads your personal library, and any group libraries you choose, through Zotero's local API, on your computer only, and checks it for changes each time the picker opens. When Zotero is closed, Ibis reads a private copy of Zotero's database instead, so your library is there without opening Zotero; SQLite opens only that copy. Raw file handles briefly exclude writers while copying, and Ibis never changes Zotero's own files. A simultaneous Zotero start may need to try again. Read-only disks, network folders, pending rollback recovery, and read-only groups whose citation keys live only in Better BibTeX’s separate cache require Zotero to be open.
 
 The first time, turn on Zotero's local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis tries Zotero's own Citation Key field first, then a `Citation Key:` line in Extra, then the citation key in Zotero's CSL export (for example a Better BibTeX key).
 

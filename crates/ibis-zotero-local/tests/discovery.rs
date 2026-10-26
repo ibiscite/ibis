@@ -246,3 +246,19 @@ fn symlinked_preferences_are_rejected_before_opening_the_target() {
     assert_eq!(result.warnings, [Warning::NotRegularFile]);
     assert!(result.directories.is_empty());
 }
+
+#[test]
+fn cancelled_discovery_returns_no_partial_candidate_list() {
+    let sandbox = Sandbox::new();
+    let appdata = sandbox.0.join("roaming");
+    let roots = DiscoveryRoots::new(Platform::Windows, sandbox.0.clone(), Some(appdata.clone()));
+    sandbox.write(
+        &profile_root(Platform::Windows, &sandbox.0, &appdata).join("profiles.ini"),
+        "[Profile0]\nIsRelative=1\nPath=profile\n",
+    );
+    let checks = AtomicUsize::new(0);
+    let found =
+        ibis_zotero_local::discovery::discover_until(&roots, None, &|| checks.fetch_add(1, Ordering::SeqCst) >= 2);
+    assert!(found.is_none());
+    assert_eq!(checks.load(Ordering::SeqCst), 3);
+}

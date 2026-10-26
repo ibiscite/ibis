@@ -9,16 +9,15 @@
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::time::Instant;
 
-use ibis_core::model::{LoadResult, LoadWarning, WarningKind};
+use ibis_core::model::LoadResult;
 use ibis_core::zotero::Library;
 use ibis_core::zotero::database::{self, Creator, Item, Schema};
 use rusqlite::config::DbConfig;
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags, Row};
 
-use super::SnapshotError;
+use super::{Control, SnapshotError};
 
 /// Zotero's `userdata` schema versions known to have the tables and columns
 /// read here: 123 is Zotero 7.0, 130 the newest Zotero 10 release checked.
@@ -26,7 +25,7 @@ const SUPPORTED: std::ops::RangeInclusive<i64> = 123..=130;
 /// Items read before giving up, as for the local API.
 const MAX_ITEMS: usize = 1_000_000;
 /// Largest inflated global schema: Zotero's is under a megabyte.
-const MAX_SCHEMA_BYTES: usize = 64 * 1024 * 1024;
+const MAX_SCHEMA_BYTES: usize = 2 * 1024 * 1024;
 /// Text read from the items, in bytes, before giving up: a value shared by
 /// many items is stored once but read once per item, so the file size alone
 /// does not bound it. The local API path has a similar budget.
@@ -72,13 +71,15 @@ const COLUMNS: [(&str, &[&str]); 16] = [
 const MORE_COLUMNS: [(&str, &[&str]); 2] = [("tags", &["tagID", "name"]), ("deletedItems", &["itemID"])];
 
 /// Read the chosen libraries from the copy in `dir`.
-pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Result<LoadResult, SnapshotError> {
-    let db = open(&dir.join("zotero.sqlite"), deadline)?;
+pub(super) fn libraries(dir: &Path, wanted: &[Library], control: Control) -> Result<LoadResult, SnapshotError> {
+    control.check()?;
+    let budget = Budget(Cell::new(Some(MAX_TEXT_BYTES)));
+    let db = open(&dir.join("zotero.sqlite"), control.clone())?;
     let version: i64 = db
         .query_row("SELECT version FROM version WHERE schema = 'userdata'", [], |row| {
             row.get(0)
         })
-        .map_err(failure)?;
+        .map_err(|error| budget.failure(error))?;
     if version < *SUPPORTED.start() {
         return Err(SnapshotError::TooOld);
     }
@@ -86,19 +87,21 @@ pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Re
         return Err(SnapshotError::TooNew);
     }
     for (table, columns) in COLUMNS.iter().chain(&MORE_COLUMNS) {
-        let mut statement = db.prepare("SELECT name FROM pragma_table_info(?1)").map_err(failure)?;
+        let mut statement = db
+            .prepare("SELECT name FROM pragma_table_info(?1)")
+            .map_err(|error| budget.failure(error))?;
         let found: Vec<String> = statement
-            .query_map([table], |row| row.get(0))
+            .query_map([table], |row| budget.text(row, 0))
             .and_then(Iterator::collect)
-            .map_err(failure)?;
+            .map_err(|error| budget.failure(error))?;
         if columns.iter().any(|c| !found.iter().any(|f| f == c)) {
             return Err(SnapshotError::TooNew);
         }
     }
-    let schema = schema(&db)?;
+    let schema = schema(&db, &budget)?;
 
     let mut result = LoadResult::default();
-    let ids = library_ids(&db)?;
+    let ids = library_ids(&db, &budget)?;
     let mut chosen = Vec::new();
     for &library in wanted {
         if chosen.iter().any(|(seen, _)| *seen == library) {
@@ -108,17 +111,9 @@ pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Re
         // had instead of showing a library without that group.
         chosen.push((library, *ids.get(&library).ok_or(SnapshotError::NoLibrary)?));
     }
-    let mut items = items(&db, &chosen.iter().map(|(_, id)| *id).collect::<Vec<_>>())?;
-    let keys = citation_keys(dir, &items, deadline);
-    if keys.is_err() {
-        result.warnings.push(LoadWarning {
-            kind: WarningKind::Syntax,
-            line: None,
-            key: None,
-            message: "Better BibTeX's citation keys could not be read; Zotero's own keys are used".to_string(),
-        });
-    }
-    for (item_id, key) in keys.unwrap_or_default() {
+    let mut items = items(&db, &chosen.iter().map(|(_, id)| *id).collect::<Vec<_>>(), &budget)?;
+    check_shadow_keys(dir, &items, &budget)?;
+    for (item_id, key) in citation_keys(dir, &items, control.clone(), &budget)? {
         if let Some((_, item)) = items.get_mut(&item_id) {
             item.better_bibtex_key = Some(key);
         }
@@ -134,11 +129,13 @@ pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Re
         let mut list = by_library.remove(&id).unwrap_or_default();
         // Oldest first, as the local API lists them.
         list.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
-        let list: Vec<Item> = list.into_iter().map(|(_, _, item)| item).collect();
-        let loaded = database::load(library, &schema, &list);
-        if Instant::now() > deadline {
-            return Err(SnapshotError::TimedOut);
-        }
+        let list: Vec<_> = list.into_iter().map(|(_, _, item)| item).collect();
+        let loaded = database::load_checked(library, &schema, &list, |item| {
+            control.check()?;
+            budget
+                .charge(database::allocation_bound(&schema, item))
+                .map_err(|error| budget.failure(error))
+        })?;
         result.references.extend(loaded.references);
         result.warnings.extend(loaded.warnings);
     }
@@ -146,7 +143,14 @@ pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Re
 }
 
 /// Open a private copy, recover its WAL or journal, and check it.
-fn open(path: &Path, deadline: Instant) -> Result<Connection, SnapshotError> {
+fn open(path: &Path, control: Control) -> Result<Connection, SnapshotError> {
+    let mut journal = path.as_os_str().to_os_string();
+    journal.push("-journal");
+    match std::fs::metadata(&journal) {
+        Ok(metadata) if metadata.len() > 0 => return Err(SnapshotError::NeedsRecovery),
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(SnapshotError::Unreadable),
+        _ => {}
+    }
     let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     let mut db = Connection::open_with_flags(path, flags).map_err(|_| SnapshotError::Unreadable)?;
     for (config, on) in [
@@ -157,8 +161,13 @@ fn open(path: &Path, deadline: Instant) -> Result<Connection, SnapshotError> {
     ] {
         db.set_db_config(config, on).map_err(|_| SnapshotError::Unreadable)?;
     }
-    db.progress_handler(10_000, Some(move || Instant::now() > deadline))
+    db.progress_handler(10_000, Some(move || control.check().is_err()))
         .map_err(|_| SnapshotError::Unreadable)?;
+    // SQLite's schema parser and temporary query structures have their own
+    // process-wide cap, before any schema is materialized. Ibis has no other
+    // SQLite client; a lower existing cap is preserved by this pragma.
+    db.execute_batch("PRAGMA hard_heap_limit = 67108864; PRAGMA cache_size = -2048;")
+        .map_err(failure)?;
     let check: String = db
         .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
         .map_err(failure)?;
@@ -170,39 +179,55 @@ fn open(path: &Path, deadline: Instant) -> Result<Connection, SnapshotError> {
 
 fn failure(error: rusqlite::Error) -> SnapshotError {
     match error.sqlite_error_code() {
+        Some(rusqlite::ErrorCode::OutOfMemory | rusqlite::ErrorCode::TooBig) => SnapshotError::TooLarge,
         Some(rusqlite::ErrorCode::OperationInterrupted) => SnapshotError::TimedOut,
         Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase) => SnapshotError::Damaged,
         _ => SnapshotError::Unreadable,
     }
 }
 
-/// Any stored value as text, as Zotero reads it.
-fn text(row: &Row<'_>, index: usize) -> rusqlite::Result<String> {
-    Ok(match row.get_ref(index)? {
-        ValueRef::Null => String::new(),
-        ValueRef::Integer(n) => n.to_string(),
-        ValueRef::Real(n) => n.to_string(),
-        ValueRef::Text(t) | ValueRef::Blob(t) => String::from_utf8_lossy(t).into_owned(),
-    })
-}
-
-/// What is left of the text budget for one read; `None` once a value went
-/// past it, so the read fails as too large rather than as unreadable.
+/// One cumulative budget shared by schema, items, keys and conversion.
+/// Charge before allocating, including worst-case UTF-8 replacement growth.
 struct Budget(Cell<Option<usize>>);
 
 impl Budget {
-    fn text(&self, row: &Row<'_>, index: usize) -> rusqlite::Result<String> {
-        let value = text(row, index)?;
-        match self.0.get().and_then(|left| left.checked_sub(value.len())) {
-            Some(left) if value.len() <= MAX_VALUE_BYTES => {
+    fn charge(&self, bytes: usize) -> rusqlite::Result<()> {
+        match self.0.get().and_then(|left| left.checked_sub(bytes)) {
+            Some(left) => {
                 self.0.set(Some(left));
-                Ok(value)
+                Ok(())
             }
-            _ => {
+            None => {
                 self.0.set(None);
                 Err(rusqlite::Error::InvalidQuery)
             }
         }
+    }
+
+    fn text(&self, row: &Row<'_>, index: usize) -> rusqlite::Result<String> {
+        let value = row.get_ref(index)?;
+        let bytes = match value {
+            ValueRef::Text(t) | ValueRef::Blob(t) => t.len(),
+            _ => 32,
+        };
+        if bytes > MAX_VALUE_BYTES {
+            self.0.set(None);
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        self.charge(bytes.saturating_mul(3).saturating_add(128))?;
+        Ok(match value {
+            ValueRef::Null => String::new(),
+            ValueRef::Integer(n) => n.to_string(),
+            ValueRef::Real(n) => n.to_string(),
+            ValueRef::Text(t) | ValueRef::Blob(t) => String::from_utf8_lossy(t).into_owned(),
+        })
+    }
+
+    fn nullable_text(&self, row: &Row<'_>, index: usize) -> rusqlite::Result<Option<String>> {
+        row.get_ref(index)?
+            .as_str_or_null()?
+            .map(|_| self.text(row, index))
+            .transpose()
     }
 
     fn failure(&self, error: rusqlite::Error) -> SnapshotError {
@@ -214,22 +239,29 @@ impl Budget {
     }
 }
 
-fn schema(db: &Connection) -> Result<Schema, SnapshotError> {
+fn schema(db: &Connection, budget: &Budget) -> Result<Schema, SnapshotError> {
     let compressed: Vec<u8> = db
         .query_row(
             "SELECT value FROM settings WHERE setting = 'globalSchema' AND key = 'data'",
             [],
-            |row| Ok(row.get_ref(0)?.as_bytes_or_null()?.unwrap_or_default().to_vec()),
+            |row| {
+                let bytes = row.get_ref(0)?.as_bytes_or_null()?.unwrap_or_default();
+                budget.charge(bytes.len().saturating_add(MAX_SCHEMA_BYTES.saturating_mul(16)))?;
+                if bytes.len() > MAX_SCHEMA_BYTES {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                Ok(bytes.to_vec())
+            },
         )
-        .map_err(failure)?;
+        .map_err(|error| budget.failure(error))?;
     let json = miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(&compressed, MAX_SCHEMA_BYTES)
         .map_err(|_| SnapshotError::Unreadable)?;
     let rows = |sql: &str, columns: usize| -> Result<Vec<Vec<String>>, SnapshotError> {
-        let mut statement = db.prepare(sql).map_err(failure)?;
+        let mut statement = db.prepare(sql).map_err(|error| budget.failure(error))?;
         statement
-            .query_map([], |row| (0..columns).map(|i| text(row, i)).collect())
+            .query_map([], |row| (0..columns).map(|i| budget.text(row, i)).collect())
             .and_then(Iterator::collect)
-            .map_err(failure)
+            .map_err(|error| budget.failure(error))
     };
     let base = rows(
         "SELECT T.typeName, B.fieldName, F.fieldName FROM baseFieldMappingsCombined M \
@@ -252,19 +284,23 @@ fn schema(db: &Connection) -> Result<Schema, SnapshotError> {
 }
 
 /// Zotero's own library IDs for the personal library and each group.
-fn library_ids(db: &Connection) -> Result<HashMap<Library, i64>, SnapshotError> {
+fn library_ids(db: &Connection, budget: &Budget) -> Result<HashMap<Library, i64>, SnapshotError> {
     let mut statement = db
         .prepare(
             "SELECT L.libraryID, L.type, G.groupID FROM libraries L LEFT JOIN groups G USING (libraryID) \
              WHERE L.type IN ('user', 'group')",
         )
-        .map_err(failure)?;
+        .map_err(|error| budget.failure(error))?;
     let rows = statement
         .query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, text(row, 1)?, row.get::<_, Option<i64>>(2)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                budget.text(row, 1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
         })
         .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
-        .map_err(failure)?;
+        .map_err(|error| budget.failure(error))?;
     let mut ids = HashMap::new();
     for (id, kind, group) in rows {
         let library = match (kind.as_str(), group.and_then(|g| u64::try_from(g).ok())) {
@@ -283,9 +319,7 @@ type Rank = (bool, bool, String, i64);
 
 /// Every regular item outside the trash in the given libraries, by item ID,
 /// with its library ID.
-fn items(db: &Connection, libraries: &[i64]) -> Result<HashMap<i64, (i64, Item)>, SnapshotError> {
-    let budget = Budget(Cell::new(Some(MAX_TEXT_BYTES)));
-    let failure = |error| budget.failure(error);
+fn items(db: &Connection, libraries: &[i64], budget: &Budget) -> Result<HashMap<i64, (i64, Item)>, SnapshotError> {
     let text = |row: &Row<'_>, index| budget.text(row, index);
     let mut items = HashMap::new();
     if libraries.is_empty() {
@@ -302,30 +336,34 @@ fn items(db: &Connection, libraries: &[i64]) -> Result<HashMap<i64, (i64, Item)>
             "SELECT I.itemID, I.libraryID, I.key, I.version, T.typeName, I.dateAdded, I.dateModified \
              FROM items I JOIN itemTypesCombined T USING (itemTypeID) WHERE I.itemID IN ({regular})"
         ))
-        .map_err(failure)?;
-    let mut rows = statement.query([]).map_err(failure)?;
-    while let Some(row) = rows.next().map_err(failure)? {
+        .map_err(|error| budget.failure(error))?;
+    let mut rows = statement.query([]).map_err(|error| budget.failure(error))?;
+    while let Some(row) = rows.next().map_err(|error| budget.failure(error))? {
         if items.len() >= MAX_ITEMS {
             return Err(SnapshotError::TooLarge);
         }
         let item = Item {
-            key: text(row, 2).map_err(failure)?,
-            version: row.get::<_, i64>(3).map_err(failure)?.max(0).unsigned_abs(),
-            item_type: text(row, 4).map_err(failure)?,
-            date_added: text(row, 5).map_err(failure)?,
-            date_modified: text(row, 6).map_err(failure)?,
+            key: text(row, 2).map_err(|error| budget.failure(error))?,
+            version: row
+                .get::<_, i64>(3)
+                .map_err(|error| budget.failure(error))?
+                .max(0)
+                .unsigned_abs(),
+            item_type: text(row, 4).map_err(|error| budget.failure(error))?,
+            date_added: text(row, 5).map_err(|error| budget.failure(error))?,
+            date_modified: text(row, 6).map_err(|error| budget.failure(error))?,
             ..Item::default()
         };
-        let id: i64 = row.get(0).map_err(failure)?;
-        items.insert(id, (row.get(1).map_err(failure)?, item));
+        let id: i64 = row.get(0).map_err(|error| budget.failure(error))?;
+        items.insert(id, (row.get(1).map_err(|error| budget.failure(error))?, item));
     }
     let mut each = |sql: String, add: &mut dyn FnMut(&mut Item, &Row<'_>) -> rusqlite::Result<()>| {
-        let mut statement = db.prepare(&sql).map_err(failure)?;
-        let mut rows = statement.query([]).map_err(failure)?;
-        while let Some(row) = rows.next().map_err(failure)? {
-            let id: i64 = row.get(0).map_err(failure)?;
+        let mut statement = db.prepare(&sql).map_err(|error| budget.failure(error))?;
+        let mut rows = statement.query([]).map_err(|error| budget.failure(error))?;
+        while let Some(row) = rows.next().map_err(|error| budget.failure(error))? {
+            let id: i64 = row.get(0).map_err(|error| budget.failure(error))?;
             if let Some((_, item)) = items.get_mut(&id) {
-                add(item, row).map_err(failure)?;
+                add(item, row).map_err(|error| budget.failure(error))?;
             }
         }
         Ok::<_, SnapshotError>(())
@@ -380,8 +418,8 @@ fn items(db: &Connection, libraries: &[i64]) -> Result<HashMap<i64, (i64, Item)>
              AND A.itemID NOT IN (SELECT itemID FROM deletedItems)"
         ),
         &mut |item, row| {
-            let content: Option<String> = row.get_ref(2)?.as_str_or_null()?.map(str::to_string);
-            let url: Option<String> = row.get_ref(3)?.as_str_or_null()?.map(str::to_string);
+            let content: Option<String> = budget.nullable_text(row, 2)?;
+            let url: Option<String> = budget.nullable_text(row, 3)?;
             let matches = url.is_some() && url.as_ref() == item.fields.get("url");
             let rank = (
                 content.as_deref() != Some("application/pdf"),
@@ -414,27 +452,28 @@ fn items(db: &Connection, libraries: &[i64]) -> Result<HashMap<i64, (i64, Item)>
 fn citation_keys(
     dir: &Path,
     items: &HashMap<i64, (i64, Item)>,
-    deadline: Instant,
+    control: Control,
+    budget: &Budget,
 ) -> Result<Vec<(i64, String)>, SnapshotError> {
     let path = dir.join("better-bibtex.sqlite");
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let db = open(&path, deadline)?;
+    let db = open(&path, control)?;
     let mut statement = db
         .prepare("SELECT itemID, itemKey, libraryID, citationKey FROM citationkey")
-        .map_err(failure)?;
+        .map_err(|error| budget.failure(error))?;
     let rows = statement
         .query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
-                text(row, 1)?,
+                budget.text(row, 1)?,
                 row.get::<_, i64>(2)?,
-                text(row, 3)?,
+                budget.text(row, 3)?,
             ))
         })
         .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
-        .map_err(failure)?;
+        .map_err(|error| budget.failure(error))?;
     Ok(rows
         .into_iter()
         .filter(|(id, key, library, _)| {
@@ -444,4 +483,66 @@ fn citation_keys(
         })
         .map(|(id, _, _, citation_key)| (id, citation_key))
         .collect())
+}
+
+/// Better BibTeX 8+ persists read-only-library keys outside Zotero's DB.
+/// That separately written cache is not coordinated by SQLite locks. Refuse
+/// selected items relying on it instead of silently changing their keys.
+/// Storage shape: retorquere/zotero-better-bibtex/content/key-manager.ts.
+fn check_shadow_keys(dir: &Path, items: &HashMap<i64, (i64, Item)>, budget: &Budget) -> Result<(), SnapshotError> {
+    let path = dir.join("better-bibtex/read-only.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    let size = std::fs::metadata(&path).map_err(|_| SnapshotError::Unreadable)?.len();
+    let size = usize::try_from(size).map_err(|_| SnapshotError::TooLarge)?;
+    budget
+        .charge(size.saturating_mul(32))
+        .map_err(|error| budget.failure(error))?;
+    let bytes = std::fs::read(path).map_err(|_| SnapshotError::Unreadable)?;
+    let rows: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| SnapshotError::UnsupportedKeys)?;
+    let rows = rows.as_array().ok_or(SnapshotError::UnsupportedKeys)?;
+    for row in rows {
+        let id = row
+            .get("itemID")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or(SnapshotError::UnsupportedKeys)?;
+        let key = row
+            .get("itemKey")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(SnapshotError::UnsupportedKeys)?;
+        let library = row
+            .get("libraryID")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or(SnapshotError::UnsupportedKeys)?;
+        let citation = row
+            .get("citationKey")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(SnapshotError::UnsupportedKeys)?;
+        if let Some((own, item)) = items.get(&id)
+            && *own == library
+            && item.key == key
+            && !citation.is_empty()
+        {
+            let usable = |key: &str| {
+                !key.trim().is_empty()
+                    && !key
+                        .trim()
+                        .chars()
+                        .any(|c| c.is_whitespace() || matches!(c, ',' | '{' | '}'))
+            };
+            let own = item.fields.get("citationKey").is_some_and(|key| usable(key));
+            let extra = item.fields.get("extra").is_some_and(|extra| {
+                extra.lines().any(|line| {
+                    line.split_once(':').is_some_and(|(label, value)| {
+                        label.trim().eq_ignore_ascii_case("citation key") && usable(value)
+                    })
+                })
+            });
+            if !own && !extra {
+                return Err(SnapshotError::UnsupportedKeys);
+            }
+        }
+    }
+    Ok(())
 }
