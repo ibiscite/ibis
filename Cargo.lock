@@ -2023,6 +2023,7 @@ version = "0.1.1"
 dependencies = [
  "ibis-core",
  "icu_collator",
+ "icu_locale_core",
  "rquickjs",
  "serde",
  "serde_json",
@@ -2071,6 +2072,7 @@ dependencies = [
  "ibis-sources",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 
@@ -2078,14 +2080,22 @@ dependencies = [
 name = "ibis-sources"
 version = "0.1.1"
 dependencies = [
+ "biblatex",
  "ibis-core",
  "ibis-zotero-local",
+ "insta",
+ "miniz_oxide 0.8.9",
+ "nix",
+ "notify",
+ "proptest",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "thiserror 2.0.21",
+ "unicode-normalization",
 ]
 
 [[package]]

@@ -15,5 +15,8 @@ thiserror = "2.0.21"
 ibis-sources = { path = "../ibis-sources" }
 ibis-csl = { path = "../ibis-csl" }
 
+[dev-dependencies]
+tempfile = "3.27.0"
+
 [lints]
 workspace = true
