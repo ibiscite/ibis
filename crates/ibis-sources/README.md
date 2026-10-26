@@ -15,9 +15,11 @@ keeps its last good snapshot. `reload_file` uses the same stable-read rule.
 Initial BibTeX opens tolerate damaged entries; strict reloads reject unfinished
 entries and exhausted work budgets. Stable empty files produce empty snapshots.
 
-Files are limited to 64 MiB. BibTeX retains its existing field, recursion and
+Opens recheck the descriptor type and size; on Unix they are nonblocking so a
+regular file replaced by a FIFO cannot hang a reload. Files are limited to 64 MiB. BibTeX retains its existing field, recursion and
 load-work budgets. CSL-JSON validates each record and known field independently;
-a record above 1 MiB is skipped with a work-limit warning, and a limited reload
+record property names must be unique; an ambiguous record is skipped with a
+syntax warning. A record above 1 MiB is skipped with a work-limit warning, and a limited reload
 is refused. Unknown/vendor metadata is retained only in raw provenance. Raw
 JSON tokens are skipped iteratively, so a deeply nested private `custom` field
 cannot overflow a stack or hide adjacent records. The supported field vocabulary

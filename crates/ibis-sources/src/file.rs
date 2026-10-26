@@ -51,8 +51,8 @@ pub fn read_library_file(path: &Path) -> Result<String, SourceError> {
     if metadata.len() > MAX_LIBRARY_BYTES {
         return Err(SourceError::TooLarge);
     }
-    let file = retry_io(|| std::fs::File::open(path), pause).map_err(|_| SourceError::Unavailable)?;
-    read_text(file)
+    let file = retry_io(|| open_readonly(path), pause).map_err(|_| SourceError::Unavailable)?;
+    read_open_file(file)
 }
 
 fn retry_io<T>(mut operation: impl FnMut() -> std::io::Result<T>, mut pause: impl FnMut()) -> std::io::Result<T> {
@@ -435,5 +435,62 @@ impl Drop for SourceWatch {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::SeqCst);
         let _ = self.signal.try_send(());
+    }
+}
+
+fn open_readonly(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A regular file can become a FIFO between path metadata and open.
+        // Nonblocking open plus descriptor metadata prevents hanging on it.
+        options.custom_flags(nix::fcntl::OFlag::O_NONBLOCK.bits());
+    }
+    options.open(path)
+}
+fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
+    let metadata = file.metadata().map_err(|_| SourceError::Unavailable)?;
+    if !metadata.is_file() {
+        return Err(SourceError::NotRegular);
+    }
+    if metadata.len() > MAX_LIBRARY_BYTES {
+        return Err(SourceError::TooLarge);
+    }
+    read_text(file)
+}
+
+#[cfg(all(test, unix))]
+#[path = "../../ibis-core/tests/support/subprocess_watchdog.rs"]
+mod subprocess_watchdog;
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    #[test]
+    fn a_file_replaced_by_a_fifo_after_metadata_cannot_block() {
+        const CHILD: &str = "IBIS_SOURCE_FIFO_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            subprocess_watchdog::assert_finishes(
+                "file::tests::a_file_replaced_by_a_fifo_after_metadata_cannot_block",
+                CHILD,
+                "nonregular replacement blocked the source loader",
+            );
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{synthetic}").unwrap_or_else(|error| panic!("{error}"));
+        assert!(
+            std::fs::metadata(&path)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .is_file()
+        );
+        std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
+        nix::unistd::mkfifo(&path, nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR)
+            .unwrap_or_else(|error| panic!("{error}"));
+        let file = open_readonly(&path).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(read_open_file(file), Err(SourceError::NotRegular));
     }
 }
