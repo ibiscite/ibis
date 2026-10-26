@@ -50,7 +50,26 @@ fn bibliography_from_csl_export_matches_original_bibtex() {
     }
     let bib = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/fidelity.bib");
     let export = Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .args(["csl", "--all", "--bib"])
+        .args([
+            "cite",
+            "accents2021",
+            "protected2020",
+            "italic2019",
+            "others2018",
+            "who2020",
+            "particles2017",
+            "german2016",
+            "range2015",
+            "conf2022",
+            "chapter2022",
+            "thesis2014",
+            "news2020",
+            "web2024",
+            "translated2019",
+            "--format",
+            "csl-json",
+            "--file",
+        ])
         .arg(&bib)
         .output()
         .unwrap_or_else(|e| panic!("{e}"));
