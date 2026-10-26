@@ -1,0 +1,1321 @@
+//! Resolves `@string` macros and `crossref`/`xdata` inheritance, producing
+//! one flat entry per reference for the field parser.
+//!
+//! Inheritance is computed here, field by field, rather than by the field
+//! parser: an entry's own fields always win; `xdata` parents then fill
+//! missing fields under the same names; a `crossref` parent fills the rest,
+//! following BibLaTeX's default mapping (for example a proceedings `title`
+//! becomes an inproceedings `booktitle`). Results are memoized within a root;
+//! bounded clean first-parent snapshots are shared across roots. Recursion is bounded by
+//! [`MAX_DEPTH`], cycles are reported and broken, and the parser never sees
+//! a link it could follow. Indexed field positions and merged names avoid
+//! quadratic name searches while preserving field order and precedence.
+
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+
+use super::Budget;
+use super::dates::{DATE_PARTS, merge_dates};
+use super::lexer::{Part, RawEntry};
+
+/// Fields that hold dates; digits in other scripts are converted to ASCII
+/// before parsing so every script is read the same way.
+const DATE_FIELDS: [&str; 9] = [
+    "date",
+    "year",
+    "month",
+    "day",
+    "endyear",
+    "urldate",
+    "origdate",
+    "eventdate",
+    "pubstate-date",
+];
+
+/// Fields never inherited (BibLaTeX's non-inheritable fields plus links).
+const NOT_INHERITED: [&str; 18] = [
+    "ids",
+    "crossref",
+    "xref",
+    "xdata",
+    "entryset",
+    "entrysubtype",
+    "execute",
+    "label",
+    "options",
+    "presort",
+    "related",
+    "relatedoptions",
+    "relatedstring",
+    "relatedtype",
+    "shorthand",
+    "shorthandintro",
+    "sortkey",
+    "sorttitle",
+];
+
+/// Longest inheritance chain (and macro nesting) followed.
+const MAX_DEPTH: usize = 16;
+
+/// Most entry evaluations performed while resolving one entry.
+const MAX_EVALUATIONS: usize = 10_000;
+
+/// Deepest nesting of abbreviations defined in terms of other abbreviations.
+const MAX_MACRO_DEPTH: usize = 64;
+
+/// Most abbreviation expansions performed for one field value.
+const MAX_EXPANSION_STEPS: usize = 100_000;
+
+/// Largest field value accepted after expanding abbreviations.
+const MAX_VALUE_BYTES: usize = 64 * 1024;
+
+/// Most text retained by the per-load abbreviation cache. Include a fixed
+/// charge per entry so empty expansions cannot grow the cache without bound.
+const MAX_MACRO_CACHE_BYTES: usize = 4 * 1024 * 1024;
+/// Retained parent snapshots, including empty memo entries and field capacities.
+const MAX_PARENT_CACHE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Most nested groups in an expanded field; bounds upstream parser recursion
+/// on the desktop's 2 MiB loading and watcher threads.
+const MAX_FIELD_NESTING: usize = 256;
+
+/// Private-use characters standing in for escaped braces (`\{`, `\}`) so they
+/// can never be mistaken for grouping braces; mapped back after conversion.
+pub(crate) const LEFT_BRACE: char = '\u{E000}';
+pub(crate) const RIGHT_BRACE: char = '\u{E001}';
+/// A literal backslash must survive the parser's command decoding without
+/// being interpreted as a new command by our subsequent TeX conversion.
+pub(crate) const BACKSLASH: char = '\u{E003}';
+/// Marks a placeholder character that occurred in the source itself, so real
+/// text using these private-use characters is never altered.
+pub(crate) const ESCAPE: char = '\u{E002}';
+
+/// Encode escaped braces and escape placeholder characters already present.
+/// Decoded by `convert::clean`.
+fn encode_literals(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            LEFT_BRACE | RIGHT_BRACE | BACKSLASH | ESCAPE => {
+                out.push(ESCAPE);
+                out.push(c);
+            }
+            // An escaped backslash: keep both, so a following brace is a group.
+            '\\' if chars.peek() == Some(&'\\') => {
+                out.push('\\');
+                out.extend(chars.next());
+            }
+            '\\' if matches!(chars.peek(), Some('{' | '}')) => {
+                out.push(if chars.next() == Some('{') {
+                    LEFT_BRACE
+                } else {
+                    RIGHT_BRACE
+                });
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// `biblatex` decodes this symbol before our TeX conversion; protect it until
+/// final cleaning. Apply only to parser input, retaining resolved source text
+/// for the unchanged fallback used when a field has an unknown command.
+fn protect_backslashes(text: &str) -> String {
+    const BACKSLASH_COMMAND: &str = "textbackslash";
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            ESCAPE => {
+                out.push(c);
+                out.extend(chars.next());
+            }
+            '\\' if chars.peek() == Some(&'\\') => {
+                out.push(c);
+                out.extend(chars.next());
+            }
+            '\\' if chars
+                .clone()
+                .take(BACKSLASH_COMMAND.len())
+                .eq(BACKSLASH_COMMAND.chars())
+                && chars
+                    .clone()
+                    .nth(BACKSLASH_COMMAND.len())
+                    .is_none_or(|c| !c.is_ascii_alphabetic()) =>
+            {
+                out.push(BACKSLASH);
+                for _ in 0..BACKSLASH_COMMAND.len() {
+                    chars.next();
+                }
+                if chars.clone().take(2).eq("{}".chars()) {
+                    chars.next();
+                    chars.next();
+                } else {
+                    // Whitespace terminates the control word, as in TeX.
+                    while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                        chars.next();
+                    }
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+pub(super) const MONTHS: [(&str, &str); 12] = [
+    ("jan", "January"),
+    ("feb", "February"),
+    ("mar", "March"),
+    ("apr", "April"),
+    ("may", "May"),
+    ("jun", "June"),
+    ("jul", "July"),
+    ("aug", "August"),
+    ("sep", "September"),
+    ("oct", "October"),
+    ("nov", "November"),
+    ("dec", "December"),
+];
+
+/// Ordered field list of one entry after inheritance: (name, value).
+type Fields = Rc<Vec<(String, String)>>;
+type Memo = HashMap<(usize, usize), Fields>;
+
+/// Everything needed to resolve entries from one file.
+pub(crate) struct Resolver<'a> {
+    pub(super) budget: &'a Budget,
+    macros: HashMap<String, Vec<usize>>,
+    definitions: Vec<Vec<Part>>,
+    macro_cache: RefCell<HashMap<(usize, bool), Rc<CachedExpansion>>>,
+    macro_cache_bytes: Cell<usize>,
+    parent_cache: RefCell<HashMap<(usize, usize), Rc<Memo>>>,
+    parent_cache_bytes: Cell<usize>,
+    entries: &'a [RawEntry],
+    index: HashMap<String, usize>,
+    index_folded: HashMap<String, usize>,
+}
+
+/// An entry ready for parsing, plus problems found while resolving it.
+#[derive(Default)]
+pub(crate) struct Resolved {
+    /// One flat entry: own and inherited fields, no links.
+    pub source: String,
+    /// Field values after expansion and inheritance, for checks that need raw text.
+    pub fields: HashMap<String, String>,
+    pub problems: Vec<String>,
+}
+
+/// State of resolving one entry.
+struct Walk {
+    path: Vec<usize>,
+    memo: Memo,
+    evaluations: usize,
+    problems: Vec<String>,
+}
+
+impl<'a> Resolver<'a> {
+    pub(crate) fn new(macros: Vec<(String, Vec<Part>)>, entries: &'a [RawEntry], budget: &'a Budget) -> Self {
+        let mut index = HashMap::new();
+        let mut index_folded = HashMap::new();
+        for (i, entry) in entries.iter().enumerate() {
+            if !budget.charge(entry.key.len().saturating_mul(6)) {
+                break;
+            }
+            index.entry(entry.key.clone()).or_insert(i);
+            index_folded.entry(entry.key.to_lowercase()).or_insert(i);
+        }
+        // Versions are retained once, not as a cloned environment per entry.
+        // The epoch bounds each use to definitions already seen at that point.
+        let mut versions: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut definitions = Vec::new();
+        for (name, parts) in macros {
+            if !budget.charge(name.len().saturating_add(128)) {
+                break;
+            }
+            versions.entry(name).or_default().push(definitions.len());
+            definitions.push(parts);
+        }
+        Resolver {
+            budget,
+            macros: versions,
+            definitions,
+            macro_cache: RefCell::new(HashMap::new()),
+            macro_cache_bytes: Cell::new(0),
+            parent_cache: RefCell::new(HashMap::new()),
+            parent_cache_bytes: Cell::new(0),
+            entries,
+            index,
+            index_folded,
+        }
+    }
+
+    fn find(&self, key: &str) -> Option<usize> {
+        self.index
+            .get(key)
+            .or_else(|| self.index_folded.get(&key.to_lowercase()))
+            .copied()
+    }
+
+    fn macro_id(&self, name: &str, epoch: usize) -> Option<usize> {
+        let versions = self.macros.get(name)?;
+        let end = versions.partition_point(|&id| id < epoch);
+        end.checked_sub(1).map(|i| versions[i])
+    }
+
+    /// Resolve entry `i` into one flat entry with inherited fields applied.
+    pub(crate) fn resolve(&self, i: usize) -> Resolved {
+        let mut walk = Walk {
+            path: vec![i],
+            memo: HashMap::new(),
+            evaluations: 0,
+            problems: Vec::new(),
+        };
+        let fields = self.effective(i, MAX_DEPTH, &mut walk);
+        let mut problems = walk.problems;
+        let fields: Vec<_> = fields
+            .iter()
+            .take_while(|(name, value)| {
+                self.budget.charge(
+                    name.len()
+                        .saturating_add(value.len())
+                        .saturating_mul(8)
+                        .saturating_add(256),
+                )
+            })
+            .filter(|(name, value)| {
+                if let Err(problem) = validate_field_structure(value) {
+                    problems.push(format!("field `{name}` {problem}; it is omitted"));
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+        let entry = &self.entries[i];
+        if !self
+            .budget
+            .charge(entry.kind.len().saturating_add(entry.key.len()).saturating_mul(4))
+        {
+            return Resolved::default();
+        }
+        let rendered: Vec<String> = fields.iter().map(|(name, value)| render_field(name, value)).collect();
+        let source = format!("@{}{{{},\n{}}}\n", entry.kind, entry.key, rendered.join(",\n"));
+        // The same problem can be found many times; report each one once.
+        let mut unique = HashSet::new();
+        problems.retain(|p| self.budget.charge(p.len().saturating_mul(4)) && unique.insert(p.clone()));
+        Resolved {
+            source,
+            fields: fields.into_iter().cloned().collect(),
+            problems,
+        }
+    }
+
+    /// Fields of entry `idx` after inheritance, following at most `remaining`
+    /// further levels. Memoized by (entry, remaining depth).
+    fn effective(&self, idx: usize, remaining: usize, walk: &mut Walk) -> Fields {
+        if !self.budget.charge(0) {
+            return Rc::default();
+        }
+        if let Some(fields) = walk.memo.get(&(idx, remaining)) {
+            return Rc::clone(fields);
+        }
+        let entry = &self.entries[idx];
+        let root = walk.path.first().copied() == Some(idx);
+        if !root {
+            let cached = self.parent_cache.borrow().get(&(idx, remaining)).cloned();
+            if let Some(cached) = cached {
+                // Charge before touching the local memo, so replay is atomic on exhaustion.
+                if !self.budget.charge(cached.len().saturating_mul(128)) {
+                    return Rc::default();
+                }
+                let missing = cached.keys().filter(|key| !walk.memo.contains_key(key)).count();
+                // Falling back at the boundary preserves even the old quota's memo-edge cuts.
+                if walk.evaluations.saturating_add(missing) < MAX_EVALUATIONS {
+                    for (key, fields) in cached.iter() {
+                        walk.memo.entry(*key).or_insert_with(|| Rc::clone(fields));
+                    }
+                    walk.evaluations += missing;
+                    return Rc::clone(&cached[&(idx, remaining)]);
+                }
+            }
+        }
+        // An empty memo at the first parent makes its completed snapshot self-contained.
+        let cacheable = !root && walk.path.len() == 2 && walk.memo.is_empty();
+        walk.evaluations += 1;
+        // Problems in the entry itself, or in an `@xdata` helper it uses
+        // (helpers are not loaded on their own), are reported.
+        let report = root || entry.kind == "xdata";
+        let mut own: Vec<(String, String)> = Vec::new();
+        let mut own_positions: HashMap<&str, usize> = HashMap::new();
+        let mut xdata_keys = Vec::new();
+        let mut crossref_key = None;
+        for field in &entry.fields {
+            if !self
+                .budget
+                .charge(field.name.len().saturating_mul(4).saturating_add(256))
+            {
+                return Rc::default();
+            }
+            let mut field_problems = Vec::new();
+            let value = self.expand(
+                &field.name,
+                &field.parts,
+                entry.macro_epoch,
+                &mut field_problems,
+                report,
+            );
+            if !self.budget.charge(
+                value
+                    .len()
+                    .saturating_mul(4)
+                    .saturating_add(field_problems.iter().map(String::len).sum::<usize>())
+                    .saturating_add(field_problems.len().saturating_mul(entry.key.len().saturating_add(128))),
+            ) {
+                return Rc::default();
+            }
+            walk.problems.extend(field_problems.into_iter().map(|p| {
+                if root {
+                    p
+                } else {
+                    format!("in inherited `{}`: {p}", entry.key)
+                }
+            }));
+            match field.name.as_str() {
+                "xdata" => xdata_keys.extend(value.split(',').map(|k| k.trim().to_string()).filter(|k| !k.is_empty())),
+                "crossref" => crossref_key = Some(value.trim().to_string()).filter(|k| !k.is_empty()),
+                _ => {
+                    // As in Biber and Pandoc, a repeated field keeps its last value.
+                    if let Some(&position) = own_positions.get(field.name.as_str()) {
+                        let existing = &mut own[position];
+                        if root {
+                            walk.problems
+                                .push(format!("field `{}` appears twice; the last value is used", field.name));
+                        }
+                        existing.1 = value;
+                    } else {
+                        own_positions.insert(field.name.as_str(), own.len());
+                        own.push((field.name.clone(), value));
+                    }
+                }
+            }
+        }
+
+        // Date normalization can consume components before the final field guard.
+        // Check selected, fully expanded values, retaining last-value precedence.
+        own.retain(|(name, value)| {
+            if !DATE_PARTS.contains(&name.as_str()) {
+                return true;
+            }
+            if !self.budget.charge(value.len()) {
+                return false;
+            }
+            let Err(problem) = validate_field_structure(value) else {
+                return true;
+            };
+            let message = format!("field `{name}` {problem}; it is omitted");
+            walk.problems.push(if root {
+                message
+            } else {
+                format!("in inherited `{}`: {message}", entry.key)
+            });
+            false
+        });
+
+        // A parent listed more than once counts at its last position, where
+        // it has the highest precedence (as in Biber).
+        let mut last_seen = HashSet::new();
+        let mut xdata_keys: Vec<String> = xdata_keys
+            .into_iter()
+            .rev()
+            .filter(|k| last_seen.insert(k.clone()))
+            .collect();
+        xdata_keys.reverse();
+        let mut parents: Vec<(Fields, Option<&str>)> = Vec::new();
+        let links = xdata_keys
+            .iter()
+            .map(|k| (k.as_str(), false))
+            .chain(crossref_key.iter().map(|k| (k.as_str(), true)));
+        let mut seen_targets = HashSet::new();
+        for (target, is_crossref) in links {
+            if !self.budget.charge(
+                entry
+                    .key
+                    .len()
+                    .saturating_add(target.len().saturating_mul(8))
+                    .saturating_add(256),
+            ) {
+                return Rc::default();
+            }
+            let Some(t) = self.find(target) else {
+                walk.problems.push(format!(
+                    "`{}` refers to `{target}`, which is not in this file; nothing is inherited from it",
+                    entry.key
+                ));
+                continue;
+            };
+            if !seen_targets.insert(t) {
+                continue;
+            }
+            if walk.path.contains(&t) {
+                walk.problems.push(format!(
+                    "cross-reference cycle through `{}` and `{}`; the link back is ignored",
+                    entry.key, self.entries[t].key
+                ));
+                continue;
+            }
+            if remaining == 0 {
+                walk.problems.push(format!(
+                    "inheritance is deeper than {MAX_DEPTH} levels; further levels are ignored"
+                ));
+                continue;
+            }
+            if walk.evaluations >= MAX_EVALUATIONS {
+                walk.problems.push(format!(
+                    "inheritance requires more than {MAX_EVALUATIONS} steps; remaining inherited entries are ignored"
+                ));
+                break;
+            }
+            walk.path.push(t);
+            let inherited = self.effective(t, remaining - 1, walk);
+            walk.path.pop();
+            let parent_kind = is_crossref.then(|| self.entries[t].kind.as_str());
+            parents.push((inherited, parent_kind));
+        }
+
+        // Precedence, highest first: the entry's own fields, then its `xdata`
+        // parents with later ones overriding earlier ones (as in Biber), then
+        // its `crossref` parent. Each source only fills fields still missing.
+        let mut sources: Vec<Vec<(String, String)>> = vec![own];
+        let (crossref, xdata): (Vec<_>, Vec<_>) = parents.into_iter().partition(|(_, kind)| kind.is_some());
+        for (inherited, crossref_kind) in xdata.into_iter().rev().chain(crossref) {
+            if !self.budget.charge(inherited.len().saturating_mul(32)) {
+                return Rc::default();
+            }
+            let mapped = inherited
+                .iter()
+                .filter(|(name, _)| !NOT_INHERITED.contains(&name.as_str()))
+                .take_while(|(name, value)| {
+                    self.budget
+                        .charge(name.len().saturating_add(value.len()).saturating_mul(4))
+                })
+                .flat_map(|(name, value)| {
+                    let targets = match crossref_kind {
+                        Some(parent_kind) => crossref_targets(parent_kind, &entry.kind, name),
+                        None => vec![name.as_str()],
+                    };
+                    targets.into_iter().map(move |t| (t.to_string(), value.clone()))
+                })
+                .collect();
+            sources.push(mapped);
+        }
+        let mut merged: Vec<(String, String)> = Vec::new();
+        let mut merged_names = HashSet::new();
+        for source in &sources {
+            for (name, value) in source {
+                if !self.budget.charge(
+                    name.len()
+                        .saturating_mul(4)
+                        .saturating_add(value.len().saturating_mul(8)),
+                ) {
+                    return Rc::default();
+                }
+                if !DATE_PARTS.contains(&name.as_str()) && merged_names.insert(name.as_str()) {
+                    merged.push((name.clone(), value.clone()));
+                }
+            }
+        }
+        merged.extend(merge_dates(&sources, root, &mut walk.problems));
+        let fields: Fields = Rc::new(merged);
+        if !self.budget.exhausted() {
+            walk.memo.insert((idx, remaining), Rc::clone(&fields));
+            if cacheable && walk.problems.is_empty() {
+                self.cache_parent((idx, remaining), &walk.memo);
+            }
+        }
+        fields
+    }
+
+    fn cache_parent(&self, key: (usize, usize), memo: &Memo) {
+        if self.parent_cache.borrow().contains_key(&key) {
+            return;
+        }
+        let available = MAX_PARENT_CACHE_BYTES.saturating_sub(self.parent_cache_bytes.get());
+        if memo.len().saturating_mul(256).saturating_add(256) > available
+            || !self.budget.charge(memo.len().saturating_mul(128))
+        {
+            return;
+        }
+        let slots = memo.values().fold(0usize, |n, fields| n.saturating_add(fields.len()));
+        if !self.budget.charge(slots.saturating_mul(128)) {
+            return;
+        }
+        let bytes = memo.values().fold(256usize, |n, fields| {
+            let allocation = fields
+                .capacity()
+                .saturating_mul(std::mem::size_of::<(String, String)>());
+            fields
+                .iter()
+                .fold(n.saturating_add(256).saturating_add(allocation), |n, (name, value)| {
+                    n.saturating_add(name.capacity()).saturating_add(value.capacity())
+                })
+        });
+        if bytes <= available {
+            self.parent_cache.borrow_mut().insert(key, Rc::new(memo.clone()));
+            self.parent_cache_bytes.set(self.parent_cache_bytes.get() + bytes);
+        }
+    }
+
+    /// Concatenate parts, expanding macros (and macros used inside macros).
+    /// Values larger than [`MAX_VALUE_BYTES`], or needing more than
+    /// [`MAX_EXPANSION_STEPS`] expansions, are left empty and reported.
+    fn expand(&self, field: &str, parts: &[Part], epoch: usize, problems: &mut Vec<String>, report: bool) -> String {
+        let mut x = Expansion::default();
+        for part in parts {
+            match part {
+                Part::Text(t) | Part::Number(t) => {
+                    if !self.budget.charge(t.len()) {
+                        return String::new();
+                    }
+                    x.out.push_str(t);
+                }
+                Part::Macro(name) => self.expand_macro(field, name, epoch, problems, report, &mut x),
+            }
+            x.check_size();
+            if x.stopped() || self.budget.exhausted() {
+                break;
+            }
+        }
+        if !self.budget.charge(
+            field
+                .len()
+                .saturating_add(x.out.len().saturating_mul(8))
+                .saturating_add(256),
+        ) {
+            return String::new();
+        }
+        if x.stopped() {
+            if report {
+                problems.push(if x.too_large {
+                    format!(
+                        "field `{field}` is too large after expanding abbreviations (over {} KiB); it is left empty",
+                        MAX_VALUE_BYTES / 1024
+                    )
+                } else {
+                    format!(
+                        "field `{field}` uses abbreviations that are too complex to expand (over {MAX_EXPANSION_STEPS} steps); it is left empty"
+                    )
+                });
+            }
+            return String::new();
+        }
+        let mut out = x.out;
+        if DATE_FIELDS.contains(&field) {
+            out = ascii_digits(&out);
+        }
+        encode_literals(&dotless_to_plain(&out))
+    }
+
+    fn expand_macro(
+        &self,
+        field: &str,
+        name: &str,
+        epoch: usize,
+        problems: &mut Vec<String>,
+        report: bool,
+        x: &mut Expansion,
+    ) {
+        if !self.budget.charge(name.len().saturating_mul(4)) {
+            return;
+        }
+        // Cache raw, top-level expansions across fields and entries. Month
+        // abbreviations differ in month fields; digit/literal normalization
+        // still happens afterwards in `expand`. Recursive calls stay uncached
+        // because cycle cuts and depth limits depend on their current stack.
+        let Some(id) = self.macro_id(name, epoch) else {
+            self.expand_macro_uncached(field, name, epoch, problems, report, x);
+            return;
+        };
+        let key = (id, field == "month");
+        let cached = self.macro_cache.borrow().get(&key).cloned();
+        let cached = cached.unwrap_or_else(|| {
+            let mut expansion = Expansion::default();
+            let mut problems = Vec::new();
+            self.expand_macro_uncached(field, name, epoch, &mut problems, true, &mut expansion);
+            let bytes = name.len() + expansion.out.len() + problems.iter().map(String::len).sum::<usize>() + 128;
+            let cached = Rc::new(CachedExpansion {
+                expansion,
+                problems,
+                bytes,
+            });
+            if !self.budget.exhausted() && bytes <= MAX_MACRO_CACHE_BYTES.saturating_sub(self.macro_cache_bytes.get()) {
+                self.macro_cache_bytes.set(self.macro_cache_bytes.get() + bytes);
+                self.macro_cache.borrow_mut().insert(key, Rc::clone(&cached));
+            }
+            cached
+        });
+        let expanded = &cached.expansion;
+        // A cached result must fit the *original* field quotas, including its
+        // logical expansion count. If a preceding part would change where
+        // expansion stops, walk again to retain the exact output and warnings.
+        if (x.steps == 0 && x.out.is_empty())
+            || (!expanded.stopped()
+                && x.steps + expanded.steps <= MAX_EXPANSION_STEPS
+                && x.out.len() + expanded.out.len() <= MAX_VALUE_BYTES)
+        {
+            if !self.budget.charge(cached.bytes.saturating_mul(4)) {
+                return;
+            }
+            x.out.push_str(&expanded.out);
+            x.steps += expanded.steps;
+            x.too_large |= expanded.too_large;
+            x.too_complex |= expanded.too_complex;
+            if report {
+                problems.extend(cached.problems.iter().cloned());
+            }
+        } else {
+            self.expand_macro_uncached(field, name, epoch, problems, report, x);
+        }
+    }
+
+    fn expand_macro_uncached(
+        &self,
+        field: &str,
+        name: &str,
+        epoch: usize,
+        problems: &mut Vec<String>,
+        report: bool,
+        x: &mut Expansion,
+    ) {
+        if !self.budget.charge(
+            name.len()
+                .saturating_mul(x.stack.len().saturating_add(4))
+                .saturating_add(field.len())
+                .saturating_add(256),
+        ) {
+            return;
+        }
+        x.steps += 1;
+        if x.steps > MAX_EXPANSION_STEPS {
+            x.too_complex = true;
+        }
+        if x.stopped() {
+            return;
+        }
+        let id = self.macro_id(name, epoch);
+        if id.is_some_and(|id| x.stack.contains(&id)) {
+            if report {
+                problems.push(format!("abbreviation `{name}` refers to itself; it is left empty"));
+            }
+            return;
+        }
+        if x.stack.len() >= MAX_MACRO_DEPTH {
+            if report {
+                problems.push(format!(
+                    "abbreviations are nested more than {MAX_MACRO_DEPTH} levels deep; deeper levels are left empty"
+                ));
+            }
+            return;
+        }
+        if let Some(id) = id {
+            x.stack.push(id);
+            for part in &self.definitions[id] {
+                match part {
+                    Part::Text(t) | Part::Number(t) => {
+                        if !self.budget.charge(t.len()) {
+                            break;
+                        }
+                        x.out.push_str(t);
+                    }
+                    // A definition captures its own environment, including
+                    // itself for the existing warned self-reference check.
+                    Part::Macro(inner) => self.expand_macro_uncached(field, inner, id + 1, problems, report, x),
+                }
+                x.check_size();
+                if x.stopped() || self.budget.exhausted() {
+                    break;
+                }
+            }
+            x.stack.pop();
+            return;
+        }
+        if let Some((abbr, full)) = MONTHS.iter().find(|(abbr, _)| *abbr == name) {
+            // In a month field the parser understands the abbreviation itself.
+            x.out.push_str(if field == "month" { abbr } else { full });
+            return;
+        }
+        if report {
+            problems.push(format!(
+                "undefined abbreviation `{name}`; the field using it is left empty"
+            ));
+        }
+    }
+}
+
+/// Values already encode literal escaped braces as placeholders. Remaining
+/// braces are groups, including those after an escaped pair of backslashes.
+/// Every prefix must balance within the value, and the final depth must be zero,
+/// so neither parser input nor the conversion fallback can escape its field.
+fn validate_field_structure(value: &str) -> Result<(), String> {
+    let mut depth = 0usize;
+    for byte in value.bytes() {
+        match byte {
+            b'{' => {
+                depth += 1;
+                if depth > MAX_FIELD_NESTING {
+                    return Err(format!("is nested more than {MAX_FIELD_NESTING} levels deep"));
+                }
+            }
+            b'}' => {
+                let Some(remaining) = depth.checked_sub(1) else {
+                    return Err("has unbalanced braces".to_string());
+                };
+                depth = remaining;
+            }
+            _ => {}
+        }
+    }
+    if depth != 0 {
+        return Err("has unbalanced braces".to_string());
+    }
+    Ok(())
+}
+
+/// State of expanding one field value.
+#[derive(Default)]
+struct Expansion {
+    out: String,
+    stack: Vec<usize>,
+    steps: usize,
+    too_large: bool,
+    too_complex: bool,
+}
+
+struct CachedExpansion {
+    bytes: usize,
+    expansion: Expansion,
+    problems: Vec<String>,
+}
+
+impl Expansion {
+    fn check_size(&mut self) {
+        if self.out.len() > MAX_VALUE_BYTES {
+            self.too_large = true;
+        }
+    }
+
+    fn stopped(&self) -> bool {
+        self.too_large || self.too_complex
+    }
+}
+
+/// Field names in the child for a field inherited through `crossref`,
+/// following BibLaTeX's default inheritance rules (`biblatex.def`). An empty
+/// list means the field is not inherited.
+fn crossref_targets<'n>(parent: &str, child: &str, field: &'n str) -> Vec<&'n str> {
+    const TITLE_FIELDS: [&str; 3] = ["title", "subtitle", "titleaddon"];
+    const SKIPPED: [&str; 4] = ["shorttitle", "sorttitle", "indextitle", "indexsorttitle"];
+    let book_part = matches!(child, "inbook" | "bookinbook" | "suppbook");
+    let collection_like = matches!(
+        child,
+        "collection" | "reference" | "incollection" | "inreference" | "suppcollection"
+    );
+    let collection_part = matches!(child, "incollection" | "inreference" | "suppcollection");
+    let prefix = match (parent, child) {
+        ("mvbook", "book" | "inbook" | "bookinbook" | "suppbook") => Some("main"),
+        ("mvcollection" | "mvreference", _) if collection_like => Some("main"),
+        ("mvproceedings", "proceedings" | "inproceedings") => Some("main"),
+        ("book", _) if book_part => Some("book"),
+        ("collection" | "reference", _) if collection_part => Some("book"),
+        ("proceedings", "inproceedings") => Some("book"),
+        ("periodical", "article" | "suppperiodical") => Some("journal"),
+        _ => None,
+    };
+    let mut targets = Vec::new();
+    // The authors of a book are also the book author of its parts.
+    if field == "author" && matches!(parent, "mvbook" | "book") && book_part {
+        targets.push("bookauthor");
+    }
+    match prefix {
+        Some(prefix) if TITLE_FIELDS.contains(&field) => targets.push(match (prefix, field) {
+            ("main", "title") => "maintitle",
+            ("main", "subtitle") => "mainsubtitle",
+            ("main", _) => "maintitleaddon",
+            ("book", "title") => "booktitle",
+            ("book", "subtitle") => "booksubtitle",
+            ("book", _) => "booktitleaddon",
+            ("journal", "title") => "journaltitle",
+            ("journal", "subtitle") => "journalsubtitle",
+            _ => "journaltitleaddon",
+        }),
+        Some(_) if SKIPPED.contains(&field) => {}
+        _ => targets.push(field),
+    }
+    targets
+}
+
+/// Render one field canonically. A month written as a three-letter
+/// abbreviation stays bare so the parser reads it as a month.
+fn render_field(name: &str, value: &str) -> String {
+    let bare_month = name == "month" && MONTHS.iter().any(|(abbr, _)| *abbr == value);
+    if bare_month {
+        format!("  {name} = {value}")
+    } else {
+        // URLs are verbatim: command-looking path text remains literal.
+        let value = if name == "url" {
+            value.to_string()
+        } else {
+            protect_backslashes(value)
+        };
+        format!("  {name} = {{{value}}}")
+    }
+}
+
+/// Replace the dotless `\\i` and `\\j` commands with plain letters so accents
+/// apply: `{\\'\\i}` becomes `{\\'i}`, which the parser reads as "í".
+fn dotless_to_plain(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(pos) = rest.find(['\\']) {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + 1..];
+        let letter = after.chars().next();
+        let next = after.chars().nth(1);
+        match letter {
+            Some(l @ ('i' | 'j')) if next.is_none_or(|c| !c.is_ascii_alphabetic()) => {
+                out.push(l);
+                // A space after the command only terminates it.
+                rest = after[1..].strip_prefix(' ').unwrap_or(&after[1..]);
+            }
+            _ => {
+                out.push('\\');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Convert decimal digits from common scripts (Arabic-Indic, Persian,
+/// N'Ko, Devanagari, Bengali, Gurmukhi, Gujarati, Oriya, Tamil, Telugu,
+/// Thai, full-width) to ASCII digits.
+pub(crate) fn ascii_digits(text: &str) -> String {
+    const ZEROS: [u32; 12] = [
+        0x0660, 0x06F0, 0x07C0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0E50, 0xFF10,
+    ];
+    text.chars()
+        .map(|c| {
+            ZEROS
+                .iter()
+                .find(|&&zero| (zero..zero + 10).contains(&(c as u32)))
+                .and_then(|&zero| char::from_digit(c as u32 - zero, 10))
+                .unwrap_or(c)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::lexer::{parse_entry, parse_string, split_blocks};
+    use super::*;
+
+    fn resolve(src: &str, key: &str) -> Resolved {
+        let blocks = split_blocks(src);
+        let mut macros = Vec::new();
+        let mut entries = Vec::new();
+        for block in &blocks {
+            if block.kind == "string" {
+                macros.extend(parse_string(block));
+            } else if let Ok(mut entry) = parse_entry(block) {
+                entry.macro_epoch = macros.len();
+                entries.push(entry);
+            }
+        }
+        let i = entries
+            .iter()
+            .position(|e| e.key == key)
+            .unwrap_or_else(|| panic!("no {key}"));
+        Resolver::new(macros, &entries, &Budget::new(usize::MAX)).resolve(i)
+    }
+
+    #[test]
+    fn shared_parent_dag_fits_one_load_budget() {
+        let mut text = String::from("@xdata{p0,publisher={Press}}\n");
+        for i in 1..10 {
+            let parents = (0..i).map(|j| format!("p{j}")).collect::<Vec<_>>().join(",");
+            text.push_str(&format!("@xdata{{p{i},xdata={{{parents}}}}}\n"));
+        }
+        for i in 0..1_000 {
+            text.push_str(&format!("@book{{k{i},title={{Book}},xdata={{p9}}}}\n"));
+        }
+        let start = std::time::Instant::now();
+        let loaded = super::super::load_str(&ibis_core::contract::LibraryId::file(b"synthetic.bib"), &text);
+        eprintln!(
+            "shared parent DAG: {:?}; references: {}",
+            start.elapsed(),
+            loaded.records.len()
+        );
+        assert_eq!(loaded.records.len(), 1_000);
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        assert!(
+            loaded
+                .records
+                .iter()
+                .all(|r| r.csl.get("publisher").and_then(serde_json::Value::as_str) == Some("Press"))
+        );
+    }
+
+    #[test]
+    fn parent_cache_replay_preserves_evaluation_cuts_and_memo_overlap() {
+        let text = "@book{root,xdata={p}}\n@xdata{p,xdata={one,two}}\n\
+                    @xdata{one,note={One}}\n@xdata{two,publisher={Two}}";
+        let entries: Vec<_> = split_blocks(text)
+            .iter()
+            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+            .collect();
+        let budget = Budget::new(usize::MAX);
+        let warm = Resolver::new(Vec::new(), &entries, &budget);
+        warm.resolve(0);
+        let cached = Rc::clone(&warm.parent_cache.borrow()[&(1, MAX_DEPTH - 1)]);
+        for overlap in [false, true] {
+            for evaluations in [MAX_EVALUATIONS - 4, MAX_EVALUATIONS - 3, MAX_EVALUATIONS - 2] {
+                let cold = Resolver::new(Vec::new(), &entries, &budget);
+                let run = |resolver: &Resolver| {
+                    let mut memo = Memo::new();
+                    if overlap {
+                        memo.insert((2, MAX_DEPTH - 2), Rc::clone(&cached[&(2, MAX_DEPTH - 2)]));
+                    }
+                    let mut walk = Walk {
+                        path: vec![0, 1],
+                        memo,
+                        evaluations,
+                        problems: Vec::new(),
+                    };
+                    let fields = resolver.effective(1, MAX_DEPTH - 1, &mut walk);
+                    (fields, walk.evaluations, walk.problems)
+                };
+                let expected = run(&cold);
+                if !expected.2.is_empty() {
+                    assert!(cold.parent_cache.borrow().is_empty());
+                }
+                assert_eq!(run(&warm), expected, "overlap={overlap}, evaluations={evaluations}");
+            }
+        }
+        budget.0.set(Some(32));
+        let mut walk = Walk {
+            path: vec![0, 1],
+            memo: Memo::new(),
+            evaluations: 0,
+            problems: Vec::new(),
+        };
+        warm.effective(1, MAX_DEPTH - 1, &mut walk);
+        assert!(budget.exhausted());
+        assert!(walk.memo.is_empty());
+        assert_eq!(warm.parent_cache.borrow().len(), 1);
+    }
+
+    #[test]
+    fn parent_cache_preserves_root_diagnostics_and_excludes_cuts() {
+        let mut depth = String::new();
+        for i in 0..18 {
+            depth.push_str(&format!("@xdata{{p{i},xdata={{p{}}}}}\n", i + 1));
+        }
+        depth.push_str("@xdata{p18,publisher={Press}}\n@book{shallow,xdata={p3}}\n@book{deep,xdata={p0}}");
+        for text in [
+            "@book{child,crossref={parent}}\n@book{parent,title=missing,title={Last}}\n@book{again,crossref={parent}}",
+            "@xdata{p,publisher={P},xdata={q}}\n@xdata{q,note={Q},xdata={p}}\n@book{a,xdata={p}}\n@book{b,xdata={q}}",
+            depth.as_str(),
+        ] {
+            let entries: Vec<_> = split_blocks(text)
+                .iter()
+                .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+                .collect();
+            let budget = Budget::new(usize::MAX);
+            let warm = Resolver::new(Vec::new(), &entries, &budget);
+            for _ in 0..2 {
+                for (i, entry) in entries.iter().enumerate().filter(|(_, e)| e.kind != "xdata") {
+                    let expected = Resolver::new(Vec::new(), &entries, &budget).resolve(i);
+                    let actual = warm.resolve(i);
+                    assert_eq!(
+                        (actual.source, actual.problems),
+                        (expected.source, expected.problems),
+                        "{}",
+                        entry.key
+                    );
+                }
+            }
+        }
+        let entries: Vec<_> = split_blocks("@book{r,xdata={p}}\n@xdata{p,publisher={Press}}")
+            .iter()
+            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+            .collect();
+        let budget = Budget::new(1_024);
+        let interrupted = Resolver::new(Vec::new(), &entries, &budget);
+        interrupted.resolve(0);
+        assert!(budget.exhausted());
+        assert!(interrupted.parent_cache.borrow().is_empty());
+    }
+
+    #[test]
+    fn parent_cache_bounds_empty_metadata_and_field_capacity() {
+        let budget = Budget::new(usize::MAX);
+        let resolver = Resolver::new(Vec::new(), &[], &budget);
+        let mut memo = Memo::new();
+        memo.insert(
+            (0, 0),
+            Rc::new(vec![(String::new(), String::with_capacity(MAX_PARENT_CACHE_BYTES))]),
+        );
+        resolver.cache_parent((0, 0), &memo);
+        assert!(resolver.parent_cache.borrow().is_empty());
+        for i in 0..=MAX_PARENT_CACHE_BYTES / 512 {
+            memo.clear();
+            memo.insert((i, 0), Rc::default());
+            resolver.cache_parent((i, 0), &memo);
+        }
+        assert_eq!(resolver.parent_cache_bytes.get(), MAX_PARENT_CACHE_BYTES);
+        assert_eq!(resolver.parent_cache.borrow().len(), MAX_PARENT_CACHE_BYTES / 512);
+    }
+
+    #[test]
+    fn wide_parent_shared_children_finish_before_the_deadline() {
+        use std::process::Command;
+        use std::time::{Duration, Instant};
+
+        const CHILD: &str = "IBIS_FIELD_LOOKUP_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let mut text = String::from("@book{parent,title={Parent}");
+            for i in 0..4_000 {
+                text.push_str(&format!(",field{i:05}={{Value{i:05}}}"));
+            }
+            text.push_str("}\n");
+            for i in 0..20 {
+                text.push_str(&format!("@inbook{{child{i},title={{Child}},crossref={{parent}}}}\n"));
+            }
+            let entries: Vec<_> = split_blocks(&text)
+                .iter()
+                .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
+                .collect();
+            let budget = Budget::new(usize::MAX);
+            let resolver = Resolver::new(Vec::new(), &entries, &budget);
+            let start = Instant::now();
+            for i in 0..entries.len() {
+                let resolved = resolver.resolve(i);
+                assert_eq!(resolved.fields.len(), 4_000 + if i == 0 { 1 } else { 2 });
+                assert_eq!(
+                    resolved.fields.get("field00000").map(String::as_str),
+                    Some("Value00000")
+                );
+                assert_eq!(
+                    resolved.fields.get("field03999").map(String::as_str),
+                    Some("Value03999")
+                );
+                assert_eq!(
+                    resolved.fields.get("title").map(String::as_str),
+                    Some(if i == 0 { "Parent" } else { "Child" })
+                );
+                if i != 0 {
+                    assert_eq!(resolved.fields.get("booktitle").map(String::as_str), Some("Parent"));
+                }
+                assert!(resolved.problems.is_empty());
+            }
+            eprintln!("synthetic resolver: {:?}", start.elapsed());
+            return;
+        }
+        // Keep the deadline outside the resolver process so a regression cannot hang CI.
+        let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
+            .args([
+                "--exact",
+                "bibtex::resolve::tests::wide_parent_shared_children_finish_before_the_deadline",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .spawn()
+            .unwrap_or_else(|e| panic!("{e}"));
+        let start = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e}")) {
+                assert!(status.success());
+                break;
+            }
+            if start.elapsed() >= Duration::from_secs(2) {
+                child.kill().unwrap_or_else(|e| panic!("{e}"));
+                child.wait().unwrap_or_else(|e| panic!("{e}"));
+                panic!("synthetic resolver exceeded the 2 second deadline");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn indexed_fields_keep_order_duplicates_and_parent_precedence() {
+        let definitions = "@book{p,title={Parent},publisher={Crossref},note={Parent note}}\n\
+                           @xdata{first,publisher={First},pages={1}}\n\
+                           @xdata{second,publisher={Second},pages={2}}\n";
+        for links in ["crossref={p},xdata={first,second}", "xdata={first,second},crossref={p}"] {
+            let resolved = resolve(
+                &format!("{definitions}@inbook{{k,title={{First}},note={{Own}},title={{Last}},{links}}}"),
+                "k",
+            );
+            assert_eq!(
+                resolved.source,
+                "@inbook{k,\n  title = {Last},\n  note = {Own},\n  publisher = {Second},\n  pages = {2},\n  booktitle = {Parent}}\n"
+            );
+            assert_eq!(
+                resolved.problems,
+                ["field `title` appears twice; the last value is used"]
+            );
+        }
+    }
+
+    #[test]
+    fn excessive_nesting_is_omitted_after_expansion_and_inheritance() {
+        let value = format!("{}x{}", "\\emph{".repeat(257), "}".repeat(257));
+        for field in ["title", "journal", "note", "unknown", "url"] {
+            for written in [format!("{{{value}}}"), format!("\"{value}\""), "bad # {}".to_string()] {
+                let source = format!(
+                    "@string{{bad={{{value}}}}}\n@xdata{{p,{field}={written}}}\n@article{{k,xdata={{p}},year=2024}}"
+                );
+                let result = resolve(&source, "k");
+                assert!(!result.fields.contains_key(field), "{field}");
+                assert!(!result.source.contains("emph"), "{field}");
+                assert!(result.source.contains("year = {2024}"));
+                assert_eq!(result.problems.len(), 1);
+                assert!(result.problems[0].contains(field) && result.problems[0].contains("omitted"));
+            }
+        }
+        let result = resolve(
+            &format!("@proceedings{{p,title={{{value}}}}}\n@inproceedings{{k,title={{Safe}},crossref={{p}}}}"),
+            "k",
+        );
+        assert_eq!(result.fields.get("title").map(String::as_str), Some("Safe"));
+        assert!(!result.fields.contains_key("booktitle"));
+        assert!(result.problems[0].contains("booktitle"));
+    }
+
+    #[test]
+    fn nesting_guard_preserves_literal_braces_and_backslash_parity() {
+        for slashes in 1..=4 {
+            let prefix = "\\".repeat(slashes);
+            let value = format!(
+                "{}x{}",
+                format!("{prefix}{{").repeat(257),
+                format!("{prefix}}}").repeat(257)
+            );
+            assert_eq!(
+                validate_field_structure(&encode_literals(&value)).is_err(),
+                slashes % 2 == 0
+            );
+        }
+        assert!(validate_field_structure(&encode_literals(&"\u{E000}\u{E001}\u{E002}\u{E003}".repeat(4_000))).is_ok());
+    }
+
+    #[test]
+    fn final_structure_checks_prefixes_literal_encoding_and_backslash_parity() {
+        for (value, accepted) in [
+            ("", true),
+            ("{kept}", true),
+            ("}{", false),
+            ("{", false),
+            ("}", false),
+            (r"\{}", false),
+            (r"{\}", false),
+            (r"\{kept\}", true),
+            (r"\\{kept\\}", true),
+            (r"\\\{kept\\\}", true),
+            (r"\\\\{kept\\\\}", true),
+            (r"\unknown{kept}", true),
+            ("\u{E000}\u{E001}\u{E002}\u{E003}", true),
+        ] {
+            let entry = RawEntry {
+                kind: "article".into(),
+                key: "k".into(),
+                line: 1,
+                macro_epoch: 0,
+                fields: vec![super::super::lexer::Field {
+                    name: "title".into(),
+                    parts: vec![Part::Text(value.into())],
+                }],
+            };
+            let budget = Budget::new(usize::MAX);
+            let result = Resolver::new(Vec::new(), &[entry], &budget).resolve(0);
+            assert_eq!(result.fields.contains_key("title"), accepted, "{value:?}");
+            assert_eq!(result.problems.is_empty(), accepted, "{value:?}");
+        }
+        let result = resolve(
+            "@proceedings(p,title=\"x}, date = {1999-01-01}, author = {Evil Person}\",year=2024)\n\
+             @inproceedings{k,title={Safe},crossref={p}}",
+            "k",
+        );
+        assert_eq!(result.fields.get("title").map(String::as_str), Some("Safe"));
+        assert!(!result.fields.contains_key("booktitle"));
+        assert!(result.source.contains("year = {2024}"));
+        assert_eq!(
+            result.problems,
+            ["field `booktitle` has unbalanced braces; it is omitted"]
+        );
+    }
+
+    #[test]
+    fn output_is_one_flat_entry_without_links() {
+        for src in [
+            "@book{a,title={A},crossref={a}}",
+            "@book{a,title={A},crossref={b}}\n@book{b,title={B},crossref={a}}",
+        ] {
+            let r = resolve(src, "a");
+            assert!(
+                r.problems.iter().any(|p| p.contains("cycle")),
+                "{src}: {:?}",
+                r.problems
+            );
+            assert_eq!(r.source.matches('@').count(), 1, "{}", r.source);
+            assert!(!r.source.contains("crossref"), "{}", r.source);
+        }
+    }
+
+    #[test]
+    fn chained_macros_expand_fully() {
+        let r = resolve(
+            "@string{a = \"Alpha\"}\n@string{b = a # \" Beta\"}\n@article{m, journal = b}",
+            "m",
+        );
+        assert!(r.source.contains("journal = {Alpha Beta}"), "{}", r.source);
+        assert!(r.problems.is_empty(), "{:?}", r.problems);
+    }
+
+    #[test]
+    fn proceedings_title_becomes_booktitle_through_every_level() {
+        let r = resolve(
+            "@mvproceedings{c, title={Series}, year={2019}}\n@proceedings{b, title={Volume}, crossref={c}}\n@inproceedings{a, title={Paper}, crossref={b}}",
+            "a",
+        );
+        assert_eq!(r.fields.get("title").map(String::as_str), Some("Paper"));
+        assert_eq!(r.fields.get("booktitle").map(String::as_str), Some("Volume"));
+        assert_eq!(r.fields.get("year").map(String::as_str), Some("2019"));
+    }
+
+    #[test]
+    fn own_month_keeps_inherited_year_but_own_date_wins_over_it() {
+        let month = resolve("@xdata{p,year=2024}\n@book{a,title={T},month=mar,xdata={p}}", "a");
+        assert_eq!(month.fields.get("date").map(String::as_str), Some("2024-03"));
+        let date = resolve("@xdata{p,year=2000}\n@book{a,title={T},date={2024},xdata={p}}", "a");
+        assert_eq!(date.fields.get("date").map(String::as_str), Some("2024"));
+        assert_eq!(date.fields.get("year"), None);
+    }
+
+    #[test]
+    fn digits_in_date_fields_are_normalized_but_not_elsewhere() {
+        let r = resolve("@article{d, title={২০২০ পর্যবেক্ষণ}, year={২০২০}, month=mar}", "d");
+        assert!(r.source.contains("date = {2020-03}"), "{}", r.source);
+        assert!(r.source.contains("title = {২০২০ পর্যবেক্ষণ}"));
+    }
+
+    #[test]
+    fn dotless_i_and_j_become_plain_letters() {
+        assert_eq!(dotless_to_plain("Garc{\\'\\i}a"), "Garc{\\'i}a");
+        assert_eq!(dotless_to_plain("\\i nt \\item \\j"), "int \\item j");
+    }
+}
