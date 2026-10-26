@@ -204,218 +204,183 @@ mod tests {
         Prepared {json:serde_json::json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(), outcomes:(0..count).map(|item|ibis_core::contract::ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![],empty:false}
     }
 
+    fn on_worker_stack(work: impl FnOnce() + Send + 'static) {
+        std::thread::Builder::new()
+            .stack_size(crate::WORKER_STACK_BYTES)
+            .spawn(work)
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[test]
     fn interrupts_unbounded_script_and_fresh_runtime_recovers() {
-        let limits = Limits::default();
-        let mut control = control();
-        let session = Session::new(&limits, &control).unwrap();
-        control.deadline = Instant::now() + Duration::from_millis(5);
-        install_interrupt(&session.runtime, &control);
-        let interrupted = session.context.with(|ctx| {
-            let error = ctx.eval::<(), _>("while(true){} ").unwrap_err();
-            failure(&ctx, "interrupt-test", &error)
+        on_worker_stack(|| {
+            let limits = Limits::default();
+            let mut control = control();
+            let session = Session::new(&limits, &control).unwrap();
+            control.deadline = Instant::now() + Duration::from_millis(5);
+            install_interrupt(&session.runtime, &control);
+            let interrupted = session.context.with(|ctx| {
+                let error = ctx.eval::<(), _>("while(true){} ").unwrap_err();
+                failure(&ctx, "interrupt-test", &error)
+            });
+            assert_eq!(interrupted, JsFailure::Interrupted);
+            assert!(matches!(
+                control.error(),
+                Some(WorkError::Public(FormatError::TimedOut))
+            ));
+            drop(session);
+            let fresh = Session::new(&limits, &super::tests::control()).unwrap();
+            assert_eq!(fresh.context.with(|ctx| ctx.eval::<i32, _>("1+1")).unwrap(), 2);
         });
-        assert_eq!(interrupted, JsFailure::Interrupted);
-        assert!(matches!(
-            control.error(),
-            Some(WorkError::Public(FormatError::TimedOut))
-        ));
-        drop(session);
-        let fresh = Session::new(&limits, &super::tests::control()).unwrap();
-        assert_eq!(fresh.context.with(|ctx| ctx.eval::<i32, _>("1+1")).unwrap(), 2);
     }
+
     #[test]
     fn processor_empty_form_throws_instead_of_returning_a_copyable_sentinel() {
-        let limits = Limits::default();
-        let control = control();
-        let session = Session::new(&limits, &control).unwrap();
-        let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
-        assert_eq!(session.render(&prepared.json), Err(JsFailure::BridgeRefusal));
+        on_worker_stack(|| {
+            let limits = Limits::default();
+            let control = control();
+            let session = Session::new(&limits, &control).unwrap();
+            let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
+            assert_eq!(session.render(&prepared.json), Err(JsFailure::BridgeRefusal));
+        });
     }
 
     #[test]
     fn measured_software_stack_budget_on_synthetic_apa() {
         use std::io::Write;
-        std::thread::Builder::new()
-            .stack_size(8 * 1024 * 1024)
-            .spawn(|| {
-                let mut minimum = 0;
-                for kib in [64, 128, 256, 384, 512, 768, 1024] {
-                    let limits = Limits {
-                        stack_bytes: kib * 1024,
-                        ..Limits::default()
-                    };
-                    assert!(limits.valid());
-                    let outcome = match Session::new(&limits, &control()) {
-                        Ok(session) => match session.render(&synthetic(1, false).json) {
-                            Ok(json) => {
-                                let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-                                assert!(value["text"] == "(Taylor, 2026)", "synthetic probe output changed");
-                                if minimum == 0 {
-                                    minimum = kib;
-                                }
-                                "success"
+        on_worker_stack(|| {
+            let mut minimum = 0;
+            let mut default_succeeded = false;
+            for kib in [64, 128, 256, 384, 512, 768, 1024, 2048] {
+                let limits = Limits {
+                    stack_bytes: kib * 1024,
+                    ..Limits::default()
+                };
+                assert!(limits.valid());
+                let outcome = match Session::new(&limits, &control()) {
+                    Ok(session) => match session.render(&synthetic(1, false).json) {
+                        Ok(json) => {
+                            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+                            assert!(value["text"] == "(Taylor, 2026)", "synthetic probe output changed");
+                            if minimum == 0 {
+                                minimum = kib;
                             }
-                            Err(error) => error.label(),
-                        },
-                        Err(_) => "bootstrap-refused",
-                    };
-                    writeln!(
-                        std::io::stdout(),
-                        "CSL stack probe {}: budget-kib={kib} result={outcome}",
-                        std::env::consts::OS
-                    )
-                    .unwrap();
-                }
-                // Use a separate minimal context: the recursion probe has no formatter or user data.
-                let runtime = Runtime::new().unwrap();
-                runtime.set_max_stack_size(Limits::default().stack_bytes);
-                install_interrupt(&runtime, &control());
-                let context = Context::full(&runtime).unwrap();
-                let depth = context.with(|ctx| {
-                    let error = ctx
-                        .eval::<(), _>("globalThis.__ibisProbeDepth=0;(function recur(){__ibisProbeDepth++;recur()})()")
-                        .unwrap_err();
-                    assert_eq!(failure(&ctx, "recursion-probe", &error), JsFailure::StackLimit);
-                    ctx.globals().get::<_, usize>("__ibisProbeDepth").unwrap()
-                });
+                            default_succeeded |= limits.stack_bytes == Limits::default().stack_bytes;
+                            "success"
+                        }
+                        Err(error) => error.label(),
+                    },
+                    Err(_) => "bootstrap-refused",
+                };
                 writeln!(
                     std::io::stdout(),
-                    "CSL stack probe {}: minimum-success-kib={minimum} default-recursion-depth={depth}",
+                    "CSL stack probe {}: budget-kib={kib} result={outcome}",
                     std::env::consts::OS
                 )
                 .unwrap();
-                assert!(
-                    minimum > 0,
-                    "no validated software stack budget formatted synthetic APA"
-                );
-            })
-            .unwrap()
-            .join()
+            }
+            // Use a separate minimal context: the recursion probe has no formatter or user data.
+            let runtime = Runtime::new().unwrap();
+            runtime.set_max_stack_size(Limits::default().stack_bytes);
+            install_interrupt(&runtime, &control());
+            let context = Context::full(&runtime).unwrap();
+            let depth = context.with(|ctx| {
+                let error = ctx
+                    .eval::<(), _>("globalThis.__ibisProbeDepth=0;(function recur(){__ibisProbeDepth++;recur()})()")
+                    .unwrap_err();
+                assert_eq!(failure(&ctx, "recursion-probe", &error), JsFailure::StackLimit);
+                ctx.globals().get::<_, usize>("__ibisProbeDepth").unwrap()
+            });
+            writeln!(
+                std::io::stdout(),
+                "CSL stack probe {}: minimum-success-kib={minimum} default-recursion-depth={depth}",
+                std::env::consts::OS
+            )
             .unwrap();
+            assert!(
+                minimum > 0,
+                "no validated software stack budget formatted synthetic APA"
+            );
+            assert!(default_succeeded, "default stack budget did not format synthetic APA");
+        });
 
         // One representative large request, with finite software/native headroom.
-        std::thread::Builder::new()
-            .stack_size(4 * 1024 * 1024)
-            .spawn(|| {
-                let limits = Limits {
-                    stack_bytes: 1024 * 1024,
-                    ..Limits::default()
-                };
-                let mut control = control();
-                control.deadline = Instant::now() + Duration::from_secs(30);
-                let mut session = Session::new(&limits, &control).unwrap();
-                assert!(
-                    session
-                        .run(&synthetic(100, true), &limits, &control)
-                        .unwrap()
-                        .copy_content(100)
-                        .is_some()
-                );
-            })
-            .unwrap()
-            .join()
-            .unwrap();
-    }
-
-    #[test]
-    fn successful_formatting_on_test_and_worker_stacks() {
-        fn format() {
+        on_worker_stack(|| {
             let limits = Limits::default();
-            let control = control();
+            let mut control = control();
+            control.deadline = Instant::now() + Duration::from_secs(30);
             let mut session = Session::new(&limits, &control).unwrap();
-            let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0"}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
-            assert_eq!(
-                session.run(&prepared, &limits, &control).unwrap().text,
-                "(Taylor, 2026)"
+            assert!(
+                session
+                    .run(&synthetic(100, true), &limits, &control)
+                    .unwrap()
+                    .copy_content(100)
+                    .is_some()
             );
-        }
-        format();
-        std::thread::Builder::new()
-            .stack_size(4 * 1024 * 1024)
-            .spawn(format)
-            .unwrap()
-            .join()
-            .unwrap();
+        });
     }
 
     #[test]
     fn trusted_processor_error_forwarding_preserves_resource_classes() {
-        let session = Session::new(&Limits::default(), &control()).unwrap();
-        let class = session.context.with(|ctx| {
-            let error = ctx.eval::<(), _>("null.invalid()").unwrap_err();
-            failure(&ctx, "type-test", &error)
-        });
-        assert_eq!(class, JsFailure::TypeError);
-        for (message, expected) in [
-            (
-                "@macro attribute: RangeError: Maximum call stack size exceeded",
-                JsFailure::StackLimit,
-            ),
-            ("@macro attribute: InternalError: out of memory", JsFailure::MemoryLimit),
-            (
-                "Synthetic title RangeError: Maximum call stack size exceeded",
-                JsFailure::BridgeRefusal,
-            ),
-            (
-                "@macro attribute: RangeError: Maximum call stack size exceeded and more",
-                JsFailure::BridgeRefusal,
-            ),
-        ] {
-            let actual = session.context.with(|ctx| {
-                ctx.globals().set("__ibisProbeMessage", message).unwrap();
-                let error = ctx.eval::<(), _>("CSL.error(__ibisProbeMessage)").unwrap_err();
-                failure(&ctx, "forwarding-test", &error)
+        on_worker_stack(|| {
+            let session = Session::new(&Limits::default(), &control()).unwrap();
+            let class = session.context.with(|ctx| {
+                let error = ctx.eval::<(), _>("null.invalid()").unwrap_err();
+                failure(&ctx, "type-test", &error)
             });
-            assert_eq!(actual, expected);
-        }
+            assert_eq!(class, JsFailure::TypeError);
+            for (message, expected) in [
+                (
+                    "@macro attribute: RangeError: Maximum call stack size exceeded",
+                    JsFailure::StackLimit,
+                ),
+                ("@macro attribute: InternalError: out of memory", JsFailure::MemoryLimit),
+                (
+                    "Synthetic title RangeError: Maximum call stack size exceeded",
+                    JsFailure::BridgeRefusal,
+                ),
+                (
+                    "@macro attribute: RangeError: Maximum call stack size exceeded and more",
+                    JsFailure::BridgeRefusal,
+                ),
+            ] {
+                let actual = session.context.with(|ctx| {
+                    ctx.globals().set("__ibisProbeMessage", message).unwrap();
+                    let error = ctx.eval::<(), _>("CSL.error(__ibisProbeMessage)").unwrap_err();
+                    failure(&ctx, "forwarding-test", &error)
+                });
+                assert_eq!(actual, expected);
+            }
+        });
     }
 
     #[test]
     fn javascript_resource_exhaustion_has_a_resource_error() {
-        for script in [
-            "globalThis.__ibisFormat=()=>{new ArrayBuffer(8*1024*1024);return 'unreachable';}",
-            "globalThis.__ibisFormat=()=>{function recurse(){recurse()}recurse();}",
-        ] {
-            let limits = Limits::default();
-            let control = control();
-            let mut session = Session::new(&limits, &control).unwrap();
-            session.context.with(|ctx| ctx.eval::<(), _>(script)).unwrap();
-            let used = session.runtime.memory_usage().malloc_size as usize;
-            session.runtime.set_memory_limit(used + 1024 * 1024);
-            let prepared = Prepared {
-                json: "{}".into(),
-                outcomes: vec![],
-                losses: vec![],
-                notices: vec![],
-                empty: false,
-            };
-            assert!(matches!(
-                session.run(&prepared, &limits, &control),
-                Err(WorkError::Public(FormatError::ResourceLimit))
-            ));
-        }
-    }
-
-    #[test]
-    fn memory_and_stack_limits_refuse_before_native_failure() {
-        let limits = Limits::default();
-        let control = control();
-        let session = Session::new(&limits, &control).unwrap();
-        let used = session.runtime.memory_usage().malloc_size as usize;
-        session.runtime.set_memory_limit(used + 1024 * 1024);
-        assert!(
-            session
-                .context
-                .with(|ctx| ctx.eval::<(), _>("new ArrayBuffer(8*1024*1024)"))
-                .is_err()
-        );
-        assert!(
-            session
-                .context
-                .with(|ctx| ctx.eval::<(), _>("(function recurse(){recurse()})() "))
-                .is_err()
-        );
-        assert!(control.error().is_none());
+        on_worker_stack(|| {
+            for script in [
+                "globalThis.__ibisFormat=()=>{new ArrayBuffer(8*1024*1024);return 'unreachable';}",
+                "globalThis.__ibisFormat=()=>{function recurse(){recurse()}recurse();}",
+            ] {
+                let limits = Limits::default();
+                let control = control();
+                let mut session = Session::new(&limits, &control).unwrap();
+                session.context.with(|ctx| ctx.eval::<(), _>(script)).unwrap();
+                let used = session.runtime.memory_usage().malloc_size as usize;
+                session.runtime.set_memory_limit(used + 1024 * 1024);
+                let prepared = Prepared {
+                    json: "{}".into(),
+                    outcomes: vec![],
+                    losses: vec![],
+                    notices: vec![],
+                    empty: false,
+                };
+                assert!(matches!(
+                    session.run(&prepared, &limits, &control),
+                    Err(WorkError::Public(FormatError::ResourceLimit))
+                ));
+            }
+        });
     }
 }

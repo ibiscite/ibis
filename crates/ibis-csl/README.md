@@ -28,10 +28,13 @@ before the next operation.
 
 Defaults are 8 interactive and 2 background slots, counting running work;
 5-second interactive and 30-second background deadlines; 128 MiB of JavaScript
-memory per runtime; a 512 KiB JavaScript stack on a 4 MiB worker stack; 4 MiB
-input/output boundaries and at most 1,000 requested items. Processor caches hold
-at most 8 style configurations per runtime; ICU caches hold at most 16
-collators. Selected data is size-checked before allocating a JSON copy. Runtime
+memory per runtime; a 2 MiB JavaScript stack on an 8 MiB worker stack; 4 MiB
+input/output boundaries and at most 1,000 requested items. The software-stack
+maximum is also 2 MiB; the native stack is four times that cap. Windows measurements
+found 1 MiB necessary for a synthetic APA citation; the default doubles that
+measured minimum. Direct runtime tests use controlled worker-sized threads,
+including hostile recursion. Processor caches hold at most 8 style configurations
+per runtime; ICU caches hold at most 16 collators. Selected data is size-checked before allocating a JSON copy. Runtime
 initialization and regular-expression execution share the interrupt boundary.
 
 The five current styles and English locale are embedded from the existing

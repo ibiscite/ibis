@@ -113,7 +113,7 @@ impl Service {
                     }
                     .into(),
                 )
-                .stack_size(4 * 1024 * 1024)
+                .stack_size(crate::WORKER_STACK_BYTES)
                 .spawn(move || worker(shared, limits, lane))
                 .map_err(|_| FormatError::Runtime)?;
             service.threads.push(handle);
