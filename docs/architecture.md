@@ -47,6 +47,11 @@ source-namespaced native keys so tags and collections cannot collide with item
 keys. Rich text is a fixed-depth tree of styled text runs; strings remain
 untrusted data and are never injected as markup.
 
+`Record.identifiers` carries canonical source-neutral search identifiers, including
+arXiv eprints that have no printed CSL field. It is omitted when empty and affects
+only the full fingerprint; changing search metadata does not invalidate a citation.
+`identifier::of_record` combines these identifiers with recognised CSL fields.
+
 ## Sources (ibis-sources)
 
 - **Capabilities are a fixed list per source kind**, not a plugin system. Zotero open and Zotero closed declare the same list, and a test enforces it; anything only one path can provide is not offered.
@@ -71,6 +76,15 @@ use `copy_content(expected_items)` to require all requested items, no refusals a
 a matching content hash. An annotation pick carries its own cite fingerprint.
 Omitted input language means `en-US`; omitted output locale means the style's
 default, never the operating system's locale.
+
+Today's key outputs use `ibis_core::syntax::cite(&Snapshot, &CitationRequest)`.
+Its capability table drives supported forms and typed field losses; explicit
+unsupported forms are refused. Source order and repeated selections are retained.
+Key output writes instructions for the destination processor, whose style can
+subsequently sort or format the citation. The old CLI/app entrypoints continue
+calling the existing pipeline until #1199/#1201 switch their callers to the engine;
+those cutovers delete the old entrypoints. Both pipelines share scalar escaping,
+without adapters between the two contracts.
 
 ## Engine interface (ibis-engine, ibis-cli)
 
