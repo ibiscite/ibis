@@ -103,7 +103,7 @@ jobs:
         run: echo '::warning::Release performance did not complete. Inspect source IDs and any partial reports; this is diagnostic only.'
 
       - name: Keep source-qualified observations
-        if: ${{ !cancelled() }}
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-performance-${{ github.event.pull_request.head.sha || github.sha }}

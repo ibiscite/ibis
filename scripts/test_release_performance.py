@@ -168,10 +168,12 @@ class ReleasePerformanceTests(unittest.TestCase):
         process = Mock(pid=123)
         process.poll.return_value = None
         before, after = {(123, 123, 99): 1}, {(123, 123, 99): 3}
+        ticks = iter(range(20))
         with patch.object(perf.smoke, "Linux", return_value=native), \
              patch.object(perf.subprocess, "Popen", return_value=process) as launch, \
              patch.object(perf, "interaction_samples", return_value=([1] * 10, [2] * 10, {})), \
              patch.object(perf.smoke, "escape_to_hide"), patch.object(perf.time, "sleep"), \
+             patch.object(perf.time, "monotonic", side_effect=lambda: next(ticks)), \
              patch.object(perf.os, "killpg", create=True) as kill, patch.object(perf, "wakeup_census", side_effect=(before, after)):
             result = perf.measure(Path("synthetic-executable"), "a" * 40)
         self.assertTrue(launch.call_args.kwargs["start_new_session"])
@@ -179,6 +181,20 @@ class ReleasePerformanceTests(unittest.TestCase):
         native.editor.wait.assert_called_once_with(timeout=5)
         native.wm.wait.assert_called_once_with(timeout=5)
         self.assertEqual(len(result["summon_samples_ms"]), 10)
+        self.assertEqual(result["idle"]["seconds"], 1)
+        self.assertEqual(result["idle"]["wakeups_per_second"], 2)
+
+
+    def test_failure_evidence_has_public_code_locations_and_numeric_census_only(self):
+        try:
+            perf.wakeup_delta({(1, 1, 1): 2}, {})
+        except perf.CensusChanged as error:
+            facts = perf.failure_facts(error)
+        self.assertEqual(facts["census"]["lost_threads"], 1)
+        self.assertTrue(any(frame["function"] == "wakeup_delta" for frame in facts["code_frames"]))
+        private = "SYNTHETIC_PRIVATE_EXCEPTION_TEXT"
+        self.assertNotIn(private, json.dumps(perf.failure_facts(RuntimeError(private))))
+        self.assertNotIn("Idle process", json.dumps(facts))
 
 
 if __name__ == "__main__":

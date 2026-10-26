@@ -60,10 +60,19 @@ def parse_wakeups(text):
     return int(match[1])
 
 
+class CensusChanged(smoke.Unavailable):
+    def __init__(self, before, after):
+        super().__init__("Idle process/thread census changed")
+        self.facts = {"before_threads": len(before), "after_threads": len(after),
+                      "lost_threads": len(before.keys() - after.keys()),
+                      "new_threads": len(after.keys() - before.keys()),
+                      "reset_counters": sum(after[key] < value for key, value in before.items() if key in after)}
+
+
 def wakeup_delta(before, after):
     # Never silently omit an exited thread or mistake a recycled TID for it.
     if not before or not before.keys() <= after.keys() or any(after[key] < value for key, value in before.items()):
-        raise smoke.Unavailable("Idle process/thread census changed; rerun measurement")
+        raise CensusChanged(before, after)
     return sum(value - before.get(key, 0) for key, value in after.items())
 
 
@@ -271,6 +280,21 @@ def paired_measurements(candidate_app, candidate_sha, main_app, main_sha, output
         (output / f"{key}.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
 
 
+
+def failure_facts(error):
+    # Only public code locations and fixed numeric census facts; no exception text,
+    # stack locals, native tree, filenames or user paths.
+    frames, traceback = [], error.__traceback__
+    while traceback:
+        if traceback.tb_frame.f_code.co_filename == __file__:
+            frames.append({"function": traceback.tb_frame.f_code.co_name, "line": traceback.tb_lineno})
+        traceback = traceback.tb_next
+    facts = {"schema": 1, "status": "unavailable", "error_class": type(error).__name__, "code_frames": frames}
+    if isinstance(error, CensusChanged):
+        facts["census"] = error.facts
+    return facts
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path)
@@ -307,7 +331,7 @@ def main():
         return 0
     except Exception as error:
         # Native/library errors can contain private strings; retain only a fixed class.
-        (args.output / "unavailable.json").write_text(json.dumps({"schema": 1, "status": "unavailable", "error_class": type(error).__name__}) + "\n")
+        (args.output / "unavailable.json").write_text(json.dumps(failure_facts(error)) + "\n")
         print("::warning::Release performance observation unavailable; see diagnostic JSON.")
         return 1
 
