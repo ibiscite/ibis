@@ -2,6 +2,23 @@
 use super::*;
 use serde_json::json;
 
+#[derive(Default)]
+struct InstallNotices(Mutex<Vec<&'static str>>);
+
+impl InstallationUi for tauri::test::MockRuntime {
+    fn failed(app: &AppHandle<Self>) {
+        app.state::<InstallNotices>()
+            .0
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .push(INSTALL_FAILURE_MESSAGE);
+    }
+
+    fn restart(_: &AppHandle<Self>) {
+        panic!("a partial download must not reach installation or restart");
+    }
+}
+
 #[test]
 fn stalled_manifest_headers_and_body_time_out_and_allow_a_later_check() {
     use std::io::{BufRead, BufReader, Write};
@@ -79,10 +96,10 @@ fn stalled_manifest_headers_and_body_time_out_and_allow_a_later_check() {
 }
 
 #[test]
-fn stalled_update_downloads_time_out_and_allow_a_later_check() {
+fn production_install_timeout_reports_failure_and_allows_a_later_check() {
     use std::io::{BufRead, BufReader, Write};
     use std::time::Instant;
-    use tauri_plugin_updater::Error;
+    use tauri::Listener;
 
     for mode in ["headers", "body", "trickle"] {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|e| panic!("{e}"));
@@ -154,8 +171,18 @@ fn stalled_update_downloads_time_out_and_allow_a_later_check() {
         );
         let app = tauri::test::mock_builder()
             .plugin(tauri_plugin_updater::Builder::new().build())
+            .manage(Updates::default())
+            .manage(InstallNotices::default())
             .build(context)
             .unwrap_or_else(|e| panic!("{e}"));
+        let delivered = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let heard = Arc::clone(&delivered);
+        let _listener = app.listen_any("update:progress", move |event| {
+            heard
+                .lock()
+                .unwrap_or_else(|e| panic!("{e}"))
+                .push(serde_json::from_str(event.payload()).unwrap_or_else(|e| panic!("{e}")));
+        });
         let client = updater_builder(app.handle(), Duration::from_millis(200))
             .unwrap_or_else(|e| panic!("{e}"))
             .timeout(Duration::from_millis(300))
@@ -170,38 +197,44 @@ fn stalled_update_downloads_time_out_and_allow_a_later_check() {
         let update = tauri::async_runtime::block_on(find_update(&client, download_timeout))
             .unwrap_or_else(|e| panic!("{e}"))
             .unwrap_or_else(|| panic!("update offer"));
-        let finished = AtomicBool::new(false);
-        let chunks = std::sync::atomic::AtomicUsize::new(0);
-        let updates = Updates::default();
+        let updates = app.state::<Updates>();
         let busy = updates.begin().unwrap_or_else(|| panic!("installation"));
         let started = Instant::now();
-        let stalled = tauri::async_runtime::block_on(async {
-            let _busy = busy;
-            update
-                .download_and_install(
-                    |_, _| {
-                        chunks.fetch_add(1, Ordering::SeqCst);
-                    },
-                    || finished.store(true, Ordering::SeqCst),
-                )
-                .await
-        });
+        tauri::async_runtime::block_on(install_update(app.handle(), update, busy));
         let elapsed = started.elapsed();
         let _ = release.send(());
         let _retry = updates.begin().unwrap_or_else(|| panic!("timeout must release busy"));
         let recovered = tauri::async_runtime::block_on(client.check());
         server.join().unwrap_or_else(|_| panic!("server thread panicked"));
+        let state = updates.progress.lock().unwrap_or_else(|e| panic!("{e}"));
+        let state = state.0.as_ref().unwrap_or_else(|| panic!("installation progress"));
+        assert_eq!((state.attempt, state.phase), (1, "failed"));
+        let delivered = delivered.lock().unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            delivered.first().map(|state| (&state["phase"], &state["received"])),
+            Some((&json!("downloading"), &json!(0)))
+        );
+        assert_eq!(delivered.last().map(|state| &state["phase"]), Some(&json!("failed")));
         assert!(
-            matches!(&stalled, Err(Error::Reqwest(e)) if e.is_timeout()),
-            "{mode}: expected download timeout"
+            delivered.iter().all(|state| state["phase"] != "installing"),
+            "partial bytes must not reach installation"
+        );
+        assert_eq!(
+            app.state::<InstallNotices>()
+                .0
+                .lock()
+                .unwrap_or_else(|e| panic!("{e}"))
+                .as_slice(),
+            [INSTALL_FAILURE_MESSAGE],
+            "the production failure path must request its recovery notice"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(150),
+            "{mode}: failed before the timeout"
         );
         assert!(elapsed < Duration::from_secs(1), "{mode}: exceeded download budget");
-        assert!(
-            !finished.load(Ordering::SeqCst),
-            "must not verify or install partial bytes"
-        );
         if mode == "trickle" {
-            assert!(chunks.load(Ordering::SeqCst) > 1, "trickle must keep making progress");
+            assert!(state.received > 1, "trickle must keep making progress");
             assert!(
                 elapsed >= Duration::from_millis(250),
                 "progress must reset the stall timeout"
