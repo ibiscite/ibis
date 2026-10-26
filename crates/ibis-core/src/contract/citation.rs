@@ -376,6 +376,10 @@ impl CitationResult {
         (self.outcomes.len() == expected_items
             && self.is_complete()
             && !self.text.trim().is_empty()
+            && [Some(self.text.as_str()), self.html.as_deref(), self.rtf.as_deref()]
+                .into_iter()
+                .flatten()
+                .all(|text| !text.contains('\0'))
             && self.content_matches_hash())
         .then_some(ClipboardContent {
             text: &self.text,
@@ -621,6 +625,27 @@ mod tests {
                 vec![],
             );
             assert!(result.is_complete());
+            assert!(result.content_matches_hash());
+            assert!(result.copy_content(1).is_none());
+        }
+    }
+
+    #[test]
+    fn copy_refuses_embedded_nul_in_every_canonical_representation() {
+        for (text, html, rtf) in [
+            ("synthetic\0text", Some("synthetic text"), Some("{\\rtf1 synthetic}")),
+            ("synthetic text", Some("synthetic\0text"), Some("{\\rtf1 synthetic}")),
+            ("synthetic text", Some("synthetic text"), Some("{\\rtf1\0synthetic}")),
+        ] {
+            let result = CitationResult::new(
+                text.into(),
+                html.map(String::from),
+                rtf.map(String::from),
+                DisplayTree::default(),
+                vec![ItemOutcome::Rendered { item: 0 }],
+                vec![],
+                vec![],
+            );
             assert!(result.content_matches_hash());
             assert!(result.copy_content(1).is_none());
         }
