@@ -170,9 +170,9 @@ pub(super) fn attempt<E>(
     let Some(shortcut) = eligible(platform, label) else {
         return Attempt::Ineligible;
     };
-    match super::register_with(backend, || register(shortcut)) {
+    match super::registration::register_with(backend, || register(shortcut)) {
         Ok(()) => Attempt::Registered,
-        Err(super::SHORTCUT_BACKEND_UNAVAILABLE) => Attempt::BackendUnavailable,
+        Err(super::registration::SHORTCUT_BACKEND_UNAVAILABLE) => Attempt::BackendUnavailable,
         Err(_) => Attempt::RegistrationFailed,
     }
 }
