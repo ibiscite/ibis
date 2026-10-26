@@ -240,6 +240,67 @@ fn a_schema_without_csl_mappings_is_refused() {
     assert!(Schema::new(br#"{"csl":{"types":[],"fields":{},"names":{}}}"#, [], []).is_none());
 }
 
+#[test]
+fn schema_identifiers_and_fanout_are_bounded_before_mapping_clones() {
+    let make = |types: Value, text: Value, names: Value| json!({ "csl": { "types": types, "fields": { "text": text, "date": {} }, "names": names } });
+    let long = "x".repeat(129);
+    for global in [
+        make(json!({ long.clone(): ["book"] }), json!({}), json!({})),
+        make(
+            json!({ "book": ["book"] }),
+            json!({ long.clone(): ["title", "extra"] }),
+            json!({}),
+        ),
+        make(json!({ "book": ["book"] }), json!({}), json!({ "author": long })),
+    ] {
+        assert!(Schema::new(global.to_string().as_bytes(), [], []).is_none());
+    }
+    // Scale the amplification case down so the old implementation uses only
+    // a few MiB; the same shape with a 1 MiB key takes gigabytes.
+    let aliases: Vec<_> = (0..5000).map(|i| format!("synthetic{i}")).collect();
+    for global in [
+        make(json!({ "t".repeat(128): aliases }), json!({}), json!({})),
+        make(
+            json!({ "book": ["book"] }),
+            json!({ "v".repeat(128): aliases }),
+            json!({}),
+        ),
+    ] {
+        assert!(Schema::new(global.to_string().as_bytes(), [], []).is_none());
+    }
+    let global = make(json!({ "book": ["book"] }), json!({}), json!({}));
+    let rows = (0..3300).map(|i| (format!("t{i:0127}"), "b".repeat(128), "f".repeat(128)));
+    assert!(
+        Schema::new(global.to_string().as_bytes(), rows, []).is_none(),
+        "expanded storage is capped too"
+    );
+}
+
+#[test]
+fn allocation_reserves_the_expanded_extra_payload_before_conversion() {
+    let variable = "v".repeat(128);
+    let global = json!({ "csl": {
+        "types": { "book": ["book"] },
+        "fields": { "text": { "note": ["extra"], variable: ["A"] }, "date": {} }, "names": {}
+    } });
+    let schema = Schema::new(global.to_string().as_bytes(), [], []).unwrap_or_else(|| panic!("bounded schema"));
+    let stored = item("EXTRA001", "book", &[("extra", &"A:x\n".repeat(1024))]);
+    let reserved = allocation_bound(&schema, &stored);
+    let api = api_item(&schema, &stored);
+    let result = load(Library::User, &schema, &[stored]);
+    let reference = &result.references[0];
+    // These strings coexist while the shared mapper builds a reference:
+    // API data, expanded CSL, preserved raw JSON and the normalized note.
+    let materialized = api["data"]["extra"].as_str().map_or(0, str::len)
+        + api["csljson"]["note"].as_str().map_or(0, str::len)
+        + reference.raw.as_ref().map_or(0, String::len)
+        + reference.variables.get("note").map_or(0, String::len);
+    assert!(
+        reserved >= materialized,
+        "reserved {reserved}, materialized {materialized}"
+    );
+}
+
 proptest::proptest! {
     #[test]
     fn any_stored_text_converts_without_a_crash(text in "\\PC{0,80}", other in "[A-Za-z :\\-\n\"“”0-9,!']{0,60}") {

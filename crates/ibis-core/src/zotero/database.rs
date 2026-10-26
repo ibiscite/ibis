@@ -17,6 +17,7 @@ use serde_json::{Map, Value, json};
 use super::{Library, load_items};
 
 mod particles;
+mod schema;
 use crate::model::LoadResult;
 
 /// Item types whose `place` is the event's place, not the publisher's
@@ -44,82 +45,6 @@ pub struct Schema {
     base: BTreeMap<(String, String), String>,
     /// Item type to its primary creator type, cited as author.
     primary: BTreeMap<String, String>,
-}
-
-impl Schema {
-    /// Read the global schema Zotero stores in its `settings` table (already
-    /// inflated to JSON), with the base-field mappings as
-    /// `(item type, base field, field)` and each type's primary creator type.
-    /// `None` if the schema has no CSL mapping.
-    pub fn new(
-        global_schema: &[u8],
-        base_fields: impl IntoIterator<Item = (String, String, String)>,
-        primary_creators: impl IntoIterator<Item = (String, String)>,
-    ) -> Option<Schema> {
-        let schema: Value = serde_json::from_slice(global_schema).ok()?;
-        let csl = schema.get("csl")?;
-        let strings = |value: &Value| -> Vec<String> {
-            value
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        };
-        let mut result = Schema::default();
-        for (csl_type, zotero_types) in csl.get("types")?.as_object()? {
-            for zotero_type in strings(zotero_types) {
-                result.types.insert(zotero_type, csl_type.clone());
-            }
-        }
-        for (variable, fields) in csl.pointer("/fields/text")?.as_object()? {
-            let fields = strings(fields);
-            for field in &fields {
-                result.reverse.insert(field.clone(), variable.clone());
-            }
-            result.text.push((variable.clone(), fields));
-        }
-        for (variable, field) in csl.pointer("/fields/date")?.as_object()? {
-            let field = field.as_str()?.to_string();
-            result.reverse.insert(field.clone(), variable.clone());
-            result.dates.push((variable.clone(), field));
-        }
-        for (creator, variable) in csl.get("names")?.as_object()? {
-            result.names.insert(creator.clone(), variable.as_str()?.to_string());
-        }
-        // Zotero stores fields of type date, and the fields mapped to them,
-        // as "2020-03-00 March 2020". The access date is a plain timestamp.
-        let date_bases: BTreeSet<String> = schema
-            .pointer("/meta/fields")
-            .and_then(Value::as_object)
-            .into_iter()
-            .flatten()
-            .filter(|(_, meta)| meta.get("type").and_then(Value::as_str) == Some("date"))
-            .map(|(field, _)| field.clone())
-            .collect();
-        for (item_type, base, field) in base_fields {
-            if date_bases.contains(&base) {
-                result.date_fields.insert(field.clone());
-            }
-            result.base.insert((item_type, base), field);
-        }
-        result.date_fields.extend(date_bases);
-        result.primary.extend(primary_creators);
-        Some(result)
-    }
-
-    fn field<'a>(&self, item: &'a Item, field: &str) -> Option<&'a str> {
-        item.fields
-            .get(field)
-            .or_else(|| {
-                self.base
-                    .get(&(item.item_type.clone(), field.to_string()))
-                    .and_then(|own| item.fields.get(own))
-            })
-            .map(String::as_str)
-            .filter(|value| !value.is_empty())
-    }
 }
 
 /// One regular item (not a note, attachment or annotation, not in the trash)
@@ -198,7 +123,8 @@ pub fn allocation_bound(schema: &Schema, item: &Item) -> usize {
         .len()
         .saturating_add(item.item_type.len())
         .saturating_add(item.date_added.len())
-        .saturating_add(item.date_modified.len());
+        .saturating_add(item.date_modified.len())
+        .saturating_add(schema.types.get(&item.item_type).map_or(0, String::len));
     let mut slots = 16usize;
     for (field, value) in &item.fields {
         bytes = bytes.saturating_add(field.len()).saturating_add(value.len());
@@ -208,7 +134,8 @@ pub fn allocation_bound(schema: &Schema, item: &Item) -> usize {
         bytes = bytes
             .saturating_add(creator.creator_type.len())
             .saturating_add(creator.first_name.len())
-            .saturating_add(creator.last_name.len());
+            .saturating_add(creator.last_name.len())
+            .saturating_add(schema.names.get(&creator.creator_type).map_or(0, String::len));
         slots = slots.saturating_add(8);
     }
     for (tag, _) in &item.tags {
@@ -221,6 +148,12 @@ pub fn allocation_bound(schema: &Schema, item: &Item) -> usize {
         for field in fields {
             if let Some(value) = schema.field(item, field) {
                 bytes = bytes.saturating_add(variable.len()).saturating_add(value.len());
+                if field == "extra" {
+                    // Each colon can introduce one short label expanded to
+                    // a schema variable. Reserve before extra_to_csl builds it.
+                    let labels = value.bytes().filter(|&c| c == b':').count();
+                    bytes = bytes.saturating_add(labels.saturating_mul(schema::MAX_IDENTIFIER_BYTES));
+                }
                 slots = slots.saturating_add(1);
             }
         }
