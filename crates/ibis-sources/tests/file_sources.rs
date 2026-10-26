@@ -379,3 +379,22 @@ fn bibtex_eprints_are_searchable_without_changing_citation_output() -> Result<()
     );
     Ok(())
 }
+
+#[test]
+fn invalid_bibtex_native_key_does_not_discard_adjacent_records() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(
+        &path,
+        "@book{first,title={Invented}}\n@book{bad\0key,title={Damaged}}\n@book{last,title={Other}}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 2);
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == ibis_sources::WarningCode::Syntax && warning.line == Some(2))
+    );
+    Ok(())
+}
