@@ -366,14 +366,10 @@ fn resolve<'a>(
     if caps.escaping == Escaping::Pandoc
         && item.suffix.iter().any(|run| !run.text.trim().is_empty())
         && let Some(locator) = &item.locator
-        && locator.value.chars().try_fold(0_usize, |depth, c| match c {
-            '{' => Some(depth + 1),
-            '}' => depth.checked_sub(1),
-            _ => Some(depth),
-        }) != Some(0)
+        && locator.value.contains(['{', '}', '[', ']', '\\'])
     {
-        // Pandoc parses braced locators after Markdown unescapes their text;
-        // an unmatched brace cannot preserve the locator/suffix boundary.
+        // Pandoc reparses the Markdown inlines as a braced locator. Nested
+        // delimiters or escapes cannot preserve its boundary with a suffix.
         return Err(CitationError::InvalidLocator);
     }
     if item

@@ -763,7 +763,9 @@ fn pandoc_locator_braces_cannot_swallow_a_literal_suffix() {
         text: "34".into(),
         ..TextRun::default()
     }];
-    for value in ["{12", "12}"] {
+    for value in [
+        "{12", "12}", "{12}", "{{12}}", r"\{12\}", "{[12]}", "[{12}]", "12]", "[12", "[12]", "12\\",
+    ] {
         case.request.items[0].locator = Some(Locator {
             term: LocatorTerm::Page,
             value: value.into(),
@@ -778,9 +780,9 @@ fn pandoc_locator_braces_cannot_swallow_a_literal_suffix() {
         );
         assert!(result.copy_content(1).is_none());
     }
-    case.request.items[0].locator.as_mut().unwrap().value = "{12}".into();
+    case.request.items[0].locator.as_mut().unwrap().value = "12".into();
     let result = syntax::cite(&case.library, &case.request).unwrap();
-    assert_eq!(processed_pandoc_citation(&result.text), "(Taylor, 2026, p. {12}, 34)");
+    assert_eq!(processed_pandoc_citation(&result.text), "(Taylor, 2026, p. 12, 34)");
 }
 
 #[test]
