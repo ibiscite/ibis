@@ -9,6 +9,8 @@ function icon(kind) {
   return svg;
 }
 export function setupDemo() {
+  // The hosted demo has no native updater; like an app build without an
+  // update key, it omits the update controls offered in the app's More menu.
   const figure = document.querySelector("[data-picker]"), result = document.querySelector("[data-result]");
   if (!figure || !result) return;
   const section = figure.closest("section"), anchorBottom = section.getBoundingClientRect().bottom;
@@ -59,6 +61,9 @@ export function setupDemo() {
     const row = el("div", { id: `demo-ref-${index}`, className: "pick", title: `${ref.title} · ${ref.authors} · ${ref.year} · ${ref.key}` }, tile,
       el("span", { className: "ref" }, el("strong", { textContent: ref.title }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { textContent: String(ref.year) }));
     row.setAttribute("role", "option");
+    // Match the app's pointer ownership: a click leaves its row under the
+    // pointer. Rendering is synchronous here; only the keyboard handler below
+    // reveals a chosen row by scrolling (docs/design.md, "List scrolling").
     row.addEventListener("click", event => { state.selected = model.found().indexOf(ref); if (commandKey(event, mac) || event.target.closest(".tile")) model.add(ref.key); render(); input.focus(); });
     row.addEventListener("dblclick", event => { if (!commandKey(event, mac) && !event.target.closest(".tile")) performCopy(); });
     const item = el("li", {}, row); item.setAttribute("role", "none"); list.append(item);

@@ -516,6 +516,10 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
   is in progress.
 - **Hover** only tints a row, and only under a moving pointer; a click selects
   [C5], so reaching across rows for Copy never changes what is copied.
+- **List scrolling.** A clicked row stays under the pointer. Remember which row
+  the click chose until it renders, even if a result reset or preview update
+  renders first; only that row consumes the click. Arrow keys take back
+  ownership and reveal the keyboard's row.
 - **After a copy** Ibis hides, focus returns to the previous window and the
   notice appears; a failed insert leaves the citation on the clipboard and
   says why. Pinned, Ibis stays. Escape never asks or unpins.
@@ -584,6 +588,12 @@ Until then settings live in More and the tray menu. **Start Ibis when you log
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
 ("Open at Login", "Start when you sign in", "Start on Login"), and is read from
 the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).
+**Check for updates…** and **Check for updates automatically** sit in both
+menus with the same commands, so desktops without a tray reach them; builds
+without an update key show neither. Both show only the saved choice, and clicks in
+either are saved in the order they were made.
+The tray click carries the absolute choice its item displayed, so a queued save
+repainting the check cannot change an earlier click's intent.
 
 ## Brand and mark
 

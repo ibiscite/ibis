@@ -17,6 +17,7 @@ export type GalleryState = {
   locatorQueries?: Readonly<Record<string, LocatorQuery>>;
   copied?: Copied;
   updateProgress?: UpdateProgress;
+  automaticUpdates?: boolean;
   theme?: "light" | "dark" | "contrast";
   direction?: "ltr" | "rtl";
   largeText?: boolean;
@@ -190,7 +191,7 @@ export const galleryStates: readonly GalleryState[] = [
     references: 2, error: "The library file is unavailable; keeping the last loaded references" }), query: "memory", results: examples.slice(0, 2), menuOpen: true },
   { id: "pinned", label: "Pinned", library: library(), query: "memory", results: examples, pinned: true },
   { id: "search-mark", label: "Ibis mark in search", library: library(), query: "", searchMark: true },
-  { id: "menu-open", label: "More menu open", library: library(), query: "memory", results: examples, menuOpen: true },
+  { id: "menu-open", label: "More menu with update controls", library: library(), query: "memory", results: examples, menuOpen: true, automaticUpdates: false },
   ...[false, true].flatMap((formatted) => [true, false].map((showPastePreview) => ({
     id: `preview-${formatted ? "apa" : "keys"}-${showPastePreview ? "on" : "off"}`,
     label: `${formatted ? "APA" : "Key"} output ${showPastePreview ? "shown" : "hidden"}`,
@@ -218,12 +219,23 @@ export const galleryStates: readonly GalleryState[] = [
 
 export function galleryProvider(state: GalleryState): { api: PickerApi; preview: PickerPreview } {
   const sources = state.sources;
+  let automatic = state.automaticUpdates ?? false;
+  let automaticChanged = (_on: boolean) => {};
   const citation = (items: Parameters<PickerApi["copyCitation"]>[0]) => `[${items.map(({ id, locator }) =>
     `@${id.native_key}${locator ? `, ${locator.label === "page" ? "p." : locator.label} ${locator.value}` : ""}`).join("; ")}]`;
   return {
     preview: { query: state.query, copied: state.copied },
     api: {
       libraryStatus: async () => state.library,
+      ...(state.automaticUpdates !== undefined ? {
+        updateChecks: async () => automatic,
+        setUpdateChecks: async (on: boolean) => { automatic = on; automaticChanged(on); },
+        checkForUpdates: async () => undefined,
+        onUpdateChecks: async (handler: (on: boolean) => void) => {
+          automaticChanged = handler;
+          return () => { automaticChanged = () => {}; };
+        },
+      } : {}),
       ...(state.updateProgress ? { onUpdateProgress: async (handler: (progress: UpdateProgress) => void) => {
         handler(state.updateProgress!); return () => undefined;
       } } : {}),

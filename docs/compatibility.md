@@ -65,7 +65,7 @@ test is claimed.
 GNOME without a tray extension and some other desktops show no tray icon.
 The launcher and picker library controls still work. Use **More > Quit** to
 exit; closing the window only hides it. Nightly's start-at-login switch is
-also in **More**. Update controls require the tray menu.
+also in **More**, and so are the update controls.
 
 ### Bind a system shortcut
 

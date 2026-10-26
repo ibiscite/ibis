@@ -53,7 +53,7 @@ const SIDECARS: [&str; 3] = ["-wal", "-journal", "-shm"];
 pub enum SnapshotError {
     #[error("Zotero's database was not found in its data folder")]
     NotFound,
-    #[error("Zotero's data folder is on a network drive or not downloaded; open Zotero instead")]
+    #[error("this Zotero folder cannot be read safely while Zotero is closed; open Zotero instead")]
     NotLocal,
     #[error("Zotero's database could not be read")]
     Unreadable,
@@ -447,7 +447,7 @@ fn local_file_system(_: &Path) -> bool {
 
 /// Whether a file's contents are on this computer, so reading it does not
 /// make a cloud service download it first (or hang until it has).
-fn resident(metadata: &std::fs::Metadata) -> bool {
+pub(crate) fn resident(metadata: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;

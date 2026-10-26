@@ -27,4 +27,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "copied_notice",
     "native_appearance",
     "row_context",
+    "update_checks",
+    "set_update_checks",
+    "check_for_updates",
 ];

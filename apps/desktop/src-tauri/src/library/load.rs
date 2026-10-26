@@ -71,10 +71,12 @@ pub(super) fn load_zotero(
     reload: bool,
     zotero: &mut impl Transport,
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    find_data: impl FnOnce(&dyn Fn() -> bool) -> Option<PathBuf>,
 ) -> Result<Loaded, LoadError> {
+    let cancellation = cancelled.clone();
     let mut zotero = Cancellable {
         transport: zotero,
-        cancelled: || cancelled(),
+        cancelled: move || cancellation(),
     };
     let wanted: Vec<zotero::Library> = chosen.libraries().iter().copied().map(zotero_library).collect();
     let refreshed = libraries::refresh(&mut zotero, &wanted, previous);
@@ -84,9 +86,16 @@ pub(super) fn load_zotero(
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
             let stopped: Arc<dyn Fn() -> bool + Send + Sync> =
                 Arc::new(move || cancelled() || std::time::Instant::now() >= deadline);
-            let data = zotero_data(&|| stopped());
+            let data = find_data(&|| stopped());
             check_cancelled(&|| stopped())?;
-            load_closed(chosen, &wanted, reload && previous.is_none(), data, stopped)
+            load_closed(
+                chosen,
+                &wanted,
+                reload && previous.is_none(),
+                data,
+                stopped,
+                &mut zotero,
+            )
         }
         outcome => installed(chosen, outcome?, &|| cancelled()),
     }
@@ -148,6 +157,7 @@ fn load_closed(
     reload: bool,
     data: Option<PathBuf>,
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    zotero: &mut impl Transport,
 ) -> Result<Loaded, LoadError> {
     let closed = LoadError::Zotero(ZoteroError::Transport(TransportError::Unreachable));
     let started = std::time::Instant::now();
@@ -163,8 +173,8 @@ fn load_closed(
     let outcome = snapshot::read_cancellable(&data, &scratch, wanted, saved.as_ref().map(|s| &s.2), cancelled.clone());
     check_cancelled(&|| cancelled())?;
     // Zotero may have started meanwhile; then only its own answer counts.
-    if api::presence(&mut LocalZotero::default()) != api::Presence::Absent {
-        return refresh_running(chosen, wanted, &mut LocalZotero::default(), &cancelled);
+    if api::presence(zotero) != api::Presence::Absent {
+        return refresh_running(chosen, wanted, zotero, &cancelled);
     }
     let result = match outcome {
         Ok(snapshot::Refresh::Unchanged) => saved.ok_or(closed)?.3,
@@ -205,7 +215,7 @@ fn load_closed(
 fn scratch() -> Option<PathBuf> {
     if cfg!(windows) {
         let local = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Temp");
-        (local.is_absolute() && snapshot::local(&local) && local.is_dir()).then_some(local)
+        (local.is_absolute() && snapshot::local(&local)).then_some(local)
     } else {
         Some(std::env::temp_dir())
     }
@@ -263,6 +273,7 @@ pub(super) fn load_source(
             reload,
             &mut LocalZotero::default(),
             Arc::new(cancelled),
+            zotero_data,
         ),
     }
 }
@@ -318,7 +329,9 @@ mod tests {
                         &stop,
                     )
                 } else {
-                    load_zotero(chosen.clone(), None, false, &mut pages, stop)
+                    load_zotero(chosen.clone(), None, false, &mut pages, stop, |_| {
+                        panic!("cancelled test must not discover profiles")
+                    })
                 };
                 assert_eq!(pages.reads, 1, "no second page or later library may be read");
                 assert!(matches!(loaded, Err(LoadError::Stopped)), "obsolete load must stop");
@@ -382,6 +395,86 @@ mod tests {
         assert!(load_library(std::env::temp_dir().join("ibis-missing-library.bib"), false).is_err());
     }
 
+    struct Closed;
+    impl Transport for Closed {
+        fn get(&mut self, _: &str) -> Result<Response, TransportError> {
+            Err(TransportError::Unreachable)
+        }
+    }
+
+    #[test]
+    fn a_closed_transport_uses_only_its_injected_discovery() {
+        let chosen = ZoteroLibraries::from(ZoteroLibrary::User);
+        let called = std::cell::Cell::new(false);
+        let loaded = load_zotero(chosen, None, false, &mut Closed, Arc::new(|| false), |_| {
+            called.set(true);
+            None
+        });
+        assert!(called.get());
+        assert_eq!(loaded.err(), Some(super::super::error::ZOTERO_OFFLINE));
+    }
+
+    #[test]
+    fn post_snapshot_startup_uses_the_injected_live_api_and_remains_cancellable() {
+        struct Live {
+            cancelled: Arc<AtomicBool>,
+            cancel_on_presence: bool,
+            reads: usize,
+        }
+        impl Transport for Live {
+            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+                self.reads += 1;
+                if path.is_empty() && self.cancel_on_presence {
+                    self.cancelled.store(true, Ordering::SeqCst);
+                }
+                Ok(Response {
+                    status: 200,
+                    headers: vec![
+                        ("Zotero-API-Version".into(), "3".into()),
+                        ("Last-Modified-Version".into(), "1".into()),
+                        ("Total-Results".into(), "1".into()),
+                    ],
+                    body: if path.is_empty() {
+                        b"{}".to_vec()
+                    } else {
+                        br#"[{"key":"LIVE0001","data":{"itemType":"book"},"csljson":{"type":"book","title":"Live synthetic"}}]"#.to_vec()
+                    },
+                })
+            }
+        }
+        for cancel_on_presence in [false, true] {
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let mut live = Live {
+                cancelled: cancelled.clone(),
+                cancel_on_presence,
+                reads: 0,
+            };
+            let chosen = ZoteroLibraries::from(ZoteroLibrary::User);
+            let flag = cancelled.clone();
+            let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+            let missing = directory.path().join("missing");
+            let loaded = load_closed(
+                chosen,
+                &[zotero::Library::User],
+                false,
+                Some(missing),
+                Arc::new(move || flag.load(Ordering::SeqCst)),
+                &mut live,
+            );
+            if cancel_on_presence {
+                assert!(matches!(loaded, Err(LoadError::Stopped)));
+                assert_eq!(live.reads, 1, "cancel before reading the new live library");
+            } else {
+                let Ok(Loaded::New(library)) = loaded else {
+                    panic!("live library must replace the offline attempt")
+                };
+                assert_eq!(library.index.references()[0].title.as_deref(), Some("Live synthetic"));
+                assert!(library.zotero.is_some());
+                assert_eq!(live.reads, 2);
+            }
+        }
+    }
+
     #[test]
     fn without_a_zotero_data_folder_a_closed_zotero_stays_closed() {
         let chosen = ZoteroLibraries::from(ibis_core::settings::ZoteroLibrary::User);
@@ -393,7 +486,8 @@ mod tests {
                     &[zotero::Library::User],
                     false,
                     data,
-                    Arc::new(|| false)
+                    Arc::new(|| false),
+                    &mut Closed,
                 )
                 .err(),
                 Some(super::super::error::ZOTERO_OFFLINE)

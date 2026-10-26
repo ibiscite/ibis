@@ -267,6 +267,9 @@ fn read_text(path: &Path, limit: u64) -> Result<Option<String>, Warning> {
     if metadata.len() > limit {
         return Err(Warning::ConfigurationTooLarge);
     }
+    if !crate::snapshot::resident(&metadata) {
+        return Err(Warning::UnreadableConfiguration);
+    }
     let file = open_configuration(path)?;
     let mut bytes = Vec::new();
     file.take(limit + 1)
