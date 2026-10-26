@@ -65,3 +65,8 @@ test("void reporting handles the error while void values discard it", () => {
   for (const source of ["p.catch(error => void report(error));", "p.catch(async error => void await report(error));"]) assert.deepEqual(check(source), [], source);
   for (const source of ["p.catch(error => void error);", "p.catch(() => void null);", "p.catch(() => void (undefined as unknown));"]) assert.equal(check(source).length, 1, source);
 });
+
+test("wrapped discard expressions and explicit undefined returns still discard errors", () => {
+  for (const source of ["p.catch(() => (undefined as void));", "p.catch(() => (void 0 as unknown));", "p.catch(() => { return undefined; });", "p.catch(() => { return void 0; });", "function task() { try {} catch { return (undefined as void); } }"]) assert.equal(check(source).length, 1, source);
+  for (const source of ["p.catch(error => (void report(error) as void));", "p.catch(error => { return void report(error); });", "p.catch(() => { return fallback; });", "p.catch(() => { return null; });"]) assert.deepEqual(check(source), [], source);
+});
