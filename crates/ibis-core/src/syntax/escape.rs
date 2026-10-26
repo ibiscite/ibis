@@ -104,6 +104,18 @@ pub(crate) fn latex_affix_escape(text: &str) -> String {
     out
 }
 
+/// Keep intentional locator range dashes while preventing quote ligatures.
+pub(crate) fn latex_locator_escape(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        match c {
+            '"' | '\'' | '`' => out.push_str(&latex_affix_escape(&c.to_string())),
+            _ => latex_character(&mut out, c),
+        }
+    }
+    out
+}
+
 fn latex_character(out: &mut String, c: char) {
     match c {
         '\\' => out.push_str("\\textbackslash{}"),

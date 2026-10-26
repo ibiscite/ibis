@@ -1,7 +1,7 @@
 {
   "expected": {
     "data": {
-      "content_hash": "b2a81c45460efe8f56793f706d30ea2f599cd5f181cf03c83f6abd15d748e862",
+      "content_hash": "6045c9044435389236dccb99f97fe909102826975e7a80c8c88c87c6f1462119",
       "display": {
         "nodes": [
           {
@@ -10,7 +10,7 @@
                 "bold": false,
                 "italic": false,
                 "script": "normal",
-                "text": "[*see* @Example2026, **emphasis added**]"
+                "text": "[*see* @Example2026, {}**emphasis added**]"
               }
             ],
             "item": 0
@@ -27,7 +27,7 @@
         }
       ],
       "rtf": null,
-      "text": "[*see* @Example2026, **emphasis added**]"
+      "text": "[*see* @Example2026, {}**emphasis added**]"
     },
     "ibis": 1,
     "ok": true
