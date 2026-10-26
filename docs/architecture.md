@@ -36,7 +36,7 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([ADR 0028]
 - **Objects:** `Record` (a citable work: CSL-normalised fields plus raw provenance and citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
 - **Availability** of an attachment is computed by Ibis the same way in every mode: `OnDisk`, `CloudPlaceholder`, `NotDownloaded`, `Online`, `BrokenLink`, `Unreadable`, `Unknown`. Standalone notes and files are shown without inventing a parent.
 - **Library IDs are opaque** (`file:<hash>`, `zotero:<library>`). File locations stay in the engine and never serialise.
-- **Snapshots are immutable.** A refresh builds a new snapshot and reuses unchanged libraries. Each object has two fingerprints: `cite` (what a citation depends on) and `full` (everything shown). A picker session keeps the snapshot it started from. At copy time, in one step against the newest snapshot, each pick is checked by `ItemRef` and `cite` fingerprint and its key is checked to still name exactly that one item across all loaded libraries; a pick that was deleted, changed what it cites or lost its key to another item is refused with the reason. The picker shows the snapshot's age when it is old and says when a refresh failed.
+- **Snapshots are immutable.** A refresh builds a new snapshot and reuses unchanged libraries. Each object has two fingerprints: `cite` (what a citation depends on) and `full` (everything shown). A picker session keeps the snapshot it started from. At copy time, in one step against the newest snapshot, each pick is checked by `ItemRef` and `cite` fingerprint and, for key outputs, its key is checked to still name exactly that one item across all loaded libraries; a pick that was deleted, changed what it cites or lost a required key to another item is refused with the reason. Formatted citations do not require a citation key. The picker shows the snapshot's age when it is old and says when a refresh failed.
 - **Source identity lifecycle:** a file library's ID follows its canonical path (a moved file is a new library; an edited file keeps its ID), and a Zotero library's ID follows profile, data directory and library ID, so a replaced database or another profile is a different library.
 
 The initial shared vocabulary is in `ibis_core::contract`; its generated schema is
@@ -75,7 +75,7 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 
 A result may report partial outcomes for inspection, but clipboard clients must
 use `copy_content(expected_items)` to require all requested items, no refusals and
-a matching content hash. An annotation pick carries its own cite fingerprint.
+a matching content hash. An annotation pick carries its own cite fingerprint. Native clients obtain an opaque `PreparedCitation` from the engine. `commit_citation` checks its engine, preview hash, current picked records, annotation parent/file/page and any key bindings before invoking a native clipboard callback under the final publication barrier. Formatting and validation happen outside that barrier. The app holds its source/intent generation guard first, then enters the engine barrier; its callback only writes the supplied canonical content and never reenters the engine. The serialized method surface has no clipboard operation, and publication notifications use channels rather than synchronous app callbacks.
 Omitted input language means `en-US`; omitted output locale means the style's
 default, never the operating system's locale.
 
@@ -107,8 +107,11 @@ The rollout starts with the file-based engine and CLI, then ports today's picker
 onto that surface. Zotero mapping and the closed/live readers proceed in parallel
 on raw item data; #1197 integrates both providers, and #1200 gates full parity.
 Advanced mixed citation editing remains in 0.4; unsupported intents are refused
-explicitly rather than approximated. The 0.2 release still requires all sources,
-formatting and the picker.
+explicitly rather than approximated. The 0.2 release still requires all sources and the picker. Engine `cite` routes
+`OutputSpec::Csl` to the shared bounded formatter on the same immutable snapshot;
+`styles` lists the five offline styles. Human CLI citation/bibliography options,
+canonical JSON requests and stdio use those same results. RPC cancellation reaches
+the formatter task, and exhaustion remains a typed resource-limit error.
 
 - **Typed engine methods** are the source of truth for the command line, `ibis serve --stdio` (JSON-RPC 2.0, the way Codex's app-server and language servers work), `ibis mcp` for AI agents, and the app. Each front end lists which methods it exposes; the app keeps per-window command permissions (ADR 0024), so a generic dispatcher never widens what a window may call.
 - **Every `--json` output is a versioned envelope** `{ "ibis": 1, "ok": …, "data" | "error": … }` with stable error codes, including argument errors. `data` carries partial results with per-item outcomes, losses and refusals; an empty search is `ok` with no results. Only the envelope goes to stdout; logs go to stderr.

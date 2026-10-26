@@ -64,7 +64,7 @@ fn command() -> Command {
                     Arg::new("request")
                         .long("request")
                         .action(ArgAction::SetTrue)
-                        .conflicts_with_all(["keys", "format", "style", "form", "locale"])
+                        .conflicts_with_all(["keys", "format", "style", "form", "locale", "bibliography"])
                         .help("Read a canonical CitationRequest JSON object from stdin"),
                 )
                 .arg(Arg::new("format").long("format").conflicts_with("style").value_parser([
@@ -78,6 +78,14 @@ fn command() -> Command {
                     "csl-json",
                 ]))
                 .arg(Arg::new("style").long("style").value_name("STYLE_ID"))
+                .arg(
+                    Arg::new("bibliography")
+                        .long("bibliography")
+                        .action(ArgAction::SetTrue)
+                        .requires("style")
+                        .conflicts_with("form")
+                        .help("Format bibliography entries using --style"),
+                )
                 .arg(Arg::new("form").long("form").value_parser([
                     "normal",
                     "narrative",
@@ -265,10 +273,14 @@ fn execute<R: BufRead, W: Write + Send>(
                     command: command.map(str::to_owned),
                 }
             };
-            let form = serde_json::from_value(json!(
-                args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
-            ))
-            .map_err(|_| EngineError { code: ErrorCode::Usage })?;
+            let form = if args.get_flag("bibliography") {
+                CitationForm::BibliographyOnly
+            } else {
+                serde_json::from_value(json!(
+                    args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
+                ))
+                .map_err(|_| EngineError { code: ErrorCode::Usage })?
+            };
             let keys = args
                 .get_many::<String>("keys")
                 .into_iter()
@@ -313,6 +325,32 @@ fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
         })?;
     parse_json(&bytes)
 }
+fn citation_findings(data: &Value, errors: &mut impl Write) {
+    let notices = data
+        .get("notices")
+        .and_then(|value| serde_json::from_value::<Vec<Notice>>(value.clone()).ok())
+        .unwrap_or_default();
+    for notice in notices {
+        let message = match notice {
+            Notice::NeedsDocumentContext => "this style needs the whole document for citation numbering or notes",
+            Notice::ReferenceEntry => "rendered a full reference entry",
+            Notice::FullFirstNote => "rendered a full first note",
+            Notice::YearSuffixWithheld => "year suffixes require the whole document",
+            Notice::InputLanguageUnsupported => "input language is unsupported; use typed locators",
+        };
+        let _ = writeln!(errors, "ibis: {message}");
+    }
+    if data
+        .get("losses")
+        .and_then(Value::as_array)
+        .is_some_and(|losses| !losses.is_empty())
+    {
+        let _ = writeln!(
+            errors,
+            "ibis: some requested citation fields were omitted; inspect cite --json"
+        );
+    }
+}
 fn emit(
     json: bool,
     result: Result<DispatchResult, EngineError>,
@@ -325,6 +363,12 @@ fn emit(
             errors,
             "ibis: source warnings or failed refresh; inspect libraries --json"
         );
+    }
+    if !json
+        && let Ok(result) = &result
+        && result.text.is_some()
+    {
+        citation_findings(&result.data, errors);
     }
     let (code, envelope, text) = match result.and_then(DispatchResult::bounded) {
         Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),

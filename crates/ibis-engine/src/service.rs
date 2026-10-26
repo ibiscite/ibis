@@ -12,30 +12,18 @@ use std::{
     collections::BTreeMap,
     sync::{
         Arc, Mutex, RwLock, Weak,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
         mpsc,
     },
 };
 
 mod sources;
 
-#[derive(Clone, Default)]
-pub struct Cancellation(Arc<AtomicBool>);
-impl Cancellation {
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-    pub fn check(&self) -> Result<(), EngineError> {
-        if self.is_cancelled() {
-            Err(error(ErrorCode::Cancelled))
-        } else {
-            Ok(())
-        }
-    }
-}
+mod formatting;
+pub use formatting::Cancellation;
+mod prepared;
+pub use prepared::{CitationCommitError, PreparedCitation};
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LibraryInfo {
     pub id: LibraryId,
@@ -72,7 +60,7 @@ pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
 }
-#[derive(Debug, Clone, Default, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
     pub styles: Vec<StyleInfo>,
 }
@@ -190,6 +178,7 @@ struct State {
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
 struct Shared {
+    formatter: Mutex<Option<ibis_csl::Formatter>>,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
     publication: Mutex<()>,
@@ -221,6 +210,7 @@ impl Engine {
         }
         Self {
             shared: Arc::new(Shared {
+                formatter: Mutex::new(None),
                 state: RwLock::new(Arc::new(State {
                     index: Arc::new(SnapshotIndex::new(snapshot)),
                     libraries,
@@ -377,7 +367,7 @@ impl Engine {
                 items,
                 output: request.output.clone(),
                 form: request.form,
-                keep_order: true,
+                keep_order: matches!(request.output, OutputSpec::Key { .. }),
                 input_language: None,
                 output_locale: request.output_locale.clone(),
             },
@@ -385,19 +375,20 @@ impl Engine {
         )
     }
     pub fn cite(&self, request: &CitationRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
-        cancel.check()?;
-        let snapshot = self.snapshot()?;
-        self.cite_snapshot(&snapshot, request, cancel)
+        self.prepare_citation(request, cancel)
+            .map(PreparedCitation::into_result)
     }
     fn cite_snapshot(
         &self,
-        snapshot: &Snapshot,
+        snapshot: &Arc<Snapshot>,
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
             return Err(error(ErrorCode::BadInput));
         }
+        crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
+            .map_err(|_| error(ErrorCode::ResourceLimit))?;
         let result = match &request.output {
             OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(|failure| {
                 error(if failure == CitationError::OutputTooLarge {
@@ -406,20 +397,8 @@ impl Engine {
                     ErrorCode::BadInput
                 })
             })?,
-            OutputSpec::Csl { .. } | OutputSpec::Preset { .. } => CitationResult::new(
-                String::new(),
-                None,
-                None,
-                DisplayTree::default(),
-                (0..request.items.len())
-                    .map(|item| ItemOutcome::Refused {
-                        item,
-                        error: CitationError::UnsupportedOutput,
-                    })
-                    .collect(),
-                vec![],
-                vec![],
-            ),
+            OutputSpec::Csl { .. } => self.formatted(snapshot, request, cancel)?,
+            OutputSpec::Preset { .. } => formatting::refusal(request, CitationError::UnsupportedOutput),
         };
         cancel.check()?;
         ensure_budget(&result)?;
@@ -458,7 +437,7 @@ impl Engine {
             }
             Method::Styles => {
                 let _: StylesRequest = parameters(params)?;
-                value(StylesResult::default())?
+                value(self.styles()?)?
             }
             Method::Schema => {
                 let request: SchemaRequest = parameters(params)?;
