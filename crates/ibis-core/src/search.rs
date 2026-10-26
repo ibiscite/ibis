@@ -15,6 +15,9 @@ use unicode_normalization::char::is_combining_mark;
 use crate::identifier::{self, Identifier};
 use crate::model::{Reference, strip_markup};
 
+mod snapshot;
+pub use snapshot::{RecordHit, SnapshotIndex};
+
 /// Which part of a record matched a query term.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
@@ -62,11 +65,44 @@ impl MatchField {
 
 /// One search result.
 #[derive(Debug, Clone, Serialize)]
-pub struct Hit<'a> {
-    pub reference: &'a Reference,
+pub struct Hit<'a, T = Reference> {
+    pub reference: &'a T,
     pub score: u32,
     /// Fields that matched, strongest first, so the UI can say why.
     pub matched: Vec<MatchField>,
+}
+
+/// Metadata needed by the shared scorer, independent of source/model shape.
+trait SearchDocument {
+    type Identity: Ord;
+    type Source: PartialEq;
+    fn identity(&self) -> &Self::Identity;
+    fn source(&self) -> &Self::Source;
+    fn year(&self) -> Option<i32>;
+    fn exact_key(&self, query: &str) -> bool;
+}
+
+fn key_eq(key: &str, query: &str) -> bool {
+    key.chars().flat_map(lower).eq(query.chars())
+}
+fn lower(c: char) -> impl Iterator<Item = char> {
+    c.to_lowercase().map(|c| if c == 'ς' { 'σ' } else { c })
+}
+impl SearchDocument for Reference {
+    type Identity = crate::model::RecordId;
+    type Source = String;
+    fn identity(&self) -> &Self::Identity {
+        &self.id
+    }
+    fn source(&self) -> &Self::Source {
+        &self.id.source
+    }
+    fn year(&self) -> Option<i32> {
+        Reference::year(self)
+    }
+    fn exact_key(&self, query: &str) -> bool {
+        self.citekey.as_deref().is_some_and(|key| key_eq(key, query))
+    }
 }
 
 /// Search index that owns its references, for front ends that keep a library
@@ -165,13 +201,13 @@ fn prepare(r: &Reference) -> [String; 8] {
 /// When the whole query is a DOI, ISBN, PubMed ID or arXiv ID that some
 /// records in scope carry, those records, newest first. `Some(None)` falls
 /// back to ordinary search; `None` means cancellation.
-fn by_identifier<'r, 'i>(
-    docs: impl Iterator<Item = (&'r Reference, &'i [Identifier])>,
+fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
+    docs: impl Iterator<Item = (&'r T, &'i [Identifier])>,
     query: &str,
     limit: usize,
-    scope: Option<&[String]>,
+    scope: Option<&[T::Source]>,
     stop: &dyn Fn() -> bool,
-) -> Option<Option<Vec<Hit<'r>>>> {
+) -> Option<Option<Vec<Hit<'r, T>>>> {
     if stop() {
         return None;
     }
@@ -202,7 +238,7 @@ fn by_identifier<'r, 'i>(
         b.reference
             .year()
             .cmp(&a.reference.year())
-            .then_with(|| a.reference.id.cmp(&b.reference.id))
+            .then_with(|| a.reference.identity().cmp(b.reference.identity()))
     });
     hits.truncate(limit);
     Some(Some(hits))
@@ -211,17 +247,17 @@ fn by_identifier<'r, 'i>(
 const STOP_CHECK_INTERVAL: usize = 4096;
 const TERM_CHECK_INTERVAL: usize = 64;
 
-fn in_scope(reference: &Reference, scope: Option<&[String]>) -> bool {
-    scope.is_none_or(|sources| sources.contains(&reference.id.source))
+fn in_scope<T: SearchDocument>(reference: &T, scope: Option<&[T::Source]>) -> bool {
+    scope.is_none_or(|sources| sources.contains(reference.source()))
 }
 
-fn rank<'r, 'f>(
-    docs: impl Iterator<Item = (&'r Reference, &'f [String; 8])>,
+fn rank<'r, 'f, T: SearchDocument + 'r>(
+    docs: impl Iterator<Item = (&'r T, &'f [String; 8])>,
     query: &str,
     limit: usize,
-    scope: Option<&[String]>,
+    scope: Option<&[T::Source]>,
     stop: &dyn Fn() -> bool,
-) -> Option<Vec<Hit<'r>>> {
+) -> Option<Vec<Hit<'r, T>>> {
     let normalized = normalize(query);
     let mut terms = BTreeMap::<&str, u32>::new();
     for (n, term) in normalized.split_whitespace().enumerate() {
@@ -237,11 +273,10 @@ fn rank<'r, 'f>(
     let normalized = normalized.trim();
     // Lowercase character by character, with final sigma folded, so keys are
     // compared without allocating per record.
-    let lower = |c: char| char::to_lowercase(c).map(|c| if c == 'ς' { 'σ' } else { c });
     let exact_query: String = query.trim().chars().flat_map(lower).collect();
     // Score every record without allocating; matched fields are a bit set and
     // become a list only for the records that are returned.
-    let mut candidates: Vec<(u32, u8, &'r Reference)> = Vec::new();
+    let mut candidates: Vec<(u32, u8, &'r T)> = Vec::new();
     let mut term_work = 0;
     for (n, (reference, fields)) in docs.enumerate() {
         if n % STOP_CHECK_INTERVAL == 0 && stop() {
@@ -285,10 +320,7 @@ fn rank<'r, 'f>(
         if !all_terms {
             continue;
         }
-        let exact_key = reference
-            .citekey
-            .as_deref()
-            .is_some_and(|k| k.chars().flat_map(lower).eq(exact_query.chars()));
+        let exact_key = reference.exact_key(&exact_query);
         if exact_key {
             score = weighted_score(score, 2000, 1);
         } else if fields[0] == normalized {
@@ -298,10 +330,10 @@ fn rank<'r, 'f>(
         }
         candidates.push((score, matched, reference));
     }
-    let order = |a: &(u32, u8, &Reference), b: &(u32, u8, &Reference)| {
+    let order = |a: &(u32, u8, &T), b: &(u32, u8, &T)| {
         b.0.cmp(&a.0)
             .then_with(|| b.2.year().cmp(&a.2.year()))
-            .then_with(|| a.2.id.cmp(&b.2.id))
+            .then_with(|| a.2.identity().cmp(b.2.identity()))
     };
     if candidates.len() > limit {
         candidates.select_nth_unstable_by(limit - 1, order);
