@@ -272,3 +272,66 @@ fn remote_and_ambiguous_attachment_locations_never_become_local_paths() -> Resul
     assert!(!loaded.warnings.is_empty());
     Ok(())
 }
+
+#[test]
+fn limited_json_warns_on_initial_read_and_refuses_replacement() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::{SourceError, WarningCode};
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(
+        &path,
+        format!(
+            r#"[{{"id":"huge","type":"book","title":"{}"}},{{"id":"good","type":"book"}}]"#,
+            "x".repeat(1024 * 1024)
+        ),
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 1);
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == WarningCode::WorkLimit)
+    );
+    assert_eq!(ibis_sources::reload_file(&path).err(), Some(SourceError::LoadLimit));
+    Ok(())
+}
+
+#[test]
+fn numeric_json_ids_use_consistent_citation_processor_spelling() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    for (id, key) in [
+        ("1.0", "1"),
+        ("-0.0", "0"),
+        ("1e-6", "0.000001"),
+        ("1e-7", "1e-7"),
+        ("1.25", "1.25"),
+    ] {
+        std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
+        let loaded = ibis_sources::load_file(&path)?;
+        let key_from_source = loaded.snapshot.objects().iter().find_map(|item| match &item.object {
+            LibraryObject::Record(record) => record.citation_key().ok().flatten(),
+            _ => None,
+        });
+        assert_eq!(key_from_source, Some(key), "numeric identifier {id}");
+    }
+    Ok(())
+}
+
+#[test]
+fn unsafe_numeric_native_id_stays_stable_when_explicit_key_changes() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    let mut ids = Vec::new();
+    for key in ["First", "Second"] {
+        std::fs::write(
+            &path,
+            format!(r#"[{{"id":9007199254740993,"citation-key":"{key}","type":"book"}}]"#),
+        )?;
+        let loaded = ibis_sources::load_file(&path)?;
+        ids.push(loaded.snapshot.objects()[0].object.id().clone());
+    }
+    assert_eq!(ids[0], ids[1]);
+    Ok(())
+}

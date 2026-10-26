@@ -42,6 +42,17 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
         };
         let id = scalar("id").as_ref().and_then(id_string);
+        let numeric_native = fields
+            .get("id")
+            .filter(|value| {
+                value
+                    .get()
+                    .starts_with(|character: char| character.is_ascii_digit() || character == '-')
+            })
+            .map(|value| value.get().to_owned());
+        if fields.contains_key("id") && id.is_none() {
+            result.warnings.push(warning(WarningCode::Field));
+        }
         let explicit = scalar("citation-key")
             .and_then(|value| value.as_str().filter(|key| !key.trim().is_empty()).map(str::to_owned));
         if fields.contains_key("citation-key") && explicit.is_none() {
@@ -51,7 +62,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             result.warnings.push(warning(WarningCode::Syntax));
             continue;
         };
-        let native = id.as_deref().unwrap_or(&key);
+        let native = id.as_deref().or(numeric_native.as_deref()).unwrap_or(&key);
         let kind = scalar("type");
         if native.trim().is_empty()
             || native.chars().any(char::is_control)
@@ -166,10 +177,67 @@ enum FieldKind {
 fn id_string(value: &Value) -> Option<String> {
     match value {
         Value::String(value) => Some(value.clone()),
-        Value::Number(value) => Some(value.to_string()),
+        Value::Number(value) => numeric_id(value),
         _ => None,
     }
 }
+/// CSL numeric IDs pass through citeproc-js. Use its decimal spelling instead
+/// of preserving JSON presentation (1.0, -0, exponent notation). Outside the
+/// exact integer range, an export must use string IDs so distinct works cannot
+/// silently collapse onto the same JavaScript number.
+fn numeric_id(value: &serde_json::Number) -> Option<String> {
+    let value = value.as_f64()?;
+    if !value.is_finite() || value.abs() > 9_007_199_254_740_991.0 {
+        return None;
+    }
+    if value == 0.0 {
+        return Some("0".into());
+    }
+    let text = serde_json::Number::from_f64(value)?.to_string();
+    let negative = text.starts_with('-');
+    let unsigned = text.trim_start_matches('-');
+    let (mantissa, exponent) = unsigned
+        .split_once(['e', 'E'])
+        .map_or(Some((unsigned, 0)), |(mantissa, exponent)| {
+            exponent.parse::<i32>().ok().map(|exponent| (mantissa, exponent))
+        })?;
+    let point = mantissa.find('.').unwrap_or(mantissa.len()) as i32;
+    let mut digits: String = mantissa.chars().filter(|character| *character != '.').collect();
+    let leading = digits.bytes().take_while(|byte| *byte == b'0').count();
+    digits.drain(..leading);
+    if digits.is_empty() {
+        return Some("0".into());
+    }
+    let position = point + exponent - leading as i32;
+    while digits.len() > 1 && digits.ends_with('0') {
+        digits.pop();
+    }
+    let scientific = position - 1;
+    let mut result = if !(-6..21).contains(&scientific) {
+        let rest = if digits.len() > 1 {
+            format!(".{}", &digits[1..])
+        } else {
+            String::new()
+        };
+        format!(
+            "{}{rest}e{}{scientific}",
+            &digits[..1],
+            if scientific >= 0 { "+" } else { "" }
+        )
+    } else if position <= 0 {
+        format!("0.{}{digits}", "0".repeat((-position) as usize))
+    } else if position as usize >= digits.len() {
+        format!("{digits}{}", "0".repeat(position as usize - digits.len()))
+    } else {
+        let position = position as usize;
+        format!("{}.{}", &digits[..position], &digits[position..])
+    };
+    if negative {
+        result.insert(0, '-');
+    }
+    Some(result)
+}
+
 fn valid_type(value: &str) -> bool {
     matches!(
         value,

@@ -5,22 +5,27 @@ its opaque `LibraryId`, immutable `Snapshot`, and fixed-code warnings with
 1-based source lines. BibTeX native keys and CSL-JSON IDs use the `record:`
 namespace; attachment keys use a separate namespace. Citation keys keep their
 original spelling and provenance. CSL-JSON prefers `citation-key`, then `id`.
+Numeric IDs use citeproc-js spelling; numbers beyond its safe integer range
+require a string ID or explicit citation key to prevent identity collisions.
 
 `load_file_snapshot` also returns the initial observation for
 `SourceWatch::with_snapshot`. The watcher retains directory notifications,
 rename-save and symlink handling, registration-gap recovery, coalescing and
 capped retries. A replacement requires two identical reads separated by a
 quiet interval. Errors leave installation of a replacement to the caller, which
-keeps its last good snapshot. `reload_file` uses the same stable-read rule.
+keeps its last good snapshot. Install a fresh owner and its warnings even when
+public snapshot hashes are unchanged: private locations and raw provenance may
+have changed. `reload_file` uses the same stable-read rule.
 Initial BibTeX opens tolerate damaged entries; strict reloads reject unfinished
 entries and exhausted work budgets. Stable empty files produce empty snapshots.
 
 Opens recheck the descriptor type and size; on Unix they are nonblocking so a
-regular file replaced by a FIFO cannot hang a reload. Files are limited to 64 MiB. BibTeX retains its existing field, recursion and
-load-work budgets. CSL-JSON validates each record and known field independently;
+regular file replaced by a FIFO cannot hang a reload. Files are limited to 64 MiB.
+BibTeX retains its existing field, recursion and load-work budgets.
+CSL-JSON arrays allow at most 1,000,000 records. CSL-JSON validates each record and known field independently;
 record property names must be unique; an ambiguous record is skipped with a
-syntax warning. A record above 1 MiB is skipped with a work-limit warning, and a limited reload
-is refused. Unknown/vendor metadata is retained only in raw provenance. Raw
+syntax warning. A record above 1 MiB is skipped with a work-limit warning, and a
+limited reload is refused. Unknown/vendor metadata is retained only in raw provenance. Raw
 JSON tokens are skipped iteratively, so a deeply nested private `custom` field
 cannot overflow a stack or hide adjacent records. The supported field vocabulary
 follows the CSL 1.0.2 input schema.
