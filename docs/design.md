@@ -378,7 +378,8 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **States.** Pending: the old text dims for 300 ms, then "Formatting…"; Enter
   waits. Failed: a Stop icon, "Couldn't format in APA. Choose another style, or
   copy keys.", no Enter hint. Stale: a Look icon, "The library changed. Reading
-  it again…". Warnings: a trailing pill ("1 warning", "Numbers may change").
+  it again…". Warnings: a trailing pill ("1 warning"; "Reference entry" for a numeric
+  style, which copies the entry because its number depends on the document).
 - **Show what will be pasted.** On by default (`show_paste_preview`, ADR 0020),
   ⌘I / Ctrl+I, in More until Settings exists. Off hides only the line and
   closes the wide pane; the chosen references and copy readiness stay. If the

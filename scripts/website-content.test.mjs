@@ -9,7 +9,7 @@ test("website headline and planned features come from the canonical sources", as
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   assert.ok(readme.includes(`<strong>${brand.words.tagline}</strong>`), "README lead matches brand");
   assert.ok(html.includes(`<h1>${brand.words.tagline}</h1>`), "site lead matches README and brand");
-  assert.match(html, /formatted citations in APA, Chicago, Harvard, IEEE and MLA/);
+  assert.match(html, /formatted citations in APA, Chicago, Harvard and MLA, and IEEE reference entries/);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
   const version = JSON.parse(await readFile(new URL("../.release-please-manifest.json", import.meta.url), "utf8"))["."];
   assert.ok(html.includes(`Early preview · <a href="https://github.com/ibiscite/ibis/releases/tag/v${version}">${version}</a>`), "the sidebar names the released version");

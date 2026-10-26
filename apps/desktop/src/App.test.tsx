@@ -1,6 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import axe from "axe-core";
@@ -9,24 +8,16 @@ import capability from "../src-tauri/capabilities/default.json";
 import config from "../src-tauri/tauri.conf.json";
 import { copyFormatMenu, copyFormatNames } from "./messages";
 import { STYLE_NAMES, type StyleId } from "./format/styles";
+import { backend, chooseFromMore, resetApp, result } from "./testing/app";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
+afterEach(resetApp);
+
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 
-afterEach(async () => {
-  vi.useRealTimers();
-  cleanup();
-  // Event listeners are removed asynchronously after unmount; let that
-  // finish before the mocked Tauri internals are cleared.
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  // Closing a React Aria scope also restores focus on the next frame.
-  await act(async () => { await new Promise(requestAnimationFrame); });
-  clearMocks();
-  delete document.documentElement.dataset.pickerHidden;
-});
 
 test("the shelf shows what Enter pastes in a key syntax, without copying, and leaves out a failed key preview", async () => {
   let fail = false;
@@ -153,26 +144,9 @@ function formatValue() {
   return key ?? `style:${Object.entries(STYLE_NAMES).find(([, name]) => name === shown)?.[0]}`;
 }
 
-/** Opens the More menu and picks an action from it, as a user would. */
-async function chooseFromMore(name: string, role: "menuitem" | "menuitemcheckbox" = "menuitem") {
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const item = await screen.findByRole(role, { name });
-  // fireEvent.click omits the focus a real pointer/keyboard activation gives
-  // the row; the shortcuts dialog uses it to choose its return destination.
-  act(() => item.focus());
-  fireEvent.click(item);
-}
 
 const toggleKeepOpen = () => fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
 
-function result(key: string, title: string, source = "refs.bib") {
-  return {
-    revision: "1", id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"],
-    first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal",
-  };
-}
-
-type Handler = (args: Record<string, unknown> & { query: api.SearchQuery; items: api.CitationSelection[]; ids: api.RecordId[] }) => unknown;
 
 test("the borderless picker has a permitted drag region around its editable search input", async () => {
   backend();
@@ -185,46 +159,11 @@ test("the borderless picker has a permitted drag region around its editable sear
   await waitFor(() => expect((box as HTMLInputElement).value).toBe("sleep"));
 });
 
-/** Mock the Rust commands; returns the list of commands called. */
 /** The keys of the shelf's chips, in order: each chip's tooltip is its key. */
 function chipKeys(root: ParentNode = document) {
   return [...root.querySelectorAll<HTMLElement>('[aria-label="Selected references"] .chip')].map((chip) => chip.title);
 }
 
-function backend(overrides: Record<string, Handler> = {}): string[] {
-  const calls: string[] = [];
-  const defaults: Record<string, Handler> = {
-    "plugin:window|is_visible": () => true,
-    shortcut_status: () => ({ shortcut: "Control+Command+R", registered: true, error: null }),
-    search: () => [],
-    hide_picker: () => null,
-    show_copied_notice: () => null,
-    set_pinned: () => null,
-    copy_format: () => "pandoc",
-    // The shelf previews key syntaxes without touching the clipboard.
-    citation_text: ({ items }) => ({ text: items.map(({ id }) => `@${id.native_key}`).join("; "), warnings: [] }),
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
-    set_picker_preferences: () => null,
-    login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
-    set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
-    find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
-    library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
-  };
-  mockWindows("main");
-  mockIPC(
-    (cmd, args) => {
-      calls.push(cmd);
-      const handler = overrides[cmd] ?? defaults[cmd];
-      if (!handler) throw new Error(`unexpected command ${cmd}`);
-      const value = handler((args ?? {}) as Parameters<Handler>[0]);
-      if (cmd === "library_status") return Promise.resolve(value).then((status) => ({ revision: "1", ...status as object }));
-      if (cmd === "search") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
-      return value;
-    },
-    { shouldMockEvents: true },
-  );
-  return calls;
-}
 
 test("C5 click selects without copying and double-click copies the highlighted citation", async () => {
   const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
@@ -459,14 +398,6 @@ test("Escape hides the picker", async () => {
   render(<App />);
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
-});
-
-test("a shortcut that could not be registered is explained", async () => {
-  backend({
-    shortcut_status: () => ({ shortcut: "Control+Command+R", registered: false, error: "another app may be using it" }),
-  });
-  render(<App />);
-  expect((await screen.findByText(/another app may be using it/)).getAttribute("role")).toBe("status");
 });
 
 test("a failed search clears the results of the previous query", async () => {
@@ -1240,8 +1171,8 @@ test("a citation style shows a safe preview and copies rich text with its warnin
     await screen.findByText("First");
     chooseFormat("style:ieee");
     const preview = await screen.findByRole("region", { name: "Preview" });
-    await within(preview).findByText("[1]");
-    expect(within(preview).getByText(/Provisional/)).toBeTruthy();
+    expect((await within(preview).findByText(/Garcia/)).closest("bdi")?.textContent).not.toMatch(/\[\d+\]/);
+    expect(within(preview).getByText("Reference entry") && screen.getByText("Copy IEEE entry")).toBeTruthy();
     const box = screen.getByLabelText("Search references");
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -2762,7 +2693,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
   expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["In a menu"], ["From any app"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
-  expect(groups[0]).toContainEqual(["Copy the highlighted reference, or the ones added to the citation, in the Copy as format", "Enter"]);
+  expect(groups[0]).toContainEqual(["Copy the highlighted reference, or the ones added to the citation, in the Copy as format (numeric styles such as IEEE copy the reference entry)", "Enter"]);
   expect(groups[0]).toContainEqual(["Add the highlighted reference to the citation, or remove it", "Shift+Enter"]);
   expect(groups[1]).toContainEqual(["Open or close More", "Ctrl+K"]);
   expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);
@@ -3025,7 +2956,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   if (next === "style:apa") chooseFormat("style:ieee");
   chooseFormat(next);
   await act(async () => { release(); await ready; });
-  if (next !== "pandoc") await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain(next === "style:ieee" ? "[1]" : "Smith"));
+  if (next !== "pandoc") await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain("Smith"));
   expect(output).toEqual([]);
   expect(calls).not.toContain("hide_picker");
   expect(calls).not.toContain("show_copied_notice");
@@ -3033,7 +2964,7 @@ test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a clic
   await waitFor(() => expect(output).toHaveLength(1));
   expect(output[0]).toMatchObject(next === "pandoc"
     ? { format: "pandoc", items: selections([{ source: "refs.bib", native_key: "b" }]) }
-    : { text: next === "style:ieee" ? "[1]" : "(Smith, 2020)" });
+    : { text: next === "style:ieee" ? "Smith, “b,” 2020." : "(Smith, 2020)" });
   expect(calls).toContain(next === "pandoc" ? "copy_citation" : "copy_formatted");
 });
 

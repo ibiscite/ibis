@@ -137,6 +137,46 @@ enum OpenIntent {
     Refresh,
 }
 
+#[derive(Clone)]
+struct OpenRequest {
+    request: u64,
+    source: Source,
+    reload: bool,
+    intent: OpenIntent,
+    #[cfg(debug_assertions)]
+    started: std::time::Instant,
+}
+
+/// One worker owns the active load; new choices replace its pending request.
+#[derive(Default)]
+pub(super) struct OpenQueue {
+    running: bool,
+    pending: Option<OpenRequest>,
+}
+
+impl LoadRequests {
+    fn enqueue(&self, open: OpenRequest) -> bool {
+        let Ok(mut queue) = self.1.lock() else { return false };
+        // Reservation and enqueue can race on different command threads.
+        if self.0.load(Ordering::SeqCst) != open.request {
+            return false;
+        }
+        queue.pending = Some(open);
+        let start = !queue.running;
+        queue.running = true;
+        start
+    }
+
+    fn next_open(&self) -> Option<OpenRequest> {
+        let mut queue = self.1.lock().ok()?;
+        let next = queue.pending.take();
+        if next.is_none() {
+            queue.running = false;
+        }
+        next
+    }
+}
+
 impl OpenIntent {
     fn retry(reload: bool) -> Self {
         if reload { Self::Refresh } else { Self::Remember }
@@ -194,19 +234,51 @@ struct LoadPhases {
 fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent: OpenIntent) {
     #[cfg(debug_assertions)]
     let started = std::time::Instant::now();
-    publish_current(app);
+    if !matches!(intent, OpenIntent::Refresh) {
+        publish_current(app);
+    }
+    if !app.state::<LoadRequests>().enqueue(OpenRequest {
+        request,
+        source,
+        reload,
+        intent,
+        #[cfg(debug_assertions)]
+        started,
+    }) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(open) = app.state::<LoadRequests>().next_open() {
+            open_one(app.clone(), open).await;
+        }
+    });
+}
+
+fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Output = ()> {
+    let OpenRequest {
+        request,
+        source,
+        reload,
+        intent,
+        ..
+    } = open;
+    #[cfg(debug_assertions)]
+    let started = open.started;
     let previous = app
         .state::<Mutex<Library>>()
         .lock()
         .ok()
         .and_then(|library| library.zotero.clone());
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
+    async move {
         let chosen = source.setting();
+        let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let loading = std::time::Instant::now();
-            let loaded = load_source(source, reload, previous);
+            let loaded = load_source(source, reload, previous, || {
+                loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
+            });
             #[cfg(debug_assertions)]
             {
                 (loaded, loading.elapsed().as_secs_f64() * 1000.0)
@@ -275,7 +347,7 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent:
                 eprintln!("ibis-library-phases: {json}");
             }
         }
-    });
+    }
 }
 
 /// Show the system file dialog and open the chosen library. Cancelling
@@ -336,18 +408,8 @@ pub(super) fn open_zotero(app: &AppHandle, chosen: ZoteroLibraries) {
 /// Check the open Zotero library for changes, for example when the picker
 /// is shown. A file library has its own watcher, so nothing happens then.
 pub(crate) fn refresh_zotero(app: &AppHandle) {
-    if let Some((request, source, previous)) = begin_check(&app.state(), &app.state()) {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let loaded = tauri::async_runtime::spawn_blocking(move || load_source(source, true, previous))
-                .await
-                .unwrap_or(Err(LoadError::Stopped));
-            let installed = OpenIntent::Refresh.install(&app.state(), &app.state(), request, loaded);
-            if installed.is_some() {
-                publish_current(&app);
-                watch_current(&app, request);
-            }
-        });
+    if let Some((request, source, _)) = begin_check(&app.state(), &app.state()) {
+        run_open(app, request, source, true, OpenIntent::Refresh);
         return;
     }
     if let Some((request, source, reload)) = begin_zotero_retry(&app.state(), &app.state(), false) {
@@ -409,91 +471,4 @@ pub(crate) fn reload_library_file(app: &AppHandle) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_it() {
-        use super::super::error::ZOTERO_OFFLINE;
-        use super::super::state::install;
-
-        let source = Source::Zotero(ZoteroLibrary::Group(7).into());
-        let mut opened = candidate(source.clone(), ibis_core::bibtex::load_str("synthetic", "@misc{first}"));
-        let note = "the library opened but could not be saved for next time: synthetic";
-        opened.choice_save_warning = Some(note.to_string());
-        let library = Mutex::new(opened);
-        let requests = LoadRequests::default();
-        let (check, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("quiet check"));
-        install(&library, &requests, check, Err(ZOTERO_OFFLINE)).unwrap_or_else(|| panic!("failed check"));
-
-        let (request, retried, reload) =
-            begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("focus recovery"));
-        assert!(reload);
-        let changed = || {
-            Ok(Loaded::New(Box::new(candidate(
-                source.clone(),
-                ibis_core::bibtex::load_str("synthetic", "@misc{first}\n@misc{second}"),
-            ))))
-        };
-        let recovered = OpenIntent::retry(reload)
-            .install(&library, &requests, request, changed())
-            .unwrap_or_else(|| panic!("recovery is current"));
-        assert_eq!(retried, source);
-        assert_eq!(recovered.references, 2);
-        assert!(recovered.choice_not_saved);
-        assert_eq!(recovered.note.as_deref(), Some(note));
-
-        let (request, _, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("reload"));
-        let reloaded = OpenIntent::Read
-            .install(&library, &requests, request, changed())
-            .unwrap_or_else(|| panic!("explicit reload is current"));
-        assert_eq!(reloaded.references, 2);
-        assert!(!reloaded.choice_not_saved);
-        assert!(reloaded.note.is_none(), "explicit Reload retains its existing behavior");
-    }
-
-    #[cfg(debug_assertions)]
-    #[test]
-    fn load_phase_json_contains_only_fixed_numeric_fields_for_all_outcomes() {
-        for (accepted, load_ok) in [(1, 1), (1, 0), (0, 1), (0, 0)] {
-            let phases = super::LoadPhases {
-                load_ms: 1.25,
-                accepted,
-                load_ok,
-                ..Default::default()
-            };
-            let value = serde_json::to_value(phases).unwrap_or_else(|e| panic!("{e}"));
-            let fields = value.as_object().unwrap_or_else(|| panic!("numeric object"));
-            let mut expected = vec![
-                "load_ms",
-                "load_finished_ms",
-                "install_ms",
-                "publish_ms",
-                "completed_ms",
-                "accepted",
-                "load_ok",
-            ];
-            expected.sort_unstable();
-            let mut actual = fields.keys().map(String::as_str).collect::<Vec<_>>();
-            actual.sort_unstable();
-            assert_eq!(actual, expected);
-            assert!(
-                fields
-                    .values()
-                    .all(|value| value.as_f64().is_some_and(|n| n.is_finite() && n >= 0.0))
-            );
-            assert_eq!(fields["accepted"].as_u64(), Some(u64::from(accepted)));
-            assert_eq!(fields["load_ok"].as_u64(), Some(u64::from(load_ok)));
-        }
-    }
-
-    #[test]
-    fn status_emission_is_serialized_but_native_menu_work_holds_no_library_lock() {
-        let library = Mutex::new(Library::default());
-        publish_current_with(
-            &library,
-            |_| assert!(library.try_lock().is_err()),
-            || assert!(library.try_lock().is_ok()),
-        );
-    }
-}
+mod tests;

@@ -64,7 +64,7 @@ impl Library {
 /// Counts requests to open a library, so a load that finishes after a newer
 /// request never replaces the newer library.
 #[derive(Default)]
-pub(crate) struct LoadRequests(pub(crate) AtomicU64);
+pub(crate) struct LoadRequests(pub(crate) AtomicU64, pub(super) Mutex<super::tasks::OpenQueue>);
 
 pub(super) fn candidate(source: impl Into<Source>, loaded: ibis_core::model::LoadResult) -> Library {
     let now = SystemTime::now();
