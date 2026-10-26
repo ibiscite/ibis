@@ -26,6 +26,20 @@ test("interface-only changes retain web checks without native jobs", () => {
   }
 });
 
+test("website-only changes keep web checks without native jobs", () => {
+  for (const path of ["website/index.html", "website/demo.js", "website/_headers"]) {
+    assert.deepEqual(pr([row(path)]), { native: false, web: true, nix: false }, path);
+  }
+  assert.deepEqual(pr([row("website/demo.js"), row("apps/desktop/src-tauri/src/lib.rs")]), { native: true, web: true, nix: false });
+  assert.equal(pr([row("websites/demo.js")]).native, true, "only the website directory itself");
+});
+
+test("without native inputs only a Linux Desktop placeholder runs", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const desktop = workflow.match(/\n  desktop:\n([\s\S]*?)\n    steps:/)[1];
+  assert.match(desktop, /os: \$\{\{ needs\.changes\.outputs\.native == 'true' && fromJSON\('\["ubuntu-24\.04", "macos-15", "windows-2025"\]'\) \|\| fromJSON\('\["ubuntu-24\.04"\]'\) \}\}/);
+});
+
 test("the gallery geometry fixture keeps web checks without native jobs", () => {
   const fixture = "docs/design-geometry.json";
   for (const files of [[row(fixture)], [row(fixture), row("apps/desktop/src/tokens.css"), row("docs/design.md")]]) {
