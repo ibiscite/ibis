@@ -84,7 +84,8 @@ fn load_closed(
         .ok()
         .and_then(|last| last.clone())
         .filter(|(seen, folder, ..)| reload && seen == &chosen && folder == &data);
-    let outcome = snapshot::read(&data, &std::env::temp_dir(), wanted, saved.as_ref().map(|s| &s.2));
+    let scratch = scratch().ok_or(closed)?;
+    let outcome = snapshot::read(&data, &scratch, wanted, saved.as_ref().map(|s| &s.2));
     // Zotero may have started meanwhile; then only its own answer counts.
     if api::presence(&mut LocalZotero::default()) != api::Presence::Absent {
         return installed(
@@ -117,6 +118,18 @@ fn load_closed(
         }
     };
     Ok(Loaded::New(Box::new(candidate(Source::Zotero(chosen), result))))
+}
+
+/// Where the copy is made. On Windows `TMP` may point at a folder other
+/// users can read, so the copy goes in the profile's own temporary folder,
+/// which only the user (and administrators) can open, like Zotero's folder.
+fn scratch() -> Option<PathBuf> {
+    if cfg!(windows) {
+        let local = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Temp");
+        (local.is_absolute() && local.is_dir()).then_some(local)
+    } else {
+        Some(std::env::temp_dir())
+    }
 }
 
 const CLOUD_SYNCED: &str = "Zotero's data folder is inside a folder a cloud service syncs. Zotero advises \

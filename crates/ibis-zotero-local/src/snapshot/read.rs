@@ -104,23 +104,9 @@ pub(super) fn libraries(dir: &Path, wanted: &[Library], deadline: Instant) -> Re
         if chosen.iter().any(|(seen, _)| *seen == library) {
             continue;
         }
-        match ids.get(&library) {
-            Some(&id) => chosen.push((library, id)),
-            None => result.warnings.push(LoadWarning {
-                kind: WarningKind::Syntax,
-                line: None,
-                key: None,
-                message: format!(
-                    "{} was skipped: Zotero has no such group on this computer",
-                    name(library)
-                ),
-            }),
-        }
-    }
-    // As with the local API, a missing group is skipped with a warning, but
-    // a read that finds none of the chosen libraries is a failure.
-    if chosen.is_empty() && !wanted.is_empty() {
-        return Err(SnapshotError::NoLibrary);
+        // A missing library fails the read, so the window keeps what it
+        // had instead of showing a library without that group.
+        chosen.push((library, *ids.get(&library).ok_or(SnapshotError::NoLibrary)?));
     }
     let mut items = items(&db, &chosen.iter().map(|(_, id)| *id).collect::<Vec<_>>())?;
     let keys = citation_keys(dir, &items, deadline);
@@ -458,11 +444,4 @@ fn citation_keys(
         })
         .map(|(id, _, _, citation_key)| (id, citation_key))
         .collect())
-}
-
-fn name(library: Library) -> String {
-    match library {
-        Library::User => "Your Zotero library".to_string(),
-        Library::Group(id) => format!("Zotero group {id}"),
-    }
 }

@@ -68,7 +68,7 @@ pub enum SnapshotError {
     TooLarge,
     #[error("reading Zotero's database took too long")]
     TimedOut,
-    #[error("the chosen Zotero libraries are not in Zotero's database")]
+    #[error("a chosen Zotero library is not in Zotero's database")]
     NoLibrary,
 }
 

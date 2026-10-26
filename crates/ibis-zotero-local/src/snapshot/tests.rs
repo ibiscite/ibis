@@ -214,7 +214,7 @@ fn a_closed_library_is_read_from_a_copy_without_touching_zoteros_files() {
     let (result, fingerprint) = loaded(read(
         data.path(),
         scratch.path(),
-        &[Library::User, Library::Group(7), Library::Group(8)],
+        &[Library::User, Library::Group(7)],
         None,
     ));
     assert_eq!(contents(data.path()), before, "Zotero's files are untouched");
@@ -230,8 +230,7 @@ fn a_closed_library_is_read_from_a_copy_without_touching_zoteros_files() {
         ["ARTICLE1", "WALONLY1", "GROUPBK1"],
         "no trash, notes or feeds; the WAL's item is read"
     );
-    assert_eq!(result.warnings.len(), 1, "{:?}", result.warnings);
-    assert!(result.warnings[0].message.starts_with("Zotero group 8 was skipped"));
+    assert_eq!(result.warnings, []);
 
     let article = &result.references[0];
     assert_eq!(article.id.source, "zotero:user");
@@ -322,8 +321,9 @@ fn a_huge_stored_value_and_missing_libraries_are_refused_clearly() {
         Err(SnapshotError::TooLarge)
     );
     assert_eq!(
-        read(data.path(), scratch.path(), &[Library::Group(99)], None),
-        Err(SnapshotError::NoLibrary)
+        read(data.path(), scratch.path(), &[Library::User, Library::Group(99)], None),
+        Err(SnapshotError::NoLibrary),
+        "a missing group fails the read rather than dropping its references"
     );
 }
 
