@@ -399,9 +399,13 @@ impl Engine {
             return Err(error(ErrorCode::BadInput));
         }
         let result = match &request.output {
-            OutputSpec::Key { .. } => {
-                ibis_core::syntax::cite(snapshot, request).map_err(|_| error(ErrorCode::BadInput))?
-            }
+            OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(|failure| {
+                error(if failure == CitationError::OutputTooLarge {
+                    ErrorCode::ResourceLimit
+                } else {
+                    ErrorCode::BadInput
+                })
+            })?,
             OutputSpec::Csl { .. } | OutputSpec::Preset { .. } => CitationResult::new(
                 String::new(),
                 None,

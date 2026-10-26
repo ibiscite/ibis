@@ -423,6 +423,12 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
     }
     let mut output = Bounded(Vec::new());
     let records: Vec<_> = picks.iter().map(Export).collect();
-    serde_json::to_writer(&mut output, &records).map_err(|_| CitationError::InvalidRichText)?;
+    serde_json::to_writer(&mut output, &records).map_err(|failure| {
+        if failure.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
+            CitationError::OutputTooLarge
+        } else {
+            CitationError::InvalidRichText
+        }
+    })?;
     String::from_utf8(output.0).map_err(|_| CitationError::InvalidRichText)
 }

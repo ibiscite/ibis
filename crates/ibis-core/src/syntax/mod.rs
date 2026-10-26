@@ -268,7 +268,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     }
     let text = render::render(caps, &picks)?;
     if text.len() > MAX_OUTPUT_BYTES {
-        return Err(CitationError::InvalidRichText);
+        return Err(CitationError::OutputTooLarge);
     }
     let display = if text.is_empty() {
         DisplayTree::default()
