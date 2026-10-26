@@ -375,6 +375,20 @@ fn copy_bounded(
     Ok(hash.finish())
 }
 
+/// Whether a discovered candidate holds a regular, resident database. Windows
+/// ancestors remain guarded through the metadata probe; acquisition rechecks it.
+pub fn has_database(data: &Path) -> bool {
+    if !local(data) {
+        return false;
+    }
+    #[cfg(windows)]
+    let Ok(_directories) = locks::directory_guards(data) else {
+        return false;
+    };
+    std::fs::symlink_metadata(data.join("zotero.sqlite"))
+        .is_ok_and(|metadata| metadata.is_file() && resident(&metadata))
+}
+
 /// Guard a profile configuration's parent before metadata or content probes.
 /// Missing ancestors are a missing optional configuration, never a reason to
 /// probe a remote or unguarded descendant.

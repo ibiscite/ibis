@@ -189,6 +189,71 @@ describe("formatted citations", () => {
     expect(formatter.bibliography("apa", [garcia, broken], "text").output.split("\n")).toHaveLength(2);
   });
 
+  it("writes a truncated author list as et al., as the style does", () => {
+    const truncated = (...names: object[]): CslItem => ({ ...garcia, author: names });
+    const smith = { family: "Smith", given: "Alex" };
+    const jones = { family: "Jones", given: "Bea" };
+    const others = { literal: "others" };
+    const cases: [keyof typeof STYLES, CslItem, string, string][] = [
+      ["apa", truncated(smith, others), "(Smith et al., 2021)", "Smith, A. et al. (2021)."],
+      ["apa", truncated(smith, jones, others), "(Smith et al., 2021)", "Smith, A., Jones, B., et al. (2021)."],
+      ["chicago-author-date", truncated(smith, jones, { family: "Others" }), "(Smith et al. 2021)", "Smith, Alex, Bea Jones, et al. 2021."],
+      ["ieee", truncated(smith, others), "[1]", "[1] A. Smith et al., “Synthetic"],
+      ["ieee", truncated(smith, jones, others), "[1]", "[1] A. Smith, B. Jones, et al., “Synthetic"],
+      ["modern-language-association", truncated(smith, others), "(Smith et al.)", "Smith, Alex, et al. “Synthetic"],
+      ["harvard-cite-them-right", truncated(smith, others), "(Smith et al., 2021)", "Smith, A. et al. (2021)"],
+    ];
+    for (const [style, item, cite, entry] of cases) {
+      expect(formatter.citation(style, [item], [{ id: item.id }], "text").output).toBe(cite);
+      expect(formatter.bibliography(style, [item], "text").output).toMatch(new RegExp(`^${entry.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    }
+    const item = truncated(smith, others);
+    // The style's own et al. formatting applies, in its own name context.
+    expect(formatter.bibliography("ieee", [item], "html").output).toContain("A. Smith <i>et al.</i>, “Synthetic");
+    expect(formatter.bibliography("ieee", [item], "rtf").output).toContain("A. Smith {\\i{}et al.}, ");
+    const chapter: CslItem = { ...garcia, type: "chapter", "container-title": "Book", editor: [jones, others] };
+    expect(formatter.bibliography("ieee", [chapter], "html").output).toContain("B. Jones et al., Eds.");
+    const treaty: CslItem = { ...garcia, type: "treaty", author: [{ literal: "Synthetic State A" }, others] };
+    expect(formatter.bibliography("apa", [treaty], "text").output).toContain("Synthetic State A et al.");
+    // Text that is not a name list is never rewritten, and the marker never shows.
+    const titled: CslItem = { ...item, title: "Others et al. \u2063ibis others\u2063 detection", URL: "https://example.org/others" };
+    const shown = formatter.bibliography("apa", [titled], "text").output;
+    expect(shown).toContain("Others et al. \u2063ibis others\u2063 detection");
+    expect(shown).toContain("https://example.org/others");
+    const many = Array.from({ length: 22 }, (_, i) => ({ family: `Name${i}`, given: "A" }));
+    expect(formatter.bibliography("apa", [truncated(...many, others)], "text").output).toMatch(/Name18, A\., et al\. \(2021\)/);
+    // The ownership preview still matches the copy.
+    const preview = formatter.citation("apa", [item], [{ id: item.id }], "html", true);
+    expect(preview.preview && eraseOwnership(preview.preview)).toBe("(Smith et al., 2021)");
+    // A lone "others", or "others" in the middle, is a name like any other.
+    expect(formatter.citation("apa", [truncated(others)], [{ id: item.id }], "text").output).toBe("(others, 2021)");
+    expect(formatter.bibliography("apa", [truncated(others, smith)], "text").output).toMatch(/^others, & Smith, A\./);
+  });
+
+  it("sorts a truncated list after the same names alone, and leaves other lists' rules alone", () => {
+    const smith = { family: "Smith", given: "Alex" };
+    const others = { literal: "others" };
+    const alone: CslItem = { ...garcia, id: "alone", author: [smith], issued: { "date-parts": [[2022]] } };
+    const cut: CslItem = { ...garcia, id: "cut", author: [smith, others] };
+    for (const format of ["text", "html", "rtf"] as const) {
+      const shown = formatter.bibliography("apa", [cut, alone], format).output;
+      expect(shown.indexOf("2022")).toBeLessThan(shown.indexOf("et al."));
+    }
+    // A repeated author is substituted only when the whole list matches.
+    const later: CslItem = { ...garcia, id: "later", title: "Truncated work", author: [smith, others] };
+    const mla = formatter.bibliography("modern-language-association", [alone, later], "text").output;
+    expect(mla).toContain("Smith, Alex, et al. “Truncated");
+    expect(mla).not.toContain("———. “Truncated");
+    const longer: CslItem = { ...later, author: [smith, { family: "Jones", given: "Bea" }, others] };
+    const cutByStyle = formatter.bibliography("modern-language-association", [alone, longer], "text").output;
+    expect(cutByStyle).toContain("Smith, Alex, et al. “Truncated");
+    const directors = Array.from({ length: 21 }, (_, i) => ({ family: `Director${i}`, given: "A" }));
+    const broadcast: CslItem = { ...garcia, type: "broadcast", author: undefined, "script-writer": [smith, others], director: directors };
+    const shown = formatter.bibliography("apa", [broadcast], "text").output;
+    expect(shown).toContain("Smith, A. et al.");
+    expect(shown).toContain("Director18, A., … Director20, A. (Directors)");
+  });
+
   it("escapes fallback text for each output", () => {
     expect(escape("a & {b} 😀", "rtf")).toBe("a & \\{b\\} \\uc0\\u-10179{}\\uc0\\u-8704{}");
     expect(escape("a\u0000b\tc", "rtf")).toBe("a b c");

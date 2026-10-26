@@ -231,12 +231,19 @@ fn zotero_data(stop: &dyn Fn() -> bool) -> Option<PathBuf> {
         None,
         stop,
     )?;
-    let mut folders = found
-        .directories
-        .into_iter()
-        .filter(|d| !stop() && snapshot::local(d.path()));
+    one_database(
+        found
+            .directories
+            .into_iter()
+            .map(|directory| directory.path().to_path_buf()),
+        stop,
+    )
+}
+
+fn one_database(paths: impl IntoIterator<Item = PathBuf>, stop: &dyn Fn() -> bool) -> Option<PathBuf> {
+    let mut folders = paths.into_iter().filter(|path| !stop() && snapshot::has_database(path));
     match (folders.next(), folders.next()) {
-        (Some(one), None) => Some(one.path().to_path_buf()),
+        (Some(one), None) => Some(one),
         _ => None,
     }
 }
@@ -329,6 +336,27 @@ mod tests {
         ));
         std::fs::write(&file, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(load_file(file, false, &|| true), Err(LoadError::Stopped)));
+    }
+
+    #[test]
+    fn empty_default_directories_do_not_hide_the_one_configured_database() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let default = dir.path().join("default");
+        let configured = dir.path().join("configured");
+        for directory in [&default, &configured] {
+            std::fs::create_dir(directory).unwrap_or_else(|e| panic!("{e}"));
+        }
+        std::fs::write(configured.join("zotero.sqlite"), b"synthetic").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            one_database([default.clone(), configured.clone()], &|| false),
+            Some(configured.clone())
+        );
+        std::fs::write(default.join("zotero.sqlite"), b"synthetic").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            one_database([default, configured], &|| false),
+            None,
+            "two real candidates are never guessed"
+        );
     }
 
     #[test]
