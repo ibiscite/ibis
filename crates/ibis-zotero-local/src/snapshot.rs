@@ -27,6 +27,8 @@ use ibis_core::zotero::Library;
 use thiserror::Error;
 
 mod locks;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod mounts;
 mod read;
 #[cfg(windows)]
 mod windows;
@@ -403,10 +405,10 @@ pub(crate) fn configuration_guards(path: &Path) -> Result<Option<Vec<File>>, Sna
         }
     }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    match rustix::fs::statfs(parent) {
-        Err(rustix::io::Errno::NOENT) => Ok(None),
-        Ok(_) if local(parent) => Ok(Some(Vec::new())),
-        _ => Err(SnapshotError::NotLocal),
+    match mounts::check(parent) {
+        Ok(()) => Ok(Some(Vec::new())),
+        Err(SnapshotError::NotFound) => Ok(None),
+        Err(error) => Err(error),
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     Err(SnapshotError::NotLocal)
@@ -428,27 +430,9 @@ pub fn local(path: &Path) -> bool {
     local_file_system(path)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn local_file_system(path: &Path) -> bool {
-    const MNT_LOCAL: u32 = 0x1000;
-    rustix::fs::statfs(path).is_ok_and(|fs| fs.f_flags & MNT_LOCAL != 0)
-}
-
-#[cfg(target_os = "linux")]
-fn local_file_system(path: &Path) -> bool {
-    // NFS, SMB, CIFS, SMB2, AFS, Coda, 9P and Ceph. Magics are 32 bits, and
-    // `f_type` is signed on some targets, so compare the low 32 bits.
-    const NETWORK: [u32; 8] = [
-        0x6969,
-        0x517B,
-        0xFF53_4D42,
-        0xFE53_4D42,
-        0x5346_414F,
-        0x7375_7245,
-        0x0102_1997,
-        0x00C3_6400,
-    ];
-    rustix::fs::statfs(path).is_ok_and(|fs| !NETWORK.contains(&(fs.f_type as u32)))
+    mounts::check(path).is_ok()
 }
 
 #[cfg(windows)]

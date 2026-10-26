@@ -166,8 +166,17 @@ fn open(path: &Path, control: Control) -> Result<Connection, SnapshotError> {
     // SQLite's schema parser and temporary query structures have their own
     // process-wide cap, before any schema is materialized. Ibis has no other
     // SQLite client; a lower existing cap is preserved by this pragma.
-    db.execute_batch("PRAGMA hard_heap_limit = 67108864; PRAGMA cache_size = -2048;")
+    db.execute_batch("PRAGMA hard_heap_limit = 67108864; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -2048;")
         .map_err(failure)?;
+    let temporary: i64 = db
+        .query_row("PRAGMA temp_store", [], |row| row.get(0))
+        .map_err(failure)?;
+    let forced_file: i64 = db
+        .query_row("SELECT sqlite_compileoption_used('TEMP_STORE=0')", [], |row| row.get(0))
+        .map_err(failure)?;
+    if temporary != 2 || forced_file != 0 {
+        return Err(SnapshotError::Unreadable);
+    }
     let check: String = db
         .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
         .map_err(failure)?;
@@ -546,3 +555,7 @@ fn check_shadow_keys(dir: &Path, items: &HashMap<i64, (i64, Item)>, budget: &Bud
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "read_tests.rs"]
+mod tests;
