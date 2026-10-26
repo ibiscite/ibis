@@ -72,5 +72,6 @@ Follow the [architecture principles](docs/architecture.md#principles), including
 
 - Run `git status` before editing; never reset, restore, delete or reformat work you did not make.
 - Never push to `main` or a `claude/*` branch. One branch per pull request.
+- For AI-assisted maintainer commits, set `git -c user.email=diyanko@ibiscite.org commit -s` explicitly and inspect author, committer and trailers before pushing; only the public project or GitHub noreply identities are allowed.
 - Link evidence only from URLs GitHub returned for that commit. Before treating an empty diff as equality, confirm the pathspec matches files.
 - Commits follow the [standard](docs/development.md#commits): Conventional Commits, signed off (`git commit -s`), with an `Assisted-by:` trailer or co-author line when AI helped (ADR 0011). Never put conversation history, pause notes or private context in commits, pull requests or issues.
