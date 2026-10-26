@@ -15,14 +15,19 @@ test("caps new files at 600 lines and existing large files at their baseline", (
   assert.match(sizeErrors({ "src/a.ts": text(701) }, { "src/a.ts": 700 }, { "src/a.ts": 700 })[0], /split|grow/i);
 });
 
-test("shrinking lowers the baseline and inflation cannot buy more lines", () => {
+test("a shrink needs no baseline edit, files never grow past main, and inflation cannot buy more lines", () => {
   const old = { "src/a.ts": 700 };
-  assert.match(sizeErrors({ "src/a.ts": text(650) }, old, old)[0], /baseline.*650/i);
-  assert.deepEqual(sizeErrors({ "src/a.ts": text(650) }, { "src/a.ts": 650 }, old), []);
-  assert.ok(sizeErrors({ "src/a.ts": text(701) }, { "src/a.ts": 701 }, old).length);
-  assert.ok(sizeErrors({ "src/new.ts": text(700) }, { "src/new.ts": 700 }, old).length);
-  assert.ok(sizeErrors({}, old, old).length, "deleted or renamed files must lose their old baseline");
-  assert.deepEqual(sizeErrors({ "src/a.ts": text(599) }, {}, old), []);
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(650) }, old, old, { "src/a.ts": 700 }), [], "a shrink lands without touching the shared baseline");
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(650) }, { "src/a.ts": 650 }, old, { "src/a.ts": 700 }), []);
+  assert.match(sizeErrors({ "src/a.ts": text(660) }, old, old, { "src/a.ts": 650 })[0], /split.*650/i, "main's smaller size is the limit even before the baseline is lowered");
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(645) }, old, old, { "src/a.ts": 650 }), [], "two shrinks merged together still pass");
+  assert.ok(sizeErrors({ "src/a.ts": text(701) }, { "src/a.ts": 701 }, old, { "src/a.ts": 700 }).length);
+  assert.ok(sizeErrors({ "src/new.ts": text(700) }, { "src/new.ts": 700 }, old, {}).length);
+  assert.ok(sizeErrors({ "src/renamed.ts": text(700) }, old, old, {}).length, "a renamed file is new on main and gets 600 lines");
+  assert.deepEqual(sizeErrors({}, old, old, {}), [], "a stale entry for a deleted file grants nothing");
+  assert.ok(sizeErrors({ "src/a.ts": text(700) }, old, old, { "src/a.ts": 500 }).length, "a file that was small on main cannot grow back to an old baseline");
+  assert.deepEqual(sizeErrors({ "src/a.ts": text(599) }, {}, old, {}), []);
+  assert.ok(sizeErrors({ "src/a.ts": text(650) }, { "src/a.ts": 600 }, old, {}).length, "entries at or below 600 are invalid");
 });
 
 test("line counts handle empty, huge, CRLF, Unicode and trailing newlines", () => {
@@ -59,7 +64,10 @@ test("CLI enforces and writes reductions against the committed base", (t) => {
   const oldSha = git("rev-parse", "HEAD");
   assert.equal(run().status, 0);
   writeFileSync(source, text(650));
-  assert.match(run().stderr, /lower the baseline to 650/);
+  assert.equal(run().status, 0, "a shrink passes before the baseline is lowered");
+  writeFileSync(source, text(701));
+  assert.match(run().stderr, /split the file to fit 700/);
+  writeFileSync(source, text(650));
   assert.equal(run("--write-baseline").status, 0);
   assert.equal(JSON.parse(readFileSync(baseline))["src/資料.ts"], 650);
   git("add", "."); git("commit", "-qm", "lower baseline");

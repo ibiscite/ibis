@@ -1,4 +1,7 @@
-// A named large file may shrink, but its exception can never grow.
+// A named large file may shrink, but its exception can never grow, and no
+// file may grow past its size on main. Comparing with main (not only the
+// committed baseline) lets a shrink land without editing the shared baseline,
+// so concurrent pull requests in the merge queue never collide on it.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -10,7 +13,8 @@ export const sourceFile = (name) => /\.(?:rs|[cm]?[jt]sx?|py|css|sh|ps1|html|nix
   && !normalized(name).startsWith("brand/exports/") && normalized(name) !== "apps/desktop/src/bindings.ts";
 export const lineCount = (text) => text === "" ? 0 : text.split("\n").length - Number(text.endsWith("\n"));
 
-export function sizeErrors(files, baseline, previous = null) {
+// base: line counts on main for the files checked (absent = new file), or null.
+export function sizeErrors(files, baseline, previous = null, base = null) {
   const errors = [];
   const names = new Set();
   for (const name of Object.keys(files).filter(sourceFile)) {
@@ -20,11 +24,12 @@ export function sizeErrors(files, baseline, previous = null) {
   }
   const counts = Object.fromEntries(Object.entries(files).filter(([name]) => sourceFile(name)).map(([name, text]) => [normalized(name), lineCount(text)]));
   for (const [name, count] of Object.entries(counts)) {
-    const limit = baseline[name] ?? 600;
-    if (!Number.isSafeInteger(limit) || limit < 600 || count > limit) errors.push(`${name}: ${count} lines; split the file to fit ${limit} lines (new files: 600).`);
+    const cap = baseline[name] ?? 600;
+    const limit = base === null ? cap : Math.min(cap, Math.max(600, base[name] ?? 600));
+    if (!Number.isSafeInteger(limit) || limit < 600 || count > limit) errors.push(`${name}: ${count} lines; split the file to fit ${limit} lines (its size on main, its baseline or 600 for new files).`);
   }
   for (const [name, limit] of Object.entries(baseline)) {
-    if (!sourceFile(name) || !Number.isSafeInteger(limit) || limit <= 600 || counts[name] !== limit) errors.push(`${name}: lower the baseline to ${counts[name] > 600 ? counts[name] : "remove this entry"}; it must match the current count above 600.`);
+    if (!sourceFile(name) || !Number.isSafeInteger(limit) || limit <= 600) errors.push(`${name}: baseline entries must be source files above 600 lines; remove this entry.`);
     if (previous !== null && (!Object.hasOwn(previous, name) || limit > previous[name])) errors.push(`${name}: baseline exceptions cannot be added or grow; split the file to 600 lines or its previous limit.`);
   }
   return errors;
@@ -40,14 +45,16 @@ function git(args, allowFailure = false) {
   return result.stdout;
 }
 
-export function previousBaseline() {
+// The main commit to compare with: current main for a pull request, the
+// queue's base for a merge group, the previous commit for a push.
+export function baseReference() {
   const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
   // PR base metadata can lag behind main; never resurrect an older limit.
   if (event.pull_request) {
     git(["fetch", "--no-tags", "--depth=1", "origin", "refs/heads/main"]);
     const current = git(["rev-parse", "FETCH_HEAD"]).trim();
     if (!/^[a-f0-9]{40}$/.test(current)) throw new Error("File-size check needs the current main commit; fetch origin main.");
-    return git(["ls-tree", "--name-only", current, "--", baselinePath]).trim() ? JSON.parse(git(["show", `${current}:${baselinePath}`])) : null;
+    return current;
   }
   const sha = event.merge_group?.base_sha ?? event.before;
   if (sha != null && !/^[a-f0-9]{40}$/.test(sha)) throw new Error("File-size check needs a valid base SHA; rerun CI.");
@@ -56,8 +63,20 @@ export function previousBaseline() {
     if (!sha) throw new Error("File-size check needs origin/main; run git fetch origin main.");
     git(["fetch", "--no-tags", "--depth=1", "origin", sha]);
   }
+  return reference;
+}
+
+export function previousBaseline(reference) {
   if (!git(["ls-tree", "--name-only", reference, "--", baselinePath]).trim()) return null; // Initial baseline only.
   return JSON.parse(git(["show", `${reference}:${baselinePath}`]));
+}
+
+// Only files above 600 lines can exceed a limit, so only they are read on main.
+function baseCounts(reference, files) {
+  return Object.fromEntries(Object.entries(files).filter(([, text]) => lineCount(text) > 600).flatMap(([name]) => {
+    const text = git(["cat-file", "blob", `${reference}:${normalized(name)}`], true);
+    return text === null ? [] : [[normalized(name), lineCount(text)]];
+  }));
 }
 
 function main() {
@@ -65,9 +84,10 @@ function main() {
   const files = Object.fromEntries(git(["ls-files", "-z"]).split("\0").filter((name) => sourceFile(name) && existsSync(name)).map((name) => [name, readFileSync(name, "utf8")]));
   const write = process.argv.includes("--write-baseline");
   const baseline = write ? Object.fromEntries(Object.entries(files).map(([name, text]) => [name, lineCount(text)]).filter(([, n]) => n > 600).sort(([a], [b]) => a.localeCompare(b, "en"))) : JSON.parse(readFileSync(baselinePath, "utf8"));
-  const errors = sizeErrors(files, baseline, previousBaseline());
+  const reference = baseReference();
+  const errors = sizeErrors(files, baseline, previousBaseline(reference), baseCounts(reference, files));
   if (errors.length) {
-    console.error(errors.join("\n") + "\nAfter shrinking files, run node scripts/check-file-size.mjs --write-baseline and commit the lowered baseline.");
+    console.error(errors.join("\n") + "\nSplit the files named above. A shrink needs no baseline edit.");
     process.exitCode = 1;
   } else {
     if (write) writeFileSync(baselinePath, JSON.stringify(baseline, null, 2) + "\n");
