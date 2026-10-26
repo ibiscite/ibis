@@ -558,8 +558,8 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   libraries on this computer". Nothing is searched until that row is chosen;
   found .bib files join as rows above it (folder as the tag), and the row
   becomes "Look again" with the outcome as its help line. Zotero refusing other
-  apps and folders too large to search are one quiet note below. A CSL JSON or
-  YAML row joins only when those sources ship (after 1.0).
+  apps and folders too large to search are one quiet note below. A CSL JSON row
+  joins when that source ships (0.2).
 - **Could not open, nothing kept:** the title names the library and the fix;
   the backend sorts each failure by `problem`:
 
@@ -577,12 +577,16 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   never asks "What do you write in?": it picks the output from the app that was
   in front when the shortcut was pressed (Markdown editors and terminals get
   Pandoc keys, LaTeX and Typst editors their syntax, word processors, mail and
-  web apps a formatted citation in APA), shows that choice in the footer, and
-  remembers a change for that app. The citation style is asked once, on the
+  web apps a formatted citation in APA) and shows that choice in the footer.
+  One key changes it just this once or for that app, and "Automatic" returns
+  to the guess; apps that host several syntaxes (code editors, terminals,
+  browsers) are guessed only as a starting point. The citation style is asked once, on the
   first formatted copy, with APA chosen. Setup steps finish themselves: when
   Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
-  with no library at all, built-in sample references let people try Ibis. The
+  with several Zotero profiles, Ibis asks which one; with no library at all,
+  built-in sample references let people try Ibis, labelled "Sample" on every
+  row and in the footer. The
   first three copies say "Copied. Press ⌘V to paste." (the right key per
   system), then just "Copied". The footer shows the library, Shortcuts and More.
 
@@ -766,7 +770,8 @@ scheduled.
 
 | Feature (release) | Fits as |
 |---|---|
-| Zotero while closed, output per app, self-finishing setup (0.2) | First run above; footer status with words and a dot; detail in the tooltip and More |
+| Zotero while closed (0.2) | Footer status with words and a dot; detail in the tooltip and More |
+| Output per app, self-finishing setup (0.3) | First run above |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
 | Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf: each reference shows its page, prefix and suffix in place; the form and style in the format pop-up; Settings › Citations |
 | Settings window (0.4, #776) | **Settings**; General, Shortcuts, Libraries and Citations first |
