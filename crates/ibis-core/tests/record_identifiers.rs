@@ -58,3 +58,36 @@ fn search_only_identifiers_round_trip_without_invalidating_citation_intent() {
         );
     }
 }
+
+#[test]
+fn explicit_identifiers_are_normalized_and_malformed_values_are_ignored() {
+    use ibis_core::identifier::{Identifier, of_record};
+    let case = seed();
+    let snapshot = changed(&case, |record| {
+        record.identifiers = vec![
+            Identifier::Doi(" HTTPS://doi.org/10.1000/XYZ ".into()),
+            Identifier::Doi("not a DOI".into()),
+            Identifier::Doi("2101.00001".into()),
+            Identifier::Isbn("ISBN 0-306-40615-2".into()),
+            Identifier::Isbn("9780306406158".into()),
+            Identifier::Arxiv(" arXiv:2101.00001v2 ".into()),
+            Identifier::Arxiv("junk".into()),
+            Identifier::Arxiv("x".repeat(100_000)),
+            Identifier::Pmid("PMID:0012345".into()),
+            Identifier::Pmid("000".into()),
+        ]
+    });
+    let LibraryObject::Record(record) = &snapshot.objects()[0].object else {
+        panic!("seed");
+    };
+    assert_eq!(
+        of_record(record),
+        [
+            Identifier::Doi("10.1000/xyz".into()),
+            Identifier::Doi("10.48550/arxiv.2101.00001".into()),
+            Identifier::Isbn("9780306406157".into()),
+            Identifier::Arxiv("2101.00001".into()),
+            Identifier::Pmid("12345".into()),
+        ]
+    );
+}

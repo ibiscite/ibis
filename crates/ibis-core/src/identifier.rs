@@ -127,7 +127,19 @@ fn with_equivalents(mut ids: Vec<Identifier>) -> Vec<Identifier> {
 /// Normalised CSL fields and source-neutral search-only identifiers, without
 /// parsing raw provenance or requiring knowledge of a particular source.
 pub fn of_record(record: &crate::contract::Record) -> Vec<Identifier> {
-    let mut ids = record.identifiers.clone();
+    let mut ids = record
+        .identifiers
+        .iter()
+        .filter_map(|id| match id {
+            Identifier::Doi(value) if value.len() <= MAX_QUERY_LEN => doi(value).map(Identifier::Doi),
+            Identifier::Isbn(value) if value.len() <= MAX_QUERY_LEN => isbn(value).map(Identifier::Isbn),
+            Identifier::Arxiv(value) if value.len() <= MAX_QUERY_LEN => arxiv(value).map(Identifier::Arxiv),
+            Identifier::Pmid(value) if value.len() <= MAX_QUERY_LEN => {
+                digits(value.trim()).or_else(|| pmid(value)).map(Identifier::Pmid)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     for (field, value) in &record.csl {
         let Some(value) = value.as_str() else {
             continue;
