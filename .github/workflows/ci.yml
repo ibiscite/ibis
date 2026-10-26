@@ -112,7 +112,7 @@ jobs:
     steps:
       # Interface-only pull requests keep web validation without native jobs
       # and without building the interface for them.
-      # Desktop jobs still report success, preserving required check names.
+      # A Linux Desktop placeholder still reports success for "CI result".
       # Main, the merge queue and unclear file lists build the complete app.
       # The Nix package is rebuilt only when its inputs change (a stale
       # nix/pnpm-deps-hash fails on the pull request that causes it), weekly
@@ -319,7 +319,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        # Without native inputs only a Linux placeholder reports, so a docs or
+        # interface change never waits for macOS or Windows runners.
+        os: ${{ needs.changes.outputs.native == 'true' && fromJSON('["ubuntu-24.04", "macos-15", "windows-2025"]') || fromJSON('["ubuntu-24.04"]') }}
     defaults:
       run:
         # bash stops at the first failing command on every OS; PowerShell on
