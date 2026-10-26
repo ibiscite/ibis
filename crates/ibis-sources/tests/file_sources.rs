@@ -398,3 +398,77 @@ fn invalid_bibtex_native_key_does_not_discard_adjacent_records() -> Result<(), B
     );
     Ok(())
 }
+
+#[test]
+fn relative_file_urls_stay_in_private_provenance() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    for url in [
+        "~/invented/private.pdf",
+        "../invented/private.pdf",
+        "./invented/private.pdf",
+        "C:invented.pdf",
+        r"\invented\private.pdf",
+    ] {
+        std::fs::write(
+            &path,
+            serde_json::to_string(&serde_json::json!([{"id":"one","type":"book","URL":url}]))?,
+        )?;
+        let loaded = ibis_sources::load_file(&path)?;
+        let wire = serde_json::to_string(&loaded.snapshot)?;
+        assert!(!wire.contains("URL"), "local URL was published");
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|warning| warning.code == ibis_sources::WarningCode::Field)
+        );
+        let LibraryObject::Record(record) = &loaded.snapshot.objects()[0].object else {
+            return Err("missing record".into());
+        };
+        assert!(
+            record
+                .raw
+                .as_ref()
+                .and_then(|raw| raw.data.as_str())
+                .is_some_and(|raw| raw.contains("invented"))
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn attachment_limits_keep_records_and_refuse_reloads() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(dir.path().join("neighbor.pdf"), b"invented attachment")?;
+    std::fs::write(
+        &path,
+        serde_json::to_string(&serde_json::json!([
+            {"id":"many","type":"book","file":"x;".repeat(20_000)},
+            {"id":"neighbor","type":"book","file":"neighbor.pdf"}
+        ]))?,
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(
+        loaded
+            .snapshot
+            .objects()
+            .iter()
+            .filter(|item| matches!(item.object, LibraryObject::Record(_)))
+            .count(),
+        2
+    );
+    assert!(loaded.snapshot.objects().len() <= 259);
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit)
+    );
+    assert_eq!(
+        ibis_sources::reload_file(&path).err(),
+        Some(ibis_sources::SourceError::LoadLimit)
+    );
+    Ok(())
+}

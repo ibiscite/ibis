@@ -11,6 +11,17 @@ pub(crate) fn append(
     paths: &mut BTreeMap<ItemRef, PathBuf>,
     warnings: &mut Vec<SourceWarning>,
 ) {
+    append_with(base, fields, objects, paths, warnings, availability);
+}
+
+fn append_with(
+    base: &Path,
+    fields: Vec<(ItemRef, String, Option<usize>)>,
+    objects: &mut Vec<LibraryObject>,
+    paths: &mut BTreeMap<ItemRef, PathBuf>,
+    warnings: &mut Vec<SourceWarning>,
+    mut probe: impl FnMut(&Path) -> Availability,
+) {
     for (parent, field, line) in fields {
         for (index, encoded) in split_escaped(&field, ';').into_iter().enumerate() {
             if encoded.trim().is_empty() {
@@ -46,7 +57,7 @@ pub(crate) fn append(
                         } else {
                             base.join(relative)
                         };
-                        let availability = availability(&path);
+                        let availability = probe(&path);
                         (title, kind, Some(path), availability)
                     }
                 }
@@ -210,5 +221,90 @@ mod tests {
             split_escaped(r"one\;two.pdf;three.pdf", ';'),
             ["one;two.pdf", "three.pdf"]
         );
+    }
+}
+
+#[cfg(test)]
+mod adversarial_tests {
+    use super::*;
+    use ibis_core::contract::LibraryId;
+
+    fn check(text: &str) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
+        let parent = ItemRef {
+            library: LibraryId::file(b"invented"),
+            key: "record:one".into(),
+        };
+        let mut objects = Vec::new();
+        let mut paths = BTreeMap::new();
+        let mut warnings = Vec::new();
+        let mut probes = 0;
+        append_with(
+            Path::new("/invented"),
+            vec![(parent, text.into(), Some(2))],
+            &mut objects,
+            &mut paths,
+            &mut warnings,
+            |_| {
+                probes += 1;
+                Availability::BrokenLink
+            },
+        );
+        (objects, probes, warnings)
+    }
+
+    #[test]
+    fn remote_windows_prefixes_never_reach_metadata() {
+        for location in [
+            r"\/attacker.example/share/x.pdf",
+            r"/\host\share\x.pdf",
+            r"\\host\share\x.pdf",
+            "//host/share/x.pdf",
+            r"\\?\UNC\host\share\x.pdf",
+            r"\\?\C:\invented.pdf",
+            r"\\.\pipe\invented",
+            r"/\?\UNC\host\share\x.pdf",
+            r"\??\UNC\host\share\x.pdf",
+            "/??/UNC/host/share/x.pdf",
+            "file://host/share/x.pdf",
+            "FILE:///invented/private.pdf",
+            r"file:\\host\share\x.pdf",
+            "C:invented.pdf",
+        ] {
+            let (_, probes, warnings) = check(location);
+            assert_eq!(probes, 0, "unsupported location must not be probed: {location}");
+            assert!(
+                warnings
+                    .iter()
+                    .any(|warning| warning.code == WarningCode::InvalidAttachment)
+            );
+        }
+    }
+
+    #[test]
+    fn paths_cannot_become_media_types() {
+        for text in [
+            "file:///invented/private.pdf",
+            "synthetic.pdf:/invented/private.pdf",
+            "Label:synthetic.pdf:/invented/private.pdf",
+            "synthetic.pdf:application//pdf",
+            "synthetic.pdf:/pdf",
+        ] {
+            let (objects, probes, warnings) = check(text);
+            assert_eq!(probes, 0, "ambiguous attachment must not be probed");
+            assert!(
+                !serde_json::to_string(&objects)
+                    .expect("synthetic objects serialize")
+                    .contains("invented/private")
+            );
+            assert!(!warnings.is_empty());
+        }
+    }
+
+    #[test]
+    fn attachment_expansion_is_bounded_before_metadata() {
+        let (objects, probes, warnings) = check(&"x;".repeat(20_000));
+        assert!(objects.len() <= 256);
+        assert!(probes <= 256);
+        assert!(warnings.iter().any(|warning| warning.code == WarningCode::WorkLimit));
     }
 }
