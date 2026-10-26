@@ -1,169 +1,79 @@
 # Architecture
 
+This is the target architecture for the rebuild agreed on 2026-10-26 ([ADR 0028](adr/0028-engine-first.md)). Code on `main` still follows the older design in places; anything rebuilt follows this document. Build order is in [ROADMAP.md](../ROADMAP.md).
+
 ```
-                      ┌─ Desktop picker (web UI in a Tauri shell; one process for now, ADR 0012)
-                      ├─ Command line:  ibis search · ibis cite · ibis check · ibis csl
- ENGINE (Rust) ───────┼─ MCP server (read-only) for AI assistants            [after 1.0]
- small, long-running  ├─ Editor endpoint compatible with Better BibTeX CAYW  [0.5]
-                      └─ Browser extension, launcher integrations, web build  [later]
+                ┌─ ibis (command line): every capability, for people, scripts and AI agents
+                │    --json on every command · ibis serve --stdio (JSON-RPC) · ibis mcp
+ ENGINE ────────┼─ Desktop app: Tauri 2 shell + React/React Aria picker; links the engine in-process
+ (Rust crates)  ├─ Editor endpoint compatible with Better BibTeX Cite as you Write
+                └─ Later: language server, launcher integrations
    │
-   ├─ Sources: BibTeX/BibLaTeX · Zotero (open) · Zotero closed [0.3] · RIS, CSL-JSON [after 1.0]
-   ├─ Search index in memory
-   ├─ Key-based syntaxes in Rust (CSL styles: citeproc-js in the web UI for now)
-   ├─ Insertion: paste into the previous app [0.3] · destination profiles [after 1.0]
-   └─ Health rules                                                  [after 1.0]
+   ├─ ibis-core     pure rules: model, citation request/result, key syntaxes, rich text, locators, search
+   ├─ ibis-sources  Zotero (local API, private copy of the database), BibTeX/BibLaTeX, CSL-JSON, snapshots
+   ├─ ibis-csl      citeproc-js in embedded QuickJS + ICU4X collation; official CSL styles and locales
+   ├─ ibis-engine   one method list: search, cite, show, styles, check, export…; JSON envelope, errors
+   └─ ibis-cli      argument parsing and terminal output over ibis-engine
 ```
 
 ## Principles
 
-- **One engine, thin front ends.** All behaviour that can be tested without a window lives in `crates/ibis-core`; it depends on neither Tauri, a GUI toolkit nor the network. Logic needed by two front ends belongs in the core.
-- **Read-only sources.** Never write to Zotero, `.bib` files or any library. Original records are preserved verbatim next to normalized data.
-- **Stable identity.** A record is identified by its source plus native key, never a citation key alone.
-- **Never fail silently or guess data.** Skipped data becomes a `LoadWarning`; a failed insertion leaves the citation copied with a reason. Reject invalid input with a clear error and warn about missing metadata rather than inventing it.
-- **Offline by default.** No telemetry. Network access requires an accepted ADR; every network feature is opt-in and listed in [PRIVACY.md](../PRIVACY.md).
-- **Behaviour as data.** Destination profiles, output templates and styles are validated data and never execute code.
-- **Escape output.** Escape every output for its target syntax, including LaTeX, Pandoc, Typst, HTML and RTF.
-- **Keep private data private.** Never put real reference data, document text, clipboard contents, credentials, personal paths or usernames in tests, logs, diagnostics, issues or commits. Never commit or print these. Fixtures are synthetic; diagnostics use an allowlist rather than raw errors or payloads.
-- **Local endpoints.** Bind to `127.0.0.1`, require a token and reject browser `Origin` headers.
+- **The engine is the product; front ends are clients.** Every capability lives in the Rust engine behind one method list. The command line exposes all of it, the app uses the same methods, and a parity test fails when one front end can do something the other cannot. No front end formats, resolves or decides anything itself.
+- **One citation request, one result.** Preview, copy, paste, export, the command line and the editor endpoint all call `cite(snapshot, request) -> result`. What you see is exactly what is pasted.
+- **Only what Ibis can get right.** A field a format cannot carry is reported as a typed loss; a citation form it cannot carry is refused. Where correctness needs the whole document (numbering, ibid., 2020a/b), Ibis gives what is correct on its own and says why.
+- **Read-only sources.** Never write to Zotero, `.bib` files or any library. Raw records are kept next to normalised data.
+- **Stable identity.** An item is `library + native key`, never a citation key or a file path.
+- **Never fail silently or guess data.** Skipped data becomes a warning; a failed paste leaves the citation copied with a reason; keys are never invented.
+- **Offline by default.** No telemetry. Network access needs an accepted ADR and is opt-in (DOI lookup is planned this way for 0.6).
+- **Behaviour as data.** Presets, app rules and templates are validated data; nothing a user configures executes code.
+- **Escape every output** for its target: LaTeX, Pandoc, Typst, org, HTML, RTF.
+- **Keep private data private.** Paths never reach the webview; fixtures are synthetic; diagnostics use fixed codes, never raw text or payloads.
+- **Local endpoints** bind to `127.0.0.1`, require a token and reject browser `Origin` headers.
+- **Long-lived foundations.** Standards and widely used open source first (CSL 1.0.2, CSL-JSON, BibTeX, SQLite, Zotero's APIs, PDF.js). Each dependency that could fade sits behind one Ibis module so it can be replaced: Tauri, React Aria, PDF.js, citeproc-js, the BibTeX parser.
 
-## Data model
+## Data model (ibis-core)
 
-Each record has an identity (source + native key), normalized fields that map to CSL-JSON, an optional citation key, and the raw source record kept verbatim. Citation keys can repeat across libraries and are never used as identity. See ADR 0005.
+- **Objects:** `Record` (a citable work: CSL-normalised fields plus raw provenance and citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
+- **Availability** of an attachment is computed by Ibis the same way in every mode: `OnDisk`, `CloudPlaceholder`, `NotDownloaded`, `Online`, `BrokenLink`, `Unreadable`, `Unknown`. Standalone notes and files are shown without inventing a parent.
+- **Library IDs are opaque** (`file:<hash>`, `zotero:<library>`). File locations stay in the engine and never serialise.
+- **Snapshots are immutable.** A refresh builds a new snapshot and reuses unchanged libraries. Each object has two fingerprints: `cite` (what a citation depends on) and `full` (everything shown). A picker session keeps the snapshot it started from; at copy time each pick is checked by `ItemRef` and `cite` fingerprint, so a refresh only refuses a pick whose key changed or which was deleted.
 
-## Sources
+## Sources (ibis-sources)
 
-- **BibTeX/BibLaTeX:** each top-level entry is parsed independently, so a broken entry, duplicate key or undefined `@string` macro produces a warning with a line number while every other entry still loads. Parenthesis-delimited entries, LaTeX accent commands and `crossref` inheritance are supported.
-  Expanded and inherited field values allow at most 256 nested brace groups before the upstream content parser runs. Deeper fields are omitted with a field warning while the reference and its other fields remain available. Literal escaped braces do not count. This bounds recursive command parsing on 2 MiB desktop loading threads.
-  Unbalanced structural braces omit the field with a warning before parsing or conversion fallback, so value text cannot become other fields. Date components are checked before normalization can consume them; other fields are checked at that same final boundary. Literal escaped braces remain text.
-  Each load shares `64 MiB + 128 × input bytes` work credits, using saturating arithmetic.
-  Operations cost 32 credits plus conservative byte allowances for processing, copies and diagnostics; cached expansions pay for replay, preserving the separate logical field quotas.
-  Exhaustion skips the current and remaining entries with a warning and retains completed references. A limited reload keeps the last good library instead.
-  The size-proportional allowance covers the generated 200-record/65,535-byte-note and 20,000-record/ten-field ordinary-library cases, even when loading takes longer. Adversarial valid aliases or inheritance graphs can still exhaust it.
-  Clean first-parent inheritance snapshots are shared across references within a 4 MiB cache, including retained field allocations and empty-entry metadata.
-  Only complete, warning-free walks qualify; roots still compute their own diagnostics. Replay preserves the per-root evaluation quota, while actual cache metadata work and subsequent field copies consume load credits.
-  The desktop watches the containing directory using `notify`, so save-by-rename keeps working. Selected symlinks also watch the resolved target directory and update that watch when the selected link changes. An absent target file in an existing directory is watched by its parent so creating the file recovers automatically. A bounded worker coalesces changes, waits for a quiet interval and requires two identical reads before publishing an indexed replacement. Unreadable, missing or unclosed files retain the last loaded references and show a safe error. Initial opens remain tolerant of damaged entries. A stable empty file replaces the index with an empty library. Writer intent cannot be inferred from a syntactically valid prefix; stability checks bound the observation period rather than guaranteeing that a paused writer has finished. Network filesystems may not deliver notifications; Reload remains available.
-- **Zotero:** the local API while Zotero is running, or a Better BibTeX export as a `.bib` file. Reading a consistent read-only snapshot of Zotero's database while Zotero is closed is planned for 0.3 (#14). See ADR 0006.
+- **Capabilities are a fixed list per source kind**, not a plugin system. Zotero open and Zotero closed declare the same list, and a test enforces it; anything only one path can provide is not offered.
+- **Zotero:** Ibis maps Zotero's raw item data to CSL itself, from a pinned copy of `zotero-schema`, instead of reading Zotero's `csljson` export (it changes between releases, plugins alter it, and it is the slowest part of a scan). Both access paths fill the same neutral item.
+  - **Running:** the local API (needs Zotero's "Allow other applications"). Zotero 10 gives exact incremental refresh; 7–9 use a `dateModified` watermark with a full check on Reload.
+  - **Closed, and for a fast start:** a byte copy of `zotero.sqlite` plus its WAL or journal into a private directory, checked for stability, read, then deleted. The live database is never opened. Versions are told apart by schema; a database newer than Ibis knows is refused with a message.
+  - **Citation keys, in order:** Zotero's `citationKey` field (Zotero 8+), a `Citation Key:` line in Extra, Better BibTeX's key store (read as a copy). Aliases come from Extra. A key can match zero, one or many items; ambiguous and missing keys are refused for that item.
+  - Zotero 10's local write API exists; Ibis stays read-only until an opt-in ADR says otherwise.
+- **BibTeX/BibLaTeX:** each entry is parsed independently, so a broken entry produces a warning with its line while the rest loads; work is bounded so hostile files cannot hang the engine. Files are watched and only replaced after two identical reads.
+- **CSL-JSON:** `citation-key`, then `id`, is the key.
 
-## Search
+## Citations (ibis-core, ibis-csl)
 
-Keyword search is instant, case- and accent-insensitive, works in every script and reports which fields matched. Exact citation-key and title matches rank first. A pasted DOI, ISBN, PubMed ID or arXiv ID (bare or as a link) finds the records that carry it; if none does, ordinary search runs. Source scopes use exact record source IDs and filter the loaded snapshot before identifier matching, ranking and limits; no source is reopened. An omitted scope searches all loaded sources, while an empty scope searches none. Desktop status counts describe the searchable snapshot by those same IDs, including zero for empty loaded Zotero libraries; a failed switch keeps the retained snapshot’s counts. Meaning-based multilingual search comes after 1.0 and will be combined with, never substituted for, keyword results. See ADR 0010.
+- **Request:** ordered items (the same reference may appear twice); a citation form (normal, narrative, author only, year only, full, bibliography only) and "keep my order"; per item a typed locator (one of the 29 CSL 1.0.2 locator terms), rich-text prefix and suffix (italic, bold, sub, superscript), author suppression, and the annotation it came from if any; an output spec or named preset; an input language for parsing typed locators and an output locale.
+- **Result:** text, HTML, RTF and a display tree; one outcome per item; typed losses; notices such as "needs the whole document"; a content hash that copy and paste must match.
+- **Key syntaxes** are pure Rust, each with a capability table (which fields and forms it carries, its escaping, a fixture checked against its own tool): Pandoc, BibLaTeX (any command, multicite), natbib, LaTeX `\cite`, Typst, org-cite, MyST, MultiMarkdown, AsciiDoc, Jupyter, Jekyll Scholar, Scannable Cite, bare keys, CSL-JSON, Better BibTeX's CAYW JSON.
+- **Formatted output:** Zotero's citeproc-js runs in embedded QuickJS (`rquickjs`) on one engine thread, with collation from ICU4X, so the command line and the app give byte-identical output on every system. Any official style and locale; bibliographies run in the background with progress. Before formatting, Ibis applies Zotero's own data conversions (Extra fields, URL stripping for printed articles with pages) so output matches Zotero.
 
-## Formatting
+## Engine interface (ibis-engine, ibis-cli)
 
-Desktop search passes transient text and an explicit interpretation flag to the
-Rust trailing-locator parser. Replies retain the normal revision/results and add
-an optional interpretation; literal search uses the complete input. Prepared
-references capture their own locator with record identity and revision, so later
-searches cannot rewrite a citation. Query mode and locator contents invalidate
-pending previews and copy actions. See ADR 0026.
+- **One method list** is the source of truth for the command line, `ibis serve --stdio` (JSON-RPC 2.0, the way Codex's app-server and language servers work), `ibis mcp` for AI agents, and the app.
+- **Every `--json` output is a versioned envelope** `{ "ibis": 1, "ok": …, "data" | "error": … }` with stable error codes. Exit codes: 0 ok, 1 findings, 2 usage, 3 bad input, 4 not found, 5 source unavailable, 6 newer format, 70 internal.
+- **`ibis schema`** prints the JSON Schema of every method (generated with `schemars`); TypeScript types for the app are generated from it. `ibis call <method>` reaches any method from a shell.
+- **Golden cases** (a new `cases` folder in `fixtures`: library, request, exact expected result) are replayed through the command line and the app and must match byte for byte.
 
-Formatted citations and bibliographies use citeproc-js with the official Citation Style Language styles and locales. For now this runs in the desktop web interface (`apps/desktop/src/format/`), not in the core, so the command line cannot format with styles; moving it into the core waits until after 1.0 (#366, #1066). Key-based outputs are produced by `ibis_core::cite`, which applies the escaping and multi-reference rules of each syntax and reports what a syntax cannot express. See ADR 0007.
+## Desktop app
 
-The core's structured citation reader bounds JSON input to 1 MiB and 1,000
-items before formatting. It preserves order and per-reference intent, rejects
-unknown fields and emits fixed input diagnostics without request text. The CLI
-uses it through `cite --items` on stdin; keys, locators, notes and author omission
-reach the same formatter as positional requests (ADR 0025). This is transient
-input, without persisted state or an additional process.
+- **Shell:** Tauri 2 with the system web view; React with React Aria Components for every control (ADR 0021); tokens in `tokens.css`; shared components in `src/ui/`. The app links the engine in-process and calls the same method functions; the web view never touches the clipboard, files or the network.
+- **State:** one pure reducer with `useSyncExternalStore` and a controller with session tickets; no state library.
+- **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
+- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the panel never activates Ibis, so ⌘V goes to the app in front, keyboard-layout aware; guards for Secure Event Input, terminals and remote desktops. Windows: one atomic `SendInput`, refused for elevated targets. Linux copies and says why. Every refusal leaves the citation copied with a reason. macOS ties the Accessibility permission to the signing identity, so builds need a stable signing certificate.
+- **Reader:** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Page labels come from the PDF, the record's page range or Zotero annotations, always as a suggestion the user confirms once per file.
+- **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
+- **Language:** the engine returns message codes; the app words them. Fluent arrives with the first translation.
+- **Budgets (release builds):** picker interactive p95 ≤ 100 ms after the shortcut, typing p95 ≤ 50 ms at 100,000 references, measured by in-app probes and compared against `main`.
 
-Desktop key output resolves ordered `CitationSelection {id, locator}` requests
-under the expected-revision snapshot lock, then uses the core formatter. CSL
-retrieval retains its existing identity/revision contract, including references
-without keys. Its adapter receives one context per ordered reference for both
-canonical and segmented output, assigns canonical position IDs itself and rejects
-context-count mismatches. Clipboard output always uses the canonical result.
+## What gets replaced
 
-Optional formatted-preview ownership uses a separate processor pass. Generated
-wrappers must erase to the canonical output; bounded, sanitized markup must also
-retain its plain text. Missing or ambiguous ownership keeps an aggregate preview
-and reports unrepresented references. Clipboard output never uses annotations.
-
-## Insertion
-
-Planned for 0.3 on macOS, then Windows, on by default with a switch to turn it off; Linux copies and says why. Destination profiles come after 1.0. Today the picker copies and you paste. Every insertion will end in one visible state: inserted, or copied with a reason. See `docs/compatibility.md` and ADR 0009.
-
-## Desktop process model
-
-The desktop app (`apps/desktop`) is a Tauri 2 shell: a React and TypeScript interface in the system web view, and a thin Rust layer that calls `ibis-core`. The web interface has no file system, shell or network plugin permissions. An application command manifest enforces the per-window capabilities (ADR 0024): `main` can call the 25 picker commands, including a native row context menu returning only Copy/Add intent (never references or clipboard writes); `notice` can call only `copied_notice` and subscribe to events. A second small window shows that "Copied" notice after a clean copy hides the picker; it never takes focus and is left out of the taskbar, Dock and Alt+Tab. Neither capability allows remote origins. The debug gallery shares `main` and its permissions; the boundary does not isolate pages within one window.
-
-Until measurements justify more, the app is a single process that keeps the library index in memory and hides its window between uses (ADR 0012). The original plan of a small background engine plus an on-demand picker process (ADR 0004) remains the option if idle memory or wakeups exceed the budgets in `scripts/smoke-budgets.json`.
-
-Picker preference saves run on Tauri's blocking pool. Owned settings handles
-share one writer lock with synchronous settings updates; each save reads the
-current file after taking that lock, then changes and flushes it (ADRs 0020/0022).
-The interface's existing promise chain preserves preference choice order.
-
-Only a picker-owned file chooser, macOS update consent or install-failure sheet,
-or visible macOS Open at Login reapproval sheet prevents native blur hiding.
-An exclusive RAII lease in
-`picker/dialogs.rs` stays alive through the native answer callback, including a
-chooser's source-open handoff; dropping or unwinding the callback releases it.
-Both blur guards read the same atomic state. A busy native owner leaves the fixed
-installation recovery notice pending until a later actual picker show; only OK
-clears it, and failed presentation or a dropped callback keeps it pending.
-Other update information, feedback and login messages do not acquire a lease.
-Update checks and downloads also leave
-ordinary blur hiding unchanged. After update consent, one owned main-thread handoff
-may show the picker, then releases consent ownership before downloading. Retained
-byte snapshots refresh only during that operation and replay on presentation;
-progress never focuses the picker. Download completion precedes signature
-verification, so it displays checking/installing rather than success (#48).
-Package downloads have a 15-minute overall HTTP deadline and a 60-second
-read-stall timeout. Either timeout uses the existing installation-failure
-notice. A drop guard owns the busy state through checking, consent and
-installation, so errors and dropped callbacks or futures permit another check.
-
-Library status carries the failure reason, retained-reference flag and unsaved
-choice provenance separately for native presentation. The tray derives its
-wording from these facts rather than parsing the picker's error or note text.
-These native-only facts are excluded from the serialized picker payload.
-
-Library choices, reloads and Zotero checks share one import worker with one
-replaceable pending request. A newer choice cancels obsolete work before I/O,
-between Zotero requests and before indexing; its generation also prevents stale
-results from being installed or saved. An in-flight read, parse or index cannot
-be interrupted, so the latest choice waits for that operation to finish.
-
-Shared interactive web controls live in `apps/desktop/src/ui/` (ADR 0021).
-Only that directory imports React Aria; `scripts/ui-imports.mjs` checks static
-imports, re-exports and literal dynamic imports/require calls. It reuses Vite's
-pinned JavaScript/TypeScript parser; it is a contributor boundary check, not a
-security sandbox for computed module names. During
-incremental migration, toolbar-menu role overrides in `tokens.css` apply locally
-to its popover, preserving the existing More menu and keys dialog roles.
-The shared Button family owns footer action, More and toolbar-menu triggers,
-shelf removal and folding, empty-state recovery actions, and dialog Close
-states; React Aria supplies pointer, press and keyboard-focus attributes.
-Folded footer actions preserve their hidden accessibility state and tab order.
-First-run setup keeps its rescan Button focusable with `aria-disabled` and a press
-guard while finding sources. Its existing status announces progress; writing-format
-toggles remain controlled.
-Small-button gallery readiness checks actual hit targets beyond the visible fill.
-Shelf spacing reserves each full hit target, including three complete expanded
-rows and the larger touch targets; its gallery rejects clipped or covered edges.
-Tab dismisses More's modal popover synchronously before returning focus to
-Search. Choosing a toolbar format also removes its modal synchronously, so the
-next typed character reaches Search without waiting for an exit animation.
-Other dismissals retain their existing animation and focus destinations.
-Copy-warning dismissal uses the shared Button states without changing notice
-lifetime; warnings remain until dismissed and clean confirmations expire.
-
-Desktop search replies and each result carry an opaque in-memory index revision,
-captured with the index under the library mutex. Scope filtering and request
-cancellation preserve it even for empty replies. Per-source status counts still
-describe the retained snapshot, including chosen empty Zotero libraries.
-A replacement retires that revision; loading,
-failed reloads retaining the index, and unchanged Zotero checks keep it. Selected
-references and formatted previews retain the revision they came from. Key preview
-and copy, CSL retrieval and formatted copy validate it under that same mutex
-before preparing output. Key preview performs no clipboard or settings I/O;
-clipboard writes follow after unlocking. Stale or mixed choices
-are refused with a fixed refresh/reselection explanation, rather than resolving
-old visible identities against new metadata. This does not change core/CLI
-search types or persisted settings.
-
-Key previews include transient, request-local ownership segments. The core
-records item positions while emitting syntax, keeping literal delimiters apart
-from references, including adjacent BibLaTeX commands. Preview metadata does not
-change canonical citation text, the clipboard response, CLI JSON or persisted
-data. The removable shelf consumes these segments separately.
+`model.rs`, `library.rs`, `settings.rs`, the Zotero and search adapters, the CLI and the desktop library, copy and preferences code are rebuilt on the contracts above. The BibTeX lexer and resolver, date parsing, citation escaping, locator parsing, the native shortcut, panel, clipboard and updater modules, the UI components and tokens, and every test fixture are kept. Settings migrations and identity carry-over code are deleted (ADR 0027).

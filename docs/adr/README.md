@@ -31,3 +31,4 @@ One page per decision with lasting effect: context, decision, consequences. Stat
 | 0025 | Structured citation input for the engine and CLI | accepted |
 | 0026 | Keep typed locator interpretation and selection in Rust | accepted |
 | 0027 | Move fast until 1.0: no compatibility code, review by risk | accepted (amends 0015 and 0017; suspends the upgrade rules of 0016, 0018, 0022 and 0023 until 1.0) |
+| 0028 | Engine first: the command line is the engine, the app is its client | accepted (amends 0003, 0005, 0006 and 0007) |

@@ -573,14 +573,48 @@ A choice screen hides the result heading, the shelf and the Copy hint.
 
   The title and line are announced once; "Use another library" shows the no
   library screen. A failure with references kept stays a notice above them.
-- **First run:** two steps of the same pattern: where your references live,
-  then, once the first library opens with an empty search, "What do you write
-  in?" (Markdown (Pandoc), LaTeX, Typst; "Now" marks the current format). The
-  choice sets the copy format and returns to search; results appear only after
-  it. The copy format has one name everywhere ("Pandoc"); first run adds only
-  "Markdown" in front. The writing step's note names the open shortcut; start
-  at login lives in More (later Settings). No mark in first run. The footer
-  shows "No library chosen", Shortcuts and More.
+- **First run:** one step at most, and none when a library is found. Ibis
+  never asks "What do you write in?": it picks the output from the app that was
+  in front when the shortcut was pressed (Markdown editors and terminals get
+  Pandoc keys, LaTeX and Typst editors their syntax, word processors, mail and
+  web apps a formatted citation in APA), shows that choice in the footer, and
+  remembers a change for that app. The citation style is asked once, on the
+  first formatted copy, with APA chosen. Setup steps finish themselves: when
+  Zotero is not sharing, the screen shows where to turn it on and continues on
+  its own once it is on; when Zotero is closed, Ibis reads the library anyway;
+  with no library at all, built-in sample references let people try Ibis. The
+  first three copies say "Copied. Press ⌘V to paste." (the right key per
+  system), then just "Copied". The footer shows the library, Shortcuts and More.
+
+### Everyday details (rebuild, 2026-10-26)
+
+Ranked by how much they help a first-time user; each is built with the release
+that owns its area in ROADMAP.md.
+
+1. Output per app, remembered (above).
+2. Setup that finishes itself (above).
+3. Open in under 100 ms with the last snapshot; keys typed before the window
+   appears are kept.
+4. Forgiving search: accents and transliteration folded, any word order, one
+   typo tolerated, initials, "et al." ignored, Chinese, Japanese and Korean
+   names with or without spaces, Enter safe while an input method composes.
+5. "Cited here recently": up to three rows at an empty query, per app, local
+   only and forgettable.
+6. Change the last citation: pressing the shortcut within a minute of a paste
+   reopens that shelf, pages included.
+7. A page example in the empty state and a "Page…" control on the focused row.
+8. Plain words in the picker ("Page", "Citation style", "Your library"); jargon
+   only in Settings descriptions and docs.
+9. "Selected in Zotero" as the first row when Zotero has a selection.
+10. Undo instead of confirmation for every removal and reset.
+11. A row's menu: Copy key, Copy citation, Copy reference entry, Show in
+    Zotero, Open PDF.
+12. Text size with ⌘+ and ⌘− (Ctrl elsewhere) inside the picker.
+13. Drag the citation from the shelf into any app; reorder with Alt+← →.
+
+Customisation follows "defaults first, then choice": automatic (from the app
+and the system) → one key in the picker → the Settings window → a documented,
+validated config file for power users → the command line.
 
 ## Settings
 
@@ -732,13 +766,12 @@ scheduled.
 
 | Feature (release) | Fits as |
 |---|---|
-| Page numbers and locators (0.2, #354; other locator types 0.4, #24) | Typed in the search box; included in the shelf's citation; "Cite this page ⌘↩" in the preview |
-| Any CSL style, prefix, suffix, author omission (0.4) | Styles in the format pop-up (filter, leading checks), listed per Settings › Citations; prefix, suffix and omission controls: open |
-| Zotero while closed (0.3, #14), changed keys, cloud-synced data | Footer status with words and a Look or Stop dot; detail in the tooltip and More |
-| "Is this in my library?" (0.5, #701) | A pasted identifier searches like a query; a missing one is an empty state handing off to Zotero; layout: open |
-| Settings window (0.4, #776) | **Settings**; General, Shortcuts and Libraries first |
-| Bibliography export (0.4, #667) | Export the shelf or the session's citations from More to `.bib`, Hayagriva or CSL-JSON; placement: open |
-| `ibis toggle` for Wayland (0.2, #1091) | No picker UI; Settings › Shortcuts explains it |
+| Zotero while closed, output per app, self-finishing setup (0.2) | First run above; footer status with words and a dot; detail in the tooltip and More |
+| Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
+| Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf: each reference shows its page, prefix and suffix in place; the form and style in the format pop-up; Settings › Citations |
+| Settings window (0.4, #776) | **Settings**; General, Shortcuts, Libraries and Citations first |
+| Browse, "Selected in Zotero", reader (0.5) | Collections and tags as search filters; the reader opens beside the picker; "Cite this page ⌘↩" |
+| Bibliography, session bibliography, DOI lookup (0.6) | More and the format pop-up; DOI lookup as a no-results fallback, opt-in |
 
 ## How the design changes
 
