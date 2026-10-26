@@ -53,3 +53,15 @@ fn hostile_sizes_are_rejected_before_reading_body() {
     );
     assert!(output.is_empty());
 }
+
+#[test]
+fn duplicate_json_members_are_refused_including_nested_parameters() {
+    for body in [
+        r#"{"method":"search","method":"cite"}"#,
+        r#"{"params":{"query":"a","query":"b"}}"#,
+        r#"{"method":"search","\u006dethod":"cite"}"#,
+    ] {
+        let frame = format!("Content-Length: {}\r\n\r\n{body}", body.len());
+        assert_eq!(read_frame(&mut Cursor::new(frame)), Err(FrameError::InvalidJson));
+    }
+}

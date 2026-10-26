@@ -5,3 +5,5 @@ pub use method::Method;
 pub mod protocol;
 
 pub mod request;
+
+pub mod rpc;

@@ -83,8 +83,8 @@ pub fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>, FrameError
             FrameError::Io
         }
     })?;
-    serde_json::from_slice(&body)
-        .map(Some)
+    serde_json::from_slice::<UniqueValue>(&body)
+        .map(|value| Some(value.0))
         .map_err(|_| FrameError::InvalidJson)
 }
 
@@ -141,7 +141,7 @@ pub fn write_frame(writer: &mut impl Write, message: &Value) -> Result<(), Frame
         .map_err(|_| FrameError::Io)
 }
 
-fn validate_shape(message: &Value) -> Result<(), FrameError> {
+pub(crate) fn validate_shape(message: &Value) -> Result<(), FrameError> {
     let mut pending = vec![(message, 0)];
     let mut visited = 0;
     while let Some((value, depth)) = pending.pop() {
@@ -169,4 +169,61 @@ fn validate_shape(message: &Value) -> Result<(), FrameError> {
         }
     }
     Ok(())
+}
+
+/// Reject ambiguous duplicate members before converting method parameters to
+/// Value; otherwise a later typed reader can no longer observe the duplicate.
+struct UniqueValue(Value);
+impl<'de> serde::Deserialize<'de> for UniqueValue {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = UniqueValue;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("unambiguous JSON")
+            }
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                Ok(UniqueValue(Value::Null))
+            }
+            fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<Self::Value, E> {
+                Ok(UniqueValue(Value::Bool(value)))
+            }
+            fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                Ok(UniqueValue(Value::from(value)))
+            }
+            fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(UniqueValue(Value::from(value)))
+            }
+            fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Self::Value, E> {
+                serde_json::Number::from_f64(value)
+                    .map(|value| UniqueValue(Value::Number(value)))
+                    .ok_or_else(|| E::custom("invalid JSON number"))
+            }
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(UniqueValue(Value::String(value.into())))
+            }
+            fn visit_string<E: serde::de::Error>(self, value: String) -> Result<Self::Value, E> {
+                Ok(UniqueValue(Value::String(value)))
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+                let mut values = Vec::new();
+                while let Some(value) = sequence.next_element::<UniqueValue>()? {
+                    values.push(value.0);
+                }
+                Ok(UniqueValue(Value::Array(values)))
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut values = serde_json::Map::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if values.contains_key(&key) {
+                        return Err(serde::de::Error::custom("duplicate JSON object member"));
+                    }
+                    let value = map.next_value::<UniqueValue>()?;
+                    values.insert(key, value.0);
+                }
+                Ok(UniqueValue(Value::Object(values)))
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
 }
