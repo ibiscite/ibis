@@ -537,12 +537,21 @@ fn nonprinting_mla_suppression_is_refused_before_cluster_rendering() {
                         error: CitationError::UnsupportedForm
                     }
                 );
-                assert_eq!(
-                    result.outcomes[1 - affected],
-                    ItemOutcome::Rendered { item: 1 - affected }
-                );
                 assert!(result.copy_content(2).is_none());
-                assert_eq!(result.text, if affected == 0 { "(Morgan)" } else { "(Taylor)" });
+                if year_only {
+                    assert_eq!(
+                        result.outcomes[1 - affected],
+                        ItemOutcome::Rendered { item: 1 - affected }
+                    );
+                } else {
+                    assert!(result.text.is_empty());
+                    assert!(
+                        result
+                            .outcomes
+                            .iter()
+                            .all(|outcome| matches!(outcome, ItemOutcome::Refused { .. }))
+                    );
+                }
             }
         }
     }
@@ -575,8 +584,18 @@ fn suppression_and_year_only_capabilities_keep_each_printed_item_explicit() {
                 let result = formatter.format(&snapshot, &request).unwrap();
                 let unsupported = (style == "modern-language-association" && (year_only || !located))
                     || (style == "ieee" && year_only);
-                assert_eq!(result.outcomes[0], ItemOutcome::Rendered { item: 0 });
-                assert!(result.text.contains("Taylor"));
+                if style == "modern-language-association" && !year_only && !located {
+                    assert!(result.text.is_empty());
+                    assert!(
+                        result
+                            .outcomes
+                            .iter()
+                            .all(|outcome| matches!(outcome, ItemOutcome::Refused { .. }))
+                    );
+                } else {
+                    assert_eq!(result.outcomes[0], ItemOutcome::Rendered { item: 0 });
+                    assert!(result.text.contains("Taylor"));
+                }
                 if unsupported {
                     assert_eq!(
                         result.outcomes[1],
@@ -627,4 +646,52 @@ fn suppression_and_year_only_capabilities_keep_each_printed_item_explicit() {
     request.items[0].suppress_author = false;
     request.form = CitationForm::YearOnly;
     assert!(formatter.format(&single, &request).unwrap().copy_content(1).is_none());
+}
+
+#[test]
+fn sparse_members_never_become_copyable_cluster_placeholders_or_omissions() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let complete = json!({"type":"book","title":"Synthetic complete","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}});
+    let sparse = json!({"type":"book"});
+    let printable = library(std::slice::from_ref(&complete));
+    let mut printable_request = selection(&printable, "modern-language-association", false);
+    printable_request.keep_order = true;
+    for items in [[sparse.clone(), complete.clone()], [complete, sparse]] {
+        let snapshot = library(&items);
+        let mut request = selection(&snapshot, "modern-language-association", false);
+        request.keep_order = true;
+        let result = formatter.format(&snapshot, &request).unwrap();
+        assert!(result.copy_content(2).is_none());
+        assert!(result.text.is_empty());
+        assert!(result.outcomes.iter().all(|outcome| matches!(
+            outcome,
+            ItemOutcome::Refused {
+                error: CitationError::UnsupportedForm,
+                ..
+            }
+        )));
+        let recovered = formatter.format(&printable, &printable_request).unwrap();
+        assert_eq!(recovered.text, "(Taylor)");
+        assert!(recovered.copy_content(1).is_some());
+    }
+}
+
+#[test]
+fn genuinely_printed_literal_processor_marker_text_remains_valid() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"[CSL STYLE ERROR: reference with no printed form.]","issued":{"date-parts":[[2026]]}}),
+    ]);
+    for (style, _) in ibis_csl::STYLES {
+        for bibliography in [false, true] {
+            let result = formatter
+                .format(&snapshot, &selection(&snapshot, style, bibliography))
+                .unwrap();
+            assert!(result.copy_content(1).is_some());
+            assert!(result.text.to_ascii_lowercase().contains("csl style error"));
+            assert_eq!(result.outcomes, vec![ItemOutcome::Rendered { item: 0 }]);
+        }
+    }
 }

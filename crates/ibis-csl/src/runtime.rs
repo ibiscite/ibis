@@ -154,14 +154,7 @@ fn failure(ctx: &rquickjs::Ctx<'_>, phase: &'static str, error: &rquickjs::Error
                     JsFailure::MemoryLimit
                 }
                 (Some("InternalError"), Some("interrupted")) => JsFailure::Interrupted,
-                (
-                    Some("Error"),
-                    Some(
-                        "citation formatting failed"
-                        | "style could not format the bibliography"
-                        | "style could not format the citation",
-                    ),
-                ) => JsFailure::BridgeRefusal,
+                (Some("Error"), Some("citation formatting failed")) => JsFailure::BridgeRefusal,
                 (Some("TypeError"), _) => JsFailure::TypeError,
                 _ => JsFailure::Other,
             }
@@ -237,13 +230,21 @@ mod tests {
     }
 
     #[test]
-    fn processor_empty_form_throws_instead_of_returning_a_copyable_sentinel() {
+    fn empty_member_returns_a_typed_refusal_instead_of_processor_placeholder() {
         on_worker_stack(|| {
             let limits = Limits::default();
             let control = control();
-            let session = Session::new(&limits, &control).unwrap();
+            let mut session = Session::new(&limits, &control).unwrap();
             let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
-            assert_eq!(session.render(&prepared.json), Err(JsFailure::BridgeRefusal));
+            let refused = session.run(&prepared, &limits, &control).unwrap();
+            assert_eq!(
+                refused.outcomes,
+                vec![ibis_core::contract::ItemOutcome::Refused {
+                    item: 0,
+                    error: ibis_core::contract::CitationError::UnsupportedForm
+                }]
+            );
+            assert!(refused.copy_content(1).is_none());
         });
     }
 

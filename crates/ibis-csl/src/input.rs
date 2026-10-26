@@ -7,6 +7,7 @@ use std::io::{self, Write};
 
 pub(crate) struct Prepared {
     pub json: String,
+    // Eligibility only: output must prove representation coverage before exposure.
     pub outcomes: Vec<ItemOutcome>,
     pub losses: Vec<Loss>,
     pub notices: Vec<Notice>,
@@ -71,11 +72,8 @@ pub(crate) fn prepare(
         let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
             || form == CitationForm::Narrative
             || (style == "ieee" && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
-            // This bundled MLA citation has only author and locator, never a year.
-            // Suppressing its author without a locator leaves no per-item output.
-            || (style == "modern-language-association"
-                && !bibliography
-                && (form == CitationForm::YearOnly || (pick.suppress_author && pick.locator.is_none())))
+            // MLA's citation layout has no year; a nonempty locator is not a year.
+            || (style == "modern-language-association" && !bibliography && form == CitationForm::YearOnly)
             || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography
                 && style != "ieee")
         {

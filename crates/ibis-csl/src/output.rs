@@ -4,13 +4,17 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Outputs {
-    text: String,
-    html: String,
-    rtf: String,
-    // Preserve processor text before the adapter folds bibliography line breaks.
-    text_parts: Option<Vec<String>>,
+#[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
+enum Outputs {
+    Refused,
+    Rendered {
+        text: String,
+        html: String,
+        rtf: String,
+        // Preserve processor text before the adapter folds bibliography line breaks.
+        text_parts: Option<Vec<String>>,
+        coverage: Vec<usize>,
+    },
 }
 
 pub(crate) fn refused(input: &Prepared) -> CitationResult {
@@ -19,7 +23,17 @@ pub(crate) fn refused(input: &Prepared) -> CitationResult {
         None,
         None,
         DisplayTree::default(),
-        input.outcomes.clone(),
+        input
+            .outcomes
+            .iter()
+            .map(|outcome| match outcome {
+                ItemOutcome::Rendered { item } => ItemOutcome::Refused {
+                    item: *item,
+                    error: CitationError::UnsupportedForm,
+                },
+                refused => *refused,
+            })
+            .collect(),
         input.losses.clone(),
         input.notices.clone(),
     )
@@ -30,18 +44,32 @@ pub(crate) fn result(
     superscripts: &BTreeMap<char, String>,
 ) -> Result<CitationResult, FormatError> {
     let output: Outputs = serde_json::from_str(json).map_err(|_| FormatError::Runtime)?;
-    if output.text.trim().is_empty()
-        || [&output.text, &output.html, &output.rtf]
-            .into_iter()
-            .any(|text| unsupported_controls(text))
-    {
+    let Outputs::Rendered {
+        text,
+        html,
+        rtf,
+        text_parts,
+        coverage,
+    } = output
+    else {
+        return Ok(refused(input));
+    };
+    let candidates = input
+        .outcomes
+        .iter()
+        .filter(|outcome| matches!(outcome, ItemOutcome::Rendered { .. }))
+        .count();
+    if candidates == 0 || coverage != (0..candidates).collect::<Vec<_>>() {
+        return Ok(refused(input));
+    }
+    if text.trim().is_empty() || [&text, &html, &rtf].into_iter().any(|text| unsupported_controls(text)) {
         return Err(FormatError::Runtime);
     }
-    let presentation = if let Some(parts) = &output.text_parts {
+    let presentation = if let Some(parts) = &text_parts {
         if parts.is_empty()
             || parts.len() > 1000
             || parts.iter().any(|part| unsupported_controls(part))
-            || parts.iter().map(|part| one_line(part)).collect::<Vec<_>>().join("\n") != output.text
+            || parts.iter().map(|part| one_line(part)).collect::<Vec<_>>().join("\n") != text
         {
             return Err(FormatError::Runtime);
         }
@@ -51,19 +79,19 @@ pub(crate) fn result(
             .collect::<Vec<_>>()
             .join("\n")
     } else {
-        escape_space_pairs(&output.text)
+        escape_space_pairs(&text)
     };
-    let runs = parse_html(&output.html)?;
+    let runs = parse_html(&html)?;
     if runs.iter().any(|run| unsupported_controls(&run.text))
-        || !(presentation_matches(&output.text, &runs, superscripts)
+        || !(presentation_matches(&text, &runs, superscripts)
             || presentation_matches(&presentation, &runs, superscripts))
     {
         return Err(FormatError::Runtime);
     }
     Ok(CitationResult::new(
-        output.text,
-        Some(output.html),
-        Some(output.rtf),
+        text,
+        Some(html),
+        Some(rtf),
         DisplayTree {
             nodes: vec![DisplayNode {
                 item: None,
@@ -321,7 +349,7 @@ mod review_tests {
     }
     fn output(text: &str, html: &str, rtf: &str) -> Result<CitationResult, FormatError> {
         result(
-            &json!({"text":text,"html":html,"rtf":rtf}).to_string(),
+            &json!({"status":"rendered","coverage":[0],"text":text,"html":html,"rtf":rtf}).to_string(),
             &prepared(),
             &BTreeMap::from([('²', "2".into()), ('™', "TM".into())]),
         )
@@ -361,7 +389,7 @@ mod review_tests {
     }
     #[test]
     fn bibliography_line_folding_requires_original_text_evidence() {
-        let json = json!({"text":"Synthetic area", "html":"Synthetic\u{a0} area", "rtf":"{\\rtf1 canonical}", "text_parts":["Synthetic\r\narea\n"]});
+        let json = json!({"status":"rendered","coverage":[0],"text":"Synthetic area", "html":"Synthetic\u{a0} area", "rtf":"{\\rtf1 canonical}", "text_parts":["Synthetic\r\narea\n"]});
         let rendered = result(&json.to_string(), &prepared(), &BTreeMap::new()).unwrap();
         assert_eq!(rendered.text, "Synthetic area");
         assert_eq!(rendered.html.as_deref(), Some("Synthetic\u{a0} area"));
@@ -369,6 +397,23 @@ mod review_tests {
         wrong["text_parts"] = json!(["Different\r\narea\n"]);
         assert!(result(&wrong.to_string(), &prepared(), &BTreeMap::new()).is_err());
         assert!(output("Synthetic area", "Synthetic\u{a0} area", "canonical").is_err());
+    }
+
+    #[test]
+    fn incomplete_or_duplicate_representation_coverage_never_exposes_candidates() {
+        for coverage in [vec![], vec![1], vec![0, 0]] {
+            let output = json!({"status":"rendered","coverage":coverage,"text":"Synthetic","html":"Synthetic","rtf":"canonical"});
+            let refused = result(&output.to_string(), &prepared(), &BTreeMap::new()).unwrap();
+            assert!(refused.copy_content(1).is_none());
+            assert!(refused.text.is_empty());
+            assert_eq!(
+                refused.outcomes,
+                vec![ItemOutcome::Refused {
+                    item: 0,
+                    error: CitationError::UnsupportedForm
+                }]
+            );
+        }
     }
 
     #[test]

@@ -11,9 +11,9 @@ Validation accepts only known script-glyph presentation equivalents and
 the pinned HTML whitespace-pair conversion, with exact character and space
 counts. Bibliography line folding is checked against processor text captured
 before folding; the extra evidence never changes canonical output bytes.
-Contradictory, multi-item or unavailable author-only intent is refused; processor
-empty-form errors throw instead of becoming copyable sentinel text. NUL and unsupported
-controls are rejected in inputs and outputs; ordinary text whitespace and
+Contradictory, multi-item or unavailable author-only intent is refused. Empty
+members receive typed refusals before processor placeholders can become copyable.
+NUL and unsupported controls are rejected in inputs and outputs; ordinary text whitespace and
 Unicode paragraph separators remain valid. The shared copy gate independently
 rejects embedded NUL in text, HTML or RTF. JavaScript stack and heap exhaustion,
 including the processor's exact native-error forwarding forms, return the fixed
@@ -34,8 +34,8 @@ maximum is also 2 MiB; the native stack is four times that cap. Windows measurem
 found 1 MiB necessary for a synthetic APA citation; the default doubles that
 measured minimum. Direct runtime tests use controlled worker-sized threads,
 including hostile recursion. Processor caches hold at most 8 style configurations
-per runtime; ICU caches hold at most 16 collators. Selected data is size-checked before allocating a JSON copy. Runtime
-initialization and regular-expression execution share the interrupt boundary.
+per runtime; ICU caches hold at most 16 collators. Selected data is size-checked
+before allocating a JSON copy. Runtime initialization and regular-expression execution share the interrupt boundary.
 
 The five current styles and English locale are embedded from the existing
 [pinned vendor assets](../../apps/desktop/vendor/csl/README.md). Their manifest,
@@ -49,8 +49,11 @@ construction and reports `YearSuffixWithheld`; IEEE produces an unnumbered
 reference entry with `NeedsDocumentContext` and `ReferenceEntry`. These changes
 never mutate the vendor files. Node comparisons use the same Ibis-safe style
 configuration. A citation form the fallback cannot represent is refused. MLA has
-no year in its citation layout, so year-only intent is refused. MLA author suppression
-requires a locator; otherwise that selected item would have no printed form.
+no year in its citation layout, so year-only intent is refused. A transparent
+observer checks each final member's printed blob leaves in every representation,
+ignoring layout affixes. Missing or empty coverage refuses the candidate cluster as `UnsupportedForm` and clears its output; no unchecked member
+is exposed as rendered. This uses one pass over existing output under the same
+heap/deadline limits, and never scans for processor marker strings.
 
 The 0.2 adapter carries today's locators and author suppression. Prefixes and
 suffixes, including plain and styled runs, are omitted with separate typed
@@ -66,8 +69,10 @@ to the source adapter, not this crate.
 `cargo test -p ibis-csl --locked` runs normal Rust tests and an offline Node
 oracle (Node must be on PATH; `IBIS_NODE` can select its executable locally).
 Ten five-style citation/bibliography scenarios compare text, HTML and complete
-RTF byte for byte, including multilingual synthetic records. Separate fixtures
-exercise Turkish and Lithuanian casing. The normalized synthetic Preview Test
+RTF byte for byte, including multilingual synthetic records. The Node oracle also
+restores the original processor function to prove that observing content leaves
+does not change those bytes. Separate fixtures exercise Turkish and Lithuanian
+casing. The normalized synthetic Preview Test
 also matches the immutable expected `(Smith, 2019)` in
 [Zotero's own test](https://github.com/zotero/zotero/blob/db41b99fddcc52d38897c59c161b6adaca036afb/test/tests/citeTest.js#L175-L203).
 This is pinned expected-output evidence, not a claim that a running Zotero app
