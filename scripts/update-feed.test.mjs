@@ -1,11 +1,129 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, feedKeyId, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion, previousNightlyIdentity } from "./update-feed.mjs";
 
 const fixture = (name) => readFileSync(new URL(`../fixtures/updates/${name}`, import.meta.url), "utf8");
 const testKey = fixture("test-key.pub");
 const signature = fixture("package-versioned.bin.sig");
+const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+
+test("previous identity lookup reads actual published and current source", () => {
+  assert.equal(previousNightlyIdentity(fixture("previous-nightly/update-feed.mjs.txt")), "io.github.ibiscite.ibis.nightly");
+  assert.equal(previousNightlyIdentity(readFileSync(new URL("./update-feed.mjs", import.meta.url), "utf8")), nightlyConfig("0.1.2-nightly.20261026000000").identifier);
+});
+
+test("the real previous-nightly workflow never blocks publication on unavailable identity evidence", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
+  const step = workflow.split("      - name: Keep the previous nightly for the update test\n")[1]?.split("      - name:")[0];
+  assert.ok(step, "find the publishing step");
+  const shell = step.split("        run: |\n")[1].split("\n").map((line) => line.replace(/^          /, "")).join("\n");
+  for (const mode of ["published", "current", "source-error", "unknown", "moved", "tag-error", "no-feed"]) {
+    const dir = mkdtempSync(join(tmpdir(), "ibis-previous-"));
+    try {
+      mkdirSync(join(dir, "scripts"));
+      copyFileSync(new URL("./update-feed.mjs", import.meta.url), join(dir, "scripts/update-feed.mjs"));
+      // Only GitHub is substituted. Execute the workflow shell and real CLI/source.
+      writeFileSync(join(dir, "gh"), `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2).join(" ");
+const mode = process.env.TEST_MODE;
+if (args.includes("release download")) {
+  if (mode === "no-feed") process.exit(1);
+  fs.writeFileSync("previous/latest.json", "{}");
+} else if (args.includes("contents/scripts/update-feed.mjs")) {
+  if (mode === "source-error") process.exit(1);
+  const source = mode === "current" ? fs.readFileSync(process.env.CURRENT_SOURCE) : mode === "unknown" ? Buffer.from("unknown source") : fs.readFileSync(process.env.PUBLISHED_SOURCE);
+  console.log(source.toString("base64"));
+} else if (args.includes("git/ref/tags/nightly")) {
+  if (mode === "tag-error") process.exit(1);
+  const seen = fs.existsSync("tag-read");
+  fs.writeFileSync("tag-read", "");
+  console.log((mode === "moved" && seen ? "b" : "a").repeat(40));
+} else process.exit(2);
+`, { mode: 0o755 });
+      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", shell], {
+        cwd: dir, encoding: "utf8", timeout: 30000, env: { ...process.env, [pathKey]: `${dir}${delimiter}${process.env[pathKey] ?? ""}`, RUNNER_TEMP: dir,
+          REPO: "example/ibis", TEST_MODE: mode,
+          CURRENT_SOURCE: fileURLToPath(new URL("./update-feed.mjs", import.meta.url)),
+          PUBLISHED_SOURCE: fileURLToPath(new URL("../fixtures/updates/previous-nightly/update-feed.mjs.txt", import.meta.url)) },
+      });
+      assert.equal(result.status, 0, `${mode}: ${result.stdout}${result.stderr}`);
+      if (mode !== "no-feed") {
+        const identity = readFileSync(join(dir, "previous/identifier.txt"), "utf8").trim();
+        assert.equal(identity, mode === "published" ? "io.github.ibiscite.ibis.nightly" : mode === "current" ? "com.ibiscite.ibis.nightly" : "unavailable", mode);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+// Tauri CLI merges config overrides with RFC 7396 (json_patch::merge).
+function mergeConfig(base, patch) {
+  const result = structuredClone(base);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete result[key];
+    else result[key] = typeof value === "object" && !Array.isArray(value)
+      ? mergeConfig(result[key] ?? {}, value) : value;
+  }
+  return result;
+}
+
+test("Stable and Nightly Linux package file sets never share icons, launchers or executables", () => {
+  const stable = JSON.parse(readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+  const nightly = mergeConfig(stable, nightlyConfig("0.1.2-nightly.20261026000000", "linux"));
+  const identities = JSON.parse(readFileSync(new URL("../brand/settings.json", import.meta.url), "utf8")).desktop_identifiers;
+  for (const platform of ["deb", "appimage"]) {
+    const sets = [stable, nightly].map((config) => {
+      const files = config.bundle.linux[platform].files;
+      for (const [dest, source] of Object.entries(files)) {
+        assert.ok(dest.includes(config.identifier), dest);
+        assert.ok(source.includes(config.identifier), source);
+        assert.ok(readFileSync(new URL(`../apps/desktop/src-tauri/${source}`, import.meta.url)).length);
+      }
+      const binary = config.mainBinaryName ?? "ibis-desktop";
+      assert.equal(identities[config === stable ? "stable" : "nightly"], config.identifier);
+      const template = readFileSync(new URL(`../apps/desktop/src-tauri/${config.bundle.linux.deb.desktopTemplate}`, import.meta.url), "utf8");
+      assert.match(template, new RegExp(`^Icon=${config.identifier.replaceAll(".", "\\.")}$`, "m"));
+      // Tauri's freedesktop bundler derives additional PNG paths from the main
+      // binary, and the desktop basename from productName (CLI 2.12.3).
+      const automatic = config.bundle.icon.filter((source) => source.endsWith(".png")).map((source) => {
+        const bytes = readFileSync(new URL(`../apps/desktop/src-tauri/${source}`, import.meta.url));
+        const retina = source.includes("@2x") ? "@2" : "";
+        return `/usr/share/icons/hicolor/${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}${retina}/apps/${binary}.png`;
+      });
+      return new Set([...Object.keys(files), ...automatic, `/usr/share/applications/${config.productName}.desktop`, `/usr/bin/${binary}`]);
+    });
+    assert.deepEqual([...sets[0]].filter((path) => sets[1].has(path)), [], platform);
+  }
+});
+
+test("previous identity qualification skips old, missing and unknown evidence", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
+  const gate = workflow.slice(workflow.indexOf("          previous_identifier=$(cat previous/identifier.txt"), workflow.indexOf("          # Standalone, so an unreadable feed"))
+    .split("\n").map((line) => line.replace(/^          /, "")).join("\n");
+  assert.ok(gate.includes("case"));
+  const dir = mkdtempSync(join(tmpdir(), "ibis-qualify-"));
+  try {
+    mkdirSync(join(dir, "previous"));
+    for (const identity of [undefined, "unavailable", "other", "io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"]) {
+      if (identity !== undefined) writeFileSync(join(dir, "previous/identifier.txt"), identity);
+      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", `${gate}\necho qualified`], { cwd: dir, encoding: "utf8", timeout: 30000 });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.includes("qualified"), identity === "com.ibiscite.ibis.nightly", String(identity));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  for (const platform of ["darwin", "win32"]) {
+    assert.equal(nightlyConfig("0.1.2-nightly.20261026000000", platform).mainBinaryName, undefined);
+  }
+});
 
 test("previous nightly settings use its own source identity without fallback or execution", () => {
   for (const identifier of ["io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"]) {

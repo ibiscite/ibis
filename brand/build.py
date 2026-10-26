@@ -598,7 +598,7 @@ def generated_files(root):
     files = set()
     for directory in ("brand/exports", "apps/desktop/src-tauri/icons"):
         for path in (root / directory).rglob("*"):
-            if (path.is_file() or path.is_symlink()) and (directory == "brand/exports" or path.suffix in {".svg", ".png", ".ico", ".icns", ".json"}):
+            if (path.is_file() or path.is_symlink()) and (directory == "brand/exports" or path.suffix in {".svg", ".png", ".ico", ".icns", ".json", ".desktop"}):
                 files.add(path.relative_to(root))
     for name in ("apps/desktop/src/brand.ts", "apps/desktop/src/tokens.css"):
         path = root / name

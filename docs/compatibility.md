@@ -78,7 +78,8 @@ otherwise it uses PATH on Linux, the installed **Ibis** app on macOS,
 or `%LOCALAPPDATA%\Ibis\ibis-desktop.exe`, then `%ProgramFiles%\Ibis\ibis-desktop.exe`, then PATH on Windows. Build the desktop app first when running from source.
 `--app` overrides discovery: on macOS use `ibis toggle --app "Ibis Nightly"` or
 `ibis toggle --app "/Applications/Ibis Nightly.app"` (passed to `open -n -a`); on Linux/Windows pass the desktop
-executable path, including for Nightly or custom installs. Without the CLI, bind `ibis-desktop toggle` directly.
+executable path, including for Nightly or custom installs. Without the CLI, bind
+`ibis-desktop toggle` directly (Linux Nightly `.deb`: `ibis-nightly toggle`).
 For an AppImage, use `"/path/to/Ibis-Linux.AppImage" toggle`. Use an absolute executable path if your desktop has
 a different PATH; quote paths containing spaces and launch the same build/channel each time.
 

@@ -671,10 +671,18 @@ jobs:
             --pattern Ibis-Windows-setup.exe --pattern Ibis-macOS-Apple-silicon.app.tar.gz --dir previous ||
             echo "No previous nightly with an update feed; the update test will be skipped."
           if [ -f previous/latest.json ]; then
-            [[ "$previous_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Previous nightly source is unavailable."; exit 1; }
-            gh api "repos/$REPO/contents/scripts/update-feed.mjs?ref=$previous_sha" --jq .content | base64 --decode > "$RUNNER_TEMP/previous-update-feed.mjs"
-            node scripts/update-feed.mjs previous-identity "$RUNNER_TEMP/previous-update-feed.mjs" > previous/identifier.txt
-            test "$previous_sha" = "$(gh api "repos/$REPO/git/ref/tags/nightly" --jq .object.sha)"
+            # Historical evidence is optional; it must never block publishing
+            # or imply that an unknown/changed source qualified an update.
+            echo unavailable > previous/identifier.txt
+            if [[ "$previous_sha" =~ ^[a-f0-9]{40}$ ]] &&
+              gh api "repos/$REPO/contents/scripts/update-feed.mjs?ref=$previous_sha" --jq .content | base64 --decode > "$RUNNER_TEMP/previous-update-feed.mjs" &&
+              previous_identifier=$(node scripts/update-feed.mjs previous-identity "$RUNNER_TEMP/previous-update-feed.mjs") &&
+              current_sha=$(gh api "repos/$REPO/git/ref/tags/nightly" --jq .object.sha) &&
+              [ "$previous_sha" = "$current_sha" ]; then
+              echo "$previous_identifier" > previous/identifier.txt
+            else
+              echo "::notice::Previous nightly identity could not be established; update qualification will be skipped."
+            fi
           fi
 
       - name: Upload the previous nightly
@@ -838,11 +846,11 @@ jobs:
             echo "::notice::Update test skipped: the previous nightly had no update feed or no $PACKAGE."
             exit 0
           fi
-          previous_identifier=$(cat previous/identifier.txt)
+          previous_identifier=$(cat previous/identifier.txt 2>/dev/null) || previous_identifier=unavailable
           case "$previous_identifier" in
             com.ibiscite.ibis.nightly) ;;
             io.github.ibiscite.ibis.nightly) echo "::notice::Earlier app identities are outside current update qualification."; exit 0 ;;
-            *) echo "::error::Previous nightly identity is unavailable."; exit 1 ;;
+            *) echo "::notice::Update test skipped: previous nightly identity is unavailable."; exit 0 ;;
           esac
           # Standalone, so an unreadable feed fails the step instead of comparing empty strings.
           previous_key=$(node scripts/update-feed.mjs feed-key previous/latest.json)

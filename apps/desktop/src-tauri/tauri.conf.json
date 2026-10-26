@@ -49,7 +49,7 @@
     },
     "linux": {
       "deb": {
-        "desktopTemplate": "icons/source/ibis.desktop",
+        "desktopTemplate": "icons/source/com.ibiscite.ibis.desktop",
         "files": {
           "/usr/share/icons/hicolor/128x128/apps/com.ibiscite.ibis.png": "icons/linux/128x128/com.ibiscite.ibis.png",
           "/usr/share/icons/hicolor/256x256/apps/com.ibiscite.ibis.png": "icons/linux/256x256/com.ibiscite.ibis.png",

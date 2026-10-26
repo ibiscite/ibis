@@ -47,8 +47,9 @@ def sources():
         "windows.svg": brand.mark(brand.GRADIENT, "m"),
         "windows-small.svg": brand.favicon(brand.SCARLET_MID),
         "macos.svg": macos(), "macos-small.svg": macos(True), "gnome.svg": gnome(),
-        f"{brand.SET['desktop_identifier']}-symbolic.svg": brand.favicon("currentColor").replace(
-            'width="32" height="32"', 'width="16" height="16"'),
+        **{f"{identifier}-symbolic.svg": brand.favicon("currentColor").replace(
+            'width="32" height="32"', 'width="16" height="16"')
+           for identifier in brand.SET["desktop_identifiers"].values()},
     }
 
 def render(root, source, size, output):
@@ -62,6 +63,13 @@ def main(root=ROOT):
     (root / "source").mkdir(parents=True, exist_ok=True)
     for name, svg in sources().items():
         (root / "source" / name).write_text(svg, encoding="utf-8")
+    for identifier in brand.SET["desktop_identifiers"].values():
+        (root / "source" / f"{identifier}.desktop").write_text(
+            "[Desktop Entry]\nCategories={{categories}}\n"
+            "{{#if comment}}\nComment={{comment}}\n{{/if}}\n"
+            "Exec={{exec}}\nStartupWMClass={{exec}}\n"
+            f"Icon={identifier}\nName={{{{name}}}}\nTerminal=false\nType=Application\n"
+            "{{#if mime_type}}\nMimeType={{mime_type}}\n{{/if}}\n", encoding="utf-8")
     with tempfile.TemporaryDirectory(prefix="ibis-icons-") as directory:
         temp = Path(directory)
         for name, size in [("32x32.png", 32), ("128x128.png", 128),
@@ -92,9 +100,10 @@ def main(root=ROOT):
         (root / "icon.icns").write_bytes(b"icns" + struct.pack(">I", len(payload) + 8) + payload)
 
         for size in [128, 256, 512]:
-            output = root / "linux" / f"{size}x{size}" / f"{brand.SET['desktop_identifier']}.png"
-            output.parent.mkdir(parents=True, exist_ok=True)
-            render(root, "gnome.svg", size, output)
+            for identifier in brand.SET["desktop_identifiers"].values():
+                output = root / "linux" / f"{size}x{size}" / f"{identifier}.png"
+                output.parent.mkdir(parents=True, exist_ok=True)
+                render(root, "gnome.svg", size, output)
 
 
 if __name__ == "__main__":
