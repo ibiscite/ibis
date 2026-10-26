@@ -288,10 +288,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const moved = previousActive.current !== active;
     previousActive.current = active;
     if (pointer.fromPointer.current) {
-      // Another change rendered before the clicked row did; wait for the row.
-      if (!moved) return;
-      followKeyboard.current = false;
-      pointer.fromPointer.current = false;
+      if (!moved) return; // Another change rendered before the clicked row.
+      followKeyboard.current = pointer.fromPointer.current = false;
       return;
     }
     if (moved) followKeyboard.current = true;
@@ -602,8 +600,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             e.preventDefault();
           } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
-            followKeyboard.current = true;
-            pointer.fromPointer.current = false;
+            followKeyboard.current = true; pointer.fromPointer.current = false;
             const step = e.key === "ArrowDown" ? 1 : -1;
             setActive((i) => Math.min(Math.max(i + step, 0), Math.max(results.length - 1, 0)));
           } else if (e.key === "Enter" && e.shiftKey) {
