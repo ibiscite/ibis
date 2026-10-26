@@ -42,25 +42,24 @@ pub(super) fn translate(shortcut: Shortcut, typed: impl Fn(u16, Modifiers) -> Op
         .map(|&(code, ..)| Shortcut::new(Some(shortcut.mods), code))
 }
 
-/// Retranslate a private key event with exactly the requested Command layer.
-/// Unlike charactersIgnoringModifiers, this preserves Dvorak–QWERTY ⌘. AppKit
-/// replaces all event modifiers and leaves text input/dead-key state untouched.
+/// Set a private key event’s Command layer before AppKit translates it.
+/// characters() keeps Command (Dvorak–QWERTY ⌘); ignoring modifiers loses it.
+/// These APIs predate macOS 10.13, unlike charactersByApplyingModifiers (10.15).
 /// Layout queries need the main thread; events are never posted.
 #[cfg(target_os = "macos")]
 pub(super) fn typing() -> impl Fn(u16, Modifiers) -> Option<char> {
-    use objc2_app_kit::{NSEvent, NSEventModifierFlags};
-    use objc2_core_graphics::{CGEvent, CGEventSource, CGEventSourceStateID};
+    use objc2_app_kit::NSEvent;
+    use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID};
     let source = CGEventSource::new(CGEventSourceStateID::Private);
     move |key, modifiers: Modifiers| {
         let event = CGEvent::new_keyboard_event(source.as_deref(), key, true)?;
         let flags = if modifiers.contains(Modifiers::SUPER) {
-            NSEventModifierFlags::Command
+            CGEventFlags::MaskCommand
         } else {
-            NSEventModifierFlags::empty()
+            CGEventFlags::empty()
         };
-        let text = NSEvent::eventWithCGEvent(&event)?
-            .charactersByApplyingModifiers(flags)?
-            .to_string();
+        CGEvent::set_flags(Some(&event), flags);
+        let text = NSEvent::eventWithCGEvent(&event)?.characters()?.to_string();
         let mut chars = text.chars().flat_map(char::to_lowercase);
         match (chars.next(), chars.next()) {
             (Some(letter), None) => Some(letter),
