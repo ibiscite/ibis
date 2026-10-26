@@ -21,5 +21,21 @@ declare class CslEngine {
   makeCitationCluster(cites: CslCite[]): string;
 }
 
-declare const CSL: { Engine: typeof CslEngine };
+export type CslName = { family?: unknown } | undefined;
+type EtAlSpec = { freeters: number; institutions: number; persons: number[] };
+export interface CslNameOutput {
+  /** Set by Ibis once its "et al." hooks are installed. */
+  ibisOthers?: boolean;
+  state: { tmp: { sort_key_flag?: boolean; area?: string; rendered_name?: string[] | false } };
+  variables: string[];
+  etal_spec: Record<string, EtAlSpec>;
+  freeters: Record<string, CslName[]>;
+  institutions: Record<string, CslName[]>;
+  persons: Record<string, CslName[][]>;
+  _imposeNameConstraints(lists: Record<string | number, CslName[]>, count: Record<string | number, number>, key: string | number, pos: number): void;
+  renderAllNames(): void;
+  _setEtAlParameter(type: "freeters" | "institutions" | "persons", v: string, j?: number): void;
+}
+
+declare const CSL: { Engine: typeof CslEngine; NameOutput: { prototype: CslNameOutput } };
 export default CSL;
