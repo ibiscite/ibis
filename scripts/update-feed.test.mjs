@@ -103,7 +103,7 @@ test("Stable and Nightly Linux package file sets never share icons, launchers or
   }
 });
 
-test("previous identity qualification skips old, missing and unknown evidence", () => {
+test("the real qualification gate fails missing or unknown evidence, skips legacy and accepts current identity", () => {
   const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
   const gate = workflow.slice(workflow.indexOf("          previous_identifier=$(cat previous/identifier.txt"), workflow.indexOf("          # Standalone, so an unreadable feed"))
     .split("\n").map((line) => line.replace(/^          /, "")).join("\n");
@@ -111,11 +111,14 @@ test("previous identity qualification skips old, missing and unknown evidence", 
   const dir = mkdtempSync(join(tmpdir(), "ibis-qualify-"));
   try {
     mkdirSync(join(dir, "previous"));
-    for (const identity of [undefined, "unavailable", "other", "io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"]) {
+    for (const identity of [undefined, "", "unavailable", "other", "io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"]) {
       if (identity !== undefined) writeFileSync(join(dir, "previous/identifier.txt"), identity);
       const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", `${gate}\necho qualified`], { cwd: dir, encoding: "utf8", timeout: 30000 });
-      assert.equal(result.status, 0, result.stderr);
+      const known = ["io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"].includes(identity);
+      assert.equal(result.status, known ? 0 : 1, `${String(identity)}: ${result.stdout}${result.stderr}`);
       assert.equal(result.stdout.includes("qualified"), identity === "com.ibiscite.ibis.nightly", String(identity));
+      if (!known) assert.match(result.stdout, /::error::.*identity/i);
+      if (identity === "io.github.ibiscite.ibis.nightly") assert.match(result.stdout, /::notice::Earlier app identities/);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

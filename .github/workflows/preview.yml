@@ -850,7 +850,7 @@ jobs:
           case "$previous_identifier" in
             com.ibiscite.ibis.nightly) ;;
             io.github.ibiscite.ibis.nightly) echo "::notice::Earlier app identities are outside current update qualification."; exit 0 ;;
-            *) echo "::notice::Update test skipped: previous nightly identity is unavailable."; exit 0 ;;
+            *) echo "::error::Previous nightly identity is unavailable or unknown; update qualification failed."; exit 1 ;;
           esac
           # Standalone, so an unreadable feed fails the step instead of comparing empty strings.
           previous_key=$(node scripts/update-feed.mjs feed-key previous/latest.json)

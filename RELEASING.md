@@ -31,11 +31,12 @@ Release Please keeps a pull request titled `chore: release X.Y.Z`. Merging it up
 
 A nightly follows the same build, install and verify steps without approval, signs with the nightly key in the `nightly` environment, and replaces the `nightly` pre-release only if its commit is still the head of `main`. A failure leaves the previous nightly in place. To refresh it by hand, run Preview builds on `main` with publication checked; with it unchecked the run is a dry run whose packages stay as workflow artifacts for 14 days.
 
-Keeping the previous nightly's identity is optional evidence for the update test.
-An earlier identity, unavailable or unrecognized source, or a tag that moves
-during capture skips update qualification with a notice; it does not block
-publication or count as a passed update test. Published source is read as text,
-never executed. Current package installation checks still gate publication.
+Keeping the previous nightly's identity never blocks publication. The separate
+daily update qualification job fails when its previous feed and package exist
+but identity evidence is missing or unknown, so failure reporting opens an issue.
+A known earlier identity skips qualification with a notice (ADR 0023).
+Published source is read as text, never executed. Current package installation
+checks still gate publication.
 
 ## Update keys (ADR 0019)
 

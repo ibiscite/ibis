@@ -80,6 +80,9 @@ or `%LOCALAPPDATA%\Ibis\ibis-desktop.exe`, then `%ProgramFiles%\Ibis\ibis-deskto
 `ibis toggle --app "/Applications/Ibis Nightly.app"` (passed to `open -n -a`); on Linux/Windows pass the desktop
 executable path, including for Nightly or custom installs. Without the CLI, bind
 `ibis-desktop toggle` directly (Linux Nightly `.deb`: `ibis-nightly toggle`).
+The CLI defaults to Stable; for Linux Nightly use
+`ibis toggle --app /usr/bin/ibis-nightly`. If shortcut registration fails, the
+Wayland warning names the running app's executable, with its channel as fallback.
 For an AppImage, use `"/path/to/Ibis-Linux.AppImage" toggle`. Use an absolute executable path if your desktop has
 a different PATH; quote paths containing spaces and launch the same build/channel each time.
 
