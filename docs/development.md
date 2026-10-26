@@ -8,7 +8,7 @@ One standard for humans and agents. [AGENTS.md](../AGENTS.md) says who may do wh
 
 ### Issues
 
-- **One outcome per issue**, small enough for one pull request (about 300 changed lines). After a partial pull request, rewrite the issue to what remains. Never open an issue only so a pull request has something to close; use `Part of #N` instead.
+- **One outcome per issue**, small enough for one pull request (one user-visible feature). After a partial pull request, rewrite the issue to what remains. Never open an issue only so a pull request has something to close; use `Part of #N` instead.
 - **Title:** a plain sentence about the outcome or the problem, with no commit prefix: "Zotero mapper drops malformed name fields".
 - **Body:** what a user sees now, and when it is done. The Task issue form has this shape.
 - **Ideas and questions** start in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions); an issue is opened when the work is agreed.
