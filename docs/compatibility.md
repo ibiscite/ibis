@@ -123,12 +123,12 @@ is not a test of every app. Reports help: use the "Writing app report" form.
 | LaTeX, Overleaf | BibLaTeX or LaTeX keys | Same: the project's `.bib` must contain the key. |
 | Typst | Typst keys (`@key`) | The project needs a `.bib` or Hayagriva file. |
 | Word, LibreOffice, Google Docs with Zotero citations | Nothing; use Zotero's plugin | Pasted text never joins Zotero's managed bibliography or changes with the style. |
-| Word for the web, Pages, Notion, email | A formatted citation | Zotero has no plugin for these. Italics survive where the app accepts HTML. Bibliography entries and RTF arrive in 0.3. |
+| Word for the web, Pages, Notion, email | A formatted citation | Zotero has no plugin for these. Italics survive where the app accepts HTML. Bibliography entries in every style, and RTF, arrive in 0.3. |
 | Chat and plain-text fields | A formatted citation | Plain text drops italics. |
 
-Numeric styles such as IEEE number each copy on its own, so the number will
-not match your document
-([#1129](https://github.com/ibiscite/ibis/issues/1129)). Emacs org-cite, MyST
+Numeric styles such as IEEE copy the reference entry without its number: the
+in-text number depends on every reference your document cites, which one copy
+cannot see ([#1129](https://github.com/ibiscite/ibis/issues/1129)). Emacs org-cite, MyST
 and natbib key forms are planned for 0.3.
 
 ## What the tests establish

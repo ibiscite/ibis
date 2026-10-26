@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState, type Ref } from "react";
 import type { SearchResult } from "../../api";
-import { provisional, type FormattedCitation } from "../../format/formatted";
+import type { FormattedCitation } from "../../format/formatted";
+import { copiesEntry } from "../../format/styles";
+import { STYLE_NAMES } from "../../format/styles";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
@@ -143,10 +145,10 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
                   <bdi dir={keys ? "ltr" : "auto"} className="preview-text" title={shown.text}>
                     {shown.markup.length > 0 ? render(shown.markup) : shown.text}
                   </bdi>
-                  {style && provisional(style) && (
-                    <span className="shelf-pill" title={pickerText.provisional}>
-                      <span aria-hidden="true">{pickerText.provisionalShort}</span>
-                      <span className="visually-hidden">{pickerText.provisional}</span>
+                  {style && copiesEntry(style) && (
+                    <span className="shelf-pill" title={pickerText.entryOnly(STYLE_NAMES[style])}>
+                      <span aria-hidden="true">{pickerText.entryOnlyShort}</span>
+                      <span className="visually-hidden">{pickerText.entryOnly(STYLE_NAMES[style])}</span>
                     </span>
                   )}
                   {shown.warnings.length > 0 && (

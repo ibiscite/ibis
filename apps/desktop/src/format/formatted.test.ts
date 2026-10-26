@@ -3,7 +3,7 @@ import { InlineWorker } from "./inline-worker";
 import { formatCitation } from "./formatted";
 import type { CiteItem } from "./engine";
 import { plainText } from "./markup";
-import { STYLE_TITLES, type StyleId } from "./styles";
+import { copiesEntry, STYLE_TITLES, type StyleId } from "./styles";
 
 // Synthetic references; both share a citation key, as two sources can.
 const csl = JSON.stringify([
@@ -63,7 +63,55 @@ describe("formatted citation for the picker", () => {
     expect(result.text).toBe("(Garcia, 2021, p. 37; Okafor, 2022, p. 84)");
   });
 
-  for (const style of Object.keys(STYLE_TITLES) as StyleId[]) {
+  it("copies an IEEE reference entry without a number that could not match the document", async () => {
+    const one = await formatCitation(locatedCsl, "ieee", { client, cites: [{}, {}] });
+    expect(one.text).toBe("Garcia, Synthetic first. 2021.\nOkafor, Synthetic second. 2022.");
+    expect(one.text).not.toMatch(/\[\d+\]/);
+    expect(one.html).toBe("<p style=\"margin:0\">Garcia, <i>Synthetic first</i>. 2021.</p><p style=\"margin:0\">Okafor, <i>Synthetic second</i>. 2022.</p>");
+    expect(one.warnings).toEqual([]);
+  });
+
+  it("says when an IEEE entry leaves out a typed locator", async () => {
+    const result = await formatCitation(locatedCsl, "ieee", { client, cites: locators });
+    expect(result.text).not.toContain("37");
+    expect(result.warnings).toEqual(["A reference entry has no page or other locator, so the IEEE copy leaves it out."]);
+  });
+
+  it("gives each IEEE entry to its own reference, so one can be removed", async () => {
+    const result = await formatCitation(locatedCsl, "ieee", { client, segments: true });
+    expect(result.segments?.map((part) => [part.item, plainText(part.markup)])).toEqual([
+      [0, "Garcia, Synthetic first. 2021."],
+      [1, "Okafor, Synthetic second. 2022."],
+    ]);
+    expect(result.unrepresented).toEqual([]);
+  });
+
+  it("never copies an empty IEEE entry for a reference with nothing to show", async () => {
+    const empty = { id: "lonely", type: "document" };
+    const alone = await formatCitation(JSON.stringify([empty]), "ieee", { client, segments: true });
+    expect(alone.text).toBe("lonely");
+    expect(alone.warnings).toEqual(["IEEE shows nothing for “lonely”, so Ibis copies that instead."]);
+    expect(alone.segments?.map((part) => part.item)).toEqual([0]);
+    const mixed = await formatCitation(JSON.stringify([JSON.parse(locatedCsl)[0], empty]), "ieee", { client, segments: true });
+    expect(mixed.text).toBe("Garcia, Synthetic first. 2021.\nlonely");
+    expect(mixed.segments?.map((part) => part.item)).toEqual([0, 1]);
+    expect(mixed.warnings).toEqual(["IEEE shows nothing for “lonely”, so Ibis copies that instead."]);
+    // Also when another reference fails, so the style's own recovery runs.
+    const broken = JSON.parse(csl)[1];
+    const both = await formatCitation(JSON.stringify([empty, broken]), "ieee", { client, segments: true });
+    expect(both.text).toBe("lonely\nBroken");
+    expect(both.segments?.map((part) => part.item)).toEqual([0, 1]);
+  });
+
+  it("names an IEEE reference the style could not format, and still copies the others", async () => {
+    const result = await formatCitation(csl, "ieee", { client });
+    expect(result.text).toContain("Garcia");
+    expect(result.text).toContain("Broken");
+    expect(result.text).not.toMatch(/\[\d+\]/);
+    expect(result.warnings).toEqual(["“Broken”: this style could not format the reference, so its title is shown instead"]);
+  });
+
+  for (const style of (Object.keys(STYLE_TITLES) as StyleId[]).filter((id) => !copiesEntry(id))) {
     it(`preserves different locators and canonical ownership for ${style}`, async () => {
       const canonical = await formatCitation(locatedCsl, style, { client, cites: locators });
       const preview = await formatCitation(locatedCsl, style, { client, cites: locators, segments: true });
