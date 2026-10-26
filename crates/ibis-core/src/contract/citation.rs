@@ -373,13 +373,15 @@ impl CitationResult {
     /// Copy must use the original request's item count, so omitted trailing outcomes
     /// cannot turn a partially rendered request into an apparently successful citation.
     pub fn copy_content(&self, expected_items: usize) -> Option<ClipboardContent<'_>> {
-        (self.outcomes.len() == expected_items && self.is_complete() && self.content_matches_hash()).then_some(
-            ClipboardContent {
-                text: &self.text,
-                html: self.html.as_deref(),
-                rtf: self.rtf.as_deref(),
-            },
-        )
+        (self.outcomes.len() == expected_items
+            && self.is_complete()
+            && !self.text.trim().is_empty()
+            && self.content_matches_hash())
+        .then_some(ClipboardContent {
+            text: &self.text,
+            html: self.html.as_deref(),
+            rtf: self.rtf.as_deref(),
+        })
     }
 
     pub fn new(
@@ -604,6 +606,24 @@ mod tests {
         result.outcomes = vec![ItemOutcome::Rendered { item: 0 }];
         result.text.push_str(" tampered");
         assert!(result.copy_content(1).is_none());
+    }
+
+    #[test]
+    fn copy_requires_visible_canonical_plain_text_even_with_rich_representations() {
+        for text in ["", " \t\r\n", "\u{2003}"] {
+            let result = CitationResult::new(
+                text.into(),
+                Some("<i>synthetic</i>".into()),
+                Some("{\\rtf1 synthetic}".into()),
+                DisplayTree::default(),
+                vec![ItemOutcome::Rendered { item: 0 }],
+                vec![],
+                vec![],
+            );
+            assert!(result.is_complete());
+            assert!(result.content_matches_hash());
+            assert!(result.copy_content(1).is_none());
+        }
     }
 
     #[test]

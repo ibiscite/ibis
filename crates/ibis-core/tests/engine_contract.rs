@@ -121,3 +121,20 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
     assert!(status.success(), "deep snapshot rejection aborted the process");
     Ok(())
 }
+
+#[test]
+fn empty_citation_cannot_be_copied() {
+    use ibis_core::contract::*;
+    for text in ["", " \t\n", "\u{2003}"] {
+        let result = CitationResult::new(
+            text.into(),
+            None,
+            None,
+            DisplayTree::default(),
+            vec![ItemOutcome::Rendered { item: 0 }],
+            vec![],
+            vec![],
+        );
+        assert!(result.copy_content(1).is_none());
+    }
+}
