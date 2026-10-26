@@ -45,18 +45,7 @@ function git(args, allowFailure = false) {
   return result.stdout;
 }
 
-// The main commit to compare with: current main for a pull request, the
-// queue's base for a merge group, the previous commit for a push.
-export function baseReference() {
-  const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
-  // PR base metadata can lag behind main; never resurrect an older limit.
-  if (event.pull_request) {
-    git(["fetch", "--no-tags", "--depth=1", "origin", "refs/heads/main"]);
-    const current = git(["rev-parse", "FETCH_HEAD"]).trim();
-    if (!/^[a-f0-9]{40}$/.test(current)) throw new Error("File-size check needs the current main commit; fetch origin main.");
-    return current;
-  }
-  const sha = event.merge_group?.base_sha ?? event.before;
+function commit(sha) {
   if (sha != null && !/^[a-f0-9]{40}$/.test(sha)) throw new Error("File-size check needs a valid base SHA; rerun CI.");
   const reference = sha ?? "origin/main";
   if (git(["cat-file", "-e", `${reference}^{commit}`], true) === null) {
@@ -64,6 +53,24 @@ export function baseReference() {
     git(["fetch", "--no-tags", "--depth=1", "origin", sha]);
   }
   return reference;
+}
+
+// The main commits to compare with. Sizes: the commit the checked tree was
+// built on (a pull request's base, the queue's base, the previous push), so a
+// later shrink on main never fails a pull request that did not touch the
+// file; the queue then checks against the real base. Baseline: current main
+// for a pull request, because its base metadata can lag behind main and must
+// never resurrect an older limit.
+export function baseReferences() {
+  const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
+  if (event.pull_request) {
+    git(["fetch", "--no-tags", "--depth=1", "origin", "refs/heads/main"]);
+    const current = git(["rev-parse", "FETCH_HEAD"]).trim();
+    if (!/^[a-f0-9]{40}$/.test(current)) throw new Error("File-size check needs the current main commit; fetch origin main.");
+    return { sizes: commit(event.pull_request.base?.sha ?? current), baseline: current };
+  }
+  const reference = commit(event.merge_group?.base_sha ?? event.before);
+  return { sizes: reference, baseline: reference };
 }
 
 export function previousBaseline(reference) {
@@ -74,8 +81,9 @@ export function previousBaseline(reference) {
 // Only files above 600 lines can exceed a limit, so only they are read on main.
 function baseCounts(reference, files) {
   return Object.fromEntries(Object.entries(files).filter(([, text]) => lineCount(text) > 600).flatMap(([name]) => {
-    const text = git(["cat-file", "blob", `${reference}:${normalized(name)}`], true);
-    return text === null ? [] : [[normalized(name), lineCount(text)]];
+    // A missing file is new; any other Git failure stops the check.
+    if (!git(["ls-tree", "--name-only", reference, "--", normalized(name)]).trim()) return [];
+    return [[normalized(name), lineCount(git(["cat-file", "blob", `${reference}:${normalized(name)}`]))]];
   }));
 }
 
@@ -84,8 +92,8 @@ function main() {
   const files = Object.fromEntries(git(["ls-files", "-z"]).split("\0").filter((name) => sourceFile(name) && existsSync(name)).map((name) => [name, readFileSync(name, "utf8")]));
   const write = process.argv.includes("--write-baseline");
   const baseline = write ? Object.fromEntries(Object.entries(files).map(([name, text]) => [name, lineCount(text)]).filter(([, n]) => n > 600).sort(([a], [b]) => a.localeCompare(b, "en"))) : JSON.parse(readFileSync(baselinePath, "utf8"));
-  const reference = baseReference();
-  const errors = sizeErrors(files, baseline, previousBaseline(reference), baseCounts(reference, files));
+  const base = baseReferences();
+  const errors = sizeErrors(files, baseline, previousBaseline(base.baseline), baseCounts(base.sizes, files));
   if (errors.length) {
     console.error(errors.join("\n") + "\nSplit the files named above. A shrink needs no baseline edit.");
     process.exitCode = 1;

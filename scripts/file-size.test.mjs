@@ -83,6 +83,34 @@ test("CLI enforces and writes reductions against the committed base", (t) => {
 });
 
 
+test("a pull request is sized against its own base, so a later shrink on main cannot fail it", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "ibis-size-base-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "scripts")); mkdirSync(join(root, "src"));
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+  const git = (...args) => {
+    const result = spawnSync("git", ["-c", "core.hooksPath=", "-c", "commit.gpgsign=false", "-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid", ...args], { cwd: root, env, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
+  };
+  const source = join(root, "src/a.ts");
+  writeFileSync(join(root, "scripts/file-size-baseline.json"), JSON.stringify({ "src/a.ts": 700 }));
+  git("init", "-q", "-b", "main"); writeFileSync(source, text(700)); git("add", "."); git("commit", "-qm", "synthetic base");
+  const oldSha = git("rev-parse", "HEAD");
+  git("switch", "-qc", "change"); writeFileSync(join(root, "src/b.ts"), text(10)); git("add", "."); git("commit", "-qm", "untouched file");
+  git("switch", "-q", "main"); writeFileSync(source, text(650)); git("commit", "-qam", "shrink on main");
+  git("switch", "-q", "change"); git("remote", "add", "origin", root);
+  const eventFile = join(root, "event.json");
+  const check = (sha) => {
+    writeFileSync(eventFile, JSON.stringify({ pull_request: { base: { sha } } }));
+    return spawnSync(process.execPath, [fileURLToPath(new URL("./check-file-size.mjs", import.meta.url))], { cwd: root, env: { ...env, GITHUB_EVENT_PATH: eventFile }, encoding: "utf8" });
+  };
+  const result = check(oldSha);
+  assert.equal(result.status, 0, result.stderr);
+  writeFileSync(source, text(701)); git("commit", "-qam", "grow");
+  assert.match(check(oldSha).stderr, /split the file to fit 700/, "growth past the base still fails");
+});
+
 test("colliding normalized filenames cannot overwrite a larger count", () => {
   assert.ok(sizeErrors({ "src/a.ts": text(601), "src\\a.ts": text(1) }, {}, {}).length);
 });
