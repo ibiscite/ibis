@@ -15,7 +15,7 @@ Ibis is an early preview.
 
 - Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Control+Command+R** on macOS, if the shortcut is available. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
 - Search a `.bib` file or your Zotero library and any group libraries you choose, even while Zotero is closed.
-- Copy a citation key for Pandoc, BibLaTeX, LaTeX or Typst, or a formatted citation in APA, Chicago, Harvard, IEEE or MLA, then paste it where you write.
+- Copy a citation key for Pandoc, BibLaTeX, LaTeX or Typst, a formatted citation in APA, Chicago, Harvard or MLA, or an IEEE reference entry, then paste it where you write.
 - Works offline and never changes your library.
 - **Nightly only, until the next release:** start Ibis when you log in, and paste a DOI, ISBN, PubMed ID (`PMID:…`) or arXiv ID to find that record in your library (Ibis does not fetch it from the internet).
 
