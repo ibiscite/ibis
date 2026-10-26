@@ -247,7 +247,10 @@ fn rich(runs: &RichText, escaping: Escaping) -> String {
                     }
                     if run.script != Script::Normal && !run.text.chars().any(char::is_whitespace) {
                         let mark = if run.script == Script::Subscript { '~' } else { '^' };
-                        body = format!("{mark}{body}{mark}");
+                        // A leading `[^` is a Pandoc footnote, including inside
+                        // a rich span or narrative suffix bracket. An empty
+                        // span separates the bracket without visible content.
+                        body = format!("{}{mark}{body}{mark}", if mark == '^' { "[]{}" } else { "" });
                     }
                     if runs.len() > 1 && (run.italic || run.bold || run.script != Script::Normal) && !body.is_empty() {
                         // Empty-attribute spans isolate adjacent emphasis delimiters
