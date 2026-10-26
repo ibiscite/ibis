@@ -510,3 +510,121 @@ fn multiple_effective_author_only_items_are_explicitly_refused() {
         );
     }
 }
+
+#[test]
+fn nonprinting_mla_suppression_is_refused_before_cluster_rendering() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic first","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
+        json!({"type":"book","title":"Synthetic second","author":[{"family":"Morgan"}],"issued":{"date-parts":[[2026]]}}),
+    ]);
+    for affected in [0, 1] {
+        for year_only in [false, true] {
+            for keep_order in [false, true] {
+                let mut request = selection(&snapshot, "modern-language-association", false);
+                request.keep_order = keep_order;
+                if year_only {
+                    request.items[affected].form = Some(CitationForm::YearOnly);
+                } else {
+                    request.items[affected].suppress_author = true;
+                }
+                let result = formatter.format(&snapshot, &request).unwrap();
+                assert_eq!(
+                    result.outcomes[affected],
+                    ItemOutcome::Refused {
+                        item: affected,
+                        error: CitationError::UnsupportedForm
+                    }
+                );
+                assert_eq!(
+                    result.outcomes[1 - affected],
+                    ItemOutcome::Rendered { item: 1 - affected }
+                );
+                assert!(result.copy_content(2).is_none());
+                assert_eq!(result.text, if affected == 0 { "(Morgan)" } else { "(Taylor)" });
+            }
+        }
+    }
+}
+
+#[test]
+fn suppression_and_year_only_capabilities_keep_each_printed_item_explicit() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic first","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
+        json!({"type":"book","title":"Synthetic second","author":[{"family":"Morgan"}],"issued":{"date-parts":[[2026]]}}),
+    ]);
+    for (style, _) in ibis_csl::STYLES {
+        for year_only in [false, true] {
+            for located in [false, true] {
+                let mut request = selection(&snapshot, style, false);
+                request.keep_order = true;
+                if year_only {
+                    request.items[1].form = Some(CitationForm::YearOnly);
+                } else {
+                    request.items[1].suppress_author = true;
+                }
+                if located {
+                    request.items[1].locator = Some(Locator {
+                        term: LocatorTerm::Page,
+                        value: "42".into(),
+                    });
+                }
+                let result = formatter.format(&snapshot, &request).unwrap();
+                let unsupported = (style == "modern-language-association" && (year_only || !located))
+                    || (style == "ieee" && year_only);
+                assert_eq!(result.outcomes[0], ItemOutcome::Rendered { item: 0 });
+                assert!(result.text.contains("Taylor"));
+                if unsupported {
+                    assert_eq!(
+                        result.outcomes[1],
+                        ItemOutcome::Refused {
+                            item: 1,
+                            error: CitationError::UnsupportedForm
+                        }
+                    );
+                    assert!(result.copy_content(2).is_none());
+                } else {
+                    assert_eq!(result.outcomes[1], ItemOutcome::Rendered { item: 1 });
+                    assert!(result.copy_content(2).is_some());
+                    if style == "ieee" {
+                        assert!(result.text.contains("Morgan"));
+                        assert!(result.losses.contains(&Loss {
+                            item: Some(1),
+                            field: LossField::AuthorSuppression,
+                            reason: LossReason::Unsupported
+                        }));
+                    } else {
+                        assert!(!result.text.contains("Morgan"));
+                        if style != "modern-language-association" {
+                            assert_eq!(result.text.matches("2026").count(), 2);
+                        }
+                        if located {
+                            assert!(result.text.contains("42"));
+                        }
+                    }
+                }
+            }
+        }
+        let mut bibliography = selection(&snapshot, style, true);
+        bibliography.items[1].suppress_author = true;
+        let result = formatter.format(&snapshot, &bibliography).unwrap();
+        assert!(result.copy_content(2).is_some());
+        assert!(result.losses.contains(&Loss {
+            item: Some(1),
+            field: LossField::AuthorSuppression,
+            reason: LossReason::Unsupported
+        }));
+    }
+    let single = library(&[
+        json!({"type":"book","title":"Synthetic single","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
+    ]);
+    let mut request = selection(&single, "modern-language-association", false);
+    request.items[0].suppress_author = true;
+    assert!(formatter.format(&single, &request).unwrap().copy_content(1).is_none());
+    request.items[0].suppress_author = false;
+    request.form = CitationForm::YearOnly;
+    assert!(formatter.format(&single, &request).unwrap().copy_content(1).is_none());
+}

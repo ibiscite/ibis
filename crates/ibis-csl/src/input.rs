@@ -71,6 +71,11 @@ pub(crate) fn prepare(
         let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
             || form == CitationForm::Narrative
             || (style == "ieee" && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
+            // This bundled MLA citation has only author and locator, never a year.
+            // Suppressing its author without a locator leaves no per-item output.
+            || (style == "modern-language-association"
+                && !bibliography
+                && (form == CitationForm::YearOnly || (pick.suppress_author && pick.locator.is_none())))
             || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography
                 && style != "ieee")
         {

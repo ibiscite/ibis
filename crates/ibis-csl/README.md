@@ -48,7 +48,9 @@ Ibis intentionally differs from document-aware Zotero rendering: it disables
 construction and reports `YearSuffixWithheld`; IEEE produces an unnumbered
 reference entry with `NeedsDocumentContext` and `ReferenceEntry`. These changes
 never mutate the vendor files. Node comparisons use the same Ibis-safe style
-configuration. A citation form the fallback cannot represent is refused.
+configuration. A citation form the fallback cannot represent is refused. MLA has
+no year in its citation layout, so year-only intent is refused. MLA author suppression
+requires a locator; otherwise that selected item would have no printed form.
 
 The 0.2 adapter carries today's locators and author suppression. Prefixes and
 suffixes, including plain and styled runs, are omitted with separate typed
