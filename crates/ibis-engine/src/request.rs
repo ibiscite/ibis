@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum LibrariesRequest {
+    #[default]
     List,
     OpenFile {
         path: PathBuf,
@@ -23,12 +24,6 @@ pub enum LibrariesRequest {
         library: Option<LibraryId>,
     },
 }
-impl Default for LibrariesRequest {
-    fn default() -> Self {
-        Self::List
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SearchRequest {
