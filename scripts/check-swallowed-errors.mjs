@@ -10,6 +10,12 @@ const { parseSync } = await import(viteRequire.resolve("rolldown/utils"));
 const baselinePath = "scripts/swallowed-errors-baseline.json";
 const unwrap = (node) => { while (["ParenthesizedExpression", "TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion", "TSInstantiationExpression"].includes(node?.type)) node = node.expression; return node; };
 const empty = (body) => body?.type === "BlockStatement" && body.body.every((node) => node.type === "EmptyStatement" || node.type === "ReturnStatement" && node.argument == null);
+const emptyVoid = (node) => {
+  if (node?.type !== "UnaryExpression" || node.operator !== "void") return false;
+  do { node = unwrap(node.argument); } while (node?.type === "UnaryExpression" && node.operator === "void");
+  // Calling or awaiting a reporter still handles the error, even without a result.
+  return ["Literal", "Identifier"].includes(node?.type);
+};
 
 export function catchProblems(path, source) {
   path = path.replaceAll("\\", "/");
@@ -36,7 +42,7 @@ export function catchProblems(path, source) {
     const callee = node.type === "CallExpression" ? unwrap(node.callee) : null;
     if (callee?.type === "MemberExpression" && (callee.property.name === "catch" || callee.computed && callee.property.value === "catch")) {
       callback = unwrap(node.arguments[0]);
-      if (["ArrowFunctionExpression", "FunctionExpression"].includes(callback?.type) && (empty(callback.body) || callback.body.type === "Identifier" && callback.body.name === "undefined" || callback.body.type === "UnaryExpression" && callback.body.operator === "void")) position = callee.property.start;
+      if (["ArrowFunctionExpression", "FunctionExpression"].includes(callback?.type) && (empty(callback.body) || callback.body.type === "Identifier" && callback.body.name === "undefined" || emptyVoid(callback.body))) position = callee.property.start;
     }
     if (position != null && !explained.has(lineAt(position)) && !explained.has(lineAt(callback?.start ?? position))) {
       problems.push({ path, line: lineAt(position), key: `${path}:${createHash("sha256").update(source.slice(node.start, node.end)).digest("hex").slice(0, 16)}` });

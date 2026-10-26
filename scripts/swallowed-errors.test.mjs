@@ -60,3 +60,8 @@ test("bare returns discard errors unless the catch line explains why", () => {
   for (const source of ["function task() { try {} catch { return; } }", "p.catch(() => { return; });"]) assert.equal(check(source).length, 1, source);
   for (const source of ["function task() { try {} catch { return fallback; } }", "p.catch(() => { return fallback; });", "p.catch(() => { return; }); // caller already reported the error"]) assert.deepEqual(check(source), [], source);
 });
+
+test("void reporting handles the error while void values discard it", () => {
+  for (const source of ["p.catch(error => void report(error));", "p.catch(async error => void await report(error));"]) assert.deepEqual(check(source), [], source);
+  for (const source of ["p.catch(error => void error);", "p.catch(() => void null);", "p.catch(() => void (undefined as unknown));"]) assert.equal(check(source).length, 1, source);
+});
