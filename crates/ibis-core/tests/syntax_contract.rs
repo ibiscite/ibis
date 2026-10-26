@@ -410,9 +410,14 @@ fn pandoc_available() -> bool {
 }
 
 fn consumer_ast(format: &str, text: &str) -> Value {
+    consumer_ast_with(format, text, &[])
+}
+
+fn consumer_ast_with(format: &str, text: &str, extra: &[&str]) -> Value {
     use std::io::Write;
     let mut child = std::process::Command::new("pandoc")
         .args(["-f", format, "-t", "json"])
+        .args(extra)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -682,6 +687,91 @@ fn pandoc_superscript_affixes_stay_inside_the_citation() {
         if result.text.contains("*a*") {
             assert!(affix.to_string().contains("\"t\":\"Emph\""));
         }
+    }
+}
+
+fn processed_pandoc_citation(text: &str) -> String {
+    let style = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/vendor/csl/styles/apa.csl");
+    let header = "---\nreferences:\n- id: Example2026\n  type: book\n  title: Synthetic\n  author:\n  - family: Taylor\n  issued:\n    date-parts: [[2026]]\n---\n\n";
+    let ast = consumer_ast_with(
+        "markdown",
+        &format!("{header}{text}"),
+        &["--citeproc", "--csl", style.to_str().unwrap()],
+    );
+    inline_text(&ast["blocks"][0]["c"])
+}
+
+#[test]
+fn suffixes_never_create_empty_punctuation_or_invented_locators() {
+    if !pandoc_available() {
+        return;
+    }
+    let mut case = seed();
+    for form in [CitationForm::Normal, CitationForm::Narrative] {
+        case.request.form = form;
+        for (suffix, page, expected) in [
+            (
+                "  ",
+                None,
+                if form == CitationForm::Normal {
+                    "(Taylor, 2026)"
+                } else {
+                    "Taylor (2026)"
+                },
+            ),
+            (
+                "12 special",
+                None,
+                if form == CitationForm::Normal {
+                    "(Taylor, 2026, 12 special)"
+                } else {
+                    "Taylor (2026, 12 special)"
+                },
+            ),
+            (
+                "12",
+                Some("33"),
+                if form == CitationForm::Normal {
+                    "(Taylor, 2026, p. 33, 12)"
+                } else {
+                    "Taylor (2026, p. 33, 12)"
+                },
+            ),
+        ] {
+            case.request.items[0].suffix = vec![TextRun {
+                text: suffix.into(),
+                ..TextRun::default()
+            }];
+            case.request.items[0].locator = page.map(|value| Locator {
+                term: LocatorTerm::Page,
+                value: value.into(),
+            });
+            let result = syntax::cite(&case.library, &case.request).unwrap();
+            assert_eq!(processed_pandoc_citation(&result.text), expected, "{}", result.text);
+        }
+    }
+}
+
+#[test]
+fn locator_quotes_remain_literal_in_latex_consumers() {
+    if !pandoc_available() {
+        return;
+    }
+    let mut case = seed();
+    case.request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Chapter,
+        value: "``quoted''".into(),
+    });
+    for syntax in [KeySyntax::Biblatex, KeySyntax::Latex] {
+        case.request.output = OutputSpec::Key { syntax, command: None };
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        let ast = consumer_ast("latex", &result.text);
+        assert_eq!(
+            inline_text(&first_citation(&ast).unwrap()["citationSuffix"]),
+            "chap.\u{a0}``quoted''",
+            "{}",
+            result.text
+        );
     }
 }
 
