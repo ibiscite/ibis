@@ -1,6 +1,6 @@
 # 0016. Keep versioned, human-editable settings in the platform configuration folder
 
-Status: accepted (2026-10-18); the `library` field and the migration rule are superseded by [0018](0018-settings-format-2.md); unknown fields and durability are amended by [0022](0022-settings-keep-unknown-fields.md); settings location is superseded by [0023](0023-permanent-app-identity.md)
+Status: accepted (2026-10-18); the `library` field and the migration rule are superseded by [0018](0018-settings-format-2.md); unknown fields and durability are amended by [0022](0022-settings-keep-unknown-fields.md); settings location is superseded by [0023](0023-permanent-app-identity.md); upgrade rules suspended until 1.0 by [0027](0027-fast-until-1-0.md)
 
 ## Context
 

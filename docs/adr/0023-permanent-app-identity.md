@@ -1,6 +1,6 @@
 # 0023. Use the owned domain for the app identity and preserve channel settings
 
-Status: accepted (2026-10-22); supersedes the settings location in 0016
+Status: accepted (2026-10-22); supersedes the settings location in 0016; settings carry-over suspended until 1.0 by [0027](0027-fast-until-1-0.md)
 
 ## Context
 

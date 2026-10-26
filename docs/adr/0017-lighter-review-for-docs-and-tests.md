@@ -1,6 +1,6 @@
 # 0017. Lighter review for documentation and test changes
 
-Status: accepted (2026-10-19); amends 0015
+Status: accepted (2026-10-19); amends 0015; amended by [0027](0027-fast-until-1-0.md), which extends this lighter review to all changes outside the risky areas
 
 ## Context
 ADR 0015 requires an independent review of the exact final commit before an agent merges any pull request, and CI builds and exercises the native app on three systems for every change. For a solo maintainer this made a 200-line documentation change take about 40 minutes, most of it waiting, while the risk it guards against (a crash, data loss or a security hole) cannot come from prose. The maintainer approved a lighter process in #80 on 2026-10-19, keeping the full bar for code.
