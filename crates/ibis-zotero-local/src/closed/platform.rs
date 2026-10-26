@@ -87,9 +87,22 @@ fn output(command: &mut Command) -> Result<Vec<u8>, ClosedError> {
     let deadline = Instant::now() + Duration::from_secs(5);
     let success = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break status.success(),
+            Ok(Some(status)) => {
+                #[cfg(test)]
+                if !status.success() {
+                    eprintln!("closed native helper exit: {:?}", status.code());
+                }
+                break status.success();
+            }
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
-            _ => {
+            outcome => {
+                #[cfg(test)]
+                eprintln!(
+                    "closed native helper failure: {}",
+                    if outcome.is_err() { "wait" } else { "deadline" }
+                );
+                #[cfg(not(test))]
+                let _ = outcome;
                 let _ = child.kill();
                 let _ = child.wait();
                 break false;
@@ -359,7 +372,17 @@ fn windows(action: &str, path: &Path, needed: u64) -> Result<Vec<u8>, ClosedErro
         .env("IBIS_CLOSED_PATH", path)
         .env("IBIS_CLOSED_SPACE", needed.to_string())
         .creation_flags(0x0800_0000);
-    output(&mut cmd)
+    #[cfg(test)]
+    let started = Instant::now();
+    let result = output(&mut cmd);
+    #[cfg(test)]
+    if result.is_err() {
+        eprintln!(
+            "closed Windows helper action {action} failed after {}ms",
+            started.elapsed().as_millis()
+        );
+    }
+    result
 }
 
 #[cfg(test)]

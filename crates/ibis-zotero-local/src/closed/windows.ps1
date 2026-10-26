@@ -70,20 +70,10 @@ try {
             # Windows Backup excludes %TEMP%\* /s by default. Require the
             # actual user Temp beneath LocalAppData rather than an arbitrary
             # caller-supplied/environment-redirected cache path.
-            Add-Type -TypeDefinition @'
-using System;
-using System.Text;
-using System.Runtime.InteropServices;
-public static class IbisClosedLongPath {
-    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
-    public static extern uint GetLongPathName(string path, StringBuilder output, uint capacity);
-}
-'@ -ErrorAction Stop
+            # .NET Framework's GetFullPath expands existing 8.3 components;
+            # normalize all three values without launching a C# compiler.
             function Long-Path([string] $Value) {
-                $buffer = [System.Text.StringBuilder]::new(32768)
-                $length = [IbisClosedLongPath]::GetLongPathName($Value, $buffer, [uint32] $buffer.Capacity)
-                if ($length -eq 0 -or $length -ge $buffer.Capacity) { throw 'path identity' }
-                return $buffer.ToString().TrimEnd('\')
+                return [System.IO.Path]::GetFullPath($Value).TrimEnd('\')
             }
             $local = [Environment]::GetFolderPath('LocalApplicationData')
             $temp = Long-Path ([System.IO.Path]::Combine($local, 'Temp'))
