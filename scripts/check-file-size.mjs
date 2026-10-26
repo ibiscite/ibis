@@ -64,7 +64,7 @@ export function baseReference() {
   const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
   if (event.pull_request) {
     // Read the parents from the commit itself: a shallow checkout hides them from rev-list.
-    const [first, second] = [...git(["cat-file", "-p", "HEAD"]).matchAll(/^parent ([a-f0-9]{40})$/gm)].map((match) => match[1]);
+    const [first, second] = [...git(["cat-file", "-p", "HEAD"]).split("\n\n")[0].matchAll(/^parent ([a-f0-9]{40})$/gm)].map((match) => match[1]);
     return commit(second && second === event.pull_request.head?.sha ? first : event.pull_request.base?.sha);
   }
   return commit(event.merge_group?.base_sha ?? event.before);
