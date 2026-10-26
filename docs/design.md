@@ -588,6 +588,8 @@ the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md))
 menus with the same commands, so desktops without a tray reach them; builds
 without an update key show neither. Both show only the saved choice, and clicks in
 either are saved in the order they were made.
+The tray click carries the absolute choice its item displayed, so a queued save
+repainting the check cannot change an earlier click's intent.
 
 ## Brand and mark
 

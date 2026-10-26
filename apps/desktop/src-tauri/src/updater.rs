@@ -9,7 +9,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use tauri::menu::CheckMenuItem;
 use tauri::{AppHandle, Emitter, Manager};
 
 mod progress;
@@ -68,8 +67,9 @@ impl InstallationFailure {
     }
 }
 
-/// The menu item that turns automatic checks on and off.
-pub(crate) struct AutomaticMenuItem(pub(crate) CheckMenuItem<tauri::Wry>);
+/// Native update control, kept with the ordered settings saver.
+/// Both menu items carry a fixed choice through delayed click events.
+pub(crate) use setting::AutomaticMenuItem;
 
 /// Builds without the update key (development, or before the key exists) have
 /// no updates at all, so the menu items and the question are left out.

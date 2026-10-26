@@ -89,17 +89,26 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             MenuItem::with_id(app, "update_now", "Check for Updates…", true, None::<&str>)?,
             CheckMenuItem::with_id(
                 app,
-                "update_auto",
+                updater::setting::AUTOMATIC_ON,
                 "Check for Updates Automatically",
                 true,
                 false,
+                None::<&str>,
+            )?,
+            CheckMenuItem::with_id(
+                app,
+                updater::setting::AUTOMATIC_OFF,
+                "Check for Updates Automatically",
+                true,
+                true,
                 None::<&str>,
             )?,
         ))
     } else {
         None
     };
-    if let Some((now, automatic)) = &update_items {
+    let automatic_position = items.len() + 1;
+    if let Some((now, automatic, _)) = &update_items {
         items.extend([now as &dyn IsMenuItem<tauri::Wry>, automatic]);
     }
     // Only where the system offers login items; ticked as the system says.
@@ -119,8 +128,8 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     }
     items.extend([&problem as &dyn IsMenuItem<tauri::Wry>, &idea, &third, &quit]);
     let menu = Menu::with_items(app, &items)?;
-    if let Some((_, automatic)) = update_items {
-        app.manage(AutomaticMenuItem(automatic));
+    if let Some((_, off, on)) = update_items {
+        app.manage(AutomaticMenuItem::new(menu.clone(), [off, on], automatic_position));
     }
     app.manage(LibraryMenuItem(line));
     if let Some(at_login) = at_login {
@@ -138,7 +147,9 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             "problem" => open_in_browser(app, problem_url(&app.package_info().version.to_string())),
             "idea" => open_in_browser(app, idea_url()),
             "update_now" => updater::check_now(app),
-            "update_auto" => updater::setting::toggle_automatic(app),
+            updater::setting::AUTOMATIC_ON | updater::setting::AUTOMATIC_OFF => {
+                updater::setting::toggle_automatic(app, event.id.as_ref());
+            }
             "login" => login_item::toggle_from_menu(app),
             "quit" => app.exit(0),
             _ => {}
