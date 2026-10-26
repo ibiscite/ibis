@@ -106,10 +106,14 @@ picker's shortcut warning. A shortcut setting uses modifiers and one key
 joined by `+`; `CommandOrControl` means Cmd on macOS and Ctrl elsewhere.
 Invalid settings report a warning and use the default.
 
-On Windows and X11 the default follows the key labelled Y. On macOS it refers
-to the physical US-keyboard R position; the label does not follow the active
-layout (#196). Non-English keyboard coverage remains incomplete. Avoid
-Ctrl+Alt combinations on Windows because many layouts use them as AltGr.
+On Windows and X11 a shortcut letter follows the key labelled with it. On
+macOS Ibis moves a letter to the key that types it on the active layout, so it
+stays the labelled key on QWERTZ, AZERTY, Dvorak and Colemak, and follows a
+layout switch within about two seconds. When no key types the letter (for
+example on a Cyrillic layout), the shortcut uses the letter's US-keyboard
+place and the picker says so. Non-English keyboard coverage remains
+incomplete. Avoid Ctrl+Alt combinations on Windows because many layouts use
+them as AltGr.
 
 ## Writing apps
 
@@ -123,12 +127,12 @@ is not a test of every app. Reports help: use the "Writing app report" form.
 | LaTeX, Overleaf | BibLaTeX or LaTeX keys | Same: the project's `.bib` must contain the key. |
 | Typst | Typst keys (`@key`) | The project needs a `.bib` or Hayagriva file. |
 | Word, LibreOffice, Google Docs with Zotero citations | Nothing; use Zotero's plugin | Pasted text never joins Zotero's managed bibliography or changes with the style. |
-| Word for the web, Pages, Notion, email | A formatted citation | Zotero has no plugin for these. Italics survive where the app accepts HTML. Bibliography entries and RTF arrive in 0.3. |
+| Word for the web, Pages, Notion, email | A formatted citation | Zotero has no plugin for these. Italics survive where the app accepts HTML. Bibliography entries in every style, and RTF, arrive in 0.3. |
 | Chat and plain-text fields | A formatted citation | Plain text drops italics. |
 
-Numeric styles such as IEEE number each copy on its own, so the number will
-not match your document
-([#1129](https://github.com/ibiscite/ibis/issues/1129)). Emacs org-cite, MyST
+Numeric styles such as IEEE copy the reference entry without its number: the
+in-text number depends on every reference your document cites, which one copy
+cannot see ([#1129](https://github.com/ibiscite/ibis/issues/1129)). Emacs org-cite, MyST
 and natbib key forms are planned for 0.3.
 
 ## What the tests establish
