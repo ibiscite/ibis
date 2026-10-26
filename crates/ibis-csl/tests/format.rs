@@ -95,7 +95,8 @@ fn library(items: &[serde_json::Value]) -> Snapshot {
                 LibraryObject::Record(Record {
                     id: ItemRef {
                         library: LibraryId::file(b"synthetic-format-library"),
-                        key: format!("work-{index}"),
+                        // Snapshot sorts identities; preserve fixture order beyond ten records.
+                        key: format!("work-{index:04}"),
                     },
                     csl: serde_json::from_value(csl.clone()).unwrap(),
                     citation_keys: vec![],
@@ -460,5 +461,52 @@ fn unsupported_record_controls_are_rejected_before_copy() {
     ] {
         let snapshot = library(&[bad]);
         assert!(formatter.format(&snapshot, &selection(&snapshot, "apa", true)).is_err());
+    }
+}
+
+#[test]
+fn multiple_effective_author_only_items_are_explicitly_refused() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic first","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
+        json!({"type":"book","title":"Synthetic second","author":[{"family":"Morgan"}],"issued":{"date-parts":[[2026]]}}),
+    ]);
+    for (style, _) in ibis_csl::STYLES {
+        for forms in [
+            [CitationForm::AuthorOnly; 2],
+            [CitationForm::AuthorOnly, CitationForm::Normal],
+            [CitationForm::Normal, CitationForm::AuthorOnly],
+        ] {
+            let mut request = selection(&snapshot, style, false);
+            request.form = forms[0];
+            request.items[1].form = Some(forms[1]);
+            request.keep_order = true;
+            let result = formatter.format(&snapshot, &request).unwrap();
+            assert!(result.copy_content(2).is_none());
+            for (index, form) in forms.into_iter().enumerate() {
+                if form == CitationForm::AuthorOnly {
+                    assert_eq!(
+                        result.outcomes[index],
+                        ItemOutcome::Refused {
+                            item: index,
+                            error: CitationError::UnsupportedForm
+                        }
+                    );
+                }
+            }
+        }
+        let mut overridden = selection(&snapshot, style, false);
+        overridden.form = CitationForm::AuthorOnly;
+        for item in &mut overridden.items {
+            item.form = Some(CitationForm::Normal);
+        }
+        assert!(
+            formatter
+                .format(&snapshot, &overridden)
+                .unwrap()
+                .copy_content(2)
+                .is_some()
+        );
     }
 }

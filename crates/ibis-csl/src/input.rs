@@ -68,7 +68,7 @@ pub(crate) fn prepare(
     let mut remaining = limits.input_bytes;
     for (index, pick) in request.items.iter().enumerate() {
         let form = pick.form.unwrap_or(request.form);
-        let refusal = if (form == CitationForm::AuthorOnly && pick.suppress_author)
+        let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
             || form == CitationForm::Narrative
             || (style == "ieee" && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
             || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography

@@ -8,9 +8,11 @@ codes, with no reference text or JavaScript exception messages.
 
 Canonical representations stay byte-identical to the processor's output.
 Validation accepts only known script-glyph presentation equivalents and
-space/nonbreaking-space substitutions, with exact character and space counts.
-Contradictory or unavailable author-only intent is refused; processor empty-form
-errors throw instead of becoming copyable sentinel text. NUL and unsupported
+the pinned HTML whitespace-pair conversion, with exact character and space
+counts. Bibliography line folding is checked against processor text captured
+before folding; the extra evidence never changes canonical output bytes.
+Contradictory, multi-item or unavailable author-only intent is refused; processor
+empty-form errors throw instead of becoming copyable sentinel text. NUL and unsupported
 controls are rejected in inputs and outputs; ordinary text whitespace and
 Unicode paragraph separators remain valid. The shared copy gate independently
 rejects embedded NUL in text, HTML or RTF.

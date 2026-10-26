@@ -116,6 +116,7 @@ mod tests {
                 assert_eq!(lower, case.lower);
                 assert_eq!(upper, case.upper);
             }
+            assert!(ctx.eval::<bool, _>(r#"["Synthetic \tarea","Synthetic\t\tarea","Synthetic\u3000\u3000area","Synthetic\r\narea"].every(a=>["Synthetic \tarea","Synthetic\t\tarea","Synthetic\u3000\u3000area","Synthetic\r\narea"].every(b=>a.localeCompare(b,"en-US",{sensitivity:"base",ignorePunctuation:true,numeric:true})===0))"#).unwrap());
             assert_eq!(
                 ctx.eval::<i32, _>("'2'.localeCompare('10','en-US',{numeric:true})")
                     .unwrap(),

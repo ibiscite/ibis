@@ -7,5 +7,9 @@
   {"type":"book","title":"عنوان اصطناعي","author":[{"family":"مثال","given":"نور"}],"issued":{"date-parts":[[2025]]},"publisher":"Synthetic Press","language":"ar"},
   {"type":"book","title":"Synthetic area in m²","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2027]]},"publisher":"Imaginary Press"},
   {"type":"book","title":"Synthetic  area","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2028]]},"publisher":"Imaginary Press"},
-  {"type":"book","title":"Synthetic CO<sub>2</sub>","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2029]]},"publisher":"Imaginary Press"}
+  {"type":"book","title":"Synthetic CO<sub>2</sub>","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2029]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic\t\tarea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic \tarea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic　　area","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic\r\narea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"}
 ]

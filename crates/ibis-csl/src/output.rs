@@ -9,6 +9,8 @@ struct Outputs {
     text: String,
     html: String,
     rtf: String,
+    // Preserve processor text before the adapter folds bibliography line breaks.
+    text_parts: Option<Vec<String>>,
 }
 
 pub(crate) fn refused(input: &Prepared) -> CitationResult {
@@ -35,9 +37,26 @@ pub(crate) fn result(
     {
         return Err(FormatError::Runtime);
     }
+    let presentation = if let Some(parts) = &output.text_parts {
+        if parts.is_empty()
+            || parts.len() > 1000
+            || parts.iter().any(|part| unsupported_controls(part))
+            || parts.iter().map(|part| one_line(part)).collect::<Vec<_>>().join("\n") != output.text
+        {
+            return Err(FormatError::Runtime);
+        }
+        parts
+            .iter()
+            .map(|part| one_line(&escape_space_pairs(part)))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        escape_space_pairs(&output.text)
+    };
     let runs = parse_html(&output.html)?;
     if runs.iter().any(|run| unsupported_controls(&run.text))
-        || !presentation_matches(&output.text, &runs, superscripts)
+        || !(presentation_matches(&output.text, &runs, superscripts)
+            || presentation_matches(&presentation, &runs, superscripts))
     {
         return Err(FormatError::Runtime);
     }
@@ -61,6 +80,56 @@ pub(crate) fn result(
 pub(crate) fn unsupported_controls(text: &str) -> bool {
     text.chars()
         .any(|ch| ch.is_control() && !matches!(ch, '\t' | '\r' | '\n' | '\u{85}'))
+}
+
+// ECMAScript WhiteSpace + LineTerminator, exactly the pinned processor's \s.
+// Rust's Unicode whitespace differs for NEL and the byte-order mark.
+fn js_space(ch: char) -> bool {
+    matches!(
+        ch,
+        '\t' | '\u{b}'
+            | '\u{c}'
+            | ' '
+            | '\u{a0}'
+            | '\u{feff}'
+            | '\r'
+            | '\n'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
+    )
+}
+
+/// The bundled HTML text_escape replaces whitespace pairs, preserving their count.
+fn escape_space_pairs(text: &str) -> String {
+    let mut chars = text.chars().peekable();
+    let mut result = String::with_capacity(text.len());
+    while let Some(ch) = chars.next() {
+        if js_space(ch) && chars.peek().is_some_and(|next| js_space(*next)) {
+            chars.next();
+            result.push_str("\u{a0} ");
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
+/// Exact counterpart to the adapter's /\s*\n\s*/g plus trim, before joining entries.
+fn one_line(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(js_space) {
+        result.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let end = rest.find(|ch| !js_space(ch)).unwrap_or(rest.len());
+        let spaces = &rest[..end];
+        result.push_str(if spaces.contains('\n') { " " } else { spaces });
+        rest = &rest[end..];
+    }
+    result.push_str(rest);
+    result.trim_matches(js_space).to_owned()
 }
 
 /// Consume exact text, allowing only processor-known glyph presentation and
@@ -264,6 +333,9 @@ mod review_tests {
             ("™", "<sup>TM</sup>"),
             ("CO2", "CO<sub>2</sub>"),
             ("Synthetic  area", "Synthetic \u{a0}area"),
+            ("Synthetic\t\tarea", "Synthetic\u{a0} area"),
+            ("Synthetic \tarea", "Synthetic\u{a0} area"),
+            ("Synthetic\u{3000}\u{3000}area", "Synthetic\u{a0} area"),
             ("Synthetic\u{2028}one\u{2029}two", "Synthetic\u{2028}one\u{2029}two"),
         ] {
             let result = output(text, html, "{\\rtf1 canonical}").unwrap();
@@ -287,6 +359,18 @@ mod review_tests {
             assert!(output(text, html, "{\\rtf1 canonical}").is_err());
         }
     }
+    #[test]
+    fn bibliography_line_folding_requires_original_text_evidence() {
+        let json = json!({"text":"Synthetic area", "html":"Synthetic\u{a0} area", "rtf":"{\\rtf1 canonical}", "text_parts":["Synthetic\r\narea\n"]});
+        let rendered = result(&json.to_string(), &prepared(), &BTreeMap::new()).unwrap();
+        assert_eq!(rendered.text, "Synthetic area");
+        assert_eq!(rendered.html.as_deref(), Some("Synthetic\u{a0} area"));
+        let mut wrong = json;
+        wrong["text_parts"] = json!(["Different\r\narea\n"]);
+        assert!(result(&wrong.to_string(), &prepared(), &BTreeMap::new()).is_err());
+        assert!(output("Synthetic area", "Synthetic\u{a0} area", "canonical").is_err());
+    }
+
     #[test]
     fn nul_in_any_canonical_representation_is_rejected() {
         for (text, html, rtf) in [

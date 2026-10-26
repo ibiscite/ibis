@@ -32,6 +32,7 @@
       if (request.bibliography) {
         const bibliography = engine.makeBibliography();
         if (!bibliography || bibliography[0].bibliography_errors.length) throw Error("style could not format the bibliography");
+        if (format === "text") outputs.text_parts = bibliography[1];
         output = bibliography[1].map(oneLine).join("\n");
       } else {
         output = engine.makeCitationCluster(request.cites);
