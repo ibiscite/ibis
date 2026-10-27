@@ -151,6 +151,13 @@ fn latex(picks: &[Pick<'_>]) -> String {
         .map(|pick| {
             let prefix = rich(&pick.item.prefix, Escaping::Latex);
             let suffix = rich(&pick.item.suffix, Escaping::Latex);
+            let suffix = if pick.item.locator.is_none() && !suffix.is_empty() {
+                // The document may define plain \cite through BibLaTeX.
+                // A TeX primitive keeps this literal without a package macro.
+                format!("{suffix}\\relax")
+            } else {
+                suffix
+            };
             let post = pick
                 .item
                 .locator

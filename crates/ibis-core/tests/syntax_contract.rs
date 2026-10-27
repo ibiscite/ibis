@@ -342,7 +342,7 @@ fn rich_affixes_and_latex_prefixes_retain_their_position() {
     }];
     assert_eq!(
         syntax::cite(&case.library, &case.request).unwrap().text,
-        "\\emph{see \\&} \\cite[\\textbf{note}]{Example2026}"
+        "\\emph{see \\&} \\cite[\\textbf{note}\\relax]{Example2026}"
     );
     case.request.output = OutputSpec::Key {
         syntax: KeySyntax::Pandoc,
@@ -839,6 +839,25 @@ fn biblatex_suffix_only_postnotes_never_acquire_page_labels() {
             format!("\\{command}{{Example2026}}")
         );
     }
+}
+
+#[test]
+fn plain_latex_suffixes_stay_literal_when_biblatex_defines_cite() {
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Latex,
+        command: None,
+    };
+    case.request.items[0].locator = None;
+    case.request.items[0].prefix.clear();
+    case.request.items[0].suffix = vec![TextRun {
+        text: "12".into(),
+        ..TextRun::default()
+    }];
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(result.text, "\\cite[12\\relax]{Example2026}");
+    assert!(result.copy_content(1).is_some());
+    assert!(result.losses.is_empty());
 }
 
 #[test]
