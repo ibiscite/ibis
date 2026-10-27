@@ -12,6 +12,8 @@ const MAX_WARNING_DETAILS: usize = 256;
 pub(super) struct Owners {
     operation: Mutex<()>,
     watches: Mutex<BTreeMap<u64, SourceWatch>>,
+    #[cfg(test)]
+    fail_watches: std::sync::atomic::AtomicBool,
 }
 #[derive(Default)]
 pub(super) struct Registry {
@@ -102,11 +104,7 @@ impl Engine {
                 shared.file_changed(id, generation, candidate);
             }
         };
-        let watch = match observation {
-            Some(observation) => SourceWatch::with_snapshot(&path, observation, callback),
-            None => SourceWatch::new(&path, callback),
-        }
-        .map_err(source_error)?;
+        let watch = self.watch(&path, observation, callback).map_err(source_error)?;
         let previous = existing.as_ref().map(|entry| entry.2.clone()).filter(|old| {
             *old != loaded.library
                 && !registry
@@ -139,6 +137,21 @@ impl Engine {
         drop(operation);
         drop(old);
         cancel.check()
+    }
+    fn watch(
+        &self,
+        path: &Path,
+        observation: Option<ibis_sources::SourceSnapshot>,
+        callback: impl Fn(Result<LoadedLibrary, SourceError>) + Send + Sync + 'static,
+    ) -> Result<SourceWatch, SourceError> {
+        #[cfg(test)]
+        if self.resources.fail_watches.load(Ordering::Relaxed) {
+            return Err(SourceError::WatchUnavailable);
+        }
+        match observation {
+            Some(observation) => SourceWatch::with_snapshot(path, observation, callback),
+            None => SourceWatch::new(path, callback),
+        }
     }
     pub(super) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
         let state = self.state()?;
@@ -218,6 +231,21 @@ impl Shared {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn readable_file_still_returns_results_when_watch_creation_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@article{demo,title={Synthetic widgets},year={2026}}\n").unwrap();
+        let engine = Engine::new().unwrap();
+        engine.resources.fail_watches.store(true, Ordering::Relaxed);
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        let result = engine
+            .dispatch(Method::Search, &json!({"query":"widgets"}), &cancel)
+            .unwrap();
+        assert_eq!(result.exit_code, ExitCode::Ok);
+        assert_eq!(result.data["hits"].as_array().unwrap().len(), 1);
+    }
     #[test]
     fn old_callbacks_cannot_replace_new_data_and_equal_hash_updates_still_replace_owner() {
         let dir = tempfile::tempdir().unwrap();
