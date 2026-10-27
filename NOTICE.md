@@ -13,9 +13,9 @@ The `ibis` program contains these unmodified third-party files:
   and https://github.com/citation-style-language/locales), licensed under
   Creative Commons Attribution-ShareAlike 3.0
   (https://creativecommons.org/licenses/by-sa/3.0/). Each style file names its
-  authors; the files are in `apps/desktop/vendor/csl/styles` in the source.
+  authors; the files are in `crates/ibis-csl/vendor/styles` in the source.
 - **Zotero's item schema** from https://github.com/zotero/zotero-schema, part
   of the Zotero project.
 
-Exact upstream revisions and hashes are in `apps/desktop/vendor/csl/manifest.json`
+Exact upstream revisions and hashes are in `crates/ibis-csl/vendor/manifest.json`
 and `crates/ibis-sources/vendor/zotero/manifest.json` in the source.

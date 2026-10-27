@@ -40,8 +40,8 @@ style configuration per runtime and drops request items after the call; ICU
 caches hold at most 16 collators. Selected data is size-checked
 before allocating a JSON copy. Runtime initialization and regular-expression execution share the interrupt boundary.
 
-The five current styles and English locale are embedded from the existing
-[pinned vendor assets](../../apps/desktop/vendor/csl/README.md). Their manifest,
+The five current styles and English locale are embedded from this crate's
+[pinned vendor assets](vendor/README.md). Their manifest,
 licences and notices stay authoritative. There is no runtime file or network
 loader. ICU4X handles collation and locale-sensitive casing; QuickJS alone
 ignores locale parameters for those operations.

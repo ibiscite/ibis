@@ -1,9 +1,9 @@
 // Test-only Node oracle over the exact pinned Zotero processor, styles and adapter.
 import fs from "node:fs";
 import assert from "node:assert/strict";
-import CSL from "../../../apps/desktop/vendor/csl/citeproc.mjs";
+import CSL from "../vendor/citeproc.mjs";
 globalThis.CSL = CSL;
-const base = new URL("../../../apps/desktop/vendor/csl/", import.meta.url);
+const base = new URL("../vendor/", import.meta.url);
 globalThis.__ibisStyles = ["apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"].map((style) => [style, fs.readFileSync(new URL(`styles/${style}.csl`, base), "utf8")]);
 globalThis.__ibisLocale = fs.readFileSync(new URL("locales/en-US.xml", base), "utf8");
 const unobservedGetCite = CSL.getCite;

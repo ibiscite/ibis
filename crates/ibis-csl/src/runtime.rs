@@ -7,22 +7,22 @@ use crate::{
 use rquickjs::{Context, Module, Runtime};
 use std::collections::BTreeMap;
 
-const PROCESSOR: &str = include_str!("../../../apps/desktop/vendor/csl/citeproc.mjs");
-const EN_US: &str = include_str!("../../../apps/desktop/vendor/csl/locales/en-US.xml");
+const PROCESSOR: &str = include_str!("../vendor/citeproc.mjs");
+const EN_US: &str = include_str!("../vendor/locales/en-US.xml");
 const STYLE_XML: [(&str, &str); 5] = [
-    ("apa", include_str!("../../../apps/desktop/vendor/csl/styles/apa.csl")),
+    ("apa", include_str!("../vendor/styles/apa.csl")),
     (
         "chicago-author-date",
-        include_str!("../../../apps/desktop/vendor/csl/styles/chicago-author-date.csl"),
+        include_str!("../vendor/styles/chicago-author-date.csl"),
     ),
     (
         "harvard-cite-them-right",
-        include_str!("../../../apps/desktop/vendor/csl/styles/harvard-cite-them-right.csl"),
+        include_str!("../vendor/styles/harvard-cite-them-right.csl"),
     ),
-    ("ieee", include_str!("../../../apps/desktop/vendor/csl/styles/ieee.csl")),
+    ("ieee", include_str!("../vendor/styles/ieee.csl")),
     (
         "modern-language-association",
-        include_str!("../../../apps/desktop/vendor/csl/styles/modern-language-association.csl"),
+        include_str!("../vendor/styles/modern-language-association.csl"),
     ),
 ];
 
