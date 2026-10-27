@@ -1,6 +1,6 @@
 # Engine golden cases
 
-These ten synthetic seeds define the shared contract for the engine rebuild
+These synthetic seeds define the shared contract for the engine rebuild
 (#1192, ADR 0028). Each JSON file has `name`, `library` (an immutable `Snapshot`),
 `request` (`CitationRequest`) and `expected` (`Envelope<CitationResult>`).
 Everything in them is invented; opaque library IDs contain no file locations.
@@ -24,6 +24,19 @@ if the formatter's canonical representation changes during the rebuild.
 | 08 | IEEE falls back to its unnumbered reference entry and explains why. |
 | 09 | Conflicting source keys refuse the item and prevent copying. |
 | 10 | An APA bibliography entry, with italic title in the display tree. |
+| 11 | Natbib with an explicit page locator and literal pre/postnotes. |
+
+Case 11's `11-natbib.tex` consumer fixture uses Natbib's standard commands and
+invented bibliography data. Compiling it twice with `pdflatex -no-shell-escape`
+produces `(see Taylor, 2026, p. 12, note)` for the golden citation. It also checks
+the prefix outside narrative and author-only citations: Natbib's native textual
+prenote appears after the author, while `citeauthor` omits it entirely. The engine
+therefore retains those prefixes outside the command and reports flattening.
+The separate `11-natbib-numbers.tex` fixture demonstrates why author-only
+locator/suffix requests are refused: in standard numerical mode, the citation
+with postnotes and the citation without them both print only the author. The
+failing-first Core and file-to-engine regressions prevent such a request from
+reaching the copy gate.
 
 The plain text of cases 08 and 10 was checked against the repository's bundled
 citeproc-js and CSL styles with the case's synthetic CSL record and `en-US`:

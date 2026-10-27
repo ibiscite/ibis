@@ -16,7 +16,7 @@ fn engine_crates_and_golden_cases_exist() -> Result<(), Box<dyn std::error::Erro
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
             .count(),
-        10
+        11
     );
     Ok(())
 }
@@ -60,7 +60,7 @@ fn golden_cases_parse_and_round_trip() -> Result<(), Box<dyn std::error::Error>>
             case
         );
     }
-    assert_eq!(names.len(), 10);
+    assert_eq!(names.len(), 11);
     Ok(())
 }
 

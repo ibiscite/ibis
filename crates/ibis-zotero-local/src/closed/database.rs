@@ -1,6 +1,7 @@
 //! Query only the disposable copy. No CSL/legacy model adapters live here.
 use super::{
-    ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, Control, RawCreator, RawItem, SourceMetadata, StoredValue,
+    ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, ClosedWarning, Control, RawCreator, RawItem,
+    SourceMetadata, StoredValue,
 };
 use rusqlite::config::DbConfig;
 use rusqlite::limits::Limit;
@@ -10,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_ITEMS: usize = 1_000_000;
 const MAX_VALUE: usize = 256 * 1024;
+const MAX_FIELDS: usize = 256;
+const MAX_CREATORS: usize = 4096;
 // Retained strings plus conservative container overhead. Separate from the
 // source-file cap: allow room for a 512MiB live payload's allocation overhead.
 const MAX_RETAINED_BYTES: usize = 1024 * 1024 * 1024;
@@ -96,6 +99,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
         Ok(())
     })?;
     let mut items = BTreeMap::<i64, ClosedItem>::new();
+    let mut warnings = Vec::new();
     let mut identities = BTreeSet::new();
     each(&db, READ_SQL[1], &budget, |r| {
         let id: i64 = r.get(0)?;
@@ -140,6 +144,11 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
     })?;
     each(&db, READ_SQL[2], &budget, |r| {
         let id = r.get(0)?;
+        if !items.contains_key(&id) || byte_len(r, 4)? > MAX_VALUE {
+            budget.discard(r, &[1], &[4])?;
+            skip_item(&mut items, id, &mut warnings, &budget)?;
+            return Ok(());
+        }
         let Some(item) = items.get_mut(&id) else {
             return Ok(());
         };
@@ -150,9 +159,11 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
                 .values()
                 .filter(|v| matches!(v, StoredValue::Null))
                 .count()
-            >= 256
+            >= MAX_FIELDS
         {
-            return budget.limit();
+            budget.discard(r, &[1], &[4])?;
+            skip_item(&mut items, id, &mut warnings, &budget)?;
+            return Ok(());
         }
         let field = budget.text(r, 1)?;
         if item.data.fields.contains_key(&field) || item.metadata.stored_values.contains_key(&field) {
@@ -195,18 +206,25 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
     each(&db, READ_SQL[3], &budget, |r| {
         let id = r.get(0)?;
         if !items.contains_key(&id) {
+            budget.discard(r, &[1], &[6, 7])?;
             return Ok(());
         }
-        let ordered = creators.entry(id).or_default();
-        if ordered.len() >= 4096 {
-            return budget.limit();
+        let index: i64 = r.get(5)?;
+        if creators.get(&id).is_some_and(|ordered| ordered.len() >= MAX_CREATORS)
+            || index >= MAX_CREATORS as i64
+            || byte_len(r, 6)? > MAX_VALUE
+            || byte_len(r, 7)? > MAX_VALUE
+        {
+            budget.discard(r, &[1], &[6, 7])?;
+            skip_item(&mut items, id, &mut warnings, &budget)?;
+            creators.remove(&id);
+            return Ok(());
         }
         let creator_type = budget.text(r, 1)?;
         let first = budget.text(r, 2)?;
         let last = budget.text(r, 3)?;
         let mode: i64 = r.get(4)?;
-        let index: i64 = r.get(5)?;
-        if ![0, 1].contains(&mode) || !(0..4096).contains(&index) || creator_type.is_empty() {
+        if ![0, 1].contains(&mode) || index < 0 || creator_type.is_empty() {
             return Err(rusqlite::Error::InvalidQuery);
         }
         budget.charge(256)?;
@@ -225,7 +243,7 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
                 ..RawCreator::default()
             }
         };
-        if ordered.insert(index, creator).is_some() {
+        if creators.entry(id).or_default().insert(index, creator).is_some() {
             return Err(rusqlite::Error::InvalidQuery);
         }
         Ok(())
@@ -251,8 +269,28 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
     Ok(ClosedSnapshot {
         schema_version: version,
         libraries: libraries.into_values().collect(),
-        warnings: Vec::new(),
+        warnings,
     })
+}
+
+fn skip_item(
+    items: &mut BTreeMap<i64, ClosedItem>,
+    id: i64,
+    warnings: &mut Vec<ClosedWarning>,
+    budget: &Budget,
+) -> rusqlite::Result<()> {
+    if let Some(item) = items.remove(&id) {
+        budget.charge(128)?;
+        warnings.push(ClosedWarning::ItemTooLarge {
+            library_id: item.metadata.library_id,
+            key: item.data.key,
+        });
+    }
+    Ok(())
+}
+
+fn byte_len(row: &Row<'_>, column: usize) -> rusqlite::Result<usize> {
+    usize::try_from(row.get::<_, Option<i64>>(column)?.unwrap_or_default()).map_err(|_| rusqlite::Error::InvalidQuery)
 }
 
 fn configure(db: &mut Connection, control: &Control) -> Result<(), ClosedError> {
@@ -290,8 +328,8 @@ fn configure(db: &mut Connection, control: &Control) -> Result<(), ClosedError> 
 const READ_SQL: [&str; 4] = [
     "SELECT L.libraryID,L.type,G.groupID FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group')",
     "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID)",
-    "SELECT D.itemID,F.fieldName,V.value,V.valueID FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=D.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
-    "SELECT IC.itemID,CT.creatorType,C.firstName,C.lastName,C.fieldMode,IC.orderIndex FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=IC.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
+    "SELECT D.itemID,F.fieldName,CASE WHEN octet_length(V.value)>:max_value THEN NULL ELSE V.value END,V.valueID,octet_length(V.value) FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=D.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
+    "SELECT IC.itemID,CT.creatorType,CASE WHEN octet_length(C.firstName)>:max_value THEN NULL ELSE C.firstName END,CASE WHEN octet_length(C.lastName)>:max_value THEN NULL ELSE C.lastName END,C.fieldMode,IC.orderIndex,octet_length(C.firstName),octet_length(C.lastName) FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=IC.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
 ];
 
 const TABLES: &[(&str, &[&str])] = &[
@@ -348,7 +386,10 @@ fn each(
     mut action: impl FnMut(&Row<'_>) -> rusqlite::Result<()>,
 ) -> Result<(), ClosedError> {
     let mut statement = db.prepare(sql).map_err(failure)?;
-    let mut rows = statement.query([]).map_err(failure)?;
+    let count = statement.parameter_count();
+    let mut rows = statement
+        .query(rusqlite::params_from_iter([MAX_VALUE as i64].into_iter().take(count)))
+        .map_err(failure)?;
     while let Some(row) = rows.next().map_err(failure)? {
         budget.row().and_then(|_| action(row)).map_err(|e| {
             if budget.exceeded.get() {
@@ -366,6 +407,17 @@ struct Budget {
     exceeded: Cell<bool>,
 }
 impl Budget {
+    // Omitted rows still consume the global work/text allowance. Read their
+    // byte lengths without allocating the oversized field or creator strings.
+    fn discard(&self, row: &Row<'_>, text: &[usize], lengths: &[usize]) -> rusqlite::Result<()> {
+        for &column in text {
+            self.charge(row.get_ref(column)?.as_str()?.len().saturating_add(128))?;
+        }
+        for &column in lengths {
+            self.charge(byte_len(row, column)?.saturating_add(128))?;
+        }
+        Ok(())
+    }
     fn limit<T>(&self) -> rusqlite::Result<T> {
         self.exceeded.set(true);
         Err(rusqlite::Error::InvalidQuery)
