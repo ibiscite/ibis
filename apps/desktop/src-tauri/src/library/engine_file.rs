@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::{
     Mutex,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 static TICKETS: AtomicU64 = AtomicU64::new(1);
@@ -20,6 +20,7 @@ pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
     prepared: Mutex<Option<(String, PreparedCitation)>>,
     latest_preview: AtomicU64,
+    observing: AtomicBool,
 }
 #[derive(Deserialize, specta::Type)]
 pub(crate) struct FileSelection {
@@ -56,7 +57,26 @@ impl FileLibrary {
             engine,
             prepared: Mutex::new(None),
             latest_preview: AtomicU64::new(0),
+            observing: AtomicBool::new(false),
         })
+    }
+    pub(super) fn observe_once(
+        &self,
+    ) -> Result<Option<ibis_engine::LibrarySubscription>, ibis_core::contract::EngineError> {
+        if self
+            .observing
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Ok(None);
+        }
+        match self.engine.subscribe() {
+            Ok(events) => Ok(Some(events)),
+            Err(error) => {
+                self.observing.store(false, Ordering::SeqCst);
+                Err(error)
+            }
+        }
     }
     pub(super) fn reload(&self) -> Result<(), super::LoadError> {
         self.engine

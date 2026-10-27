@@ -102,15 +102,19 @@ pub(crate) enum LibraryState {
     Error,
 }
 
-pub(crate) fn status(library: &Library) -> LibraryStatus {
-    let has_references = library
+fn has_references(library: &Library) -> bool {
+    library
         .file
         .as_ref()
         .and_then(|file| file.engine.libraries().ok())
         .map_or_else(
             || !library.index.references().is_empty(),
             |info| info.libraries.iter().any(|i| i.objects > 0),
-        );
+        )
+}
+
+pub(crate) fn status(library: &Library) -> LibraryStatus {
+    let has_references = has_references(library);
     let mut source_counts = library.index.source_counts().clone();
     if let Some(Source::Zotero(chosen)) = &library.source {
         for library in chosen.libraries() {
@@ -191,11 +195,7 @@ pub(super) fn stale(library: &Library) -> bool {
         return false;
     };
     library.requested.as_ref().is_none_or(|requested| requested == source)
-        && retains(
-            *error,
-            !library.index.references().is_empty(),
-            matches!(source, Source::Zotero(_)),
-        )
+        && retains(*error, has_references(library), matches!(source, Source::Zotero(_)))
 }
 
 /// A time for the interface, which shows it relative to its own clock.

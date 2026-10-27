@@ -83,6 +83,25 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
     refresh();
 }
 
+pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_file::FileLibrary>) -> bool {
+    if !library
+        .file
+        .as_ref()
+        .is_some_and(|active| std::sync::Arc::ptr_eq(active, file))
+    {
+        return false;
+    }
+    if library.requested == library.source
+        && file.engine.libraries().is_ok_and(|info| {
+            !info.libraries.is_empty() && info.libraries.iter().all(|info| info.refresh_error.is_none())
+        })
+    {
+        library.error = None;
+        library.retained_error = None;
+    }
+    true
+}
+
 pub(super) fn watch_current(app: &AppHandle, request: u64) {
     let file = app
         .state::<Mutex<Library>>()
@@ -90,18 +109,22 @@ pub(super) fn watch_current(app: &AppHandle, request: u64) {
         .ok()
         .and_then(|library| library.file.clone());
     if let Some(file) = file {
-        let Ok(events) = file.engine.subscribe() else {
+        let Ok(Some(events)) = file.observe_once() else {
             return;
         };
         let handle = app.clone();
         std::thread::spawn(move || {
             loop {
                 let changed = events.recv_timeout(std::time::Duration::from_millis(200));
-                let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|library| {
-                    library
-                        .file
-                        .as_ref()
-                        .is_some_and(|active| std::sync::Arc::ptr_eq(active, &file))
+                let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|mut library| {
+                    if changed.is_ok() {
+                        engine_changed(&mut library, &file)
+                    } else {
+                        library
+                            .file
+                            .as_ref()
+                            .is_some_and(|active| std::sync::Arc::ptr_eq(active, &file))
+                    }
                 });
                 if !current || matches!(changed, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) {
                     break;
