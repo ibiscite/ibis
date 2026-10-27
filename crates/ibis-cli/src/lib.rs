@@ -7,6 +7,7 @@ use std::{
     io::{BufRead, Read, Write},
     path::PathBuf,
 };
+mod human;
 mod toggle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -313,7 +314,13 @@ fn execute<R: BufRead, W: Write + Send>(
             json!({"method":Method::parse(args.get_one::<String>("method").ok_or(EngineError {code:ErrorCode::Usage})?).map_err(|code|EngineError {code})?,"params":if args.get_flag("stdin") {stdin_json(input)?} else {args.get_one::<String>("params").map(|params|parse_json(params.as_bytes())).transpose()?.unwrap_or(Value::Null)}})
         }
     };
-    engine.dispatch(method, &params, &cancel).map(Execution::Result)
+    let mut result = engine.dispatch(method, &params, &cancel)?;
+    if !matches.get_flag("json")
+        && let Some(text) = human::summary(method, &result.data)
+    {
+        result.text = Some(text);
+    }
+    Ok(Execution::Result(result))
 }
 fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
     protocol::parse_json(bytes).map_err(|_| EngineError {
