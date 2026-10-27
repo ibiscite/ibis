@@ -28,7 +28,7 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
 
 export function result(key: string, title: string, source = "refs.bib") {
   return {
-    revision: "1", id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"],
+    revision: "1", id: { source, native_key: key }, source, key, title, authors: "Smith", year: 2020, matched: ["title"],
     first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal",
   };
 }

@@ -49,14 +49,14 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
+  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "previewFileCitation" | "copyFileCitation" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
-    hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText,
+    hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, checkForUpdates, onShortcutStatus } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
@@ -95,6 +95,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const statusReads = useRef(0);
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
+  const nativeFile = Boolean(library?.file_engine && previewFileCitation && copyFileCitation);
   const busy = library?.state === "loading" || library?.state === "reloading";
   const blocked = library?.state === "error" && !library.has_snapshot;
   const libraryChoices = library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
@@ -117,7 +118,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // The selection, or the highlighted result when nothing is selected.
   const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
   const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
-    useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, cslItems, citationText, refreshSnapshot });
+    useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, cslItems, citationText, previewFileCitation, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -377,7 +378,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     }
     let outcome: Copied;
     try {
-      if (style && copyFormatted) {
+      if (nativeFile && copyFileCitation) {
+        if (!shown || typeof shown === "string" || !shown.fileTicket || !shown.fileHash) { setCopyError(pickerText.previewError); return; }
+        outcome = await copyFileCitation(shown.fileTicket, shown.fileHash);
+      } else if (style && copyFormatted) {
         // Copy only what the preview shows, never a result still being made.
         if (shown === null || shown === "failed") {
           setCopyError(shown === null ? pickerText.previewNotReady : pickerText.previewError);
@@ -387,7 +391,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         outcome = { text: shown.text, warnings: shown.warnings };
       } else {
         outcome = await copyCitation(
-          chosen.map((r) => ({ id: r.id, locator: r.locator ?? null })),
+          chosen.map((r) => ({ id: r.id, locator: r.locator ?? null })) as nativeApi.CitationSelection[],
           format as CopyFormat,
           chosenRevision,
         );
@@ -429,7 +433,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setPendingCopy(null);
       return;
     }
-    if (style && shown === null) return;
+    if ((style || nativeFile) && shown === null) return;
     setPendingCopy(null);
     void copy();
   }, [pendingCopy, chosenKey, shown, queryKey]);
@@ -442,8 +446,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
   /** Names the library too when another chosen reference has the same key. */
   const removeLabel = (r: SearchResult) => {
-    const library = libraryOf(r.id.source);
-    const shared = [...selected.values()].some((other) => other.key === r.key && other.id.source !== r.id.source);
+    const library = libraryOf(r.source ?? "");
+    const shared = [...selected.values()].some((other) => other.key === r.key && other.source !== r.source);
     return shared && library ? pickerText.removeReferenceIn(r.key, library) : pickerText.removeReference(r.key);
   };
   const openMore = () => {

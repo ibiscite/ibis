@@ -15,9 +15,9 @@ use crate::preferences::SettingsFile;
 
 #[derive(Serialize, specta::Type)]
 pub(crate) struct Copied {
-    text: String,
+    pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
-    warnings: Vec<String>,
+    pub(crate) warnings: Vec<String>,
 }
 
 impl From<cite::Rendered> for Copied {
@@ -71,6 +71,9 @@ pub(crate) fn prepare_snapshot<T, E: Into<CommandError>>(
         .lock()
         .map_err(|_| CommandError::from("library state is unavailable"))?;
     locked.require_revision(expected)?;
+    if locked.file.is_some() {
+        return Err(CommandError::SnapshotChanged);
+    }
     prepare(&locked).map_err(Into::into)
 }
 
@@ -463,3 +466,50 @@ mod tests {
 
 #[cfg(test)]
 mod engine_file_acceptance;
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn preview_file_citation(
+    items: Vec<crate::library::engine_file::FileSelection>,
+    format: KeyFormat,
+    style: Option<settings::CitationStyle>,
+    expected_revision: String,
+    library: State<'_, Mutex<Library>>,
+) -> Result<crate::library::engine_file::FilePreview, CommandError> {
+    let file = {
+        let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
+        let _ = expected_revision;
+        if library.opening {
+            return Err(CommandError::SnapshotChanged);
+        }
+        library.file.clone().ok_or(CommandError::SnapshotChanged)?
+    };
+    tauri::async_runtime::spawn_blocking(move || file.preview(items, format, style))
+        .await
+        .map_err(|_| CommandError::SnapshotChanged)?
+}
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn copy_file_citation(
+    ticket: String,
+    content_hash: String,
+    app: AppHandle,
+    library: State<'_, Mutex<Library>>,
+) -> Result<Copied, CommandError> {
+    let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
+    if library.opening {
+        return Err(CommandError::SnapshotChanged);
+    }
+    library
+        .file
+        .as_ref()
+        .ok_or(CommandError::SnapshotChanged)?
+        .copy(&ticket, &content_hash, |content| {
+            if let Some(html) = content.html {
+                app.clipboard().write_html(html, Some(content.text))
+            } else {
+                app.clipboard().write_text(content.text)
+            }
+            .map_err(|_| "The clipboard could not be written.".to_string())
+        })
+}

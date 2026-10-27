@@ -12,6 +12,7 @@
 //! - `commands`: the commands the interface calls.
 
 pub(crate) mod commands;
+pub(crate) mod engine_file;
 mod error;
 mod load;
 #[cfg(test)]

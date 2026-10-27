@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use ibis_core::settings::ZoteroLibraries;
-use ibis_core::source::load_library_snapshot;
 use ibis_core::zotero::api::{Response, Transport, TransportError};
 use ibis_core::zotero::{self, libraries};
 use ibis_zotero_local::LocalZotero;
@@ -16,15 +15,30 @@ use super::state::{Library, candidate};
 /// entries; reloads retain the last good snapshot for demonstrably partial data.
 #[cfg(test)]
 pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, LoadError> {
-    load_file(path, reload, &|| false)
+    load_file(path, reload, None, &|| false)
 }
 
-fn load_file(path: PathBuf, reload: bool, cancelled: &impl Fn() -> bool) -> Result<Library, LoadError> {
-    let (loaded, snapshot) = load_library_snapshot(&path, reload)?;
+fn load_file(
+    path: PathBuf,
+    reload: bool,
+    previous: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    cancelled: &impl Fn() -> bool,
+) -> Result<Library, LoadError> {
     check_cancelled(cancelled)?;
-    let mut library = candidate(path, loaded);
-    library.snapshot = Some(snapshot);
-    Ok(library)
+    let file = match previous {
+        Some(file) => file,
+        None => std::sync::Arc::new(super::engine_file::FileLibrary::open(&path)?),
+    };
+    if reload {
+        file.reload()?;
+    }
+    check_cancelled(cancelled)?;
+    Ok(Library {
+        source: Some(Source::File(path)),
+        file: Some(file),
+        checked_at: Some(std::time::SystemTime::now()),
+        ..Library::default()
+    })
 }
 
 fn check_cancelled(cancelled: &impl Fn() -> bool) -> Result<(), LoadError> {
@@ -87,11 +101,14 @@ pub(super) fn load_source(
     source: Source,
     reload: bool,
     previous: Option<libraries::Snapshots>,
+    previous_file: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
     cancelled: impl Fn() -> bool,
 ) -> Result<Loaded, LoadError> {
     check_cancelled(&cancelled)?;
     match source {
-        Source::File(path) => load_file(path, reload, &cancelled).map(|library| Loaded::New(Box::new(library))),
+        Source::File(path) => {
+            load_file(path, reload, previous_file, &cancelled).map(|library| Loaded::New(Box::new(library)))
+        }
         Source::Zotero(chosen) => load_zotero(
             chosen,
             previous.as_ref().filter(|_| reload),
@@ -153,11 +170,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = dir.path().join("synthetic.bib");
         assert!(matches!(
-            load_source(Source::File(file.clone()), false, None, || true),
+            load_source(Source::File(file.clone()), false, None, None, || true),
             Err(LoadError::Stopped)
         ));
         std::fs::write(&file, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(load_file(file, false, &|| true), Err(LoadError::Stopped)));
+        assert!(matches!(
+            load_file(file, false, None, &|| true),
+            Err(LoadError::Stopped)
+        ));
     }
 
     #[test]
@@ -176,10 +196,19 @@ mod tests {
         std::fs::write(&file, "@article{smith2020, title={Sleep and memory}}\n@article{bad,\n")
             .unwrap_or_else(|e| panic!("{e}"));
         let library = load_library(file, false).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(library.index.references().len(), 1);
-        assert_eq!(library.warnings.len(), 1);
-        assert!(library.snapshot.is_some());
-        assert_eq!(library.index.search("sleep", 10).len(), 1);
+        let status = super::super::status::status(&library);
+        assert_eq!(status.references, 1);
+        assert_eq!(status.warnings, 1);
+        let file = library.file.as_ref().unwrap_or_else(|| panic!("engine file"));
+        let query = serde_json::from_value(serde_json::json!({"text":"sleep","interpret_locators":false}))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            file.search(&query, 10, None)
+                .unwrap_or_else(|e| panic!("{e}"))
+                .results
+                .len(),
+            1
+        );
         assert!(load_library(std::env::temp_dir().join("ibis-missing-library.bib"), false).is_err());
     }
 }

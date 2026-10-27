@@ -84,6 +84,36 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
 }
 
 pub(super) fn watch_current(app: &AppHandle, request: u64) {
+    let file = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .ok()
+        .and_then(|library| library.file.clone());
+    if let Some(file) = file {
+        let Ok(events) = file.engine.subscribe() else {
+            return;
+        };
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            loop {
+                let changed = events.recv_timeout(std::time::Duration::from_millis(200));
+                let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|library| {
+                    library
+                        .file
+                        .as_ref()
+                        .is_some_and(|active| std::sync::Arc::ptr_eq(active, &file))
+                });
+                if !current || matches!(changed, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) {
+                    break;
+                }
+                if changed.is_ok() {
+                    publish_current(&handle);
+                }
+            }
+        });
+        return;
+    }
+
     let path = app
         .state::<Mutex<Library>>()
         .lock()
@@ -270,13 +300,18 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         .lock()
         .ok()
         .and_then(|library| library.zotero.clone());
+    let previous_file = app.state::<Mutex<Library>>().lock().ok().and_then(|library| {
+        (reload && library.source.as_ref() == Some(&source))
+            .then(|| library.file.clone())
+            .flatten()
+    });
     async move {
         let chosen = source.setting();
         let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let loading = std::time::Instant::now();
-            let loaded = load_source(source, reload, previous, || {
+            let loaded = load_source(source, reload, previous, previous_file, || {
                 loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
             });
             #[cfg(debug_assertions)]
@@ -430,6 +465,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         .lock()
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
+            file_engine: false,
             revision: String::new(),
             state: LibraryState::Error,
             zotero: false,

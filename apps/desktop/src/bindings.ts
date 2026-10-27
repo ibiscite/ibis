@@ -51,6 +51,8 @@ export const commands = {
 	 *  are saved separately when selected, even if no citation is copied.
 	 */
 	copyCitation: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { items, format, expectedRevision }),
+	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision }),
+	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash }),
 	/**  Preview a key citation without writing the clipboard or saving a choice. */
 	citationText: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<CitationPreview>("citation_text", { items, format, expectedRevision }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
@@ -184,6 +186,20 @@ export type Copied = {
 /**  How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable" | "spacious";
 
+export type FilePreview = {
+	ticket: string,
+	content_hash: string,
+	text: string,
+	html: string | null,
+	warnings: string[],
+};
+
+export type FileSelection = {
+	id: unknown,
+	cite: string,
+	locator: Locator | null,
+};
+
 /**  A `.bib` file found on this computer. */
 export type FoundFile = {
 	/**  The file name, such as `refs.bib`. */
@@ -224,6 +240,7 @@ export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error"
 
 /**  Sent to the interface with the `library:changed` event. */
 export type LibraryStatus = {
+	file_engine?: boolean,
 	state: LibraryState,
 	revision: string,
 	/**  Whether the requested library is Zotero rather than a file. */
@@ -367,7 +384,9 @@ export type SearchResult = {
 	/**  Revision captured with the index used for this result. */
 	revision: string,
 	/**  Identity of the record; selection and copying use this, not the key. */
-	id: RecordId,
+	id: unknown,
+	cite?: string,
+	source?: string,
 	key: string,
 	title: string,
 	authors: string,

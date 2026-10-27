@@ -16,7 +16,7 @@ function hoursAgo(hours: number) {
 
 function reference(key: string, title: string, authors = "Example Author", container: string | null = null, itemType = "article-journal"): SearchResult {
   const names = authors.split(", ");
-  return { revision: "synthetic", id: { source: "synthetic-test", native_key: key }, key, title, authors, year: 2026, matched: ["title"],
+  return { revision: "synthetic", id: { source: "synthetic-test", native_key: key }, source: "synthetic-test", key, title, authors, year: 2026, matched: ["title"],
     first_author: names[0] ?? "", author_count: names.length, container, item_type: itemType };
 }
 
