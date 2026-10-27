@@ -4,8 +4,9 @@
 //! Better BibTeX 8 keeps its keys in Zotero's `citationKey` field, which both
 //! Zotero readers already map. Two stores remain outside that field:
 //!
-//! - `better-bibtex.sqlite` (table `citationkey`), written by Better BibTeX 7
-//!   and kept by Better BibTeX 8 until its one-time migration;
+//! - `better-bibtex.sqlite` (table `citationkey`), where Better BibTeX 7 (for
+//!   Zotero 7) keeps every key. Better BibTeX 8 only migrates this file and
+//!   never serves keys from it, so it applies to Zotero 7 alone;
 //! - `better-bibtex/read-only.json`, the keys Better BibTeX gives items in
 //!   read-only group libraries, which it cannot write into Zotero.
 //!
@@ -16,12 +17,16 @@
 //! redirect (maintainer decision on #1231).
 //!
 //! Keys are passed on as found: the shared mapper validates them and refuses
-//! key output where they disagree with Zotero's own key or Extra.
+//! key output where they disagree with Zotero's own key or Extra. Any error,
+//! including [`BbtError::Unavailable`] while Better BibTeX is still starting,
+//! and an ambiguous group name means "Better BibTeX keys unknown": callers
+//! refuse key output that depends on them rather than publish "no keys",
+//! which would change the library's fingerprint from one read to the next.
 
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ibis_core::zotero::api::TransportError;
 use serde_json::{Value, json};
@@ -34,8 +39,14 @@ pub const STORE_FILE: &str = "better-bibtex.sqlite";
 pub const READ_ONLY_FILE: [&str; 2] = ["better-bibtex", "read-only.json"];
 /// More records than any library Ibis reads (the mapper's own limit is lower).
 pub const MAX_RECORDS: usize = 2_000_000;
-/// Item keys sent in one `item.citationkey` request.
-const BATCH: usize = 5_000;
+/// Item keys sent in one `item.citationkey` request. Better BibTeX looks each
+/// one up by scanning all its keys on Zotero's main thread, so batches stay
+/// small and a whole call is bounded.
+const BATCH: usize = 500;
+/// Item keys one [`LiveBbt::keys`] call accepts.
+pub const MAX_LIVE_KEYS: usize = 20_000;
+/// Time for all batches of one [`LiveBbt::keys`] call.
+const KEYS_DEADLINE: Duration = Duration::from_secs(60);
 
 /// Why Better BibTeX keys could not be read. Fixed text; never library content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -60,9 +71,13 @@ pub struct StoredKey {
     pub citation_key: String,
 }
 
-/// Reads the `citationkey` table of a private copy of [`STORE_FILE`]. A store
-/// without that table is an older layout Ibis does not read.
-pub fn read_store(copy: &rusqlite::Connection) -> Result<Vec<StoredKey>, BbtError> {
+/// Reads the `citationkey` table of a private copy of [`STORE_FILE`] for a
+/// Zotero of major version `zotero`. Only Better BibTeX 7, for Zotero 7, serves
+/// these keys; a store without that table is an older layout Ibis does not read.
+pub fn read_store(copy: &rusqlite::Connection, zotero: u32) -> Result<Vec<StoredKey>, BbtError> {
+    if zotero != 7 {
+        return Err(BbtError::Unavailable);
+    }
     let has_table: bool = copy
         .query_row(
             "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'citationkey')",
@@ -196,12 +211,21 @@ impl LiveBbt {
     }
 
     /// The keys Better BibTeX serves for `item_keys` (`item.citationkey`), by
-    /// item key. `None` is the personal library. Items without a key are left
-    /// out; malformed item keys are never sent.
+    /// item key. `None` is the personal library. Pass only items whose own
+    /// Zotero key is empty: Better BibTeX 8 serves that key for every other
+    /// item. Items without a key are left out; malformed item keys are never
+    /// sent.
     pub fn keys(&self, library_id: Option<i64>, item_keys: &[&str]) -> Result<BTreeMap<String, String>, BbtError> {
         let mut found = BTreeMap::new();
         let wanted: Vec<&str> = item_keys.iter().copied().filter(|key| item_key_shape(key)).collect();
+        if wanted.len() > MAX_LIVE_KEYS {
+            return Err(BbtError::TooLarge);
+        }
+        let until = Instant::now() + KEYS_DEADLINE;
         for batch in wanted.chunks(BATCH) {
+            if Instant::now() >= until {
+                return Err(TransportError::TimedOut.into());
+            }
             let names: Vec<String> = batch
                 .iter()
                 .map(|key| match library_id {
@@ -209,15 +233,16 @@ impl LiveBbt {
                     None => (*key).to_owned(),
                 })
                 .collect();
-            let result = self.call("item.citationkey", json!([names]))?;
+            let result = self.call_until("item.citationkey", json!([names]), until)?;
             let map = result.as_object().ok_or(BbtError::Malformed)?;
             for (name, key) in batch.iter().zip(&names) {
                 match map.get(key) {
                     Some(Value::String(citation_key)) if !citation_key.trim().is_empty() => {
                         found.insert((*name).to_owned(), citation_key.clone());
                     }
-                    Some(Value::String(_) | Value::Null) | None => {}
-                    Some(_) => return Err(BbtError::Malformed),
+                    Some(Value::String(_) | Value::Null) => {}
+                    // Better BibTeX answers for every key it was asked about.
+                    Some(_) | None => return Err(BbtError::Malformed),
                 }
             }
         }
@@ -225,6 +250,10 @@ impl LiveBbt {
     }
 
     fn call(&self, method: &str, params: Value) -> Result<Value, BbtError> {
+        self.call_until(method, params, Instant::now() + DEADLINE)
+    }
+
+    fn call_until(&self, method: &str, params: Value, until: Instant) -> Result<Value, BbtError> {
         let body = json!({"jsonrpc": "2.0", "method": method, "params": params, "id": 1}).to_string();
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
         let mut stream =
@@ -246,7 +275,7 @@ impl LiveBbt {
         stream.write_all(request.as_bytes()).map_err(io_error)?;
         let response = read_response(Deadline {
             stream,
-            until: Instant::now() + DEADLINE,
+            until: until.min(Instant::now() + DEADLINE),
         })?;
         // Zotero answers 404 when Better BibTeX is not installed. Anything but
         // 200 (including a redirect, which is never followed) is not an answer.
