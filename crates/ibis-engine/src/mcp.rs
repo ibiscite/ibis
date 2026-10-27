@@ -27,6 +27,16 @@ pub const MAX_TEXT: usize = 1_000;
 pub const MAX_LIST: usize = 20;
 /// Fields an agent never sees: they hold the user's own notes.
 const PRIVATE_FIELDS: [&str; 2] = ["note", "annote"];
+/// Key syntaxes `cite` offers: those the engine renders from keys alone.
+/// CSL-JSON is left out because it would carry the private fields above.
+const SYNTAXES: [KeySyntax; 6] = [
+    KeySyntax::Pandoc,
+    KeySyntax::Biblatex,
+    KeySyntax::Natbib,
+    KeySyntax::Latex,
+    KeySyntax::Typst,
+    KeySyntax::Keys,
+];
 
 /// Serves until the client closes stdin.
 pub fn serve<R: BufRead, W: Write>(engine: &Engine, mut reader: R, mut writer: W) -> io::Result<()> {
@@ -171,7 +181,7 @@ fn tools() -> Value {
                 "properties": {
                     "items": {"type": "array", "items": item, "minItems": 1},
                     "style": {"type": "string", "description": "A style id from the styles tool."},
-                    "syntax": {"type": "string", "enum": KeySyntax::ALL.map(syntax_name)},
+                    "syntax": {"type": "string", "enum": SYNTAXES.map(syntax_name)},
                     "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"]}
                 },
                 "required": ["items"]
@@ -295,7 +305,10 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     let output = match (arguments.get("syntax"), arguments.get("style")) {
         (Some(_), Some(_)) => return Err(bad_input()),
         (Some(syntax), None) => OutputSpec::Key {
-            syntax: serde_json::from_value(syntax.clone()).map_err(|_| bad_input())?,
+            syntax: serde_json::from_value(syntax.clone())
+                .ok()
+                .filter(|syntax| SYNTAXES.contains(syntax))
+                .ok_or_else(bad_input)?,
             command: None,
         },
         (None, style) => OutputSpec::Csl {
