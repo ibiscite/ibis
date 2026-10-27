@@ -134,6 +134,7 @@ fn command() -> Command {
                     .action(ArgAction::SetTrue),
             ),
     )
+    .subcommand(Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"))
     .subcommand(
         Command::new("toggle")
             .about("Show or hide the desktop picker")
@@ -209,7 +210,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
             );
         }
     };
-    let engine = if matches.subcommand_name() == Some("serve") {
+    let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine
     } else {
         engine.without_file_watches()
@@ -308,6 +309,12 @@ fn execute<R: BufRead, W: Write + Send>(
             human::zotero_failure,
         )?;
     }
+    if name == "mcp" {
+        return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {
+            Ok(()) => 0,
+            Err(_) => 70,
+        }));
+    }
     if name == "serve" {
         return Ok(Execution::Stdio(
             match ibis_engine::server::serve(engine.clone(), input, output) {
@@ -359,20 +366,7 @@ fn execute<R: BufRead, W: Write + Send>(
         Method::Cite if args.get_flag("request") => {
             const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
             let params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
-            let request: CitationRequest =
-                serde_json::from_value(params.clone()).map_err(|_| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
-            let citing = human::Citing {
-                labels: vec![],
-                output: match &request.output {
-                    OutputSpec::Csl { style } => style.clone(),
-                    OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
-                        .ok()
-                        .and_then(|syntax| syntax.as_str().map(str::to_owned))
-                        .unwrap_or_default(),
-                    OutputSpec::Preset { .. } => "this output".into(),
-                },
-                form: request.form,
-            };
+            let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
             let result = explain(engine.dispatch(method, &params, &cancel), |code| match code {
                 ErrorCode::BadInput => REQUEST_HELP.into(),
                 code => human::code_sentence(code).into(),
@@ -486,7 +480,8 @@ fn execute<R: BufRead, W: Write + Send>(
                     code => human::code_sentence(code).into(),
                 },
             )?;
-            return Ok(Execution::Result(result, None));
+            let citing = (called == Method::Cite).then(|| request_citing(&params)).flatten();
+            return Ok(Execution::Result(result, citing));
         }
     };
     let result = engine.dispatch(method, &params, &cancel)?;
@@ -494,6 +489,22 @@ fn execute<R: BufRead, W: Write + Send>(
         human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
         None,
     ))
+}
+/// What a canonical CitationRequest asked for, so its findings read as sentences.
+fn request_citing(params: &Value) -> Option<human::Citing> {
+    let request: CitationRequest = serde_json::from_value(params.clone()).ok()?;
+    Some(human::Citing {
+        labels: vec![],
+        output: match &request.output {
+            OutputSpec::Csl { style } => style.clone(),
+            OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
+                .ok()
+                .and_then(|syntax| syntax.as_str().map(str::to_owned))
+                .unwrap_or_default(),
+            OutputSpec::Preset { .. } => "this output".into(),
+        },
+        form: request.form,
+    })
 }
 const ITEM_REF_HELP: &str = "--id must be an ItemRef JSON object, as ibis search --json prints it.";
 fn method_named(name: &str) -> Result<Method, Failure> {
@@ -532,10 +543,14 @@ fn emit(
         let _ = writeln!(errors, "ibis: {}", terminal_display(line));
     };
     if result.as_ref().is_ok_and(|result| result.source_findings) {
-        say("note: a library has warnings or could not refresh; see: ibis libraries");
+        say(if json {
+            "note: a library has warnings or could not refresh; see: ibis libraries --json"
+        } else {
+            "note: a library has warnings or could not refresh; see: ibis libraries"
+        });
     }
     if !json && let (Ok(result), Some(citing)) = (&result, citing) {
-        for line in human::citation_report(&result.data, citing) {
+        for line in human::citation_report(&result.data, citing, result.text.is_some()) {
             say(&line);
         }
         if result.text.is_none() {

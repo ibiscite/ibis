@@ -140,7 +140,7 @@ fn a_refused_citation_prints_its_reason_and_fails() -> Result<(), Box<dyn std::e
     assert!(text.is_empty(), "{text}");
     assert_eq!(
         errors,
-        "ibis: cannot cite 'first' as a narrative citation in apa; try --form normal.\n"
+        "ibis: cannot cite 'first' in apa with --form narrative; try --form normal.\n"
     );
     let (code, text, errors) = run_file(&path, &["cite", "--style", "invented", "first"])?;
     assert_eq!(code, 1);
@@ -239,5 +239,82 @@ fn libraries_name_the_file_people_gave() -> Result<(), Box<dyn std::error::Error
     assert_eq!(text, format!("1 library\n{}\t4 items\n", path.display()));
     let (_, text, _) = run(engine()?, &["ibis", "styles"])?;
     assert!(text.lines().any(|line| line == "apa\tAPA (7th edition)"), "{text}");
+    Ok(())
+}
+
+#[test]
+fn year_letters_notice_sees_the_same_year_and_names_however_they_are_written() -> Result<(), Box<dyn std::error::Error>>
+{
+    let work = |id: &str, extra: serde_json::Value| {
+        let mut item = serde_json::json!({"id":id,"type":"book","title":format!("Synthetic {id}")});
+        for (field, value) in extra.as_object().into_iter().flatten() {
+            item[field] = value.clone();
+        }
+        item
+    };
+    let ng = serde_json::json!([{"family":"Ng","given":"Avery"}]);
+    let library = serde_json::json!([
+        work(
+            "number",
+            serde_json::json!({"author":ng,"issued":{"date-parts":[[2020]]}})
+        ),
+        work(
+            "string",
+            serde_json::json!({"author":ng,"issued":{"date-parts":[["2020"]]}})
+        ),
+        work("literal", serde_json::json!({"author":ng,"issued":{"literal":"2020"}})),
+        work(
+            "particle",
+            serde_json::json!({"author":[{"family":"Berg","non-dropping-particle":"van"}],"issued":{"date-parts":[[2020]]}})
+        ),
+        work(
+            "joined",
+            serde_json::json!({"author":[{"family":"van Berg"}],"issued":{"date-parts":[[2020]]}})
+        ),
+        work(
+            "film-one",
+            serde_json::json!({"type":"motion_picture","director":ng,"issued":{"date-parts":[[2021]]}})
+        ),
+        work(
+            "film-two",
+            serde_json::json!({"type":"motion_picture","director":ng,"issued":{"date-parts":[[2021]]}})
+        ),
+        work("undated", serde_json::json!({"author":ng})),
+        work("undated-too", serde_json::json!({"author":ng})),
+        work(
+            "later",
+            serde_json::json!({"author":ng,"issued":{"date-parts":[[2022]]}})
+        ),
+    ]);
+    let path = library_file("year-forms.json", &library.to_string())?;
+    for (keys, shared) in [
+        (["number", "string"], true),
+        (["number", "literal"], true),
+        (["particle", "joined"], true),
+        (["film-one", "film-two"], true),
+        (["undated", "undated-too"], true),
+        (["number", "later"], false),
+        (["number", "particle"], false),
+    ] {
+        let (code, _, errors) = run_file(&path, &["cite", "--style", "apa", keys[0], keys[1]])?;
+        assert_eq!(code, 0, "{keys:?}: {errors}");
+        assert_eq!(errors.contains("share author and year"), shared, "{keys:?}: {errors}");
+    }
+    Ok(())
+}
+
+#[test]
+fn call_cite_explains_its_findings_too() -> Result<(), Box<dyn std::error::Error>> {
+    let path = library_file("call-cite.bib", SAME_AUTHOR_YEAR)?;
+    let (_, shown, _) = run_file(&path, &["show", "first", "--json"])?;
+    let shown: serde_json::Value = serde_json::from_str(&shown)?;
+    let params = serde_json::json!({
+        "items":[{"item":shown["data"]["object"]["data"]["id"]}],
+        "output":{"kind":"csl","style":"apa"},
+        "form":"narrative",
+    });
+    let (code, text, errors) = run_file(&path, &["call", "cite", "--params", &params.to_string()])?;
+    assert_eq!((code, text.as_str()), (1, ""));
+    assert!(errors.contains("with --form narrative"), "{errors}");
     Ok(())
 }

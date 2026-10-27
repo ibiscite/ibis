@@ -196,7 +196,7 @@ impl Citing {
 }
 
 /// Sentences for a citation's refusals, losses and notices, without repeats.
-pub(super) fn citation_report(data: &Value, citing: &Citing) -> Vec<String> {
+pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> Vec<String> {
     let parse = |name| data.get(name).cloned().unwrap_or(Value::Null);
     let outcomes: Vec<ItemOutcome> = serde_json::from_value(parse("outcomes")).unwrap_or_default();
     let losses: Vec<Loss> = serde_json::from_value(parse("losses")).unwrap_or_default();
@@ -226,7 +226,8 @@ pub(super) fn citation_report(data: &Value, citing: &Citing) -> Vec<String> {
             LossReason::Flattened => format!("{output} printed {what}{target} as plain text."),
         });
     }
-    for notice in notices {
+    // Notices describe printed text; a refused citation printed none.
+    for notice in notices.into_iter().filter(|_| printed) {
         lines.push(
             match notice {
                 Notice::NeedsDocumentContext => "note: this style numbers citations or places notes across the whole document, which Ibis does not see; check the result in your document.",
@@ -253,7 +254,7 @@ fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm) 
             if form == "normal" {
                 format!("cannot cite {label} in {output}: its metadata cannot be printed correctly in this form.")
             } else {
-                format!("cannot cite {label} as a {form} citation in {output}; try --form normal.")
+                format!("cannot cite {label} in {output} with --form {form}; try --form normal.")
             }
         }
         CitationError::InvalidLocator => format!("the locator for {label} is empty or has control characters."),
