@@ -41,6 +41,9 @@ pub struct LibraryInfo {
     /// A readable source remains usable when automatic updates are unavailable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch_warning: Option<WatchWarning>,
+    /// Which Zotero library this is, for a Zotero library.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zotero: Option<ZoteroLibrary>,
 }
 impl LibraryInfo {
     fn clean(id: LibraryId, objects: usize) -> Self {
@@ -52,6 +55,7 @@ impl LibraryInfo {
             refresh_error: None,
             updated_at_ms: now_ms(),
             watch_warning: None,
+            zotero: None,
         }
     }
 }
@@ -446,8 +450,8 @@ impl Engine {
                 parameters::<LibrariesRequest>(params)?
             } {
                 LibrariesRequest::List => value(self.libraries()?)?,
-                LibrariesRequest::OpenZotero {} => {
-                    self.read_zotero(false, cancel)?;
+                LibrariesRequest::OpenZotero { libraries } => {
+                    self.read_zotero(false, libraries.as_deref(), cancel)?;
                     value(self.libraries()?)?
                 }
                 LibrariesRequest::OpenFile { path } => {
@@ -520,46 +524,61 @@ impl Shared {
 
     fn install(&self, info: LibraryInfo, snapshot: &Snapshot, remove: Option<LibraryId>) -> Result<(), EngineError> {
         let library = info.id.clone();
-        if snapshot
-            .objects()
-            .iter()
-            .any(|item| item.object.id().library != library)
-        {
+        self.publish(vec![(info, snapshot)], |id| {
+            *id == library || remove.as_ref() == Some(id)
+        })
+    }
+    /// Replace every library `replaced` matches with `entries`, in one publication.
+    fn publish(
+        &self,
+        entries: Vec<(LibraryInfo, &Snapshot)>,
+        replaced: impl Fn(&LibraryId) -> bool,
+    ) -> Result<(), EngineError> {
+        if entries.iter().any(|(info, snapshot)| {
+            snapshot
+                .objects()
+                .iter()
+                .any(|item| item.object.id().library != info.id)
+        }) {
             return Err(error(ErrorCode::BadInput));
         }
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        let combined = Arc::new(
-            old.index
-                .snapshot()
-                .merged(snapshot, |id| {
-                    *id != library && remove.as_ref().is_none_or(|remove| id != remove)
-                })
-                .map_err(|_| error(ErrorCode::BadInput))?,
-        );
-        let mut libraries = old.libraries.clone();
-        if let Some(remove) = &remove {
-            libraries.remove(remove);
+        // Unchanged libraries keep their prepared objects; nothing is re-fingerprinted.
+        let empty = Snapshot::new(vec![]).map_err(|_| error(ErrorCode::Internal))?;
+        let mut combined = old
+            .index
+            .snapshot()
+            .merged(&empty, |id| !replaced(id))
+            .map_err(|_| error(ErrorCode::BadInput))?;
+        for (_, snapshot) in &entries {
+            combined = combined
+                .merged(snapshot, |_| true)
+                .map_err(|_| error(ErrorCode::BadInput))?;
         }
-        libraries.insert(library.clone(), info);
+        let combined = Arc::new(combined);
+        let mut changed: Vec<LibraryId> = entries.iter().map(|(info, _)| info.id.clone()).collect();
+        changed.extend(
+            old.libraries
+                .keys()
+                .filter(|id| replaced(id) && !changed.contains(id))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        let zotero = entries
+            .iter()
+            .any(|(info, _)| ibis_sources::zotero_source::is_zotero(&info.id));
+        let mut libraries = old.libraries.clone();
+        libraries.retain(|id, _| !replaced(id));
+        libraries.extend(entries.into_iter().map(|(info, _)| (info.id.clone(), info)));
         let next = Arc::new(State {
             zotero_generation: old.zotero_generation,
-            zotero_ready: if library == ibis_sources::zotero_source::library_id() {
-                true
-            } else {
-                old.zotero_ready
-            },
+            zotero_ready: zotero || old.zotero_ready,
             index: Arc::new(SnapshotIndex::new(combined)),
             libraries,
         });
         let fingerprints = next.index.snapshot().fingerprints().clone();
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
-        let mut changed = vec![library];
-        if let Some(remove) = remove
-            && !changed.contains(&remove)
-        {
-            changed.push(remove);
-        }
         self.notify(changed, fingerprints)
     }
     fn begin_zotero_read(&self) -> Result<(), EngineError> {
