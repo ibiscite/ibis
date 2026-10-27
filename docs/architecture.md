@@ -83,10 +83,10 @@ Today's key outputs use `ibis_core::syntax::cite(&Snapshot, &CitationRequest)`.
 Its capability table drives supported forms and typed field losses; explicit
 unsupported forms are refused. Source order and repeated selections are retained.
 Key output writes instructions for the destination processor, whose style can
-subsequently sort or format the citation. The old CLI/app entrypoints continue
-calling the existing pipeline until #1199/#1201 switch their callers to the engine;
-those cutovers delete the old entrypoints. Both pipelines share scalar escaping,
-without adapters between the two contracts.
+subsequently sort or format the citation. The CLI and picker prepare citations
+through the shared engine; the picker copies only its prepared result. The
+remaining unused desktop commands and old core helpers are removed in #1260,
+after their live discovery, settings and transport callers are replaced.
 
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and

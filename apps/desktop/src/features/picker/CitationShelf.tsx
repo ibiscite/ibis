@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { SearchResult } from "../../api";
-import type { FormattedCitation } from "../../format/formatted";
+import type { FormattedCitation } from "../../format/styles";
 import { copiesEntry } from "../../format/styles";
 import { STYLE_NAMES } from "../../format/styles";
 import { render } from "../../format/markup";

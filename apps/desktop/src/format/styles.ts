@@ -1,4 +1,13 @@
 import type { CitationStyle } from "../bindings";
+import type { Markup } from "./markup";
+
+/** The engine result displayed by the picker. */
+export interface FormattedCitation {
+  markup: Markup[];
+  text: string;
+  html: string;
+  warnings: string[];
+}
 
 // The bundled citation styles by id and title. Kept apart from the engine so
 // the picker can list them without loading the engine or the style files.
@@ -44,3 +53,5 @@ export const STYLE_SAMPLES: Record<StyleId, string> = {
   ieee: "A. García, “Synthetic sleep study,” Journal of Tests, 2021.",
   "modern-language-association": "(García)",
 };
+
+export const FORMATTED_STYLES = (Object.keys(STYLE_TITLES) as StyleId[]).map((id) => ({ id, title: STYLE_TITLES[id] }));

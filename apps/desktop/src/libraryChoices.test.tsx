@@ -38,7 +38,7 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
   expect(document.querySelector("main")?.getAttribute("data-compact")).toBe("true");
   expect(calls).not.toContain("find_sources");
-  expect(calls).not.toContain("copy_citation");
+  expect(calls).not.toContain("copy_file_citation");
 });
 
 test("missing-file Find uses the requested name and cancellation leaves its keyboard choices available", async () => {
@@ -89,7 +89,7 @@ test("a valid empty replacement hides old citation controls and Enter does nothi
   fireEvent.keyDown(search, { key: "Enter" });
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
   await act(async () => { await Promise.resolve(); });
-  expect(calls).not.toContain("copy_citation");
+  expect(calls).not.toContain("copy_file_citation");
   expect(calls.filter((call) => call === "library_status")).toHaveLength(reads);
 });
 
@@ -163,5 +163,5 @@ test("an unmatched search and a failed switch retaining a good index keep the ch
   expect(document.querySelector(".shelf")).toBeTruthy();
   expect(within(document.querySelector("footer")!).getByRole("button", { name: /^Copy/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /^Find missing.bib/ })).toBeNull();
-  expect(calls).not.toContain("copy_citation");
+  expect(calls).not.toContain("copy_file_citation");
 });

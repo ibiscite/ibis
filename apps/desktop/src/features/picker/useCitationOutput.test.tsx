@@ -39,6 +39,7 @@ function options(overrides: Partial<Options>): Options {
   return {
     chosen: [reference()], library: library(), libraryVersion: 0,
     format: "pandoc", style: null, showPastePreview: true,
+    previewFileCitation: vi.fn<Preview>().mockResolvedValue(preview("[@synthetic]")),
     refreshSnapshot: vi.fn(), ...overrides,
   };
 }
@@ -127,4 +128,13 @@ test.each([
   expect(refreshSnapshot).not.toHaveBeenCalled();
   expect(result.current.shown).toMatchObject({ text: "[@new-choice]" });
   expect(result.current.previewProblem).toBeUndefined();
+});
+
+test("the picker always prepares through the engine, including without the obsolete file flag", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("[@synthetic]"));
+  const { result } = renderHook(useCitationOutput, {
+    initialProps: options({ library: { ...library(), file_engine: false }, previewFileCitation }),
+  });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@synthetic]", fileTicket: "synthetic-ticket" }));
+  expect(previewFileCitation).toHaveBeenCalledTimes(1);
 });

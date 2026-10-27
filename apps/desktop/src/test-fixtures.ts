@@ -16,7 +16,7 @@ function hoursAgo(hours: number) {
 
 function reference(key: string, title: string, authors = "Example Author", container: string | null = null, itemType = "article-journal"): SearchResult {
   const names = authors.split(", ");
-  return { revision: "synthetic", id: { source: "synthetic-test", native_key: key }, source: "synthetic-test", key, title, authors, year: 2026, matched: ["title"],
+  return { revision: "synthetic", id: { library: "synthetic-test", key }, cite: `synthetic-cite-${key}`, source: "synthetic-test", key, title, authors, year: 2026, matched: ["title"],
     first_author: names[0] ?? "", author_count: names.length, container, item_type: itemType };
 }
 
@@ -35,16 +35,25 @@ export const testStates = [
 ];
 
 export function testProvider(state: typeof testStates[number]): { api: PickerApi; preview: PickerPreview } {
+  let sequence = 0;
+  const receipts = new Map<string, { text: string; hash: string }>();
   return {
     preview: { query: state.query },
     api: {
       libraryStatus: async () => state.library,
       search: async () => ({ revision: state.library.revision, results: state.results, interpretation: null }),
-      citationText: async (items) => {
-        const text = `[${items.map(({ id }) => `@${id.native_key}`).join("; ")}]`;
-        return { text, warnings: [], segments: [{ item: null, text }] };
+      previewFileCitation: async (items) => {
+        const text = `[${items.map(({ id }) => `@${(id as { key: string }).key}`).join("; ")}]`;
+        const ticket = `synthetic-ticket-${++sequence}`;
+        const hash = `synthetic-hash-${sequence}`;
+        receipts.set(ticket, { text, hash });
+        return { text, html: null, warnings: [], ticket, content_hash: hash };
       },
-      copyCitation: async () => ({ text: "[@example2026]", warnings: [] }),
+      copyFileCitation: async (ticket, hash) => {
+        const receipt = receipts.get(ticket);
+        if (!receipt || receipt.hash !== hash) throw new Error("Unknown synthetic preview");
+        return { text: receipt.text, warnings: [] };
+      },
       copyFormat: async () => "pandoc",
       pickerPreferences: async () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false }),
       setPickerPreferences: async () => null,
