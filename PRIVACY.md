@@ -17,6 +17,11 @@ and its local data. New Ibis data flows need an ADR and an update here.
   library IDs, shortcut, copy format, style, display choices and update consent.
   Older or hand-added fields are preserved. The command line has no settings
   file of its own and writes its results to the terminal.
+- **AI agents:** `ibis mcp` answers only the agent that started it, over its
+  standard input and output. It gives that agent item summaries, CSL data and
+  citations from the libraries named on its command line, never notes,
+  annotations or source paths, and it opens no network connection. The agent
+  may send what it receives to its own service.
 - **Start at login (Nightly):** only when enabled, Ibis registers a macOS login
   item, Windows startup value or Linux autostart file. Turning it off removes the
   launch entry. Windows may retain a Task Manager approval value that starts
