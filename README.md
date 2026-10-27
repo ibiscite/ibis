@@ -97,6 +97,7 @@ cargo run -p ibis -- libraries --file fixtures/bibtex/fidelity.bib --json
 cargo run -p ibis -- schema cite --json
 cargo run -p ibis -- call search --params '{"query":"garcia"}' --file fixtures/bibtex/fidelity.bib --json
 cargo run -p ibis -- serve --stdio --file fixtures/bibtex/fidelity.bib
+cargo run -p ibis -- mcp --file fixtures/bibtex/fidelity.bib
 ```
 
 The command line calls the same typed engine methods as the app: `libraries`,
@@ -135,6 +136,13 @@ with that explanation. Unsupported styles remain explicit per-item
 `ibis call METHOD --stdin` reads method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
 Content-Length frames, progress/library-change notifications and
 `$/cancelRequest`; it writes no terminal text to that stream.
+
+`ibis mcp` serves AI agents over the Model Context Protocol (stdio, revision
+2025-06-18) with four read-only tools: `search`, `show`, `cite` and `styles`.
+Add it to an agent as a stdio server, for example
+`ibis mcp --file references.bib`. Agents see summaries and citations, never
+notes, annotations, source paths or local links. Long values are shortened and
+each answer is at most 256 KiB.
 
 ## Contributing
 

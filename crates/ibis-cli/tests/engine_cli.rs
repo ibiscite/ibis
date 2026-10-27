@@ -231,3 +231,69 @@ fn piped_plain_citations_retain_literal_rtl_format_marks() -> Result<(), Box<dyn
     assert!(errors.is_empty());
     Ok(())
 }
+
+#[test]
+fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .args(["mcp", "--file", "../../fixtures/bibtex/fidelity.bib"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().ok_or("stdin")?;
+    for message in [
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"}}}),
+    ] {
+        writeln!(stdin, "{message}")?;
+    }
+    drop(stdin);
+    let output = child.wait_with_output()?;
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let replies: Vec<Value> = String::from_utf8(output.stdout)?
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?;
+    assert_eq!(replies.len(), 2);
+    assert_eq!(replies[1]["result"]["structuredContent"]["text"], "[@accents2021]");
+    Ok(())
+}
+
+#[test]
+fn citations_use_note_overrides_but_never_note_text_or_app_links() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!("ibis-notes-{}.json", std::process::id()));
+    std::fs::write(
+        &path,
+        json!([{
+            "id": "untitled",
+            "type": "book",
+            "author": [{"family": "Invented", "given": "Ada"}],
+            "issued": {"date-parts": [[2020]]},
+            "publisher": "Invented Press",
+            "note": "Invented private memo\ntitle: Invented override title",
+            "annote": "Invented private annotation",
+            "URL": "zotero://open-pdf/library/items/INVENTED"
+        }])
+        .to_string(),
+    )?;
+    let file = path.to_str().ok_or("path")?;
+    let output = ibis(&[
+        "cite",
+        "--file",
+        file,
+        "--style",
+        "apa",
+        "--form",
+        "bibliography-only",
+        "untitled",
+    ]);
+    std::fs::remove_file(&path)?;
+    assert_eq!(
+        String::from_utf8(output.stdout)?.trim(),
+        "Invented, A. (2020). Invented override title. Invented Press."
+    );
+    Ok(())
+}

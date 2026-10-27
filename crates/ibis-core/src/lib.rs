@@ -5,6 +5,7 @@
 //! extension) are thin layers over this crate.
 
 pub mod bibtex;
+pub mod citable;
 pub mod cite;
 pub mod contract;
 pub mod destination;

@@ -1,4 +1,5 @@
 //! One public URL boundary for every source adapter.
+use ibis_core::citable::public_url;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -18,68 +19,6 @@ pub(crate) fn remove_private_urls(csl: &mut BTreeMap<String, Value>) -> bool {
         }
     }
     removed
-}
-
-fn public_url(url: &str) -> bool {
-    let url = url.trim();
-    if url.is_empty() || url.contains('\\') || url.chars().any(char::is_control) {
-        return false;
-    }
-    let Some((scheme, rest)) = url.split_once(':') else {
-        // Zotero accepts a domain without a scheme. Require a domain-shaped
-        // host so relative paths with separators remain engine-only.
-        let host = url.split('/').next().unwrap_or_default();
-        let labels: Vec<_> = host.split('.').collect();
-        let document_suffix = labels.last().is_some_and(|label| {
-            matches!(
-                label.to_ascii_lowercase().as_str(),
-                "pdf"
-                    | "epub"
-                    | "djvu"
-                    | "doc"
-                    | "docx"
-                    | "odt"
-                    | "rtf"
-                    | "txt"
-                    | "md"
-                    | "tex"
-                    | "bib"
-                    | "ris"
-                    | "json"
-                    | "sqlite"
-                    | "html"
-                    | "htm"
-                    | "png"
-                    | "jpg"
-                    | "jpeg"
-                    | "gif"
-                    | "svg"
-                    | "webp"
-                    | "mp3"
-                    | "mp4"
-                    | "zip"
-            )
-        });
-        return !document_suffix
-            && labels.len() >= 2
-            && labels
-                .iter()
-                .all(|label| !label.is_empty() && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
-            && labels
-                .last()
-                .is_some_and(|label| label.len() >= 2 && label.bytes().all(|b| b.is_ascii_alphabetic()))
-            && !url.chars().any(char::is_whitespace);
-    };
-    scheme.len() > 1
-        && !url.chars().any(char::is_whitespace)
-        && !["file", "smb", "afp", "nfs", "jar"]
-            .iter()
-            .any(|private| scheme.eq_ignore_ascii_case(private))
-        && !rest.is_empty()
-        && scheme
-            .bytes()
-            .enumerate()
-            .all(|(i, b)| b.is_ascii_alphabetic() || (i > 0 && (b.is_ascii_digit() || matches!(b, b'+' | b'-' | b'.'))))
 }
 
 fn without_private_urls(note: &str) -> (String, bool) {
