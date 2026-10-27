@@ -1,5 +1,6 @@
 //! Invented Zotero items, mapped by Ibis, must format exactly as pinned Zotero
-//! code formats them (fixtures/formatted/zotero), through every front end.
+//! code formats them (fixtures/formatted/zotero), through every front end,
+//! whether mapped directly or read from Zotero's local API.
 use ibis_core::contract::{CitationRequest, CitationResult, LibraryId, LibraryObject, Snapshot};
 use ibis_engine::{
     Cancellation, Engine,
@@ -7,7 +8,12 @@ use ibis_engine::{
 };
 use ibis_sources::zotero::{ZoteroItem, map_item};
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, io::Cursor, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    io::{BufRead, BufReader, Cursor, Write},
+    net::TcpListener,
+    sync::Arc,
+};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -52,7 +58,74 @@ fn zotero_items_match_pinned_zotero_through_engine_cli_and_framed_stdio() -> Tes
         objects.push(LibraryObject::Record(mapped.record));
     }
     assert_eq!(keys.len(), 4);
-    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects)?));
+    let mapped = Engine::from_snapshot(Arc::new(Snapshot::new(objects)?));
+    let live = Engine::with_zotero_port(serve(fixture["items"].as_array().ok_or("items")?)?)
+        .map_err(|error| format!("{error:?}"))?;
+    live.dispatch(
+        ibis_engine::Method::Libraries,
+        &json!({"action":"open-zotero"}),
+        &Cancellation::default(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(
+        live.snapshot().map_err(|error| format!("{error:?}"))?.fingerprints(),
+        mapped.snapshot().map_err(|error| format!("{error:?}"))?.fingerprints(),
+        "the local API gives the mapped records"
+    );
+    for engine in [mapped, live] {
+        replay(&engine, cases, &keys, &items)?;
+    }
+    Ok(())
+}
+
+/// Zotero's local API serving `items` (Zotero 10, one version) until the
+/// test process ends; Better BibTeX is not installed.
+fn serve(items: &[Value]) -> TestResult<u16> {
+    let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    let port = listener.local_addr()?.port();
+    let versions: serde_json::Map<String, Value> = items
+        .iter()
+        .map(|item| (item["key"].as_str().unwrap_or_default().to_owned(), json!(1)))
+        .collect();
+    let listed: Vec<Value> = items
+        .iter()
+        .map(|item| {
+            let mut data = item.clone();
+            data["version"] = json!(1);
+            data["dateModified"] = json!("2026-10-26T12:00:00Z");
+            json!({"key": item["key"], "version": 1, "data": data})
+        })
+        .collect();
+    let total = items.len();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut stream = BufReader::new(stream);
+            let (mut head, mut line) = (String::new(), String::new());
+            while stream.read_line(&mut line).unwrap_or(0) > 2 {
+                head.push_str(&line);
+                line.clear();
+            }
+            let (status, body) = if head.starts_with("POST ") {
+                ("404 Not Found", json!({}))
+            } else if head.contains("format=versions") {
+                ("200 OK", Value::Object(versions.clone()))
+            } else {
+                ("200 OK", Value::Array(listed.clone()))
+            };
+            let body = body.to_string();
+            let _ = write!(
+                stream.get_mut(),
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\nZotero-API-Version: 3\r\n\
+                 X-Zotero-Version: 10.0.6\r\nZotero-Server-ID: invented-goldens\r\nLast-Modified-Version: 1\r\n\
+                 Total-Results: {total}\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    Ok(port)
+}
+
+fn replay(engine: &Engine, cases: &[Value], keys: &[String], items: &[Value]) -> TestResult {
     let mut frames = vec![];
     let mut typed = vec![];
     let mut batch_start = 0;

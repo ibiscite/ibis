@@ -411,6 +411,9 @@ fn relative_file_urls_stay_in_private_provenance() -> Result<(), Box<dyn std::er
         r"\invented\private.pdf",
         r"papers\private.pdf",
         "papers/private.pdf",
+        "zotero://open-pdf/library/items/INVENTED",
+        "papers.zip",
+        "x-devonthink-item://INVENTED",
     ] {
         std::fs::write(
             &path,

@@ -356,6 +356,9 @@ fn citation_warnings(result: &CitationResult) -> Vec<String> {
 }
 
 #[cfg(test)]
+mod parity_tests;
+
+#[cfg(test)]
 mod review_tests;
 
 #[cfg(test)]

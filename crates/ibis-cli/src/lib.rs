@@ -133,6 +133,7 @@ fn command() -> Command {
                     .action(ArgAction::SetTrue),
             ),
     )
+    .subcommand(Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"))
     .subcommand(
         Command::new("toggle")
             .about("Show or hide the desktop picker")
@@ -200,7 +201,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
             );
         }
     };
-    let engine = if matches.subcommand_name() == Some("serve") {
+    let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine
     } else {
         engine.without_file_watches()
@@ -250,6 +251,12 @@ fn execute<R: BufRead, W: Write + Send>(
     }
     if matches.get_flag("zotero") {
         engine.dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)?;
+    }
+    if name == "mcp" {
+        return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {
+            Ok(()) => 0,
+            Err(_) => 70,
+        }));
     }
     if name == "serve" {
         return Ok(Execution::Stdio(
