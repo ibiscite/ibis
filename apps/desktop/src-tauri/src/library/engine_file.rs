@@ -3,7 +3,7 @@ use super::search::{SearchQuery, SearchReply, SearchResult};
 use super::{CommandError, LibraryStatus};
 use ibis_core::{
     cite::{KeyFormat, Locator},
-    contract::{CitationRequest, LibraryObject},
+    contract::{CitationError, CitationRequest, CitationResult, ItemOutcome, LibraryObject, Notice},
     settings::CitationStyle,
 };
 use ibis_engine::{Cancellation, Engine, Method, PreparedCitation, request::SearchRequest};
@@ -258,7 +258,20 @@ impl FileLibrary {
             .map_err(CommandError::from)?;
         let result = citation.result();
         if result.copy_content(request.items.len()).is_none() {
-            return Err("These references cannot be copied in this format.".into());
+            let conflict = result.outcomes.iter().any(|outcome| {
+                matches!(
+                    outcome,
+                    ItemOutcome::Refused {
+                        error: CitationError::ConflictingKey,
+                        ..
+                    }
+                )
+            });
+            return Err(if conflict {
+                "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
+            } else {
+                "These references cannot be copied in this format."
+            }.into());
         }
         self.publish_preview(reservation, citation)
     }
@@ -276,11 +289,7 @@ impl FileLibrary {
             content_hash: result.content_hash.as_str().to_owned(),
             text: result.text.clone(),
             html: result.html.clone(),
-            warnings: if result.losses.is_empty() {
-                vec![]
-            } else {
-                vec!["This format cannot express part of the citation.".into()]
-            },
+            warnings: citation_warnings(result),
         };
         *slot = Some((preview.ticket.clone(), citation));
         Ok(preview)
@@ -312,13 +321,20 @@ impl FileLibrary {
             })??;
         Ok(crate::copy::Copied {
             text: citation.result().text.clone(),
-            warnings: if citation.result().losses.is_empty() {
-                vec![]
-            } else {
-                vec!["This format cannot express part of the citation.".into()]
-            },
+            warnings: citation_warnings(citation.result()),
         })
     }
+}
+
+fn citation_warnings(result: &CitationResult) -> Vec<String> {
+    let mut warnings = vec![];
+    if result.notices.contains(&Notice::YearSuffixWithheld) {
+        warnings.push("Year suffixes require the whole document; Ibis leaves them out.".into());
+    }
+    if !result.losses.is_empty() {
+        warnings.push("This format cannot express part of the citation.".into());
+    }
+    warnings
 }
 
 #[cfg(test)]
