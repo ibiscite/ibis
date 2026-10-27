@@ -37,8 +37,11 @@ use crate::{CONNECT_TIMEOUT, DEADLINE, DEFAULT_PORT, Deadline, IO_TIMEOUT, io_er
 pub const STORE_FILE: &str = "better-bibtex.sqlite";
 /// Keys for read-only libraries, relative to Zotero's data directory.
 pub const READ_ONLY_FILE: [&str; 2] = ["better-bibtex", "read-only.json"];
-/// More records than any library Ibis reads (the mapper's own limit is lower).
-pub const MAX_RECORDS: usize = 2_000_000;
+/// As many records as the closed reader reads items.
+pub const MAX_RECORDS: usize = 1_000_000;
+/// Better BibTeX keys are short; a longer one marks a damaged store. With
+/// [`MAX_RECORDS`] this bounds the memory a store's keys can hold.
+const MAX_KEY_BYTES: usize = 256;
 /// Item keys sent in one `item.citationkey` request. Better BibTeX looks each
 /// one up by scanning all its keys on Zotero's main thread, so batches stay
 /// small and a whole call is bounded.
@@ -138,7 +141,7 @@ fn push(
     let Some(citation_key) = citation_key.filter(|key| !key.trim().is_empty()) else {
         return Ok(());
     };
-    if !item_key_shape(&item_key) {
+    if !item_key_shape(&item_key) || citation_key.len() > MAX_KEY_BYTES {
         return Err(BbtError::Malformed);
     }
     if keys.len() == MAX_RECORDS {

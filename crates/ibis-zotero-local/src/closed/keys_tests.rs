@@ -52,13 +52,40 @@ fn zotero_7_reads_every_key_from_the_store() {
 }
 
 #[test]
-fn a_store_beside_zotero_8_is_not_served() {
+fn a_store_beside_zotero_8_means_a_migration_is_still_pending() {
+    // Better BibTeX 8 renames the store once its keys are in Zotero's field.
     let dir = fixture(8);
     last_run(dir.path(), "8.0.1");
     store(dir.path(), KEYS);
     let snapshot = read(dir.path());
     assert_eq!(keys(&snapshot), [Vec::<String>::new(), vec![]]);
-    assert!(!snapshot.better_bibtex_unknown);
+    assert!(snapshot.better_bibtex_unknown);
+}
+
+#[cfg(unix)]
+#[test]
+fn better_bibtex_files_that_cannot_be_copied_never_fail_the_library() {
+    // A symlinked store.
+    let dir = fixture(7);
+    last_run(dir.path(), "7.0.15");
+    let elsewhere = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic elsewhere"));
+    store(elsewhere.path(), KEYS);
+    std::os::unix::fs::symlink(
+        elsewhere.path().join("better-bibtex.sqlite"),
+        dir.path().join("better-bibtex.sqlite"),
+    )
+    .unwrap_or_else(|_| panic!("synthetic link"));
+    let snapshot = read(dir.path());
+    assert!(snapshot.better_bibtex_unknown);
+    assert_eq!(snapshot.libraries[0].items.len(), 1);
+    assert_eq!(keys(&snapshot), [Vec::<String>::new(), vec![]]);
+
+    // A file where Better BibTeX keeps its folder.
+    let dir = fixture(8);
+    std::fs::write(dir.path().join("better-bibtex"), b"synthetic").unwrap_or_else(|_| panic!("synthetic file"));
+    let snapshot = read(dir.path());
+    assert!(snapshot.better_bibtex_unknown);
+    assert_eq!(snapshot.libraries[0].items.len(), 1);
 }
 
 #[test]
@@ -79,6 +106,18 @@ fn a_store_that_cannot_be_read_leaves_keys_unknown_but_the_library_readable() {
     let dir = fixture(7);
     last_run(dir.path(), "7.0.15");
     store(dir.path(), "CREATE TABLE \"better-bibtex\" (name TEXT, data TEXT);");
+    assert!(read(dir.path()).better_bibtex_unknown);
+
+    // A key far longer than any Better BibTeX makes.
+    let dir = fixture(7);
+    last_run(dir.path(), "7.0.15");
+    store(
+        dir.path(),
+        &format!(
+            "{KEYS} UPDATE citationkey SET citationKey='{}' WHERE itemID=10;",
+            "k".repeat(300)
+        ),
+    );
     assert!(read(dir.path()).better_bibtex_unknown);
 
     // Damaged bytes.

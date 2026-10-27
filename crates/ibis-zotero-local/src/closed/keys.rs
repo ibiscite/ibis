@@ -11,29 +11,38 @@ use std::io::Read;
 const STORE: &str = "better-bibtex.sqlite";
 const JOURNAL: &str = "better-bibtex.sqlite-journal";
 const READ_ONLY: &str = "better-bibtex/read-only.json";
-/// `read-only.json` is parsed whole; a larger file leaves keys unknown.
-const MAX_READ_ONLY: u64 = 256 * 1024 * 1024;
+/// `read-only.json` is parsed whole, which can take many times its size in
+/// memory; real files hold one short record per read-only item. A larger file
+/// leaves keys unknown.
+const MAX_READ_ONLY: u64 = 16 * 1024 * 1024;
 
 /// Adds Better BibTeX's keys to the snapshot's items. `zotero` is the major
-/// version of the Zotero that last opened the database.
+/// version of the Zotero that last opened the database; `skipped` says a
+/// Better BibTeX file was there but could not be copied.
 pub(super) fn attach(
     copy: &Copy,
     zotero: Option<u32>,
+    skipped: bool,
     snapshot: &mut ClosedSnapshot,
     control: &Control,
 ) -> Result<(), ClosedError> {
+    if skipped {
+        snapshot.better_bibtex_unknown = true;
+        return Ok(());
+    }
     let mut unknown = false;
     let mut found = Vec::new();
     if copy.file(STORE).exists() {
         match zotero {
-            // Better BibTeX 7 keeps every key here. Better BibTeX 8 serves
-            // Zotero's own field and renames this store once it has migrated
-            // it, so a store left beside Zotero 8 or later holds no served keys.
+            // Better BibTeX 7 keeps every key here.
             Some(7) => match soft(store(copy, control))? {
                 Some(keys) => found.extend(keys.into_iter().map(|key| (key, false))),
                 None => unknown = true,
             },
-            Some(major) if major >= 8 => (),
+            // Better BibTeX 8 serves Zotero's own field and renames this
+            // store once it has migrated it. A store still here means the
+            // migration is pending or failed, so Zotero's field may lack keys
+            // Better BibTeX will add later.
             _ => unknown = true,
         }
     }
@@ -100,6 +109,12 @@ fn store(copy: &Copy, control: &Control) -> Result<Vec<StoredKey>, ClosedError> 
     )
     .map_err(database::failure)?;
     database::configure(&mut db, control)?;
+    let check: String = db
+        .query_row("PRAGMA quick_check(1)", [], |r| r.get(0))
+        .map_err(database::failure)?;
+    if check != "ok" {
+        return Err(ClosedError::Damaged);
+    }
     let keys = bbt::read_store(&db, 7).map_err(|_| ClosedError::Damaged);
     control.check()?;
     keys

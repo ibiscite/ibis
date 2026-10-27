@@ -22,6 +22,12 @@ const FILES: [&str; 8] = [
     "better-bibtex.sqlite-journal",
     "better-bibtex/read-only.json",
 ];
+/// Files from here on are Better BibTeX's: optional, and never a reason to
+/// refuse the library. One that is present but cannot be copied safely is
+/// skipped, which leaves the snapshot's keys unknown.
+const BBT: usize = 4;
+/// Each Better BibTeX file, on top of Zotero's own [`MAX_BYTES`].
+const MAX_BBT_FILE: u64 = 256 * 1024 * 1024;
 /// Logs before their databases; SHM (3) is activity evidence, never copied.
 const COPY_ORDER: [usize; 7] = [1, 2, 0, 5, 6, 4, 7];
 
@@ -105,7 +111,7 @@ impl Store {
         if directory.starts_with(&self.root) || self.root.starts_with(&directory) {
             return Err(ClosedError::UnsafeSource);
         }
-        let mut left = MAX_BYTES.saturating_mul(3);
+        let mut left = (MAX_BYTES + MAX_BBT_FILE * (FILES.len() - BBT) as u64).saturating_mul(3);
         let mut last = ClosedError::Changing;
         for _ in 0..3 {
             control.check()?;
@@ -135,13 +141,17 @@ impl Store {
         check_closed: &mut dyn FnMut() -> Result<(), ClosedError>,
     ) -> Result<ClosedSnapshot, ClosedError> {
         let mut sources = Sources::open(data)?;
-        let total = sources
-            .files
-            .iter()
-            .flatten()
-            .try_fold(0u64, |sum, f| sum.checked_add(f.metadata.len()))
+        let size = |files: &[Option<Source>]| {
+            files
+                .iter()
+                .flatten()
+                .try_fold(0u64, |sum, f| sum.checked_add(f.metadata.len()))
+        };
+        size(&sources.files[..BBT])
             .filter(|sum| *sum <= MAX_BYTES)
             .ok_or(ClosedError::TooLarge)?;
+        // Better BibTeX files are each at most MAX_BBT_FILE.
+        let total = size(&sources.files).ok_or(ClosedError::TooLarge)?;
         // Copy bytes + WAL index/query headroom; no checkpoint writes to main.
         let needed = total
             .checked_mul(2)
@@ -180,9 +190,10 @@ impl Store {
         sources.validate(input, data, &copy.path, control)?;
         check_closed()?;
         // Drop *every* source handle before SQLite is opened privately.
+        let skipped = sources.skipped.contains(&true);
         drop(sources);
         let (mut snapshot, zotero) = database::read(&copy, control)?;
-        keys::attach(&copy, zotero, &mut snapshot, control)?;
+        keys::attach(&copy, zotero, skipped, &mut snapshot, control)?;
         control.check()?;
         Ok(snapshot)
     }
@@ -271,30 +282,52 @@ struct Source {
     metadata: Metadata,
     header: Vec<u8>,
 }
+impl Source {
+    fn open(path: &Path, seen: &Metadata) -> Result<Self, ClosedError> {
+        let mut file = platform::open_source(path)?;
+        let metadata = file.metadata().map_err(|_| ClosedError::Unreadable)?;
+        if !platform::same(seen, &metadata) {
+            return Err(ClosedError::Changing);
+        }
+        let header = header(&mut file)?;
+        Ok(Self { file, metadata, header })
+    }
+}
 struct Sources {
     files: Vec<Option<Source>>,
+    /// Better BibTeX files present but not copied.
+    skipped: Vec<bool>,
 }
 impl Sources {
     fn open(data: &Path) -> Result<Self, ClosedError> {
         let mut files = Vec::new();
+        let mut skipped = vec![false; FILES.len()];
         for (i, name) in FILES.iter().enumerate() {
             let path = source_path(data, name);
-            match std::fs::symlink_metadata(&path) {
-                Ok(m) if m.is_file() && !m.file_type().is_symlink() && platform::resident(&m) => {
-                    let mut file = platform::open_source(&path)?;
-                    let metadata = file.metadata().map_err(|_| ClosedError::Unreadable)?;
-                    if !platform::same(&m, &metadata) {
-                        return Err(ClosedError::Changing);
-                    }
-                    let header = header(&mut file)?;
-                    files.push(Some(Source { file, metadata, header }));
+            let source = match std::fs::symlink_metadata(&path) {
+                Ok(m)
+                    if m.is_file()
+                        && !m.file_type().is_symlink()
+                        && platform::resident(&m)
+                        && (i < BBT || m.len() <= MAX_BBT_FILE) =>
+                {
+                    Source::open(&path, &m).map(Some)
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound && i != 0 => files.push(None),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound && i != 0 => Ok(None),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(ClosedError::NotFound),
-                _ => return Err(ClosedError::UnsafeSource),
+                _ => Err(ClosedError::UnsafeSource),
+            };
+            match source {
+                Ok(source) => files.push(source),
+                Err(ClosedError::Changing) => return Err(ClosedError::Changing),
+                Err(_) if i >= BBT => {
+                    skipped[i] = true;
+                    files.push(None);
+                }
+                Err(error) => return Err(error),
             }
         }
-        Ok(Self { files })
+        Ok(Self { files, skipped })
     }
 
     fn validate(&mut self, input: &Path, data: &Path, copy: &Path, control: &Control) -> Result<(), ClosedError> {
@@ -305,6 +338,7 @@ impl Sources {
             control.check()?;
             let current = std::fs::symlink_metadata(source_path(data, FILES[i]));
             match (source, current) {
+                (None, _) if self.skipped[i] => (),
                 (None, Err(e)) if e.kind() == std::io::ErrorKind::NotFound => (),
                 (Some(source), Ok(m)) if !m.file_type().is_symlink() && platform::same(&source.metadata, &m) => {
                     platform::passive(&source.file)?;
@@ -352,8 +386,9 @@ impl Sources {
             }
         }
         // A sidecar could appear while another was being compared.
-        for (name, source) in FILES.iter().zip(&self.files) {
+        for (i, (name, source)) in FILES.iter().zip(&self.files).enumerate() {
             match (source, std::fs::symlink_metadata(source_path(data, name))) {
+                (None, _) if self.skipped[i] => (),
                 (None, Err(e)) if e.kind() == std::io::ErrorKind::NotFound => (),
                 (Some(s), Ok(m)) if !m.file_type().is_symlink() && platform::same(&s.metadata, &m) => (),
                 _ => return Err(ClosedError::Changing),
