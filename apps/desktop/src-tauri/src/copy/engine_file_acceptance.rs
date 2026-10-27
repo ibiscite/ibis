@@ -153,13 +153,9 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
         assert_eq!(preview.text, expected.text);
         assert_eq!(preview.html, expected.html);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
-        let warnings = if style == Some(CitationStyle::Apa) {
-            vec!["Year suffixes require the whole document; Ibis leaves them out."]
-        } else {
-            vec![]
-        };
-        assert_eq!(
-            preview.warnings, warnings,
+        // Different authors need no year letters, so no notice either.
+        assert!(
+            preview.warnings.is_empty(),
             "context notices must not become order-loss warnings"
         );
         let copied = file
