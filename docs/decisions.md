@@ -70,6 +70,9 @@ A new network use needs an entry here and the maintainer's yes. Requests to
 Zotero on `127.0.0.1` are local reads, not network use: Zotero's local API and,
 read-only, Better BibTeX's `user.groups` and `item.citationkey` on the same
 port, with no proxy and no redirect (maintainer, 2026-10-27).
+Ibis may serve Better BibTeX-compatible Cite as You Write to editor plugins:
+`127.0.0.1` only, on its own port, refusing any request with a browser
+`Origin`, and off until switched on in Settings (maintainer, 2026-10-27).
 
 ## 0009 Insertion
 
