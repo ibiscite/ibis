@@ -6,9 +6,11 @@ use crate::{
 use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
 use ibis_core::zotero::api::{Transport, TransportError};
 pub use ibis_zotero_local::DEFAULT_PORT;
+use ibis_zotero_local::bbt::{BbtError, LiveBbt};
 pub use ibis_zotero_local::live::LiveError;
 use ibis_zotero_local::live::{Library, LiveReader};
 use ibis_zotero_local::{closed, discovery};
+use std::collections::BTreeMap;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -102,6 +104,7 @@ impl ZoteroSource {
     ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
         self.refresh_live(
             &mut ibis_zotero_local::LocalZotero::on_port(port),
+            Some(LiveBbt::on_port(port)),
             reload,
             cancelled,
             on_full,
@@ -134,17 +137,47 @@ impl ZoteroSource {
         reload: bool,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
-        self.refresh_live(transport, reload, cancelled, &mut || Ok(()))
+        self.refresh_live(transport, None, reload, cancelled, &mut || Ok(()))
     }
     fn refresh_live(
         &mut self,
         transport: &mut impl Transport,
+        bbt: Option<LiveBbt>,
         reload: bool,
         cancelled: &impl Fn() -> bool,
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
     ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
         let mut reader = self.reader.clone();
         reader.refresh_observed(transport, reload, cancelled, on_full)?;
+        // Better BibTeX key changes leave Zotero's item versions alone, so
+        // every refresh asks again for every item without its own key.
+        let keyless: Vec<&str> = reader
+            .items()
+            .into_iter()
+            .filter(|raw| raw.fields.get("citationKey").is_none_or(|key| key.trim().is_empty()))
+            .map(|raw| raw.key.as_str())
+            .collect();
+        let mut warnings = vec![
+            SourceWarning {
+                code: WarningCode::WorkLimit,
+                line: None
+            };
+            reader.omitted_items()
+        ];
+        let bbt_keys = match bbt.filter(|_| !keyless.is_empty()).map(|bbt| bbt.keys(None, &keyless)) {
+            None | Some(Err(BbtError::Unavailable)) => BTreeMap::new(),
+            Some(Ok(found)) => found,
+            Some(Err(_)) => {
+                warnings.push(SourceWarning {
+                    code: WarningCode::CitationKeysUnavailable,
+                    line: None,
+                });
+                BTreeMap::new()
+            }
+        };
+        if cancelled() {
+            return Err(LiveError::Cancelled.into());
+        }
         let loaded = self.map_items(
             reader.items().into_iter().map(|raw| ZoteroItem {
                 key: raw.key.clone(),
@@ -161,15 +194,9 @@ impl ZoteroSource {
                         field_mode: creator.field_mode,
                     })
                     .collect(),
-                better_bibtex_keys: vec![],
+                better_bibtex_keys: bbt_keys.get(&raw.key).cloned().into_iter().collect(),
             }),
-            vec![
-                SourceWarning {
-                    code: WarningCode::WorkLimit,
-                    line: None
-                };
-                reader.omitted_items()
-            ],
+            warnings,
             cancelled,
         )?;
         self.reader = reader;
@@ -197,6 +224,11 @@ impl ZoteroSource {
                 }
                 _ => None,
             })
+            .chain(
+                snapshot
+                    .better_bibtex_unknown
+                    .then_some(WarningCode::CitationKeysUnavailable),
+            )
             .map(|code| SourceWarning { code, line: None })
             .collect();
         let loaded = self.map_items(
@@ -217,7 +249,7 @@ impl ZoteroSource {
                             field_mode: creator.field_mode,
                         })
                         .collect(),
-                    better_bibtex_keys: vec![],
+                    better_bibtex_keys: raw.better_bibtex_keys.clone(),
                 }
             }),
             warnings,
@@ -311,8 +343,9 @@ fn default_directory() -> Result<PathBuf, ZoteroError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use ibis_core::contract::CitationKeySource;
     use ibis_core::zotero::api::Response;
-    use serde_json::json;
+    use serde_json::{Value, json};
     struct ParityApi;
     impl Transport for ParityApi {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
@@ -380,6 +413,154 @@ mod tests {
             }]
         );
     }
+    fn keys(loaded: &LoadedLibrary) -> Vec<(String, CitationKeySource)> {
+        loaded
+            .snapshot
+            .objects()
+            .iter()
+            .flat_map(|object| match &object.object {
+                LibraryObject::Record(record) => record.citation_keys.clone(),
+                _ => vec![],
+            })
+            .map(|key| (key.value, key.source))
+            .collect()
+    }
+
+    fn unavailable(loaded: &LoadedLibrary) -> bool {
+        loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == WarningCode::CitationKeysUnavailable)
+    }
+
+    /// Zotero's local API and Better BibTeX's JSON-RPC on one loopback port,
+    /// as in Zotero. `bbt` is the JSON-RPC answer's status and body; the
+    /// returned list collects the JSON-RPC requests.
+    fn serve(bbt: (u16, Value)) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let asked = Arc::new(std::sync::Mutex::new(vec![]));
+        let seen = asked.clone();
+        // Serves until the test process ends.
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = BufReader::new(stream.unwrap());
+                let (mut head, mut line, mut length) = (String::new(), String::new(), 0);
+                while stream.read_line(&mut line).unwrap() > 2 {
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse().unwrap();
+                    }
+                    head.push_str(&line);
+                    line.clear();
+                }
+                let mut body = vec![0; length];
+                stream.read_exact(&mut body).unwrap();
+                let (status, answer) = if head.starts_with("POST /better-bibtex/json-rpc ") {
+                    seen.lock().unwrap().push(String::from_utf8(body).unwrap());
+                    bbt.clone()
+                } else if head.contains("format=versions") {
+                    (200, json!({"SYNTH001":1,"SYNTH002":1}))
+                } else {
+                    (
+                        200,
+                        json!([
+                            {"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book",
+                            "title":"Invented atlas","creators":[],"dateModified":"2026-10-26T12:00:00Z"}},
+                            {"key":"SYNTH002","version":1,"data":{"key":"SYNTH002","version":1,"itemType":"book",
+                            "title":"Invented field guide","citationKey":"Own2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}
+                        ]),
+                    )
+                };
+                let answer = serde_json::to_vec(&answer).unwrap();
+                let _ = write!(
+                    stream.get_mut(),
+                    "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\nZotero-API-Version: 3\r\n\
+                     X-Zotero-Version: 7.0.11\r\nZotero-Server-ID: invented-bbt\r\nLast-Modified-Version: 1\r\nTotal-Results: 2\r\n\r\n",
+                    answer.len()
+                );
+                let _ = stream.get_mut().write_all(&answer);
+            }
+        });
+        (port, asked)
+    }
+
+    #[test]
+    fn live_reads_ask_better_bibtex_only_for_items_without_their_own_key() {
+        let (port, server) = serve((
+            200,
+            json!({"jsonrpc":"2.0","id":1,"result":{"SYNTH001":"Invented2026"}}),
+        ));
+        let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
+        assert_eq!(
+            *server.lock().unwrap(),
+            vec![r#"{"id":1,"jsonrpc":"2.0","method":"item.citationkey","params":[["SYNTH001"]]}"#]
+        );
+        let mut found = keys(&loaded);
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            found,
+            vec![
+                ("Invented2026".into(), CitationKeySource::BetterBibtex),
+                ("Own2026".into(), CitationKeySource::Zotero),
+            ]
+        );
+        assert!(!unavailable(&loaded));
+    }
+
+    #[test]
+    fn live_better_bibtex_failures_publish_no_guessed_keys() {
+        // Without Better BibTeX, Zotero answers 404: those items simply have
+        // no key. Any other failure says the keys are unavailable.
+        for (status, warned) in [(404, false), (500, true)] {
+            let (port, server) = serve((status, json!({})));
+            let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
+            assert_eq!(server.lock().unwrap().len(), 1);
+            assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
+            assert_eq!(unavailable(&loaded), warned, "{status}");
+        }
+    }
+
+    #[test]
+    fn closed_reads_publish_better_bibtex_keys_and_say_when_they_are_unknown() {
+        for unknown in [false, true] {
+            let item = closed::ClosedItem {
+                data: closed::RawItem {
+                    key: "SYNTH001".into(),
+                    item_type: "book".into(),
+                    fields: [("title".into(), "Invented atlas".into())].into(),
+                    better_bibtex_keys: vec!["Invented2026".into()],
+                    ..Default::default()
+                },
+                metadata: closed::SourceMetadata {
+                    item_id: 1,
+                    library_id: 1,
+                    version: 1,
+                    date_added: "2026-10-26 12:00:00".into(),
+                    date_modified: "2026-10-26 12:00:00".into(),
+                    stored_fields: Default::default(),
+                    stored_values: Default::default(),
+                },
+            };
+            let snapshot = closed::ClosedSnapshot {
+                schema_version: 123,
+                libraries: vec![closed::ClosedLibrary {
+                    library_id: 1,
+                    group_id: None,
+                    items: vec![item],
+                }],
+                warnings: vec![],
+                better_bibtex_unknown: unknown,
+            };
+            let loaded = ZoteroSource::default().publish_closed(&snapshot, &|| false).unwrap();
+            assert_eq!(
+                keys(&loaded),
+                vec![("Invented2026".into(), CitationKeySource::BetterBibtex)]
+            );
+            assert_eq!(unavailable(&loaded), unknown);
+        }
+    }
+
     #[test]
     fn actual_closed_reader_matches_live_public_records_in_disposable_ci() {
         if !cfg!(target_os = "macos") || std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {

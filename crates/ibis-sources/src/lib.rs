@@ -26,6 +26,9 @@ pub const MAX_LIBRARY_RECORDS: usize = 50_000;
 #[serde(rename_all = "kebab-case")]
 pub enum WarningCode {
     CloudSyncedDirectory,
+    /// Better BibTeX keeps keys this read could not get, so items without a
+    /// key of their own have none rather than a guessed one.
+    CitationKeysUnavailable,
     Syntax,
     DuplicateKey,
     Field,
