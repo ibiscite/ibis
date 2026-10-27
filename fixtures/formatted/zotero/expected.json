@@ -1,0 +1,137 @@
+{
+  "items": [
+    {
+      "key": "S0000294",
+      "itemType": "book",
+      "title": "Invented <i>orchid</i> atlas",
+      "date": "2026",
+      "publisher": "Synthetic Press",
+      "citationKey": "particle2026",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Ada",
+          "lastName": "de Vries"
+        }
+      ]
+    },
+    {
+      "key": "S0000295",
+      "itemType": "book",
+      "title": "合成の記録",
+      "date": "2024",
+      "publisher": "架空出版",
+      "citationKey": "nonlatin2024",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "花子",
+          "lastName": "例"
+        }
+      ]
+    },
+    {
+      "key": "S0000296",
+      "itemType": "book",
+      "title": "Invented field guide",
+      "publisher": "Imaginary Press",
+      "citationKey": "corporate",
+      "creators": [
+        {
+          "creatorType": "author",
+          "name": "Synthetic Institute"
+        }
+      ]
+    },
+    {
+      "key": "S0000297",
+      "itemType": "journalArticle",
+      "title": "Invented mineral observations",
+      "date": "2023",
+      "publicationTitle": "Journal of Imagined Samples",
+      "volume": "4",
+      "issue": "2",
+      "pages": "101-109",
+      "citationKey": "ranges2023",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Noor",
+          "lastName": "Example"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "style": "apa",
+      "form": "normal",
+      "text": "(de Vries, 2026; Example, 2023; Synthetic Institute, n.d.; 例, 2024)",
+      "html": "(de Vries, 2026; Example, 2023; Synthetic Institute, n.d.; 例, 2024)",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(de Vries, 2026; Example, 2023; Synthetic Institute, n.d.; \\uc0\\u20363{}, 2024)\n}"
+    },
+    {
+      "style": "apa",
+      "form": "bibliography-only",
+      "text": "de Vries, A. (2026). Invented orchid atlas. Synthetic Press.\nExample, N. (2023). Invented mineral observations. Journal of Imagined Samples, 4(2), 101–109.\nSynthetic Institute. (n.d.). Invented field guide. Imaginary Press.\n例花子. (2024). 合成の記録. 架空出版.",
+      "html": "<div class=\"csl-entry\">de Vries, A. (2026). <i>Invented <span style=\"font-style:normal;\">orchid</span> atlas</i>. Synthetic Press.</div>\n<div class=\"csl-entry\">Example, N. (2023). Invented mineral observations. <i>Journal of Imagined Samples</i>, <i>4</i>(2), 101–109.</div>\n<div class=\"csl-entry\">Synthetic Institute. (n.d.). <i>Invented field guide</i>. Imaginary Press.</div>\n<div class=\"csl-entry\">例花子. (2024). <i>合成の記録</i>. 架空出版.</div>",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nde Vries, A. (2026). {\\i{}Invented {\\i0{}orchid} atlas}. Synthetic Press.\\par\nExample, N. (2023). Invented mineral observations. {\\i{}Journal of Imagined Samples}, {\\i{}4}(2), 101\\uc0\\u8211{}109.\\par\nSynthetic Institute. (n.d.). {\\i{}Invented field guide}. Imaginary Press.\\par\n\\uc0\\u20363{}\\uc0\\u33457{}\\uc0\\u23376{}. (2024). {\\i{}\\uc0\\u21512{}\\uc0\\u25104{}\\uc0\\u12398{}\\uc0\\u35352{}\\uc0\\u37682{}}. \\uc0\\u26550{}\\uc0\\u31354{}\\uc0\\u20986{}\\uc0\\u29256{}.\n}"
+    },
+    {
+      "style": "chicago-author-date",
+      "form": "normal",
+      "text": "(de Vries 2026; 例 2024; Synthetic Institute, n.d.; Example 2023)",
+      "html": "(de Vries 2026; 例 2024; Synthetic Institute, n.d.; Example 2023)",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(de Vries 2026; \\uc0\\u20363{} 2024; Synthetic Institute, n.d.; Example 2023)\n}"
+    },
+    {
+      "style": "chicago-author-date",
+      "form": "bibliography-only",
+      "text": "Example, Noor. 2023. “Invented Mineral Observations.” Journal of Imagined Samples 4 (2): 101–9.\nSynthetic Institute. n.d. Invented Field Guide. Imaginary Press.\nVries, Ada de. 2026. Invented Orchid Atlas. Synthetic Press.\n例花子. 2024. 合成の記録. 架空出版.",
+      "html": "<div class=\"csl-entry\">Example, Noor. 2023. “Invented Mineral Observations.” <i>Journal of Imagined Samples</i> 4 (2): 101–9.</div>\n<div class=\"csl-entry\">Synthetic Institute. n.d. <i>Invented Field Guide</i>. Imaginary Press.</div>\n<div class=\"csl-entry\">Vries, Ada de. 2026. <i>Invented <span style=\"font-style:normal;\">Orchid</span> Atlas</i>. Synthetic Press.</div>\n<div class=\"csl-entry\">例花子. 2024. 合成の記録. 架空出版.</div>",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nExample, Noor. 2023. \\uc0\\u8220{}Invented Mineral Observations.\\uc0\\u8221{} {\\i{}Journal of Imagined Samples} 4 (2): 101\\uc0\\u8211{}9.\\par\nSynthetic Institute. n.d. {\\i{}Invented Field Guide}. Imaginary Press.\\par\nVries, Ada de. 2026. {\\i{}Invented {\\i0{}Orchid} Atlas}. Synthetic Press.\\par\n\\uc0\\u20363{}\\uc0\\u33457{}\\uc0\\u23376{}. 2024. \\uc0\\u21512{}\\uc0\\u25104{}\\uc0\\u12398{}\\uc0\\u35352{}\\uc0\\u37682{}. \\uc0\\u26550{}\\uc0\\u31354{}\\uc0\\u20986{}\\uc0\\u29256{}.\n}"
+    },
+    {
+      "style": "harvard-cite-them-right",
+      "form": "normal",
+      "text": "(Example, 2023; 例, 2024; de Vries, 2026; Synthetic Institute, no date)",
+      "html": "(Example, 2023; 例, 2024; de Vries, 2026; Synthetic Institute, no date)",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(Example, 2023; \\uc0\\u20363{}, 2024; de Vries, 2026; Synthetic Institute, no date)\n}"
+    },
+    {
+      "style": "harvard-cite-them-right",
+      "form": "bibliography-only",
+      "text": "Example, N. (2023) “Invented mineral observations,” Journal of Imagined Samples, 4(2), pp. 101–109.\nSynthetic Institute (no date) Invented field guide. Imaginary Press.\nde Vries, A. (2026) Invented orchid atlas. Synthetic Press.\n例花子 (2024) 合成の記録. 架空出版.",
+      "html": "<div class=\"csl-entry\">Example, N. (2023) “Invented mineral observations,” <i>Journal of Imagined Samples</i>, 4(2), pp. 101–109.</div>\n<div class=\"csl-entry\">Synthetic Institute (no date) <i>Invented field guide</i>. Imaginary Press.</div>\n<div class=\"csl-entry\">de Vries, A. (2026) <i>Invented <span style=\"font-style:normal;\">orchid</span> atlas</i>. Synthetic Press.</div>\n<div class=\"csl-entry\">例花子 (2024) 合成の記録. 架空出版.</div>",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nExample, N. (2023) \\uc0\\u8220{}Invented mineral observations,\\uc0\\u8221{} {\\i{}Journal of Imagined Samples}, 4(2), pp. 101\\uc0\\u8211{}109.\\par\nSynthetic Institute (no date) {\\i{}Invented field guide}. Imaginary Press.\\par\nde Vries, A. (2026) {\\i{}Invented {\\i0{}orchid} atlas}. Synthetic Press.\\par\n\\uc0\\u20363{}\\uc0\\u33457{}\\uc0\\u23376{} (2024) \\uc0\\u21512{}\\uc0\\u25104{}\\uc0\\u12398{}\\uc0\\u35352{}\\uc0\\u37682{}. \\uc0\\u26550{}\\uc0\\u31354{}\\uc0\\u20986{}\\uc0\\u29256{}.\n}"
+    },
+    {
+      "style": "ieee",
+      "form": "normal",
+      "text": "A. de Vries, Invented orchid atlas. Synthetic Press, 2026.\n例花子, 合成の記録. 架空出版, 2024.\nSynthetic Institute, Invented field guide. Imaginary Press.\nN. Example, “Invented mineral observations,” Journal of Imagined Samples, vol. 4, no. 2, pp. 101–109, 2023.",
+      "html": "<div class=\"csl-entry\">A. de Vries, <i>Invented <span style=\"font-style:normal;\">orchid</span> atlas</i>. Synthetic Press, 2026.</div>\n<div class=\"csl-entry\">例花子, 合成の記録. 架空出版, 2024.</div>\n<div class=\"csl-entry\">Synthetic Institute, <i>Invented field guide</i>. Imaginary Press.</div>\n<div class=\"csl-entry\">N. Example, “Invented mineral observations,” <i>Journal of Imagined Samples</i>, vol. 4, no. 2, pp. 101–109, 2023.</div>",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nA. de Vries, {\\i{}Invented {\\i0{}orchid} atlas}. Synthetic Press, 2026.\\par\n\\uc0\\u20363{}\\uc0\\u33457{}\\uc0\\u23376{}, \\uc0\\u21512{}\\uc0\\u25104{}\\uc0\\u12398{}\\uc0\\u35352{}\\uc0\\u37682{}. \\uc0\\u26550{}\\uc0\\u31354{}\\uc0\\u20986{}\\uc0\\u29256{}, 2024.\\par\nSynthetic Institute, {\\i{}Invented field guide}. Imaginary Press.\\par\nN. Example, \\uc0\\u8220{}Invented mineral observations,\\uc0\\u8221{} {\\i{}Journal of Imagined Samples}, vol. 4, no. 2, pp. 101\\uc0\\u8211{}109, 2023.\n}"
+    },
+    {
+      "style": "ieee",
+      "form": "bibliography-only",
+      "text": "A. de Vries, Invented orchid atlas. Synthetic Press, 2026.\n例花子, 合成の記録. 架空出版, 2024.\nSynthetic Institute, Invented field guide. Imaginary Press.\nN. Example, “Invented mineral observations,” Journal of Imagined Samples, vol. 4, no. 2, pp. 101–109, 2023.",
+      "html": "<div class=\"csl-entry\">A. de Vries, <i>Invented <span style=\"font-style:normal;\">orchid</span> atlas</i>. Synthetic Press, 2026.</div>\n<div class=\"csl-entry\">例花子, 合成の記録. 架空出版, 2024.</div>\n<div class=\"csl-entry\">Synthetic Institute, <i>Invented field guide</i>. Imaginary Press.</div>\n<div class=\"csl-entry\">N. Example, “Invented mineral observations,” <i>Journal of Imagined Samples</i>, vol. 4, no. 2, pp. 101–109, 2023.</div>",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nA. de Vries, {\\i{}Invented {\\i0{}orchid} atlas}. Synthetic Press, 2026.\\par\n\\uc0\\u20363{}\\uc0\\u33457{}\\uc0\\u23376{}, \\uc0\\u21512{}\\uc0\\u25104{}\\uc0\\u12398{}\\uc0\\u35352{}\\uc0\\u37682{}. \\uc0\\u26550{}\\uc0\\u31354{}\\uc0\\u20986{}\\uc0\\u29256{}, 2024.\\par\nSynthetic Institute, {\\i{}Invented field guide}. Imaginary Press.\\par\nN. Example, \\uc0\\u8220{}Invented mineral observations,\\uc0\\u8221{} {\\i{}Journal of Imagined Samples}, vol. 4, no. 2, pp. 101\\uc0\\u8211{}109, 2023.\n}"
+    },
+    {
+      "style": "modern-language-association",
+      "form": "normal",
+      "text": "(de Vries; 例; Synthetic Institute; Example)",
+      "html": "(de Vries; 例; Synthetic Institute; Example)",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n(de Vries; \\uc0\\u20363{}; Synthetic Institute; Example)\n}"
+    },
+    {
+      "style": "modern-language-association",
+      "form": "bibliography-only",
+      "text": "de Vries, Ada. Invented Orchid Atlas. Synthetic Press, 2026.\nExample, Noor. “Invented Mineral Observations.” Journal of Imagined Samples, vol. 4, no. 2, 2023, pp. 101–09.\nSynthetic Institute. Invented Field Guide. Imaginary Press.\n例花子. 合成の記録. 架空出版, 2024.",
+      "html": "<div class=\"csl-entry\">de Vries, Ada. <i>Invented <span style=\"font-style:normal;\">Orchid</span> Atlas</i>. Synthetic Press, 2026.</div>\n<div class=\"csl-entry\">Example, Noor. “Invented Mineral Observations.” <i>Journal of Imagined Samples</i>, vol. 4, no. 2, 2023, pp. 101–09.</div>\n<div class=\"csl-entry\">Synthetic Institute. <i>Invented Field Guide</i>. Imaginary Press.</div>\n<div class=\"csl-entry\">例花子. 合成の記録. 架空出版, 2024.</div>",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nde Vries, Ada. {\\i{}Invented {\\i0{}Orchid} Atlas}. Synthetic Press, 2026.\\par\nExample, Noor. \\uc0\\u8220{}Invented Mineral Observations.\\uc0\\u8221{} {\\i{}Journal of Imagined Samples}, vol. 4, no. 2, 2023, pp. 101\\uc0\\u8211{}09.\\par\nSynthetic Institute. {\\i{}Invented Field Guide}. Imaginary Press.\\par\n\\uc0\\u20363{}\\uc0\\u33457{}\\uc0\\u23376{}. \\uc0\\u21512{}\\uc0\\u25104{}\\uc0\\u12398{}\\uc0\\u35352{}\\uc0\\u37682{}. \\uc0\\u26550{}\\uc0\\u31354{}\\uc0\\u20986{}\\uc0\\u29256{}, 2024.\n}"
+    }
+  ]
+}

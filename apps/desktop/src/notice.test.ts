@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-const native = vi.hoisted(() => ({ listen: vi.fn(async (_name: string, _handler: unknown) => () => {}), copiedNotice: vi.fn(async () => "[@synthetic]") }));
+const native = vi.hoisted(() => ({ listen: vi.fn(async (_name: string, _handler: unknown) => () => {}), copiedNotice: vi.fn(async () => ({ delivered: { outcome: "copied", reason: null }, text: "[@synthetic]" })) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: native.listen }));
 vi.mock("./bindings", () => ({ commands: { copiedNotice: native.copiedNotice } }));
 

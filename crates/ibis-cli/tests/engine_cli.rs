@@ -17,7 +17,7 @@ fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
         vec!["--json", "unknown"],
         vec!["cite", "--json"],
         vec!["search", "x", "--limit", "bad", "--json"],
-        vec!["libraries", "--zotero", "--json"],
+        vec!["libraries", "--unknown-source", "--json"],
     ] {
         let output = ibis(&args);
         assert_eq!(output.status.code(), Some(2));

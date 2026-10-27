@@ -12,8 +12,18 @@ const MAX_WARNING_DETAILS: usize = 256;
 pub(super) struct Owners {
     operation: Mutex<()>,
     watches: Mutex<BTreeMap<u64, SourceWatch>>,
+    zotero: Mutex<ibis_sources::zotero_source::ZoteroSource>,
+    zotero_port: Option<u16>,
     #[cfg(test)]
     fail_watches: std::sync::atomic::AtomicBool,
+}
+impl Owners {
+    pub(super) fn on_port(port: u16) -> Self {
+        Self {
+            zotero_port: Some(port),
+            ..Self::default()
+        }
+    }
 }
 #[derive(Default)]
 pub(super) struct Registry {
@@ -165,6 +175,24 @@ impl Engine {
         }
     }
     pub(super) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
+        let loaded_zotero = self
+            .resources
+            .zotero
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))?
+            .current()
+            .is_some_and(|loaded| library.is_none_or(|id| *id == loaded.library));
+        if loaded_zotero {
+            let result = self.read_zotero(true, cancel);
+            if library.is_some() {
+                return result;
+            }
+            if let Err(failure) = result
+                && failure.code == ErrorCode::Cancelled
+            {
+                return Err(failure);
+            }
+        }
         let state = self.state()?;
         if library.is_some_and(|id| !state.libraries.contains_key(id)) {
             return Err(error(ErrorCode::NotFound));
@@ -202,6 +230,68 @@ impl Engine {
             }
         }
         Ok(())
+    }
+}
+impl Engine {
+    pub(super) fn read_zotero(&self, reload: bool, cancel: &Cancellation) -> Result<(), EngineError> {
+        cancel.check()?;
+        let _operation = self
+            .resources
+            .operation
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))?;
+        let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let reload = reload || !self.state()?.zotero_ready;
+        let mut guard_error = None;
+        let mut began = false;
+        let mut on_full = || {
+            if !began {
+                if let Err(failure) = self.shared.begin_zotero_read() {
+                    guard_error = Some(failure);
+                    return Err(ibis_sources::zotero_source::LiveError::Cancelled);
+                }
+                began = true;
+            }
+            Ok(())
+        };
+        let result = if let Some(port) = self.resources.zotero_port {
+            source.refresh_observed(port, reload, &|| cancel.is_cancelled(), &mut on_full)
+        } else {
+            let cancel = cancel.clone();
+            source.refresh_native(reload, Arc::new(move || cancel.is_cancelled()), &mut on_full)
+        };
+        if let Some(failure) = guard_error {
+            return Err(failure);
+        }
+        match result {
+            Ok(loaded) => {
+                cancel.check()?;
+                self.shared.install(info(&loaded), &loaded.snapshot, None)
+            }
+            Err(failure) => {
+                use ibis_sources::zotero_source::ZoteroError;
+                let code = if failure.cancelled() {
+                    ErrorCode::Cancelled
+                } else if failure.limited() {
+                    ErrorCode::ResourceLimit
+                } else if failure.newer() {
+                    ErrorCode::NewerFormat
+                } else if failure == ZoteroError::InvalidData {
+                    ErrorCode::BadInput
+                } else {
+                    ErrorCode::SourceUnavailable
+                };
+                if code != ErrorCode::Cancelled {
+                    if !began {
+                        self.shared.begin_zotero_read()?;
+                    }
+                    if let Some(previous) = source.current() {
+                        let _ = self.shared.failed(&previous.library, code);
+                    }
+                }
+                Err(error(code))
+            }
+        }
     }
 }
 impl Shared {

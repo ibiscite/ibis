@@ -491,14 +491,15 @@ fn attachment_limits_keep_records_and_refuse_reloads() -> Result<(), Box<dyn std
 
 #[test]
 fn record_caps_keep_a_bounded_prefix_and_refuse_reload() -> Result<(), Box<dyn std::error::Error>> {
-    const LIMIT: usize = 50_000;
+    const LIMIT: usize = ibis_sources::MAX_LIBRARY_RECORDS;
     let dir = tempfile::tempdir()?;
     for extension in ["json", "bib"] {
         let path = dir.path().join(format!("synthetic.{extension}"));
         let entries = (0..=LIMIT)
             .map(|index| {
                 if extension == "bib" {
-                    format!("@misc{{k{index}}}\n")
+                    // Real entries carry fields; the work budget scales with them.
+                    format!("@misc{{k{index}, title = {{Synthetic title {index} for the record cap}}}}\n")
                 } else {
                     format!(r#"{{"id":"k{index}","type":"book"}}"#)
                 }

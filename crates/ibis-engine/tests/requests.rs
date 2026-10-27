@@ -18,8 +18,11 @@ fn requests_are_typed_and_unknown_fields_are_refused() -> Result<(), Box<dyn std
         path: "/synthetic/refs.bib".into(),
     };
     assert!(serde_json::from_value::<LibrariesRequest>(serde_json::to_value(&request)?)? == request);
-    assert!(serde_json::from_value::<LibrariesRequest>(json!({"action":"open-zotero"})).is_err());
-    assert!(!request_schema(Method::Libraries).to_string().contains("open-zotero"));
+    let open: LibrariesRequest = serde_json::from_value(json!({"action":"open-zotero"}))?;
+    assert!(matches!(open, LibrariesRequest::OpenZotero {}));
+    assert!(serde_json::from_value::<LibrariesRequest>(serde_json::to_value(&open)?)? == open);
+    assert!(serde_json::from_value::<LibrariesRequest>(json!({"action":"open-zotero","unknown":true})).is_err());
+    assert!(request_schema(Method::Libraries).to_string().contains("open-zotero"));
     for method in Method::ALL {
         assert!(request_schema(method).is_object());
     }

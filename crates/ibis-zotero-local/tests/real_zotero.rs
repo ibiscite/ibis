@@ -12,9 +12,7 @@ use std::net::TcpStream;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use ibis_core::model::LoadResult;
-use ibis_core::zotero::Library;
-use ibis_core::zotero::api::{self, Refresh, Snapshot};
+use ibis_zotero_local::live::{Library, LiveReader, Refresh};
 use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
 
 const ARTICLE: &str = r#"{
@@ -29,7 +27,7 @@ const ARTICLE: &str = r#"{
   "volume": "12",
   "pages": "101-120",
   "DOI": "10.0000/synthetic.1",
-  "extra": "Citation Key: example2020sleep"
+  "extra": "Citation Key: example2020sleep\nIbis synthetic raw Extra marker."
 }"#;
 
 const BOOK: &str = r#"{
@@ -38,7 +36,7 @@ const BOOK: &str = r#"{
   "creators": [{"name": "Synthetic Institute", "creatorType": "author"}],
   "date": "2019",
   "publisher": "Example Press",
-  "extra": "Citation Key: institute2019"
+  "extra": "Citation Key: institute2019\nIbis synthetic raw Extra marker."
 }"#;
 
 const KEYLESS: &str = r#"{
@@ -53,7 +51,7 @@ const LATER: &str = r#"{
   "title": "Added while Ibis was watching",
   "creators": [{"firstName": "Dana", "lastName": "Stand-In", "creatorType": "author"}],
   "date": "2022",
-  "extra": "Citation Key: standin2022"
+  "extra": "Citation Key: standin2022\nIbis synthetic raw Extra marker."
 }"#;
 
 /// The throwaway Zotero's port. The script sets it; there is no default,
@@ -96,14 +94,14 @@ fn save(items: &[&str], session: &str) -> Result<(), Box<dyn Error>> {
 
 /// Scans until Zotero lists `count` items; saving finishes after the
 /// connector answers.
-fn scan_until(count: usize) -> (LoadResult, Snapshot) {
+fn scan_until(reader: &mut LiveReader, count: usize) {
     let started = Instant::now();
     loop {
-        let scanned = api::scan(&mut LocalZotero::on_port(port()), Library::User);
+        let scanned = reader.refresh(&mut LocalZotero::on_port(port()), false, &|| false);
         match scanned {
-            Ok((result, snapshot)) if result.references.len() >= count => return (result, snapshot),
+            Ok(_) if reader.items().len() >= count => return,
             other if started.elapsed() > Duration::from_secs(60) => {
-                panic!("Zotero did not list {count} items within a minute: {other:?}")
+                panic!("Zotero did not list {count} synthetic items within a minute: {other:?}")
             }
             _ => thread::sleep(Duration::from_millis(500)),
         }
@@ -113,87 +111,117 @@ fn scan_until(count: usize) -> (LoadResult, Snapshot) {
 #[test]
 #[ignore = "needs a running Zotero; see scripts/real-zotero.sh"]
 fn ibis_reads_what_a_real_zotero_sends() -> Result<(), Box<dyn Error>> {
-    // Items are added to the library, so only ever run against the empty
-    // Zotero that scripts/real-zotero.sh starts.
     if std::env::var_os("IBIS_THROWAWAY_ZOTERO").is_none() || port() == 0 {
         return Err("run this through scripts/real-zotero.sh, which starts a throwaway Zotero".into());
     }
-    let (empty, _) = api::scan(&mut LocalZotero::on_port(port()), Library::User)?;
-    if !empty.references.is_empty() {
+    let mut reader = LiveReader::new(Library::User);
+    reader.refresh(&mut LocalZotero::on_port(port()), true, &|| false)?;
+    if !reader.items().is_empty() {
         return Err("this Zotero library is not empty; refusing to add synthetic items".into());
     }
     save(&[ARTICLE, BOOK, KEYLESS], "ibis-synthetic-1")?;
-    let (result, snapshot) = scan_until(3);
-    assert_eq!(result.references.len(), 3, "{:#?}", result.references);
-    assert!(result.warnings.is_empty(), "{:#?}", result.warnings);
-
-    let article = result
-        .references
+    scan_until(&mut reader, 3);
+    let items = reader.items();
+    assert_eq!(items.len(), 3);
+    // Assert Zotero-native input, not a CSL export or a legacy Reference. The
+    // one mapper's separate differential suite verifies normalization.
+    let article = items
         .iter()
-        .find(|r| r.citekey.as_deref() == Some("example2020sleep"))
-        .ok_or("the article lost its citation key from Extra")?;
+        .find(|item| {
+            item.fields
+                .get("title")
+                .is_some_and(|title| title == "Sleep and memory consolidation in synthetic subjects")
+        })
+        .ok_or("the article was not listed")?;
+    assert!(
+        has_key(article, "example2020sleep"),
+        "the article lost its native/Extra key"
+    );
     assert!(
         article
-            .title
-            .as_deref()
-            .unwrap_or_default()
-            .contains("Sleep and memory")
+            .fields
+            .get("extra")
+            .is_some_and(|extra| extra.contains("Ibis synthetic raw Extra marker.")),
+        "the article lost its ordinary raw Extra field"
     );
-    let families: Vec<_> = article.authors.iter().filter_map(|a| a.family.as_deref()).collect();
+    assert!(
+        article
+            .fields
+            .get("title")
+            .is_some_and(|title| title.contains("Sleep and memory"))
+    );
+    let families: Vec<_> = article
+        .creators
+        .iter()
+        .map(|creator| creator.last_name.as_str())
+        .collect();
     assert_eq!(families, ["Example", "Sample"]);
-    assert_eq!(article.issued.as_ref().map(|i| i.start.year), Some(2020));
-    assert_eq!(article.item_type, "article-journal");
-    assert!(article.id.source.starts_with("zotero"), "{}", article.id.source);
-
-    let book = result
-        .references
+    assert_eq!(article.fields.get("date").map(String::as_str), Some("2020-03-14"));
+    assert_eq!(article.item_type, "journalArticle");
+    assert_eq!(article.key.len(), 8);
+    let book = items
         .iter()
-        .find(|r| r.citekey.as_deref() == Some("institute2019"))
-        .ok_or("the book lost its citation key")?;
-    assert!(book.title.as_deref().unwrap_or_default().contains("数据与记忆"));
-    assert_eq!(book.item_type, "book");
-
-    let keyless = result
-        .references
-        .iter()
-        .find(|r| {
-            r.title
-                .as_deref()
-                .unwrap_or_default()
-                .contains("without a citation key")
+        .find(|item| {
+            item.fields
+                .get("title")
+                .is_some_and(|title| title == "Résumé des données: 数据与记忆")
         })
-        .ok_or("an item without a citation key was not listed")?;
-    assert_eq!(keyless.citekey, None);
-
-    // Nothing changed: the cheap check says so without reading everything.
-    let again = api::refresh(&mut LocalZotero::on_port(port()), Library::User, Some(&snapshot))?;
-    assert_eq!(again, Refresh::Unchanged);
-
-    // A new item is noticed and the whole library is read again.
+        .ok_or("the book was not listed")?;
+    assert!(has_key(book, "institute2019"), "the book lost its native/Extra key");
+    assert!(
+        book.fields
+            .get("extra")
+            .is_some_and(|extra| extra.contains("Ibis synthetic raw Extra marker."))
+    );
+    assert!(
+        book.fields
+            .get("title")
+            .is_some_and(|title| title.contains("数据与记忆"))
+    );
+    assert_eq!(book.item_type, "book");
+    assert!(
+        book.creators
+            .iter()
+            .any(|creator| creator.name == "Synthetic Institute")
+    );
+    let keyless = items
+        .iter()
+        .find(|item| {
+            item.fields
+                .get("title")
+                .is_some_and(|title| title.contains("without a citation key"))
+        })
+        .ok_or("the keyless item was not listed")?;
+    assert!(keyless.fields.get("citationKey").is_none_or(String::is_empty));
+    assert_eq!(
+        reader.refresh(&mut LocalZotero::on_port(port()), false, &|| false)?,
+        Refresh::Unchanged
+    );
     save(&[LATER], "ibis-synthetic-2")?;
-    let started = Instant::now();
-    loop {
-        match api::refresh(&mut LocalZotero::on_port(port()), Library::User, Some(&snapshot))? {
-            Refresh::Loaded {
-                result,
-                snapshot: newer,
-            } => {
-                assert_eq!(result.references.len(), 4, "{:#?}", result.references);
-                assert!(newer.version > snapshot.version);
-                assert!(
-                    result
-                        .references
-                        .iter()
-                        .any(|r| r.citekey.as_deref() == Some("standin2022"))
-                );
-                return Ok(());
-            }
-            Refresh::Unchanged if started.elapsed() < Duration::from_secs(60) => {
-                thread::sleep(Duration::from_millis(500))
-            }
-            Refresh::Unchanged => panic!("Zotero never reported the added item"),
-        }
-    }
+    scan_until(&mut reader, 4);
+    let items = reader.items();
+    assert_eq!(items.len(), 4);
+    assert!(items.iter().any(|item| {
+        has_key(item, "standin2022")
+            && item
+                .fields
+                .get("extra")
+                .is_some_and(|extra| extra.contains("Ibis synthetic raw Extra marker."))
+    }));
+    Ok(())
+}
+
+// Zotero 10 migrates recognized Extra key lines into the native key field.
+// Ordinary Extra prose must survive independently of that migration.
+fn has_key(item: &ibis_zotero_local::live::ItemData, key: &str) -> bool {
+    item.fields.get("citationKey").is_some_and(|value| value == key)
+        || item.fields.get("extra").is_some_and(|extra| {
+            extra.lines().any(|line| {
+                line.trim()
+                    .strip_prefix("Citation Key:")
+                    .is_some_and(|value| value.trim() == key)
+            })
+        })
 }
 
 const CAPTURE_OWNERSHIP_ERROR: &str = "Zotero capture socket ownership could not be verified.";

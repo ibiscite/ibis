@@ -15,6 +15,7 @@ use thiserror::Error;
 
 mod database;
 mod database_bounds;
+mod keys;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod mounts;
 mod platform;
@@ -78,6 +79,8 @@ pub struct RawItem {
     pub item_type: String,
     pub creators: Vec<RawCreator>,
     pub fields: BTreeMap<String, String>,
+    /// Keys Better BibTeX keeps outside Zotero's own fields (see [`crate::bbt`]).
+    pub better_bibtex_keys: Vec<String>,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -130,6 +133,10 @@ pub struct ClosedSnapshot {
     pub schema_version: i64,
     pub libraries: Vec<ClosedLibrary>,
     pub warnings: Vec<ClosedWarning>,
+    /// Better BibTeX keeps keys this read could not get (an unreadable or
+    /// older store, or no record of which Zotero last ran). Citation keys are
+    /// then unknown: refuse key output rather than publish "no key".
+    pub better_bibtex_unknown: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]

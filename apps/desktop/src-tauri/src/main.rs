@@ -23,6 +23,7 @@ mod notice;
 mod panel;
 #[cfg(any(target_os = "macos", test))]
 mod panel_startup;
+mod paste;
 mod picker;
 mod placement;
 mod preferences;
@@ -174,6 +175,7 @@ fn main() {
         .manage(picker::PickerGeneration::default())
         .manage(picker::Registered::default())
         .manage(notice::Notice::default())
+        .manage(paste::LastTarget::default())
         .manage(picker::FullScreenGuard::default())
         .manage(Mutex::new(ShortcutStatus::default()))
         .manage(updater::Updates::default())

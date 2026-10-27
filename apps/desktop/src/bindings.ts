@@ -109,17 +109,22 @@ export const commands = {
 	/**  Current state of the global shortcut. */
 	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus>("shortcut_status"),
 	/**
-	 *  Say "Copied" after the picker has hidden. The interface calls this only
-	 *  after a copy without warnings that hid the picker (see `copyFeedback.ts`);
-	 *  copies with warnings keep their notice inside the picker. Failures are
-	 *  reported as fixed diagnostics: the citation is on the clipboard either way.
+	 *  After the picker has hidden: paste into the app it was opened from when
+	 *  that is safe (#27), then say "Pasted into …" or "Copied" and why. The
+	 *  interface calls this only after a copy without warnings that hid the
+	 *  picker (see `copyFeedback.ts`); copies with warnings keep their notice
+	 *  inside the picker. Failures are reported as fixed diagnostics: the
+	 *  citation is on the clipboard either way.
 	 */
 	showCopiedNotice: (text: string) => __TAURI_INVOKE<void>("show_copied_notice", { text }),
 	/**
-	 *  The text of the notice being shown, for a notice page that has just
-	 *  loaded and missed the event that announced it.
+	 *  The notice being shown, for a notice page that has just loaded and missed
+	 *  the event that announced it.
 	 */
-	copiedNotice: () => __TAURI_INVOKE<string | null>("copied_notice"),
+	copiedNotice: () => __TAURI_INVOKE<{
+	delivered: Delivered,
+	text: string,
+} | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
 	/**  Show only native Copy and Add/Remove actions. Cancellation returns no action. */
@@ -182,6 +187,16 @@ export type Copied = {
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
 };
+
+/**  What happened to a copied citation, for the notice to word. */
+export type Delivered = { outcome: "pasted";
+/**  The app's own name; `None` when it has none. */
+app: string | null } | { outcome: "copied";
+/**
+ *  Why Ibis did not paste, when the person can do something about it
+ *  or would expect a paste: a `CopyReason` code such as `terminal`.
+ */
+reason: string | null };
 
 /**  How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable" | "spacious";
@@ -327,6 +342,15 @@ export type LoginItemProblem =
 export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyword" | "container" | "abstract" |
 /**  An ISBN, PubMed ID or arXiv ID given as the whole query. */
 "identifier";
+
+/**
+ *  What the notice says: whether the citation was pasted or only copied, and
+ *  one line of it.
+ */
+export type NoticeMessage = {
+	delivered: Delivered,
+	text: string,
+};
 
 /**
  *  How the picker looks and what it formats with, remembered across restarts

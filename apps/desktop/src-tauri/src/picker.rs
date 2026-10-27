@@ -26,6 +26,8 @@ pub(crate) use dialogs::ChooserLease;
 pub(crate) use dialogs::ChooserOpen;
 pub(crate) use full_screen::FullScreenGuard;
 #[cfg(target_os = "macos")]
+pub(crate) use layout::{command_key, typing};
+#[cfg(target_os = "macos")]
 pub(crate) use registration::follow_layout;
 pub(crate) use registration::{Registered, register_shortcut};
 
@@ -77,6 +79,8 @@ pub(crate) fn configured_shortcut(setting: Option<&str>) -> (Shortcut, String, O
 
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
+    // Before the panel takes the front: the app Enter will paste into (#1241).
+    crate::paste::capture(app);
     app.state::<PickerGeneration>().advance();
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
         report(window.unminimize(), NativeIssue::Unminimize);

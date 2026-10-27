@@ -1,14 +1,15 @@
 //! Bound SQLite's logical size before its pager/quick_check can allocate from
 //! untrusted main or WAL page-count claims. Checksums and recovery stay SQLite's
 //! responsibility; we only read the documented fixed headers of our private copy.
-use super::private_copy::{Copy, MAX_BYTES};
+use super::private_copy::MAX_BYTES;
 use super::{ClosedError, Control};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
-pub(super) fn check(copy: &Copy, control: &Control) -> Result<(), ClosedError> {
-    let path = copy.database_path();
-    let mut main = File::open(&path).map_err(|_| ClosedError::PrivateStorage)?;
+/// Checks the private copy at `path` and its `-wal`, if any.
+pub(super) fn check(path: &Path, control: &Control) -> Result<(), ClosedError> {
+    let mut main = File::open(path).map_err(|_| ClosedError::PrivateStorage)?;
     let mut header = [0; 100];
     main.read_exact(&mut header).map_err(|_| ClosedError::Damaged)?;
     if &header[..16] != b"SQLite format 3\0" {
@@ -21,7 +22,7 @@ pub(super) fn check(copy: &Copy, control: &Control) -> Result<(), ClosedError> {
     }
     let max = MAX_BYTES / size;
     bound(&header[28..32], max)?;
-    let mut wal_path = path.into_os_string();
+    let mut wal_path = path.as_os_str().to_owned();
     wal_path.push("-wal");
     let mut wal = match File::open(wal_path) {
         Ok(f) => f,
