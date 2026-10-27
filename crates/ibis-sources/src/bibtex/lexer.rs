@@ -55,6 +55,11 @@ pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
     // Line numbers are counted incrementally so splitting stays linear.
     let (mut line, mut counted_to) = (1, 0);
     while let Some(offset) = src[i..].find('@') {
+        // Keep one extra block to report truncation before allocating the
+        // rest of a hostile file, including recovery headers.
+        if blocks.len() + headers.len() > crate::MAX_LIBRARY_RECORDS {
+            break;
+        }
         let start = i + offset;
         let mut j = start + 1;
         // Keep stray closing braces in a candidate type so damaged entries
@@ -492,6 +497,13 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    #[test]
+    fn block_collection_stops_before_allocating_a_whole_hostile_file() {
+        let repeated = "@misc{same}\n".repeat(crate::MAX_LIBRARY_RECORDS + 100);
+        assert_eq!(split_blocks(&repeated).len(), crate::MAX_LIBRARY_RECORDS + 1);
+        let recovery = "@misc{same, title={\n".repeat(crate::MAX_LIBRARY_RECORDS + 100);
+        assert!(split_blocks(&recovery).len() <= crate::MAX_LIBRARY_RECORDS + 1);
+    }
     #[test]
     fn raw_nesting_and_unmatched_closes_need_only_one_query_bucket() {
         for text in [

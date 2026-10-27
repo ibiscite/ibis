@@ -69,7 +69,15 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
         });
         return (result, true);
     }
-    let blocks = split_blocks(text);
+    let mut blocks = split_blocks(text);
+    let limited = blocks.len() > crate::MAX_LIBRARY_RECORDS;
+    if limited {
+        result.warnings.push(SourceWarning {
+            code: WarningCode::WorkLimit,
+            line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),
+        });
+        blocks.truncate(crate::MAX_LIBRARY_RECORDS);
+    }
 
     let mut macros = Vec::new();
     let mut entries: Vec<RawEntry> = Vec::new();
@@ -80,7 +88,7 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
             code,
             line: Some(block.line),
         };
-        if !budget.charge(block.text.len().saturating_mul(4).saturating_add(256)) {
+        if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
             result
                 .warnings
                 .push(warn(WarningCode::WorkLimit, None, LOAD_LIMIT.into()));
@@ -167,7 +175,7 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
             )),
         }
     }
-    (result, budget.exhausted())
+    (result, limited || budget.exhausted())
 }
 
 /// Whether a recognized block is demonstrably unfinished, for reload safety.
@@ -205,6 +213,18 @@ fn load_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn minimal_entries_pay_fixed_allocation_work() {
+        let (result, limited) = load_with_budget(&LibraryId::file(b"synthetic"), "@misc{one}", Budget::new(1024));
+        assert!(limited);
+        assert!(result.records.is_empty());
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::WorkLimit)
+        );
+    }
     #[test]
     fn damaged_and_duplicate_entries_keep_good_records() {
         let result = load_str(

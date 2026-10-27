@@ -12,20 +12,38 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     }
     // RawValue validates/skips nested tokens iteratively. Only known CSL fields
     // are then deserialized, so private vendor metadata cannot exhaust a stack.
-    let items: Vec<&RawValue> = serde_json::from_str(text).map_err(|error| {
-        if error.is_eof() {
-            SourceError::Incomplete
-        } else {
-            SourceError::InvalidData
+    struct BoundedItems;
+    impl<'de> serde::de::Visitor<'de> for BoundedItems {
+        type Value = Vec<&'de RawValue>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an array of reference objects")
         }
-    })?;
-    if items.len() > 1_000_000 {
-        return Err(SourceError::LoadLimit);
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+            let mut items = Vec::new();
+            while let Some(item) = sequence.next_element::<&RawValue>()? {
+                // Retain an overflow sentinel; still validate the whole input.
+                if items.len() <= crate::MAX_LIBRARY_RECORDS {
+                    items.push(item);
+                }
+            }
+            Ok(items)
+        }
     }
+    let mut parser = serde_json::Deserializer::from_str(text);
+    let items = serde::Deserializer::deserialize_seq(&mut parser, BoundedItems)
+        .and_then(|items| parser.end().map(|()| items))
+        .map_err(|error| {
+            if error.is_eof() {
+                SourceError::Incomplete
+            } else {
+                SourceError::InvalidData
+            }
+        })?;
+    let limited = items.len() > crate::MAX_LIBRARY_RECORDS;
     let spans = item_spans(text);
     let mut result = ParsedLibrary::default();
     let mut seen = HashSet::new();
-    for (index, raw) in items.into_iter().enumerate() {
+    for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
         let line = spans.get(index).map(|(_, _, line)| *line);
         let warning = |code| SourceWarning { code, line };
         if raw.get().len() > 1024 * 1024 {
@@ -136,6 +154,12 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 format: SourceFormat::CslJson,
                 data: Value::String(raw.get().into()),
             }),
+        });
+    }
+    if limited {
+        result.warnings.push(SourceWarning {
+            code: WarningCode::WorkLimit,
+            line: spans.get(crate::MAX_LIBRARY_RECORDS).map(|(_, _, line)| *line),
         });
     }
     Ok(result)
@@ -429,6 +453,9 @@ fn item_spans(text: &str) -> Vec<(usize, usize, usize)> {
     let (mut quoted, mut escaped) = (false, false);
     let mut start = None;
     for (index, byte) in text.bytes().enumerate() {
+        if spans.len() > crate::MAX_LIBRARY_RECORDS {
+            break;
+        }
         if !quoted && depth == 1 && start.is_none() && !byte.is_ascii_whitespace() && byte != b']' {
             start = Some((index, line));
         }

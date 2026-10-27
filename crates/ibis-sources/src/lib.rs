@@ -17,6 +17,10 @@ pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, load_file, load_file_snapshot, reload_file,
 };
 
+// Review measured about 2.6 KiB per minimal record before snapshot indexes.
+// 50,000 keeps that graph near 130 MiB rather than multiple GiB.
+pub const MAX_LIBRARY_RECORDS: usize = 50_000;
+
 /// Safe source diagnostics contain a location and fixed code, never payloads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
