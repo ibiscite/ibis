@@ -1,7 +1,7 @@
 //! Prepared search data over an immutable contract snapshot; no legacy model conversion.
 use std::sync::Arc;
 
-use super::{MatchField, SearchDocument, Texts, by_identifier, key_eq, name_text, normalize, rank};
+use super::{MatchField, SearchDocument, Texts, by_identifier, key_eq, name_text, normalize, rank, spelling_aliases};
 use crate::{
     contract::*,
     identifier,
@@ -14,6 +14,9 @@ pub struct RecordHit<'a> {
     pub matched: Vec<MatchField>,
     /// Some term matched only with one typo.
     pub typo: bool,
+    /// Some terms did not match: one of the closest matches, given only when
+    /// nothing matches every term.
+    pub partial: bool,
 }
 
 struct Entry {
@@ -89,19 +92,26 @@ impl SnapshotIndex {
                         })
                     })
                     .collect();
+                let title = strip_markup(text("title"));
+                let container = strip_markup(text("container-title"));
                 texts.push(
                     [
                         normalize(&keys.join(" ")),
-                        normalize(&strip_markup(text("title"))),
+                        normalize(&title),
                         name_text(names.iter()),
                         year.map(|year| year.to_string()).unwrap_or_default(),
                         normalize(text("DOI")),
                         normalize(text("keyword")),
-                        normalize(&strip_markup(text("container-title"))),
+                        normalize(&container),
                         normalize(text("abstract")),
                     ],
-                    &strip_markup(text("title-short")),
-                    &strip_markup(text("container-title-short")),
+                    &[
+                        (1, &strip_markup(text("title-short"))),
+                        (1, &spelling_aliases(&title)),
+                        (5, &spelling_aliases(text("keyword"))),
+                        (6, &strip_markup(text("container-title-short"))),
+                        (6, &spelling_aliases(&container)),
+                    ],
                 );
                 Some(Entry {
                     position,
@@ -162,6 +172,7 @@ impl SnapshotIndex {
                     score: hit.score,
                     matched: hit.matched,
                     typo: hit.typo,
+                    partial: hit.partial,
                 })
                 .collect(),
         )

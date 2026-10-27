@@ -9,8 +9,10 @@
 //! one typo at the start of a word (words of five or more Latin, Greek or
 //! Cyrillic letters, first letter right). `a:`, `t:`, `j:`, `k:`, `#` and `y:`
 //! limit a term to names, title, journal, key, tags or years. "et al." and
-//! "and" are ignored. An exact citation key always matches and ranks first,
-//! then an exact title.
+//! "and" are ignored. Müller is also found as "mueller" and β as "beta". An
+//! exact citation key always matches and ranks first, then an exact title.
+//! When nothing matches every term, the records matching most words are given
+//! instead, marked as partial.
 
 use std::collections::BTreeMap;
 
@@ -98,6 +100,9 @@ pub struct Hit<'a, T = Reference> {
     pub matched: Vec<MatchField>,
     /// Some term matched only with one typo, so the UI can say "close match".
     pub typo: bool,
+    /// Some terms did not match at all: one of the closest matches, given
+    /// only when nothing matches every term.
+    pub partial: bool,
 }
 
 /// Metadata needed by the shared scorer, independent of source/model shape.
@@ -153,16 +158,17 @@ struct Bounds {
 }
 
 impl Texts {
-    /// Add a record's fields in [`MatchField::ALL`] order. `title_short` and
-    /// `container_short` (a journal abbreviation) are added to the title and
-    /// journal unless they are already part of them. Text past 4 GiB in either
-    /// buffer is left out, which no real library comes near.
-    fn push(&mut self, mut fields: [String; 8], title_short: &str, container_short: &str) {
+    /// Add a record's fields in [`MatchField::ALL`] order. Each of `extras`
+    /// (a field's index and text, such as a short title, a journal
+    /// abbreviation or [`spelling_aliases`]) is added to that field unless it
+    /// is already part of it; the title proper ends before them. Text past
+    /// 4 GiB in either buffer is left out, which no real library comes near.
+    fn push(&mut self, mut fields: [String; 8], extras: &[(usize, &str)]) {
         let title_len = fields[1].len();
-        for (field, short) in [(1, title_short), (6, container_short)] {
-            let short = normalize(short);
-            if !short.is_empty() && !format!(" {} ", fields[field]).contains(&format!(" {short} ")) {
-                push_words(&mut fields[field], &short);
+        for &(field, extra) in extras {
+            let extra = normalize(extra);
+            if !extra.is_empty() && !format!(" {} ", fields[field]).contains(&format!(" {extra} ")) {
+                push_words(&mut fields[field], &extra);
             }
         }
         // A space before every field makes word starts and ends checkable
@@ -234,7 +240,10 @@ impl Texts {
 }
 
 fn push_words(text: &mut String, words: &str) {
-    if !text.is_empty() && !words.is_empty() {
+    if words.is_empty() {
+        return;
+    }
+    if !text.is_empty() {
         text.push(' ');
     }
     text.push_str(words);
@@ -246,8 +255,10 @@ fn push_words(text: &mut String, words: &str) {
 fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
     let mut text = String::new();
     for name in names {
-        let display = normalize(&name.display());
+        let raw = name.display();
+        let display = normalize(&raw);
         push_words(&mut text, &display);
+        push_words(&mut text, &normalize(&spelling_aliases(&raw)));
         // "山田 太郎" is also written without the space.
         if display.contains(' ') && display.chars().any(is_cjk_char) {
             push_words(&mut text, &display.replace(' ', ""));
@@ -259,6 +270,72 @@ fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
         }
     }
     text
+}
+
+/// The words of `text` that are also spelt another way, spelt that way:
+/// German and Nordic letters as written without them (Müller as Mueller,
+/// Ångström as Aangstroem) and a Greek letter standing alone as its name
+/// (β-amyloid as beta-amyloid, NF-κB as NF-kappaB). Accents are already
+/// folded by [`normalize`], so "muller" finds Müller without this. Words of
+/// Greek text are left alone. Empty for most text.
+fn spelling_aliases(text: &str) -> String {
+    if text.is_ascii() {
+        return String::new();
+    }
+    let greek = |c: char| ('\u{0391}'..='\u{03A9}').contains(&c) || ('\u{03B1}'..='\u{03C9}').contains(&c);
+    let mut aliases = String::new();
+    for word in text.split_whitespace() {
+        let chars: Vec<char> = word.nfc().collect();
+        let mut alias = String::new();
+        let mut changed = false;
+        for (i, &c) in chars.iter().enumerate() {
+            let alone = !(i > 0 && greek(chars[i - 1])) && !chars.get(i + 1).is_some_and(|&next| greek(next));
+            let spelt = match c.to_lowercase().next().unwrap_or(c) {
+                'ä' => "ae",
+                'ö' | 'ø' => "oe",
+                'ü' => "ue",
+                'å' => "aa",
+                c if !alone => {
+                    alias.push(c);
+                    continue;
+                }
+                'α' => "alpha",
+                'β' => "beta",
+                'γ' => "gamma",
+                'δ' => "delta",
+                'ε' | 'ϵ' => "epsilon",
+                'ζ' => "zeta",
+                'η' => "eta",
+                'θ' | 'ϑ' => "theta",
+                'ι' => "iota",
+                'κ' => "kappa",
+                'λ' => "lambda",
+                'μ' | 'µ' => "mu",
+                'ν' => "nu",
+                'ξ' => "xi",
+                'ο' => "omicron",
+                'π' => "pi",
+                'ρ' => "rho",
+                'σ' | 'ς' => "sigma",
+                'τ' => "tau",
+                'υ' => "upsilon",
+                'φ' | 'ϕ' => "phi",
+                'χ' => "chi",
+                'ψ' => "psi",
+                'ω' => "omega",
+                c => {
+                    alias.push(c);
+                    continue;
+                }
+            };
+            alias.push_str(spelt);
+            changed = true;
+        }
+        if changed {
+            push_words(&mut aliases, &alias);
+        }
+    }
+    aliases
 }
 
 /// Search index that owns its references, for front ends that keep a library
@@ -342,10 +419,13 @@ fn prepare(r: &Reference, texts: &mut Texts) {
             .map(|value| strip_markup(value))
             .unwrap_or_default()
     };
+    let title = r.title_plain().unwrap_or_default();
+    let keywords = r.keywords.join(" ");
+    let container = r.container_title.as_deref().map(strip_markup).unwrap_or_default();
     texts.push(
         [
             normalize(r.citekey.as_deref().unwrap_or("")),
-            normalize(&r.title_plain().unwrap_or_default()),
+            normalize(&title),
             name_text(
                 r.authors
                     .iter()
@@ -354,12 +434,17 @@ fn prepare(r: &Reference, texts: &mut Texts) {
             ),
             r.year().map(|y| y.to_string()).unwrap_or_default(),
             normalize(r.doi.as_deref().unwrap_or("")),
-            normalize(&r.keywords.join(" ")),
-            normalize(&r.container_title.as_deref().map(strip_markup).unwrap_or_default()),
+            normalize(&keywords),
+            normalize(&container),
             normalize(r.abstract_text.as_deref().unwrap_or("")),
         ],
-        &variable("title-short"),
-        &variable("container-title-short"),
+        &[
+            (1, &variable("title-short")),
+            (1, &spelling_aliases(&title)),
+            (5, &spelling_aliases(&keywords)),
+            (6, &variable("container-title-short")),
+            (6, &spelling_aliases(&container)),
+        ],
     );
 }
 
@@ -394,6 +479,7 @@ fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
                 score: 3000,
                 matched: vec![field],
                 typo: false,
+                partial: false,
             });
         }
     }
@@ -660,6 +746,9 @@ struct Candidate<'r, T> {
     /// 1 for an exact title, otherwise 0.
     exact: u8,
     pass: Pass,
+    /// How many query terms matched; all of them except in [`Pass::Closest`],
+    /// which counts only words.
+    terms: usize,
     score: u32,
     matched: u8,
     reference: &'r T,
@@ -678,6 +767,10 @@ enum Pass {
     Typo,
     /// Abstracts too, every term as typed.
     Abstract,
+    /// Only when nothing else matched: records matching at least half the
+    /// words (terms that are not numbers) as typed, most words first, as
+    /// Meilisearch drops query words when nothing matches them all.
+    Closest,
 }
 
 /// A record's match so far: its number, score and matched field bits.
@@ -692,6 +785,7 @@ fn rank<'r, T: SearchDocument>(
     scope: Option<&[T::Source]>,
     stop: &dyn Fn() -> bool,
 ) -> Option<Vec<Hit<'r, T>>> {
+    let raw = query;
     let query = Query::parse(query, stop)?;
     if limit == 0 {
         return Some(Vec::new());
@@ -722,6 +816,7 @@ fn rank<'r, T: SearchDocument>(
             candidates.push(Candidate {
                 exact: 3,
                 pass: Pass::Exact,
+                terms: query.terms.len(),
                 score: 2000,
                 matched: MatchField::Citekey.bit(),
                 reference,
@@ -768,6 +863,39 @@ fn rank<'r, T: SearchDocument>(
         }
     }
 
+    // Nothing matched every term: the records matching the most of its
+    // words. Numbers are not counted, so a missing page is not matched by its
+    // digits, and a DOI or other identifier nobody carries gets no closest
+    // matches. Whether this pass runs does not depend on the
+    // limit, since every earlier pass runs in full when nothing has been
+    // found. Long pasted queries are left out, as for typos.
+    let words: Vec<usize> = all
+        .iter()
+        .copied()
+        .filter(|&t| query.terms[t].text.chars().any(char::is_alphabetic))
+        .collect();
+    if candidates.is_empty()
+        && query.terms.len() <= MAX_TYPO_QUERY_TERMS
+        && words.len() >= 2
+        && identifier::parse_query(raw).is_none()
+    {
+        let mut partial: Vec<(usize, u32, u8)> = vec![(0, 0, 0); docs.len()];
+        for &t in &words {
+            for (n, score, matched) in matching(&query, docs, texts, &[t], false, scope, &found, &mut packed, stop)? {
+                let record = &mut partial[n];
+                *record = (record.0 + 1, weighted_score(record.1, score, 1), record.2 | matched);
+            }
+        }
+        let needed = words.len().div_ceil(2);
+        for (n, &(terms, score, matched)) in partial.iter().enumerate() {
+            if terms >= needed {
+                let mut closest = candidate(&query, &docs[n], texts, n, Pass::Closest, score, matched);
+                closest.terms = terms;
+                candidates.push(closest);
+            }
+        }
+    }
+
     // Ordered rules, each breaking the ties of the one before, as Meilisearch
     // and Algolia rank: an exact key or title, then the pass that found the
     // record (as typed, one typo, abstract), then the field-weighted score
@@ -776,6 +904,7 @@ fn rank<'r, T: SearchDocument>(
         b.exact
             .cmp(&a.exact)
             .then(a.pass.cmp(&b.pass))
+            .then(b.terms.cmp(&a.terms))
             .then(b.score.cmp(&a.score))
             .then_with(|| b.reference.year().cmp(&a.reference.year()))
             .then_with(|| a.reference.identity().cmp(b.reference.identity()))
@@ -797,6 +926,7 @@ fn rank<'r, T: SearchDocument>(
                     .copied()
                     .collect(),
                 typo: candidate.pass == Pass::Typo,
+                partial: candidate.pass == Pass::Closest,
             })
             .collect(),
     )
@@ -822,6 +952,7 @@ fn candidate<'r, T: SearchDocument>(
     Candidate {
         exact,
         pass,
+        terms: query.terms.len(),
         score: weighted_score(score, [0, 500, 1000, 2000][usize::from(exact)], 1),
         matched: matched | if exact == 3 { MatchField::Citekey.bit() } else { 0 },
         reference,
