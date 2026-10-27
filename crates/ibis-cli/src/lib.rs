@@ -35,6 +35,13 @@ fn command() -> Command {
                 .action(ArgAction::Append)
                 .help("Open a BibTeX, BibLaTeX or CSL-JSON file; repeat for several libraries"),
         );
+    root = root.arg(
+        Arg::new("zotero")
+            .long("zotero")
+            .global(true)
+            .action(ArgAction::SetTrue)
+            .help("Read the active local Zotero personal library"),
+    );
     for method in Method::ALL {
         let subcommand = Command::new(method.as_str());
         root = root.subcommand(match method {
@@ -240,6 +247,9 @@ fn execute<R: BufRead, W: Write + Send>(
                 code: ErrorCode::BadInput,
             })?;
         engine.dispatch(Method::Libraries, &params, &cancel)?;
+    }
+    if matches.get_flag("zotero") {
+        engine.dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)?;
     }
     if name == "serve" {
         return Ok(Execution::Stdio(

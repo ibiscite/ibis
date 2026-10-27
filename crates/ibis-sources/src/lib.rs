@@ -68,3 +68,5 @@ struct ParsedLibrary {
     warnings: Vec<SourceWarning>,
     attachments: Vec<(ItemRef, String, Option<usize>)>,
 }
+
+pub mod zotero_source;

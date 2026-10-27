@@ -242,6 +242,12 @@ impl Engine {
             watch_files: true,
         }
     }
+    /// An isolated IPv4-loopback transport for synthetic clients.
+    pub fn with_zotero_port(port: u16) -> Result<Self, EngineError> {
+        let mut engine = Self::new()?;
+        engine.resources = Arc::new(sources::Owners::on_port(port));
+        Ok(engine)
+    }
     fn state(&self) -> Result<Arc<State>, EngineError> {
         self.shared.state_view()
     }
@@ -436,6 +442,10 @@ impl Engine {
                 parameters::<LibrariesRequest>(params)?
             } {
                 LibrariesRequest::List => value(self.libraries()?)?,
+                LibrariesRequest::OpenZotero => {
+                    self.read_zotero(false, cancel)?;
+                    value(self.libraries()?)?
+                }
                 LibrariesRequest::OpenFile { path } => {
                     self.open_file(&path, cancel)?;
                     value(self.libraries()?)?
