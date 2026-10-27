@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage[numbers]{natbib}
+\begin{document}
+% Deliberately unsupported input: Natbib drops these postnotes in numerical mode.
+Author with notes: \citeauthor[p.~12, note]{Example2026}.
+
+Author without notes: \citeauthor{Example2026}.
+
+Normal: \citep[see][p.~12, note]{Example2026}.
+
+Year: \citeyearpar[see][p.~12, note]{Example2026}.
+\begin{thebibliography}{1}
+\bibitem[Taylor(2026)]{Example2026} Avery Taylor. Synthetic signals. Imaginary Press, 2026.
+\end{thebibliography}
+\end{document}
