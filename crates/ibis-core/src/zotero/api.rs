@@ -109,33 +109,13 @@ pub enum ZoteroError {
     TooLarge,
 }
 
-/// What a scan saw of the library, kept to decide whether the next scan
-/// needs to read it again.
+/// The version and server identity observed during one coherent scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snapshot {
     /// The library version (`Last-Modified-Version`) the items belong to.
     pub version: u64,
-    /// Zotero's server ID, when it sends one. A different ID means another
-    /// Zotero installation or a reset database, so versions are not comparable.
+    /// Zotero's server ID, when it sends one.
     pub server_id: Option<String>,
-}
-
-impl Snapshot {
-    /// Whether `other` is known to be the same version of the same library.
-    /// Without a server ID on both sides, the server is unknown and the
-    /// answer is no, so the library is read again rather than assumed equal.
-    fn same_as(&self, other: &Snapshot) -> bool {
-        self.version == other.version && self.server_id.is_some() && self.server_id == other.server_id
-    }
-}
-
-/// The outcome of [`refresh`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refresh {
-    /// Nothing changed since the snapshot; keep the references already loaded.
-    Unchanged,
-    /// The whole library, read at one version.
-    Loaded { result: LoadResult, snapshot: Snapshot },
 }
 
 fn items_path(library: Library) -> String {
@@ -171,49 +151,6 @@ pub fn presence(transport: &mut impl Transport) -> Presence {
         Ok(response) if response.status == 403 => Presence::AccessOff,
         _ => Presence::Absent,
     }
-}
-
-/// Read the library if it changed since `previous`, otherwise report that
-/// nothing changed. A change is detected cheaply with `since=`, which lists
-/// only the versions of changed items; any change reads the whole library at
-/// one consistent version.
-pub fn refresh(
-    transport: &mut impl Transport,
-    library: Library,
-    previous: Option<&Snapshot>,
-) -> Result<Refresh, ZoteroError> {
-    refresh_with_budget(transport, library, previous, &mut ScanBudget::default())
-}
-
-pub(super) fn refresh_with_budget(
-    transport: &mut impl Transport,
-    library: Library,
-    previous: Option<&Snapshot>,
-    budget: &mut ScanBudget,
-) -> Result<Refresh, ZoteroError> {
-    if let Some(previous) = previous {
-        let probe = checked(
-            budget.get(
-                transport,
-                &format!(
-                    "{}?format=versions&includeTrashed=1&since={}",
-                    items_path(library),
-                    previous.version
-                ),
-            )?,
-            library,
-        )?;
-        let unchanged = snapshot(&probe)?.same_as(previous)
-            && serde_json::from_slice::<serde_json::Map<String, Value>>(&probe.body)
-                .map_err(|_| ZoteroError::Incomplete)?
-                .is_empty();
-        budget.check(Instant::now())?;
-        if unchanged {
-            return Ok(Refresh::Unchanged);
-        }
-    }
-    let (result, snapshot) = scan_with_budget(transport, library, budget)?;
-    Ok(Refresh::Loaded { result, snapshot })
 }
 
 /// Read every item of the library at one version. If the library changes
@@ -904,52 +841,6 @@ mod tests {
     }
 
     #[test]
-    fn refresh_reads_nothing_more_when_no_item_changed() {
-        let previous = Snapshot {
-            version: 4,
-            server_id: Some("one".into()),
-        };
-        let mut probe = page(4, 0, &[]);
-        probe.body = b"{}".to_vec();
-        probe.headers.push(("Zotero-Server-ID".into(), "one".into()));
-        let mut fake = Fake::default().answer(probe);
-        assert_eq!(
-            refresh(&mut fake, Library::User, Some(&previous)),
-            Ok(Refresh::Unchanged)
-        );
-        assert_eq!(fake.asked, ["users/0/items?format=versions&includeTrashed=1&since=4"]);
-    }
-
-    #[test]
-    fn refresh_rereads_after_a_change_or_a_different_server() {
-        let previous = Snapshot {
-            version: 4,
-            server_id: Some("one".into()),
-        };
-        let mut changed = page(5, 0, &[]);
-        changed.body = br#"{"ABCD2345": 5}"#.to_vec();
-        changed.headers.push(("Zotero-Server-ID".into(), "one".into()));
-        let mut reread = page(5, 1, &["ABCD2345"]);
-        reread.headers.push(("Zotero-Server-ID".into(), "one".into()));
-        let mut fake = Fake::default().answer(changed).answer(reread);
-        let Ok(Refresh::Loaded { result, snapshot }) = refresh(&mut fake, Library::User, Some(&previous)) else {
-            panic!("expected a new scan");
-        };
-        assert_eq!(keys(&result), ["ABCD2345"]);
-        assert_eq!(snapshot.version, 5);
-
-        // Same version and no changed items, but another Zotero installation.
-        let mut other = page(4, 0, &[]);
-        other.body = b"{}".to_vec();
-        other.headers.push(("Zotero-Server-ID".into(), "two".into()));
-        let mut fake = Fake::default().answer(other).answer(page(4, 0, &[]));
-        assert!(matches!(
-            refresh(&mut fake, Library::User, Some(&previous)),
-            Ok(Refresh::Loaded { .. })
-        ));
-    }
-
-    #[test]
     fn pages_that_disagree_on_the_total_at_one_version_restart_then_give_up() {
         // Zotero's count is for the whole listing, so a different count on
         // the next page means the library moved even though the version did
@@ -1052,40 +943,6 @@ mod tests {
         assert_eq!(
             scan(&mut Fake::default().answer(missing), Library::User),
             Err(ZoteroError::Incomplete)
-        );
-    }
-
-    #[test]
-    fn refresh_rereads_when_either_server_id_is_unknown() {
-        // Same version and nothing changed, but without a server ID on both
-        // sides nobody knows whether this is the same Zotero.
-        let probe = |server_id: Option<&str>| {
-            let mut probe = page(4, 0, &[]);
-            probe.body = b"{}".to_vec();
-            if let Some(id) = server_id {
-                probe.headers.push(("Zotero-Server-ID".into(), id.into()));
-            }
-            probe
-        };
-        let previous = |server_id: Option<&str>| Snapshot {
-            version: 4,
-            server_id: server_id.map(str::to_string),
-        };
-        for (stored, sent) in [(None, None), (Some("one"), None), (None, Some("one"))] {
-            let mut fake = Fake::default().answer(probe(sent)).answer(page(4, 0, &[]));
-            assert!(
-                matches!(
-                    refresh(&mut fake, Library::User, Some(&previous(stored))),
-                    Ok(Refresh::Loaded { .. })
-                ),
-                "stored {stored:?}, sent {sent:?}"
-            );
-            assert_eq!(fake.asked.len(), 2);
-        }
-        let mut fake = Fake::default().answer(probe(Some("one")));
-        assert_eq!(
-            refresh(&mut fake, Library::User, Some(&previous(Some("one")))),
-            Ok(Refresh::Unchanged)
         );
     }
 }

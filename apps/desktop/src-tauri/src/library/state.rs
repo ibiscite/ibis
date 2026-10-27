@@ -9,7 +9,6 @@ use std::time::SystemTime;
 use ibis_core::model::LoadWarning;
 use ibis_core::search::OwnedIndex;
 use ibis_core::source::SourceSnapshot;
-use ibis_core::zotero::libraries;
 
 use super::error::{CommandError, LoadError};
 use super::load::Loaded;
@@ -33,8 +32,6 @@ pub(crate) struct Library {
     pub(crate) warnings: Vec<LoadWarning>,
     /// Exact initial load observation, reused when attaching the watcher.
     pub(super) snapshot: Option<SourceSnapshot>,
-    /// The Zotero library versions loaded, so a refresh rereads only on change.
-    pub(super) zotero: Option<libraries::Snapshots>,
     /// Neutral failure reason; status derives retention context from the current index.
     /// Automatic refreshes preserve a different rejected choice until the next request.
     pub(crate) error: Option<LoadError>,
