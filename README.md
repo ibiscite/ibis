@@ -80,12 +80,20 @@ Better BibTeX rewrites the file whenever your library changes, and Ibis reloads 
 
 Ask questions and suggest ideas in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions). Report a problem through [the issue forms](https://github.com/ibiscite/ibis/issues/new/choose). The app's menu has **Report a Problem** and **Suggest an Idea** too.
 
-## Try the command line tool (developers)
+## Command line
+
+`ibis` is the engine itself, for people, scripts and AI agents. Download it from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) or a [release](https://github.com/ibiscite/ibis/releases): `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it and put `ibis` somewhere on your PATH. The macOS binary is not signed yet; if macOS refuses to run a downloaded copy, run `xattr -d com.apple.quarantine ibis` once.
+
+```sh
+ibis search "garcia" --file refs.bib
+ibis cite accents2021 --file refs.bib --style apa
+ibis cite accents2021 protected2020 --file refs.bib --format autocite
+```
+
+`ibis --help` lists every command. From a checkout, `cargo run -p ibis -- <command>` does the same, for example with the synthetic `fixtures/bibtex/fidelity.bib`:
 
 ```sh
 cargo run -p ibis -- libraries --file fixtures/bibtex/fidelity.bib --json
-cargo run -p ibis -- search "garcia" --file fixtures/bibtex/fidelity.bib
-cargo run -p ibis -- cite accents2021 protected2020 --file fixtures/bibtex/fidelity.bib --format autocite
 cargo run -p ibis -- schema cite --json
 cargo run -p ibis -- call search --params '{"query":"garcia"}' --file fixtures/bibtex/fidelity.bib --json
 cargo run -p ibis -- serve --stdio --file fixtures/bibtex/fidelity.bib
