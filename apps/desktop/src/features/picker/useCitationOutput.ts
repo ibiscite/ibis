@@ -1,6 +1,6 @@
 // What Enter would paste for the chosen references: the formatted or key preview,
 // tagged with the choice, style and library it was made for.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as nativeApi from "../../api";
 import type { CopyFormat, LibraryStatus } from "../../api";
 import { formatCitation, type FormattedCitation } from "../../format/formatted";
@@ -27,6 +27,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
   // Tagged with the style, choice and library it was made for, so Enter never
   // copies a preview of an earlier choice.
   const [formatted, setFormatted] = useState<{ key: string; result: (FormattedCitation & { fileTicket?: string; fileHash?: string }) | "failed" | "stale"; problem?: string } | null>(null);
+  const stalePreview = useRef<string | null>(null);
   const chosenKey = choiceKey(chosen);
   const chosenRevision = chosen[0]?.revision;
   const nativeFile = Boolean(library?.file_engine && previewFileCitation);
@@ -35,7 +36,10 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
   const keyFormat = styleOf(format) === null && (citationText || nativeFile) ? (format as CopyFormat) : null;
   // A hidden key preview is never fetched: key copying asks the backend itself.
   const keyPreview = showPastePreview ? keyFormat : null;
-  const previewKey = `${style ?? (nativeFile ? format : keyPreview)}\u0002${libraryVersion}\u0002${chosenKey}`;
+  const output = style ?? (nativeFile ? format : keyPreview);
+  // Reading unchanged status must not retry the same stale citation forever.
+  const retryKey = JSON.stringify([output, library?.revision, chosenKey]);
+  const previewKey = `${output}\u0002${libraryVersion}\u0002${chosenKey}`;
   // What Enter would copy now; null while it is being formatted.
   const shown = staleSelection ? "stale" : formatted?.key === previewKey ? formatted.result : null;
   // Why the preview failed, when the user can fix it.
@@ -47,6 +51,10 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
   // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, revision and the style or key format, so it is the only trigger.
   useEffect(() => {
     if (chosen.length === 0 || staleSelection || !chosenRevision) return;
+    if (stalePreview.current === retryKey) {
+      setFormatted({ key: previewKey, result: "stale" });
+      return;
+    }
     let live = true;
     const key = previewKey;
     const replaced = new AbortController();
@@ -64,7 +72,10 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
         const stale = nativeApi.isSnapshotChanged(error);
         const shared = nativeApi.sharedCitationKey(error);
         setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : undefined });
-        if (stale) refreshSnapshot();
+        if (stale) {
+          stalePreview.current = retryKey;
+          refreshSnapshot();
+        }
       } });
     return () => { live = false; replaced.abort(); };
   }, [previewKey]);
