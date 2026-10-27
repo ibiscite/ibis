@@ -94,18 +94,18 @@ pub(crate) fn prepare(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
-        // An in-text citation of these author-date styles prints only the
-        // authors when there are any; other names matter for entries, or when
-        // a style substitutes them for missing authors.
-        let has_authors = record
-            .csl
-            .get("author")
-            .and_then(Value::as_array)
-            .is_some_and(|names| !names.is_empty());
+        // When an item has authors, the in-text layouts of the bundled
+        // author-date styles print only these name lists; every other one is
+        // a substitute after `author` or appears only in entries.
+        let has_authors = named(record.csl.get("author"));
         if record
             .csl
             .iter()
-            .filter(|(field, _)| bibliography || !has_authors || field.as_str() == "author")
+            .filter(|(field, _)| {
+                bibliography
+                    || !has_authors
+                    || matches!(field.as_str(), "author" | "composer" | "interviewer" | "recipient")
+            })
             .filter(|(field, _)| {
                 matches!(
                     field.as_str(),
@@ -152,17 +152,7 @@ pub(crate) fn prepare(
             });
             continue;
         }
-        if form == CitationForm::AuthorOnly
-            && !record.csl.get("author").and_then(Value::as_array).is_some_and(|names| {
-                names.iter().any(|name| {
-                    ["literal", "family", "given"].into_iter().any(|field| {
-                        name.get(field)
-                            .and_then(Value::as_str)
-                            .is_some_and(|text| !text.trim().is_empty())
-                    })
-                })
-            })
-        {
+        if form == CitationForm::AuthorOnly && !has_authors {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
@@ -382,4 +372,17 @@ pub(crate) fn bounded_json<T: Serialize>(value: &T, limit: usize) -> Result<Vec<
     };
     serde_json::to_writer(&mut writer, value).map_err(|_| FormatError::ResourceLimit)?;
     Ok(writer.bytes)
+}
+
+/// A name list with at least one name that prints.
+fn named(names: Option<&Value>) -> bool {
+    names.and_then(Value::as_array).is_some_and(|names| {
+        names.iter().any(|name| {
+            ["literal", "family", "given"].into_iter().any(|field| {
+                name.get(field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| !text.trim().is_empty())
+            })
+        })
+    })
 }
