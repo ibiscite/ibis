@@ -192,12 +192,14 @@ impl ZoteroSource {
         let warnings = snapshot
             .warnings
             .iter()
-            .map(|warning| SourceWarning {
-                code: match warning {
-                    closed::ClosedWarning::CloudSyncedDirectory => WarningCode::CloudSyncedDirectory,
-                },
-                line: None,
+            .filter_map(|warning| match warning {
+                closed::ClosedWarning::CloudSyncedDirectory => Some(WarningCode::CloudSyncedDirectory),
+                closed::ClosedWarning::ItemTooLarge { library_id, .. } if *library_id == personal.library_id => {
+                    Some(WarningCode::WorkLimit)
+                }
+                _ => None,
             })
+            .map(|code| SourceWarning { code, line: None })
             .collect();
         let loaded = self.map_items(
             personal.items.iter().map(|item| {

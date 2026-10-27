@@ -46,19 +46,73 @@ fn null_trash_rows_do_not_hide_the_entire_library() {
 }
 
 #[test]
-fn oversized_fields_and_excessive_creators_are_refused() {
-    let dir = fixture(10);
-    edit(
-        dir.path(),
-        "UPDATE itemDataValues SET value=printf('%.*c',300000,'x') WHERE valueID=1;",
-    );
-    assert_eq!(read_fixture(dir.path()).err(), Some(ClosedError::TooLarge));
-    let dir = fixture(10);
-    edit(
-        dir.path(),
-        "WITH RECURSIVE n(x) AS (SELECT 2 UNION ALL SELECT x+1 FROM n WHERE x<4096) INSERT INTO itemCreators SELECT 10,1,1,x FROM n;",
-    );
-    assert_eq!(read_fixture(dir.path()).err(), Some(ClosedError::TooLarge));
+fn oversized_fields_and_excessive_creators_leave_other_items_readable() {
+    for problem in ["field", "creators", "field-count", "creator-name"] {
+        let dir = fixture(10);
+        edit(
+            dir.path(),
+            "INSERT INTO items VALUES(17,1,'NORMAL01',1,1,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+         INSERT INTO itemDataValues VALUES(999,'An unaffected synthetic book');
+         INSERT INTO itemData VALUES(17,1,999);",
+        );
+        let sql = match problem {
+            "creators" => {
+                "WITH RECURSIVE n(x) AS (SELECT 2 UNION ALL SELECT x+1 FROM n WHERE x<5153)
+         INSERT INTO creators SELECT x+100,'Synthetic','Collaborator '||x,0 FROM n;
+         WITH RECURSIVE n(x) AS (SELECT 2 UNION ALL SELECT x+1 FROM n WHERE x<5153)
+         INSERT INTO itemCreators SELECT 10,x+100,1,x FROM n;"
+            }
+            "field-count" => {
+                "WITH RECURSIVE n(x) AS (SELECT 6 UNION ALL SELECT x+1 FROM n WHERE x<262)
+                INSERT INTO fieldsCombined SELECT x,'syntheticField'||x FROM n;
+                INSERT INTO itemData SELECT 10,fieldID,999 FROM fieldsCombined WHERE fieldID>=6;"
+            }
+            "creator-name" => "UPDATE creators SET firstName=printf('%.*c',300000,'x') WHERE creatorID=1;",
+            _ => "UPDATE itemDataValues SET value=printf('%.*c',300000,'x') WHERE valueID=1;",
+        };
+        edit(dir.path(), sql);
+        let snapshot = read_fixture(dir.path()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(snapshot.libraries[0].items.len(), 1);
+        assert_eq!(snapshot.libraries[0].items[0].data.key, "NORMAL01");
+        assert_eq!(
+            snapshot.libraries[0].items[0]
+                .data
+                .fields
+                .get("title")
+                .map(String::as_str),
+            Some("An unaffected synthetic book")
+        );
+        assert!(
+            snapshot.warnings.contains(&super::ClosedWarning::ItemTooLarge {
+                library_id: 1,
+                key: "SYNTH001".into(),
+            }),
+            "omitted item identity must be reported"
+        );
+        assert_eq!(snapshot.warnings.len(), if problem == "field" { 2 } else { 1 });
+        assert!(!format!("{:?}", snapshot.warnings).contains("SYNTH001"));
+    }
+}
+
+#[test]
+fn skipped_rows_still_exhaust_global_text_and_work_budgets() {
+    let db = Connection::open_in_memory().unwrap_or_else(|_| panic!("synthetic budget database"));
+    for (text, rows) in [(500_000, 4), (1_000_000, 1)] {
+        let budget = Budget {
+            text: Cell::new(text),
+            rows: Cell::new(rows),
+            exceeded: Cell::new(false),
+        };
+        assert_eq!(
+            each(
+                &db,
+                "SELECT 'title',300000 UNION ALL SELECT 'extra',300000",
+                &budget,
+                |row| budget.discard(row, &[0], &[1])
+            ),
+            Err(ClosedError::TooLarge)
+        );
+    }
 }
 
 #[test]
@@ -106,8 +160,12 @@ fn unindexed_bibliographic_queries_stream_before_the_allocation_budget() {
         let mut statement = db
             .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
             .unwrap_or_else(|_| panic!("query plan"));
+        let count = statement.parameter_count();
         let plan = statement
-            .query_map([], |r| r.get::<_, String>(3))
+            .query_map(
+                rusqlite::params_from_iter([MAX_VALUE as i64].into_iter().take(count)),
+                |r| r.get::<_, String>(3),
+            )
             .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
             .unwrap_or_else(|_| panic!("synthetic plan"));
         assert!(
@@ -224,10 +282,18 @@ fn database_queries_filter_discarded_item_rows_before_the_work_budget() {
     );
     let db = Connection::open(dir.path().join("zotero.sqlite")).unwrap_or_else(|_| panic!("synthetic selection query"));
     let data: i64 = db
-        .query_row(&format!("SELECT COUNT(*) FROM ({})", READ_SQL[2]), [], |r| r.get(0))
+        .query_row(
+            &format!("SELECT COUNT(*) FROM ({})", READ_SQL[2]),
+            [MAX_VALUE as i64],
+            |r| r.get(0),
+        )
         .unwrap_or_else(|_| panic!("selected fields"));
     let creators: i64 = db
-        .query_row(&format!("SELECT COUNT(*) FROM ({})", READ_SQL[3]), [], |r| r.get(0))
+        .query_row(
+            &format!("SELECT COUNT(*) FROM ({})", READ_SQL[3]),
+            [MAX_VALUE as i64],
+            |r| r.get(0),
+        )
         .unwrap_or_else(|_| panic!("selected creators"));
     assert_eq!(data, 6);
     assert_eq!(creators, 2);
