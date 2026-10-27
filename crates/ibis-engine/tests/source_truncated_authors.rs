@@ -84,4 +84,36 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
         )
         .unwrap();
     assert_eq!(keys.copy_content(1).unwrap().text, "[@truncated]");
+
+    // Unknown metadata arrays are not creator lists, even if their payload
+    // resembles the marker. They must not suppress a valid citation.
+    let original = engine.snapshot().unwrap();
+    let mut object = original
+        .objects()
+        .iter()
+        .find_map(|object| match &object.object {
+            LibraryObject::Record(record) if record.citation_keys.iter().any(|key| key.value == "complete") => {
+                Some(record.clone())
+            }
+            _ => None,
+        })
+        .unwrap();
+    object
+        .csl
+        .insert("unrelated-metadata".into(), json!([{"literal":"others"}]));
+    let complete = Engine::from_snapshot(std::sync::Arc::new(
+        Snapshot::new(vec![LibraryObject::Record(object)]).unwrap(),
+    ));
+    let result = complete
+        .cite_keys(
+            &KeyCitationRequest {
+                keys: vec!["complete".into()],
+                output: OutputSpec::Csl { style: "apa".into() },
+                form: CitationForm::Normal,
+                output_locale: None,
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert!(result.copy_content(1).is_some());
 }

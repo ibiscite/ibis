@@ -94,11 +94,49 @@ pub(crate) fn prepare(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
-        if record.csl.values().filter_map(Value::as_array).any(|names| {
-            names
-                .iter()
-                .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
-        }) {
+        if record
+            .csl
+            .iter()
+            .filter(|(field, _)| {
+                matches!(
+                    field.as_str(),
+                    "author"
+                        | "chair"
+                        | "collection-editor"
+                        | "compiler"
+                        | "composer"
+                        | "container-author"
+                        | "contributor"
+                        | "curator"
+                        | "director"
+                        | "editor"
+                        | "editor-translator"
+                        | "editorial-director"
+                        | "executive-producer"
+                        | "guest"
+                        | "host"
+                        | "illustrator"
+                        | "interviewer"
+                        | "narrator"
+                        | "organizer"
+                        | "original-author"
+                        | "performer"
+                        | "producer"
+                        | "recipient"
+                        | "reviewed-author"
+                        | "script-writer"
+                        | "series-creator"
+                        | "translator"
+                        | "commenter"
+                )
+            })
+            .filter_map(|(_, value)| value.as_array())
+            .any(|names| {
+                names
+                    .iter()
+                    .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
+            })
+        {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
