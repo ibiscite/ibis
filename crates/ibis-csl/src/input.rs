@@ -94,9 +94,18 @@ pub(crate) fn prepare(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
+        // An in-text citation of these author-date styles prints only the
+        // authors when there are any; other names matter for entries, or when
+        // a style substitutes them for missing authors.
+        let has_authors = record
+            .csl
+            .get("author")
+            .and_then(Value::as_array)
+            .is_some_and(|names| !names.is_empty());
         if record
             .csl
             .iter()
+            .filter(|(field, _)| bibliography || !has_authors || field.as_str() == "author")
             .filter(|(field, _)| {
                 matches!(
                     field.as_str(),
@@ -327,13 +336,18 @@ fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) {
                 for ch in text.chars() {
                     let is_break = matches!(ch, '\r' | '\n' | '\u{85}' | '\u{2028}' | '\u{2029}');
                     if is_break {
-                        if !line_break {
+                        // A break between words is a space; one at either
+                        // end is nothing, or the processor prints it.
+                        if !line_break && !normalized.is_empty() {
                             normalized.push(' ');
                         }
                     } else {
                         normalized.push(if ch.is_control() && ch != '\t' { ' ' } else { ch });
                     }
                     line_break = is_break;
+                }
+                if line_break && normalized.ends_with(' ') {
+                    normalized.pop();
                 }
                 *text = normalized;
             }
