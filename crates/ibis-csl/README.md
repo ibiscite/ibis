@@ -13,8 +13,9 @@ counts. Bibliography line folding is checked against processor text captured
 before folding; the extra evidence never changes canonical output bytes.
 Contradictory, multi-item or unavailable author-only intent is refused. Empty
 members receive typed refusals before processor placeholders can become copyable.
-NUL and unsupported controls are rejected in inputs and outputs; ordinary text whitespace and
-Unicode paragraph separators remain valid. The shared copy gate independently
+Inline CSL string values fold runs of line breaks to one space and replace
+unsupported control characters before formatting. Request controls and invalid
+output controls are rejected. The shared copy gate independently
 rejects embedded NUL in text, HTML or RTF. JavaScript stack and heap exhaustion,
 including the processor's exact native-error forwarding forms, return the fixed
 `ResourceLimit` code; arbitrary exception text never crosses the boundary.
@@ -33,8 +34,10 @@ input/output boundaries and at most 1,000 requested items. The software-stack
 maximum is also 2 MiB; the native stack is four times that cap. Windows measurements
 found 1 MiB necessary for a synthetic APA citation; the default doubles that
 measured minimum. Direct runtime tests use controlled worker-sized threads,
-including hostile recursion. Processor caches hold at most 8 style configurations
-per runtime; ICU caches hold at most 16 collators. Selected data is size-checked
+including hostile recursion. Each request registers its items once, then produces
+text, HTML and RTF from that same processor state. The processor keeps one warm
+style configuration per runtime and drops request items after the call; ICU
+caches hold at most 16 collators. Selected data is size-checked
 before allocating a JSON copy. Runtime initialization and regular-expression execution share the interrupt boundary.
 
 The five current styles and English locale are embedded from the existing

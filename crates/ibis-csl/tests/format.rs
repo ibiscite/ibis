@@ -266,12 +266,24 @@ fn citation_never_invents_document_year_suffixes_or_keeps_cached_metadata() {
     assert!(!result.text.contains("2026a"));
     assert!(!result.text.contains("2026b"));
     assert!(result.notices.contains(&Notice::YearSuffixWithheld));
+    let original = library(std::slice::from_ref(&item));
     let mut edited = item;
     edited["title"] = json!("Edited synthetic book");
+    edited["author"] = json!([{"family":"Morgan","given":"Ann"}]);
     let snapshot = library(&[edited]);
-    let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
-    assert!(result.text.contains("Edited synthetic book"));
-    assert!(!result.text.contains("First synthetic book"));
+    for (style, _) in ibis_csl::STYLES {
+        for bibliography in [false, true] {
+            let request = selection(&original, style, bibliography);
+            assert!(formatter.format(&original, &request).unwrap().text.contains("Taylor"));
+            let result = formatter.format(&snapshot, &request).unwrap();
+            assert!(result.text.contains("Morgan"));
+            assert!(!result.text.contains("Taylor"));
+            if bibliography || style == "ieee" {
+                assert!(result.text.to_lowercase().contains("edited synthetic book"));
+                assert!(!result.text.to_lowercase().contains("first synthetic book"));
+            }
+        }
+    }
 }
 
 #[test]

@@ -65,11 +65,12 @@
     const expected = new Map();
     for (const cite of request.cites) expected.set(cite.id, request.bibliography ? 1 : (expected.get(cite.id) ?? 0) + 1);
     try {
+      // Register and disambiguate the selected records once. The three output
+      // modes serialize that same processor state, rather than rebuilding it.
+      engine.setOutputFormat("text");
+      engine.updateItems(request.items.map((item) => item.id));
       for (const format of ["text", "html", "rtf"]) {
         engine.setOutputFormat(format);
-        // Clear retained records as well as IDs: a later snapshot may reuse an ID.
-        engine.updateItems([]);
-        engine.updateItems(request.items.map((item) => item.id));
         const capture = { engine, area: request.bibliography ? "bibliography" : "citation", seen: new Map() };
         observation = capture;
         let output;
