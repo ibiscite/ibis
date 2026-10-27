@@ -19,10 +19,15 @@ const MAX_RETAINED_BYTES: usize = 1024 * 1024 * 1024;
 // Independent work ceiling; only retained bibliographic rows consume it.
 const MAX_ROWS: usize = MAX_ITEMS * 64;
 
-pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Result<ClosedSnapshot, ClosedError> {
+/// The snapshot and the major version of the Zotero that last opened the
+/// database, when it recorded one.
+pub(super) fn read(
+    copy: &super::private_copy::Copy,
+    control: &Control,
+) -> Result<(ClosedSnapshot, Option<u32>), ClosedError> {
     control.check()?;
-    super::database_bounds::check(copy, control)?;
     let path = copy.database_path();
+    super::database_bounds::check(&path, control)?;
     let dir = path.parent().ok_or(ClosedError::PrivateStorage)?;
     // A hot rollback journal may name an external super-journal. A zeroed
     // PERSIST journal is not hot (SQLite pager.c hasHotJournal); discard only
@@ -66,6 +71,17 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
     for (table, fields) in TABLES {
         validate_table(&db, table, fields)?;
     }
+    let zotero = validate_table(&db, "settings", &["setting", "key", "value"])
+        .ok()
+        .and_then(|()| {
+            db.query_row(
+                "SELECT value FROM settings WHERE setting='client' AND key='lastVersion'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+        })
+        .and_then(|version| version.split('.').next()?.parse().ok());
     let budget = Budget {
         text: Cell::new(MAX_RETAINED_BYTES),
         rows: Cell::new(MAX_ROWS),
@@ -266,11 +282,15 @@ pub(super) fn read(copy: &super::private_copy::Copy, control: &Control) -> Resul
             .push(item);
     }
     control.check()?;
-    Ok(ClosedSnapshot {
-        schema_version: version,
-        libraries: libraries.into_values().collect(),
-        warnings,
-    })
+    Ok((
+        ClosedSnapshot {
+            schema_version: version,
+            libraries: libraries.into_values().collect(),
+            warnings,
+            better_bibtex_unknown: false,
+        },
+        zotero,
+    ))
 }
 
 fn skip_item(
@@ -293,7 +313,7 @@ fn byte_len(row: &Row<'_>, column: usize) -> rusqlite::Result<usize> {
     usize::try_from(row.get::<_, Option<i64>>(column)?.unwrap_or_default()).map_err(|_| rusqlite::Error::InvalidQuery)
 }
 
-fn configure(db: &mut Connection, control: &Control) -> Result<(), ClosedError> {
+pub(super) fn configure(db: &mut Connection, control: &Control) -> Result<(), ClosedError> {
     for (config, enabled) in [
         (DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true),
         (DbConfig::SQLITE_DBCONFIG_ENABLE_TRIGGER, false),
@@ -464,7 +484,7 @@ impl Budget {
         Ok(value.to_owned())
     }
 }
-fn failure(error: rusqlite::Error) -> ClosedError {
+pub(super) fn failure(error: rusqlite::Error) -> ClosedError {
     match error.sqlite_error_code() {
         Some(rusqlite::ErrorCode::TooBig | rusqlite::ErrorCode::OutOfMemory) => ClosedError::TooLarge,
         Some(rusqlite::ErrorCode::OperationInterrupted) => ClosedError::TimedOut,
