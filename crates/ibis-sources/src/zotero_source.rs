@@ -3,7 +3,7 @@ use crate::{
     LoadedLibrary, SourceWarning, WarningCode,
     zotero::{self, MappingError, MappingWarning, ZoteroCreator, ZoteroItem},
 };
-use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
+use ibis_core::contract::{CitationKeySource, LibraryId, LibraryObject, Snapshot};
 use ibis_core::zotero::api::{Transport, TransportError};
 pub use ibis_zotero_local::DEFAULT_PORT;
 use ibis_zotero_local::bbt::{BbtError, LiveBbt};
@@ -267,13 +267,28 @@ impl ZoteroSource {
         cancelled: &impl Fn() -> bool,
     ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
         let library = library_id();
+        // Better BibTeX may hold a key that disagrees with an item's Extra
+        // key. While its keys are unknown, an item without Zotero's own key
+        // keeps no key at all, so key output stays refused for it.
+        let keys_unknown = warnings
+            .iter()
+            .any(|warning| warning.code == WarningCode::CitationKeysUnavailable);
         let mut objects = Vec::new();
         for item in items {
             if cancelled() {
                 return Err(LiveError::Cancelled.into());
             }
             match zotero::map_item(library.clone(), &item) {
-                Ok(mapped) => {
+                Ok(mut mapped) => {
+                    if keys_unknown
+                        && !mapped
+                            .record
+                            .citation_keys
+                            .iter()
+                            .any(|key| key.source == CitationKeySource::Zotero)
+                    {
+                        mapped.record.citation_keys.clear();
+                    }
                     objects.push(LibraryObject::Record(mapped.record));
                     warnings.extend(mapped.warnings.into_iter().map(|warning| SourceWarning {
                         code: if warning == MappingWarning::DateParseLimit {
@@ -343,7 +358,6 @@ fn default_directory() -> Result<PathBuf, ZoteroError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use ibis_core::contract::CitationKeySource;
     use ibis_core::zotero::api::Response;
     use serde_json::{Value, json};
     struct ParityApi;
@@ -433,10 +447,13 @@ mod tests {
             .any(|warning| warning.code == WarningCode::CitationKeysUnavailable)
     }
 
+    type Answer = Arc<std::sync::Mutex<(u16, Value)>>;
+
     /// Zotero's local API and Better BibTeX's JSON-RPC on one loopback port,
-    /// as in Zotero. `bbt` is the JSON-RPC answer's status and body; the
-    /// returned list collects the JSON-RPC requests.
-    fn serve(bbt: (u16, Value)) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+    /// as in Zotero. SYNTH001 has no key of its own and `extra` as Extra.
+    /// `bbt` is the JSON-RPC answer's status and body, changeable between
+    /// refreshes; the returned list collects the JSON-RPC requests.
+    fn serve(extra: &'static str, bbt: Answer) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
         use std::io::{BufRead, BufReader, Read, Write};
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -458,7 +475,7 @@ mod tests {
                 stream.read_exact(&mut body).unwrap();
                 let (status, answer) = if head.starts_with("POST /better-bibtex/json-rpc ") {
                     seen.lock().unwrap().push(String::from_utf8(body).unwrap());
-                    bbt.clone()
+                    bbt.lock().unwrap().clone()
                 } else if head.contains("format=versions") {
                     (200, json!({"SYNTH001":1,"SYNTH002":1}))
                 } else {
@@ -466,7 +483,7 @@ mod tests {
                         200,
                         json!([
                             {"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book",
-                            "title":"Invented atlas","creators":[],"dateModified":"2026-10-26T12:00:00Z"}},
+                            "title":"Invented atlas","extra":extra,"creators":[],"dateModified":"2026-10-26T12:00:00Z"}},
                             {"key":"SYNTH002","version":1,"data":{"key":"SYNTH002","version":1,"itemType":"book",
                             "title":"Invented field guide","citationKey":"Own2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}
                         ]),
@@ -487,10 +504,7 @@ mod tests {
 
     #[test]
     fn live_reads_ask_better_bibtex_only_for_items_without_their_own_key() {
-        let (port, server) = serve((
-            200,
-            json!({"jsonrpc":"2.0","id":1,"result":{"SYNTH001":"Invented2026"}}),
-        ));
+        let (port, server) = serve("", answer(200, json!({"SYNTH001":"Invented2026"})));
         let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
         assert_eq!(
             *server.lock().unwrap(),
@@ -513,12 +527,52 @@ mod tests {
         // Without Better BibTeX, Zotero answers 404: those items simply have
         // no key. Any other failure says the keys are unavailable.
         for (status, warned) in [(404, false), (500, true)] {
-            let (port, server) = serve((status, json!({})));
+            let (port, server) = serve("", answer(status, json!({})));
             let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
             assert_eq!(server.lock().unwrap().len(), 1);
             assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
             assert_eq!(unavailable(&loaded), warned, "{status}");
         }
+    }
+
+    fn answer(status: u16, result: Value) -> Answer {
+        Arc::new(std::sync::Mutex::new((
+            status,
+            json!({"jsonrpc":"2.0","id":1,"result":result}),
+        )))
+    }
+
+    #[test]
+    fn a_better_bibtex_failure_cannot_clear_a_key_conflict() {
+        let bbt = answer(200, json!({"SYNTH001":"Actual2026"}));
+        let (port, _) = serve("Citation Key: Extra2026", bbt.clone());
+        let mut source = ZoteroSource::default();
+        let loaded = source.refresh_local(port, false, &|| false).unwrap();
+        let mut found = keys(&loaded);
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            found,
+            vec![
+                ("Actual2026".into(), CitationKeySource::BetterBibtex),
+                ("Extra2026".into(), CitationKeySource::Extra),
+                ("Own2026".into(), CitationKeySource::Zotero),
+            ]
+        );
+        // Better BibTeX fails on the next refresh, with Zotero unchanged.
+        bbt.lock().unwrap().0 = 500;
+        let loaded = source.refresh_local(port, false, &|| false).unwrap();
+        assert!(unavailable(&loaded));
+        assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
+        assert_eq!(loaded.snapshot.objects().len(), 2, "formatted output stays");
+    }
+
+    #[test]
+    fn an_oversized_better_bibtex_key_keeps_the_reference() {
+        let (port, _) = serve("", answer(200, json!({"SYNTH001":"k".repeat(257)})));
+        let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
+        assert!(unavailable(&loaded));
+        assert_eq!(loaded.snapshot.objects().len(), 2);
+        assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
     }
 
     #[test]
@@ -553,10 +607,13 @@ mod tests {
                 better_bibtex_unknown: unknown,
             };
             let loaded = ZoteroSource::default().publish_closed(&snapshot, &|| false).unwrap();
-            assert_eq!(
-                keys(&loaded),
+            // Unknown keys leave an item without Zotero's own key keyless.
+            let expected = if unknown {
+                vec![]
+            } else {
                 vec![("Invented2026".into(), CitationKeySource::BetterBibtex)]
-            );
+            };
+            assert_eq!(keys(&loaded), expected);
             assert_eq!(unavailable(&loaded), unknown);
         }
     }

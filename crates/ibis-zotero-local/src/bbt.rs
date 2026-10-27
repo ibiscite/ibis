@@ -240,6 +240,10 @@ impl LiveBbt {
             let map = result.as_object().ok_or(BbtError::Malformed)?;
             for (name, key) in batch.iter().zip(&names) {
                 match map.get(key) {
+                    // A key longer than any real one marks a damaged answer.
+                    Some(Value::String(citation_key)) if citation_key.len() > MAX_KEY_BYTES => {
+                        return Err(BbtError::Malformed);
+                    }
                     Some(Value::String(citation_key)) if !citation_key.trim().is_empty() => {
                         found.insert((*name).to_owned(), citation_key.clone());
                     }
