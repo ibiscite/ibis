@@ -135,3 +135,19 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
     assert_eq!(copied, "[@Synthetic2026]");
     Ok(())
 }
+
+#[test]
+fn unsupported_group_choices_are_refused_before_acquisition() {
+    use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+    assert!(FileLibrary::validate_zotero(&ZoteroLibrary::User.into()).is_ok());
+    for chosen in [
+        ZoteroLibrary::Group(7).into(),
+        ZoteroLibraries::new(vec![ZoteroLibrary::User, ZoteroLibrary::Group(7)])
+            .unwrap_or_else(|| panic!("valid synthetic choices")),
+    ] {
+        assert!(matches!(
+            FileLibrary::validate_zotero(&chosen),
+            Err(crate::library::LoadError::UnsupportedZoteroLibraries)
+        ));
+    }
+}
