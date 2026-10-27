@@ -46,7 +46,7 @@ impl Engine {
         let uses_zotero = request
             .items
             .iter()
-            .any(|pick| pick.item.library == ibis_sources::zotero_source::library_id());
+            .any(|pick| ibis_sources::zotero_source::is_zotero(&pick.item.library));
         if uses_zotero && !state.zotero_ready {
             return Err(error(ErrorCode::SourceUnavailable));
         }

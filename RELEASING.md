@@ -1,10 +1,10 @@
 # Maintaining and releasing Ibis
 
-Agents prepare releases and choose versions and timing; each stable release publishes only after the maintainer approves its deployment in GitHub ([AGENTS.md](AGENTS.md#authority)). Nightly builds publish on their own.
+Agents prepare releases and choose versions and timing; each stable release publishes only after the maintainer approves its deployment in GitHub ([AGENTS.md](AGENTS.md#asking-the-maintainer)). Nightly builds publish on their own.
 
 ## Releases
 
-Versions follow [Semantic Versioning](https://semver.org/). Before 1.0, `0.N.0` ships milestone `0.N`, and `0.N.1`, `0.N.2`, ... add fixes and small features. To request a milestone version, put `Release-As: 0.N.0` in a commit body on `main`. Never edit versions by hand. Data formats have schema versions; before 1.0 they may change without migrations ([ADR 0027](docs/adr/0027-fast-until-1-0.md)).
+Versions follow [Semantic Versioning](https://semver.org/). Before 1.0, `0.N.0` ships milestone `0.N`, and `0.N.1`, `0.N.2`, ... add fixes and small features. To request a milestone version, put `Release-As: 0.N.0` in a commit body on `main`. Never edit versions by hand. Data formats have schema versions; before 1.0 they may change without migrations ([decisions](docs/decisions.md#0016-settings-with-0018-0020-0022-0023-and-0027)).
 
 | Build | Title | Tag | Made from |
 | --- | --- | --- | --- |
@@ -18,7 +18,7 @@ executable remains `ibis-desktop`; Nightly uses `ibis-nightly`, including Tauri'
 automatically named icons. Nightly's config removes inherited Stable icon
 destinations through Tauri's JSON merge patch before adding its own.
 
-Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. The command line ships beside them as `ibis-<platform>.tar.gz` (`ibis-Windows.zip` on Windows), holding `ibis`, the licence and `NOTICE.md`. Release notes come from Conventional Commits ([commits](CONTRIBUTING.md#commits-and-pull-requests)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
+Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. The command line ships beside them as `ibis-<platform>.tar.gz` (`ibis-Windows.zip` on Windows), holding `ibis`, the licence and `NOTICE.md`. Release notes come from Conventional Commits ([commits](CONTRIBUTING.md#pull-requests)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
 
 ## How a release is built
 
@@ -34,29 +34,11 @@ A nightly follows the same build, install and verify steps without approval, sig
 Keeping the previous nightly's identity never blocks publication. The separate
 daily update qualification job fails when its previous feed and package exist
 but identity evidence is missing or unknown, so failure reporting opens an issue.
-A known earlier identity skips qualification with a notice (ADR 0023).
+A known earlier identity skips qualification with a notice.
 Published source is read as text, never executed. Current package installation
 checks still gate publication.
 
-## Diagnostic release performance
-
-The optional **Release performance** workflow compares Linux release executables
-with their exact `main` parent on the same runner. It runs after each merge to
-`main` that touches the app or engine, and on demand on `main`; each run compares
-that commit with the previous one. It does not run on pull requests. Its artifact records both SHAs, twenty warm summon and
-single-keystroke samples in alternating ABBA launches at 100,000 synthetic references, hidden idle process-tree
-RSS and scheduler wakeups, and the comparison. It never gates `CI result` or
-publication. Keyboard delivery, accessibility reads and polling are included in
-the observed timings; these do not certify the app's internal latency budgets.
-Idle wakeups count kernel scheduler events targeting the app and its descendants,
-including short-lived workers and the accessibility bridge, over a fixed 30-second
-window after settling. A private tracefs instance captures fork/exit lineage from
-before app launch; only numeric counts leave the privileged observer. Raw host
-trace text is never retained. Missing tracing capabilities or dropped events
-produce an unavailable diagnostic, never a zero
-or a pass. No personal libraries or app logs are collected.
-
-## Update keys (ADR 0019)
+## Update keys
 
 Two keys in two environments: the stable key in `updates` (only `v*` tags, after approval) and the nightly key in `nightly` (only `main`). Ibis trusts only the stable key and Ibis Nightly only the nightly key (`NIGHTLY_PUBKEY` in `scripts/update-feed.mjs`), so a key used on every push can never sign a stable update. Key-holding jobs restore no shared cache. Each signature names the build version, which the app checks before installing. Losing a key means that channel's users reinstall once by hand; the maintainer keeps an offline backup of each key. A daily `update-e2e` job installs the previous nightly on each platform and checks that it updates itself to the newest.
 

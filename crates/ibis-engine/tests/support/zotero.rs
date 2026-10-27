@@ -44,7 +44,10 @@ impl Server {
                     }
                     request.push(byte[0]);
                 }
-                let inventory = String::from_utf8(request).unwrap().contains("format=versions");
+                let request = String::from_utf8(request).unwrap();
+                let inventory = request.contains("format=versions");
+                // Group 99 does not exist.
+                let missing = request.contains("groups/99/");
                 if !inventory && wait.load(Ordering::Relaxed) {
                     seen.store(true, Ordering::SeqCst);
                     while wait.load(Ordering::Relaxed) && !stopping.load(Ordering::Relaxed) {
@@ -58,9 +61,10 @@ impl Server {
                 };
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);
+                let status = if missing { "404 Not Found" } else { "200 OK" };
                 let _ = write!(
                     stream,
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nZotero-API-Version: 3\r\nX-Zotero-Version: 10.0.6\r\nZotero-Server-ID: invented-{id}\r\nLast-Modified-Version: 1\r\nTotal-Results: 1\r\n\r\n",
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\nZotero-API-Version: 3\r\nX-Zotero-Version: 10.0.6\r\nZotero-Server-ID: invented-{id}\r\nLast-Modified-Version: 1\r\nTotal-Results: 1\r\n\r\n",
                     body.len()
                 );
                 let _ = stream.write_all(&body);

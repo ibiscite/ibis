@@ -40,7 +40,16 @@ fn command() -> Command {
             .long("zotero")
             .global(true)
             .action(ArgAction::SetTrue)
-            .help("Read the active local Zotero personal library"),
+            .help("Read the local Zotero personal library, open or closed"),
+    );
+    root = root.arg(
+        Arg::new("zotero-group")
+            .long("zotero-group")
+            .global(true)
+            .value_name("GROUP_ID")
+            .value_parser(clap::value_parser!(u64))
+            .action(ArgAction::Append)
+            .help("Read a local Zotero group library by its group ID; repeat for several"),
     );
     for method in Method::ALL {
         let subcommand = Command::new(method.as_str());
@@ -249,8 +258,21 @@ fn execute<R: BufRead, W: Write + Send>(
             })?;
         engine.dispatch(Method::Libraries, &params, &cancel)?;
     }
-    if matches.get_flag("zotero") {
-        engine.dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)?;
+    let groups = matches.get_many::<u64>("zotero-group").into_iter().flatten();
+    let zotero: Vec<_> = matches
+        .get_flag("zotero")
+        .then_some(ZoteroLibrary::Personal)
+        .into_iter()
+        .chain(groups.map(|id| ZoteroLibrary::Group(*id)))
+        .collect();
+    if !zotero.is_empty() {
+        let params = serde_json::to_value(LibrariesRequest::OpenZotero {
+            libraries: Some(zotero),
+        })
+        .map_err(|_| EngineError {
+            code: ErrorCode::BadInput,
+        })?;
+        engine.dispatch(Method::Libraries, &params, &cancel)?;
     }
     if name == "mcp" {
         return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {
