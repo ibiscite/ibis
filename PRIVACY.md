@@ -82,16 +82,15 @@ the same as Ibis's settings.
 
 In the paths below, replace `<id>` with the identifier for the channel you used:
 
-| Channel | Shipped identifier | Planned replacement in #695 (not active yet) |
+| Channel | Identifier | Earlier identifier |
 | --- | --- | --- |
-| Ibis (Stable) | `io.github.ibiscite.ibis` | `com.ibiscite.ibis` |
-| Ibis Nightly | `io.github.ibiscite.ibis.nightly` | `com.ibiscite.ibis.nightly` |
+| Ibis (Stable) | `com.ibiscite.ibis` | `io.github.ibiscite.ibis` |
+| Ibis Nightly | `com.ibiscite.ibis.nightly` | `io.github.ibiscite.ibis.nightly` |
 
-The replacement uses the same folder rules with the new identifier. Migration
-code copies settings and keeps the old files; it is not active with today's
-identifiers. If you have used both identities, check both. Stable and Nightly
-have separate settings and app-specific browser-data folders; system caches may be
-shared.
+Earlier builds used the earlier identifier. Ibis no longer reads or copies
+files stored under it; delete those folders if you no longer need them.
+Stable and Nightly have separate settings and app-specific browser-data
+folders; system caches may be shared.
 
 | OS | Settings folder | WebView data and cache locations |
 | --- | --- | --- |
