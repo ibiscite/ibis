@@ -91,7 +91,8 @@ export const commands = {
 	hidePicker: () => __TAURI_INVOKE<void>("hide_picker"),
 	/**
 	 *  Pin or unpin the picker. Staying on top is best effort: Wayland does not
-	 *  allow it, and there pinned means only that the picker stays open.
+	 *  allow it, and there pinned means only that the picker stays open. The
+	 *  Windows picker is always on top while shown.
 	 */
 	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
 	/**
