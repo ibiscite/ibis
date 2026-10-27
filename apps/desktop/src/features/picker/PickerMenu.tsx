@@ -27,7 +27,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   startAtLogin: { item: LoginItem; toggle: () => void } | null;
   /** The tray's update controls, for builds that have updates. */
   updates: { automatic: boolean; toggle: () => void; check: () => void } | null;
-  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; quit: () => void };
+  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null; quit: () => void };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -77,6 +77,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       <MenuSeparator />
       <MenuSection id="ibis">
         {updates && <MenuItem id="check-for-updates" label={pickerText.checkForUpdates} onAction={updates.check} />}
+        {actions.settings && <MenuItem id="settings" label={pickerText.settings} keys={label(keysFor("settings"))} onAction={actions.settings} />}
         <MenuItem id="keys" label={keyText.title} keys={label(keysFor("keys"))} onAction={actions.keys} />
         {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
         <MenuItem id="quit" label={pickerText.quitLabel} keys={label(keysFor("quit"))} onAction={actions.quit} />

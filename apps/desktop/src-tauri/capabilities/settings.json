@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "Settings window: read and change saved choices, the login item, update checks and the paste permission. No library, copy, file system, shell or network access.",
+  "windows": [
+    "settings"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:app:allow-version",
+    "core:window:allow-start-dragging",
+    "allow-picker-preferences",
+    "allow-set-picker-preferences",
+    "allow-login-item",
+    "allow-set-login-item",
+    "allow-update-checks",
+    "allow-set-update-checks",
+    "allow-check-for-updates",
+    "allow-paste-permission",
+    "allow-open-paste-permission",
+    "allow-native-appearance"
+  ]
+}

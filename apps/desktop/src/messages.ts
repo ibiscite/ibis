@@ -28,6 +28,7 @@ export const operationFailures = {
   updateChecks: "Ibis could not read its update setting. Try again.",
   updateChecksChange: "Ibis could not change its update setting. Try again.",
   checkForUpdates: "Ibis could not check for updates. Try again.",
+  settings: "Settings could not open. Try again.",
 } as const;
 
 /** Where people turn login items on and off on each system. */
@@ -188,6 +189,7 @@ export const pickerText = {
   reloadTitle: "Reload library",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
+  settings: "Settings…",
   checkForUpdates: "Check for updates…",
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
@@ -230,6 +232,7 @@ export const keyText = {
     more: "Open or close More",
     pin: "Keep Window Open, or stop keeping it open",
     keys: "Show this list (? works outside the search box)",
+    settings: "Open Settings",
     quit: "Quit Ibis",
     menuMove: "Move through the menu",
     menuEnds: "Go to the first or last item",
@@ -437,7 +440,7 @@ export const copiedNoticeText = {
   pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
   /** Keyed by the destination's copy reason codes; any other reason says "Copied". */
   reasons: {
-    "no-permission": "Copied. Allow Ibis in Accessibility to paste",
+    "no-permission": "Copied. Ibis needs your OK to paste",
     "terminal": "Copied. Not pasted into a terminal",
     "remote-desktop": "Copied. Not pasted into a remote desktop",
     "virtual-machine": "Copied. Not pasted into a virtual machine",
@@ -465,3 +468,47 @@ export const updateText = {
   installing: "Checking and installing the update…",
   failed: "The update could not be installed. Use Check for updates in More to try again later.",
 };
+
+// The Settings window (#776, docs/design.md "Settings").
+export const settingsText = {
+  windowTitle: "Ibis Settings",
+  pages: "Settings pages",
+  general: "General",
+  about: "About",
+  groups: { paste: "Pasting", picker: "Picker", updates: "Updates" },
+  paste: {
+    label: "Paste into the app you came from",
+    description: "Enter pastes the citation where you were typing. Off, Enter only copies it.",
+    allowed: (list: string) => `Allowed in Privacy & Security › ${list}`,
+    allowedNote: "Ibis presses ⌘V once, only in the app you opened it from.",
+    guideTitle: "Allow Ibis to paste for you",
+    guideWhy: "macOS asks you once. Ibis only presses ⌘V, only in the app you came from, and never reads what you type.",
+    steps: (name: string, list: string) => [
+      "Click Open System Settings.",
+      `In Privacy & Security › ${list}, turn on ${name}.`,
+      "Come back. Ibis notices on its own.",
+    ],
+    open: "Open System Settings",
+    waiting: "Waiting for your OK…",
+    granted: "Ibis can paste now.",
+    stale: (name: string) => `Already on, but still waiting? An update gave ${name} a new identity. Open System Settings again: Ibis clears the old switch so you can turn on the new one.`,
+    copyInstead: "Just copy",
+  },
+  picker: {
+    rows: "Rows",
+    largerText: "Larger text",
+    searchMark: "Ibis mark in search",
+    searchMarkDescription: "In place of the magnifier",
+    preview: "Show what will be pasted",
+    previewDescription: "The line above the footer",
+  },
+  login: { description: "Keeps the shortcut ready after you restart" },
+  updates: {
+    automatic: "Check for updates automatically",
+    automaticDescription: "Reads a small update file from GitHub a few times a day",
+    check: "Check now",
+    version: (name: string, version: string) => `${name} ${version}`,
+    unavailable: "This build does not update itself.",
+  },
+  failed: "Ibis could not save that. Try again.",
+} as const;

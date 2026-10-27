@@ -54,3 +54,16 @@ commands carry one more optional field:
 | `search_mark` | `true` or `false` | `false` (the magnifier) |
 
 Choosing the mark writes `search_mark: true`; choosing the magnifier removes it.
+
+## Agreed extension: paste into the app you came from (2026-10-27)
+
+The maintainer chose paste on by default with a setting to turn it off
+(2026-10-25, #27). The same commands carry one more optional field, changed in
+Settings › General › Pasting:
+
+| Field | Value | Absent or `null` means |
+| --- | --- | --- |
+| `paste` | `true` or `false` | `true` (Enter pastes when it is safe) |
+
+Turning pasting off writes `paste: false`, and Enter only copies; turning it on
+removes the field.

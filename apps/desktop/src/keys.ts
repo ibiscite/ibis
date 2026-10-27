@@ -19,6 +19,7 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
   { region: "picker", action: "preview", keys: ["CmdOrCtrl+I"] },
   { region: "picker", action: "keys", keys: ["CmdOrCtrl+/", "?"] },
+  { region: "picker", action: "settings", keys: ["CmdOrCtrl+,"] },
   { region: "picker", action: "quit", keys: ["CmdOrCtrl+Q"] },
   { region: "menu", action: "menuMove", keys: ["ArrowDown", "ArrowUp"] },
   { region: "menu", action: "menuEnds", keys: ["Home", "End"] },

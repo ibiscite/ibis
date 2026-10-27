@@ -51,9 +51,11 @@ impl Platform {
     };
 }
 
-/// Shared 400x76-point notice frame leaves 16 points for the pill's shadow.
+/// Shared 560x100-point notice frame: room for the longest reason and a
+/// second line for the citation, with 16 points for the pill's shadow. The
+/// window ignores the pointer, so its clear margins never block a click.
 pub(crate) fn notice_size(_platform: Platform) -> (f64, f64) {
-    (400.0, 76.0)
+    (560.0, 100.0)
 }
 
 /// Place the shared pill near the top centre, within the usable display area.
@@ -519,9 +521,9 @@ mod tests {
     #[test]
     fn all_platforms_use_the_shared_pill_frame_and_top_centre_placement() {
         for platform in [Platform::MacOs, Platform::Windows, Platform::Linux] {
-            assert_eq!(notice_size(platform), (400.0, 76.0));
-            let (x, y) = notice_position(platform, LEFT, 400.0, 76.0);
-            assert_eq!(x + 200.0, LEFT.x + LEFT.width / 2.0);
+            assert_eq!(notice_size(platform), (560.0, 100.0));
+            let (x, y) = notice_position(platform, LEFT, 560.0, 100.0);
+            assert_eq!(x + 280.0, LEFT.x + LEFT.width / 2.0);
             assert_eq!(y, LEFT.y + 24.0);
         }
     }

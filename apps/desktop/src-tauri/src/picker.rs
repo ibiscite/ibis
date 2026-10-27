@@ -212,9 +212,13 @@ pub(crate) fn dismiss_picker(app: &AppHandle) {
         dismiss_with(
             || window.hide(),
             || {
+                // Hiding the app would hide an open Settings window too, and
+                // the non-activating picker never took focus from the app in
+                // front, so with Settings open the window hide is enough.
                 #[cfg(target_os = "macos")]
-                return app.hide();
-                #[cfg(not(target_os = "macos"))]
+                if !crate::settings_window::is_open(app) {
+                    return app.hide();
+                }
                 Ok::<(), tauri::Error>(())
             },
         );

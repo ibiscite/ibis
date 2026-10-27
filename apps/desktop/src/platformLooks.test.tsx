@@ -225,7 +225,9 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
   // The shelf's output and chips use text colours (docs/design.md, "Shelf").
   expect(scarlet).not.toMatch(/preview-text|\.chip/);
   // Selection, the pin and the main controls keep the system accent.
-  expect(scarlet).not.toMatch(/button|\.search-bar|::before|\[role="option"\]\[data-active\]\s*(,|$)/);
+  // The Ibis mark in search is the logo, so it is brand scarlet (#1293); no search control is.
+  expect(scarlet).toContain(".search-bar > svg.search-mark");
+  expect(scarlet.replace(".search-bar > svg.search-mark", "")).not.toMatch(/button|\.search-bar|::before|\[role="option"\]\[data-active\]\s*(,|$)/);
   // Contrast and forced colours fall back to CanvasText.
   for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
     expect(tokens.slice(tokens.indexOf(media))).toMatch(/--citation:\s*CanvasText/);

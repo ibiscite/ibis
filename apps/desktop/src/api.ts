@@ -42,6 +42,7 @@ export const {
   updateChecks,
   setUpdateChecks,
   checkForUpdates,
+  openSettings,
 } = commands;
 
 // The limit default, page and request number are not part of the UI's API:
@@ -68,6 +69,11 @@ export function onPickerShown(handler: () => void): Promise<UnlistenFn> {
 /** Called when the shortcut's status changes, such as after a keyboard layout switch on macOS. */
 export function onShortcutStatus(handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> {
   return listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload));
+}
+
+/** Called when Settings changes a picker preference, with the saved preferences. */
+export function onPreferencesChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("preferences:changed", handler);
 }
 
 /** Called whenever the picker is hidden, by any route. */

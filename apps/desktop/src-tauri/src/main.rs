@@ -28,6 +28,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod row_context;
+mod settings_window;
 mod setup;
 mod sizing;
 mod tray;
@@ -181,6 +182,12 @@ fn main() {
         .manage(updater::Updates::default())
         .invoke_handler(bindings::commands().invoke_handler())
         .on_window_event(|window, event| {
+            if window.label() == settings_window::LABEL {
+                if let WindowEvent::Destroyed = event {
+                    settings_window::closed(window.app_handle());
+                }
+                return;
+            }
             // Only the picker hides on blur or close; the Copied notice never has focus.
             if window.label() != "main" {
                 return;

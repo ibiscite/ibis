@@ -83,7 +83,11 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   return (message: NoticeMessage) => {
     title.textContent = noticeTitle(message);
     code.textContent = message.text;
+    notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
+    // A citation cut to a few characters says nothing: give it its own line.
+    delete notice.dataset.stacked;
+    if (code.scrollWidth > code.clientWidth) notice.dataset.stacked = "";
     // Restart the fade for a notice shown again while still visible.
     notice.classList.remove("showing", "leaving");
     void notice.offsetWidth;
