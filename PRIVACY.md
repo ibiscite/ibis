@@ -1,7 +1,7 @@
 # Privacy and data flows
 
 Ibis reads your libraries without changing them. This page describes the preview
-and its local data. New Ibis data flows need an ADR and an update here.
+and its local data. New Ibis data flows need a recorded decision ([decisions](docs/decisions.md)) and an update here.
 
 ## What Ibis reads and writes
 
@@ -34,12 +34,12 @@ the same as Ibis's settings.
 
 ## Network and diagnostics
 
-- **Telemetry:** none, ever ([ADR 0008](docs/adr/0008-network-policy.md)).
+- **Telemetry:** none, ever ([decision 0008](docs/decisions.md#0008-offline-by-default)).
   Ibis never sends your libraries, search queries, selected references,
   documents, clipboard contents or citation history off your computer.
 - **Web interface:** no file system, clipboard, shell or network plugin
   permissions. Library reads and clipboard writes go through Ibis's
-  window-scoped commands ([ADR 0024](docs/adr/0024-window-command-permissions.md)).
+  window-scoped commands ([decision 0024](docs/decisions.md#0024-window-permissions)).
   Its content security policy restricts `connect-src` to local IPC.
 - **Zotero:** Ibis connects to `127.0.0.1:23119` on your computer. Setup checks
   Zotero's greeting; choosing Zotero reads the selected libraries and refreshes
@@ -52,7 +52,7 @@ the same as Ibis's settings.
   Ibis requests a small GitHub update file a few times a day. **Check for
   Updates…** makes a check on request. GitHub sees your IP address and Ibis
   version, not library contents. Downloads require your agreement and a
-  signature matching the app's update key ([ADR 0019](docs/adr/0019-update-checks.md)).
+  signature matching the app's update key ([decision 0019](docs/decisions.md#0019-updates)).
 - **Windows runtime:** if WebView2 is missing, installation downloads Microsoft's
   bootstrapper and runtime. Its shared Evergreen runtime is maintained by
   Microsoft's update service, separately from Ibis's update consent.
