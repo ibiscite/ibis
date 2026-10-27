@@ -167,6 +167,7 @@ impl FileLibrary {
         query: &SearchQuery,
         limit: usize,
         scope: Option<Vec<String>>,
+        cancel: &Cancellation,
     ) -> Result<SearchReply, String> {
         let interpretation = query
             .interpret_locators
@@ -184,22 +185,30 @@ impl FileLibrary {
                 interpretation,
             });
         }
-        let reply = self
-            .engine
-            .search(
-                &SearchRequest {
-                    query: interpretation
-                        .as_ref()
-                        .map_or_else(|| query.text.clone(), |q| q.search.clone()),
-                    limit: limit.min(200),
-                    libraries: scope
-                        .map(|ids| serde_json::from_value(json!(ids)))
-                        .transpose()
-                        .map_err(|_| "Invalid library scope.".to_string())?,
-                },
-                &Cancellation::default(),
-            )
-            .map_err(|_| "The library could not be searched.".to_string())?;
+        let reply = match self.engine.search(
+            &SearchRequest {
+                query: interpretation
+                    .as_ref()
+                    .map_or_else(|| query.text.clone(), |q| q.search.clone()),
+                limit: limit.min(200),
+                libraries: scope
+                    .map(|ids| serde_json::from_value(json!(ids)))
+                    .transpose()
+                    .map_err(|_| "Invalid library scope.".to_string())?,
+            },
+            cancel,
+        ) {
+            Ok(reply) => reply,
+            // A newer search replaced this one; the interface ignores the empty reply.
+            Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => {
+                return Ok(SearchReply {
+                    revision: self.revision(),
+                    results: vec![],
+                    interpretation,
+                });
+            }
+            Err(_) => return Err("The library could not be searched.".to_string()),
+        };
         let revision = reply.snapshot.full.as_str().to_owned();
         let results = reply
             .hits
@@ -258,22 +267,31 @@ impl FileLibrary {
             .map_err(CommandError::from)?;
         let result = citation.result();
         if result.copy_content(request.items.len()).is_none() {
-            let conflict = result.outcomes.iter().any(|outcome| {
-                matches!(
-                    outcome,
-                    ItemOutcome::Refused {
-                        error: CitationError::ConflictingKey,
-                        ..
-                    }
-                )
-            });
-            return Err(if conflict {
+            let refused = |wanted: CitationError| {
+                result.outcomes.iter().find_map(|outcome| match outcome {
+                    ItemOutcome::Refused { item, error } if *error == wanted => Some(*item),
+                    _ => None,
+                })
+            };
+            // A key another record also has is named, so the picker can say what to rename.
+            if let Some(key) = refused(CitationError::AmbiguousKey).and_then(|item| self.citation_key(&request, item)) {
+                return Err(CommandError::SharedCitationKey { key });
+            }
+            return Err(if refused(CitationError::ConflictingKey).is_some() {
                 "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
             } else {
                 "These references cannot be copied in this format."
-            }.into());
+            }
+            .into());
         }
         self.publish_preview(reservation, citation)
+    }
+    fn citation_key(&self, request: &CitationRequest, item: usize) -> Option<String> {
+        let snapshot = self.engine.snapshot().ok()?;
+        let LibraryObject::Record(record) = &snapshot.get(&request.items.get(item)?.item)?.object else {
+            return None;
+        };
+        record.citation_key().ok().flatten().map(str::to_owned)
     }
     fn publish_preview(&self, reservation: u64, citation: PreparedCitation) -> Result<FilePreview, CommandError> {
         let mut slot = self

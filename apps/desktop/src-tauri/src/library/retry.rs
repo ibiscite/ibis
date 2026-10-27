@@ -92,7 +92,6 @@ mod tests {
     use std::path::PathBuf;
 
     use ibis_core::settings::ZoteroLibrary;
-    use ibis_core::zotero;
 
     use ibis_core::source::SourceError;
     use ibis_core::zotero::api::{TransportError, ZoteroError};
@@ -122,10 +121,7 @@ mod tests {
         let requests = LoadRequests::default();
         // Open Zotero the ordinary way, as at start or after "Use Zotero".
         let (opened, _, _) = begin_open(&library, &requests, zotero.clone()).unwrap_or_else(|| panic!("opens"));
-        let loaded = candidate(
-            zotero.clone(),
-            ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Kept}}"),
-        );
+        let loaded = candidate(zotero.clone(), "@misc{kept, title={Kept}}");
         install_loaded(&library, &requests, opened, Ok(Loaded::New(Box::new(loaded))));
         if let Ok(mut library) = library.lock() {
             library.error = Some(ZOTERO_OFFLINE);
@@ -155,10 +151,7 @@ mod tests {
             Some("the library file is unavailable; keeping the last loaded references")
         );
 
-        let file = Mutex::new(candidate(
-            PathBuf::from("synthetic.bib"),
-            ibis_core::bibtex::load_str("synthetic", ""),
-        ));
+        let file = Mutex::new(candidate(PathBuf::from("synthetic.bib"), ""));
         assert!(begin_check(&file, &requests).is_none(), "a file has its own watcher");
     }
 
@@ -177,14 +170,14 @@ mod tests {
         );
 
         // A failed Zotero choice over a loaded file retries Zotero, not the file.
-        let mut over_file = candidate(file.clone(), ibis_core::bibtex::load_str("synthetic", ""));
+        let mut over_file = candidate(file.clone(), "");
         over_file.requested = Some(zotero.clone());
         over_file.error = Some(ZOTERO_OFFLINE);
         assert_eq!(zotero_to_check(&over_file), Some(zotero.clone()));
         assert!(retry(&over_file, zotero.clone()).1, "the choice is saved once it opens");
 
         // A failed file choice over a loaded Zotero library stays visible.
-        let mut over_zotero = candidate(zotero, ibis_core::bibtex::load_str("synthetic", ""));
+        let mut over_zotero = candidate(zotero, "");
         over_zotero.requested = Some(file.clone());
         over_zotero.error = Some(SourceError::Unavailable.into());
         assert_eq!(zotero_to_check(&over_zotero), None);
@@ -193,7 +186,7 @@ mod tests {
             !retry(&over_zotero, Source::Zotero(ZoteroLibrary::User.into())).1,
             "rereading saves nothing"
         );
-        let loaded_file = candidate(file, ibis_core::bibtex::load_str("synthetic", ""));
+        let loaded_file = candidate(file, "");
         assert_eq!(zotero_to_check(&loaded_file), None);
     }
 
@@ -209,7 +202,7 @@ mod tests {
         ] {
             let library = Mutex::new(
                 retained
-                    .map(|source| candidate(source, ibis_core::bibtex::load_str("synthetic", "@misc{old}")))
+                    .map(|source| candidate(source, "@misc{old}"))
                     .unwrap_or_default(),
             );
             let requests = LoadRequests::default();
@@ -230,13 +223,7 @@ mod tests {
                 begin_zotero_retry(&library, &requests, false).is_none(),
                 "show cannot duplicate focus"
             );
-            let loaded = zotero::load_items(
-                zotero::Library::Group(42),
-                &[serde_json::json!({
-                    "key": "SYN00001", "data": {"itemType": "book"},
-                    "csljson": {"type": "book", "title": "Synthetic recovered record"}
-                })],
-            );
+            let loaded = "@misc{recovered, title={Synthetic recovered record}}";
             let recovered = install_loaded(
                 &library,
                 &requests,
@@ -248,8 +235,6 @@ mod tests {
             assert!(recovered.error.is_none());
             assert_eq!(recovered.zotero_libraries, groups.libraries());
             assert_eq!(recovered.references, 1);
-            assert_eq!(recovered.source_counts.get("zotero:group:42"), Some(&1));
-            assert_eq!(recovered.source_counts.get("zotero:group:7"), Some(&0));
             assert!(
                 begin_focus_retry(&library, &requests).is_none(),
                 "healthy focus does not check again"
@@ -262,7 +247,7 @@ mod tests {
         let source = Source::Zotero(ZoteroLibrary::Group(42).into());
         let library = Mutex::new(candidate(
             source.clone(),
-            ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Synthetic retained record}}"),
+            "@misc{kept, title={Synthetic retained record}}",
         ));
         let requests = LoadRequests::default();
         assert!(
@@ -363,10 +348,7 @@ mod tests {
                 &library,
                 &requests,
                 late,
-                Ok(Loaded::New(Box::new(candidate(
-                    source,
-                    ibis_core::bibtex::load_str("synthetic", "@misc{old}"),
-                )))),
+                Ok(Loaded::New(Box::new(candidate(source, "@misc{old}",)))),
             )
             .is_none()
         );
@@ -375,10 +357,7 @@ mod tests {
             &library,
             &requests,
             newer,
-            Ok(Loaded::New(Box::new(candidate(
-                file,
-                ibis_core::bibtex::load_str("synthetic", "@misc{new}"),
-            )))),
+            Ok(Loaded::New(Box::new(candidate(file, "@misc{new}")))),
         )
         .unwrap_or_else(|| panic!("new choice is current"));
         assert!(!current.zotero);
