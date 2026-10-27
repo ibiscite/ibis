@@ -119,7 +119,8 @@ test.each(["مراجع.bib", "מקורות.bib", "研究.bib", "example.bib"])("
 
 test("screen readers can read the detail, including the count kept after a failed update", () => {
   const { container } = render(createElement(LibraryStatusLine, {
-    library: file({ state: "error", stale: true, error: "The library file is unavailable; keeping the last loaded references", references: 4 }),
+    // The line reads the real clock, so the check time is relative to it, not to the fixed `now`.
+    library: file({ state: "error", stale: true, error: "The library file is unavailable; keeping the last loaded references", references: 4, checked_at: Date.now() - 3 * hour }),
     groupName: String,
   }));
   expect(container.querySelector(".library-status")?.textContent).toMatch(/^thesis\.bib · not updated · checked /);
