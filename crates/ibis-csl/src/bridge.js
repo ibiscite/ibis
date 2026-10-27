@@ -54,10 +54,11 @@
     const key = JSON.stringify([request.style, request.locale, request.keep_order]);
     let engine = engines.get(key);
     if (!engine) {
+      // Keep one warm style, rather than eight independent item registries.
+      engines.clear();
       engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id) }, xml, request.locale ?? undefined, request.locale !== null);
       engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];
-      if (engines.size >= 8) engines.delete(engines.keys().next().value);
       engines.set(key, engine);
     }
     const outputs = { status: "rendered" };
@@ -92,6 +93,9 @@
       return JSON.stringify({ status: "refused" });
     } finally {
       observation = null;
+      // No cached engine keeps the last request's source records alive.
+      activeItems.clear();
+      engine.updateItems([]);
     }
     outputs.coverage = request.cites.map((_, index) => index);
     return JSON.stringify(outputs);

@@ -1,5 +1,6 @@
 [
   {"type":"book","title":"Synthetic signals","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic lowercase signals","author":[{"family":"Taylor","given":"avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
   {"type":"article-journal","title":"Über Ärger & <Kram> {x}","author":[{"family":"Müller","given":"Zoë"}],"issued":{"date-parts":[[2020]]},"container-title":"Journal of Synthetic Examples","volume":"3","page":"12-14"},
   {"type":"book","title":"ıslak IŞIK ve İSİM","author":[{"family":"Işık","given":"İlker"}],"issued":{"date-parts":[[2022]]},"publisher":"Synthetic Press","language":"tr"},
   {"type":"book","title":"Í J̀ synthetic Lithuanian","author":[{"family":"Įvardis","given":"Jonas"}],"issued":{"date-parts":[[2023]]},"publisher":"Synthetic Press","language":"lt"},

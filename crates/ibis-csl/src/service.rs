@@ -268,21 +268,7 @@ fn worker(shared: Arc<Shared>, limits: Limits, lane: usize) {
         let result = match control.error() {
             Some(error) => Err(error),
             None if job.prepared.empty => Ok(crate::output::refused(&job.prepared)),
-            None => {
-                if session.is_none() {
-                    match Session::new(&limits, &control) {
-                        Ok(value) => session = Some(value),
-                        Err(error) => {
-                            finish(&shared, lane, job, Err(error));
-                            continue;
-                        }
-                    }
-                }
-                match session.as_mut() {
-                    Some(session) => session.run(&job.prepared, &limits, &control),
-                    None => Err(FormatError::Runtime.into()),
-                }
-            }
+            None => Session::format(&mut session, &job.prepared, &limits, &control),
         };
         if result.is_err() {
             session = None;

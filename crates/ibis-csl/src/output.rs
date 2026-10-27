@@ -218,8 +218,12 @@ fn parse_html(html: &str) -> Result<RichText, FormatError> {
                 if !matches!(tag, "/i" | "/b" | "/sup" | "/sub" | "/span" | "/div") || stack.len() == 1 {
                     return Err(FormatError::Runtime);
                 }
-                if names.pop() != Some(closing) {
+                let (name, entry_start) = names.pop().ok_or(FormatError::Runtime)?;
+                if name != closing {
                     return Err(FormatError::Runtime);
+                }
+                if let Some(start) = entry_start {
+                    trim_entry(&mut runs[start..]);
                 }
                 stack.pop();
             } else {
@@ -257,7 +261,10 @@ fn parse_html(html: &str) -> Result<RichText, FormatError> {
                 if stack.len() >= 32 {
                     return Err(FormatError::ResourceLimit);
                 }
-                names.push(tag.split_whitespace().next().ok_or(FormatError::Runtime)?);
+                names.push((
+                    tag.split_whitespace().next().ok_or(FormatError::Runtime)?,
+                    (tag == "div class=\"csl-entry\"").then_some(runs.len()),
+                ));
                 stack.push(style);
             }
             rest = &after[end + 1..];
@@ -273,6 +280,23 @@ fn parse_html(html: &str) -> Result<RichText, FormatError> {
         return Err(FormatError::Runtime);
     }
     Ok(runs)
+}
+
+// Bibliography text trims each entry; HTML may keep a space just inside its div.
+// Ignore only those entry boundaries, preserving all interior text and spacing.
+fn trim_entry(runs: &mut [TextRun]) {
+    for run in runs.iter_mut() {
+        run.text = run.text.trim_start_matches(js_space).to_owned();
+        if !run.text.is_empty() {
+            break;
+        }
+    }
+    for run in runs.iter_mut().rev() {
+        run.text = run.text.trim_end_matches(js_space).to_owned();
+        if !run.text.is_empty() {
+            break;
+        }
+    }
 }
 fn decode_entities(text: &str) -> Result<String, FormatError> {
     let mut out = String::new();
@@ -386,6 +410,15 @@ mod review_tests {
         ] {
             assert!(output(text, html, "{\\rtf1 canonical}").is_err());
         }
+    }
+    #[test]
+    fn bibliography_entry_boundaries_allow_only_outer_whitespace() {
+        let html = "<div class=\"csl-entry\"> <i>avery</i> Taylor </div>";
+        assert!(output("avery Taylor", html, "canonical").is_ok());
+        assert!(output("averyTaylor", html, "canonical").is_err());
+        assert!(output("avery  Taylor", html, "canonical").is_err());
+        // Inline citation spacing is still exact.
+        assert!(output("avery Taylor", " <i>avery</i> Taylor", "canonical").is_err());
     }
     #[test]
     fn bibliography_line_folding_requires_original_text_evidence() {
