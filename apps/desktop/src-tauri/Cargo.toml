@@ -76,4 +76,5 @@ windows = { version = "0.62.2", features = ["Foundation", "System_Power", "Syste
 # name and rights, and one SendInput. No raw native calls in Ibis.
 winsafe = { version = "0.0.29", features = ["user", "advapi", "version"] }
 # Safe UI Automation: whether the focused field takes a password (#1133).
-uiautomation = { version = "0.25.1", default-features = false }
+# Its core module needs the `input` feature.
+uiautomation = { version = "0.25.1", default-features = false, features = ["input"] }
