@@ -786,6 +786,80 @@ fn pandoc_locator_braces_cannot_swallow_a_literal_suffix() {
 }
 
 #[test]
+fn biblatex_suffix_only_postnotes_never_acquire_page_labels() {
+    let mut case = seed();
+    for command in ["autocite", "parencite", "textcite"] {
+        case.request.output = OutputSpec::Key {
+            syntax: KeySyntax::Biblatex,
+            command: Some(command.into()),
+        };
+        for (suffix, escaped) in [
+            ("12", "12"),
+            ("12-14", "12{-}14"),
+            ("XIV", "XIV"),
+            ("12, 14", "12, 14"),
+            ("12 special", "12 special"),
+        ] {
+            case.request.items.truncate(1);
+            case.request.items[0].locator = None;
+            case.request.items[0].prefix.clear();
+            case.request.items[0].suffix = vec![TextRun {
+                text: suffix.into(),
+                ..TextRun::default()
+            }];
+            let result = syntax::cite(&case.library, &case.request).unwrap();
+            assert_eq!(result.text, format!("\\{command}[{escaped}\\nopp]{{Example2026}}"));
+            assert!(result.losses.is_empty());
+            assert!(result.copy_content(1).is_some());
+
+            case.request.items[0].prefix = vec![TextRun {
+                text: "see".into(),
+                ..TextRun::default()
+            }];
+            case.request.items.push(case.request.items[0].clone());
+            let result = syntax::cite(&case.library, &case.request).unwrap();
+            let note = format!("[see][{escaped}\\nopp]{{Example2026}}");
+            assert_eq!(result.text, format!("\\{command}s{note}{note}"));
+            assert!(result.copy_content(2).is_some());
+        }
+        case.request.items.truncate(1);
+        case.request.items[0].prefix.clear();
+        case.request.items[0].suffix = vec![TextRun {
+            text: "12".into(),
+            italic: true,
+            ..TextRun::default()
+        }];
+        assert_eq!(
+            syntax::cite(&case.library, &case.request).unwrap().text,
+            format!("\\{command}[\\emph{{12}}\\nopp]{{Example2026}}")
+        );
+        case.request.items[0].suffix.clear();
+        assert_eq!(
+            syntax::cite(&case.library, &case.request).unwrap().text,
+            format!("\\{command}{{Example2026}}")
+        );
+    }
+}
+
+#[test]
+fn natbib_suffixes_are_refused_until_the_syntax_is_supported() {
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Natbib,
+        command: None,
+    };
+    case.request.items[0].locator = None;
+    case.request.items[0].suffix = vec![TextRun {
+        text: "12".into(),
+        ..TextRun::default()
+    }];
+    assert_eq!(
+        syntax::cite(&case.library, &case.request),
+        Err(CitationError::UnsupportedOutput)
+    );
+}
+
+#[test]
 fn biblatex_page_labels_survive_a_literal_suffix() {
     let mut case = seed();
     case.request.output = OutputSpec::Key {
@@ -808,6 +882,7 @@ fn biblatex_page_labels_survive_a_literal_suffix() {
             result.text
         );
         assert!(result.losses.is_empty());
+        assert!(!result.text.contains("\\nopp"));
     }
 }
 

@@ -80,6 +80,14 @@ fn biblatex(command: &str, picks: &[Pick<'_>]) -> String {
     let notes = |pick: &Pick<'_>| {
         let prefix = rich(&pick.item.prefix, Escaping::Latex);
         let suffix = rich(&pick.item.suffix, Escaping::Latex);
+        let suffix = if pick.item.locator.is_none() && !suffix.is_empty() {
+            // BibLaTeX otherwise treats numeric or Roman suffixes as pages.
+            // Its prefix suppressor works anywhere in the postnote. Append it
+            // so other TeX readers cannot consume a leading literal group.
+            format!("{suffix}\\nopp")
+        } else {
+            suffix
+        };
         let locator = pick.item.locator.as_ref().map(|locator| {
             if locator.term == LocatorTerm::Page {
                 let value = latex_locator_escape(&normalize_dashes(locator.value.trim(), "--"));
