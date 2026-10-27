@@ -18,13 +18,15 @@ fn private_urls_in_file_fields_and_note_overrides_never_reach_formatted_output()
         "file:///invented/private.pdf",
         "\\\\invented\\share\\private.pdf",
     ] {
-        for placement in ["URL", "note", "inline"] {
+        for placement in ["URL", "note", "inline", "wrapped", "wrapped-inline"] {
             for extension in ["bib", "json"] {
                 let path = dir.path().join(format!("synthetic.{extension}"));
                 let field = if placement == "URL" { "URL" } else { "note" };
                 let value = match placement {
                     "note" => format!("URL: {url}"),
                     "inline" => format!("{{:URL: {url}}}"),
+                    "wrapped" => format!("URL:\n{url}"),
+                    "wrapped-inline" => format!("{{:URL:\n{url}}}"),
                     _ => url.into(),
                 };
                 let text = if extension == "json" {
@@ -34,7 +36,7 @@ fn private_urls_in_file_fields_and_note_overrides_never_reach_formatted_output()
                 } else {
                     // Escaped braces produce literal citeproc override braces;
                     // ordinary BibTeX grouping braces are removed by its parser.
-                    let value = if placement == "inline" {
+                    let value = if placement.ends_with("inline") {
                         value.replace('{', "\\{").replace('}', "\\}")
                     } else {
                         value

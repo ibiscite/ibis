@@ -413,6 +413,8 @@ fn private_extra_urls_remove_the_entire_line_including_braces_and_lone_cr() {
         "URL: file:///invented/a}/private.pdf",
         "Title: Invented\nURL: file:///invented/a\rb/private.pdf",
         "{:URL: file:///invented/{x}/private.pdf}",
+        "URL:\nfile:///invented/private.pdf",
+        "{:URL:\nfile:///invented/private.pdf}",
     ] {
         let result = mapped(json!({"extra": extra}));
         let public = serde_json::to_string(&result.record).unwrap();

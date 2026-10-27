@@ -118,7 +118,10 @@ fn without_private_urls(note: &str) -> (String, bool) {
                 removed = true;
                 // Braces and lone CR can be part of a private path. Remove
                 // through the actual line separator, including inline fields.
-                let end = rest.find(['\n', '\u{2028}', '\u{2029}']).unwrap_or(rest.len());
+                let end = value_start
+                    + rest[value_start..]
+                        .find(['\n', '\u{2028}', '\u{2029}'])
+                        .unwrap_or(rest.len() - value_start);
                 // Keep line boundaries: deleting a field cannot turn following
                 // prose into the first line accepted by citeproc's field hacks.
                 for ch in rest[..end]
