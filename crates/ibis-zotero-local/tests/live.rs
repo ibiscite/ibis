@@ -117,6 +117,15 @@ fn failure_cancellation_and_limits_keep_last_good() {
     fake.fail = false;
     assert_eq!(reader.refresh(&mut fake, false, &|| false), Err(LiveError::Limit));
     assert!(reader.items().is_empty());
+    let mut reader = LiveReader::with_limits(
+        Library::User,
+        Limits {
+            bytes: 1,
+            ..Limits::default()
+        },
+    );
+    assert_eq!(reader.refresh(&mut fake, false, &|| false), Err(LiveError::Limit));
+    assert!(reader.items().is_empty());
 }
 
 #[test]
@@ -180,4 +189,49 @@ fn explicit_full_reload_retires_preview_before_the_first_request() {
             Ok(())
         })
         .unwrap();
+}
+
+#[test]
+fn per_item_limits_omit_only_the_oversized_item_and_keep_its_warning_across_refresh() {
+    let mut cases = vec![];
+    let mut authors = row(1, "Invented collaboration");
+    authors["data"]["creators"] = json!(vec![
+        json!({"creatorType":"author","name":"Invented collaborator"});
+        4097
+    ]);
+    cases.push(authors);
+    let mut name = row(1, "Invented long name");
+    name["data"]["creators"] = json!([{"creatorType":"author","name":"x".repeat(300_000)}]);
+    cases.push(name);
+    let mut field = row(1, "Invented field");
+    field["data"]["title"] = json!("x".repeat(300_000));
+    cases.push(field);
+    let mut count = row(1, "Invented fields");
+    for i in 0..257 {
+        count["data"]
+            .as_object_mut()
+            .unwrap()
+            .insert(format!("invented{i}"), json!("x"));
+    }
+    cases.push(count);
+    let mut total = row(1, "Invented total");
+    for i in 0..9 {
+        total["data"]
+            .as_object_mut()
+            .unwrap()
+            .insert(format!("invented{i}"), json!("x".repeat(256 * 1024)));
+    }
+    cases.push(total);
+    for mut large in cases {
+        large["key"] = json!("SYNTH002");
+        large["data"]["key"] = json!("SYNTH002");
+        let mut fake = Fake::new(10);
+        fake.rows.push(large);
+        let mut reader = LiveReader::new(Library::User);
+        reader.refresh(&mut fake, false, &|| false).unwrap();
+        assert_eq!(reader.items().len(), 1);
+        assert_eq!(reader.omitted_items(), 1);
+        reader.refresh(&mut fake, false, &|| false).unwrap();
+        assert_eq!(reader.omitted_items(), 1);
+    }
 }

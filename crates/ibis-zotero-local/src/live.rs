@@ -113,6 +113,7 @@ struct Inventory {
 }
 #[derive(Clone, PartialEq, Eq)]
 struct Entry {
+    too_large: bool,
     item: Option<ItemData>,
     modified: String,
 }
@@ -158,6 +159,15 @@ impl LiveReader {
             .flat_map(|state| state.entries.values())
             .filter_map(|entry| entry.item.as_ref())
             .collect()
+    }
+    /// Per-item omissions survive incremental cache reuse without retaining
+    /// oversized payloads or exposing private native keys in diagnostics.
+    pub fn omitted_items(&self) -> usize {
+        self.state
+            .iter()
+            .flat_map(|state| state.entries.values())
+            .filter(|entry| entry.too_large)
+            .count()
     }
     /// Charge retained cache payloads, including nonbibliographic IDs and
     /// collection/string allocations. This is independent of refresh I/O: a
@@ -529,81 +539,101 @@ fn entry(row: Value) -> Result<(String, Entry, u64), LiveError> {
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty() && s.len() <= 128)
         .ok_or(LiveError::Incomplete)?;
-    let item = if matches!(kind, "note" | "attachment" | "annotation")
+    let (item, too_large) = if matches!(kind, "note" | "attachment" | "annotation")
         || data.get("deleted").is_some_and(|v| v == 1 || v == true)
     {
-        None
+        (None, false)
     } else {
-        let mut creators = Vec::new();
-        if let Some(values) = data.get("creators") {
-            let values = values.as_array().ok_or(LiveError::Incomplete)?;
-            if values.len() > 4096 {
-                return Err(LiveError::Limit);
-            }
-            for value in values {
-                let object = value.as_object().ok_or(LiveError::Incomplete)?;
-                let text = |name| -> Result<String, LiveError> {
-                    match object.get(name) {
-                        None => Ok(String::new()),
-                        Some(Value::String(text)) if text.len() <= 256 * 1024 => Ok(text.clone()),
-                        _ => Err(LiveError::Incomplete),
-                    }
-                };
-                let field_mode = match object.get("fieldMode") {
-                    None => 0,
-                    Some(v) => v.as_u64().filter(|v| *v <= 1).ok_or(LiveError::Incomplete)? as u8,
-                };
-                creators.push(CreatorData {
-                    creator_type: text("creatorType")?,
-                    first_name: text("firstName")?,
-                    last_name: text("lastName")?,
-                    name: text("name")?,
-                    field_mode,
-                });
-            }
+        match item_data(data, key, kind) {
+            Ok(item) => (Some(item), false),
+            Err(LiveError::Limit) => (None, true),
+            Err(error) => return Err(error),
         }
-        let mut fields = BTreeMap::new();
-        for (name, value) in data {
-            if matches!(
-                name.as_str(),
-                "key"
-                    | "creators"
-                    | "tags"
-                    | "collections"
-                    | "relations"
-                    | "itemType"
-                    | "dateAdded"
-                    | "dateModified"
-                    | "parentItem"
-                    | "version"
-                    | "deleted"
-                    | "path"
-                    | "filename"
-                    | "note"
-                    | "contentType"
-                    | "linkMode"
-                    | "md5"
-                    | "charset"
-                    | "mtime"
-            ) {
-                continue;
-            }
-            if let Some(text) = value.as_str() {
-                if text.len() > 256 * 1024 {
-                    return Err(LiveError::Limit);
-                }
-                fields.insert(name.clone(), text.to_owned());
-            }
-        }
-        if fields.len() > 256 || serde_json::to_vec(data).map_err(|_| LiveError::Incomplete)?.len() > 2 * 1024 * 1024 {
+    };
+    Ok((
+        key.to_owned(),
+        Entry {
+            too_large,
+            item,
+            modified,
+        },
+        version,
+    ))
+}
+
+fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Result<ItemData, LiveError> {
+    if serde_json::to_vec(data).map_err(|_| LiveError::Incomplete)?.len() > 2 * 1024 * 1024 {
+        return Err(LiveError::Limit);
+    }
+    let mut creators = Vec::new();
+    if let Some(values) = data.get("creators") {
+        let values = values.as_array().ok_or(LiveError::Incomplete)?;
+        if values.len() > 4096 {
             return Err(LiveError::Limit);
         }
-        Some(ItemData {
-            key: key.into(),
-            item_type: kind.into(),
-            creators,
-            fields,
-        })
-    };
-    Ok((key.to_owned(), Entry { item, modified }, version))
+        for value in values {
+            let object = value.as_object().ok_or(LiveError::Incomplete)?;
+            let text = |name| -> Result<String, LiveError> {
+                match object.get(name) {
+                    None => Ok(String::new()),
+                    Some(Value::String(text)) if text.len() <= 256 * 1024 => Ok(text.clone()),
+                    Some(Value::String(_)) => Err(LiveError::Limit),
+                    _ => Err(LiveError::Incomplete),
+                }
+            };
+            let field_mode = match object.get("fieldMode") {
+                None => 0,
+                Some(v) => v.as_u64().filter(|v| *v <= 1).ok_or(LiveError::Incomplete)? as u8,
+            };
+            creators.push(CreatorData {
+                creator_type: text("creatorType")?,
+                first_name: text("firstName")?,
+                last_name: text("lastName")?,
+                name: text("name")?,
+                field_mode,
+            });
+        }
+    }
+    let mut fields = BTreeMap::new();
+    for (name, value) in data {
+        if matches!(
+            name.as_str(),
+            "key"
+                | "creators"
+                | "tags"
+                | "collections"
+                | "relations"
+                | "itemType"
+                | "dateAdded"
+                | "dateModified"
+                | "parentItem"
+                | "version"
+                | "deleted"
+                | "path"
+                | "filename"
+                | "note"
+                | "contentType"
+                | "linkMode"
+                | "md5"
+                | "charset"
+                | "mtime"
+        ) {
+            continue;
+        }
+        if let Some(text) = value.as_str() {
+            if text.len() > 256 * 1024 {
+                return Err(LiveError::Limit);
+            }
+            fields.insert(name.clone(), text.to_owned());
+        }
+    }
+    if fields.len() > 256 {
+        return Err(LiveError::Limit);
+    }
+    Ok(ItemData {
+        key: key.into(),
+        item_type: kind.into(),
+        creators,
+        fields,
+    })
 }

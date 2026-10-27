@@ -25,8 +25,6 @@ pub enum ZoteroError {
     Closed(#[from] closed::ClosedError),
     #[error("the default Zotero directory is unavailable")]
     Location,
-    #[error("reading Zotero exceeded the work limit")]
-    Limit,
 }
 impl ZoteroError {
     pub fn cancelled(self) -> bool {
@@ -41,8 +39,7 @@ impl ZoteroError {
     pub fn limited(self) -> bool {
         matches!(
             self,
-            Self::Limit
-                | Self::Closed(closed::ClosedError::TooLarge)
+            Self::Closed(closed::ClosedError::TooLarge)
                 | Self::Live(LiveError::Limit | LiveError::Transport(TransportError::TooLarge))
         )
     }
@@ -166,7 +163,13 @@ impl ZoteroSource {
                     .collect(),
                 better_bibtex_keys: vec![],
             }),
-            vec![],
+            vec![
+                SourceWarning {
+                    code: WarningCode::WorkLimit,
+                    line: None
+                };
+                reader.omitted_items()
+            ],
             cancelled,
         )?;
         self.reader = reader;
@@ -253,7 +256,10 @@ impl ZoteroSource {
                     code: WarningCode::Field,
                     line: None,
                 }),
-                Err(MappingError::InputLimit) => return Err(ZoteroError::Limit),
+                Err(MappingError::InputLimit) => warnings.push(SourceWarning {
+                    code: WarningCode::WorkLimit,
+                    line: None,
+                }),
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
         }
@@ -311,12 +317,13 @@ mod tests {
     impl Transport for ParityApi {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
             let body = if path.ends_with("format=versions") {
-                json!({"SYNTH001":1})
+                json!({"SYNTH001":1,"SYNTH002":1})
             } else {
                 json!([{"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book",
                 "title":"The Synthetic Atlas","date":"Spring 2020","accessDate":"2020-02-03 04:05:06","citationKey":"Synthetic2020",
                 "creators":[{"creatorType":"author","firstName":"Ada","lastName":"Example"},{"creatorType":"editor","name":"Synthetic Institute","fieldMode":1}],
-                "dateModified":"2020-02-02T00:00:00Z"}}])
+                "dateModified":"2020-02-02T00:00:00Z"}},
+                {"key":"SYNTH002","version":1,"data":{"key":"SYNTH002","version":1,"itemType":"book","title":"x".repeat(300_000),"creators":[],"dateModified":"2020-02-02T00:00:00Z"}}])
             };
             Ok(Response {
                 status: 200,
@@ -326,10 +333,52 @@ mod tests {
                     ("X-Zotero-Version".into(), "10.0.6".into()),
                     ("Zotero-Server-ID".into(), "invented-parity".into()),
                     ("Last-Modified-Version".into(), "1".into()),
-                    ("Total-Results".into(), "1".into()),
+                    ("Total-Results".into(), "2".into()),
                 ],
             })
         }
+    }
+    #[test]
+    fn a_live_item_limit_publishes_other_records_with_a_fixed_warning() {
+        let loaded = ZoteroSource::default()
+            .refresh(&mut ParityApi, false, &|| false)
+            .unwrap();
+        assert_eq!(loaded.snapshot.objects().len(), 1);
+        assert_eq!(
+            loaded.warnings,
+            vec![SourceWarning {
+                code: WarningCode::WorkLimit,
+                line: None
+            }]
+        );
+    }
+    #[test]
+    fn mapper_item_limits_skip_the_item_without_discarding_other_records() {
+        let normal = ZoteroItem {
+            key: "SYNTH001".into(),
+            item_type: "book".into(),
+            ..ZoteroItem::default()
+        };
+        let mut large = normal.clone();
+        large.key = "SYNTH002".into();
+        large.fields.insert(
+            "extra".into(),
+            format!(
+                "tex.ids: {}",
+                (0..4097).map(|n| format!("Alias{n}")).collect::<Vec<_>>().join(",")
+            ),
+        );
+        let loaded = ZoteroSource::default()
+            .map_items([normal, large], vec![], &|| false)
+            .unwrap();
+        assert_eq!(loaded.snapshot.objects().len(), 1);
+        assert_eq!(
+            loaded.warnings,
+            vec![SourceWarning {
+                code: WarningCode::WorkLimit,
+                line: None
+            }]
+        );
     }
     #[test]
     fn actual_closed_reader_matches_live_public_records_in_disposable_ci() {
@@ -344,6 +393,12 @@ mod tests {
             .unwrap();
         db.execute_batch(include_str!("../../ibis-zotero-local/fixtures/closed/zotero10.sql"))
             .unwrap();
+        db.execute(
+            "INSERT INTO itemDataValues(valueID,value) VALUES(6,?1)",
+            rusqlite::params!["x".repeat(300_000)],
+        )
+        .unwrap();
+        db.execute_batch("INSERT INTO items VALUES(17,1,'SYNTH002',1,1,'2020-01-01 00:00:00','2020-02-02 00:00:00'); INSERT INTO itemData VALUES(17,1,6);").unwrap();
         drop(db);
         let before = std::fs::read(data.path().join("zotero.sqlite")).unwrap();
         let acquired = read_closed_at(data.path(), cache.path(), Arc::new(|| false)).unwrap();
