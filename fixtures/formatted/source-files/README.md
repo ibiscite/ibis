@@ -13,7 +13,7 @@ separately checks that Ibis's JavaScript observer does not change those bytes.
 It does not call the Rust source readers or formatter, and no Ibis output or
 Ibis-normalized record was used to generate these expectations.
 
-Pins are recorded in `apps/desktop/vendor/csl/manifest.json`:
+Pins are recorded in `crates/ibis-csl/vendor/manifest.json`:
 
 - Zotero: `db41b99fddcc52d38897c59c161b6adaca036afb`.
 - CSL styles: `0e5503bd9a75668c402567a93e20b7327784e4fa`.

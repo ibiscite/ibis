@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Download the pinned citation engine, styles and locale into
-// apps/desktop/vendor/csl and check each against the SHA-256 in its
+// crates/ibis-csl/vendor and check each against the SHA-256 in its
 // manifest. Run by hand when updating a pin; the app never downloads them.
 //
 //   node scripts/vendor-citeproc.mjs           verify and (re)write the files
@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const dir = join(root, "apps/desktop/vendor/csl");
+const dir = join(root, "crates/ibis-csl/vendor");
 const manifestPath = join(dir, "manifest.json");
 const update = process.argv.includes("--update");
 

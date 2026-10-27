@@ -698,7 +698,7 @@ fn pandoc_superscript_affixes_stay_inside_the_citation() {
 }
 
 fn processed_pandoc_citation(text: &str) -> String {
-    let style = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/vendor/csl/styles/apa.csl");
+    let style = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ibis-csl/vendor/styles/apa.csl");
     let header = "---\nreferences:\n- id: Example2026\n  type: book\n  title: Synthetic\n  author:\n  - family: Taylor\n  issued:\n    date-parts: [[2026]]\n---\n\n";
     let ast = consumer_ast_with(
         "markdown",

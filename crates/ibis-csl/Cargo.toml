@@ -17,5 +17,8 @@ icu_collator = "2.4.0"
 icu_locale_core = "2.4.0"
 icu_casemap = "2.4.0"
 
+[dev-dependencies]
+sha2 = "0.10.9"
+
 [lints]
 workspace = true
