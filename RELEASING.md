@@ -18,7 +18,7 @@ executable remains `ibis-desktop`; Nightly uses `ibis-nightly`, including Tauri'
 automatically named icons. Nightly's config removes inherited Stable icon
 destinations through Tauri's JSON merge patch before adding its own.
 
-Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. Release notes come from Conventional Commits ([commits](CONTRIBUTING.md#commits-and-pull-requests)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
+Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. The command line ships beside them as `ibis-<platform>.tar.gz` (`ibis-Windows.zip` on Windows), holding `ibis` and the licence. Release notes come from Conventional Commits ([commits](CONTRIBUTING.md#commits-and-pull-requests)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
 
 ## How a release is built
 

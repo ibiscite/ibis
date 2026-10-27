@@ -175,7 +175,16 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            # Link the C runtime in, as the app does, so ibis.exe runs on a PC
+            # without the Visual C++ Redistributable.
+            export RUSTFLAGS="-C target-feature=+crt-static"
+          fi
           cargo build --release --locked -p ibis --target "$TARGET"
+          if [ "$RUNNER_OS" = Windows ] && grep -qai 'vcruntime140.dll' "target/$TARGET/release/ibis.exe"; then
+            echo "::error::ibis.exe still needs vcruntime140.dll."
+            exit 1
+          fi
           if [ "$TARGET" != x86_64-apple-darwin ]; then
             "target/$TARGET/release/ibis" --version
           fi
@@ -222,7 +231,7 @@ jobs:
             (cd cli && 7z a -tzip "../dist/ibis-$platform.zip" ibis.exe LICENSE > /dev/null)
           else
             cp "target/${{ matrix.target }}/release/ibis" cli/
-            tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis LICENSE
+            COPYFILE_DISABLE=1 tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis LICENSE
           fi
           # Write the list outside dist first, so it never lists itself.
           sums="SHA256SUMS-${{ matrix.target }}.txt"
