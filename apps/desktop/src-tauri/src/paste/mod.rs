@@ -7,7 +7,7 @@
 //! way (ADR 0009).
 
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ibis_core::destination::{CopyReason, Decision, PastePermission, System, decide};
 use serde::Serialize;
@@ -17,7 +17,7 @@ mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
 
-use capture::Captured;
+use capture::{Captured, Front};
 
 const SYSTEM: System = if cfg!(target_os = "macos") {
     System::Macos
@@ -27,9 +27,14 @@ const SYSTEM: System = if cfg!(target_os = "macos") {
     System::Linux
 };
 
-/// How long the captured app gets to come back to the front after the picker hides.
+/// How long the captured app gets to come back to the front after the picker
+/// hides, in checks and in real time; a paste later than `LATE` never happens.
 const RETURN_LIMIT: Duration = Duration::from_millis(1_000);
 const RETURN_STEP: Duration = Duration::from_millis(25);
+const RETURN_CHECKS: u32 = 40;
+const LATE: Duration = Duration::from_millis(1_500);
+/// Time for the app to give its window the keyboard again.
+const SETTLE: Duration = Duration::from_millis(50);
 
 /// The app the picker was last opened from.
 #[derive(Default)]
@@ -70,7 +75,8 @@ pub(crate) trait Desk {
     fn may_post(&self) -> bool;
     /// Ask for that permission; the system prompts only the first time.
     fn ask_to_post(&self);
-    fn frontmost(&self) -> Option<i32>;
+    /// The app in front, or `None` once the picker has been shown again.
+    fn frontmost(&self) -> Option<Front>;
     fn clipboard(&self) -> Option<String>;
     /// The key that types V with Command on the current layout.
     fn paste_key(&self) -> Option<u16>;
@@ -104,19 +110,26 @@ pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str,
             let Some(pid) = captured.pid else {
                 return copied(None);
             };
-            // Another app may have taken the clipboard since the copy.
-            if desk.clipboard().as_deref() != Some(text) {
-                return copied(None);
-            }
-            let mut waited = Duration::ZERO;
-            while desk.frontmost() != Some(pid) {
-                if waited >= RETURN_LIMIT {
+            // The same process and app: a process number alone can be reused.
+            let id = captured.target.app.as_ref().map(|app| app.id.as_str());
+            let back = |front: Option<Front>| front.is_some_and(|front| front.pid == pid && front.id.as_deref() == id);
+            let started = Instant::now();
+            let mut checks = 0;
+            while !back(desk.frontmost()) {
+                if checks >= RETURN_CHECKS || started.elapsed() >= RETURN_LIMIT {
                     return copied(None);
                 }
                 desk.wait(RETURN_STEP);
-                waited += RETURN_STEP;
+                checks += 1;
             }
-            match desk.paste_key() {
+            desk.wait(SETTLE);
+            let key = desk.paste_key();
+            // Another app may have taken the clipboard since the copy, and a
+            // late paste would land in whatever the person is typing now.
+            if desk.clipboard().as_deref() != Some(text) || started.elapsed() > LATE {
+                return copied(None);
+            }
+            match key {
                 Some(key) if desk.post(pid, key) => Delivered::Pasted {
                     app: captured.name.clone(),
                 },
@@ -130,7 +143,7 @@ pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str,
 pub(crate) fn deliver_copy(app: &AppHandle, text: &str) -> Delivered {
     let captured = app.state::<LastTarget>().0.lock().ok().and_then(|last| last.clone());
     #[cfg(target_os = "macos")]
-    let desk = macos::Mac(app.clone());
+    let desk = macos::Mac::new(app);
     #[cfg(not(target_os = "macos"))]
     let desk = CopyOnly;
     deliver(&desk, captured.as_ref(), text, true)
@@ -146,7 +159,7 @@ impl Desk for CopyOnly {
         false
     }
     fn ask_to_post(&self) {}
-    fn frontmost(&self) -> Option<i32> {
+    fn frontmost(&self) -> Option<Front> {
         None
     }
     fn clipboard(&self) -> Option<String> {
@@ -195,8 +208,12 @@ mod tests {
         fn ask_to_post(&self) {
             self.asked.set(self.asked.get() + 1);
         }
-        fn frontmost(&self) -> Option<i32> {
-            self.fronts.borrow().first().copied()
+        fn frontmost(&self) -> Option<Front> {
+            self.fronts.borrow().first().map(|&pid| Front {
+                id: Some("org.example.writer".into()),
+                pid,
+                name: None,
+            })
         }
         fn clipboard(&self) -> Option<String> {
             Some(self.clipboard.clone())
@@ -256,7 +273,14 @@ mod tests {
 
     #[test]
     fn nothing_is_posted_when_the_paste_is_unsafe_or_unproven() {
-        let cases: [(Fake, Captured, bool, Delivered); 4] = [
+        let cases: [(Fake, Captured, bool, Delivered); 5] = [
+            // The process number now belongs to another app.
+            (
+                Fake::new("[@synthetic]"),
+                writer("org.example.other"),
+                true,
+                copied(None),
+            ),
             // Another app replaced the clipboard.
             (
                 Fake::new("other text"),

@@ -73,6 +73,8 @@ pub const APPS: &[App] = &[
     app(Macos, "org.alacritty", "Alacritty", None, Terminal),
     app(Macos, "dev.warp.warp-stable", "Warp", None, Terminal),
     app(Macos, "com.mitchellh.ghostty", "Ghostty", None, Terminal),
+    app(Macos, "co.zeit.hyper", "Hyper", None, Terminal),
+    app(Macos, "org.tabby", "Tabby", None, Terminal),
     app(Windows, "windowsterminal.exe", "Windows Terminal", None, Terminal),
     app(Windows, "cmd.exe", "Command Prompt", None, Terminal),
     app(Windows, "conhost.exe", "Console Window Host", None, Terminal),
@@ -86,6 +88,8 @@ pub const APPS: &[App] = &[
     app(Macos, "com.microsoft.rdc.macos", "Windows App", None, RemoteDesktop),
     app(Macos, "com.teamviewer.teamviewer", "TeamViewer", None, RemoteDesktop),
     app(Macos, "com.realvnc.vncviewer", "VNC Viewer", None, RemoteDesktop),
+    app(Macos, "com.apple.screensharing", "Screen Sharing", None, RemoteDesktop),
+    app(Macos, "com.philandro.anydesk", "AnyDesk", None, RemoteDesktop),
     app(
         Macos,
         "com.citrix.receiver.icaviewer.mac",

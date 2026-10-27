@@ -1,5 +1,6 @@
 //! The macOS calls behind a paste, through safe objc2 bindings only.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -7,7 +8,7 @@ use objc2_app_kit::NSWorkspace;
 use objc2_core_graphics::{
     CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess, CGRequestPostEventAccess,
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::Code;
 
@@ -24,18 +25,37 @@ pub(super) fn frontmost() -> Option<Front> {
     })
 }
 
-pub(super) struct Mac(pub(super) AppHandle);
+/// The system prompt for the permission is shown at most once per run.
+static ASKED: AtomicBool = AtomicBool::new(false);
+
+pub(super) struct Mac {
+    app: AppHandle,
+    /// The picker showing that this copy belongs to; showing it again stops the paste.
+    generation: u64,
+}
 
 impl Mac {
-    /// AppKit state and layouts are read on the main thread; the paste waits off it.
+    pub(super) fn new(app: &AppHandle) -> Self {
+        Self {
+            app: app.clone(),
+            generation: app.state::<crate::picker::PickerGeneration>().current(),
+        }
+    }
+
+    fn picker_unchanged(&self) -> bool {
+        self.app.state::<crate::picker::PickerGeneration>().current() == self.generation
+    }
+
+    /// AppKit state and layouts are read on the main thread; the paste waits
+    /// off it, never longer than a check step allows.
     fn on_main<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
         let (sender, receiver) = mpsc::channel();
-        self.0
+        self.app
             .run_on_main_thread(move || {
                 let _ = sender.send(work());
             })
             .ok()?;
-        receiver.recv_timeout(Duration::from_secs(2)).ok()
+        receiver.recv_timeout(Duration::from_millis(250)).ok()
     }
 }
 
@@ -45,15 +65,20 @@ impl Desk for Mac {
     }
 
     fn ask_to_post(&self) {
-        CGRequestPostEventAccess();
+        if !ASKED.swap(true, Ordering::SeqCst) {
+            CGRequestPostEventAccess();
+        }
     }
 
-    fn frontmost(&self) -> Option<i32> {
-        self.on_main(|| frontmost().map(|front| front.pid)).flatten()
+    fn frontmost(&self) -> Option<Front> {
+        if !self.picker_unchanged() {
+            return None;
+        }
+        self.on_main(frontmost).flatten()
     }
 
     fn clipboard(&self) -> Option<String> {
-        self.0.clipboard().read_text().ok()
+        self.app.clipboard().read_text().ok()
     }
 
     fn paste_key(&self) -> Option<u16> {
@@ -62,6 +87,9 @@ impl Desk for Mac {
     }
 
     fn post(&self, pid: i32, key: u16) -> bool {
+        if !self.picker_unchanged() {
+            return false;
+        }
         // A source of its own, so keys the person still holds are not added.
         let source = CGEventSource::new(CGEventSourceStateID::Private);
         let events = [true, false].map(|down| CGEvent::new_keyboard_event(source.as_deref(), key, down));
