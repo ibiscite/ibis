@@ -141,7 +141,8 @@ Content-Length frames, progress/library-change notifications and
 2025-06-18) with four read-only tools: `search`, `show`, `cite` and `styles`.
 Add it to an agent as a stdio server, for example
 `ibis mcp --file references.bib`. Agents see summaries and citations, never
-notes, annotations or source paths, and long values are shortened.
+notes, annotations, source paths or local links. Long values are shortened and
+each answer is at most 256 KiB.
 
 ## Contributing
 

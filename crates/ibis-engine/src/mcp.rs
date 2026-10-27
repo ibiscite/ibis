@@ -3,12 +3,14 @@
 //! Newline-delimited JSON-RPC 2.0 on stdio, as MCP's stdio transport defines,
 //! pinned to protocol revision [`PROTOCOL_VERSION`]. Four read-only tools
 //! (search, show, cite, styles) call the same engine methods as the command
-//! line. Agents never see notes or annotations, a record's `note` or `annote`
-//! fields, file locations or other libraries' data; long values are cut short.
-//! Nothing here opens a network connection.
+//! line. Agents see records only as [`citable_fields`] leaves them: never notes
+//! or annotations, a record's `note` or `annote` fields, file locations,
+//! private links or other libraries' data. Long values are cut short and every
+//! answer has a size bound. Nothing here opens a network connection.
 
 use crate::request::{ItemSelector, KeyCitationRequest, SearchRequest, ShowRequest};
 use crate::{Cancellation, Engine, protocol};
+use ibis_core::citable::{citable_fields, is_variable};
 use ibis_core::contract::{
     CitationForm, CitationItem, CitationRequest, EngineError, ErrorCode, ItemRef, KeySyntax, LibraryObject, OutputSpec,
     Record,
@@ -23,12 +25,13 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const MAX_HITS: usize = 25;
 /// Characters kept of any one text value.
 pub const MAX_TEXT: usize = 1_000;
-/// Entries kept of any one list (authors, keywords).
+/// Entries kept of any one list (authors, keywords) or object (CSL fields).
 pub const MAX_LIST: usize = 20;
-/// Fields an agent never sees: they hold the user's own notes.
-const PRIVATE_FIELDS: [&str; 2] = ["note", "annote"];
+/// Bytes of JSON one tool answer may carry. Search returns fewer hits rather
+/// than more; anything else larger is refused.
+pub const MAX_ANSWER: usize = 256 * 1024;
 /// Key syntaxes `cite` offers: those the engine renders from keys alone.
-/// CSL-JSON is left out because it would carry the private fields above.
+/// CSL-JSON is left out because it would carry whole records.
 const SYNTAXES: [KeySyntax; 6] = [
     KeySyntax::Pandoc,
     KeySyntax::Biblatex,
@@ -102,12 +105,19 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
     if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
         return Some(error(id.unwrap_or(Value::Null), -32600, "Invalid Request"));
     }
-    let Some(method) = object.get("method").and_then(Value::as_str) else {
+    let valid_id = id
+        .as_ref()
+        .is_none_or(|id| id.is_string() || id.is_i64() || id.is_u64());
+    let reply_id = id.clone().filter(|_| valid_id).unwrap_or(Value::Null);
+    let method = match object.get("method") {
+        Some(Value::String(method)) => method.as_str(),
         // A response to a request we never sent.
-        return None;
+        None if object.contains_key("result") || object.contains_key("error") => return None,
+        // Anything else is malformed; answer it so the client does not wait.
+        _ => return Some(error(reply_id, -32600, "Invalid Request")),
     };
     let id = id?;
-    if !(id.is_string() || id.is_i64() || id.is_u64()) {
+    if !valid_id {
         return Some(error(Value::Null, -32600, "Invalid Request"));
     }
     let params = object.get("params").cloned().unwrap_or(Value::Null);
@@ -175,7 +185,7 @@ fn tools() -> Value {
         {
             "name": "cite",
             "title": "Format a citation",
-            "description": "Format one citation for the given items, in a CSL style (default apa) or a citation key syntax such as pandoc, biblatex or typst.",
+            "description": "Format one citation for the given items, in a CSL style (default apa) or a citation key syntax such as pandoc, biblatex or typst. Returns the text with notices and losses that say what it cannot show.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -216,10 +226,18 @@ fn call(engine: &Engine, name: &str, arguments: &Value) -> Value {
             .styles()
             .and_then(|styles| serde_json::to_value(styles).map_err(|_| internal())),
     };
+    let outcome = outcome.and_then(|data| {
+        let text = data.to_string();
+        if text.len() > MAX_ANSWER {
+            return Err(EngineError {
+                code: ErrorCode::ResourceLimit,
+            });
+        }
+        Ok((text, data))
+    });
     match outcome {
-        Ok(Value::String(text)) => json!({"content": [{"type": "text", "text": text}], "isError": false}),
-        Ok(data) => json!({
-            "content": [{"type": "text", "text": data.to_string()}],
+        Ok((text, data)) => json!({
+            "content": [{"type": "text", "text": text}],
             "structuredContent": data,
             "isError": false
         }),
@@ -263,15 +281,23 @@ fn search(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
         },
         &Cancellation::default(),
     )?;
-    let hits: Vec<Value> = result
-        .hits
-        .iter()
-        .filter_map(|hit| match &hit.item.object {
-            LibraryObject::Record(record) => Some(summary(record)),
-            _ => None,
-        })
-        .collect();
-    Ok(json!({"hits": hits}))
+    let mut hits = Vec::new();
+    let mut size = 0;
+    let mut complete = true;
+    for hit in &result.hits {
+        let LibraryObject::Record(record) = &hit.item.object else {
+            continue;
+        };
+        let hit = summary(&citable(record));
+        size += hit.to_string().len() + 1;
+        // Leave room for the envelope; a shorter list is still a true answer.
+        if size > MAX_ANSWER - 1024 {
+            complete = false;
+            break;
+        }
+        hits.push(hit);
+    }
+    Ok(json!({"hits": hits, "complete": complete}))
 }
 
 fn show(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
@@ -279,15 +305,11 @@ fn show(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     let shown = engine.show(&ShowRequest { item })?;
     match &shown.object {
         LibraryObject::Record(record) => {
-            let mut data = summary(record);
-            data["csl"] = Value::Object(
-                record
-                    .csl
-                    .iter()
-                    .filter(|(field, _)| !PRIVATE_FIELDS.contains(&field.as_str()))
-                    .map(|(field, value)| (field.clone(), shorten(value)))
-                    .collect(),
-            );
+            let citable = citable(record);
+            let mut data = summary(&citable);
+            let mut csl = citable.csl;
+            csl.retain(|field, _| is_variable(field));
+            data["csl"] = shorten(&Value::Object(csl));
             Ok(data)
         }
         // Notes, annotations and the rest are not shared with agents.
@@ -376,8 +398,14 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     };
     // Only a complete citation is handed on; anything less is an error the
     // agent can see, never a partial text it might paste.
+    // Notices and losses carry no library data; an agent needs them to know
+    // what the text cannot say, as `ibis cite --json` reports them.
     match result.copy_content(items.len()) {
-        Some(content) => Ok(Value::String(content.text.to_owned())),
+        Some(content) => Ok(json!({
+            "text": content.text,
+            "notices": result.notices,
+            "losses": result.losses,
+        })),
         None => Err(bad_input()),
     }
 }
@@ -392,11 +420,27 @@ fn selector(item: &Value) -> Result<ItemSelector, EngineError> {
     }
 }
 
-/// What an agent needs to recognise and cite a record.
-fn summary(record: &Record) -> Value {
-    let field = |name: &str| record.csl.get(name).map(shorten).unwrap_or(Value::Null);
-    let authors: Vec<Value> = record
+/// A record's fields as formatting sees them, with its key and id.
+struct Citable<'a> {
+    record: &'a Record,
+    csl: Map<String, Value>,
+}
+
+fn citable(record: &Record) -> Citable<'_> {
+    let mut csl = record
         .csl
+        .iter()
+        .map(|(field, value)| (field.clone(), value.clone()))
+        .collect();
+    citable_fields(&mut csl);
+    Citable { record, csl }
+}
+
+/// What an agent needs to recognise and cite a record.
+fn summary(citable: &Citable<'_>) -> Value {
+    let Citable { record, csl } = citable;
+    let field = |name: &str| csl.get(name).map(shorten).unwrap_or(Value::Null);
+    let authors: Vec<Value> = csl
         .get("author")
         .and_then(Value::as_array)
         .into_iter()
@@ -412,13 +456,16 @@ fn summary(record: &Record) -> Value {
             Value::String(cut(&text))
         })
         .collect();
-    let year = record
-        .csl
+    let year = csl
         .get("issued")
-        .and_then(|issued| issued.get("date-parts"))
-        .and_then(|parts| parts.get(0))
-        .and_then(|first| first.get(0))
-        .cloned()
+        .and_then(|issued| {
+            issued
+                .get("date-parts")
+                .and_then(|parts| parts.get(0))
+                .and_then(|first| first.get(0))
+                .or_else(|| issued.get("raw"))
+        })
+        .map(shorten)
         .unwrap_or(Value::Null);
     json!({
         "key": record.citation_key().ok().flatten(),

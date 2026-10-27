@@ -20,8 +20,12 @@ and its local data. New Ibis data flows need an ADR and an update here.
 - **AI agents:** `ibis mcp` answers only the agent that started it, over its
   standard input and output. It gives that agent item summaries, CSL data and
   citations from the libraries named on its command line, never notes,
-  annotations or source paths, and it opens no network connection. The agent
-  may send what it receives to its own service.
+  annotations, source paths or links to local files and apps, and it opens no
+  network connection. The agent may send what it receives to its own service.
+- **Notes in citations:** no citation prints a record's note or annotation.
+  Field lines written in a note the way Zotero's Extra field takes them
+  (`original-title: …`, `{:title: …}`) fill fields the record lacks, as in
+  Zotero; the rest of the note is never used.
 - **Start at login (Nightly):** only when enabled, Ibis registers a macOS login
   item, Windows startup value or Linux autostart file. Turning it off removes the
   launch entry. Windows may retain a Task Manager approval value that starts

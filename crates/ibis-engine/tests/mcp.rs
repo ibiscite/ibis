@@ -20,9 +20,13 @@ const BIB: &str = r"@article{demo2026,
 ";
 
 fn engine() -> (tempfile::TempDir, Engine) {
+    library("synthetic.bib", &BIB.replace("ABSTRACT", &"long ".repeat(400)))
+}
+
+fn library(name: &str, contents: &str) -> (tempfile::TempDir, Engine) {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("synthetic.bib");
-    std::fs::write(&path, BIB.replace("ABSTRACT", &"long ".repeat(400))).unwrap();
+    let path = dir.path().join(name);
+    std::fs::write(&path, contents).unwrap();
     let engine = Engine::new().unwrap().without_file_watches();
     engine
         .dispatch(
@@ -127,15 +131,17 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
 fn cite_formats_by_key_or_by_id() {
     let (_dir, engine) = engine();
     let pandoc = tool(&engine, "cite", json!({"items":[{"key":"demo2026"}],"syntax":"pandoc"}));
-    assert_eq!(pandoc["content"][0]["text"], "[@demo2026]");
+    assert_eq!(pandoc["structuredContent"]["text"], "[@demo2026]");
     let apa = tool(&engine, "cite", json!({"items":[{"key":"demo2026"}]}));
-    assert_eq!(apa["content"][0]["text"], "(Researcher & Writer, 2026)");
+    assert_eq!(apa["structuredContent"]["text"], "(Researcher & Writer, 2026)");
+    // What the text cannot say travels with it, as `ibis cite --json` reports.
+    assert_eq!(apa["structuredContent"]["notices"], json!(["year-suffix-withheld"]));
 
     let hits = tool(&engine, "search", json!({"query":"second"}));
     let id = hits["structuredContent"]["hits"][0]["id"].clone();
     assert_eq!(hits["structuredContent"]["hits"][0]["key"], "nokey");
     let by_id = tool(&engine, "cite", json!({"items":[{"id":id}],"style":"apa"}));
-    assert_eq!(by_id["content"][0]["text"], "(Author, 2025)");
+    assert_eq!(by_id["structuredContent"]["text"], "(Author, 2025)");
 }
 
 #[test]
@@ -178,4 +184,92 @@ fn an_oversized_line_is_refused_once_and_the_session_continues() {
     assert_eq!(replies.len(), 2);
     assert_eq!(replies[0]["error"]["code"], -32600);
     assert_eq!(replies[1]["id"], 7);
+}
+
+#[test]
+fn note_overrides_print_but_note_text_and_app_links_never_reach_agents() {
+    let (_dir, engine) = library(
+        "synthetic.json",
+        &json!([{
+            "id": "untitled",
+            "type": "book",
+            "author": [{"family": "Invented", "given": "Ada"}],
+            "issued": {"date-parts": [[2020]]},
+            "publisher": "Invented Press",
+            "note": "Invented private memo\ntitle: Invented override title\ntodo: invented private task",
+            "annote": "Invented private annotation",
+            "URL": "zotero://open-pdf/library/items/INVENTED",
+            "x-todo": "Invented private task"
+        }])
+        .to_string(),
+    );
+    let id = item_id(&engine);
+    let shown = tool(&engine, "show", json!({"item":{"id":id}}));
+    assert_eq!(shown["structuredContent"]["title"], "Invented override title");
+    let bibliography = tool(&engine, "cite", json!({"items":[{"id":id}],"form":"bibliography-only"}));
+    assert_eq!(
+        bibliography["structuredContent"]["text"],
+        "Invented, A. (2020). Invented override title. Invented Press."
+    );
+    for answer in [
+        shown,
+        bibliography,
+        tool(&engine, "search", json!({"query":"invented"})),
+    ] {
+        let text = answer.to_string();
+        assert!(
+            !text.contains("private") && !text.contains("zotero:") && !text.contains("todo"),
+            "{text}"
+        );
+    }
+}
+
+fn item_id(engine: &Engine) -> Value {
+    let hits = tool(engine, "search", json!({"query":"invented"}));
+    hits["structuredContent"]["hits"][0]["id"].clone()
+}
+
+#[test]
+fn every_answer_is_bounded() {
+    let records: Vec<Value> = (0..mcp::MAX_HITS)
+        .map(|index| {
+            json!({
+                "id": format!("bound{index}"),
+                "type": "book",
+                "title": "Invented bound",
+                // About 6 MB in all, inside the engine's own result budget.
+                "issued": {"date-parts": [["9".repeat(200_000)]]},
+                "author": [{"family": "x".repeat(20_000)}, {"family": "y".repeat(20_000)}],
+            })
+        })
+        .collect();
+    let (_dir, engine) = library("synthetic.json", &json!(records).to_string());
+    let hits = tool(&engine, "search", json!({"query":"bound","limit":mcp::MAX_HITS}));
+    assert_eq!(hits["isError"], false);
+    assert!(hits["content"][0]["text"].as_str().unwrap().len() <= mcp::MAX_ANSWER);
+    let first = &hits["structuredContent"]["hits"][0];
+    assert_eq!(first["year"].as_str().unwrap().chars().count(), mcp::MAX_TEXT + 1);
+    assert_eq!(
+        hits["structuredContent"]["hits"].as_array().unwrap().len(),
+        mcp::MAX_HITS
+    );
+    let shown = tool(&engine, "show", json!({"item":{"key":"bound0"}}));
+    assert!(shown["content"][0]["text"].as_str().unwrap().len() <= mcp::MAX_ANSWER);
+}
+
+#[test]
+fn malformed_messages_are_answered() {
+    let (_dir, engine) = engine();
+    let bad_method = mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":7,"method":123})).unwrap();
+    assert_eq!(
+        bad_method,
+        json!({"jsonrpc":"2.0","id":7,"error":{"code":-32600,"message":"Invalid Request"}})
+    );
+    let no_method = mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":"eight"})).unwrap();
+    assert_eq!(no_method["id"], "eight");
+    assert_eq!(no_method["error"]["code"], -32600);
+    let bad_id = mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":[1],"method":7})).unwrap();
+    assert_eq!(bad_id["id"], Value::Null);
+    // A response to a request the server never sent needs no answer.
+    assert_eq!(mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":1,"result":{}})), None);
 }

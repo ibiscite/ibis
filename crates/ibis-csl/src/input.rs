@@ -167,6 +167,8 @@ pub(crate) fn prepare(
             remaining = remaining.saturating_sub(bytes.len());
             let mut value: serde_json::Map<String, Value> =
                 serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
+            // Notes, annotations and private links never reach the processor.
+            ibis_core::citable::citable_fields(&mut value);
             normalize_strings(value.values_mut());
             if value.keys().any(|key| crate::output::unsupported_controls(key)) || record_controls(value.values()) {
                 return Err(FormatError::InvalidRequest);

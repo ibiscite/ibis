@@ -261,3 +261,39 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
     assert_eq!(replies[1]["result"]["content"][0]["text"], "[@accents2021]");
     Ok(())
 }
+
+#[test]
+fn citations_use_note_overrides_but_never_note_text_or_app_links() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!("ibis-notes-{}.json", std::process::id()));
+    std::fs::write(
+        &path,
+        json!([{
+            "id": "untitled",
+            "type": "book",
+            "author": [{"family": "Invented", "given": "Ada"}],
+            "issued": {"date-parts": [[2020]]},
+            "publisher": "Invented Press",
+            "note": "Invented private memo\ntitle: Invented override title",
+            "annote": "Invented private annotation",
+            "URL": "zotero://open-pdf/library/items/INVENTED"
+        }])
+        .to_string(),
+    )?;
+    let file = path.to_str().ok_or("path")?;
+    let output = ibis(&[
+        "cite",
+        "--file",
+        file,
+        "--style",
+        "apa",
+        "--form",
+        "bibliography-only",
+        "untitled",
+    ]);
+    std::fs::remove_file(&path)?;
+    assert_eq!(
+        String::from_utf8(output.stdout)?.trim(),
+        "Invented, A. (2020). Invented override title. Invented Press."
+    );
+    Ok(())
+}
