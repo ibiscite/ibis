@@ -7,7 +7,7 @@ use ibis_core::settings::ZoteroLibrary;
 use serde::Serialize;
 
 use super::LoadError;
-use super::source::{Source, zotero_library};
+use super::source::Source;
 use super::state::Library;
 
 /// Sent to the interface with the `library:changed` event.
@@ -110,12 +110,6 @@ fn has_references(library: &Library) -> bool {
 
 pub(crate) fn status(library: &Library) -> LibraryStatus {
     let has_references = has_references(library);
-    let mut source_counts = BTreeMap::new();
-    if let Some(Source::Zotero(chosen)) = &library.source {
-        for library in chosen.libraries() {
-            source_counts.entry(zotero_library(*library).to_string()).or_default();
-        }
-    }
     let mut result = LibraryStatus {
         revision: String::new(),
         state: if library.opening {
@@ -147,7 +141,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             .and_then(Source::name),
         snapshot_name: library.source.as_ref().and_then(Source::name),
         references: 0,
-        source_counts,
+        source_counts: BTreeMap::new(),
         warnings: 0,
         error: library.error.map(|error| {
             let zotero = matches!(library.source, Some(Source::Zotero(_)));

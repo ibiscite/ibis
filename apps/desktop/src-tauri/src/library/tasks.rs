@@ -90,17 +90,19 @@ pub(super) fn engine_changed(
     {
         return false;
     }
-    if library.requested == library.source
-        && file.engine.libraries().is_ok_and(|info| {
-            !info.libraries.is_empty() && info.libraries.iter().all(|info| info.refresh_error.is_none())
-        })
-    {
+    let healthy = file
+        .engine
+        .libraries()
+        .is_ok_and(|info| !info.libraries.is_empty() && info.libraries.iter().all(|info| info.refresh_error.is_none()));
+    if healthy && library.requested == library.source {
         library.error = None;
         library.retained_error = None;
     }
+    let now = std::time::SystemTime::now();
     if updated {
-        let now = std::time::SystemTime::now();
         library.changed_at = Some(now);
+    }
+    if updated || healthy {
         library.checked_at = Some(now);
     }
     true
@@ -117,12 +119,13 @@ pub(super) fn watch_current(app: &AppHandle) {
     else {
         return;
     };
+    // Read before subscribing, so a change in between still counts as one.
+    let mut revision = file.revision();
     let Ok(Some(events)) = file.observe_once() else {
         return;
     };
     let handle = app.clone();
     std::thread::spawn(move || {
-        let mut revision = file.revision();
         loop {
             let changed = events.recv_timeout(std::time::Duration::from_millis(200));
             let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|mut library| {
@@ -213,6 +216,15 @@ impl OpenIntent {
     ) -> Option<LibraryStatus> {
         match (self, loaded) {
             (Self::Refresh, Ok(Loaded::New(new))) => install_automatic(library, requests, request, Ok(*new)),
+            (Self::Refresh, loaded) => install_loaded(library, requests, request, loaded),
+            // An explicit request starts afresh even when the source is
+            // unchanged: a remembered choice is saved again afterwards.
+            (_, Ok(Loaded::Unchanged)) => {
+                if let Ok(mut library) = library.lock() {
+                    library.choice_save_warning = None;
+                }
+                install_loaded(library, requests, request, Ok(Loaded::Unchanged))
+            }
             (_, loaded) => install_loaded(library, requests, request, loaded),
         }
     }
@@ -346,6 +358,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                             Some(format!("the library opened but could not be saved for next time: {e}"));
                         show_note = true;
                     } else {
+                        library.choice_save_warning = None;
                         app.state::<SettingsFile>().refresh_notice(&mut library);
                     }
                 }

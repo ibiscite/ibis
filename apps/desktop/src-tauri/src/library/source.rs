@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
-use ibis_core::zotero;
 
 /// Where references come from: a BibTeX or BibLaTeX file, or Zotero
 /// libraries read through Zotero's local API while Zotero runs.
@@ -46,13 +45,6 @@ impl Source {
                 several => format!("{} Zotero libraries", several.len()),
             }),
         }
-    }
-}
-
-pub(super) fn zotero_library(library: ZoteroLibrary) -> zotero::Library {
-    match library {
-        ZoteroLibrary::User => zotero::Library::User,
-        ZoteroLibrary::Group(id) => zotero::Library::Group(id),
     }
 }
 

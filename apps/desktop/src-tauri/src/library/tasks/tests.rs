@@ -111,6 +111,33 @@ fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_
     assert!(reloaded.note.is_none(), "explicit Reload retains its existing behavior");
 }
 
+#[test]
+fn an_explicit_reread_that_finds_nothing_changed_clears_the_unsaved_choice_warning() {
+    let source = Source::File(std::path::PathBuf::from("synthetic.bib"));
+    for intent in [OpenIntent::Read, OpenIntent::Remember] {
+        let mut opened = candidate(source.clone(), "@misc{first}");
+        opened.choice_save_warning = Some("the library opened but could not be saved for next time".into());
+        let library = Mutex::new(opened);
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("reread"));
+        let reread = intent
+            .install(&library, &requests, request, Ok(Loaded::Unchanged))
+            .unwrap_or_else(|| panic!("reread is current"));
+        assert!(!reread.choice_not_saved);
+        assert!(reread.note.is_none());
+    }
+    // A quiet check keeps it: it never saves the choice.
+    let mut opened = candidate(source.clone(), "@misc{first}");
+    opened.choice_save_warning = Some("the library opened but could not be saved for next time".into());
+    let library = Mutex::new(opened);
+    let requests = LoadRequests::default();
+    let (request, _, _) = begin_open(&library, &requests, source).unwrap_or_else(|| panic!("check"));
+    let checked = OpenIntent::Refresh
+        .install(&library, &requests, request, Ok(Loaded::Unchanged))
+        .unwrap_or_else(|| panic!("check is current"));
+    assert!(checked.choice_not_saved);
+}
+
 #[cfg(debug_assertions)]
 #[test]
 fn load_phase_json_contains_only_fixed_numeric_fields_for_all_outcomes() {

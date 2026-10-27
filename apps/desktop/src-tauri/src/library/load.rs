@@ -30,7 +30,8 @@ fn load_file(
             if reload {
                 file.reload()?;
             }
-            let unchanged = before == file.revision();
+            // An unreadable snapshot has no revision and never counts as unchanged.
+            let unchanged = !before.is_empty() && before == file.revision();
             (file, unchanged)
         }
         None => (
