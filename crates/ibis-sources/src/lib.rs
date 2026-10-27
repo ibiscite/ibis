@@ -18,8 +18,9 @@ pub use file::{
 };
 
 // Review measured about 2.6 KiB per minimal record before snapshot indexes.
-// 50,000 keeps that graph near 130 MiB rather than multiple GiB.
-pub const MAX_LIBRARY_RECORDS: usize = 50_000;
+// Real bibliographies reach 100,000 entries (#1251); 200,000 keeps that
+// graph near 520 MiB rather than multiple GiB.
+pub const MAX_LIBRARY_RECORDS: usize = 200_000;
 
 /// Safe source diagnostics contain a location and fixed code, never payloads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

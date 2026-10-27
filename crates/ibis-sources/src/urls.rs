@@ -109,12 +109,14 @@ fn without_private_urls(note: &str) -> (String, bool) {
                 line_start = true;
                 continue;
             }
+            // citeproc reads the value through any `{` up to the closing
+            // brace or the end of the line, so judge exactly that text.
             let value_end = value_start
                 + rest[value_start..]
-                    .find(['{', '}', '\r', '\n', '\u{2028}', '\u{2029}'])
+                    .find(['}', '\r', '\n', '\u{2028}', '\u{2029}'])
                     .unwrap_or(rest.len() - value_start);
             let value = rest[value_start..value_end].trim();
-            if !value.is_empty() && !public_url(value) {
+            if !value.is_empty() && (value.contains('{') || !public_url(value)) {
                 removed = true;
                 // Braces and lone CR can be part of a private path. Remove
                 // through the actual line separator, including inline fields.
@@ -174,6 +176,21 @@ mod tests {
             let expected = fields.clone();
             assert!(!remove_private_urls(&mut fields));
             assert_eq!(fields, expected);
+        }
+    }
+
+    #[test]
+    fn a_brace_cannot_hide_a_private_note_url() {
+        for note in [
+            "URL: {/home/invented/private.pdf",
+            "{:URL: {file:///home/invented/private.pdf}",
+            "URL: example.invalid{/home/invented/private.pdf",
+            "Prose\nURL: {C:\\invented\\private.pdf",
+        ] {
+            let mut fields = BTreeMap::from([("note".into(), Value::String(note.into()))]);
+            assert!(remove_private_urls(&mut fields), "{note}");
+            let kept = fields.get("note").and_then(Value::as_str).unwrap_or_default();
+            assert!(!kept.contains("invented"), "{note} kept {kept}");
         }
     }
 }
