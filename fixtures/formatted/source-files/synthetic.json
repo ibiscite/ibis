@@ -1,0 +1,21 @@
+[
+  {
+    "id": "particle2026", "type": "book", "title": "Invented <i>orchid</i> atlas",
+    "author": [{"family": "Vries", "given": "Ada", "dropping-particle": "de"}],
+    "issued": {"date-parts": [[2026]]}, "publisher": "Synthetic Press"
+  },
+  {
+    "id": "nonlatin2024", "type": "book", "title": "合成の記録",
+    "author": [{"family": "例", "given": "花子"}],
+    "issued": {"date-parts": [[2024]]}, "publisher": "架空出版"
+  },
+  {
+    "id": "corporate", "type": "book", "title": "Invented field guide",
+    "author": [{"literal": "Synthetic Institute"}], "publisher": "Imaginary Press"
+  },
+  {
+    "id": "ranges2023", "type": "article-journal", "title": "Invented mineral observations",
+    "author": [{"family": "Example", "given": "Noor"}], "issued": {"date-parts": [[2023]]},
+    "container-title": "Journal of Imagined Samples", "volume": "4", "issue": "2", "page": "101-109"
+  }
+]
