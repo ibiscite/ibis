@@ -193,6 +193,11 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
             );
         }
     };
+    let engine = if matches.subcommand_name() == Some("serve") {
+        engine
+    } else {
+        engine.without_file_watches()
+    };
     match execute(&engine, &matches, &mut input, &mut output) {
         Ok(Execution::Stdio(code)) => code,
         Ok(Execution::Result(result)) => emit(json, Ok(result), &mut output, &mut errors, mode),
