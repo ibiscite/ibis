@@ -113,15 +113,13 @@ pub(crate) fn prepare(
         } else {
             let id = format!("ibis-{}", items.len());
             let bytes = bounded_json(&record.csl, remaining)?;
-            if record.csl.keys().any(|key| crate::output::unsupported_controls(key))
-                || record_controls(record.csl.values())
-            {
-                return Err(FormatError::InvalidRequest);
-            }
-
             remaining = remaining.saturating_sub(bytes.len());
             let mut value: serde_json::Map<String, Value> =
                 serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
+            normalize_strings(value.values_mut());
+            if value.keys().any(|key| crate::output::unsupported_controls(key)) || record_controls(value.values()) {
+                return Err(FormatError::InvalidRequest);
+            }
             // Source identities and keys never become JavaScript object lookup keys.
             value.insert("id".into(), json!(id));
             items.push(Value::Object(value));
@@ -263,6 +261,35 @@ fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
         }
     }
     false
+}
+
+// citeproc's title casing can silently discard words at line boundaries. CSL
+// fields are inline content: preserve their words before the processor sees them.
+fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) {
+    let mut pending: Vec<_> = values.collect();
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::String(text) => {
+                let mut normalized = String::with_capacity(text.len());
+                let mut line_break = false;
+                for ch in text.chars() {
+                    let is_break = matches!(ch, '\r' | '\n' | '\u{85}' | '\u{2028}' | '\u{2029}');
+                    if is_break {
+                        if !line_break {
+                            normalized.push(' ');
+                        }
+                    } else {
+                        normalized.push(if ch.is_control() && ch != '\t' { ' ' } else { ch });
+                    }
+                    line_break = is_break;
+                }
+                *text = normalized;
+            }
+            Value::Object(map) => pending.extend(map.values_mut()),
+            Value::Array(values) => pending.extend(values),
+            _ => {}
+        }
+    }
 }
 
 /// Abort serialization at the boundary instead of allocating an unbounded JSON copy.

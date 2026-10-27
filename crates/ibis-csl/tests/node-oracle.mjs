@@ -8,7 +8,9 @@ globalThis.__ibisStyles = ["apa", "chicago-author-date", "harvard-cite-them-righ
 globalThis.__ibisLocale = fs.readFileSync(new URL("locales/en-US.xml", base), "utf8");
 const unobservedGetCite = CSL.getCite;
 await import("../src/bridge.js");
-const requests = JSON.parse(fs.readFileSync(0, "utf8"));
+// CSL inline strings use the same documented whitespace contract before either
+// processor. Keep this independent regex oracle separate from Rust's traversal.
+const requests = JSON.parse(fs.readFileSync(0, "utf8"), (_, value) => typeof value === "string" ? value.replace(/[\r\n\u0085\u2028\u2029]+/gu, " ").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u0084\u0086-\u009f]/gu, " ") : value);
 const pristine = structuredClone(requests);
 const observed = requests.map((request) => JSON.parse(__ibisFormat(request)));
 // Independent transparency check: call the pinned processor without the observer.

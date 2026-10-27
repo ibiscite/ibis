@@ -32,6 +32,33 @@ pub(crate) struct Session {
     superscripts: BTreeMap<char, String>,
 }
 impl Session {
+    pub(crate) fn format(
+        session: &mut Option<Self>,
+        prepared: &Prepared,
+        limits: &Limits,
+        control: &Control,
+    ) -> Result<ibis_core::contract::CitationResult, WorkError> {
+        let reused = session.is_some();
+        if session.is_none() {
+            *session = Some(Self::new(limits, control)?);
+        }
+        let result = session
+            .as_mut()
+            .ok_or(FormatError::Runtime)?
+            .run(prepared, limits, control);
+        if reused && matches!(result, Err(WorkError::Public(FormatError::ResourceLimit))) && control.error().is_none() {
+            // A warm session may have less headroom than a fresh one. Retry once
+            // within the original cancellation/deadline and the same hard limits.
+            *session = None;
+            *session = Some(Self::new(limits, control)?);
+            return session
+                .as_mut()
+                .ok_or(FormatError::Runtime)?
+                .run(prepared, limits, control);
+        }
+        result
+    }
+
     pub(crate) fn new(limits: &Limits, control: &Control) -> Result<Self, WorkError> {
         let runtime = Runtime::new().map_err(|_| FormatError::ResourceLimit)?;
         runtime.set_memory_limit(limits.memory_bytes);
@@ -226,6 +253,36 @@ mod tests {
             drop(session);
             let fresh = Session::new(&limits, &super::tests::control()).unwrap();
             assert_eq!(fresh.context.with(|ctx| ctx.eval::<i32, _>("1+1")).unwrap(), 2);
+        });
+    }
+
+    #[test]
+    fn warm_resource_limit_retries_once_on_a_fresh_session() {
+        on_worker_stack(|| {
+            let limits = Limits::default();
+            let control = control();
+            let warm = Session::new(&limits, &control).unwrap();
+            warm.context.with(|ctx| {
+                ctx.eval::<(), _>("globalThis.__ibisFormat = () => { const error = Error('out of memory'); error.name = 'InternalError'; throw error; };").unwrap();
+            });
+            let mut session = Some(warm);
+            assert!(
+                Session::format(&mut session, &synthetic(1, false), &limits, &control)
+                    .unwrap()
+                    .copy_content(1)
+                    .is_some()
+            );
+
+            // The fresh attempt keeps the same finite output budget; it cannot
+            // turn a genuinely oversized result into an unbounded retry loop.
+            let tiny = Limits {
+                output_bytes: 1,
+                ..limits
+            };
+            assert!(matches!(
+                Session::format(&mut session, &synthetic(1, false), &tiny, &control),
+                Err(WorkError::Public(FormatError::ResourceLimit))
+            ));
         });
     }
 

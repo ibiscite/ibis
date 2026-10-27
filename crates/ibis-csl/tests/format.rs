@@ -451,7 +451,7 @@ fn contradictory_and_missing_author_forms_never_copy_processor_sentinels() {
 }
 
 #[test]
-fn unsupported_record_controls_are_rejected_before_copy() {
+fn record_controls_do_not_discard_valid_items() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for bad in [
@@ -459,8 +459,97 @@ fn unsupported_record_controls_are_rejected_before_copy() {
         json!({"type":"book","title":"Synthetic title","author":[{"family":"Taylor\u{0}bad"}]}),
         json!({"type":"book","title":"Synthetic\u{1b}title"}),
     ] {
-        let snapshot = library(&[bad]);
-        assert!(formatter.format(&snapshot, &selection(&snapshot, "apa", true)).is_err());
+        let snapshot = library(&[
+            bad,
+            json!({"type":"book","title":"Other valid work","abstract":"unused\u{b}\u{c}abstract"}),
+        ]);
+        let result = formatter.format(&snapshot, &selection(&snapshot, "apa", true)).unwrap();
+        assert!(result.copy_content(2).is_some());
+        assert!(result.text.contains("Other valid work"));
+        assert!(!result.text.chars().any(|ch| ch.is_control() && ch != '\n'));
+    }
+}
+
+#[test]
+fn line_breaks_preserve_every_title_word_in_all_representations() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for style in ["chicago-author-date", "modern-language-association"] {
+        for separator in [
+            "\n",
+            "\r",
+            "\u{85}",
+            "\u{2028}",
+            "\u{2029}",
+            "\r\n\u{85}\u{2028}\u{2029}",
+        ] {
+            let snapshot = library(&[
+                json!({"type":"book", "title":format!("alpha{separator}beta"), "author":[{"family":"Zeta","given":"Ann"}], "issued":{"date-parts":[[2020]]}}),
+            ]);
+            let request = selection(&snapshot, style, true);
+            let result = formatter.format(&snapshot, &request).unwrap();
+            for output in [
+                &result.text,
+                result.html.as_ref().unwrap(),
+                result.rtf.as_ref().unwrap(),
+            ] {
+                assert!(output.contains("Alpha Beta"), "{style}: {output:?}");
+            }
+            assert!(result.copy_content(1).is_some());
+        }
+    }
+}
+
+#[test]
+fn ieee_lowercase_given_name_preserves_processor_bytes() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor","given":"avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"}),
+    ]);
+    for bibliography in [false, true] {
+        let result = formatter
+            .format(&snapshot, &selection(&snapshot, "ieee", bibliography))
+            .unwrap();
+        assert_eq!(result.text, "avery Taylor, Synthetic signals. Imaginary Press, 2026.");
+        assert!(
+            result
+                .html
+                .as_ref()
+                .unwrap()
+                .contains("<div class=\"csl-entry\"> avery Taylor")
+        );
+        assert!(result.rtf.as_ref().unwrap().contains("avery Taylor"));
+        assert!(result.copy_content(1).is_some());
+    }
+}
+
+#[test]
+fn reused_formatter_handles_bibliographies_across_locale_order_and_styles() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let items: Vec<_> = (0..100).map(|index| json!({"type":"book","title":format!("Synthetic title {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
+    let snapshot = library(&items);
+    let formatter = Formatter::new().unwrap();
+    for keep_order in [false, true] {
+        for locale in [None, Some("en"), Some("en-US")] {
+            let mut request = selection(&snapshot, "chicago-author-date", true);
+            request.output_locale = locale.map(String::from);
+            request.keep_order = keep_order;
+            let result = formatter.format(&snapshot, &request).unwrap();
+            assert!(result.copy_content(100).is_some());
+        }
+    }
+    // Reuse both workers with enough distinct engine keys to turn over the cache.
+    let small = library(&items[..3]);
+    for round in 0..3 {
+        for (style, _) in ibis_csl::STYLES {
+            for bibliography in [false, true] {
+                let mut request = selection(&small, style, bibliography);
+                request.output_locale = [None, Some("en"), Some("en-US")][round].map(String::from);
+                request.keep_order = round % 2 == 0;
+                assert!(formatter.format(&small, &request).unwrap().copy_content(3).is_some());
+            }
+        }
     }
 }
 
