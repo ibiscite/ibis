@@ -42,8 +42,9 @@ Ibis never writes to a library. BibTeX and BibLaTeX entries are parsed one by
 one; broken entries, duplicate keys and undefined macros become warnings with
 line numbers. Zotero is read through its local API while it runs and from a
 private read-only copy of `zotero.sqlite` (with `-wal` and `-shm`) while it is
-closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys:
-Zotero's native field, then Extra, then Better BibTeX. Local API requests send
+closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys
+come from Zotero's native field, Extra and Better BibTeX; when they disagree,
+key output for that item is refused until it is fixed in Zotero. Local API requests send
 no browser `Origin`, bypass proxies and check `Zotero-API-Version`.
 
 ## 0007 Formatting (with 0028)
@@ -71,13 +72,14 @@ port, with no proxy and no redirect (maintainer, 2026-10-27).
 
 Every insertion ends in exactly one visible state: pasted, or copied with a
 reason. Ibis captures the target app, writes every clipboard format, restores
-focus, pastes with a layout-aware shortcut and restores the previous clipboard
-only if it is unchanged. It refuses secure input, elevated windows and lost
-targets.
+focus and pastes with a layout-aware shortcut. The citation stays on the
+clipboard: restoring the previous contents could paste them into a slow app, so
+restoring and per-app rules wait until after 1.0. It refuses secure input,
+elevated windows and lost targets.
 
 ## 0010 Search
 
-Keyword search is instant, ignores accents and case, works in every script and
+Proposed, awaiting measurements. Keyword search is instant, ignores accents and case, works in every script and
 says why each result matched; exact key and title matches rank first.
 Meaning-based search, after 1.0, runs a small local model only while the picker
 is open. No cloud.

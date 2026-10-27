@@ -16,7 +16,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 ## Working
 
 - Check `git status` first and keep work you did not make. Branch from `origin/main`, one branch per pull request, no stacking, never push to `main`. Give each worktree its own Cargo target directory.
-- Claim an issue with a one-line comment on the tracking issue or a draft pull request that says `Closes #N`. One writer per set of files.
+- Claim an issue with a one-line comment on the tracking issue or a draft pull request that says `Closes #N`. One writer per worktree and per set of files.
 - Build what the issue's "Done when" names as the smallest working slice; merge it, then harden. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
 - At most two open drafts each; finish them before starting more. Split a draft over about 1,500 changed lines.
 - A check that fails twice for the same reason: fix the cause or shrink the test. After three CI rounds on one blocker, cut scope and write the diagnosis on the issue.

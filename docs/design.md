@@ -545,8 +545,6 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
   full-screen apps. Windows: comes forward only when asked; copies instead of
   typing into elevated apps. Wayland: centred, pinned means "stays open", copies
   and says "Press Ctrl+V" ([compatibility.md](compatibility.md#linux-shortcuts-and-tray)).
-- **Persistence.** A new choice kept across restarts needs a recorded decision before it adds
-  a `settings.json` field.
 
 ## First run and choice screens
 
