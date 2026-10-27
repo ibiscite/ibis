@@ -272,11 +272,10 @@ pub(super) fn create_private(path: &Path, control: &Control) -> Result<(), Close
             .create(path)
             .map_err(|_| ClosedError::PrivateStorage)?;
         let created = std::fs::symlink_metadata(path).map_err(|_| ClosedError::PrivateStorage)?;
-        let result = (|| {
-            #[cfg(target_os = "macos")]
-            clear_inherited_acl(path, control)?;
-            secure(path, control)
-        })();
+        #[cfg(target_os = "macos")]
+        let result = clear_inherited_acl(path, control).and_then(|()| secure(path, control));
+        #[cfg(not(target_os = "macos"))]
+        let result = secure(path, control);
         if result.is_err()
             && std::fs::symlink_metadata(path).is_ok_and(|current| {
                 current.is_dir() && current.dev() == created.dev() && current.ino() == created.ino()
