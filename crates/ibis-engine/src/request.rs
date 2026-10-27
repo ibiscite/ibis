@@ -12,7 +12,12 @@ use std::path::PathBuf;
 pub enum LibrariesRequest {
     #[default]
     List,
-    OpenZotero {},
+    /// Read Zotero. `libraries` replaces the chosen libraries (at first the
+    /// personal library only); omitted, the current choice is read again.
+    OpenZotero {
+        #[serde(default)]
+        libraries: Option<Vec<ZoteroLibrary>>,
+    },
     OpenFile {
         path: PathBuf,
     },
@@ -21,6 +26,31 @@ pub enum LibrariesRequest {
         library: Option<LibraryId>,
     },
 }
+/// A Zotero library: the personal library ("My Library") or a group by its
+/// Zotero group ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub enum ZoteroLibrary {
+    Personal,
+    Group(u64),
+}
+impl From<ZoteroLibrary> for ibis_sources::zotero_source::Library {
+    fn from(library: ZoteroLibrary) -> Self {
+        match library {
+            ZoteroLibrary::Personal => Self::User,
+            ZoteroLibrary::Group(id) => Self::Group(id),
+        }
+    }
+}
+impl From<ibis_sources::zotero_source::Library> for ZoteroLibrary {
+    fn from(library: ibis_sources::zotero_source::Library) -> Self {
+        match library {
+            ibis_sources::zotero_source::Library::User => Self::Personal,
+            ibis_sources::zotero_source::Library::Group(id) => Self::Group(id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SearchRequest {

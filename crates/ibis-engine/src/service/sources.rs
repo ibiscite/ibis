@@ -1,5 +1,6 @@
 //! Source handles stay outside Shared: callbacks upgrade only publication state.
 use super::*;
+use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, SourceError, SourceWatch};
 use std::{
     collections::BTreeMap,
@@ -12,7 +13,7 @@ const MAX_WARNING_DETAILS: usize = 256;
 pub(super) struct Owners {
     operation: Mutex<()>,
     watches: Mutex<BTreeMap<u64, SourceWatch>>,
-    zotero: Mutex<ibis_sources::zotero_source::ZoteroSource>,
+    zotero: Mutex<ZoteroSource>,
     zotero_port: Option<u16>,
     #[cfg(test)]
     fail_watches: std::sync::atomic::AtomicBool,
@@ -55,6 +56,7 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
         refresh_error: None,
         updated_at_ms: now_ms(),
         watch_warning: None,
+        zotero: None,
     }
 }
 impl Engine {
@@ -181,9 +183,10 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?
             .current()
-            .is_some_and(|loaded| library.is_none_or(|id| *id == loaded.library));
+            .iter()
+            .any(|loaded| library.is_none_or(|id| *id == loaded.library));
         if loaded_zotero {
-            let result = self.read_zotero(true, cancel);
+            let result = self.read_zotero(true, None, cancel);
             if library.is_some() {
                 return result;
             }
@@ -233,7 +236,15 @@ impl Engine {
     }
 }
 impl Engine {
-    pub(super) fn read_zotero(&self, reload: bool, cancel: &Cancellation) -> Result<(), EngineError> {
+    /// Read the chosen Zotero libraries; `libraries` replaces the choice. A
+    /// new choice takes effect only once all its libraries are read, and the
+    /// libraries no longer chosen leave in the same publication.
+    pub(super) fn read_zotero(
+        &self,
+        reload: bool,
+        libraries: Option<&[ZoteroLibrary]>,
+        cancel: &Cancellation,
+    ) -> Result<(), EngineError> {
         cancel.check()?;
         let _operation = self
             .resources
@@ -241,6 +252,15 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?;
         let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let mut chosen = match libraries {
+            Some(libraries) => {
+                let libraries: Vec<Library> = libraries.iter().copied().map(Into::into).collect();
+                (source.libraries() != libraries)
+                    .then(|| ZoteroSource::new(&libraries).map_err(|_| error(ErrorCode::BadInput)))
+                    .transpose()?
+            }
+            None => None,
+        };
         let reload = reload || !self.state()?.zotero_ready;
         let mut guard_error = None;
         let mut began = false;
@@ -248,36 +268,52 @@ impl Engine {
             if !began {
                 if let Err(failure) = self.shared.begin_zotero_read() {
                     guard_error = Some(failure);
-                    return Err(ibis_sources::zotero_source::LiveError::Cancelled);
+                    return Err(LiveError::Cancelled);
                 }
                 began = true;
             }
             Ok(())
         };
+        let target = chosen.as_mut().unwrap_or(&mut *source);
         let result = if let Some(port) = self.resources.zotero_port {
-            source.refresh_observed(port, reload, &|| cancel.is_cancelled(), &mut on_full)
+            target.refresh_observed(port, reload, &|| cancel.is_cancelled(), &mut on_full)
         } else {
             let cancel = cancel.clone();
-            source.refresh_native(reload, Arc::new(move || cancel.is_cancelled()), &mut on_full)
+            target.refresh_native(reload, Arc::new(move || cancel.is_cancelled()), &mut on_full)
         };
+        let read = target.libraries();
         if let Some(failure) = guard_error {
             return Err(failure);
         }
         match result {
             Ok(loaded) => {
                 cancel.check()?;
-                self.shared.install(info(&loaded), &loaded.snapshot, None)
+                let entries = loaded
+                    .iter()
+                    .zip(read)
+                    .map(|(loaded, library)| {
+                        let mut info = info(loaded);
+                        info.zotero = Some(library.into());
+                        (info, &loaded.snapshot)
+                    })
+                    .collect();
+                self.shared.publish(entries, ibis_sources::zotero_source::is_zotero)?;
+                if let Some(chosen) = chosen {
+                    *source = chosen;
+                }
+                Ok(())
             }
             Err(failure) => {
-                use ibis_sources::zotero_source::ZoteroError;
                 let code = if failure.cancelled() {
                     ErrorCode::Cancelled
                 } else if failure.limited() {
                     ErrorCode::ResourceLimit
                 } else if failure.newer() {
                     ErrorCode::NewerFormat
-                } else if failure == ZoteroError::InvalidData {
+                } else if failure == ZoteroError::InvalidData || failure == ZoteroError::Selection {
                     ErrorCode::BadInput
+                } else if failure == ZoteroError::LibraryNotFound {
+                    ErrorCode::NotFound
                 } else {
                     ErrorCode::SourceUnavailable
                 };
@@ -285,8 +321,11 @@ impl Engine {
                     if !began {
                         self.shared.begin_zotero_read()?;
                     }
-                    if let Some(previous) = source.current() {
-                        let _ = self.shared.failed(&previous.library, code);
+                    // A new choice that fails says nothing about the old one.
+                    if chosen.is_none() {
+                        for previous in source.current() {
+                            let _ = self.shared.failed(&previous.library, code);
+                        }
                     }
                 }
                 Err(error(code))
