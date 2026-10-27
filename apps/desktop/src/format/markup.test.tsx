@@ -1,20 +1,10 @@
 import { render as show } from "@testing-library/react";
-import { Formatter, type CslItem } from "./engine";
 import { clipboardHtml, parse, parseSegments, plainText, render } from "./markup";
 
-// Synthetic reference whose title tries to inject markup.
-const hostile: CslItem = {
-  id: "hostile",
-  type: "article-journal",
-  title: "A <b>bold</b> <sc>caps</sc> x<sup>2</sup> <script>alert(1)</script><img src=x onerror=alert(1)>",
-  author: [{ family: "Garcia", given: "Ana" }],
-  issued: { "date-parts": [[2021]] },
-  "container-title": "Journal of Tests",
-};
+// Invented engine HTML exercises this UI boundary without a second formatter.
+const hostile = '<div class="csl-entry"><div class="csl-left-margin">[1]</div><div class="csl-right-inline">A. Garcia, “A <b>bold</b> <span style="font-variant:small-caps">caps</span> x<sup>2</sup> &lt;script&gt;alert(1)&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;”</div></div>';
 
 describe("formatted markup", () => {
-  const formatter = new Formatter();
-
   it("keeps only the markup the engine emits", () => {
     const markup = parse(
       '<div class="csl-entry" onclick="x()"><i>J</i> <span style="font-variant:small-caps;color:red">sc</span>'
@@ -38,7 +28,7 @@ describe("formatted markup", () => {
   });
 
   it("shows a hostile title as text in the preview", () => {
-    const html = formatter.bibliography("apa", [hostile], "html").output;
+    const html = hostile;
     const { container } = show(<div>{render(parse(html))}</div>);
     expect(container.querySelector("script, img, a, [onerror]")).toBeNull();
     expect(container.textContent).toContain("<script>alert(1)</script><img src=x onerror=alert(1)>");
@@ -47,7 +37,7 @@ describe("formatted markup", () => {
   });
 
   it("writes clipboard HTML with inline styles and no margin blocks", () => {
-    const html = formatter.bibliography("ieee", [hostile], "html").output;
+    const html = hostile;
     const copied = clipboardHtml(parse(html));
     expect(copied.startsWith('<p style="margin:0">[1] A. Garcia, “A <b>bold</b> ')).toBe(true);
     expect(copied).toContain('<span style="font-variant:small-caps">caps</span> x<sup>2</sup>');
@@ -57,8 +47,8 @@ describe("formatted markup", () => {
   });
 
   it("writes one paragraph per entry", () => {
-    const other = { ...hostile, id: "other", title: "Second" };
-    const copied = clipboardHtml(parse(formatter.bibliography("apa", [hostile, other], "html").output));
+    const other = '<div class="csl-entry">Second synthetic entry</div>';
+    const copied = clipboardHtml(parse(hostile + other));
     expect(copied.match(/<p /g)).toHaveLength(2);
   });
 
