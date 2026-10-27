@@ -35,7 +35,7 @@ test("single clicks select, modifiers toggle, and drags or controls do nothing",
   }
 });
 
-test("each platform gets its own notice", () => {
+test("notice platform parsing retains the actual system", () => {
   expect(noticePlatform("MacIntel")).toBe("macos");
   expect(noticePlatform("Win32")).toBe("windows");
   expect(noticePlatform("Linux x86_64")).toBe("linux");
@@ -60,7 +60,8 @@ test("the notice is a polite status that shows text as text and replays when sho
   expect(notice.querySelectorAll("code")).toHaveLength(1);
   const windows = document.createElement("div");
   renderNotice(windows, "windows")("[@a]");
-  expect(windows.textContent).toContain("Citation copied. Press Ctrl+V to paste.");
+  expect(windows.querySelector("strong")?.textContent).toBe("Copied");
+  expect(windows.textContent).not.toContain("Ctrl+V");
 });
 
 test("the app's timer fades the notice out, and showing it again brings it back", () => {

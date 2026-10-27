@@ -27,7 +27,8 @@
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
   /* One geometry chain (docs/design.md, "Layout and geometry" and "Corners"):
-     looks set the outer radius and floor; inner radii use fixed shape insets.
+     the shared macOS look sets the outer radius and floor; inner radii use
+     fixed shape insets.
      Radii stay px, matching the native corner; layout sizes and spacing are
      rem, so Larger text keeps edges aligned without changing the shape. */
   --inset: var(--space-2);      /* window edge to the field, the list and the footer */
@@ -113,8 +114,8 @@
   --font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --fill-control: color-mix(in srgb, var(--text) 4%, var(--surface));
   --fill-control-hover: color-mix(in srgb, var(--text) 8%, var(--surface));
-  /* Buttons and key caps are fills without an edge, as in native toolbars;
-     Windows adds Fluent's faint control stroke, contrast modes a solid one. */
+  /* Buttons and key caps are fills without an edge, as in macOS toolbars;
+     contrast modes add a solid stroke. */
   --stroke-control: var(--clear);
   --fill-subtle-hover: color-mix(in srgb, var(--text) 3%, var(--surface));
   --selected-background: Highlight;
@@ -122,7 +123,7 @@
   --clear: transparent;
   --border-width: 1px;
   /* The keyboard focus ring, drawn only on :focus-visible: 2 px with a 1 px
-     gap. The accent on macOS (the default); Windows and Linux below. */
+     gap, in the system accent. */
   --focus-ring-color: var(--accent);
   --focus-ring-width: 2px;
   --focus-ring-offset: 1px;
@@ -217,99 +218,44 @@
     --line: light-dark(#85858f, #8b8b95);
     --active-edge: light-dark(#83838d, #898993);
   }
-  /* Each look's own neutrals (docs/design.md, "Per platform"). Increased
-     contrast, forced colours and the contrast preview keep the system colours. */
-  @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    /* Windows 11 (Fluent 2): SolidBackgroundFillColorBase, TextFillColorPrimary
-       and Secondary; controls and the text box on ControlFillColorDefault, list
-       hover on SubtleFillColorSecondary; a focused text box turns solid. */
-    :root[data-platform="windows"] {
-      --surface: light-dark(#f3f3f3, #202020);
-      --text: light-dark(#1b1b1b, #ffffff);
-      --muted: light-dark(#606060, #cfcfcf);
-      --fill-control: light-dark(rgb(255 255 255 / 70%), rgb(255 255 255 / 6%));
-      --fill-control-hover: light-dark(rgb(249 249 249 / 50%), rgb(255 255 255 / 8%));
-      --fill-subtle-hover: light-dark(rgb(0 0 0 / 4%), rgb(255 255 255 / 6%));
-      --field-active-background: light-dark(#ffffff, #1e1e1e);
-      /* AccentFillColorDefault and TextOnAccentFillColorPrimary: the default
-         Windows accent until the system's own reaches the webview (#918).
-         Chromium's AccentColor is a fixed #0075FF in both themes, not the
-         user's accent, so it is not used here. */
-      --accent: light-dark(#005FB8, #60CDFF); --text-on-accent: light-dark(#fff, #000);
-      /* A full row of the light dark-mode accent is loud; selection uses the
-         deeper accent shade (SystemAccentColorDark1) with white text instead. */
-      --selected-background: light-dark(#005FB8, #0067C0); --selected-text: #fff;
-    }
-    /* GNOME (libadwaita): window_bg and window_fg; buttons and the entry on
-       the control fill (the text colour at 8%). */
-    :root[data-platform="linux"] {
-      --surface: light-dark(#fafafb, #222226);
-      --text: light-dark(#323236, #ffffff);
-      --fill-control: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 8%));
-      --fill-control-hover: light-dark(rgb(0 0 6 / 12%), rgb(255 255 255 / 12%));
-    }
-  }
 }
 @supports (color: AccentColor) { :root { --accent: AccentColor; } }
 /* Filled accent with its paired text colour, so any system accent stays legible. */
 @supports (color: AccentColorText) { :root { --selected-background: AccentColor; --selected-text: AccentColorText; } }
 
-/* With no desktop platform (the website on a phone), WebKit's AccentColorText
-   is black even on a dark accent; use the macOS list pair instead. */
-:root:not([data-platform]) { --selected-background: light-dark(#0064E1, #0058D0); --selected-text: #FFFFFF; }
+/* WebKit's AccentColorText can be black even on a dark accent. Until a
+   native accent arrives, keep the existing macOS list pair on every system. */
+@supports (color: light-dark(white, black)) {
+  :root { --selected-background: light-dark(#0064E1, #0058D0); --selected-text: #FFFFFF; }
+}
 
 /* WKWebView accepts AccentColorText but resolves it to black. Use the paired
    native list colours on macOS; contrast overrides below still take priority. */
 @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
-  :root[data-platform="macos"] { --selected-background: -apple-system-selected-content-background; --selected-text: -apple-system-alternate-selected-text; }
+  :root[data-system="macos"] { --selected-background: -apple-system-selected-content-background; --selected-text: -apple-system-alternate-selected-text; }
 }
 
-/* Per platform (docs/design.md): only radius, the selected row, the focus ring and the search box change. */
-:root[data-platform="windows"], :root[data-platform="linux"] { --search-size: 1rem; --search-line: 1.375rem; --search-tracking: 0; }
-/* The system UI font: Segoe UI Variable on Windows 11 (its Text optical size
-   for UI text), Adwaita Sans or Cantarell from GTK on GNOME. */
-:root[data-platform="windows"] { --font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
-:root[data-platform="linux"] { --font-family: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
-:root[data-platform="windows"] {
-  --r-win: 8px; --field-h: 2rem; --r-min: 4px; --r-menu: 8px; --menu-pad: 4px;
-  --r-dialog: var(--r-win); --ease-out: cubic-bezier(0, 0, 0, 1); --ease-in: cubic-bezier(1, 0, 1, 1);
-  --shadow-card: 0 0 2px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 14%);
-  --shadow-raised: none;
-  --shadow-overlay: 0 0 2px rgb(0 0 0 / 12%), 0 8px 16px rgb(0 0 0 / 14%);
-  --shadow-dialog: 0 0 8px rgb(0 0 0 / 12%), 0 32px 64px rgb(0 0 0 / 14%);
-  --shadow-toast: 0 4px 16px rgb(0 0 0 / 22%);
-  --r-control: 4px; --chip-radius: var(--r-control);
-  /* Fluent's focus visual: an outer stroke in the text colour (black in light
-     mode, white in dark) around an inner stroke in the surface colour. */
-  --focus-ring-color: var(--text); --focus-ring-shadow: 0 0 0 1px var(--surface);
-  /* Fluent's thin scroll bar; its thumb is ControlStrongFillColorDefault. */
-  --scrollbar-width: thin; --scrollbar-color: rgb(0 0 0 / 44.6%) transparent;
+/* Native RGB is currently available only on macOS. Other systems keep their
+   real system selection pair rather than Chromium's fixed AccentColor. The
+   filled macOS selection shape is shared; these are colour correctness facts. */
+:root[data-system="windows"], :root[data-system="linux"] {
+  --accent: Highlight; --selected-background: Highlight; --selected-text: HighlightText;
 }
-:root[data-platform="linux"] {
-  /* libadwaita 1.8+: fixed 7 px rows and 6 px tiles/controls (Canvas C15). */
-  --r-win: 15px; --field-h: 2.125rem; --r-min: 6px; --r-control: 6px;
-  --r-dialog: var(--r-menu); --ease-out: cubic-bezier(.33, 1, .68, 1);
-  --shadow-card: 0 0 0 1px rgb(0 0 6 / 3%), 0 1px 3px 1px rgb(0 0 6 / 7%), 0 2px 6px 2px rgb(0 0 6 / 3%);
-  --shadow-raised: none;
-  --shadow-overlay: 0 1px 5px 1px rgb(0 0 0 / 9%), 0 2px 14px 3px rgb(0 0 0 / 5%);
-  --shadow-dialog: 0 4px 24px rgb(0 0 0 / 18%); --shadow-toast: none;
-  /* The selected row is GTK's selection colour with its paired text: the
-     system Highlight pair, which WebKitGTK takes from the GTK theme. A tint
-     like libadwaita's 25% accent ($view_selected_color) reaches only about
-     1.3:1, and focus stays in the search box, so the fill is the only cue. */
-  --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor;
-}
-/* macOS glass (docs/design.md, the prototype's macOS skin). The native
+
+/* The actual system selects its UI font, independently of the shared look. */
+:root[data-system="windows"] { --font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
+:root[data-system="linux"] { --font-family: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
+/* The shared macOS look (docs/design.md, principle 2). The native
    material sits behind the page, so fills and hairlines are translucent and
    it shows through. Secondary text is darker than elsewhere so it keeps 4.5:1
    on a bright or colourful backdrop. The web cannot use AppKit's vibrant text
    blending, so --vibrancy-tint lays a light veil over the native material that
    keeps text legible over any wallpaper. Increase contrast, forced colours and
    older webviews keep the system colours above. The Copied notice window keeps
-   its own look (notice.css). */
+   its existing pill (notice.css). */
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root[data-platform="macos"]:not(.notice-window) {
+    :root:not(.notice-window) {
       --text: light-dark(#16181d, #f5f5f7);
       --muted: light-dark(#4c5260, #c0c3cc);
       --line: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
@@ -334,32 +280,9 @@
   }
 }
 
-@supports (background: color-mix(in srgb, white 50%, black)) {
-  /* Dividers: Adwaita's $border_color (the text colour at 15%) by default and
-     on Linux; Windows and macOS set their own hairlines. */
-  :root { --separator: color-mix(in srgb, currentColor 15%, transparent); }
-  /* Linux: Adwaita's half-accent focus ring, mixed toward the text colour
-     rather than transparency so it reaches 3:1 on the surface in both themes. */
-  :root[data-platform="linux"] { --focus-ring-color: color-mix(in srgb, var(--accent) 50%, var(--text)); }
-}
-
-/* Theme-aware scrims and the Ibis Windows dark-shadow adaptation (1.7x alpha).
-   Engines without light-dark() retain the black scrim and light-shadow fallbacks. */
+/* Theme-aware macOS scrim; older engines keep the black fallback. */
 @supports (color: light-dark(white, black)) {
-  :root[data-platform="macos"] { --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%)); }
-  :root[data-platform="linux"] { --scrim: light-dark(rgb(0 0 0 / 25%), rgb(0 0 0 / 45%)); }
-  :root[data-platform="windows"] {
-    --shadow-card: 0 0 2px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 2px 4px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
-    --shadow-overlay: 0 0 2px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 8px 16px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
-    --shadow-dialog: 0 0 8px light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 20.4%)), 0 32px 64px light-dark(rgb(0 0 0 / 14%), rgb(0 0 0 / 23.8%));
-    --shadow-toast: 0 4px 16px light-dark(rgb(0 0 0 / 22%), rgb(0 0 0 / 37.4%));
-    --scrollbar-color: light-dark(rgb(0 0 0 / 44.6%), rgb(255 255 255 / 54.5%)) transparent;
-  }
-}
-/* Windows: Fluent's DividerStrokeColorDefault and ControlStrokeColorDefault.
-   Before the contrast blocks, which must override it. */
-@supports (color: light-dark(white, black)) {
-  :root[data-platform="windows"] { --separator: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 8%)); --stroke-control: light-dark(rgb(0 0 0 / 6%), rgb(255 255 255 / 7%)); }
+  :root { --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%)); }
 }
 
 @media (prefers-contrast: more), (forced-colors: active) {
@@ -377,9 +300,8 @@
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
 }
 
-/* Semantic roles preserve platform values.
-   Per-look shape, elevation and motion roles are defined above.
-   Keep aliases one-way, from semantic roles to their platform inputs. */
+/* Semantic roles share the macOS shape, elevation and motion above.
+   Keep aliases one-way, from semantic roles to their inputs. */
 :root {
   --surface-window: var(--surface); --surface-raised: var(--surface);
   --surface-overlay: var(--surface); --surface-field: var(--field-background);
@@ -397,12 +319,6 @@
   --r-key: var(--hint-radius);
   --r-card: var(--r-win); --r-full: 999px;
 }
-:root[data-platform="windows"] {
-  --fill-control-pressed: light-dark(rgb(249 249 249 / 30%), rgb(255 255 255 / 3%));
-  --fill-subtle-pressed: light-dark(rgb(0 0 0 / 3%), rgb(255 255 255 / 3%));
-}
-:root[data-platform="linux"] { --fill-control-pressed: color-mix(in srgb, var(--text) 30%, transparent); }
-
 @media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
 
 /* BEGIN generated website palette: brand/build.py */

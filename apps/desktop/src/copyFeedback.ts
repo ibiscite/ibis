@@ -75,7 +75,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (text
   code.dir = "auto";
   root.append(notice);
   return (text: string) => {
-    title.textContent = platform === "windows" ? copiedNoticeText.windowsTitle : copiedNoticeText.title;
+    title.textContent = copiedNoticeText.title;
     code.textContent = text;
     notice.replaceChildren(source, mark, title, code);
     // Restart the fade for a notice shown again while still visible.

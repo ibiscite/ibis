@@ -59,7 +59,7 @@ test("the results, menus, Shortcuts and notices share the scroll area, and no sc
   expect(notices.container.querySelector(".notices")?.classList.contains("scroll-area")).toBe(true);
 });
 
-test("the fade is valid at one edge or both, and only Windows draws its own thin bar", () => {
+test("the fade is valid at either edge and every system shares the native scrollbar", () => {
   const area = css("./ScrollArea.css");
   expect(area).toMatch(/\.scroll-area \{ overflow: auto; scrollbar-width: var\(--scrollbar-width\); scrollbar-color: var\(--scrollbar-color\); \}/);
   for (const edge of ["\\[data-more-above\\]", "\\[data-more-below\\]", "\\[data-more-above\\]\\[data-more-below\\]"]) {
@@ -70,6 +70,5 @@ test("the fade is valid at one edge or both, and only Windows draws its own thin
   }
   const tokens = css("../tokens.css");
   expect(tokens).toMatch(/--scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: var\(--space-4\);/);
-  expect(tokens).toMatch(/--scrollbar-width: thin; --scrollbar-color: rgb\(0 0 0 \/ 44\.6%\) transparent;/);
-  expect(tokens.match(/--scrollbar-width: thin/g)).toHaveLength(1);
+  expect(tokens).not.toMatch(/--scrollbar-width: thin/);
 });

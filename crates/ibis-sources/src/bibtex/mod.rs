@@ -69,7 +69,14 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
         });
         return (result, true);
     }
-    let blocks = split_blocks(text);
+    let (mut blocks, limited) = split_blocks(text);
+    if limited {
+        result.warnings.push(SourceWarning {
+            code: WarningCode::WorkLimit,
+            line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),
+        });
+        blocks.truncate(crate::MAX_LIBRARY_RECORDS);
+    }
 
     let mut macros = Vec::new();
     let mut entries: Vec<RawEntry> = Vec::new();
@@ -80,7 +87,7 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
             code,
             line: Some(block.line),
         };
-        if !budget.charge(block.text.len().saturating_mul(4).saturating_add(256)) {
+        if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
             result
                 .warnings
                 .push(warn(WarningCode::WorkLimit, None, LOAD_LIMIT.into()));
@@ -167,12 +174,12 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
             )),
         }
     }
-    (result, budget.exhausted())
+    (result, limited || budget.exhausted())
 }
 
 /// Whether a recognized block is demonstrably unfinished, for reload safety.
 pub(crate) fn has_incomplete_blocks(text: &str) -> bool {
-    split_blocks(text).iter().any(|block| !block.complete)
+    split_blocks(text).0.iter().any(|block| !block.complete)
 }
 
 /// Resolve, parse and convert one entry.
@@ -197,7 +204,9 @@ fn load_entry(
         .get(&entry.key)
         .ok_or_else(|| "entry could not be read; skipped".to_string())?;
     let mut record = convert::convert(source, &entry.kind, raw, parsed, &resolved.fields, &mut problems);
-    crate::remove_local_urls(&mut record.csl, &mut problems);
+    if crate::urls::remove_private_urls(&mut record.csl) {
+        problems.push("private URL omitted".into());
+    }
     let file = resolved.fields.get("file").map(|value| convert::file_value(value));
     Ok((record, file, problems))
 }
@@ -205,6 +214,32 @@ fn load_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recovery_header_limits_are_reported_even_when_candidates_collapse() {
+        let text = format!(
+            "@book{{broken,title={{ {}\n@book{{good}}",
+            "@misc{nested}".repeat(crate::MAX_LIBRARY_RECORDS + 1)
+        );
+        let result = load_str(&LibraryId::file(b"synthetic"), &text);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::WorkLimit)
+        );
+    }
+    #[test]
+    fn minimal_entries_pay_fixed_allocation_work() {
+        let (result, limited) = load_with_budget(&LibraryId::file(b"synthetic"), "@misc{one}", Budget::new(1024));
+        assert!(limited);
+        assert!(result.records.is_empty());
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::WorkLimit)
+        );
+    }
     #[test]
     fn damaged_and_duplicate_entries_keep_good_records() {
         let result = load_str(

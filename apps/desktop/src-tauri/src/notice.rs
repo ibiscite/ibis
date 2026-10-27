@@ -49,32 +49,15 @@ impl Platform {
     };
 }
 
-/// Window size in points. The window is transparent and a little larger than
-/// the notice it draws on macOS and Windows, leaving room for its shadow; on
-/// Linux it is the rounded toast itself.
-pub(crate) fn notice_size(platform: Platform) -> (f64, f64) {
-    match platform {
-        Platform::MacOs => (400.0, 76.0),
-        Platform::Windows => (420.0, 112.0),
-        Platform::Linux => (360.0, 44.0),
-    }
+/// Shared 400x76-point notice frame leaves 16 points for the pill's shadow.
+pub(crate) fn notice_size(_platform: Platform) -> (f64, f64) {
+    (400.0, 76.0)
 }
 
-/// The window's top-left corner within the display's usable area, in the
-/// same units as `usable`. A notice wider or taller than the area starts at
-/// its corner rather than off screen.
-pub(crate) fn notice_position(platform: Platform, usable: Area, width: f64, height: f64) -> (f64, f64) {
+/// Place the shared pill near the top centre, within the usable display area.
+pub(crate) fn notice_position(_platform: Platform, usable: Area, width: f64, height: f64) -> (f64, f64) {
     let centre = usable.x + (usable.width - width).max(0.0) / 2.0;
-    let right = usable.x + (usable.width - width).max(0.0);
-    let bottom = |margin: f64| usable.y + (usable.height - height - margin).max(0.0);
-    match platform {
-        // The pill sits 40 points below the menu bar; 16 of them are the
-        // window's own shadow margin.
-        Platform::MacOs => (centre, usable.y + 24.0),
-        // The card's own 16-point margin keeps it off the taskbar and edge.
-        Platform::Windows => (right, bottom(0.0)),
-        Platform::Linux => (centre, bottom(28.0)),
-    }
+    (centre, usable.y + (usable.height - height).clamp(0.0, 24.0))
 }
 
 /// The window's corner on a display in the shared space of `placement`
@@ -510,19 +493,13 @@ mod tests {
     }
 
     #[test]
-    fn windows_shows_a_card_at_the_bottom_right_above_the_taskbar() {
-        let (width, height) = notice_size(Platform::Windows);
-        let (x, y) = notice_position(Platform::Windows, LEFT, width, height);
-        assert_eq!(x + width, LEFT.x + LEFT.width);
-        assert_eq!(y + height, LEFT.y + LEFT.height);
-    }
-
-    #[test]
-    fn linux_shows_a_toast_at_the_bottom_centre() {
-        let (width, height) = notice_size(Platform::Linux);
-        let (x, y) = notice_position(Platform::Linux, LEFT, width, height);
-        assert_eq!(x + width / 2.0, LEFT.x + LEFT.width / 2.0);
-        assert_eq!(y + height, LEFT.y + LEFT.height - 28.0);
+    fn all_platforms_use_the_shared_pill_frame_and_top_centre_placement() {
+        for platform in [Platform::MacOs, Platform::Windows, Platform::Linux] {
+            assert_eq!(notice_size(platform), (400.0, 76.0));
+            let (x, y) = notice_position(platform, LEFT, 400.0, 76.0);
+            assert_eq!(x + 200.0, LEFT.x + LEFT.width / 2.0);
+            assert_eq!(y, LEFT.y + 24.0);
+        }
     }
 
     #[test]
@@ -531,7 +508,7 @@ mod tests {
         for platform in [Platform::MacOs, Platform::Windows, Platform::Linux] {
             let (width, height) = notice_size(platform);
             let (x, y) = notice_position(platform, tiny, width, height);
-            assert!(x >= tiny.x && y >= tiny.y, "{platform:?} placed it off the display");
+            assert_eq!((x, y), (tiny.x, tiny.y), "{platform:?} placed it off the display");
         }
     }
 
@@ -545,12 +522,12 @@ mod tests {
             shared: notice_corner(Platform::Windows, hidpi, 2.0),
             scale: 2.0,
         };
-        // The card's corner meets the display's bottom-right corner.
-        assert_eq!(corner.shared, (1920.0 + 3840.0 - 840.0, 2112.0 - 224.0));
-        assert_eq!(corner.points(), (2460.0, 944.0));
-        // The toast's 28-point margin is 42 pixels at 150%.
+        // The same pill frame is centred and scaled for each physical display.
+        assert_eq!(corner.shared, (3440.0, 48.0));
+        assert_eq!(corner.points(), (1720.0, 24.0));
+        // A 150% display scales the 24-point top offset to 36 physical pixels.
         let linux = notice_corner(Platform::Linux, hidpi, 1.5);
-        assert_eq!(linux, (1920.0 + (3840.0 - 540.0) / 2.0, 2112.0 - 66.0 - 42.0));
+        assert_eq!(linux, (3540.0, 36.0));
     }
 
     #[test]

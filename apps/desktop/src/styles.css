@@ -7,9 +7,8 @@
 body { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
 /* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
-   focus (:focus-visible), 2 px with a 1 px gap, in the platform's colour:
-   accent on macOS, ink on Windows, half-accent on Linux. Contrast and forced
-   colours make it a solid CanvasText ring. Menu rows show a fill instead
+   focus (:focus-visible), 2 px with a 1 px gap, in the system accent. Contrast
+   and forced colours make it a solid CanvasText ring. Menu rows show a fill instead
    (Menu.css): a ring there is clipped by the list and covers its neighbours. */
 :focus-visible:not(.ui-button, .menu-item) { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
 main {
@@ -32,8 +31,7 @@ main {
 .search-bar .pin-button { min-width: var(--field-h); min-height: var(--field-h); margin-inline-start: auto; }
 #search::placeholder { color: var(--muted); }
 /* The search box never shows a ring: it always has focus, and the caret is the
-   cue (Windows adds its accent underline). Contrast and forced colours restore
-   it below. The clear glyph is quiet like the other icons: secondary colour,
+   cue. Contrast and forced colours restore it below. The clear glyph is quiet like the other icons: secondary colour,
    16 px glyph in a 32 px target. */
 #search { border-radius: var(--r-row); }
 #search:focus-visible { outline: none; box-shadow: none; }
@@ -43,18 +41,6 @@ main {
   :root, :root[data-platform] { --field-h: var(--touch-target); }
   .search-field { --search-clear-size: var(--touch-target); }
 }
-/* Windows and Linux search in a framed 16 px text box with the icon inside it.
-   The icon overlaps the box's start padding, so the flex row never changes;
-   the box starts at the inset and its text still starts at the row titles. */
-/* Only the search glyph (the header's direct child), never the pin icon inside its button. */
-:root[data-platform="windows"] .search-bar > svg, :root[data-platform="linux"] .search-bar > svg { position: relative; z-index: 1; margin-inline: var(--lead) calc(-1 * (var(--lead) + var(--search-icon-width) + var(--search-gap))); }
-:root[data-platform="windows"] #search, :root[data-platform="linux"] #search { padding: 0 var(--space-1); padding-inline-start: calc(var(--lead) + var(--search-icon-width) + var(--lead-gap)); border-radius: var(--r-row); background: var(--field-background); }
-/* Windows: like a Fluent TextBox, focus turns the field solid with a 2 px accent
-   underline and no ring (TextBox does not use the system focus visual). */
-:root[data-platform="windows"] #search { box-shadow: inset 0 calc(-1 * var(--border-width)) var(--line), inset 0 0 0 var(--border-width) var(--field-edge); }
-:root[data-platform="windows"] #search:focus { outline: none; background: var(--field-active-background); box-shadow: inset 0 calc(-2 * var(--border-width)) var(--accent), inset 0 0 0 var(--border-width) var(--field-edge); }
-/* Linux: a framed entry. */
-:root[data-platform="linux"] #search { padding-inline-start: calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width)); border: var(--border-width) solid var(--clear); }
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 .visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); padding: 0; margin: var(--hidden-margin); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 
@@ -161,13 +147,8 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 /* Monospace only for key syntaxes, where the syntax is the point. */
 .shelf-output[data-keys] .preview-text { font-family: var(--font-mono); }
 .shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); color: var(--muted); font-size: var(--metadata-size); line-height: var(--chip-height); white-space: nowrap; }
-:root[data-platform="windows"] .shelf { box-shadow: inset 0 0 0 var(--border-width) var(--stroke-control); }
-:root[data-platform="linux"] .shelf { margin: 0; border-radius: 0; background: var(--clear); border-top: var(--border-width) solid var(--separator); }
-:root[data-platform="linux"] .shelf-output { padding-inline: calc(var(--inset) + var(--row-pad)); }
-:root[data-platform="linux"] main:has(> .shelf) > footer { border-top-color: var(--separator); }
 
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
-:root[data-platform="windows"] footer, :root[data-platform="linux"] footer { border-top: var(--border-width) solid var(--separator); min-height: calc(var(--footer-height) + var(--border-width)); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
    Coarse targets and wrapped actions grow the band instead of clipping. */
 .library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); padding-block: var(--inset); }
@@ -334,5 +315,4 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .shelf, .chip { border: var(--border-width) solid CanvasText; }
   .shelf { border-inline: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
-  :root[data-platform="windows"] .shelf, :root[data-platform="windows"] #search { border: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
 }

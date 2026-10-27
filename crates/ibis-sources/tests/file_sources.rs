@@ -488,3 +488,58 @@ fn attachment_limits_keep_records_and_refuse_reloads() -> Result<(), Box<dyn std
     );
     Ok(())
 }
+
+#[test]
+fn record_caps_keep_a_bounded_prefix_and_refuse_reload() -> Result<(), Box<dyn std::error::Error>> {
+    const LIMIT: usize = 50_000;
+    let dir = tempfile::tempdir()?;
+    for extension in ["json", "bib"] {
+        let path = dir.path().join(format!("synthetic.{extension}"));
+        let entries = (0..=LIMIT)
+            .map(|index| {
+                if extension == "bib" {
+                    format!("@misc{{k{index}}}\n")
+                } else {
+                    format!(r#"{{"id":"k{index}","type":"book"}}"#)
+                }
+            })
+            .collect::<Vec<_>>();
+        let text = if extension == "bib" {
+            entries.concat()
+        } else {
+            format!("[{}]", entries.join(","))
+        };
+        std::fs::write(&path, text)?;
+        let initial = ibis_sources::load_file(&path)?;
+        assert_eq!(
+            initial.snapshot.objects().len(),
+            LIMIT,
+            "wrong record cap for {extension}"
+        );
+        assert!(
+            initial
+                .warnings
+                .iter()
+                .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit)
+        );
+        drop(initial);
+        assert_eq!(
+            ibis_sources::reload_file(&path).err(),
+            Some(ibis_sources::SourceError::LoadLimit)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn bib_extension_overrides_a_leading_square_bracket() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(
+        &path,
+        "[Invented export comment]\n@book{invented,title={Invented title}}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 1);
+    Ok(())
+}
