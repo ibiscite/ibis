@@ -160,3 +160,24 @@ fn unrelated_library_writes_do_not_starve_a_stable_ten_item_map() {
     reader.refresh(&mut Churning(Fake::new(10)), false, &|| false).unwrap();
     assert_eq!(reader.items()[0].fields["title"], "Invented atlas");
 }
+
+#[test]
+fn explicit_full_reload_retires_preview_before_the_first_request() {
+    let began = std::cell::Cell::new(false);
+    let mut reader = LiveReader::new(Library::User);
+    let mut fake = Fake::new(10);
+    reader.refresh(&mut fake, false, &|| false).unwrap();
+    struct Guarded<'a>(&'a std::cell::Cell<bool>, Fake);
+    impl Transport for Guarded<'_> {
+        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+            assert!(self.0.get(), "full read must retire the old preview before I/O");
+            self.1.get(path)
+        }
+    }
+    reader
+        .refresh_observed(&mut Guarded(&began, fake), true, &|| false, &mut || {
+            began.set(true);
+            Ok(())
+        })
+        .unwrap();
+}

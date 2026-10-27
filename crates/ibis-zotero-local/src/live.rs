@@ -223,6 +223,15 @@ impl LiveReader {
             started: Instant::now(),
             cancelled,
         };
+        budget.check()?;
+        if reload
+            || self
+                .state
+                .as_ref()
+                .is_none_or(|state| state.inventory.server.major != 10)
+        {
+            on_full()?;
+        }
         for attempt in 0..3 {
             let next = match self.read(transport, reload || attempt != 0, &mut budget, on_full) {
                 Err(LiveError::Changing) => {
