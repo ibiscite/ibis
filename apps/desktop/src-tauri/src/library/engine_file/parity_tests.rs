@@ -233,3 +233,65 @@ fn picker_rows_list_the_engines_search_hits_in_order() -> Result<(), Box<dyn std
     }
     Ok(())
 }
+
+/// The source-file goldens (fixtures/formatted/source-files, generated from
+/// pinned Zotero) through the app: open the file, pick the references from
+/// search rows in the file's order, and preview and copy every case the
+/// picker can ask for.
+#[test]
+fn source_file_goldens_preview_and_copy_as_pinned_zotero_formats_them() -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/formatted/source-files");
+    let golden: Value = serde_json::from_slice(&std::fs::read(root.join("expected.json"))?)?;
+    let keys = golden["keys"].as_array().ok_or("keys")?;
+    for source in ["synthetic.bib", "synthetic.json"] {
+        let file = FileLibrary::open(&root.join(source)).map_err(|_| "open")?;
+        let mut items = vec![];
+        for key in keys {
+            let key = key.as_str().ok_or("key")?;
+            let rows = file
+                .search(
+                    &serde_json::from_value(json!({"text":key,"interpret_locators":false}))?,
+                    50,
+                    None,
+                )?
+                .results;
+            let row = rows.into_iter().find(|row| row.key == key).ok_or(key.to_owned())?;
+            items.push(json!({"id":row.id,"cite":row.cite,"locator":null}));
+        }
+        let mut replayed = 0;
+        for case in golden["cases"].as_array().ok_or("cases")? {
+            let style: CitationStyle = serde_json::from_value(case["style"].clone())?;
+            let form = if style == CitationStyle::Ieee {
+                "bibliography-only"
+            } else {
+                "normal"
+            };
+            if case["form"] != form {
+                continue;
+            }
+            let name = format!("{source} {style:?}");
+            let preview = file
+                .preview(
+                    file.reserve_preview(),
+                    serde_json::from_value(json!(items))?,
+                    KeyFormat::Pandoc,
+                    Some(style),
+                )
+                .map_err(|_| name.clone())?;
+            assert_eq!(preview.text, case["text"].as_str().ok_or("text")?, "{name}");
+            assert_eq!(preview.html.as_deref(), case["html"].as_str(), "{name}");
+            let copied = file
+                .copy(&preview.ticket, &preview.content_hash, |content| {
+                    assert_eq!(content.text, case["text"].as_str().unwrap_or_default(), "{name}");
+                    assert_eq!(content.html, case["html"].as_str(), "{name}");
+                    Ok(())
+                })
+                .map_err(|_| "copy")?;
+            assert_eq!(copied.text, preview.text, "{name}");
+            replayed += 1;
+        }
+        // Four styles in their normal form and IEEE as a reference list.
+        assert_eq!(replayed, 5, "{source}");
+    }
+    Ok(())
+}
