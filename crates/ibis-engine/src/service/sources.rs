@@ -317,6 +317,9 @@ impl Engine {
                 } else {
                     ErrorCode::SourceUnavailable
                 };
+                // Any failed read retires prepared Zotero copies until a read
+                // succeeds, even when only a new choice failed: its full read
+                // already began, and the copy guard does not tell them apart.
                 if code != ErrorCode::Cancelled {
                     if !began {
                         self.shared.begin_zotero_read()?;

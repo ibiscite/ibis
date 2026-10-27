@@ -16,6 +16,7 @@ pub enum LibrariesRequest {
     /// personal library only); omitted, the current choice is read again.
     OpenZotero {
         #[serde(default)]
+        #[schemars(length(min = 1, max = 32))]
         libraries: Option<Vec<ZoteroLibrary>>,
     },
     OpenFile {
@@ -32,7 +33,7 @@ pub enum LibrariesRequest {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ZoteroLibrary {
     Personal,
-    Group(u64),
+    Group(#[schemars(range(min = 1, max = 9_223_372_036_854_775_807_u64))] u64),
 }
 impl From<ZoteroLibrary> for ibis_sources::zotero_source::Library {
     fn from(library: ZoteroLibrary) -> Self {

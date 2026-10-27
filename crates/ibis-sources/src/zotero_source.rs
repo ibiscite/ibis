@@ -7,9 +7,9 @@ use ibis_core::contract::{CitationKeySource, LibraryId, LibraryObject, Snapshot}
 use ibis_core::zotero::api::{Transport, TransportError};
 use ibis_core::zotero::libraries::{self, Group};
 pub use ibis_zotero_local::DEFAULT_PORT;
-use ibis_zotero_local::bbt::{self, BbtError, BbtLibrary, LiveBbt};
-use ibis_zotero_local::live::LiveReader;
+use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
 pub use ibis_zotero_local::live::{Library, LiveError};
+use ibis_zotero_local::live::{Limits, LiveReader};
 use ibis_zotero_local::{closed, discovery};
 use std::collections::BTreeMap;
 use std::{
@@ -99,7 +99,7 @@ pub struct ZoteroSource {
 impl Default for ZoteroSource {
     fn default() -> Self {
         Self {
-            readers: vec![LiveReader::new(Library::User)],
+            readers: Self::readers(&[Library::User]),
             current: vec![],
             mode: None,
         }
@@ -121,10 +121,26 @@ impl ZoteroSource {
             return Err(ZoteroError::Selection);
         }
         Ok(Self {
-            readers: libraries.iter().copied().map(LiveReader::new).collect(),
+            readers: Self::readers(libraries),
             current: vec![],
             mode: None,
         })
+    }
+    /// One refresh of the whole choice stays within one library's limits:
+    /// each library gets an equal share of the requests, memory, items and time.
+    fn readers(libraries: &[Library]) -> Vec<LiveReader> {
+        let whole = Limits::default();
+        let share = u32::try_from(libraries.len()).unwrap_or(u32::MAX).max(1);
+        let limits = Limits {
+            requests: whole.requests / share as usize,
+            bytes: whole.bytes / share as usize,
+            items: whole.items / share as usize,
+            elapsed: whole.elapsed / share,
+        };
+        libraries
+            .iter()
+            .map(|library| LiveReader::with_limits(*library, limits))
+            .collect()
     }
     pub fn libraries(&self) -> Vec<Library> {
         self.readers.iter().map(LiveReader::library).collect()
@@ -331,7 +347,7 @@ impl ZoteroSource {
         }
         self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Closed);
-        self.readers = chosen.into_iter().map(LiveReader::new).collect();
+        self.readers = Self::readers(&chosen);
         Ok(loaded)
     }
     fn map_items(
@@ -400,8 +416,9 @@ impl ZoteroSource {
 
 /// Better BibTeX's keys during one live refresh. Its JSON-RPC names a group
 /// by Zotero's local library ID, which the local API never shows, so a group
-/// is matched by its name, asked once per refresh, and only when the name is
-/// unique: an ambiguous name gives no keys rather than another library's.
+/// is matched by name, asked once per refresh. Both names are compared as
+/// Ibis shows them, and each must be unique on both sides: an ambiguous name
+/// gives no keys rather than another library's.
 struct BbtKeys {
     bbt: Option<LiveBbt>,
     libraries: Option<Result<Vec<BbtLibrary>, BbtError>>,
@@ -433,7 +450,16 @@ impl BbtKeys {
                     .as_ref()
                     .ok_or(())?;
                 let name = &groups.iter().find(|group| group.id == id).ok_or(())?.name;
-                Some(bbt::library_named(known, name).ok_or(())?)
+                if groups.iter().filter(|group| group.name == *name).count() != 1 {
+                    return Err(());
+                }
+                let mut same = known
+                    .iter()
+                    .filter(|library| libraries::clean_name(&library.name) == *name);
+                match (same.next(), same.next()) {
+                    (Some(library), None) => Some(library.library_id),
+                    _ => return Err(()),
+                }
             }
         };
         match bbt.keys(local, keyless) {
@@ -886,6 +912,37 @@ mod tests {
         assert!(unavailable(&loaded[1]));
         assert_eq!(keys(&loaded[1]), vec![]);
         assert_eq!(loaded[1].snapshot.objects().len(), 1, "the reference stays citable");
+    }
+
+    #[test]
+    fn group_names_are_compared_as_shown_and_must_be_unique() {
+        // "Invented group " shows as Zotero's "Invented group": two Better
+        // BibTeX libraries then share the name, so neither is guessed.
+        let (port, asked) = serve_groups(json!([
+            {"id":1,"name":"My Library"},{"id":2,"name":"Invented group"},{"id":3,"name":"Invented group\u{200B} "}
+        ]));
+        let loaded = ZoteroSource::new(&[Library::Group(7)])
+            .unwrap()
+            .refresh_local(port, false, &|| false)
+            .unwrap();
+        assert!(unavailable(&loaded[0]));
+        assert!(
+            !asked
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|request| request.contains("item.citationkey"))
+        );
+        // A name Zotero's list shows cleaned still matches Better BibTeX's raw one.
+        let (port, _) = serve_groups(json!([{"id":1,"name":"My Library"},{"id":2,"name":" Invented group\u{202E}"}]));
+        let loaded = ZoteroSource::new(&[Library::Group(7)])
+            .unwrap()
+            .refresh_local(port, false, &|| false)
+            .unwrap();
+        assert_eq!(
+            keys(&loaded[0]),
+            vec![("Group2026".into(), CitationKeySource::BetterBibtex)]
+        );
     }
 
     #[test]
