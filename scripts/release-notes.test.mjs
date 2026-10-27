@@ -43,6 +43,8 @@ test("adds the title line, download table and verification for the tag", () => {
   const notes = releaseNotes("v0.1.1", generated);
   assert.match(notes, /^Ibis 0\.1\.1: /);
   assert.match(notes, /\[Ibis-Windows-setup\.exe\]\(https:\/\/github\.com\/ibiscite\/ibis\/releases\/download\/v0\.1\.1\/Ibis-Windows-setup\.exe\)/);
+  assert.match(notes, /\*\*Command line:\*\* \[ibis-macOS-Apple-silicon\.tar\.gz\]\(https:\/\/github\.com\/ibiscite\/ibis\/releases\/download\/v0\.1\.1\/ibis-macOS-Apple-silicon\.tar\.gz\)/);
+  assert.match(notes, /\[ibis-Windows\.zip\]/);
   assert.match(notes, /\*\*Preview build\. Not signed\.\*\*/);
   assert.match(notes, /\*\*Windows installation:\*\*/);
   assert.match(notes, /--source-ref refs\/tags\/v0\.1\.1 /);

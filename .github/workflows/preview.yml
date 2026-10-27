@@ -168,6 +168,18 @@ jobs:
             fi
           fi
 
+      # The command line ships on its own too, for people, scripts and AI
+      # agents. It runs here where it can, so a binary that cannot start is
+      # never published (Intel macOS is cross-built on Apple silicon).
+      - name: Build the command line
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          cargo build --release --locked -p ibis --target "$TARGET"
+          if [ "$TARGET" != x86_64-apple-darwin ]; then
+            "target/$TARGET/release/ibis" --version
+          fi
+
       - name: Collect packages and checksums
         id: collect
         run: |
@@ -201,6 +213,17 @@ jobs:
             if [ -e "dist/$name" ]; then echo "two packages would both be called $name" >&2; exit 1; fi
             mv "$f" "dist/$name"
           done
+          # The command line with its licence, in the archive each system unpacks
+          # without extra tools.
+          mkdir cli
+          cp LICENSE cli/
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "target/${{ matrix.target }}/release/ibis.exe" cli/
+            (cd cli && 7z a -tzip "../dist/ibis-$platform.zip" ibis.exe LICENSE > /dev/null)
+          else
+            cp "target/${{ matrix.target }}/release/ibis" cli/
+            tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis LICENSE
+          fi
           # Write the list outside dist first, so it never lists itself.
           sums="SHA256SUMS-${{ matrix.target }}.txt"
           (cd dist && for f in *; do
@@ -257,6 +280,20 @@ jobs:
         with:
           name: ibis-${{ matrix.target }}
           path: dist
+
+      # People download the command line on its own, so check that archive:
+      # unpack it as they would and cite from a synthetic library.
+      - name: Run the command line from its archive
+        run: |
+          mkdir cli
+          case "$RUNNER_OS" in
+            Windows) (cd cli && 7z x ../dist/ibis-Windows.zip > /dev/null); bin=cli/ibis.exe ;;
+            macOS) tar -xzf dist/ibis-macOS-Apple-silicon.tar.gz -C cli; bin=cli/ibis ;;
+            *) tar -xzf dist/ibis-Linux.tar.gz -C cli; bin=cli/ibis ;;
+          esac
+          test -f cli/LICENSE
+          "$bin" search garcia --file fixtures/bibtex/fidelity.bib
+          "$bin" cite accents2021 --file fixtures/bibtex/fidelity.bib --style apa
 
       # stays-up.py starts an installed app with the synthetic library and
       # fails if it exits within 20 seconds. diagnose.sh turns a failed
@@ -720,6 +757,8 @@ jobs:
           **Ibis Nightly $version**, built from \`${SHA:0:12}\` on main at $built. This development build is replaced after changes to main and may be unfinished or broken. For the steadier version, use the newest numbered preview release.
 
           **Which file:** \`Ibis-macOS-Apple-silicon.dmg\` (M1 and later) or \`Ibis-macOS-Intel.dmg\` on a Mac, \`Ibis-Windows-setup.exe\` on Windows, \`Ibis-Linux.AppImage\` on Linux (\`.deb\` also available). It installs as **Ibis Nightly**, next to the stable Ibis and with its own settings, and can update itself if you allow update checks. The \`.app.tar.gz\` and \`latest.json\` files are for those updates.
+
+          **Command line:** \`ibis-<system>.tar.gz\` (\`ibis-Windows.zip\` on Windows) holds the \`ibis\` command for people, scripts and AI agents. Unpack it and put \`ibis\` on your PATH.
 
           **Not signed.** macOS may say the app cannot be checked for malicious software: open System Settings → Privacy & Security and choose Open Anyway. Windows SmartScreen may warn: choose More info, then Run anyway. On Windows, if Microsoft WebView2 Runtime is missing, the installer downloads it once; Ibis works offline after setup.
 

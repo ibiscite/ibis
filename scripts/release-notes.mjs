@@ -16,6 +16,9 @@ const DOWNLOADS = [
   ["Linux", "Ibis-Linux.AppImage", " (also `.deb` and `.rpm` below)"],
 ];
 
+// The command line on its own, for people, scripts and AI agents.
+const COMMAND_LINE = ["ibis-macOS-Apple-silicon.tar.gz", "ibis-macOS-Intel.tar.gz", "ibis-Windows.zip", "ibis-Linux.tar.gz"];
+
 export function changes(generated) {
   const lines = [];
   for (const raw of generated.split("\n")) {
@@ -42,6 +45,7 @@ export function releaseNotes(tag, generated, repo = "ibiscite/ibis") {
   if (/^## Download$/m.test(generated)) return generated;
   const base = `https://github.com/${repo}/releases/download/${tag}`;
   const rows = DOWNLOADS.map(([system, file, extra = ""]) => `| ${system} | [${file}](${base}/${file})${extra} |`);
+  const commandLine = COMMAND_LINE.map((file) => `[${file}](${base}/${file})`).join(" · ");
   const list = changes(generated);
   const upgrade = /^v0\.2\./.test(tag) ? "\n**macOS shortcut:** the default is now Command+Shift+Y. Ibis keeps every explicitly stored shortcut, including Control+Command+R. To keep that old chord, set `\"shortcut\": \"Control+Command+R\"`. To use the new default, remove the `shortcut` setting and restart Ibis. Windows and Linux keep Ctrl+Shift+Y.\n" : "";
   return `Ibis ${tag.replace(/^v/, "")}: press a shortcut in any app, find a reference, and copy its citation.
@@ -51,6 +55,8 @@ export function releaseNotes(tag, generated, repo = "ibiscite/ibis") {
 | System | File |
 |---|---|
 ${rows.join("\n")}
+
+**Command line:** ${commandLine}. Unpack it and put \`ibis\` on your PATH; \`ibis --help\` lists what it does.
 
 **Preview build. Not signed.** Ibis is not signed by Apple or Microsoft yet. On macOS, if it says the app cannot be checked, open System Settings → Privacy & Security and choose Open Anyway. On Windows, if SmartScreen warns, choose More info, then Run anyway. In-app updates are opt-in and signed, and Ibis checks the signature before installing one.
 
