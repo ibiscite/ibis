@@ -22,6 +22,7 @@ pub(super) fn frontmost() -> Option<Front> {
         id: app.bundleIdentifier().map(|id| id.to_string()),
         pid: app.processIdentifier(),
         name: app.localizedName().map(|name| name.to_string()),
+        elevated: false,
     })
 }
 
@@ -79,6 +80,10 @@ impl Desk for Mac {
 
     fn clipboard(&self) -> Option<String> {
         self.app.clipboard().read_text().ok()
+    }
+
+    fn secure_field(&self) -> bool {
+        false
     }
 
     fn paste_key(&self) -> Option<u16> {

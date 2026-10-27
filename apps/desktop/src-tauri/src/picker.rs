@@ -89,6 +89,10 @@ pub(crate) fn show_picker(app: &AppHandle) {
         crate::panel::show(app);
         #[cfg(not(target_os = "macos"))]
         {
+            // Above always-on-top windows too (#1133); unpinned, it hides
+            // once it loses focus, so it never covers anything for long.
+            #[cfg(target_os = "windows")]
+            report(window.set_always_on_top(true), NativeIssue::AlwaysOnTop);
             report(window.show(), NativeIssue::Show);
             // The quick picker stays out of the taskbar and Alt+Tab. Showing a
             // hidden window can bring its taskbar button back on Windows.
@@ -249,17 +253,18 @@ pub(crate) fn shortcut_status(status: State<'_, Mutex<ShortcutStatus>>) -> Short
 pub(crate) struct Pinned(pub(crate) AtomicBool);
 
 /// Pin or unpin the picker. Staying on top is best effort: Wayland does not
-/// allow it, and there pinned means only that the picker stays open.
+/// allow it, and there pinned means only that the picker stays open. The
+/// Windows picker is always on top while shown.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn set_pinned(app: AppHandle, pinned: State<'_, Pinned>, on: bool) {
     pinned.0.store(on, Ordering::SeqCst);
     // The macOS panel is already a floating panel; it only needs to stay open.
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
         report(window.set_always_on_top(on), NativeIssue::AlwaysOnTop);
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "linux"))]
     let _ = app;
 }
 
