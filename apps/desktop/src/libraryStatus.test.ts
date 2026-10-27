@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import type { LibraryStatus } from "./bindings";
 import { libraryHealth, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
 import { ago, libraryMessages, recentUpdate } from "./messages";
@@ -118,6 +118,9 @@ test.each(["مراجع.bib", "מקורות.bib", "研究.bib", "example.bib"])("
 });
 
 test("screen readers can read the detail, including the count kept after a failed update", () => {
+  // The fixture times are fixed; a real clock makes "3 hours ago" a date once they age.
+  vi.useFakeTimers({ now, toFake: ["Date"] });
+  onTestFinished(() => { vi.useRealTimers(); });
   const { container } = render(createElement(LibraryStatusLine, {
     library: file({ state: "error", stale: true, error: "The library file is unavailable; keeping the last loaded references", references: 4 }),
     groupName: String,
