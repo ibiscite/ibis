@@ -13,6 +13,7 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
     let cancel = Cancellation::default();
     let search = SearchRequest {
+        interpret_locator: false,
         query: "signals".into(),
         limit: 10,
         libraries: None,
@@ -52,6 +53,7 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
         engine
             .search(
                 &SearchRequest {
+                    interpret_locator: false,
                     query: "x".into(),
                     limit: 1,
                     libraries: None
@@ -137,6 +139,7 @@ fn library_changes_invalidate_subscribers_without_mutating_previous_snapshots() 
 fn a_named_missing_library_is_not_silently_an_empty_search() {
     let engine = Engine::new().unwrap();
     let mut request = SearchRequest {
+        interpret_locator: false,
         query: "synthetic".into(),
         limit: 10,
         libraries: Some(vec![LibraryId::file(b"missing synthetic scope")]),
@@ -200,6 +203,7 @@ fn typed_search_refuses_oversized_results_before_public_object_cloning() {
         Snapshot::new(vec![LibraryObject::Record(first), LibraryObject::Record(second)]).unwrap(),
     ));
     let mut request = SearchRequest {
+        interpret_locator: false,
         query: "synthetic".into(),
         limit: 2,
         libraries: None,
@@ -236,4 +240,32 @@ fn bundled_styles_are_available_and_unknown_styles_are_explicit_refusals() {
         }]
     );
     assert!(citation.copy_content(1).is_none());
+}
+
+#[test]
+fn search_reads_a_trailing_locator_only_when_asked() {
+    let case = case();
+    let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
+    let cancel = Cancellation::default();
+    let read = engine
+        .dispatch(
+            Method::Search,
+            &json!({"query":"signals chap. 3","interpret_locator":true}),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(
+        read.data["locator"],
+        json!({"search":"signals","locator":{"term":"chapter","value":"3"},"typed":"chap. 3"})
+    );
+    let plain = engine
+        .dispatch(Method::Search, &json!({"query":"signals"}), &cancel)
+        .unwrap();
+    assert_eq!(read.data["hits"], plain.data["hits"]);
+    assert!(!plain.data["hits"].as_array().unwrap().is_empty());
+    // Without the flag the whole query is searched and nothing is read.
+    let literal = engine
+        .dispatch(Method::Search, &json!({"query":"signals chap. 3"}), &cancel)
+        .unwrap();
+    assert!(literal.data.get("locator").is_none());
 }

@@ -275,6 +275,7 @@ fn search(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     };
     let result = engine.search(
         &SearchRequest {
+            interpret_locator: false,
             query: query.to_owned(),
             limit,
             libraries: None,

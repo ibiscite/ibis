@@ -61,6 +61,10 @@ pub struct SearchRequest {
     /// Omitted searches every loaded library; an empty list searches none.
     #[serde(default)]
     pub libraries: Option<Vec<LibraryId>>,
+    /// Read a locator typed at the end of the query (`smith p 45`) and search
+    /// for the rest; the result says what was read so it can be undone.
+    #[serde(default)]
+    pub interpret_locator: bool,
 }
 fn default_limit() -> usize {
     10
