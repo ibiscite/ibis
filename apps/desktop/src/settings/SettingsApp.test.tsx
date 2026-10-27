@@ -14,6 +14,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
     opened: 0,
+    reads: 0,
     pages: [] as ((page: string) => void)[],
   };
   const api: SettingsApi = {
@@ -24,7 +25,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     updateChecks: async () => true,
     setUpdateChecks: async () => undefined as never,
     checkForUpdates: async () => undefined as never,
-    pastePermission: async () => state.permission,
+    pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
     version: async () => "0.3.0",
     onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
@@ -58,6 +59,10 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   expect(within(card).getByRole("status").textContent).toBe("Ibis can paste now.");
   expect(within(card).queryByRole("button", { name: "Open System Settings" })).toBeNull();
   expect(card.textContent).not.toContain("Ibis clears the old switch");
+  // Once allowed, Settings stops asking every second.
+  const reads = state.reads;
+  await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS * 5); });
+  expect(state.reads).toBeLessThanOrEqual(reads + 1);
 });
 
 test("a permission already given shows one quiet line, and turning pasting off hides the guide", async () => {
@@ -74,10 +79,11 @@ test("a permission already given shows one quiet line, and turning pasting off h
   expect(screen.queryByRole("heading", { name: "Allow Ibis to paste for you" })).toBeNull();
 });
 
-test("systems that ask nothing before a paste show no guide", async () => {
+test("systems where Ibis only copies show no pasting choices", async () => {
   const { api } = fakeApi({ needed: false, granted: true, list: "" });
   render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Paste into the app you came from" });
+  await screen.findByRole("switch", { name: "Larger text" });
+  expect(screen.queryByRole("switch", { name: "Paste into the app you came from" })).toBeNull();
   expect(screen.queryByText(/Privacy & Security/)).toBeNull();
 });
 

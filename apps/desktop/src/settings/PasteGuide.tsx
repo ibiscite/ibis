@@ -14,15 +14,17 @@ export const STALE_HINT_MS = 15_000;
  * back to the window reads it at once, so the answer is never stale. */
 export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, active: boolean) {
   const [permission, setPermission] = useState<PastePermission | null>(null);
+  // Poll only while waiting for the switch; focus covers later changes.
+  const waiting = permission?.needed === true && !permission.granted;
   useEffect(() => {
     if (!active) return;
     let live = true;
     const read = () => api.pastePermission().then((next) => { if (live) setPermission(next); }).catch(() => undefined);
     void read();
-    const timer = window.setInterval(read, RECHECK_MS);
+    const timer = waiting ? window.setInterval(read, RECHECK_MS) : undefined;
     window.addEventListener("focus", read);
     return () => { live = false; window.clearInterval(timer); window.removeEventListener("focus", read); };
-  }, [api, active]);
+  }, [api, active, waiting]);
   return permission;
 }
 

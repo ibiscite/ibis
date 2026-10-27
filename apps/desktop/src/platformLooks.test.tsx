@@ -202,7 +202,7 @@ test("the shared macOS notice keeps its nominal shadow within the reserved gutte
   expect(gutter).toBe(16);
   const shadow = rules(tokens, ":root").match(/--shadow-toast:\s*([^;]+);/)![1]!;
   for (const [, offset, blur] of shadow.matchAll(/0 (-?[\d.]+)(?:px)? ([\d.]+)px /g)) expect(Math.abs(Number(offset)) + Number(blur) / 2).toBeLessThanOrEqual(gutter);
-  expect(rules(notices, ':root.notice-window[data-surface="opaque"] .copied-notice')).toMatch(/width:\s*100%;\s*height:\s*100%;\s*margin:\s*0;\s*border-radius:\s*0/);
+  expect(rules(notices, ':root.notice-window[data-surface="opaque"] .copied-notice')).toMatch(/width:\s*100%;\s*max-width:\s*none;\s*height:\s*100%;\s*margin:\s*0;\s*border-radius:\s*0/);
 });
 
 test("menus and dialogs consume their shared elevation and separate shape roles", () => {

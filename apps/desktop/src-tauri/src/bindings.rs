@@ -64,8 +64,10 @@ mod tests {
         "check_for_updates",
         "paste_permission",
         "open_paste_permission",
-        "native_appearance",
     ];
+
+    /// Only Settings asks about the paste permission; the picker never does.
+    const SETTINGS_ONLY: &[&str] = &["paste_permission", "open_paste_permission"];
 
     fn destination() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")
@@ -173,7 +175,7 @@ mod tests {
         expected.extend(
             APP_COMMANDS
                 .iter()
-                .filter(|command| **command != "copied_notice")
+                .filter(|command| **command != "copied_notice" && !SETTINGS_ONLY.contains(command))
                 .map(|command| format!("allow-{}", command.replace('_', "-"))),
         );
         assert_eq!(picker["permissions"], serde_json::json!(expected));
@@ -237,7 +239,7 @@ mod tests {
                     let allowed = origin == local
                         && APP_COMMANDS.contains(&command)
                         && match label {
-                            "main" => command != "copied_notice",
+                            "main" => command != "copied_notice" && !SETTINGS_ONLY.contains(&command),
                             "notice" => command == "copied_notice",
                             "settings" => SETTINGS_COMMANDS.contains(&command),
                             _ => false,

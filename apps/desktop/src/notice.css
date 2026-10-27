@@ -121,7 +121,7 @@
 /* Linux without a compositor: an opaque window, so the toast fills it with square corners. */
 :root.notice-window[data-surface="opaque"],
 :root.notice-window[data-surface="opaque"] body { background: var(--surface); }
-:root.notice-window[data-surface="opaque"] .copied-notice { width: 100%; height: 100%; margin: 0; border-radius: 0; }
+:root.notice-window[data-surface="opaque"] .copied-notice { width: 100%; max-width: none; height: 100%; margin: 0; border-radius: 0; }
 @media (prefers-contrast: more), (forced-colors: active), (prefers-reduced-transparency: reduce) {
   :root.notice-window[data-surface="opaque"],
   :root.notice-window[data-surface="opaque"] body { background: Canvas; }

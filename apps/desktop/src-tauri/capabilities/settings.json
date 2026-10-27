@@ -18,7 +18,6 @@
     "allow-set-update-checks",
     "allow-check-for-updates",
     "allow-paste-permission",
-    "allow-open-paste-permission",
-    "allow-native-appearance"
+    "allow-open-paste-permission"
   ]
 }

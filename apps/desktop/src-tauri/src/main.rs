@@ -340,8 +340,13 @@ fn main() {
         Ok(app) => app.run(|app, event| {
             // macOS: a repeated OS open request brings back the hidden picker.
             #[cfg(target_os = "macos")]
+            // A Dock click while Settings is open brings Settings forward.
             if let tauri::RunEvent::Reopen { .. } = event {
-                show_picker(app);
+                if settings_window::is_open(app) {
+                    settings_window::open(app, None);
+                } else {
+                    show_picker(app);
+                }
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);

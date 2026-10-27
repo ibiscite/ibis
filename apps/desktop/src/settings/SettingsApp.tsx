@@ -61,7 +61,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
-  const permission = usePastePermission(api, page === "general" && preferences?.paste !== false);
+  const permission = usePastePermission(api, page === "general");
 
   useEffect(() => {
     const readAll = () => {
@@ -124,6 +124,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             )}
             {preferences && (
               <>
+                {/* Only systems where Ibis pastes ask for a permission first. */}
+                {permission?.needed && (
                 <Group id="paste" title={settingsText.groups.paste}>
                   <Row id="paste-label" label={settingsText.paste.label} description={settingsText.paste.description}>
                     <Switch aria-labelledby="paste-label" aria-describedby="paste-label-description" isSelected={preferences.paste}
@@ -138,6 +140,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                     <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission(); }} />
                   )}
                 </Group>
+                )}
                 <Group id="picker" title={settingsText.groups.picker}>
                   <Row id="rows" label={settingsText.picker.rows}>
                     <Segmented label={settingsText.picker.rows} value={preferences.density}

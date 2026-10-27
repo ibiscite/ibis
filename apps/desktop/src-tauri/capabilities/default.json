@@ -42,8 +42,6 @@
     "allow-update-checks",
     "allow-set-update-checks",
     "allow-check-for-updates",
-    "allow-open-settings",
-    "allow-paste-permission",
-    "allow-open-paste-permission"
+    "allow-open-settings"
   ]
 }

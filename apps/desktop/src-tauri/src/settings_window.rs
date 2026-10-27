@@ -8,7 +8,7 @@ use crate::diagnostics::{NativeIssue, checked, report};
 
 pub(crate) const LABEL: &str = "settings";
 const TITLE: &str = "Ibis Settings";
-/// The design canvas's size; it folds the sidebar below 640 points (docs/design.md).
+/// The design canvas's size (docs/design.md).
 const SIZE: (f64, f64) = (720.0, 560.0);
 const MIN_SIZE: (f64, f64) = (480.0, 400.0);
 
@@ -34,10 +34,12 @@ impl Page {
     }
 }
 
-/// Open Settings, or bring it forward, on `page` when one is named.
+/// Open Settings, or bring it forward, on `page` when one is named. Async so
+/// the window is built from the event loop: a sync command runs inside the
+/// WebView2 callback, where building a second webview deadlocks on Windows.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn open_settings(app: AppHandle, page: Option<Page>) {
+pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>) {
     open(&app, page);
 }
 
@@ -95,8 +97,9 @@ fn present(app: &AppHandle, page: Option<Page>) {
     {
         builder = builder.additional_browser_args(&args);
     }
-    if let Some(window) = checked(builder.build(), NativeIssue::Window) {
-        report(window.set_focus(), NativeIssue::Focus);
+    match checked(builder.build(), NativeIssue::Window) {
+        Some(window) => report(window.set_focus(), NativeIssue::Focus),
+        None => closed(app),
     }
 }
 
@@ -107,13 +110,22 @@ pub(crate) fn is_open(app: &AppHandle) -> bool {
         .is_some_and(|window| window.is_visible().unwrap_or(false))
 }
 
-/// Once Settings closes, Ibis leaves the Dock again and lives in the menu bar.
+/// Once Settings closes, Ibis leaves the Dock again and lives in the menu bar,
+/// handing focus back to the app underneath unless the picker is up.
 pub(crate) fn closed(app: &AppHandle) {
     #[cfg(target_os = "macos")]
-    report(
-        app.set_activation_policy(tauri::ActivationPolicy::Accessory),
-        NativeIssue::Window,
-    );
+    {
+        report(
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory),
+            NativeIssue::Window,
+        );
+        let picker_shown = app
+            .get_webview_window("main")
+            .is_some_and(|window| window.is_visible().unwrap_or(false));
+        if !picker_shown {
+            report(app.hide(), NativeIssue::HideApplication);
+        }
+    }
     #[cfg(not(target_os = "macos"))]
     let _ = app;
 }
