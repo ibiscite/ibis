@@ -27,7 +27,7 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
             item: ItemSelector::Key("Example2026".into()),
         })
         .unwrap();
-    assert_eq!(shown, case.library.objects()[0]);
+    assert_eq!(shown, *case.library.objects()[0]);
     assert_eq!(
         engine.cite(&case.request, &cancel).unwrap(),
         *case.expected.data().unwrap()
@@ -181,49 +181,6 @@ fn a_slow_subscriber_gets_latest_state_and_an_explicit_full_resync() {
     assert_eq!(event.sequence, 41);
     assert_eq!(event.libraries, [library]);
     assert_eq!(serde_json::to_value(&event).unwrap()["resync"], false);
-}
-
-#[test]
-fn public_typed_views_do_not_clone_or_return_raw_source_payloads() {
-    let case = case();
-    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
-        panic!("record")
-    };
-    record.raw = Some(RawProvenance {
-        format: SourceFormat::Bibtex,
-        data: json!({"synthetic":"x".repeat(64*1024)}),
-    });
-    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()));
-    let shown = engine
-        .show(&ShowRequest {
-            item: ItemSelector::Key("Example2026".into()),
-        })
-        .unwrap();
-    let LibraryObject::Record(shown) = shown.object else {
-        panic!("record")
-    };
-    assert!(shown.raw.is_none());
-    let hits = engine
-        .search(
-            &SearchRequest {
-                query: "synthetic".into(),
-                limit: 10,
-                libraries: None,
-            },
-            &Cancellation::default(),
-        )
-        .unwrap();
-    for hit in hits.hits {
-        let LibraryObject::Record(record) = hit.item.object else {
-            panic!("record")
-        };
-        assert!(record.raw.is_none());
-    }
-    let snapshot = engine.snapshot().unwrap();
-    let LibraryObject::Record(record) = &snapshot.objects()[0].object else {
-        panic!("record")
-    };
-    assert!(record.raw.is_some());
 }
 
 #[test]

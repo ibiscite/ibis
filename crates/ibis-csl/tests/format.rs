@@ -18,7 +18,6 @@ fn sample() -> (Snapshot, CitationRequest) {
         citation_keys: vec![],
         aliases: vec![],
         identifiers: vec![],
-        raw: None,
     })])
     .unwrap();
     let request = CitationRequest {
@@ -102,7 +101,6 @@ fn library(items: &[serde_json::Value]) -> Snapshot {
                     citation_keys: vec![],
                     aliases: vec![],
                     identifiers: vec![],
-                    raw: None,
                 })
             })
             .collect(),

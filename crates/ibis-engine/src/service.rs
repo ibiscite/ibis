@@ -346,7 +346,7 @@ impl Engine {
             hits: hits
                 .into_iter()
                 .map(|hit| SearchHit {
-                    item: public_object(hit.item),
+                    item: hit.item.clone(),
                     score: hit.score,
                     matched: hit.matched,
                 })
@@ -357,7 +357,7 @@ impl Engine {
         let state = self.state()?;
         let selected = select(state.index.snapshot(), &request.item)?;
         ensure_budget(selected)?;
-        Ok(public_object(selected))
+        Ok(selected.clone())
     }
     pub fn cite_keys(
         &self,
@@ -529,18 +529,14 @@ impl Shared {
         }
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        let mut objects: Vec<_> = old
-            .index
-            .snapshot()
-            .objects()
-            .iter()
-            .filter(|item| {
-                item.object.id().library != library && remove.as_ref().is_none_or(|id| item.object.id().library != *id)
-            })
-            .map(|item| item.object.clone())
-            .collect();
-        objects.extend(snapshot.objects().iter().map(|item| item.object.clone()));
-        let combined = Arc::new(Snapshot::new(objects).map_err(|_| error(ErrorCode::BadInput))?);
+        let combined = Arc::new(
+            old.index
+                .snapshot()
+                .merged(snapshot, |id| {
+                    *id != library && remove.as_ref().is_none_or(|remove| id != remove)
+                })
+                .map_err(|_| error(ErrorCode::BadInput))?,
+        );
         let mut libraries = old.libraries.clone();
         if let Some(remove) = &remove {
             libraries.remove(remove);
@@ -611,25 +607,6 @@ fn ensure_budget(value: &impl Serialize) -> Result<(), EngineError> {
         .map(|_| ())
         .map_err(|_| error(ErrorCode::ResourceLimit))
 }
-/// Build the public projection directly, leaving engine-only raw provenance in its snapshot.
-fn public_object(item: &SnapshotObject) -> SnapshotObject {
-    let object = match &item.object {
-        LibraryObject::Record(record) => LibraryObject::Record(Record {
-            id: record.id.clone(),
-            csl: record.csl.clone(),
-            citation_keys: record.citation_keys.clone(),
-            aliases: record.aliases.clone(),
-            identifiers: record.identifiers.clone(),
-            raw: None,
-        }),
-        object => object.clone(),
-    };
-    SnapshotObject {
-        object,
-        fingerprints: item.fingerprints.clone(),
-    }
-}
-
 fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {
     match selector {
         ItemSelector::Id(id) => snapshot.get(id).ok_or_else(|| error(ErrorCode::NotFound)),
