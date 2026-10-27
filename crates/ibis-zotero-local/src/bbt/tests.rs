@@ -89,7 +89,7 @@ fn group_keys_are_addressed_by_local_library_id() -> Result {
 }
 
 #[test]
-fn libraries_are_matched_to_groups_only_by_a_unique_name() -> Result {
+fn libraries_list_local_ids_and_names() -> Result {
     let (port, _) = zotero(vec![result(json!([
         {"id": 1, "name": "My Library", "collections": null},
         {"id": 4, "name": "Synthetic Group", "collections": null},
@@ -97,9 +97,14 @@ fn libraries_are_matched_to_groups_only_by_a_unique_name() -> Result {
         {"id": 6, "name": "Shared Name", "collections": null},
     ]))])?;
     let libraries = LiveBbt::on_port(port).libraries()?;
-    assert_eq!(library_named(&libraries, "Synthetic Group"), Some(4));
-    assert_eq!(library_named(&libraries, "Shared Name"), None);
-    assert_eq!(library_named(&libraries, "Missing"), None);
+    assert_eq!(libraries.len(), 4);
+    assert_eq!(
+        libraries[1],
+        BbtLibrary {
+            library_id: 4,
+            name: "Synthetic Group".into()
+        }
+    );
     Ok(())
 }
 

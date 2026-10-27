@@ -147,3 +147,38 @@ fn failed_reload_preserves_last_good_and_successful_reload_replaces_it() {
     assert_ne!(engine.snapshot().unwrap().fingerprints(), previous.fingerprints());
     assert!(engine.libraries().unwrap().libraries[0].refresh_error.is_none());
 }
+#[test]
+fn zotero_group_flags_choose_the_libraries_read() {
+    let server = Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    assert_eq!(
+        run(&engine, &["ibis", "--zotero-group", "7", "cite", "Synthetic2026"]).1,
+        "[@Synthetic2026]\n"
+    );
+    let (code, output) = run(
+        &engine,
+        &["ibis", "--zotero", "--zotero-group", "7", "libraries", "--json"],
+    );
+    assert_eq!(code, 0);
+    let response: Value = serde_json::from_str(&output).unwrap();
+    let mut chosen: Vec<_> = response["data"]["libraries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|library| library["zotero"].to_string())
+        .collect();
+    chosen.sort();
+    assert_eq!(chosen, [r#""personal""#, r#"{"group":7}"#]);
+    // Both libraries hold the fixture's key, so it names neither.
+    let mut errors = vec![];
+    let code = ibis::run_with(
+        engine.clone(),
+        ["ibis", "cite", "Synthetic2026"].iter().map(Into::into).collect(),
+        Cursor::new(vec![]),
+        vec![],
+        &mut errors,
+        ibis::OutputMode::Plain,
+    );
+    assert_ne!(code, 0);
+    assert!(!errors.is_empty());
+}

@@ -153,6 +153,9 @@ impl LiveReader {
             limits,
         }
     }
+    pub fn library(&self) -> Library {
+        self.library
+    }
     pub fn items(&self) -> Vec<&ItemData> {
         self.state
             .iter()

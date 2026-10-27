@@ -5,10 +5,11 @@ use crate::{
 };
 use ibis_core::contract::{CitationKeySource, LibraryId, LibraryObject, Snapshot};
 use ibis_core::zotero::api::{Transport, TransportError};
+use ibis_core::zotero::libraries::{self, Group};
 pub use ibis_zotero_local::DEFAULT_PORT;
-use ibis_zotero_local::bbt::{BbtError, LiveBbt};
-pub use ibis_zotero_local::live::LiveError;
-use ibis_zotero_local::live::{Library, LiveReader};
+use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
+pub use ibis_zotero_local::live::{Library, LiveError};
+use ibis_zotero_local::live::{Limits, LiveReader};
 use ibis_zotero_local::{closed, discovery};
 use std::collections::BTreeMap;
 use std::{
@@ -16,6 +17,9 @@ use std::{
     sync::Arc,
 };
 use thiserror::Error;
+
+/// The most libraries one choice may name.
+pub const MAX_LIBRARIES: usize = 32;
 
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum ZoteroError {
@@ -27,6 +31,10 @@ pub enum ZoteroError {
     Closed(#[from] closed::ClosedError),
     #[error("the default Zotero directory is unavailable")]
     Location,
+    #[error("a chosen Zotero library was not found")]
+    LibraryNotFound,
+    #[error("the choice of Zotero libraries is invalid")]
+    Selection,
 }
 impl ZoteroError {
     pub fn cancelled(self) -> bool {
@@ -46,6 +54,13 @@ impl ZoteroError {
         )
     }
 }
+fn live_error(error: LiveError) -> ZoteroError {
+    if error == LiveError::GroupNotFound {
+        ZoteroError::LibraryNotFound
+    } else {
+        error.into()
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZoteroMode {
     Live,
@@ -62,27 +77,77 @@ impl ZoteroMode {
         ]
     }
 }
-pub fn library_id() -> LibraryId {
-    LibraryId::zotero(b"default:user")
+/// One Zotero library's opaque identity. Live and closed reads share it, so
+/// the same item keeps its reference whether Zotero runs or not; group IDs are
+/// Zotero's public group IDs, which both readers see.
+pub fn library_id(library: Library) -> LibraryId {
+    match library {
+        Library::User => LibraryId::zotero(b"default:user"),
+        Library::Group(id) => LibraryId::zotero(format!("default:group:{id}").as_bytes()),
+    }
+}
+pub fn is_zotero(library: &LibraryId) -> bool {
+    library.as_str().starts_with("zotero:")
 }
 #[derive(Clone)]
 pub struct ZoteroSource {
-    reader: LiveReader,
-    current: Option<Arc<LoadedLibrary>>,
+    /// One reader per chosen library, in the chosen order.
+    readers: Vec<LiveReader>,
+    current: Vec<Arc<LoadedLibrary>>,
     mode: Option<ZoteroMode>,
 }
 impl Default for ZoteroSource {
     fn default() -> Self {
         Self {
-            reader: LiveReader::new(Library::User),
-            current: None,
+            readers: Self::readers(&[Library::User]),
+            current: vec![],
             mode: None,
         }
     }
 }
 impl ZoteroSource {
-    pub fn current(&self) -> Option<&Arc<LoadedLibrary>> {
-        self.current.as_ref()
+    /// A source that reads `libraries`, in that order. The personal library
+    /// is read only when chosen; a group is never replaced by another library.
+    pub fn new(libraries: &[Library]) -> Result<Self, ZoteroError> {
+        let valid = |library: &Library| match library {
+            Library::User => true,
+            Library::Group(id) => *id != 0 && i64::try_from(*id).is_ok(),
+        };
+        let unique = libraries
+            .iter()
+            .enumerate()
+            .all(|(n, library)| !libraries[..n].contains(library));
+        if libraries.is_empty() || libraries.len() > MAX_LIBRARIES || !unique || !libraries.iter().all(valid) {
+            return Err(ZoteroError::Selection);
+        }
+        Ok(Self {
+            readers: Self::readers(libraries),
+            current: vec![],
+            mode: None,
+        })
+    }
+    /// One refresh of the whole choice stays within one library's limits:
+    /// each library gets an equal share of the requests, memory, items and time.
+    fn readers(libraries: &[Library]) -> Vec<LiveReader> {
+        let whole = Limits::default();
+        let share = u32::try_from(libraries.len()).unwrap_or(u32::MAX).max(1);
+        let limits = Limits {
+            requests: whole.requests / share as usize,
+            bytes: whole.bytes / share as usize,
+            items: whole.items / share as usize,
+            elapsed: whole.elapsed / share,
+        };
+        libraries
+            .iter()
+            .map(|library| LiveReader::with_limits(*library, limits))
+            .collect()
+    }
+    pub fn libraries(&self) -> Vec<Library> {
+        self.readers.iter().map(LiveReader::library).collect()
+    }
+    /// The last published libraries, in the chosen order.
+    pub fn current(&self) -> &[Arc<LoadedLibrary>] {
+        &self.current
     }
     pub fn mode(&self) -> Option<ZoteroMode> {
         self.mode
@@ -92,7 +157,7 @@ impl ZoteroSource {
         port: u16,
         reload: bool,
         cancelled: &impl Fn() -> bool,
-    ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
+    ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
         self.refresh_observed(port, reload, cancelled, &mut || Ok(()))
     }
     pub fn refresh_observed(
@@ -101,7 +166,7 @@ impl ZoteroSource {
         reload: bool,
         cancelled: &impl Fn() -> bool,
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
-    ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
+    ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
         self.refresh_live(
             &mut ibis_zotero_local::LocalZotero::on_port(port),
             Some(LiveBbt::on_port(port)),
@@ -117,7 +182,7 @@ impl ZoteroSource {
         reload: bool,
         cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
-    ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
+    ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
         match self.refresh_observed(DEFAULT_PORT, reload, &|| cancelled(), on_full) {
             Ok(loaded) => return Ok(loaded),
             Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => (),
@@ -136,7 +201,7 @@ impl ZoteroSource {
         transport: &mut impl Transport,
         reload: bool,
         cancelled: &impl Fn() -> bool,
-    ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
+    ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
         self.refresh_live(transport, None, reload, cancelled, &mut || Ok(()))
     }
     fn refresh_live(
@@ -146,61 +211,74 @@ impl ZoteroSource {
         reload: bool,
         cancelled: &impl Fn() -> bool,
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
-    ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
-        let mut reader = self.reader.clone();
-        reader.refresh_observed(transport, reload, cancelled, on_full)?;
-        // Better BibTeX key changes leave Zotero's item versions alone, so
-        // every refresh asks again for every item without its own key.
-        let keyless: Vec<&str> = reader
-            .items()
-            .into_iter()
-            .filter(|raw| raw.fields.get("citationKey").is_none_or(|key| key.trim().is_empty()))
-            .map(|raw| raw.key.as_str())
-            .collect();
-        let mut warnings = vec![
-            SourceWarning {
-                code: WarningCode::WorkLimit,
-                line: None
-            };
-            reader.omitted_items()
-        ];
-        let bbt_keys = match bbt.filter(|_| !keyless.is_empty()).map(|bbt| bbt.keys(None, &keyless)) {
-            None | Some(Err(BbtError::Unavailable)) => BTreeMap::new(),
-            Some(Ok(found)) => found,
-            Some(Err(_)) => {
+    ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
+        // Every chosen library is read before any is published, so a
+        // failure keeps the last complete set.
+        let mut readers = self.readers.clone();
+        for reader in &mut readers {
+            reader
+                .refresh_observed(transport, reload, cancelled, on_full)
+                .map_err(live_error)?;
+        }
+        let mut keys = BbtKeys {
+            bbt,
+            libraries: None,
+            groups: None,
+        };
+        let mut loaded = Vec::with_capacity(readers.len());
+        for reader in &readers {
+            // Better BibTeX key changes leave Zotero's item versions alone, so
+            // every refresh asks again for every item without its own key.
+            let keyless: Vec<&str> = reader
+                .items()
+                .into_iter()
+                .filter(|raw| raw.fields.get("citationKey").is_none_or(|key| key.trim().is_empty()))
+                .map(|raw| raw.key.as_str())
+                .collect();
+            let mut warnings = vec![
+                SourceWarning {
+                    code: WarningCode::WorkLimit,
+                    line: None
+                };
+                reader.omitted_items()
+            ];
+            let bbt_keys = keys.find(transport, reader.library(), &keyless).unwrap_or_else(|()| {
                 warnings.push(SourceWarning {
                     code: WarningCode::CitationKeysUnavailable,
                     line: None,
                 });
                 BTreeMap::new()
+            });
+            if cancelled() {
+                return Err(LiveError::Cancelled.into());
             }
-        };
-        if cancelled() {
-            return Err(LiveError::Cancelled.into());
+            loaded.push(self.map_items(
+                library_id(reader.library()),
+                reader.items().into_iter().map(|raw| {
+                    ZoteroItem {
+                        key: raw.key.clone(),
+                        item_type: raw.item_type.clone(),
+                        fields: raw.fields.clone(),
+                        creators: raw
+                            .creators
+                            .iter()
+                            .map(|creator| ZoteroCreator {
+                                creator_type: creator.creator_type.clone(),
+                                first_name: creator.first_name.clone(),
+                                last_name: creator.last_name.clone(),
+                                name: creator.name.clone(),
+                                field_mode: creator.field_mode,
+                            })
+                            .collect(),
+                        better_bibtex_keys: bbt_keys.get(&raw.key).cloned().into_iter().collect(),
+                    }
+                }),
+                warnings,
+                cancelled,
+            )?);
         }
-        let loaded = self.map_items(
-            reader.items().into_iter().map(|raw| ZoteroItem {
-                key: raw.key.clone(),
-                item_type: raw.item_type.clone(),
-                fields: raw.fields.clone(),
-                creators: raw
-                    .creators
-                    .iter()
-                    .map(|creator| ZoteroCreator {
-                        creator_type: creator.creator_type.clone(),
-                        first_name: creator.first_name.clone(),
-                        last_name: creator.last_name.clone(),
-                        name: creator.name.clone(),
-                        field_mode: creator.field_mode,
-                    })
-                    .collect(),
-                better_bibtex_keys: bbt_keys.get(&raw.key).cloned().into_iter().collect(),
-            }),
-            warnings,
-            cancelled,
-        )?;
-        self.reader = reader;
-        self.current = Some(loaded.clone());
+        self.readers = readers;
+        self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Live);
         Ok(loaded)
     }
@@ -208,65 +286,77 @@ impl ZoteroSource {
         &mut self,
         snapshot: &closed::ClosedSnapshot,
         cancelled: &impl Fn() -> bool,
-    ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
-        let personal = snapshot
-            .libraries
-            .iter()
-            .find(|library| library.group_id.is_none())
-            .ok_or(ZoteroError::InvalidData)?;
-        let warnings = snapshot
-            .warnings
-            .iter()
-            .filter_map(|warning| match warning {
-                closed::ClosedWarning::CloudSyncedDirectory => Some(WarningCode::CloudSyncedDirectory),
-                closed::ClosedWarning::ItemTooLarge { library_id, .. } if *library_id == personal.library_id => {
-                    Some(WarningCode::WorkLimit)
-                }
-                _ => None,
-            })
-            .chain(
-                snapshot
-                    .better_bibtex_unknown
-                    .then_some(WarningCode::CitationKeysUnavailable),
-            )
-            .map(|code| SourceWarning { code, line: None })
-            .collect();
-        let loaded = self.map_items(
-            personal.items.iter().map(|item| {
-                let raw = &item.data;
-                ZoteroItem {
-                    key: raw.key.clone(),
-                    item_type: raw.item_type.clone(),
-                    fields: raw.fields.clone(),
-                    creators: raw
-                        .creators
-                        .iter()
-                        .map(|creator| ZoteroCreator {
-                            creator_type: creator.creator_type.clone(),
-                            first_name: creator.first_name.clone(),
-                            last_name: creator.last_name.clone(),
-                            name: creator.name.clone(),
-                            field_mode: creator.field_mode,
-                        })
-                        .collect(),
-                    better_bibtex_keys: raw.better_bibtex_keys.clone(),
-                }
-            }),
-            warnings,
-            cancelled,
-        )?;
-        self.current = Some(loaded.clone());
+    ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
+        let chosen = self.libraries();
+        let mut loaded = Vec::with_capacity(chosen.len());
+        for &library in &chosen {
+            let group_id = match library {
+                Library::User => None,
+                Library::Group(id) => Some(i64::try_from(id).map_err(|_| ZoteroError::Selection)?),
+            };
+            let Some(found) = snapshot.libraries.iter().find(|found| found.group_id == group_id) else {
+                // Every Zotero database has a personal library.
+                return Err(if group_id.is_none() {
+                    ZoteroError::InvalidData
+                } else {
+                    ZoteroError::LibraryNotFound
+                });
+            };
+            let warnings = snapshot
+                .warnings
+                .iter()
+                .filter_map(|warning| match warning {
+                    closed::ClosedWarning::CloudSyncedDirectory => Some(WarningCode::CloudSyncedDirectory),
+                    closed::ClosedWarning::ItemTooLarge { library_id, .. } if *library_id == found.library_id => {
+                        Some(WarningCode::WorkLimit)
+                    }
+                    _ => None,
+                })
+                .chain(
+                    snapshot
+                        .better_bibtex_unknown
+                        .then_some(WarningCode::CitationKeysUnavailable),
+                )
+                .map(|code| SourceWarning { code, line: None })
+                .collect();
+            loaded.push(self.map_items(
+                library_id(library),
+                found.items.iter().map(|item| {
+                    let raw = &item.data;
+                    ZoteroItem {
+                        key: raw.key.clone(),
+                        item_type: raw.item_type.clone(),
+                        fields: raw.fields.clone(),
+                        creators: raw
+                            .creators
+                            .iter()
+                            .map(|creator| ZoteroCreator {
+                                creator_type: creator.creator_type.clone(),
+                                first_name: creator.first_name.clone(),
+                                last_name: creator.last_name.clone(),
+                                name: creator.name.clone(),
+                                field_mode: creator.field_mode,
+                            })
+                            .collect(),
+                        better_bibtex_keys: raw.better_bibtex_keys.clone(),
+                    }
+                }),
+                warnings,
+                cancelled,
+            )?);
+        }
+        self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Closed);
-        self.reader = LiveReader::new(Library::User);
+        self.readers = Self::readers(&chosen);
         Ok(loaded)
     }
     fn map_items(
         &self,
+        library: LibraryId,
         items: impl IntoIterator<Item = ZoteroItem>,
         mut warnings: Vec<SourceWarning>,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Arc<LoadedLibrary>, ZoteroError> {
-        let library = library_id();
         // Better BibTeX may hold a key that disagrees with an item's Extra
         // key. While its keys are unknown, an item without Zotero's own key
         // keeps no key at all, so key output stays refused for it.
@@ -321,6 +411,62 @@ impl ZoteroSource {
             attachment_paths: Default::default(),
         });
         Ok(loaded)
+    }
+}
+
+/// Better BibTeX's keys during one live refresh. Its JSON-RPC names a group
+/// by Zotero's local library ID, which the local API never shows, so a group
+/// is matched by name, asked once per refresh. Both names are compared as
+/// Ibis shows them, and each must be unique on both sides: an ambiguous name
+/// gives no keys rather than another library's.
+struct BbtKeys {
+    bbt: Option<LiveBbt>,
+    libraries: Option<Result<Vec<BbtLibrary>, BbtError>>,
+    groups: Option<Option<Vec<Group>>>,
+}
+impl BbtKeys {
+    /// `Err` means Better BibTeX holds keys this refresh cannot read. Without
+    /// Better BibTeX (Zotero answers 404) the items simply have no key.
+    fn find(
+        &mut self,
+        transport: &mut impl Transport,
+        library: Library,
+        keyless: &[&str],
+    ) -> Result<BTreeMap<String, String>, ()> {
+        let Some(bbt) = self.bbt.filter(|_| !keyless.is_empty()) else {
+            return Ok(BTreeMap::new());
+        };
+        let local = match library {
+            Library::User => None,
+            Library::Group(id) => {
+                let known = match self.libraries.get_or_insert_with(|| bbt.libraries()) {
+                    Ok(known) => known,
+                    Err(BbtError::Unavailable) => return Ok(BTreeMap::new()),
+                    Err(_) => return Err(()),
+                };
+                let groups = self
+                    .groups
+                    .get_or_insert_with(|| libraries::groups(transport).ok())
+                    .as_ref()
+                    .ok_or(())?;
+                let name = &groups.iter().find(|group| group.id == id).ok_or(())?.name;
+                if groups.iter().filter(|group| group.name == *name).count() != 1 {
+                    return Err(());
+                }
+                let mut same = known
+                    .iter()
+                    .filter(|library| libraries::clean_name(&library.name) == *name);
+                match (same.next(), same.next()) {
+                    (Some(library), None) => Some(library.library_id),
+                    _ => return Err(()),
+                }
+            }
+        };
+        match bbt.keys(local, keyless) {
+            Ok(found) => Ok(found),
+            Err(BbtError::Unavailable) => Ok(BTreeMap::new()),
+            Err(_) => Err(()),
+        }
     }
 }
 
@@ -389,7 +535,8 @@ mod tests {
     fn a_live_item_limit_publishes_other_records_with_a_fixed_warning() {
         let loaded = ZoteroSource::default()
             .refresh(&mut ParityApi, false, &|| false)
-            .unwrap();
+            .unwrap()
+            .remove(0);
         assert_eq!(loaded.snapshot.objects().len(), 1);
         assert_eq!(
             loaded.warnings,
@@ -416,7 +563,7 @@ mod tests {
             ),
         );
         let loaded = ZoteroSource::default()
-            .map_items([normal, large], vec![], &|| false)
+            .map_items(library_id(Library::User), [normal, large], vec![], &|| false)
             .unwrap();
         assert_eq!(loaded.snapshot.objects().len(), 1);
         assert_eq!(
@@ -505,7 +652,10 @@ mod tests {
     #[test]
     fn live_reads_ask_better_bibtex_only_for_items_without_their_own_key() {
         let (port, server) = serve("", answer(200, json!({"SYNTH001":"Invented2026"})));
-        let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
+        let loaded = ZoteroSource::default()
+            .refresh_local(port, false, &|| false)
+            .unwrap()
+            .remove(0);
         assert_eq!(
             *server.lock().unwrap(),
             vec![r#"{"id":1,"jsonrpc":"2.0","method":"item.citationkey","params":[["SYNTH001"]]}"#]
@@ -528,7 +678,10 @@ mod tests {
         // no key. Any other failure says the keys are unavailable.
         for (status, warned) in [(404, false), (500, true)] {
             let (port, server) = serve("", answer(status, json!({})));
-            let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
+            let loaded = ZoteroSource::default()
+                .refresh_local(port, false, &|| false)
+                .unwrap()
+                .remove(0);
             assert_eq!(server.lock().unwrap().len(), 1);
             assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
             assert_eq!(unavailable(&loaded), warned, "{status}");
@@ -547,7 +700,7 @@ mod tests {
         let bbt = answer(200, json!({"SYNTH001":"Actual2026"}));
         let (port, _) = serve("Citation Key: Extra2026", bbt.clone());
         let mut source = ZoteroSource::default();
-        let loaded = source.refresh_local(port, false, &|| false).unwrap();
+        let loaded = source.refresh_local(port, false, &|| false).unwrap().remove(0);
         let mut found = keys(&loaded);
         found.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(
@@ -560,7 +713,7 @@ mod tests {
         );
         // Better BibTeX fails on the next refresh, with Zotero unchanged.
         bbt.lock().unwrap().0 = 500;
-        let loaded = source.refresh_local(port, false, &|| false).unwrap();
+        let loaded = source.refresh_local(port, false, &|| false).unwrap().remove(0);
         assert!(unavailable(&loaded));
         assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
         assert_eq!(loaded.snapshot.objects().len(), 2, "formatted output stays");
@@ -569,7 +722,10 @@ mod tests {
     #[test]
     fn an_oversized_better_bibtex_key_keeps_the_reference() {
         let (port, _) = serve("", answer(200, json!({"SYNTH001":"k".repeat(257)})));
-        let loaded = ZoteroSource::default().refresh_local(port, false, &|| false).unwrap();
+        let loaded = ZoteroSource::default()
+            .refresh_local(port, false, &|| false)
+            .unwrap()
+            .remove(0);
         assert!(unavailable(&loaded));
         assert_eq!(loaded.snapshot.objects().len(), 2);
         assert_eq!(keys(&loaded), vec![("Own2026".into(), CitationKeySource::Zotero)]);
@@ -606,7 +762,10 @@ mod tests {
                 warnings: vec![],
                 better_bibtex_unknown: unknown,
             };
-            let loaded = ZoteroSource::default().publish_closed(&snapshot, &|| false).unwrap();
+            let loaded = ZoteroSource::default()
+                .publish_closed(&snapshot, &|| false)
+                .unwrap()
+                .remove(0);
             // Unknown keys leave an item without Zotero's own key keyless.
             let expected = if unknown {
                 vec![]
@@ -616,6 +775,270 @@ mod tests {
             assert_eq!(keys(&loaded), expected);
             assert_eq!(unavailable(&loaded), unknown);
         }
+    }
+
+    /// Zotero with a personal library and group 7, both holding an item
+    /// SYNTH001 without Zotero's own key, plus Better BibTeX. Group 7 is
+    /// local library 2; `bbt_libraries` is what `user.groups` answers.
+    /// Group 99 does not exist. Returns the port and the JSON-RPC requests.
+    fn serve_groups(bbt_libraries: Value) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let asked = Arc::new(std::sync::Mutex::new(vec![]));
+        let seen = asked.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = BufReader::new(stream.unwrap());
+                let (mut head, mut line, mut length) = (String::new(), String::new(), 0);
+                while stream.read_line(&mut line).unwrap() > 2 {
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse().unwrap();
+                    }
+                    head.push_str(&line);
+                    line.clear();
+                }
+                let mut body = vec![0; length];
+                stream.read_exact(&mut body).unwrap();
+                let title = if head.contains("groups/7/") {
+                    "Invented group atlas"
+                } else {
+                    "Invented atlas"
+                };
+                let (status, answer) = if head.starts_with("POST /better-bibtex/json-rpc ") {
+                    let request: Value = serde_json::from_slice(&body).unwrap();
+                    seen.lock().unwrap().push(request.to_string());
+                    let result = if request["method"] == "user.groups" {
+                        bbt_libraries.clone()
+                    } else {
+                        let names = request["params"][0].as_array().unwrap();
+                        names
+                            .iter()
+                            .map(|name| {
+                                let name = name.as_str().unwrap();
+                                let key = match name {
+                                    "SYNTH001" => json!("Personal2026"),
+                                    "2:SYNTH001" => json!("Group2026"),
+                                    _ => Value::Null,
+                                };
+                                (name.to_owned(), key)
+                            })
+                            .collect::<serde_json::Map<_, _>>()
+                            .into()
+                    };
+                    (200, json!({"jsonrpc":"2.0","id":1,"result":result}))
+                } else if head.contains("groups/99/") {
+                    (404, json!({}))
+                } else if head.contains("users/0/groups") {
+                    (
+                        200,
+                        json!([{"id":7,"version":1,"data":{"id":7,"name":"Invented group"}}]),
+                    )
+                } else if head.contains("format=versions") {
+                    (200, json!({"SYNTH001":1}))
+                } else {
+                    (
+                        200,
+                        json!([{"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book",
+                        "title":title,"creators":[],"dateModified":"2026-10-26T12:00:00Z"}}]),
+                    )
+                };
+                let answer = serde_json::to_vec(&answer).unwrap();
+                let _ = write!(
+                    stream.get_mut(),
+                    "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\nZotero-API-Version: 3\r\n\
+                     X-Zotero-Version: 7.0.11\r\nZotero-Server-ID: invented-groups\r\nLast-Modified-Version: 1\r\nTotal-Results: 1\r\n\r\n",
+                    answer.len()
+                );
+                let _ = stream.get_mut().write_all(&answer);
+            }
+        });
+        (port, asked)
+    }
+
+    fn invented_libraries() -> Value {
+        json!([{"id":1,"name":"My Library"},{"id":2,"name":"Invented group"}])
+    }
+
+    #[test]
+    fn chosen_libraries_publish_separately_with_their_own_identity_and_keys() {
+        let (port, asked) = serve_groups(invented_libraries());
+        let mut source = ZoteroSource::new(&[Library::User, Library::Group(7)]).unwrap();
+        let loaded = source.refresh_local(port, false, &|| false).unwrap();
+        assert_eq!(
+            loaded.iter().map(|loaded| loaded.library.clone()).collect::<Vec<_>>(),
+            vec![library_id(Library::User), library_id(Library::Group(7))]
+        );
+        assert_ne!(library_id(Library::Group(7)), library_id(Library::Group(8)));
+        // The same item key in two libraries is two references.
+        let ids: Vec<_> = loaded
+            .iter()
+            .flat_map(|loaded| loaded.snapshot.objects())
+            .map(|object| object.object.id().clone())
+            .collect();
+        assert_eq!(ids.len(), 2);
+        assert_ne!(ids[0], ids[1]);
+        assert_eq!(
+            keys(&loaded[0]),
+            vec![("Personal2026".into(), CitationKeySource::BetterBibtex)]
+        );
+        assert_eq!(
+            keys(&loaded[1]),
+            vec![("Group2026".into(), CitationKeySource::BetterBibtex)]
+        );
+        assert!(!unavailable(&loaded[0]) && !unavailable(&loaded[1]));
+        // Better BibTeX names the group by its local library ID.
+        assert!(
+            asked
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|request| request.contains(r#"["2:SYNTH001"]"#))
+        );
+        assert_eq!(source.current().len(), 2);
+    }
+
+    #[test]
+    fn an_ambiguous_group_name_leaves_only_that_group_without_keys() {
+        let (port, _) = serve_groups(json!([
+            {"id":1,"name":"My Library"},{"id":2,"name":"Invented group"},{"id":3,"name":"Invented group"}
+        ]));
+        let loaded = ZoteroSource::new(&[Library::User, Library::Group(7)])
+            .unwrap()
+            .refresh_local(port, false, &|| false)
+            .unwrap();
+        assert!(!unavailable(&loaded[0]));
+        assert_eq!(keys(&loaded[0]).len(), 1);
+        assert!(unavailable(&loaded[1]));
+        assert_eq!(keys(&loaded[1]), vec![]);
+        assert_eq!(loaded[1].snapshot.objects().len(), 1, "the reference stays citable");
+    }
+
+    #[test]
+    fn group_names_are_compared_as_shown_and_must_be_unique() {
+        // "Invented group " shows as Zotero's "Invented group": two Better
+        // BibTeX libraries then share the name, so neither is guessed.
+        let (port, asked) = serve_groups(json!([
+            {"id":1,"name":"My Library"},{"id":2,"name":"Invented group"},{"id":3,"name":"Invented group\u{200B} "}
+        ]));
+        let loaded = ZoteroSource::new(&[Library::Group(7)])
+            .unwrap()
+            .refresh_local(port, false, &|| false)
+            .unwrap();
+        assert!(unavailable(&loaded[0]));
+        assert!(
+            !asked
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|request| request.contains("item.citationkey"))
+        );
+        // A name Zotero's list shows cleaned still matches Better BibTeX's raw one.
+        let (port, _) = serve_groups(json!([{"id":1,"name":"My Library"},{"id":2,"name":" Invented group\u{202E}"}]));
+        let loaded = ZoteroSource::new(&[Library::Group(7)])
+            .unwrap()
+            .refresh_local(port, false, &|| false)
+            .unwrap();
+        assert_eq!(
+            keys(&loaded[0]),
+            vec![("Group2026".into(), CitationKeySource::BetterBibtex)]
+        );
+    }
+
+    #[test]
+    fn a_missing_group_fails_the_read_and_never_becomes_the_personal_library() {
+        let (port, _) = serve_groups(invented_libraries());
+        for chosen in [vec![Library::Group(99)], vec![Library::User, Library::Group(99)]] {
+            let mut source = ZoteroSource::new(&chosen).unwrap();
+            assert_eq!(
+                source.refresh_local(port, false, &|| false).unwrap_err(),
+                ZoteroError::LibraryNotFound
+            );
+            assert!(source.current().is_empty());
+        }
+    }
+
+    #[test]
+    fn invalid_choices_are_refused() {
+        for chosen in [
+            vec![],
+            vec![Library::Group(0)],
+            vec![Library::Group(u64::MAX)],
+            vec![Library::User, Library::User],
+            (1..=33).map(Library::Group).collect(),
+        ] {
+            assert_eq!(ZoteroSource::new(&chosen).err(), Some(ZoteroError::Selection));
+        }
+        assert_eq!(ZoteroSource::default().libraries(), vec![Library::User]);
+    }
+
+    fn closed_library(library_id: i64, group_id: Option<i64>, title: &str, bbt: &str) -> closed::ClosedLibrary {
+        closed::ClosedLibrary {
+            library_id,
+            group_id,
+            items: vec![closed::ClosedItem {
+                data: closed::RawItem {
+                    key: "SYNTH001".into(),
+                    item_type: "book".into(),
+                    fields: [("title".into(), title.into())].into(),
+                    better_bibtex_keys: vec![bbt.into()],
+                    ..Default::default()
+                },
+                metadata: closed::SourceMetadata {
+                    item_id: library_id,
+                    library_id,
+                    version: 1,
+                    date_added: "2026-10-26 12:00:00".into(),
+                    date_modified: "2026-10-26 12:00:00".into(),
+                    stored_fields: Default::default(),
+                    stored_values: Default::default(),
+                },
+            }],
+        }
+    }
+
+    #[test]
+    fn closed_and_live_reads_of_chosen_libraries_publish_the_same_records() {
+        let snapshot = closed::ClosedSnapshot {
+            schema_version: 123,
+            libraries: vec![
+                closed_library(1, None, "Invented atlas", "Personal2026"),
+                closed_library(2, Some(7), "Invented group atlas", "Group2026"),
+                closed_library(3, Some(8), "Unchosen group", "Other2026"),
+            ],
+            warnings: vec![],
+            better_bibtex_unknown: false,
+        };
+        let (port, _) = serve_groups(invented_libraries());
+        for chosen in [
+            vec![Library::Group(7)],
+            vec![Library::User, Library::Group(7)],
+            vec![Library::Group(7), Library::User],
+        ] {
+            let closed = ZoteroSource::new(&chosen)
+                .unwrap()
+                .publish_closed(&snapshot, &|| false)
+                .unwrap();
+            let live = ZoteroSource::new(&chosen)
+                .unwrap()
+                .refresh_local(port, false, &|| false)
+                .unwrap();
+            assert_eq!(closed.len(), chosen.len());
+            for (closed, live) in closed.iter().zip(&live) {
+                assert_eq!(closed.library, live.library);
+                assert_eq!(
+                    serde_json::to_value(&closed.snapshot).unwrap(),
+                    serde_json::to_value(&live.snapshot).unwrap()
+                );
+                assert_eq!(closed.snapshot.fingerprints(), live.snapshot.fingerprints());
+                assert_eq!(closed.warnings, live.warnings);
+            }
+        }
+        let mut missing = ZoteroSource::new(&[Library::Group(99)]).unwrap();
+        assert_eq!(
+            missing.publish_closed(&snapshot, &|| false).unwrap_err(),
+            ZoteroError::LibraryNotFound
+        );
     }
 
     #[test]
@@ -647,9 +1070,9 @@ mod tests {
             .read(data.path())
             .unwrap();
         let mut closed = ZoteroSource::default();
-        let closed_data = closed.publish_closed(&acquired, &|| false).unwrap();
+        let closed_data = closed.publish_closed(&acquired, &|| false).unwrap().remove(0);
         let mut live = ZoteroSource::default();
-        let live_data = live.refresh(&mut ParityApi, false, &|| false).unwrap();
+        let live_data = live.refresh(&mut ParityApi, false, &|| false).unwrap().remove(0);
         assert_eq!(closed.mode(), Some(ZoteroMode::Closed));
         assert_eq!(live.mode(), Some(ZoteroMode::Live));
         assert_eq!(
