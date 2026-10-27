@@ -258,7 +258,7 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
         .map(serde_json::from_str)
         .collect::<Result<_, _>>()?;
     assert_eq!(replies.len(), 2);
-    assert_eq!(replies[1]["result"]["content"][0]["text"], "[@accents2021]");
+    assert_eq!(replies[1]["result"]["structuredContent"]["text"], "[@accents2021]");
     Ok(())
 }
 
