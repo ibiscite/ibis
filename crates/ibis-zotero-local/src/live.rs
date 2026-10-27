@@ -213,8 +213,8 @@ impl LiveReader {
             started: Instant::now(),
             cancelled,
         };
-        for _ in 0..3 {
-            let next = match self.read(transport, reload, &mut budget) {
+        for attempt in 0..3 {
+            let next = match self.read(transport, reload || attempt != 0, &mut budget) {
                 Err(LiveError::Changing) => continue,
                 outcome => outcome?,
             };

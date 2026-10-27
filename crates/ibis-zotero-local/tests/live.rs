@@ -118,3 +118,30 @@ fn failure_cancellation_and_limits_keep_last_good() {
     assert_eq!(reader.refresh(&mut fake, false, &|| false), Err(LiveError::Limit));
     assert!(reader.items().is_empty());
 }
+
+#[test]
+fn a_changed_scan_retries_from_full_data_even_when_versions_return_to_cached_values() {
+    let mut fake = Fake::new(10);
+    let mut reader = LiveReader::new(Library::User);
+    reader.refresh(&mut fake, false, &|| false).unwrap();
+    fake.rows = vec![row(1, "Restored synthetic atlas")];
+    struct Drifting {
+        inner: Fake,
+        inventories: usize,
+    }
+    impl Transport for Drifting {
+        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+            if path.ends_with("format=versions") {
+                self.inventories += 1;
+            }
+            self.inner.version = if self.inventories == 2 { 2 } else { 1 };
+            self.inner.get(path)
+        }
+    }
+    let mut drifting = Drifting {
+        inner: fake,
+        inventories: 0,
+    };
+    reader.refresh(&mut drifting, false, &|| false).unwrap();
+    assert_eq!(reader.items()[0].fields["title"], "Restored synthetic atlas");
+}
