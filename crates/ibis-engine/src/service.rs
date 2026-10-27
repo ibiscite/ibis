@@ -446,7 +446,7 @@ impl Engine {
                 parameters::<LibrariesRequest>(params)?
             } {
                 LibrariesRequest::List => value(self.libraries()?)?,
-                LibrariesRequest::OpenZotero => {
+                LibrariesRequest::OpenZotero {} => {
                     self.read_zotero(false, cancel)?;
                     value(self.libraries()?)?
                 }

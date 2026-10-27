@@ -12,7 +12,7 @@ use std::path::PathBuf;
 pub enum LibrariesRequest {
     #[default]
     List,
-    OpenZotero,
+    OpenZotero {},
     OpenFile {
         path: PathBuf,
     },
