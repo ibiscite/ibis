@@ -91,6 +91,20 @@ pub(crate) fn prepare(
         let LibraryObject::Record(record) = &object.object else {
             return Err(FormatError::InvalidRequest);
         };
+        // Name::OTHERS is source metadata for an incomplete name list, not an
+        // institution named "others". citeproc has no data form for that marker.
+        // Refuse this item rather than inventing missing authors or printing it.
+        if record.csl.values().filter_map(Value::as_array).any(|names| {
+            names
+                .iter()
+                .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
+        }) {
+            outcomes.push(ItemOutcome::Refused {
+                item: index,
+                error: CitationError::UnsupportedForm,
+            });
+            continue;
+        }
         if form == CitationForm::AuthorOnly
             && !record.csl.get("author").and_then(Value::as_array).is_some_and(|names| {
                 names.iter().any(|name| {
