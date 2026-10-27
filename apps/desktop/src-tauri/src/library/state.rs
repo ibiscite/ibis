@@ -19,6 +19,7 @@ use super::status::{LibraryStatus, status};
 /// The library currently open in the app, indexed once when it is opened.
 #[derive(Default)]
 pub(crate) struct Library {
+    pub(crate) file: Option<Arc<super::engine_file::FileLibrary>>,
     pub(crate) source: Option<Source>,
     /// The requested source, including before it has produced an index.
     pub(crate) requested: Option<Source>,
@@ -54,7 +55,13 @@ pub(crate) struct Library {
 
 impl Library {
     pub(crate) fn require_revision(&self, expected: &str) -> Result<(), CommandError> {
-        if self.source.is_none() || self.revision.to_string() != expected {
+        if self.source.is_none()
+            || self
+                .file
+                .as_ref()
+                .map_or_else(|| self.revision.to_string(), |file| file.revision())
+                != expected
+        {
             return Err(CommandError::SnapshotChanged);
         }
         Ok(())
@@ -93,6 +100,9 @@ pub(super) fn take_watch_source(
     // Check while holding the library lock: an older open must not consume
     // the source observation belonging to a newly installed library.
     if requests.0.load(Ordering::SeqCst) != request {
+        return None;
+    }
+    if library.file.is_some() {
         return None;
     }
     match library.source.clone()? {
@@ -154,7 +164,7 @@ pub(super) fn install_result(
     // A reread of the same source that brought equal references, compared
     // against the index still installed, keeps the index and its revision,
     // so a citation being built stays current.
-    let unchanged = matches!(&loaded, Ok(new) if new.source == library.source)
+    let unchanged = matches!(&loaded, Ok(new) if new.file.is_none() && library.file.is_none() && new.source == library.source)
         && compared
             .as_ref()
             .is_some_and(|(same, index)| *same && Arc::ptr_eq(index, &library.index));
@@ -247,6 +257,9 @@ pub(super) fn record_open(
 ) -> (u64, bool, LibraryStatus) {
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
     let reload = library.source.as_ref() == Some(&source);
+    if let Some(file) = &library.file {
+        file.invalidate();
+    }
     library.requested = Some(source);
     library.opening = true;
     library.checking = false;
@@ -262,7 +275,7 @@ mod tests {
 
     use ibis_core::model::RecordId;
     use ibis_core::settings::ZoteroLibrary;
-    use ibis_core::source::{SourceError, SourceWatch};
+    use ibis_core::source::SourceError;
 
     use crate::library::error::ZOTERO_OFFLINE;
     use crate::library::load::load_library;
@@ -326,80 +339,47 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_choice_survives_retained_source_reattachment_and_real_updates() {
-        use std::sync::{Arc, mpsc};
-        use std::time::Duration;
-
+    fn a_failed_choice_survives_engine_retained_source_updates() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let retained = dir.path().join("retained.bib");
         let attempted = dir.path().join("invalid-utf8.bib");
         std::fs::write(&retained, "@misc{first,title={Retained first}}").unwrap_or_else(|e| panic!("{e}"));
         std::fs::write(&attempted, [0xff, 0xfe]).unwrap_or_else(|e| panic!("{e}"));
-        let library = Arc::new(Mutex::new(
-            load_library(retained.clone(), false).unwrap_or_else(|e| panic!("{e}")),
-        ));
-        let requests = Arc::new(LoadRequests::default());
-        // Initial attachment consumes the observation; later retained-source
-        // reattachment takes the real SourceWatch::new registration gap path.
-        let initial = take_watch_source(&mut library.lock().unwrap_or_else(|e| panic!("{e}")), &requests, 0);
-        assert!(initial.is_some_and(|(_, snapshot)| snapshot.is_some()));
+        let library = Mutex::new(load_library(retained.clone(), false).unwrap_or_else(|e| panic!("{e}")));
+        let file = library
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .file
+            .clone()
+            .unwrap_or_else(|| panic!("engine file"));
+        let requests = LoadRequests::default();
         let (request, _, _) = begin_open(&library, &requests, attempted.clone()).unwrap_or_else(|| panic!("open"));
         let failed =
             install(&library, &requests, request, load_library(attempted, false)).unwrap_or_else(|| panic!("install"));
-        let expected_error = failed.error.clone();
-        assert!(
-            expected_error
-                .as_deref()
-                .is_some_and(|message| message.contains("not UTF-8"))
-        );
-        let (path, snapshot) = take_watch_source(
-            &mut library.lock().unwrap_or_else(|e| panic!("{e}")),
-            &requests,
-            request,
-        )
-        .unwrap_or_else(|| panic!("watch source"));
-        assert!(snapshot.is_none());
-        let (send, receive) = mpsc::channel();
-        let watched_library = Arc::clone(&library);
-        let watched_requests = Arc::clone(&requests);
-        let selected = path.clone();
-        let _watch = SourceWatch::new(&path, move |loaded| {
-            let loaded = loaded
-                .map(|loaded| candidate(selected.clone(), loaded))
-                .map_err(LoadError::from);
-            if let Some(status) = install_automatic(&watched_library, &watched_requests, request, loaded) {
-                let _ = send.send(status);
-            }
-        })
-        .unwrap_or_else(|e| panic!("{e}"));
-        let unchanged = receive
-            .recv_timeout(Duration::from_secs(5))
-            .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(
-            unchanged.error, expected_error,
-            "unchanged retained source cleared the failed choice"
-        );
+        let expected_error = failed.error;
+        assert!(expected_error.is_some());
+        file.reload().unwrap_or_else(|e| panic!("{e}"));
+        let unchanged = status(&library.lock().unwrap_or_else(|e| panic!("{e}")));
+        assert_eq!(unchanged.error, expected_error);
         assert_eq!(unchanged.name.as_deref(), Some("invalid-utf8.bib"));
         assert_eq!(unchanged.snapshot_name.as_deref(), Some("retained.bib"));
         assert_eq!(unchanged.references, 1);
-
         std::fs::write(
             &retained,
             "@misc{first,title={Retained first}}\n@misc{second,title={Actual update}}",
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        let updated = receive
-            .recv_timeout(Duration::from_secs(5))
-            .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(updated.references, 2, "real retained-source changes must still load");
+        file.reload().unwrap_or_else(|e| panic!("{e}"));
+        let updated = status(&library.lock().unwrap_or_else(|e| panic!("{e}")));
+        assert_eq!(updated.references, 2);
         assert_eq!(updated.error, expected_error);
         assert_eq!(updated.name.as_deref(), Some("invalid-utf8.bib"));
+        let query = serde_json::from_value(serde_json::json!({"text":"actual","interpret_locators":false}))
+            .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            library
-                .lock()
+            file.search(&query, 10, None)
                 .unwrap_or_else(|e| panic!("{e}"))
-                .index
-                .search("actual", 10)
+                .results
                 .len(),
             1
         );
@@ -677,17 +657,16 @@ mod tests {
     }
 
     #[test]
-    fn a_stale_watch_attachment_preserves_the_newer_initial_snapshot() {
+    fn a_legacy_watch_attachment_cannot_consume_an_engine_file() {
         let file = std::env::temp_dir().join(format!("ibis-watch-generation-{}.bib", std::process::id()));
         std::fs::write(&file, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
         let mut library = load_library(file, false).unwrap_or_else(|e| panic!("{e}"));
         let requests = LoadRequests::default();
         requests.0.store(2, Ordering::SeqCst);
         assert!(take_watch_source(&mut library, &requests, 1).is_none());
-        assert!(library.snapshot.is_some());
-        let current = take_watch_source(&mut library, &requests, 2);
-        assert!(current.is_some_and(|(_, snapshot)| snapshot.is_some()));
-        assert!(library.snapshot.is_none());
+        assert!(library.file.is_some());
+        assert!(take_watch_source(&mut library, &requests, 2).is_none());
+        assert!(library.file.is_some());
     }
 
     #[test]
@@ -893,7 +872,8 @@ mod tests {
         let late = late_reply.results;
         assert_eq!(late[0].key, "oldkey");
         assert_eq!(late[0].revision, old_revision);
-        let ids = vec![late[0].id.clone()];
+        let ids: Vec<RecordId> =
+            vec![serde_json::from_value(late[0].id.clone()).unwrap_or_else(|e| panic!("synthetic legacy ID: {e}"))];
         let selections = ids
             .iter()
             .map(|id| ibis_core::library::CitationSelection {

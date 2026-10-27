@@ -1981,6 +1981,7 @@ dependencies = [
  "clap",
  "ibis-core",
  "ibis-engine",
+ "ibis-sources",
  "serde_json",
 ]
 
@@ -2022,7 +2023,9 @@ name = "ibis-desktop"
 version = "0.1.1"
 dependencies = [
  "auto-launch",
+ "ibis",
  "ibis-core",
+ "ibis-engine",
  "ibis-zotero-local",
  "objc2-app-kit",
  "objc2-core-graphics",
@@ -3005,6 +3008,7 @@ checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
  "bitflags 2.13.2",
  "dispatch2",
+ "libc",
  "objc2",
  "objc2-core-foundation",
  "objc2-io-surface",

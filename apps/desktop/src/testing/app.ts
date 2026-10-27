@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import type * as api from "../api";
+import type { FilePreview } from "../bindings";
 
 export async function resetApp() {
   vi.useRealTimers();
@@ -13,6 +14,7 @@ export async function resetApp() {
   // Closing a React Aria scope also restores focus on the next frame.
   await act(async () => { await new Promise(requestAnimationFrame); });
   clearMocks();
+  receipts.clear();
   delete document.documentElement.dataset.pickerHidden;
 }
 
@@ -28,16 +30,42 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
 
 export function result(key: string, title: string, source = "refs.bib") {
   return {
-    revision: "1", id: { source, native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"],
+    revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: 2020, matched: ["title"],
     first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal",
   };
 }
 
-export type Handler = (args: Record<string, unknown> & { query: api.SearchQuery; items: api.CitationSelection[]; ids: api.RecordId[] }) => unknown;
+export type SyntheticId = { library: string; key: string };
+export type PreviewRequest = {
+  items: { id: SyntheticId; cite: string; locator: api.Locator | null }[];
+  format: api.CopyFormat;
+  style: string | null;
+  expectedRevision: string;
+};
+type Prepared = { request: PreviewRequest; preview: FilePreview };
+const receipts = new Map<string, Prepared>();
+let receiptNumber = 0;
+
+/** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
+export function receipt(text: string, html: string | null = null, warnings: string[] = []): FilePreview {
+  const number = ++receiptNumber;
+  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings };
+}
+
+/** Resolve the exact native copy receipt, including its content hash. */
+export function prepared(args: unknown): Prepared {
+  const { ticket, contentHash } = args as { ticket: string; contentHash: string };
+  const found = receipts.get(ticket);
+  if (!found || found.preview.content_hash !== contentHash) throw { code: "snapshot_changed" };
+  return found;
+}
+
+export type Handler = (args: Record<string, unknown> & PreviewRequest & { query: api.SearchQuery; ticket: string; contentHash: string }) => unknown;
 
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
+  receipts.clear();
   const defaults: Record<string, Handler> = {
     "plugin:window|is_visible": () => true,
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
@@ -46,8 +74,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     show_copied_notice: () => null,
     set_pinned: () => null,
     copy_format: () => "pandoc",
-    // The shelf previews key syntaxes without touching the clipboard.
-    citation_text: ({ items }) => ({ text: items.map(({ id }) => `@${id.native_key}`).join("; "), warnings: [] }),
+    preview_file_citation: ({ items, style }) => receipt(style ? "(Smith, 2020)" : items.map(({ id }) => `@${id.key}`).join("; ")),
+    copy_file_citation: (args) => {
+      const { preview } = prepared(args);
+      return { text: preview.text, warnings: preview.warnings };
+    },
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
     set_picker_preferences: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
@@ -64,6 +95,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);
       const value = handler((args ?? {}) as Parameters<Handler>[0]);
+      if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
+        const result = preview as FilePreview;
+        receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });
+        return result;
+      });
       if (cmd === "library_status") return Promise.resolve(value).then((status) => ({ revision: "1", ...status as object }));
       if (cmd === "search") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
       return value;

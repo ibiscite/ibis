@@ -83,7 +83,60 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
     refresh();
 }
 
+pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_file::FileLibrary>) -> bool {
+    if !library
+        .file
+        .as_ref()
+        .is_some_and(|active| std::sync::Arc::ptr_eq(active, file))
+    {
+        return false;
+    }
+    if library.requested == library.source
+        && file.engine.libraries().is_ok_and(|info| {
+            !info.libraries.is_empty() && info.libraries.iter().all(|info| info.refresh_error.is_none())
+        })
+    {
+        library.error = None;
+        library.retained_error = None;
+    }
+    true
+}
+
 pub(super) fn watch_current(app: &AppHandle, request: u64) {
+    let file = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .ok()
+        .and_then(|library| library.file.clone());
+    if let Some(file) = file {
+        let Ok(Some(events)) = file.observe_once() else {
+            return;
+        };
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            loop {
+                let changed = events.recv_timeout(std::time::Duration::from_millis(200));
+                let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|mut library| {
+                    if changed.is_ok() {
+                        engine_changed(&mut library, &file)
+                    } else {
+                        library
+                            .file
+                            .as_ref()
+                            .is_some_and(|active| std::sync::Arc::ptr_eq(active, &file))
+                    }
+                });
+                if !current || matches!(changed, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) {
+                    break;
+                }
+                if changed.is_ok() {
+                    publish_current(&handle);
+                }
+            }
+        });
+        return;
+    }
+
     let path = app
         .state::<Mutex<Library>>()
         .lock()
@@ -143,6 +196,7 @@ struct OpenRequest {
     source: Source,
     reload: bool,
     intent: OpenIntent,
+    cancel: ibis_engine::Cancellation,
     #[cfg(debug_assertions)]
     started: std::time::Instant,
 }
@@ -152,6 +206,7 @@ struct OpenRequest {
 pub(super) struct OpenQueue {
     running: bool,
     pending: Option<OpenRequest>,
+    active: Option<ibis_engine::Cancellation>,
 }
 
 impl LoadRequests {
@@ -160,6 +215,9 @@ impl LoadRequests {
         // Reservation and enqueue can race on different command threads.
         if self.0.load(Ordering::SeqCst) != open.request {
             return false;
+        }
+        if let Some(cancel) = &queue.active {
+            cancel.cancel();
         }
         queue.pending = Some(open);
         let start = !queue.running;
@@ -170,6 +228,7 @@ impl LoadRequests {
     fn next_open(&self) -> Option<OpenRequest> {
         let mut queue = self.1.lock().ok()?;
         let next = queue.pending.take();
+        queue.active = next.as_ref().map(|open| open.cancel.clone());
         if next.is_none() {
             queue.running = false;
         }
@@ -242,6 +301,7 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent:
         source,
         reload,
         intent,
+        cancel: ibis_engine::Cancellation::default(),
         #[cfg(debug_assertions)]
         started,
     }) {
@@ -261,6 +321,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         source,
         reload,
         intent,
+        cancel,
         ..
     } = open;
     #[cfg(debug_assertions)]
@@ -270,13 +331,19 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         .lock()
         .ok()
         .and_then(|library| library.zotero.clone());
+    let previous_file = app.state::<Mutex<Library>>().lock().ok().and_then(|library| {
+        (reload && library.source.as_ref() == Some(&source))
+            .then(|| library.file.clone())
+            .flatten()
+    });
+    let force = reload && !matches!(intent, OpenIntent::Refresh);
     async move {
         let chosen = source.setting();
         let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let loading = std::time::Instant::now();
-            let loaded = load_source(source, reload, previous, || {
+            let loaded = load_source(source, force, previous, previous_file, &cancel, || {
                 loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
             });
             #[cfg(debug_assertions)]
@@ -430,6 +497,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         .lock()
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
+            file_engine: false,
             revision: String::new(),
             state: LibraryState::Error,
             zotero: false,
@@ -472,3 +540,34 @@ pub(crate) fn reload_library_file(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod engine_read_cancellation {
+    use super::*;
+
+    #[test]
+    fn a_new_choice_cancels_the_active_engine_read_without_cancelling_its_replacement() {
+        let requests = LoadRequests::default();
+        let active = ibis_engine::Cancellation::default();
+        let replacement = ibis_engine::Cancellation::default();
+        let request = |id, cancel| OpenRequest {
+            request: id,
+            source: Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into()),
+            reload: true,
+            intent: OpenIntent::Refresh,
+            cancel,
+            #[cfg(debug_assertions)]
+            started: std::time::Instant::now(),
+        };
+        requests.0.store(1, Ordering::SeqCst);
+        assert!(requests.enqueue(request(1, active.clone())));
+        assert!(requests.next_open().is_some());
+        assert!(!active.is_cancelled());
+        requests.0.store(2, Ordering::SeqCst);
+        assert!(!requests.enqueue(request(2, replacement.clone())));
+        assert!(active.is_cancelled(), "obsolete reads must stop between pages");
+        assert!(!replacement.is_cancelled());
+        assert_eq!(requests.next_open().map(|open| open.request), Some(2));
+        assert!(requests.next_open().is_none());
+    }
+}

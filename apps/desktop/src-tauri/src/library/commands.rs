@@ -98,7 +98,7 @@ pub(crate) async fn search(
     requests: State<'_, SearchRequests>,
 ) -> Result<SearchReply, String> {
     // The library lock is held only to take the index.
-    let (index, revision) = {
+    let (index, revision, file) = {
         let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
         if library.source.is_none() {
             return Err(match &library.error {
@@ -106,8 +106,15 @@ pub(crate) async fn search(
                 None => "no library is open".to_string(),
             });
         }
-        (Arc::clone(&library.index), library.revision.to_string())
+        (
+            Arc::clone(&library.index),
+            library.revision.to_string(),
+            library.file.clone(),
+        )
     };
+    if let Some(file) = file {
+        return file.search(&query, limit, scope);
+    }
     Ok(search_snapshot(
         &index,
         revision,

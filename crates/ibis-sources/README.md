@@ -24,10 +24,10 @@ entries and exhausted work budgets. Stable empty files produce empty snapshots.
 Opens recheck the descriptor type and size; on Unix they are nonblocking so a
 regular file replaced by a FIFO cannot hang a reload. Files are limited to 64 MiB.
 BibTeX retains its existing field, recursion and load-work budgets.
-File libraries allow at most 50,000 entries in either format (BibTeX counts
-all blocks, including string definitions and comments). Review measured about
-2.6 KiB per minimal record before snapshot indexes, so this bounds that graph
-near 130 MiB. Overflow keeps the accepted prefix with a work-limit warning;
+File libraries allow at most 200,000 entries in either format (BibTeX counts
+all blocks, including string definitions and comments). Memory follows file
+size more than record count; a 58 MiB file of 200,000 records loaded in about
+2.6 GiB in a release build. Overflow keeps the accepted prefix with a work-limit warning;
 strict reloads refuse it. BibTeX charges another 2 KiB of fixed work per block,
 and both scanners retain only a bounded prefix of entry metadata.
 CSL-JSON arrays share the same cap. CSL-JSON validates each record and known field independently;

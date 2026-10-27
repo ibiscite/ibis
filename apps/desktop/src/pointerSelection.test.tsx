@@ -1,8 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, createEvent, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { clearMocks } from "@tauri-apps/api/mocks";
 import { App } from "./App";
-import type { SearchQuery } from "./api";
+import { backend as engineBackend, prepared, result, type Handler } from "./testing/app";
 import { usePointerSelection } from "./pointerSelection";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
@@ -22,27 +22,8 @@ afterEach(async () => {
   clearMocks();
 });
 
-function result(key: string, title: string) {
-  return { revision: "1", id: { source: "refs.bib", native_key: key }, key, title, authors: "Smith", year: 2020, matched: ["title"], first_author: "Smith", author_count: 1 };
-}
-
-function backend(search: (query: string) => ReturnType<typeof result>[], extra: Record<string, (args: unknown) => unknown> = {}) {
-  mockIPC((cmd, args) => {
-    const handlers: Record<string, () => unknown> = {
-      ...Object.fromEntries(Object.entries(extra).map(([name, handle]) => [name, () => handle(args)])),
-      shortcut_status: () => ({ shortcut: "Ctrl+Shift+Y", registered: true, error: null }),
-      search: () => ({ revision: "1", results: search((args as { query: SearchQuery }).query.text), parsed_locator: null }),
-      hide_picker: () => null,
-      set_pinned: () => null,
-      copy_format: () => "pandoc",
-      picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
-      set_picker_preferences: () => null,
-      library_status: () => ({ revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 0, error: null, problem: null, note: null }),
-    };
-    const handler = handlers[cmd];
-    if (!handler) throw new Error(`unexpected command ${cmd}`);
-    return handler();
-  }, { shouldMockEvents: true });
+function backend(search: (query: string) => ReturnType<typeof result>[], extra: Record<string, Handler> = {}) {
+  return engineBackend({ search: ({ query }) => search(query.text), ...extra });
 }
 
 const three = [result("a", "Alpha"), result("b", "Beta"), result("c", "Gamma")];
@@ -60,7 +41,7 @@ function move(target: Element, x: number, y: number, at?: number) {
 
 test("moving the mouse only shows hover; a clicked row stays chosen and is what Copy copies", async () => {
   const copies: unknown[] = [];
-  backend(() => three, { copy_citation: (args) => { copies.push(args); return { text: "@b", warnings: [] }; } });
+  backend(() => three, { copy_file_citation: (args) => { copies.push(prepared(args).request); return { text: "@b", warnings: [] }; } });
   await act(async () => { render(<App />); });
   await screen.findByText("Gamma");
   expect(activeTitle()).toBe("Alpha");
@@ -79,7 +60,7 @@ test("moving the mouse only shows hover; a clicked row stays chosen and is what 
   const footerCopy = screen.getAllByRole("button", { name: /^Copy/ }).find((button) => button.classList.contains("footer-action"))!;
   fireEvent.click(footerCopy);
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(JSON.stringify(copies[0])).toContain('"native_key":"b"');
+  expect(JSON.stringify(copies[0])).toContain('"key":"b"');
 });
 
 test("keyboard takeover removes resting hover until qualified movement, even inside the active row", async () => {

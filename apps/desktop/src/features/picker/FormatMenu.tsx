@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import { COPY_FORMATS } from "../../api";
-import { FORMATTED_STYLES } from "../../format/formatted";
+import { FORMATTED_STYLES } from "../../format/styles";
 import { STYLE_NAMES, STYLE_SAMPLES } from "../../format/styles";
 import { copyFormatMenu, pickerText } from "../../messages";
 import { ToolbarMenu, type ToolbarMenuCommand, type ToolbarMenuSection } from "../../ui/ToolbarMenu";

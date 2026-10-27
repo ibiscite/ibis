@@ -51,6 +51,8 @@ export const commands = {
 	 *  are saved separately when selected, even if no citation is copied.
 	 */
 	copyCitation: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { items, format, expectedRevision }),
+	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision }),
+	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash }),
 	/**  Preview a key citation without writing the clipboard or saving a choice. */
 	citationText: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<CitationPreview>("citation_text", { items, format, expectedRevision }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
@@ -107,17 +109,22 @@ export const commands = {
 	/**  Current state of the global shortcut. */
 	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus>("shortcut_status"),
 	/**
-	 *  Say "Copied" after the picker has hidden. The interface calls this only
-	 *  after a copy without warnings that hid the picker (see `copyFeedback.ts`);
-	 *  copies with warnings keep their notice inside the picker. Failures are
-	 *  reported as fixed diagnostics: the citation is on the clipboard either way.
+	 *  After the picker has hidden: paste into the app it was opened from when
+	 *  that is safe (#27), then say "Pasted into …" or "Copied" and why. The
+	 *  interface calls this only after a copy without warnings that hid the
+	 *  picker (see `copyFeedback.ts`); copies with warnings keep their notice
+	 *  inside the picker. Failures are reported as fixed diagnostics: the
+	 *  citation is on the clipboard either way.
 	 */
 	showCopiedNotice: (text: string) => __TAURI_INVOKE<void>("show_copied_notice", { text }),
 	/**
-	 *  The text of the notice being shown, for a notice page that has just
-	 *  loaded and missed the event that announced it.
+	 *  The notice being shown, for a notice page that has just loaded and missed
+	 *  the event that announced it.
 	 */
-	copiedNotice: () => __TAURI_INVOKE<string | null>("copied_notice"),
+	copiedNotice: () => __TAURI_INVOKE<{
+	delivered: Delivered,
+	text: string,
+} | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
 	/**  Show only native Copy and Add/Remove actions. Cancellation returns no action. */
@@ -181,8 +188,32 @@ export type Copied = {
 	warnings: string[],
 };
 
+/**  What happened to a copied citation, for the notice to word. */
+export type Delivered = { outcome: "pasted";
+/**  The app's own name; `None` when it has none. */
+app: string | null } | { outcome: "copied";
+/**
+ *  Why Ibis did not paste, when the person can do something about it
+ *  or would expect a paste: a `CopyReason` code such as `terminal`.
+ */
+reason: string | null };
+
 /**  How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable" | "spacious";
+
+export type FilePreview = {
+	ticket: string,
+	content_hash: string,
+	text: string,
+	html: string | null,
+	warnings: string[],
+};
+
+export type FileSelection = {
+	id: unknown,
+	cite: string,
+	locator: Locator | null,
+};
 
 /**  A `.bib` file found on this computer. */
 export type FoundFile = {
@@ -224,6 +255,7 @@ export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error"
 
 /**  Sent to the interface with the `library:changed` event. */
 export type LibraryStatus = {
+	file_engine?: boolean,
 	state: LibraryState,
 	revision: string,
 	/**  Whether the requested library is Zotero rather than a file. */
@@ -312,6 +344,15 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 "identifier";
 
 /**
+ *  What the notice says: whether the citation was pasted or only copied, and
+ *  one line of it.
+ */
+export type NoticeMessage = {
+	delivered: Delivered,
+	text: string,
+};
+
+/**
  *  How the picker looks and what it formats with, remembered across restarts
  *  (ADR 0020). A new key format is saved with the same preference change.
  */
@@ -367,7 +408,9 @@ export type SearchResult = {
 	/**  Revision captured with the index used for this result. */
 	revision: string,
 	/**  Identity of the record; selection and copying use this, not the key. */
-	id: RecordId,
+	id: unknown,
+	cite?: string,
+	source?: string,
 	key: string,
 	title: string,
 	authors: string,

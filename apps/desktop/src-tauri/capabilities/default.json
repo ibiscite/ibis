@@ -21,6 +21,8 @@
     "allow-library-status",
     "allow-search",
     "allow-copy-citation",
+    "allow-preview-file-citation",
+    "allow-copy-file-citation",
     "allow-citation-text",
     "allow-copy-format",
     "allow-csl-items",

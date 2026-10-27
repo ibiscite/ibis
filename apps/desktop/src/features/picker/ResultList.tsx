@@ -72,7 +72,7 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
     <ul id="results" role="listbox" aria-label={pickerText.results} onMouseMove={onMouseMove}>
       {results.map((r, i) => (
         <ResultRow key={idKey(r.id)} record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
-          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.id.source)} handlers={handlers} />
+          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} handlers={handlers} />
       ))}
     </ul>
   );

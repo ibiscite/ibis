@@ -94,9 +94,18 @@ pub(crate) fn prepare(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
+        // When an item has authors, the in-text layouts of the bundled
+        // author-date styles print only these name lists; every other one is
+        // a substitute after `author` or appears only in entries.
+        let has_authors = named(record.csl.get("author"));
         if record
             .csl
             .iter()
+            .filter(|(field, _)| {
+                bibliography
+                    || !has_authors
+                    || matches!(field.as_str(), "author" | "composer" | "interviewer" | "recipient")
+            })
             .filter(|(field, _)| {
                 matches!(
                     field.as_str(),
@@ -143,17 +152,7 @@ pub(crate) fn prepare(
             });
             continue;
         }
-        if form == CitationForm::AuthorOnly
-            && !record.csl.get("author").and_then(Value::as_array).is_some_and(|names| {
-                names.iter().any(|name| {
-                    ["literal", "family", "given"].into_iter().any(|field| {
-                        name.get(field)
-                            .and_then(Value::as_str)
-                            .is_some_and(|text| !text.trim().is_empty())
-                    })
-                })
-            })
-        {
+        if form == CitationForm::AuthorOnly && !has_authors {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
@@ -327,13 +326,18 @@ fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) {
                 for ch in text.chars() {
                     let is_break = matches!(ch, '\r' | '\n' | '\u{85}' | '\u{2028}' | '\u{2029}');
                     if is_break {
-                        if !line_break {
+                        // A break between words is a space; one at either
+                        // end is nothing, or the processor prints it.
+                        if !line_break && !normalized.is_empty() {
                             normalized.push(' ');
                         }
                     } else {
                         normalized.push(if ch.is_control() && ch != '\t' { ' ' } else { ch });
                     }
                     line_break = is_break;
+                }
+                if line_break && normalized.ends_with(' ') {
+                    normalized.pop();
                 }
                 *text = normalized;
             }
@@ -368,4 +372,17 @@ pub(crate) fn bounded_json<T: Serialize>(value: &T, limit: usize) -> Result<Vec<
     };
     serde_json::to_writer(&mut writer, value).map_err(|_| FormatError::ResourceLimit)?;
     Ok(writer.bytes)
+}
+
+/// A name list with at least one name that prints.
+fn named(names: Option<&Value>) -> bool {
+    names.and_then(Value::as_array).is_some_and(|names| {
+        names.iter().any(|name| {
+            ["literal", "family", "given"].into_iter().any(|field| {
+                name.get(field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| !text.trim().is_empty())
+            })
+        })
+    })
 }

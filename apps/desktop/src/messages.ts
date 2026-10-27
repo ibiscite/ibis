@@ -430,9 +430,20 @@ const itemTypeWords: Record<string, string> = {
   "webpage": "Web page",
 };
 
-// The notice shown after a clean copy hides the picker (#496).
+// The notice shown after a clean copy hides the picker (#496): pasted into the
+// app the picker was opened from (#27), or copied and why it was not pasted.
 export const copiedNoticeText = {
   title: "Copied",
+  pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
+  /** Keyed by the destination's copy reason codes; any other reason says "Copied". */
+  reasons: {
+    "no-permission": "Copied. Allow Ibis in Accessibility to paste",
+    "terminal": "Copied. Not pasted into a terminal",
+    "remote-desktop": "Copied. Not pasted into a remote desktop",
+    "virtual-machine": "Copied. Not pasted into a virtual machine",
+    "secure-field": "Copied. Not pasted into a password field",
+    "elevated-app": "Copied. Not pasted into an administrator app",
+  } as Record<string, string>,
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",
   noticeFailed: "The Copied notice could not be shown.",

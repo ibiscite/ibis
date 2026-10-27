@@ -1,5 +1,8 @@
 import { expect, test } from "vitest";
-import { afterCopy, DRAG_DISTANCE, leaveNotice, noticePlatform, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
+import type { NoticeMessage } from "./api";
+import { afterCopy, DRAG_DISTANCE, leaveNotice, noticePlatform, noticeTitle, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
+
+const copied = (text: string, reason: string | null = null): NoticeMessage => ({ delivered: { outcome: "copied", reason }, text });
 import noticeCapability from "../src-tauri/capabilities/notice.json";
 
 test("only a clean copy from an unpinned picker hides it and says Copied", () => {
@@ -50,28 +53,36 @@ test("the notice is a polite status that shows text as text and replays when sho
   expect(notice.getAttribute("aria-live")).toBe("polite");
   // The live region exists, empty, before its text arrives.
   expect(notice.textContent).toBe("");
-  show("<img src=x onerror=alert(1)> [@a]");
+  show(copied("<img src=x onerror=alert(1)> [@a]"));
   expect(notice.querySelector("img")).toBeNull();
   expect(notice.querySelector("code")?.textContent).toBe("<img src=x onerror=alert(1)> [@a]");
   expect(notice.textContent).toContain("Copied");
   expect(notice.classList.contains("showing")).toBe(true);
-  show("[@b]");
+  show(copied("[@b]"));
   expect(notice.querySelector("code")?.textContent).toBe("[@b]");
   expect(notice.querySelectorAll("code")).toHaveLength(1);
   const windows = document.createElement("div");
-  renderNotice(windows, "windows")("[@a]");
+  renderNotice(windows, "windows")(copied("[@a]"));
   expect(windows.querySelector("strong")?.textContent).toBe("Copied");
   expect(windows.textContent).not.toContain("Ctrl+V");
+});
+
+test("the notice says where the citation was pasted, or why it was only copied", () => {
+  expect(noticeTitle({ delivered: { outcome: "pasted", app: "Writer" }, text: "[@a]" })).toBe("Pasted into Writer");
+  expect(noticeTitle({ delivered: { outcome: "pasted", app: null }, text: "[@a]" })).toBe("Pasted");
+  expect(noticeTitle(copied("[@a]", "terminal"))).toBe("Copied. Not pasted into a terminal");
+  expect(noticeTitle(copied("[@a]", "no-permission"))).toContain("Accessibility");
+  for (const reason of [null, "no-target", "unknown-future-code"]) expect(noticeTitle(copied("[@a]", reason))).toBe("Copied");
 });
 
 test("the app's timer fades the notice out, and showing it again brings it back", () => {
   const root = document.createElement("div");
   const show = renderNotice(root, "linux");
   const notice = root.querySelector(".copied-notice")!;
-  show("[@a]");
+  show(copied("[@a]"));
   leaveNotice(root);
   expect(notice.classList.contains("leaving")).toBe(true);
-  show("[@b]");
+  show(copied("[@b]"));
   expect(notice.classList.contains("leaving")).toBe(false);
   expect(notice.classList.contains("showing")).toBe(true);
 });

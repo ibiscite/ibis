@@ -1,6 +1,6 @@
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
-import type { Copied } from "./api";
+import type { Copied, NoticeMessage } from "./api";
 import { copiedNoticeText } from "./messages";
 import { platformOf, type Platform } from "./platform";
 
@@ -46,13 +46,19 @@ export type NoticePlatform = Platform;
 
 export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 
+/** The notice's heading: pasted into an app, or copied and why it was not pasted. */
+export function noticeTitle({ delivered }: NoticeMessage): string {
+  if (delivered.outcome === "pasted") return copiedNoticeText.pasted(delivered.app);
+  return (delivered.reason && copiedNoticeText.reasons[delivered.reason]) || copiedNoticeText.title;
+}
+
 /**
- * Draw the notice: a check mark, "Copied" and the copied text on one line.
+ * Draw the notice: a check mark, what happened and the citation on one line.
  * Text goes in as text, never as markup. The status region exists before its
  * text arrives, so screen readers that follow other windows announce it
  * politely without the notice taking focus.
  */
-export function renderNotice(root: HTMLElement, platform: NoticePlatform): (text: string) => void {
+export function renderNotice(root: HTMLElement, platform: NoticePlatform): (message: NoticeMessage) => void {
   root.replaceChildren();
   const notice = document.createElement("div");
   notice.className = "copied-notice";
@@ -74,9 +80,9 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (text
   const code = document.createElement("code");
   code.dir = "auto";
   root.append(notice);
-  return (text: string) => {
-    title.textContent = copiedNoticeText.title;
-    code.textContent = text;
+  return (message: NoticeMessage) => {
+    title.textContent = noticeTitle(message);
+    code.textContent = message.text;
     notice.replaceChildren(source, mark, title, code);
     // Restart the fade for a notice shown again while still visible.
     notice.classList.remove("showing", "leaving");

@@ -202,6 +202,12 @@ for (const [index, separator] of ["\u2028", "\u2029"].entries()) {
   add(`date-quoted-line-${index}`, { date: `"Invented${separator}date"` });
   add(`extra-quoted-line-${index}`, { date: "2026", extra: `Issued: "Invented${separator}date"` });
 }
+// The invented records of fixtures/formatted/source-files as Zotero holds
+// them; fixtures/formatted/zotero formats these CSL results (#1258).
+add("formatted-particle2026", { title: "Invented <i>orchid</i> atlas", date: "2026", publisher: "Synthetic Press", citationKey: "particle2026", creators: [{ creatorType: "author", firstName: "Ada", lastName: "de Vries" }] });
+add("formatted-nonlatin2024", { title: "合成の記録", date: "2024", publisher: "架空出版", citationKey: "nonlatin2024", creators: [{ creatorType: "author", firstName: "花子", lastName: "例" }] });
+add("formatted-corporate", { title: "Invented field guide", publisher: "Imaginary Press", citationKey: "corporate", creators: [{ creatorType: "author", name: "Synthetic Institute" }] });
+add("formatted-ranges2023", { itemType: "journalArticle", title: "Invented mineral observations", date: "2023", publicationTitle: "Journal of Imagined Samples", volume: "4", issue: "2", pages: "101-109", citationKey: "ranges2023", creators: [{ creatorType: "author", firstName: "Noor", lastName: "Example" }] });
 const output = `${JSON.stringify(cases, null, 2)}\n`;
 const outputPath = path.join(here, "cases.json");
 if (process.argv.includes("--check")) {

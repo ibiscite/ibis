@@ -83,10 +83,10 @@ Today's key outputs use `ibis_core::syntax::cite(&Snapshot, &CitationRequest)`.
 Its capability table drives supported forms and typed field losses; explicit
 unsupported forms are refused. Source order and repeated selections are retained.
 Key output writes instructions for the destination processor, whose style can
-subsequently sort or format the citation. The old CLI/app entrypoints continue
-calling the existing pipeline until #1199/#1201 switch their callers to the engine;
-those cutovers delete the old entrypoints. Both pipelines share scalar escaping,
-without adapters between the two contracts.
+subsequently sort or format the citation. The CLI and picker prepare citations
+through the shared engine; the picker copies only its prepared result. The
+remaining unused desktop commands and old core helpers are removed in #1260,
+after their live discovery, settings and transport callers are replaced.
 
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
@@ -127,7 +127,7 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 - **Shell:** Tauri 2 with the system web view; React with React Aria Components for every control (ADR 0021); tokens in `tokens.css`; shared components in `src/ui/`. The app links the engine in-process and calls the same method functions; the web view never touches the clipboard, files or the network.
 - **State:** one pure reducer with `useSyncExternalStore` and a controller with session tickets; no state library.
 - **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
-- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the panel never activates Ibis, so ⌘V goes to the app in front, keyboard-layout aware; guards for Secure Event Input, terminals and remote desktops. Windows: one atomic `SendInput`, refused for elevated targets. Linux copies and says why. Every refusal leaves the citation copied with a reason. macOS ties the Accessibility permission to the signing identity, so builds need a stable signing certificate.
+- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the app in front is captured (bundle ID, process, name; never window titles) before the picker shows, and after a clean copy hides the picker one ⌘V, keyboard-layout aware, is posted only to that process once it is back in front and the clipboard still holds the citation; guards for terminals, remote desktops and VMs; the password-field guard ADR 0009 requires follows in #1280. Windows: one atomic `SendInput`, refused for elevated targets. Linux copies and says why. Every refusal leaves the citation copied with a reason. macOS ties the Accessibility permission to the signing identity, so builds need a stable signing certificate.
 - **Reader:** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
 - **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
 - **Language:** the engine returns message codes; the app words them. Fluent arrives with the first translation.

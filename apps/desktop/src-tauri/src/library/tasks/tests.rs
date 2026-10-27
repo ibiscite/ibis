@@ -12,6 +12,7 @@ fn three_rapid_choices_run_only_first_and_last_loads_and_the_last_wins() {
         let (request, reload, _) =
             begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("choice starts"));
         OpenRequest {
+            cancel: ibis_engine::Cancellation::default(),
             request,
             source,
             reload,

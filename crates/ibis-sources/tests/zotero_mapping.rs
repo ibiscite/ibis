@@ -421,11 +421,12 @@ fn private_extra_urls_remove_the_entire_line_including_braces_and_lone_cr() {
         assert!(!public.contains("private.pdf"), "private URL tail leaked");
         assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
     }
-    for separator in ["\n", "\u{2028}", "\u{2029}"] {
+    // citeproc's line ends only at `\n`; Unicode separators stay in the value.
+    for (separator, prose) in [("\n", true), ("\u{2028}", false), ("\u{2029}", false)] {
         let result =
             mapped(json!({"extra": format!("URL: file:///invented/{{x}}/private.pdf{separator}Visible prose")}));
-        let note = result.record.csl["note"].as_str().unwrap();
+        let note = result.record.csl["note"].as_str().unwrap_or_default();
         assert!(!note.contains("private.pdf"));
-        assert!(note.contains("Visible prose"));
+        assert_eq!(note.contains("Visible prose"), prose);
     }
 }

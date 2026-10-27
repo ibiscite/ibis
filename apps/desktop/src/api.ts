@@ -9,6 +9,8 @@ export type {
   CitationSelection, Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PickerPreferences, RecordId, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
+/** What the notice after a copy says: pasted into an app, or copied and why. */
+export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
 
 export const {
   chooseLibrary,
@@ -23,6 +25,8 @@ export const {
   quit,
   shortcutStatus,
   copyCitation,
+  previewFileCitation,
+  copyFileCitation,
   copyFormat,
   cslItems,
   copyFormatted,

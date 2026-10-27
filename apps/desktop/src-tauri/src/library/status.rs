@@ -13,6 +13,8 @@ use super::state::Library;
 /// Sent to the interface with the `library:changed` event.
 #[derive(Clone, Serialize, specta::Type)]
 pub(crate) struct LibraryStatus {
+    #[specta(optional)]
+    pub(crate) file_engine: bool,
     pub(crate) state: LibraryState,
     pub(crate) revision: String,
     /// Whether the requested library is Zotero rather than a file.
@@ -100,14 +102,27 @@ pub(crate) enum LibraryState {
     Error,
 }
 
+fn has_references(library: &Library) -> bool {
+    library
+        .file
+        .as_ref()
+        .and_then(|file| file.engine.libraries().ok())
+        .map_or_else(
+            || !library.index.references().is_empty(),
+            |info| info.libraries.iter().any(|i| i.objects > 0),
+        )
+}
+
 pub(crate) fn status(library: &Library) -> LibraryStatus {
+    let has_references = has_references(library);
     let mut source_counts = library.index.source_counts().clone();
     if let Some(Source::Zotero(chosen)) = &library.source {
         for library in chosen.libraries() {
             source_counts.entry(zotero_library(*library).to_string()).or_default();
         }
     }
-    LibraryStatus {
+    let mut result = LibraryStatus {
+        file_engine: library.file.is_some(),
         revision: library.revision.to_string(),
         state: if library.opening {
             if library.source.is_some() && library.source == library.requested {
@@ -142,17 +157,13 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         warnings: library.warnings.len(),
         error: library.error.map(|error| {
             let zotero = matches!(library.source, Some(Source::Zotero(_)));
-            error_with_snapshot_context(error, !library.index.references().is_empty(), zotero)
+            error_with_snapshot_context(error, has_references, zotero)
         }),
         problem: library.error.map(LibraryProblem::from),
         error_reason: library.error,
-        kept_references: library.error.is_some_and(|error| {
-            retains(
-                error,
-                !library.index.references().is_empty(),
-                matches!(library.source, Some(Source::Zotero(_))),
-            )
-        }),
+        kept_references: library
+            .error
+            .is_some_and(|error| retains(error, has_references, matches!(library.source, Some(Source::Zotero(_))))),
         choice_not_saved: library.choice_save_warning.is_some(),
         note: match &library.retained_error {
             Some(error) => {
@@ -170,7 +181,11 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         stale: stale(library),
         updated_at: library.changed_at.and_then(epoch_millis),
         checked_at: library.checked_at.and_then(epoch_millis),
+    };
+    if let Some(file) = &library.file {
+        file.status(&mut result);
     }
+    result
 }
 
 /// The searched library's own update failed: the error is about the source
@@ -180,11 +195,7 @@ pub(super) fn stale(library: &Library) -> bool {
         return false;
     };
     library.requested.as_ref().is_none_or(|requested| requested == source)
-        && retains(
-            *error,
-            !library.index.references().is_empty(),
-            matches!(source, Source::Zotero(_)),
-        )
+        && retains(*error, has_references(library), matches!(source, Source::Zotero(_)))
 }
 
 /// A time for the interface, which shows it relative to its own clock.
@@ -238,6 +249,7 @@ mod tests {
         assert!(current.kept_references && current.choice_not_saved);
         let payload = serde_json::to_value(&current).unwrap_or_else(|e| panic!("{e}"));
         let expected = [
+            "file_engine",
             "state",
             "revision",
             "zotero",
