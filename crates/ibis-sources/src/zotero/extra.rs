@@ -163,7 +163,9 @@ pub(super) fn without_private_urls(note: &str, warnings: &mut Vec<MappingWarning
             let value = rest[value_start..value_end].trim();
             if !value.is_empty() && !public_url(value) {
                 warn(warnings, MappingWarning::PrivateUrl);
-                let end = value_end + usize::from(inline && rest.as_bytes().get(value_end) == Some(&b'}'));
+                // Braces and lone CR can be part of a private path. Remove
+                // through the actual line separator, including inline fields.
+                let end = rest.find(['\n', '\u{2028}', '\u{2029}']).unwrap_or(rest.len());
                 // Keep line boundaries: deleting a field cannot turn following
                 // prose into the first line accepted by citeproc's field hacks.
                 for ch in rest[..end]
