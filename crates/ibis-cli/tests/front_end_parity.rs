@@ -1,7 +1,7 @@
 //! Same results from every front end (#1200): each golden case runs through
 //! every front end that exposes a method, and the envelopes must be
-//! byte-identical. The picker's row (its search rows, preview and copy) is
-//! `apps/desktop/src-tauri/src/library/engine_file/parity_tests.rs`.
+//! byte-identical. The app calls the engine in process, so the typed engine
+//! row stands for it until the picker's own row lands with #1227.
 use ibis_core::contract::*;
 use ibis_engine::protocol::{read_frame, write_frame};
 use ibis_engine::{Cancellation, Engine, Method};

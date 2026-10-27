@@ -228,7 +228,7 @@ pub(crate) fn prepare(
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
     }
-    if style != "ieee" && style != "modern-language-association" {
+    if style != "ieee" && style != "modern-language-association" && shares_author_and_year(&items) {
         notices.push(Notice::YearSuffixWithheld);
     }
     if bibliography && request.keep_order {
@@ -245,6 +245,49 @@ pub(crate) fn prepare(
         losses,
         notices,
         empty: cites.is_empty(),
+    })
+}
+
+/// Year letters (2026a, 2026b) depend on the document's whole reference list,
+/// so the notice appears only when this request already holds two works that
+/// share their names and year. Family names alone are compared, so works that
+/// differ only by a given name or initial still count as sharing.
+fn shares_author_and_year(items: &[Value]) -> bool {
+    let mut seen = std::collections::BTreeSet::new();
+    items.iter().any(|item| {
+        let names = ["author", "editor", "translator"]
+            .into_iter()
+            .find_map(|field| {
+                item.get(field)
+                    .and_then(Value::as_array)
+                    .filter(|names| !names.is_empty())
+            })
+            .map(|names| {
+                names
+                    .iter()
+                    .map(|name| {
+                        name.get("family")
+                            .or_else(|| name.get("literal"))
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_lowercase()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| {
+                vec![
+                    item.get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_lowercase(),
+                ]
+            });
+        let issued = item.get("issued");
+        let year = issued
+            .and_then(|date| date.pointer("/date-parts/0/0"))
+            .or_else(|| issued.and_then(|date| date.get("literal")))
+            .map(Value::to_string);
+        !seen.insert((names, year))
     })
 }
 
