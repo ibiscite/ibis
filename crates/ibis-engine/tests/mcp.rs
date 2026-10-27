@@ -106,6 +106,21 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     let summary = data["csl"]["abstract"].as_str().unwrap();
     assert_eq!(summary.chars().count(), mcp::MAX_TEXT + 1);
     assert!(summary.ends_with('…'));
+
+    // CSL-JSON output would carry the whole record, notes included.
+    let exported = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"key":"demo2026"}],"syntax":"csl-json"}),
+    );
+    assert_eq!(exported["isError"], true);
+    assert!(!exported.to_string().contains("private"));
+    let tools = mcp::handle(&engine, &request(3, "tools/list", json!({}))).unwrap();
+    let syntaxes = &tools["result"]["tools"][2]["inputSchema"]["properties"]["syntax"]["enum"];
+    assert_eq!(
+        syntaxes,
+        &json!(["pandoc", "biblatex", "natbib", "latex", "typst", "keys"])
+    );
 }
 
 #[test]
