@@ -1,13 +1,9 @@
-//! Several Zotero libraries read as one: the personal library and the groups
-//! the user chose. Each library keeps its own version, so a change check
-//! costs one small request per library. Initial reads report skipped libraries;
-//! a failed refresh keeps the whole previously loaded snapshot.
+//! Listing the Zotero group libraries the user can choose.
 
 use serde_json::Value;
 
 use super::Library;
-use super::api::{self, Snapshot, Transport, TransportError, ZoteroError};
-use crate::model::{LoadResult, LoadWarning, WarningKind};
+use super::api::{self, Transport, ZoteroError};
 
 /// Groups listed per request; the most Zotero returns at once.
 const GROUP_PAGE: usize = 100;
@@ -92,154 +88,16 @@ fn invisible(c: char) -> bool {
     matches!(c, '\u{200B}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
 }
 
-/// What one check of several libraries saw: each library's version, or
-/// `None` for a library that could not be read and will be tried again.
-pub type Snapshots = Vec<(Library, Option<Snapshot>)>;
-
-/// The outcome of [`refresh`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refresh {
-    /// Every library was checked and no library changed; keep the loaded references.
-    Unchanged,
-    /// Every library read again, combined. Initial reads may warn about skipped libraries.
-    Loaded { result: LoadResult, snapshots: Snapshots },
-}
-
-/// Read `libraries` if any changed since `previous`, otherwise report that
-/// nothing changed.
-///
-/// Errors that mean Zotero itself cannot be reached or used (not running,
-/// access off, another API version) fail the whole read. Anything else
-/// fails only that library on an initial read, unless every library fails.
-/// With `previous`, any failure aborts the replacement so callers retain the
-/// whole prior snapshot, including its versions and last-check time. Probes,
-/// scans and rereads share one byte/time budget; refusal prevents further requests.
-pub fn refresh(
-    transport: &mut impl Transport,
-    libraries: &[Library],
-    previous: Option<&Snapshots>,
-) -> Result<Refresh, ZoteroError> {
-    refresh_with_budget(transport, libraries, previous, &mut api::ScanBudget::default())
-}
-
-fn refresh_with_budget(
-    transport: &mut impl Transport,
-    libraries: &[Library],
-    previous: Option<&Snapshots>,
-    budget: &mut api::ScanBudget,
-) -> Result<Refresh, ZoteroError> {
-    // The same library chosen twice is read once.
-    let mut unique: Vec<Library> = Vec::with_capacity(libraries.len());
-    for &library in libraries {
-        if !unique.contains(&library) {
-            unique.push(library);
-        }
-    }
-    let libraries = unique.as_slice();
-    let before = |library: Library| {
-        previous.and_then(|previous| {
-            previous
-                .iter()
-                .find(|(seen, _)| *seen == library)
-                .map(|(_, s)| s.as_ref())
-        })
-    };
-    let mut outcomes = Vec::with_capacity(libraries.len());
-    // A different choice or order of libraries is a change.
-    let mut changed = previous.is_none_or(|previous| {
-        !previous
-            .iter()
-            .map(|(library, _)| *library)
-            .eq(libraries.iter().copied())
-    });
-    for &library in libraries {
-        let outcome = match before(library) {
-            // Unchanged so far: a cheap version check is enough.
-            Some(Some(snapshot)) if !changed => api::refresh_with_budget(transport, library, Some(snapshot), budget),
-            _ => api::refresh_with_budget(transport, library, None, budget),
-        };
-        let outcome = match outcome {
-            Err(error) if previous.is_some() || fatal(error) => return Err(error),
-            outcome => outcome,
-        };
-        if !matches!(outcome, Ok(api::Refresh::Unchanged)) {
-            changed = true;
-        }
-        outcomes.push((library, outcome));
-    }
-    if !changed {
-        return Ok(Refresh::Unchanged);
-    }
-    let mut result = LoadResult::default();
-    let mut snapshots = Snapshots::new();
-    let mut first_error = None;
-    for (library, outcome) in outcomes {
-        let outcome = match outcome {
-            // Checked before anything changed; its references are needed now.
-            Ok(api::Refresh::Unchanged) => api::scan_with_budget(transport, library, budget)
-                .map(|(result, snapshot)| api::Refresh::Loaded { result, snapshot }),
-            outcome => outcome,
-        };
-        match outcome {
-            Ok(api::Refresh::Loaded {
-                result: loaded,
-                snapshot,
-            }) => {
-                result.references.extend(loaded.references);
-                result.warnings.extend(loaded.warnings);
-                snapshots.push((library, Some(snapshot)));
-            }
-            Ok(api::Refresh::Unchanged) => return Err(ZoteroError::Incomplete),
-            Err(error) if previous.is_some() || fatal(error) => return Err(error),
-            Err(error) => {
-                first_error.get_or_insert(error);
-                result.warnings.push(LoadWarning {
-                    kind: WarningKind::Syntax,
-                    line: None,
-                    key: None,
-                    message: format!("{} was skipped: {error}", name(library)),
-                });
-                snapshots.push((library, None));
-            }
-        }
-    }
-    match first_error {
-        Some(error) if snapshots.iter().all(|(_, snapshot)| snapshot.is_none()) => Err(error),
-        _ => Ok(Refresh::Loaded { result, snapshots }),
-    }
-}
-
-fn fatal(error: ZoteroError) -> bool {
-    matches!(
-        error,
-        ZoteroError::Transport(TransportError::Unreachable) | ZoteroError::NotAllowed | ZoteroError::UnsupportedApi
-    )
-}
-
-fn name(library: Library) -> String {
-    match library {
-        Library::User => "Your Zotero library".to_string(),
-        Library::Group(id) => format!("Zotero group {id}"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use serde_json::json;
 
     use super::*;
-    use crate::zotero::api::Response;
-    use crate::zotero::test_support::{items, number};
+    use crate::zotero::api::{Response, TransportError};
+    use crate::zotero::test_support::number;
 
     fn ok(headers: &[(&str, String)], body: Value) -> Response {
-        // One installation throughout: a refresh only trusts "unchanged"
-        // when the server is known on both sides.
-        let mut all = vec![
-            ("Zotero-API-Version".to_string(), "3".to_string()),
-            ("Zotero-Server-ID".to_string(), "fake-zotero".to_string()),
-        ];
+        let mut all = vec![("Zotero-API-Version".to_string(), "3".to_string())];
         all.extend(headers.iter().map(|(n, v)| (n.to_string(), v.clone())));
         Response {
             status: 200,
@@ -248,143 +106,25 @@ mod tests {
         }
     }
 
-    /// A Zotero holding a few libraries, each a list of item keys at a
-    /// version. A library missing from `libraries` answers 404.
     #[derive(Default)]
     struct Zotero {
-        libraries: BTreeMap<String, (u64, Vec<String>)>,
         groups: Vec<Value>,
-        fail_everything: Option<TransportError>,
         asked: Vec<String>,
-    }
-
-    impl Zotero {
-        fn with(mut self, prefix: &str, version: u64, keys: &[&str]) -> Self {
-            self.libraries.insert(
-                prefix.to_string(),
-                (version, keys.iter().map(|k| k.to_string()).collect()),
-            );
-            self
-        }
     }
 
     impl Transport for Zotero {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+            assert!(path.starts_with("users/0/groups?"));
             self.asked.push(path.to_string());
-            if let Some(error) = self.fail_everything {
-                return Err(error);
-            }
             let (start, limit) = (number(path, "start="), number(path, "limit="));
-            if path.starts_with("users/0/groups") {
-                let end = (start + limit).min(self.groups.len());
-                let page: Vec<Value> = self.groups[start.min(end)..end].to_vec();
-                return Ok(ok(
-                    &[("Total-Results", self.groups.len().to_string())],
-                    Value::Array(page),
-                ));
-            }
-            let prefix = path.split("/items").next().unwrap_or_default();
-            let Some((version, keys)) = self.libraries.get(prefix) else {
-                return Ok(Response {
-                    status: 404,
-                    ..Response::default()
-                });
-            };
-            let version_header = ("Last-Modified-Version", version.to_string());
-            if let Some(since) = path.split('&').find_map(|part| part.strip_prefix("since=")) {
-                let changed = since.parse::<u64>().ok() != Some(*version);
-                let body = if changed { json!({ "ITEM": version }) } else { json!({}) };
-                return Ok(ok(&[version_header], body));
-            }
-            let end = (start + limit).min(keys.len());
-            let items = items(&keys[start.min(end)..end]);
+            let end = (start + limit).min(self.groups.len());
+            let page: Vec<Value> = self.groups[start.min(end)..end].to_vec();
             Ok(ok(
-                &[version_header, ("Total-Results", keys.len().to_string())],
-                Value::Array(items),
+                &[("Total-Results", self.groups.len().to_string())],
+                Value::Array(page),
             ))
         }
     }
-
-    fn loaded(refresh: Refresh) -> (LoadResult, Snapshots) {
-        match refresh {
-            Refresh::Loaded { result, snapshots } => (result, snapshots),
-            Refresh::Unchanged => panic!("expected a read"),
-        }
-    }
-
-    fn ids(result: &LoadResult) -> Vec<String> {
-        result
-            .references
-            .iter()
-            .map(|r| format!("{}/{}", r.id.source, r.id.native_key))
-            .collect()
-    }
-
-    #[test]
-    fn libraries_share_one_byte_budget_and_refusal_stops_later_requests() {
-        let first = serde_json::to_vec(&items(&["MINE"])).unwrap_or_default().len();
-        let second = serde_json::to_vec(&items(&["THEIRS"])).unwrap_or_default().len();
-        let mut zotero = Zotero::default()
-            .with("users/0", 5, &["MINE"])
-            .with("groups/42", 9, &["THEIRS"])
-            .with("groups/43", 1, &["LAST"]);
-        let mut budget = api::ScanBudget::new(first + second - 1, std::time::Duration::from_secs(60));
-        let (result, snapshots) = loaded(
-            refresh_with_budget(
-                &mut zotero,
-                &[Library::User, Library::Group(42), Library::Group(43)],
-                None,
-                &mut budget,
-            )
-            .unwrap_or_else(|e| panic!("{e}")),
-        );
-        assert_eq!(result.references.len(), 1);
-        assert_eq!(result.references[0].id.native_key, "MINE");
-        assert_eq!(result.warnings.len(), 2);
-        assert!(
-            result
-                .warnings
-                .iter()
-                .all(|w| w.message.contains("reading Zotero exceeded Ibis's size limit"))
-        );
-        assert_eq!(snapshots[1..], [(Library::Group(42), None), (Library::Group(43), None)]);
-        assert_eq!(zotero.asked.len(), 2);
-        let mut budget = api::ScanBudget::new(first - 1, std::time::Duration::from_secs(60));
-        assert_eq!(
-            refresh_with_budget(&mut zotero, &BOTH, None, &mut budget),
-            Err(ZoteroError::TooLarge)
-        );
-        assert_eq!(zotero.asked.len(), 3);
-        let (fresh, _) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(fresh.references.len(), 2);
-        assert!(fresh.warnings.is_empty());
-    }
-
-    #[test]
-    fn probes_and_unchanged_library_rereads_share_the_refresh_budget() {
-        let mut zotero = Zotero::default()
-            .with("users/0", 5, &["MINE"])
-            .with("groups/42", 9, &["THEIRS"]);
-        let (_, previous) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
-        zotero.libraries.insert("groups/42".into(), (10, vec!["NEW".into()]));
-        zotero.asked.clear();
-        let body_bytes = serde_json::to_vec(&items(&["NEW"])).unwrap_or_default().len()
-            + serde_json::to_vec(&items(&["MINE"])).unwrap_or_default().len();
-        let mut budget = api::ScanBudget::new(
-            body_bytes + b"{}".len() + b"{\"ITEM\":10}".len() - 1,
-            std::time::Duration::from_secs(60),
-        );
-        assert_eq!(
-            refresh_with_budget(&mut zotero, &BOTH, Some(&previous), &mut budget),
-            Err(ZoteroError::TooLarge)
-        );
-        assert_eq!(zotero.asked.len(), 4);
-        assert!(zotero.asked[0].contains("since=5"));
-        assert!(zotero.asked[1].contains("since=9"));
-        assert!(zotero.asked[3].starts_with("users/0/items/top?"));
-    }
-
-    const BOTH: [Library; 2] = [Library::User, Library::Group(42)];
 
     #[test]
     fn groups_are_listed_page_by_page_with_safe_names() {
@@ -441,141 +181,5 @@ mod tests {
         };
         assert_eq!(groups(&mut repeated), Err(ZoteroError::Incomplete));
         assert_eq!(groups(&mut Short(short("0"))), Ok(Vec::new()));
-    }
-
-    #[test]
-    fn several_libraries_load_together_and_keep_their_identity() {
-        let mut zotero = Zotero::default()
-            .with("users/0", 5, &["SAME", "MINE"])
-            .with("groups/42", 9, &["SAME"]);
-        let (result, snapshots) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(
-            ids(&result),
-            ["zotero:user/SAME", "zotero:user/MINE", "zotero:group:42/SAME"].map(String::from)
-        );
-        assert!(result.warnings.is_empty());
-        let versions: Vec<_> = snapshots
-            .iter()
-            .map(|(l, s)| (*l, s.as_ref().map(|s| s.version)))
-            .collect();
-        assert_eq!(versions, [(Library::User, Some(5)), (Library::Group(42), Some(9))]);
-
-        // Nothing changed: one version check per library and no reading.
-        zotero.asked.clear();
-        assert_eq!(refresh(&mut zotero, &BOTH, Some(&snapshots)), Ok(Refresh::Unchanged));
-        assert_eq!(zotero.asked.len(), 2);
-        assert!(zotero.asked.iter().all(|path| path.contains("since=")));
-
-        // One group changed: everything is read again so nothing is lost.
-        zotero
-            .libraries
-            .insert("groups/42".into(), (10, vec!["SAME".into(), "NEW".into()]));
-        let (result, snapshots) =
-            loaded(refresh(&mut zotero, &BOTH, Some(&snapshots)).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(result.references.len(), 4);
-        assert_eq!(snapshots[1].1.as_ref().map(|s| s.version), Some(10));
-
-        // A library chosen twice is read once.
-        let twice = [Library::User, Library::User];
-        let (result, _) = loaded(refresh(&mut zotero, &twice, None).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(result.references.len(), 2);
-
-        // The same libraries in another order are read again in that order.
-        let reordered = [Library::Group(42), Library::User];
-        let (result, swapped) =
-            loaded(refresh(&mut zotero, &reordered, Some(&snapshots)).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(result.references[0].id.source, "zotero:group:42");
-        assert_eq!(swapped[0].0, Library::Group(42));
-
-        // Choosing fewer libraries is a change, not "unchanged".
-        let only_user = [Library::User];
-        let (result, _) = loaded(refresh(&mut zotero, &only_user, Some(&snapshots)).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(result.references.len(), 2);
-    }
-
-    #[test]
-    fn a_group_that_is_gone_is_named_and_the_rest_still_loads() {
-        let mut zotero = Zotero::default().with("users/0", 5, &["MINE"]);
-        let (result, snapshots) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(ids(&result), ["zotero:user/MINE"]);
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0].message.starts_with("Zotero group 42 was skipped: "));
-        assert!(result.warnings[0].message.contains("not found"));
-        assert_eq!(snapshots[1], (Library::Group(42), None));
-
-        // Still gone: retain the old partial snapshot without claiming a fresh check.
-        zotero.asked.clear();
-        assert_eq!(
-            refresh(&mut zotero, &BOTH, Some(&snapshots)),
-            Err(ZoteroError::GroupNotFound)
-        );
-        assert_eq!(zotero.asked.len(), 2);
-
-        // Back again: everything is read and the warning goes away.
-        zotero.libraries.insert("groups/42".into(), (3, vec!["THEIRS".into()]));
-        let (result, _) = loaded(refresh(&mut zotero, &BOTH, Some(&snapshots)).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(result.references.len(), 2);
-        assert!(result.warnings.is_empty());
-    }
-
-    #[test]
-    fn a_library_that_times_out_is_skipped_but_others_still_load() {
-        struct SlowGroup(Zotero);
-        impl Transport for SlowGroup {
-            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
-                if path.starts_with("groups/42") {
-                    return Err(TransportError::TimedOut);
-                }
-                self.0.get(path)
-            }
-        }
-        let mut zotero = SlowGroup(Zotero::default().with("users/0", 5, &["MINE"]));
-        let (result, snapshots) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
-        assert_eq!(result.references.len(), 1);
-        assert!(result.warnings[0].message.starts_with("Zotero group 42 was skipped: "));
-        assert_eq!(snapshots[1], (Library::Group(42), None));
-    }
-
-    #[test]
-    fn zotero_unreachable_or_every_library_failing_is_an_error() {
-        let mut down = Zotero {
-            fail_everything: Some(TransportError::Unreachable),
-            ..Zotero::default()
-        };
-        assert_eq!(
-            refresh(&mut down, &BOTH, None),
-            Err(ZoteroError::Transport(TransportError::Unreachable))
-        );
-        let mut empty = Zotero::default();
-        assert_eq!(
-            refresh(&mut empty, &[Library::Group(42)], None),
-            Err(ZoteroError::GroupNotFound)
-        );
-    }
-
-    #[test]
-    fn zotero_stopping_while_unchanged_libraries_are_reread_is_an_error() {
-        // The personal library is unchanged, the group changed, and Zotero
-        // goes away before the personal library is read again.
-        struct StopsOnFullRead<'a>(&'a mut Zotero, TransportError);
-        impl Transport for StopsOnFullRead<'_> {
-            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
-                if path.starts_with("users/0/items") && !path.contains("since=") {
-                    return Err(self.1);
-                }
-                self.0.get(path)
-            }
-        }
-        let mut zotero = Zotero::default()
-            .with("users/0", 5, &["MINE"])
-            .with("groups/42", 9, &["THEIRS"]);
-        let (_, snapshots) = loaded(refresh(&mut zotero, &BOTH, None).unwrap_or_else(|e| panic!("{e}")));
-        zotero.libraries.insert("groups/42".into(), (10, vec!["NEW".into()]));
-        for error in [TransportError::Unreachable, TransportError::TimedOut] {
-            assert_eq!(
-                refresh(&mut StopsOnFullRead(&mut zotero, error), &BOTH, Some(&snapshots)),
-                Err(ZoteroError::Transport(error))
-            );
-        }
     }
 }

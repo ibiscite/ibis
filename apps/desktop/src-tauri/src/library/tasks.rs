@@ -326,11 +326,6 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     } = open;
     #[cfg(debug_assertions)]
     let started = open.started;
-    let previous = app
-        .state::<Mutex<Library>>()
-        .lock()
-        .ok()
-        .and_then(|library| library.zotero.clone());
     let previous_file = app.state::<Mutex<Library>>().lock().ok().and_then(|library| {
         (reload && library.source.as_ref() == Some(&source))
             .then(|| library.file.clone())
@@ -343,7 +338,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let loading = std::time::Instant::now();
-            let loaded = load_source(source, force, previous, previous_file, &cancel, || {
+            let loaded = load_source(source, force, previous_file, &cancel, || {
                 loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
             });
             #[cfg(debug_assertions)]
@@ -475,7 +470,7 @@ pub(super) fn open_zotero(app: &AppHandle, chosen: ZoteroLibraries) {
 /// Check the open Zotero library for changes, for example when the picker
 /// is shown. A file library has its own watcher, so nothing happens then.
 pub(crate) fn refresh_zotero(app: &AppHandle) {
-    if let Some((request, source, _)) = begin_check(&app.state(), &app.state()) {
+    if let Some((request, source)) = begin_check(&app.state(), &app.state()) {
         run_open(app, request, source, true, OpenIntent::Refresh);
         return;
     }
