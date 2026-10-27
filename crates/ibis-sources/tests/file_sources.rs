@@ -124,24 +124,40 @@ fn record_keys_cannot_collide_with_generated_attachment_keys() -> Result<(), Box
 #[test]
 fn preserved_parser_keeps_exact_csl_meaning_of_invented_examples() -> Result<(), Box<dyn std::error::Error>> {
     use std::collections::BTreeMap;
+    // CSL meaning the earlier BibTeX reader gave each invented example.
     let examples = [
-        "@book{one,title={An Invented {DNA} Study},author={Example, Ada and {Synthetic Organization} and others},date={2024-02-29},publisher={Invented Press},isbn={9780000000002},langid={english}}",
-        "@article{two,title={Synthetic \\emph{in vivo} Study},journaltitle={Invented Journal},author={van Example, Ada},date={2023-02-30},pages={12--20},volume={2},number={3},doi={10.0000/synthetic},url={https://example.invalid/synthetic},keywords={one,two}}",
-        "@xdata{base,publisher={Synthetic Press},date={2020-02-05}}\n@incollection{three,title={Invented Chapter},booktitle={Synthetic Book},xdata={base},month=mar,editor={Example, Bert},translator={Example, Cora}}",
-        "@string{press={Invented Press}}\n@book{four,title={Synthetic},publisher=press,date={2001/2003},origdate={1900~},urldate={2026-10-26}}",
-        "@book{five,title={Étude fictive},language={fr-FR},author={范, 明},shorttitle={Fictive},abstract={Invented abstract}}",
+        (
+            "@book{one,title={An Invented {DNA} Study},author={Example, Ada and {Synthetic Organization} and others},date={2024-02-29},publisher={Invented Press},isbn={9780000000002},langid={english}}",
+            "one",
+            r#"{"ISBN":"9780000000002","author":[{"family":"Example","given":"Ada"},{"literal":"Synthetic Organization"},{"literal":"others"}],"citation-key":"one","id":"one","issued":{"date-parts":[[2024,2,29]]},"language":"en-US","publisher":"Invented Press","title":"An invented <span class=\"nocase\">DNA</span> study","type":"book"}"#,
+        ),
+        (
+            "@article{two,title={Synthetic \\emph{in vivo} Study},journaltitle={Invented Journal},author={van Example, Ada},date={2023-02-30},pages={12--20},volume={2},number={3},doi={10.0000/synthetic},url={https://example.invalid/synthetic},keywords={one,two}}",
+            "two",
+            r#"{"DOI":"10.0000/synthetic","URL":"https://example.invalid/synthetic","author":[{"dropping-particle":"van","family":"Example","given":"Ada"}],"citation-key":"two","container-title":"Invented Journal","id":"two","issue":"3","issued":{"date-parts":[[2023,2]]},"keyword":"one, two","page":"12–20","title":"Synthetic <i>in vivo</i> study","type":"article-journal","volume":"2"}"#,
+        ),
+        (
+            "@xdata{base,publisher={Synthetic Press},date={2020-02-05}}\n@incollection{three,title={Invented Chapter},booktitle={Synthetic Book},xdata={base},month=mar,editor={Example, Bert},translator={Example, Cora}}",
+            "three",
+            r#"{"citation-key":"three","container-title":"Synthetic Book","editor":[{"family":"Example","given":"Bert"}],"id":"three","issued":{"date-parts":[[2020,3,5]]},"publisher":"Synthetic Press","title":"Invented chapter","translator":[{"family":"Example","given":"Cora"}],"type":"chapter"}"#,
+        ),
+        (
+            "@string{press={Invented Press}}\n@book{four,title={Synthetic},publisher=press,date={2001/2003},origdate={1900~},urldate={2026-10-26}}",
+            "four",
+            r#"{"accessed":{"date-parts":[[2026,10,26]]},"citation-key":"four","id":"four","issued":{"date-parts":[[2001],[2003]]},"original-date":{"circa":true,"date-parts":[[1900]]},"publisher":"Invented Press","title":"Synthetic","type":"book"}"#,
+        ),
+        (
+            "@book{five,title={Étude fictive},language={fr-FR},author={范, 明},shorttitle={Fictive},abstract={Invented abstract}}",
+            "five",
+            r#"{"abstract":"Invented abstract","author":[{"family":"范","given":"明"}],"citation-key":"five","id":"five","language":"fr-FR","title":"Étude fictive","title-short":"Fictive","type":"book"}"#,
+        ),
     ];
     let dir = tempfile::tempdir()?;
-    for (index, text) in examples.into_iter().enumerate() {
-        let expected = ibis_core::bibtex::load_str("synthetic-normalization", text);
+    for (index, (text, key, csl)) in examples.into_iter().enumerate() {
+        let expected = BTreeMap::from([(key.to_owned(), serde_json::from_str::<serde_json::Value>(csl)?)]);
         let path = dir.path().join("synthetic.bib");
         std::fs::write(&path, text)?;
         let actual = ibis_sources::load_file(&path)?;
-        let expected: BTreeMap<_, _> = expected
-            .references
-            .into_iter()
-            .map(|record| (record.citekey.clone().unwrap_or_default(), record.to_csl_json()))
-            .collect();
         let actual: BTreeMap<_, _> = actual
             .snapshot
             .objects()

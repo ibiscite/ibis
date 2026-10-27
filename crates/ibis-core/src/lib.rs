@@ -4,7 +4,6 @@
 //! app, the `ibis` command line tool and future clients (MCP, browser
 //! extension) are thin layers over this crate.
 
-pub mod bibtex;
 pub mod citable;
 pub mod cite;
 pub mod contract;

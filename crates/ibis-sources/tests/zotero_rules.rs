@@ -124,7 +124,10 @@ fn book(number: usize) -> Value {
 }
 
 fn refresh(api: &mut Api) -> Result<std::sync::Arc<LoadedLibrary>, ZoteroError> {
-    ZoteroSource::default().refresh(api, false, &|| false)
+    // The default choice is the personal library alone.
+    ZoteroSource::default()
+        .refresh(api, false, &|| false)
+        .map(|mut libraries| libraries.remove(0))
 }
 
 fn records(loaded: &LoadedLibrary) -> Vec<&Record> {

@@ -6,7 +6,6 @@
 //! PubMed IDs as digits. Recognition is strict (checksums, fixed shapes and
 //! explicit prefixes), so ordinary search words are never taken for one.
 
-use crate::model::Reference;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -61,58 +60,6 @@ fn trim_wrapping(mut q: &str) -> &str {
             return q;
         }
     }
-}
-
-/// Every identifier a record carries, from its DOI, link and identifier
-/// fields, without duplicates.
-pub fn of_reference(r: &Reference) -> Vec<Identifier> {
-    let mut ids = Vec::new();
-    ids.extend(r.doi.as_deref().and_then(doi).map(Identifier::Doi));
-    if let Some(url) = r.url.as_deref() {
-        ids.extend(doi(url).map(Identifier::Doi));
-        ids.extend(arxiv(url).map(Identifier::Arxiv));
-        ids.extend(pmid(url).map(Identifier::Pmid));
-    }
-    ids.extend(
-        r.eprints
-            .iter()
-            .filter_map(|e| arxiv_prefixed(e))
-            .map(Identifier::Arxiv),
-    );
-    for (name, value) in &r.variables {
-        match name.as_str() {
-            "ISBN" => {
-                for part in value.split([',', ';']) {
-                    match isbn(part) {
-                        Some(found) => ids.push(Identifier::Isbn(found)),
-                        None => ids.extend(part.split_whitespace().filter_map(isbn).map(Identifier::Isbn)),
-                    }
-                }
-            }
-            "PMID" => ids.extend(digits(value.trim()).map(Identifier::Pmid)),
-            // Zotero keeps an arXiv ID as "arXiv:…" in a preprint's number or
-            // on its own line in Extra, which becomes the CSL note.
-            "number" | "archive_location" => ids.extend(
-                value
-                    .lines()
-                    .filter_map(|line| arxiv_prefixed(line.trim()))
-                    .map(Identifier::Arxiv),
-            ),
-            // Zotero keeps PMIDs in Extra, which reaches CSL as `note` lines.
-            "note" => {
-                for line in value.lines().map(str::trim) {
-                    ids.extend(arxiv_prefixed(line).map(Identifier::Arxiv));
-                    ids.extend(
-                        strip_prefix_ci(line, "PMID:")
-                            .and_then(|rest| digits(rest.trim()))
-                            .map(Identifier::Pmid),
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-    with_equivalents(ids)
 }
 
 fn with_equivalents(mut ids: Vec<Identifier>) -> Vec<Identifier> {
