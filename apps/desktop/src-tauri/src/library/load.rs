@@ -201,20 +201,21 @@ mod tests {
     }
 
     #[test]
-    fn cancelled_file_loads_stop_before_io_or_indexing() {
+    fn cancelled_loads_stop_before_source_acquisition() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = dir.path().join("synthetic.bib");
-        assert!(matches!(
-            load_source(
-                Source::File(file.clone()),
-                false,
-                None,
-                None,
-                &ibis_engine::Cancellation::default(),
-                || true
-            ),
-            Err(LoadError::Stopped)
-        ));
+        for source in [Source::File(file.clone()), Source::Zotero(ZoteroLibrary::User.into())] {
+            for cancel_engine in [false, true] {
+                let cancel = ibis_engine::Cancellation::default();
+                if cancel_engine {
+                    cancel.cancel();
+                }
+                assert!(matches!(
+                    load_source(source.clone(), false, None, None, &cancel, || !cancel_engine),
+                    Err(LoadError::Stopped)
+                ));
+            }
+        }
         std::fs::write(&file, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(
             load_file(file, false, None, &|| true),
