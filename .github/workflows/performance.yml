@@ -1,7 +1,10 @@
 name: Release performance
 
+# Diagnostic only: runs after merges to main and on demand, never on pull
+# requests, so drafts are not covered in red or cancelled runs.
 on:
-  pull_request:
+  push:
+    branches: [main]
     paths: ["crates/**", "apps/desktop/**", "Cargo.*", "rust-toolchain.toml", "scripts/**", ".github/workflows/performance.yml"]
   workflow_dispatch:
 

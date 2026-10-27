@@ -41,9 +41,9 @@ checks still gate publication.
 ## Diagnostic release performance
 
 The optional **Release performance** workflow compares Linux release executables
-with their exact `main` parent on the same runner. Pull requests build the merge
-candidate, so unrelated main changes cannot enter the delta; manual runs are
-limited to main and compare its previous commit. Its artifact records both SHAs, twenty warm summon and
+with their exact `main` parent on the same runner. It runs after each merge to
+`main` that touches the app or engine, and on demand on `main`; each run compares
+that commit with the previous one. It does not run on pull requests. Its artifact records both SHAs, twenty warm summon and
 single-keystroke samples in alternating ABBA launches at 100,000 synthetic references, hidden idle process-tree
 RSS and scheduler wakeups, and the comparison. It never gates `CI result` or
 publication. Keyboard delivery, accessibility reads and polling are included in
