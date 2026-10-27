@@ -351,6 +351,11 @@ fn resolve<'a>(
     if !caps.forms.contains(&form)
         || count != 1 && caps.single_item_forms.contains(&form)
         || item.suppress_author && matches!(form, Narrative | CitationForm::AuthorOnly | CitationForm::Full)
+        // Natbib's numerical mode silently discards author-only postnotes.
+        // The key renderer cannot know the destination document's mode.
+        || caps.syntax == KeySyntax::Natbib
+            && form == CitationForm::AuthorOnly
+            && (item.locator.is_some() || item.suffix.iter().any(|run| !run.text.trim().is_empty()))
     {
         return Err(CitationError::UnsupportedForm);
     }

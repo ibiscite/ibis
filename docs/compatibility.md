@@ -152,6 +152,8 @@ and author-only prefixes stay before the command and report flattening. A normal
 multi-reference cluster retains key order; per-item locators, affixes and author
 suppression report unsupported losses because Natbib has only one pair of notes
 for the whole cluster. The other forms currently require one reference.
+Author-only requests with a locator or suffix are refused: Natbib's numerical
+mode silently omits those postnotes, and Ibis cannot know the document's mode.
 
 ## What the tests establish
 

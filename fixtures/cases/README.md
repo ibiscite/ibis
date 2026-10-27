@@ -32,6 +32,11 @@ produces `(see Taylor, 2026, p. 12, note)` for the golden citation. It also chec
 the prefix outside narrative and author-only citations: Natbib's native textual
 prenote appears after the author, while `citeauthor` omits it entirely. The engine
 therefore retains those prefixes outside the command and reports flattening.
+The separate `11-natbib-numbers.tex` fixture demonstrates why author-only
+locator/suffix requests are refused: in standard numerical mode, the citation
+with postnotes and the citation without them both print only the author. The
+failing-first Core and file-to-engine regressions prevent such a request from
+reaching the copy gate.
 
 The plain text of cases 08 and 10 was checked against the repository's bundled
 citeproc-js and CSL styles with the case's synthetic CSL record and `en-US`:

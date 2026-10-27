@@ -1093,11 +1093,6 @@ fn natbib_forms_keep_single_item_notes_in_their_actual_consumer_positions() {
         (CitationForm::Normal, r"\citep[see][p.~12, note]{Example2026}", false),
         (CitationForm::Narrative, r"see \citet[p.~12, note]{Example2026}", true),
         (
-            CitationForm::AuthorOnly,
-            r"see \citeauthor[p.~12, note]{Example2026}",
-            true,
-        ),
-        (
             CitationForm::YearOnly,
             r"\citeyearpar[see][p.~12, note]{Example2026}",
             false,
@@ -1124,6 +1119,58 @@ fn natbib_forms_keep_single_item_notes_in_their_actual_consumer_positions() {
     let result = syntax::cite(&case.library, &case.request).unwrap();
     assert_eq!(result.text, r"\citeyearpar[see][p.~12, note]{Example2026}");
     assert!(result.losses.is_empty());
+    case.request.form = CitationForm::AuthorOnly;
+    case.request.items[0].suppress_author = false;
+    case.request.items[0].locator = None;
+    case.request.items[0].suffix.clear();
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(result.copy_content(1).unwrap().text, r"see \citeauthor{Example2026}");
+    assert_eq!(
+        result.losses,
+        [Loss {
+            item: Some(0),
+            field: LossField::Prefix,
+            reason: LossReason::Flattened
+        }]
+    );
+}
+
+#[test]
+fn natbib_author_only_notes_are_refused_before_numbers_mode_can_drop_them() {
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Natbib,
+        command: None,
+    };
+    case.request.form = CitationForm::AuthorOnly;
+    for (locator, suffix) in [
+        (
+            Some(Locator {
+                term: LocatorTerm::Page,
+                value: "12".into(),
+            }),
+            vec![],
+        ),
+        (
+            None,
+            vec![TextRun {
+                text: "note".into(),
+                ..TextRun::default()
+            }],
+        ),
+    ] {
+        case.request.items[0].locator = locator;
+        case.request.items[0].suffix = suffix;
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert_eq!(
+            result.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::UnsupportedForm
+            }]
+        );
+        assert!(result.copy_content(1).is_none());
+    }
 }
 
 #[test]

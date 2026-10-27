@@ -4,7 +4,7 @@ use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::json;
 
 #[test]
-fn bibtex_source_to_natbib_preserves_literal_suffixes_in_every_supported_form() {
+fn bibtex_source_to_natbib_preserves_or_explicitly_refuses_literal_suffixes() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("synthetic.bib");
     std::fs::write(
@@ -31,10 +31,21 @@ fn bibtex_source_to_natbib_preserves_literal_suffixes_in_every_supported_form() 
         }))
         .unwrap();
         let result = engine.cite(&request, &cancel).unwrap();
-        assert_eq!(
-            result.copy_content(1).unwrap().text,
-            format!("\\{command}[12]{{Example2026}}")
-        );
-        assert!(result.losses.is_empty());
+        if form == CitationForm::AuthorOnly {
+            assert_eq!(
+                result.outcomes,
+                [ItemOutcome::Refused {
+                    item: 0,
+                    error: CitationError::UnsupportedForm
+                }]
+            );
+            assert!(result.copy_content(1).is_none());
+        } else {
+            assert_eq!(
+                result.copy_content(1).unwrap().text,
+                format!("\\{command}[12]{{Example2026}}")
+            );
+            assert!(result.losses.is_empty());
+        }
     }
 }
