@@ -82,7 +82,7 @@ test("the native accent adds no row rule of its own: the shared selected-row til
 
 test("selected rows and menu highlights keep WebKit's white selected text on the native accent", () => {
   // The contrast pick is black on the default blues; selection keeps the native pair (docs/design.md, Selected row).
-  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-platform="macos"\]:not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
+  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
   const bridge = css.indexOf("--selected-text: var(--text-on-accent)");
   expect(bridge).toBeGreaterThan(-1);
   expect(css.indexOf("--selected-text: -apple-system-alternate-selected-text")).toBeGreaterThan(bridge);
@@ -92,7 +92,7 @@ test("selected rows and menu highlights keep WebKit's white selected text on the
 
 test("native primary foregrounds stay readable through hover and press in both themes", () => {
   const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
-  const neutrals = tokens.match(/:root\[data-platform="macos"\][^{]*\{[^}]*--text:\s*light-dark\((#[0-9a-f]+), (#[0-9a-f]+)\)/)!;
+  const neutrals = tokens.match(/:root:not\(\.notice-window\)[^{]*\{[^}]*--text:\s*light-dark\((#[0-9a-f]+), (#[0-9a-f]+)\)/)!;
   const luminance = (rgb: number[]) => rgb.reduce((l, c, i) => l + (c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4) * [.2126, .7152, .0722][i]!, 0);
   for (const rgb of [[.4, .55, .5], [0, 122 / 255, 1], [119 / 255, 119 / 255, 119 / 255], [.6, .4, 0], [1, 0, 0], [0, 0, 0], [1, 1, 1]]) {
     setNativeAccent(rgb);

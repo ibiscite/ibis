@@ -6,9 +6,10 @@ export { platformOf, type Platform } from "./platform";
 
 type Dispose = () => void;
 
-/** Exposes the platform to CSS for its search box, selected row and radius. */
+/** One macOS look; actual system facts (such as the UI font) remain separate. */
 export function setPlatform(name = typeof navigator === "undefined" ? "" : navigator.platform): void {
-  document.documentElement.dataset.platform = platformOf(name);
+  document.documentElement.dataset.platform = "macos";
+  document.documentElement.dataset.system = platformOf(name);
 }
 type Subscribe = (changed: (value: unknown) => void) => Promise<Dispose>;
 

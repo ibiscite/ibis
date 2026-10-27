@@ -10,10 +10,10 @@
       --selected-background: var(--accent); --selected-text: var(--text-on-accent);
       --focus-ring-color: var(--accent-text);
     }
-    /* Selection keeps WebKit's paired white text: the contrast pick above is
+    /* macOS selection keeps WebKit's paired white text: the contrast pick above is
        black on the default blues, which native lists never show. */
     @supports (color: -apple-system-alternate-selected-text) {
-      :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window) {
+      :root[data-native-accent="true"][data-system="macos"]:not(.notice-window) {
         --selected-text: -apple-system-alternate-selected-text;
       }
     }

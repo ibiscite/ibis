@@ -22,7 +22,7 @@ function macSkinRules(): CSSRule[] {
 
 /** The macOS glass token block: one rule, inside its contrast guard. */
 function macBlock(): { guard: string; body: string } {
-  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root\[data-platform="macos"\]:not\(\.notice-window\) \{([^{}]*)\}/);
+  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root:not\(\.notice-window\) \{([^{}]*)\}/);
   expect(match, "macOS glass tokens").toBeTruthy();
   return { guard: match![1]!.trim(), body: match![2]! };
 }
@@ -46,7 +46,7 @@ const contrast = (a: number[], b: number[]) => {
   return (lighter! + .05) / (darker! + .05);
 };
 
-test("the macOS glass look applies only to macOS and never under increased contrast or forced colours", () => {
+test("the shared macOS look keeps native materials guarded by accessibility preferences", () => {
   const { guard } = macBlock();
   expect(guard).toBe("@media (prefers-contrast: no-preference) and (forced-colors: none)");
   expect(native).toMatch(/@media \(prefers-contrast: no-preference\) and \(forced-colors: none\) \{/);
@@ -56,7 +56,7 @@ test("the macOS glass look applies only to macOS and never under increased contr
     if (head!.trim().startsWith("@supports")) continue;
     expect(head!.trim()).toMatch(/^:root\[data-platform="macos"\][^ ]*/);
   }
-  // Windows and Linux rules are untouched by the macOS block.
+  // Shared tokens carry no alternate Windows or Linux palette.
   expect(macBlock().body).not.toMatch(/data-platform="(windows|linux)"/);
 });
 
@@ -86,18 +86,18 @@ test("only native success shows the material, under a veil; reduced transparency
 });
 
 test("Acrylic text roles keep contrast over black and white backdrops in both themes", () => {
-  const selector = ':root[data-platform="windows"][data-native-appearance="acrylic"]:not(.notice-window)';
+  const selector = ':root[data-system="windows"][data-native-appearance="acrylic"]:not(.notice-window)';
   const roles = native.slice(native.indexOf(selector)).match(/^[^{]+\{([^{}]*)\}/)?.[1] ?? "";
-  const windows = tokens.match(/:root\[data-platform="windows"\] \{([^{}]*)\}/)?.[1] ?? "";
+  const shared = macBlock().body;
   const tints = rgba(roles, "--acrylic-tint");
   expect(tints).toHaveLength(2);
   for (const [theme, tint] of tints.entries()) {
     for (const under of [0, 255]) {
       const background = tint.slice(0, 3).map((c) => c * tint[3]! + under * (1 - tint[3]!));
-      // Fluent's actual winning subtle hover is black 4% / white 6%.
-      const hover = background.map((c) => theme ? c * .94 + 255 * .06 : c * .96);
+      // The shared macOS hover is black 4.5% / white 6%.
+      const hover = background.map((c) => theme ? c * .94 + 255 * .06 : c * .955);
       for (const role of ["--text", "--muted", "--citation", "--status-done", "--status-look", "--status-stop"]) {
-        const foreground = hexes(role === "--text" || role === "--muted" ? windows : roles, role)[theme]!;
+        const foreground = hexes(role === "--text" || role === "--muted" ? shared : roles, role)[theme]!;
         for (const fill of [background, hover]) expect(contrast(foreground, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
       }
     }
@@ -242,7 +242,8 @@ test.each([
   const source = native + read("styles.css").replace(/@import[^;]+;/g, "") + read("ui/Menu.css");
   sheet.textContent = overlayRules(source, preferences).replace(/var\(--surface\)/g, "rgb(252, 252, 253)");
   document.head.append(sheet);
-  document.documentElement.dataset.platform = platform;
+  document.documentElement.dataset.platform = "macos";
+  document.documentElement.dataset.system = platform;
   if (mode) document.documentElement.dataset.nativeAppearance = mode;
   document.body.innerHTML = '<div class="menu-popover">Menu</div><div class="keys-dialog">Shortcuts</div>';
   try {
@@ -259,6 +260,7 @@ test.each([
   } finally {
     sheet.remove(); document.body.innerHTML = "";
     delete document.documentElement.dataset.platform;
+    delete document.documentElement.dataset.system;
     delete document.documentElement.dataset.nativeAppearance;
   }
 });

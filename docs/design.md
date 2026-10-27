@@ -43,9 +43,13 @@ Components read role tokens only, never raw colours, `GrayText`, literal px
 radii or literal shadows [D1]. Three layers (ADR 0021): base values that
 components never read; role tokens, whose defaults are CSS system colours so an
 unknown webview still follows dark mode, the accent and high contrast; then
-look overrides (`:root[data-platform=…]`), increased contrast, forced colours
+the shared macOS look (`:root[data-platform="macos"]`), increased contrast, forced colours
 in that order. Light and dark come from
 `color-scheme` and `light-dark()`; components never read `prefers-color-scheme`.
+`data-system` records the actual OS for fonts, modifier labels and native
+material correctness; it does not choose a different layout. The copied
+notice uses the same 400×76-point frame near the top centre on every OS,
+including its 16-point shadow margin.
 
 | Role | Tokens | Rule |
 |---|---|---|
@@ -338,8 +342,7 @@ libraries, check times and problems. Names and ages are isolated for RTL; the
 age ticks every 30 s outside the live region.
 
 **Notices.** "Copied" or "Inserted" shows after the picker hides, in a window
-that never takes focus: a pill near the top on macOS, bottom right on Windows,
-a bottom toast on GNOME. In-window toasts ("Removed · Undo") last 8 s and pause
+that never takes focus: the same pill near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.
 
 **Empty states.** First run, no library, an actually empty library and a library that could not be opened
