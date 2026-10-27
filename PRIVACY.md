@@ -43,8 +43,11 @@ the same as Ibis's settings.
   Its content security policy restricts `connect-src` to local IPC.
 - **Zotero:** Ibis connects to `127.0.0.1:23119` on your computer. Setup checks
   Zotero's greeting; choosing Zotero reads the selected libraries and refreshes
-  them when the picker opens. Zotero's local API must be enabled. These requests
-  do not leave your computer.
+  them when the picker opens. Zotero's local API must be enabled. For items
+  without a citation key of their own, Ibis asks Better BibTeX on the same port
+  for its keys, read-only (`item.citationkey`), sending only Zotero item keys.
+  While Zotero is closed, Ibis reads Better BibTeX's key files from a private
+  copy instead. These requests do not leave your computer.
 - **App updates:** automatic checks are off until you agree. When enabled,
   Ibis requests a small GitHub update file a few times a day. **Check for
   Updates…** makes a check on request. GitHub sees your IP address and Ibis
