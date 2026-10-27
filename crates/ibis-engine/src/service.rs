@@ -184,6 +184,8 @@ impl Drop for LibrarySubscription {
     }
 }
 struct State {
+    zotero_generation: u64,
+    zotero_ready: bool,
     index: Arc<SnapshotIndex>,
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
@@ -228,6 +230,8 @@ impl Engine {
             shared: Arc::new(Shared {
                 formatter: Mutex::new(None),
                 state: RwLock::new(Arc::new(State {
+                    zotero_generation: 0,
+                    zotero_ready: true,
                     index: Arc::new(SnapshotIndex::new(snapshot)),
                     libraries,
                 })),
@@ -241,6 +245,12 @@ impl Engine {
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
         }
+    }
+    /// An isolated IPv4-loopback transport for synthetic clients.
+    pub fn with_zotero_port(port: u16) -> Result<Self, EngineError> {
+        let mut engine = Self::new()?;
+        engine.resources = Arc::new(sources::Owners::on_port(port));
+        Ok(engine)
     }
     fn state(&self) -> Result<Arc<State>, EngineError> {
         self.shared.state_view()
@@ -436,6 +446,10 @@ impl Engine {
                 parameters::<LibrariesRequest>(params)?
             } {
                 LibrariesRequest::List => value(self.libraries()?)?,
+                LibrariesRequest::OpenZotero {} => {
+                    self.read_zotero(false, cancel)?;
+                    value(self.libraries()?)?
+                }
                 LibrariesRequest::OpenFile { path } => {
                     self.open_file(&path, cancel)?;
                     value(self.libraries()?)?
@@ -533,6 +547,12 @@ impl Shared {
         }
         libraries.insert(library.clone(), info);
         let next = Arc::new(State {
+            zotero_generation: old.zotero_generation,
+            zotero_ready: if library == ibis_sources::zotero_source::library_id() {
+                true
+            } else {
+                old.zotero_ready
+            },
             index: Arc::new(SnapshotIndex::new(combined)),
             libraries,
         });
@@ -546,6 +566,21 @@ impl Shared {
         }
         self.notify(changed, fingerprints)
     }
+    fn begin_zotero_read(&self) -> Result<(), EngineError> {
+        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let old = self.state_view()?;
+        let generation = old
+            .zotero_generation
+            .checked_add(1)
+            .ok_or_else(|| error(ErrorCode::ResourceLimit))?;
+        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
+            zotero_generation: generation,
+            zotero_ready: false,
+            index: old.index.clone(),
+            libraries: old.libraries.clone(),
+        });
+        Ok(())
+    }
     fn failed(&self, library: &LibraryId, code: ErrorCode) -> Result<(), EngineError> {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
@@ -556,6 +591,8 @@ impl Shared {
             .refresh_error = Some(code);
         let fingerprints = old.index.snapshot().fingerprints().clone();
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
+            zotero_generation: old.zotero_generation,
+            zotero_ready: old.zotero_ready,
             index: old.index.clone(),
             libraries,
         });
