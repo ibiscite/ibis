@@ -32,7 +32,6 @@ import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import {
   type Copied,
-  type CopyFormat,
   type LibraryStatus,
   type Locator,
   type SearchResult,
@@ -47,16 +46,16 @@ const noSelection = new Map<string, CitationReference>();
 // A stable provider lets component tests use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
-  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "copyCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
+  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "cslItems" | "copyFormatted" | "citationText" | "previewFileCitation" | "copyFileCitation" | "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
+  Partial<Pick<typeof nativeApi, "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
-  const { chooseLibrary, useZotero, libraryStatus, reloadLibrary, copyCitation,
-    hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, cslItems, copyFormatted, citationText, previewFileCitation, copyFileCitation,
+  const { chooseLibrary, useZotero, libraryStatus, reloadLibrary,
+    hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, checkForUpdates, onShortcutStatus } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
@@ -85,9 +84,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
     };
   }, [api, setFailures]);
-  const preferences = usePickerPreferences(api, { styles: Boolean(cslItems && copyFormatted), report, perform });
+  const preferences = usePickerPreferences(api, { styles: true, report, perform });
   const { format, density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
-  const style = cslItems && copyFormatted ? styleOf(format) : null;
+  const style = styleOf(format);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
@@ -95,7 +94,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const statusReads = useRef(0);
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
-  const nativeFile = Boolean(library?.file_engine && previewFileCitation && copyFileCitation);
   const busy = library?.state === "loading" || library?.state === "reloading";
   const blocked = library?.state === "error" && !library.has_snapshot;
   const libraryChoices = library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
@@ -118,7 +116,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // The selection, or the highlighted result when nothing is selected.
   const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
   const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
-    useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, cslItems, citationText, previewFileCitation, refreshSnapshot });
+    useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, previewFileCitation, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -378,24 +376,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     }
     let outcome: Copied;
     try {
-      if (nativeFile && copyFileCitation) {
-        if (!shown || typeof shown === "string" || !shown.fileTicket || !shown.fileHash) { setCopyError(pickerText.previewError); return; }
-        outcome = await copyFileCitation(shown.fileTicket, shown.fileHash);
-      } else if (style && copyFormatted) {
-        // Copy only what the preview shows, never a result still being made.
-        if (shown === null || shown === "failed") {
-          setCopyError(shown === null ? pickerText.previewNotReady : pickerText.previewError);
-          return;
-        }
-        await copyFormatted(shown.text, shown.html, chosenRevision);
-        outcome = { text: shown.text, warnings: shown.warnings };
-      } else {
-        outcome = await copyCitation(
-          chosen.map((r) => ({ id: r.id, locator: r.locator ?? null })) as nativeApi.CitationSelection[],
-          format as CopyFormat,
-          chosenRevision,
-        );
+      if (!shown || typeof shown === "string" || !shown.fileTicket || !shown.fileHash) {
+        setCopyError(shown === null ? pickerText.previewNotReady : pickerText.previewError);
+        return;
       }
+      outcome = await copyFileCitation(shown.fileTicket, shown.fileHash);
     } catch (error) {
       const stale = nativeApi.isSnapshotChanged(error);
       const shared = nativeApi.sharedCitationKey(error);
@@ -433,7 +418,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setPendingCopy(null);
       return;
     }
-    if ((style || nativeFile) && shown === null) return;
+    if (shown === null) return;
     setPendingCopy(null);
     void copy();
   }, [pendingCopy, chosenKey, shown, queryKey]);
@@ -481,8 +466,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     ? [...KEY_TABLE, { region: "system", action: "open", keys: [shortcut.shortcut] }]
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
-  // A formatted citation still being made, or one that failed, is not copied.
-  const enterAction = showWriting || chosen.length === 0 || shown === "stale" || (style && (shown === null || shown === "failed")) ? null
+  // A refused or stale engine preview cannot be copied.
+  const enterAction = showWriting || chosen.length === 0 || shown === "stale" || shown === "failed" ? null
     : copyLabel(format, chosen.length);
   const highlighted = current[active];
   const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
@@ -605,7 +590,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
-        styles={Boolean(cslItems && copyFormatted)}
+        styles
         onFormatChange={chooseFormat}
         onFormatCommand={(command) => {
           const visibility = copyVisibility.current;

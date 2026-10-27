@@ -15,7 +15,7 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     const preview = vi.fn((_args: unknown) => prepared);
     const copy = vi.fn(() => ({ text, warnings: [] }));
     const calls = backend({
-      library_status: () => ({ state: "loaded", has_snapshot: true, file_engine: true, zotero: false, snapshot_zotero: false, name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
+      library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false, name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
       picker_preferences: () => ({ citation_style: style, density: "comfortable", larger_text: false, show_paste_preview: true }),
       search: ({ query }) => query.text ? [{ ...result("demo", "Synthetic research"), id, source: id.library, cite }] : [],
       preview_file_citation: preview,
@@ -31,6 +31,6 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     await act(async () => { finish({ ticket: "native-receipt", content_hash: "b".repeat(64), text, html: style ? "(Researcher, 2026)" : null, warnings: [] }); });
     await waitFor(() => expect(copy).toHaveBeenCalledWith({ ticket: "native-receipt", contentHash: "b".repeat(64) }));
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ items: [{ id, cite, locator: null }], style }));
-    for (const legacy of ["citation_text", "csl_items", "copy_citation", "copy_formatted"]) expect(calls).not.toContain(legacy);
+    expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(1);
   });
 }
