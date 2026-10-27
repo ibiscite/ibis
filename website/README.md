@@ -64,3 +64,116 @@ cookies, cross-site identifiers or new app data flows are introduced.
 After publication, verify the sitemap and robots URLs return 200, the homepage
 has its canonical URL and microdata, and preview deployments remain excluded
 from indexing. Search engines decide when and whether to index the site.
+
+## Design
+
+One calm, content-height page with a structural margin and `@key` links. It
+imports the app's `tokens.css` through the public build, so there is no second
+token source or motion scale; brand colours, the website roles included, come
+from `brand/build.py`, and website CSS only composes the page. Build and
+Cloudflare publication instructions live only in `website/README.md`; account
+access, DNS records, credentials, backups and `.local/` never enter the public
+build.
+
+**Rhythm.** One vertical scale: 1.1 rem between paragraphs, 1.25 rem between
+blocks (lists and link rows), about 5 rem between sections on desktop
+and 4 rem on phones. The hero-to-first-section gap equals the section gap;
+headings and setup steps follow the same scale, and platform groups get two
+large steps when all three are shown. Content sets heights: ordinary scrolling,
+no full-screen sections or scroll snapping.
+
+**Chip.** One `@key` component for navigation, section margins and inline
+links, with one font size and padding (links add touch space). At rest, scarlet
+text on translucent scarlet; hover, a thin inset outline; current, filled
+scarlet with contrasting text. Links press in slightly, and arriving at a
+section briefly turns its heading scarlet. Keyboard focus is a separate ring
+drawn outside, so it never crosses text (inside only in the sidebar and link
+rows, where an edge would clip it). Dragging in the sidebar never
+selects page text. No generic badges.
+
+**Motion.** App tokens only: 120 ms feedback, 200 ms hand-overs, ease-out, no
+bounce, for chip states, button press, the download-arrow nudge and the theme
+thumb. Sections may reveal once from 12 px below; the logo draws once, can
+redraw from Home and never loops. Quiet delights: a hovered page chip cites
+itself in turn as `[@key]`, `\cite{key}` and `@key`; the Star button's star
+fills and grows once on hover; the Why beak pecks once as it appears; the
+writing cursor blinks; on touch a pressed row gives slightly; text selection is
+a soft scarlet tint; the console greets the curious with one line pointing to
+the source. Reduced motion turns off movement, transitions, arrival flashes and
+smooth scrolling, and holds the chip's first form.
+
+**Layout.**
+
+- **Desktop, 62 rem and up** (tablet landscape too): a sticky sidebar near the
+  top, each muted label right-aligned before its chip; the current label is in
+  text colour with a filled chip, and a followed link stays current until the
+  reader scrolls, even at the page end. The theme switch sits at the sidebar's
+  foot, quieter until hovered or focused. The structural margin is a neutral
+  hairline; scarlet marks only chips, links and citations.
+- **Tablet portrait, 40–62 rem:** one centred reading column, chips centred
+  beneath the logo, no empty second column.
+- **Phone, below 40 rem:** "Early preview" on the logo's row, then a sticky,
+  sideways-scrolling chip bar with an edge fade. When the current section
+  changes, only the bar scrolls to keep its chip visible, never the page. Link
+  rows stack title and note with the arrow on the right.
+- Below desktop the theme switch is in the footer. The footer holds the
+  open-source note and essential links; its divider stays within the reading
+  column and its rule meets the margin rule.
+
+**Type and colour.** System serif for prose, sample writing and headings that
+introduce content; platform sans for small print, labels, action-row titles,
+controls, functional headings and download names; monospace for citation keys
+and output. One type role stays consistent across the page; no remote fonts.
+Neutral greys have zero chroma: light background/surface/line `#FFF` /
+`#F5F5F5` / `#E5E5E5`, text/muted `#171717` / `#525252`; dark `#111` /
+`#1C1C1C` / `#2E2E2E`, text/muted `#F2F2F2` / `#B5B5B5`. The primary button
+keeps its hue on hover and only softens toward the background. Page buttons
+share one slim 2.25 rem height with
+an invisible 44 px touch target. Text links rest with a soft underline that
+turns solid on hover. Forced colours use system roles. Appearance follows
+System until a local choice is made before paint: a small light/dark toggle
+with a quiet System reset, no dropdown or hover-only menu.
+
+**Words.** The README is the source for public words; the headline also matches
+`brand/settings.json` (a test checks the built site). Feature and roadmap
+claims come from [ROADMAP.md](../ROADMAP.md) and [Coming features](../docs/design.md#coming-features): a few
+major highlights without version numbers, internal names such as "Insertion"
+explained for a new visitor, and nothing planned shown as shipped. Short,
+direct sentences, the maintainer's "I" for personal experience, plain
+invitations to share a workflow or report a problem; no popularity claims,
+promised dates, accent-bar callouts or disclosure controls. "Early preview",
+naming the released version from `.release-please-manifest.json` and linked to
+its notes, sits near the logo, and limitations come before downloads. Copying
+and pasting keys is described first, with APA, Chicago, Harvard, IEEE and MLA
+after the example; setup stays short. Each section after the first opens with
+one larger lead sentence. Why opens with the beak quote mark and is signed with
+the maker's `@key` chip, linking to their GitHub profile. The page closes with
+one line and two buttons: Star on GitHub (filled) and Share Ibis (outlined,
+system share glyph), which opens the browser share sheet or copies the link; no
+third-party share buttons, star counts or badges. The logo aligns with the text
+beside it by its ink, not its export clear space.
+
+**Demo.** It mirrors the shipped app: a change to what it shows (the picker,
+its keys, styles or paste) updates it in the same pull request, and it grows as
+the app gains features worth showing. It uses invented references, says Ibis
+does not build the document bibliography, follows **Interaction** and takes its
+default shortcuts from `keys.ts`; the app's default shortcut (⇧⌘Y, or
+Ctrl+Shift+Y) opens and focuses it from anywhere on the page. Its selected row
+is the system accent, never scarlet; without a known desktop platform (phones)
+it uses the macOS accent pair, because WebKit's AccentColorText is black. The
+result list keeps one height while filtering and the paste slot keeps the
+sentence's line height, so the page never jumps. An underlined blank marks the
+paste position; after copying it becomes a keyboard-accessible dashed scarlet
+"Paste" chip with the platform paste shortcut, then the copied key lands there,
+and copying again keeps the old citation until the next paste. Copy and paste
+feedback sits beside the shelf output. The picker stays visible after copying
+and pasting so visitors can try another reference; Escape still closes and
+reopens it.
+
+**Behaviour.** Offer the visitor's platform first and keep the others
+reachable; phones and tablets see all platforms. Downloads keep the fixed
+GitHub `stable` URLs. Explanation, setup, downloads and navigation work without
+JavaScript, and every action works by keyboard and touch without hover.
+On-page links stay in the page and GitHub links open in the same tab. A missing
+page is the same quiet page with the logo, one line and a way home; neither it
+nor preview links are indexed.

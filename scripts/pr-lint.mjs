@@ -47,7 +47,7 @@ function main() {
   const ci = Boolean(process.env.GITHUB_ACTIONS);
   for (const w of warnings) console.log(ci ? `::warning title=Pull request conventions::${w}` : `warning: ${w}`);
   for (const e of errors) console.log(ci ? `::error title=Pull request conventions::${e}` : `error: ${e}`);
-  console.log(errors.length ? "See CONTRIBUTING.md#commits-and-pull-requests." : "Pull request follows the conventions.");
+  console.log(errors.length ? "See CONTRIBUTING.md#pull-requests." : "Pull request follows the conventions.");
   if (errors.length) process.exitCode = 1;
 }
 
