@@ -3,10 +3,11 @@
 
 use std::collections::VecDeque;
 use std::ffi::OsString;
+#[cfg(target_os = "linux")]
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use super::ClosedError;
+use super::{ClosedError, Control};
 
 const MAX_TABLE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_MOUNTS: usize = 32_768;
@@ -163,65 +164,48 @@ fn macos_table(bytes: &[u8]) -> Option<Vec<Mount>> {
 }
 
 #[cfg(target_os = "linux")]
-fn cached() -> Option<Vec<Mount>> {
+fn cached(control: &Control) -> Result<Vec<Mount>, ClosedError> {
+    control.check()?;
     let mut bytes = Vec::new();
-    std::fs::File::open("/proc/self/mountinfo")
-        .ok()?
-        .take(MAX_TABLE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    linux_table(&bytes)
+    let read = std::fs::File::open("/proc/self/mountinfo")
+        .and_then(|file| file.take(MAX_TABLE_BYTES + 1).read_to_end(&mut bytes));
+    control.check()?;
+    read.map_err(|_| ClosedError::UnsafeSource)?;
+    let mounts = linux_table(&bytes).ok_or(ClosedError::UnsafeSource);
+    control.check()?;
+    mounts
 }
 
 #[cfg(target_os = "macos")]
-fn cached() -> Option<Vec<Mount>> {
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
+fn cached(control: &Control) -> Result<Vec<Mount>, ClosedError> {
+    use std::process::Command;
     // Apple file_cmds/df/df.c: no file operands + -n uses
     // getmntinfo(MNT_NOWAIT), and never calls statfs on the listed mounts.
     // Typed JSON avoids ambiguity from whitespace in devices/mount paths.
-    let mut child = Command::new("/bin/df")
-        .args(["--libxo", "json", "-n", "-a", "-Y"])
-        .env("LC_ALL", "C")
-        .env_remove("LIBXO_OPTIONS")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stdout.take(MAX_TABLE_BYTES + 1).read_to_end(&mut bytes).ok()?;
-        Some(bytes)
-    });
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let success = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status.success(),
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break false;
-            }
-        }
-    };
-    let bytes = reader.join().ok()??;
-    if !success {
-        return None;
-    }
-    macos_table(&bytes)
+    let bytes = super::platform::output(
+        Command::new("/bin/df")
+            .args(["--libxo", "json", "-n", "-a", "-Y"])
+            .env("LC_ALL", "C")
+            .env_remove("LIBXO_OPTIONS"),
+        control,
+    )
+    .map_err(|e| e.context(ClosedError::UnsafeSource))?;
+    let mounts = macos_table(&bytes).ok_or(ClosedError::UnsafeSource);
+    control.check()?;
+    mounts
 }
 
-pub(super) fn resolved(path: &Path) -> Result<PathBuf, ClosedError> {
-    let mounts = cached().ok_or(ClosedError::UnsafeSource)?;
-    walk(
+pub(super) fn resolved(path: &Path, control: &Control) -> Result<PathBuf, ClosedError> {
+    control.check()?;
+    let mounts = cached(control)?;
+    let resolved = walk(
         path,
         &mounts,
         |path| std::fs::symlink_metadata(path),
         |path| std::fs::read_link(path),
-    )
+    );
+    control.check()?;
+    resolved
 }
 
 fn walk(
@@ -290,6 +274,16 @@ fn walk(
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn cached_mount_checks_preserve_cancellation_and_expiry() {
+        for error in [ClosedError::Cancelled, ClosedError::TimedOut] {
+            let mut control = Control::new(std::sync::Arc::new(move || error == ClosedError::Cancelled));
+            control.deadline = std::time::Instant::now();
+            assert_eq!(cached(&control).err(), Some(error));
+            assert_eq!(resolved(Path::new("/"), &control), Err(error));
+        }
+    }
 
     #[test]
     fn unknown_remote_and_fuse_mounts_are_rejected_without_a_probe() {

@@ -72,7 +72,7 @@ fn zotero_process(name: &str) -> bool {
 
 /// Bounded native-helper output stays private. Read concurrently so a full pipe
 /// cannot turn process enumeration or locality checking into an unbounded wait.
-fn output(command: &mut Command, control: &Control) -> Result<Vec<u8>, ClosedError> {
+pub(super) fn output(command: &mut Command, control: &Control) -> Result<Vec<u8>, ClosedError> {
     const LIMIT: u64 = 4 * 1024 * 1024;
     control.check()?;
     let mut child = command
@@ -152,7 +152,7 @@ pub(super) fn directory(path: &Path, control: &Control) -> Result<PathBuf, Close
     control.check()?;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
-        super::mounts::resolved(path)
+        super::mounts::resolved(path, control)
     }
     #[cfg(windows)]
     {
