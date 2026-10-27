@@ -82,7 +82,7 @@ fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_
     opened.choice_save_warning = Some(note.to_string());
     let library = Mutex::new(opened);
     let requests = LoadRequests::default();
-    let (check, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("quiet check"));
+    let (check, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("quiet check"));
     install(&library, &requests, check, Err(ZOTERO_OFFLINE)).unwrap_or_else(|| panic!("failed check"));
 
     let (request, retried, reload) = begin_focus_retry(&library, &requests).unwrap_or_else(|| panic!("focus recovery"));

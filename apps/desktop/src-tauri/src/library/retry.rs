@@ -5,7 +5,6 @@ use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
 use ibis_core::settings::ZoteroLibraries;
-use ibis_core::zotero::libraries;
 
 use super::source::Source;
 use super::state::{Library, LoadRequests, record_open};
@@ -25,10 +24,7 @@ pub(super) fn zotero_choice(library: &Library) -> Option<ZoteroLibraries> {
 /// Start checking the open Zotero library for changes without showing it:
 /// the picker keeps its state until Zotero has changed or cannot be reached.
 /// The check is numbered like any request, so a newer choice discards it.
-pub(super) fn begin_check(
-    library: &Mutex<Library>,
-    requests: &LoadRequests,
-) -> Option<(u64, Source, Option<libraries::Snapshots>)> {
+pub(super) fn begin_check(library: &Mutex<Library>, requests: &LoadRequests) -> Option<(u64, Source)> {
     let mut library = library.lock().ok()?;
     let source = library.source.clone()?;
     // An installed library has no separate request; a different request is a
@@ -42,7 +38,7 @@ pub(super) fn begin_check(
     };
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
     library.checking = true;
-    Some((request, source, library.zotero.clone()))
+    Some((request, source))
 }
 
 pub(super) fn begin_focus_retry(library: &Mutex<Library>, requests: &LoadRequests) -> Option<(u64, Source, bool)> {
@@ -135,7 +131,7 @@ mod tests {
             library.error = Some(ZOTERO_OFFLINE);
         }
         let shown = library.lock().ok().map(|l| status(&l)).map(|s| (s.state, s.error));
-        let (request, source, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the check starts"));
+        let (request, source) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the check starts"));
         assert_eq!(source, zotero);
         assert_eq!(
             library.lock().ok().map(|l| status(&l)).map(|s| (s.state, s.error)),
@@ -148,7 +144,7 @@ mod tests {
         assert_eq!(unchanged.state, LibraryState::Loaded);
         assert!(unchanged.error.is_none(), "Zotero answered, so the old error goes");
 
-        let (stale, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the next check starts"));
+        let (stale, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("the next check starts"));
         let (choice, _, _) = begin_open(&library, &requests, PathBuf::from("synthetic.bib"))
             .unwrap_or_else(|| panic!("the choice starts"));
         assert!(install_loaded(&library, &requests, stale, Err(ZOTERO_OFFLINE)).is_none());
@@ -273,7 +269,7 @@ mod tests {
             begin_focus_retry(&library, &requests).is_none(),
             "healthy focus does not check"
         );
-        let (request, _, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("show checks"));
+        let (request, _) = begin_check(&library, &requests).unwrap_or_else(|| panic!("show checks"));
         assert!(
             begin_focus_retry(&library, &requests).is_none(),
             "checking is already in progress"
