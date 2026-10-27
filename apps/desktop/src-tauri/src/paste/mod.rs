@@ -1,8 +1,8 @@
 //! Enter pastes into the app the picker was opened from (#27, #1241).
 //!
-//! After a clean copy has hidden the picker, Ibis posts one ⌘V, only to the
-//! captured process, once that app is in front again and the clipboard still
-//! holds the citation. `ibis_core::destination::decide` says when it must only
+//! After a clean copy has hidden the picker, Ibis posts one ⌘V (macOS) or
+//! Ctrl+V (Windows, #1133), only to the captured process, once that app is in
+//! front again and the clipboard still holds the citation. `ibis_core::destination::decide` says when it must only
 //! copy, and the notice says why. The citation stays on the clipboard either
 //! way (ADR 0009).
 
@@ -16,6 +16,8 @@ use tauri::{AppHandle, Manager};
 mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use capture::{Captured, Front};
 
@@ -42,11 +44,13 @@ pub(crate) struct LastTarget(Mutex<Option<Captured>>);
 
 /// Remember the app in front, before the picker shows. Ibis in front keeps the earlier capture.
 pub(crate) fn capture(app: &AppHandle) {
+    let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
     #[cfg(target_os = "macos")]
     let front = macos::frontmost();
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    let front = windows::capture(own);
+    #[cfg(target_os = "linux")]
     let front = None;
-    let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
     if let Some(captured) = capture::captured(SYSTEM, front, own)
         && let Ok(mut last) = app.state::<LastTarget>().0.lock()
     {
@@ -71,16 +75,19 @@ pub(crate) enum Delivered {
 
 /// The system calls a paste needs, so the decision is testable without them.
 pub(crate) trait Desk {
-    /// Ibis may post key events (macOS Accessibility).
+    /// Ibis may post key events (macOS Accessibility; always on Windows).
     fn may_post(&self) -> bool;
     /// Ask for that permission; the system prompts only the first time.
     fn ask_to_post(&self);
     /// The app in front, or `None` once the picker has been shown again.
     fn frontmost(&self) -> Option<Front>;
     fn clipboard(&self) -> Option<String>;
-    /// The key that types V with Command on the current layout.
+    /// The focused field of the app in front takes a password (Windows UI
+    /// Automation). macOS does not check yet.
+    fn secure_field(&self) -> bool;
+    /// The key that types V with Command on the current layout; Windows' V key.
     fn paste_key(&self) -> Option<u16>;
-    /// Post ⌘ and `key` down and up to `pid` only; false when nothing was posted.
+    /// Post ⌘ or Ctrl and `key` down and up to `pid` only; false when nothing was posted.
     fn post(&self, pid: i32, key: u16) -> bool;
     fn wait(&self, time: Duration);
 }
@@ -123,6 +130,9 @@ pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str,
                 checks += 1;
             }
             desk.wait(SETTLE);
+            if desk.secure_field() {
+                return copied(Some(CopyReason::SecureField));
+            }
             let key = desk.paste_key();
             // Another app may have taken the clipboard since the copy, and a
             // late paste would land in whatever the person is typing now.
@@ -144,16 +154,18 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str) -> Delivered {
     let captured = app.state::<LastTarget>().0.lock().ok().and_then(|last| last.clone());
     #[cfg(target_os = "macos")]
     let desk = macos::Mac::new(app);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    let desk = windows::Win::new(app);
+    #[cfg(target_os = "linux")]
     let desk = CopyOnly;
     deliver(&desk, captured.as_ref(), text, true)
 }
 
-/// Windows (until #1133) and Linux capture no target, so they only copy.
-#[cfg(not(target_os = "macos"))]
+/// Linux captures no target, so it only copies.
+#[cfg(target_os = "linux")]
 struct CopyOnly;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 impl Desk for CopyOnly {
     fn may_post(&self) -> bool {
         false
@@ -164,6 +176,9 @@ impl Desk for CopyOnly {
     }
     fn clipboard(&self) -> Option<String> {
         None
+    }
+    fn secure_field(&self) -> bool {
+        false
     }
     fn paste_key(&self) -> Option<u16> {
         None
@@ -186,6 +201,7 @@ mod tests {
         /// Front-most process after each wait.
         fronts: RefCell<Vec<i32>>,
         clipboard: String,
+        password: bool,
         posts: RefCell<Vec<(i32, u16)>>,
     }
 
@@ -196,6 +212,7 @@ mod tests {
                 asked: Cell::new(0),
                 fronts: RefCell::new(vec![42]),
                 clipboard: clipboard.into(),
+                password: false,
                 posts: RefCell::default(),
             }
         }
@@ -213,10 +230,14 @@ mod tests {
                 id: Some("org.example.writer".into()),
                 pid,
                 name: None,
+                elevated: false,
             })
         }
         fn clipboard(&self) -> Option<String> {
             Some(self.clipboard.clone())
+        }
+        fn secure_field(&self) -> bool {
+            self.password
         }
         fn paste_key(&self) -> Option<u16> {
             Some(0x09)
@@ -312,6 +333,40 @@ mod tests {
             assert_eq!(deliver(&desk, Some(&captured), "[@synthetic]", enabled), expected);
             assert!(desk.posts.borrow().is_empty());
         }
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn password_fields_and_apps_with_more_rights_copy_with_a_reason() {
+        let desk = Fake {
+            password: true,
+            ..Fake::new("[@synthetic]")
+        };
+        assert_eq!(
+            deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true),
+            copied(Some("secure-field"))
+        );
+        assert!(desk.posts.borrow().is_empty());
+
+        let desk = Fake::new("[@synthetic]");
+        let mut admin = writer("org.example.writer");
+        admin.target.elevated = true;
+        assert_eq!(
+            deliver(&desk, Some(&admin), "[@synthetic]", true),
+            copied(Some("elevated-app"))
+        );
+        assert!(desk.posts.borrow().is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_terminals_copy_with_a_reason() {
+        let desk = Fake::new("[@synthetic]");
+        assert_eq!(
+            deliver(&desk, Some(&writer("WindowsTerminal.exe")), "[@synthetic]", true),
+            copied(Some("terminal"))
+        );
+        assert!(desk.posts.borrow().is_empty());
     }
 
     #[test]

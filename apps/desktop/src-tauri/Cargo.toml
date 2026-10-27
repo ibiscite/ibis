@@ -72,3 +72,8 @@ auto-launch = "0.6.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement"] }
+# Safe Win32 bindings for pasting (#1133): the window in front, its process,
+# name and rights, and one SendInput. No raw native calls in Ibis.
+winsafe = { version = "0.0.29", features = ["user", "advapi", "version"] }
+# Safe UI Automation: whether the focused field takes a password (#1133).
+uiautomation = { version = "0.25.1", default-features = false }
