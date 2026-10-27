@@ -190,6 +190,7 @@ impl FileLibrary {
         }
         let reply = match self.engine.search(
             &SearchRequest {
+                interpret_locator: false,
                 query: interpretation
                     .as_ref()
                     .map_or_else(|| query.text.clone(), |q| q.search.clone()),

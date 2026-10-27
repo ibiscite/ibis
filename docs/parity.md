@@ -30,9 +30,10 @@ documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
 | "Open documents" list | excluded | — | Belongs to Zotero's word processor plugins |
 | Typing `ibid` (or `ebd.`) picks the last cited work | planned | #45 | to add |
 | Open the item in Zotero | planned (0.5) | #359 | to add |
-| Locator typed after the search (`p. 34`, `pp. 45-48`, `ch. 3`, `S. 12`) | done for nine labels | #24 | `fixtures/locator-queries.json`, `locator_query.rs::a_labelled_locator_is_split_off` |
-| Any of the 29 locator types typed in full or short form, also without a space (`chap12`) | planned | #24 | to add |
-| Textual locator in quotation marks (`note "the epigraph"`) | planned | #24 | to add |
+| Locator typed after the search (`p. 34`, `pp. 45-48`, `ch. 3`, `S. 12`) | done in the engine (`search` with `interpret_locator`); the picker switches with #1260 | #24 | `fixtures/locators.json`, `services.rs::search_reads_a_trailing_locator_only_when_asked` |
+| Any of the 29 locator types typed in full or short form; full words also without a space (`chap12`, `page123`) | done in the engine | #24 | `locator.rs::every_csl_locator_type_can_be_typed` |
+| Short labels joined to a number (`p15`) | excluded | — | `p53` is a protein and `sec61` a gene; Ibis reads `p 15` and `p.15` |
+| Textual locator in quotation marks (`note "the epigraph"`) | done in the engine | #24 | `locator.rs::every_csl_locator_type_can_be_typed` |
 
 ## Shaping one citation
 
