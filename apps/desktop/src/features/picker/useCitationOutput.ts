@@ -71,7 +71,9 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
       .catch((error) => { if (live) {
         const stale = nativeApi.isSnapshotChanged(error);
         const shared = nativeApi.sharedCitationKey(error);
-        setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : undefined });
+        const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;
+        const message = failure?.code === "failed" && typeof failure.message === "string" ? failure.message : undefined;
+        setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : message });
         if (stale) {
           stalePreview.current = retryKey;
           refreshSnapshot();
