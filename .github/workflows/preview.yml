@@ -225,13 +225,13 @@ jobs:
           # The command line with its licence, in the archive each system unpacks
           # without extra tools.
           mkdir cli
-          cp LICENSE cli/
+          cp LICENSE NOTICE.md cli/
           if [ "$RUNNER_OS" = Windows ]; then
             cp "target/${{ matrix.target }}/release/ibis.exe" cli/
-            (cd cli && 7z a -tzip "../dist/ibis-$platform.zip" ibis.exe LICENSE > /dev/null)
+            (cd cli && 7z a -tzip "../dist/ibis-$platform.zip" ibis.exe LICENSE NOTICE.md > /dev/null)
           else
             cp "target/${{ matrix.target }}/release/ibis" cli/
-            COPYFILE_DISABLE=1 tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis LICENSE
+            COPYFILE_DISABLE=1 tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis LICENSE NOTICE.md
           fi
           # Write the list outside dist first, so it never lists itself.
           sums="SHA256SUMS-${{ matrix.target }}.txt"
@@ -300,7 +300,7 @@ jobs:
             macOS) tar -xzf dist/ibis-macOS-Apple-silicon.tar.gz -C cli; bin=cli/ibis ;;
             *) tar -xzf dist/ibis-Linux.tar.gz -C cli; bin=cli/ibis ;;
           esac
-          test -f cli/LICENSE
+          test -f cli/LICENSE && test -f cli/NOTICE.md
           "$bin" search garcia --file fixtures/bibtex/fidelity.bib
           "$bin" cite accents2021 --file fixtures/bibtex/fidelity.bib --style apa
 
