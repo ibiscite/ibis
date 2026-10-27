@@ -1992,6 +1992,7 @@ dependencies = [
  "biblatex",
  "dunce",
  "insta",
+ "memchr",
  "notify",
  "proptest",
  "schemars 1.2.3",

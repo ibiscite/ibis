@@ -20,6 +20,7 @@ serde_json = "1.0.154"
 thiserror = "2.0.21"
 specta = { version = "=2.0.0-rc.25", features = ["derive"], optional = true }
 unicode-normalization = "0.1.26"
+memchr = "2.8.3"
 
 [target.'cfg(windows)'.dependencies]
 dunce = "1.0.5"
