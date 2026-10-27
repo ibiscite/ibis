@@ -30,7 +30,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 - Pull request titles are Conventional Commits; they become the release notes. Say what changed and how it was checked, and link `Closes #N`.
 - Sign off commits (`git commit -s`) with a public project or GitHub noreply identity, and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
 - Changes to these risky areas need one review of the final head by a session that did not write the change, with every P1 and P2 fixed: the updater, release signing and CI permissions; settings and other files Ibis writes; the clipboard, escaping and pasting; window permissions, native input and the shortcut portal; BibTeX and Zotero reading, citation syntaxes and formatting; untrusted input, network access and security boundaries. Anything else needs your own adversarial check.
-- Merge only with a green "CI result" on the exact head, by squash (auto-merge is fine), never bypassing. If `main` turns red, revert the merge that broke it first, then fix.
+- Merge only with a green "CI result" on the exact head, by squash, never bypassing. Auto-merge sometimes does not fire: if a green pull request is still open, squash-merge it yourself. If `main` turns red, revert the merge that broke it first, then fix.
 - After a merge, update the tracking issue's Now if it changed. Lasting decisions go into `docs/decisions.md`.
 
 ## Asking the maintainer
