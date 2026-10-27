@@ -23,3 +23,10 @@ structures; queries stream without automatic indexes or unbounded sorts.
 
 Copy tests create WALs, journals, source mutations and process holders using only
 these disposable databases. No test discovers a user profile or installed Zotero.
+
+Better BibTeX's `better-bibtex.sqlite` (with its WAL and journal) and
+`better-bibtex/read-only.json` are copied and checked with Zotero's files. Key tests
+build invented stores beside the synthetic databases. The store is read only when
+`settings` records Zotero 7 as the last to run (Better BibTeX 8 renames it after
+migrating its keys into Zotero's own field). A store or key file that cannot be
+read leaves the snapshot's keys unknown; it never fails the library read.

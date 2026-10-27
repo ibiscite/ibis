@@ -1,5 +1,5 @@
 //! Byte-only acquisition. This module never gives a source path to SQLite.
-use super::{ClosedError, ClosedSnapshot, ClosedWarning, Control, database, platform};
+use super::{ClosedError, ClosedSnapshot, ClosedWarning, Control, database, keys, platform};
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -9,12 +9,30 @@ pub(super) const MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const CHUNK: usize = 1024 * 1024;
 const ROOT: &str = "ibis-zotero-closed";
 const MARKER: &[u8] = b"Ibis private disposable Zotero copy v1\n";
-const FILES: [&str; 4] = [
+/// Source files, relative to the data directory. Only the main database must
+/// exist. Better BibTeX's files are copied and checked with Zotero's own, so
+/// its keys come from the same quiet moment.
+const FILES: [&str; 8] = [
     "zotero.sqlite",
     "zotero.sqlite-wal",
     "zotero.sqlite-journal",
     "zotero.sqlite-shm",
+    "better-bibtex.sqlite",
+    "better-bibtex.sqlite-wal",
+    "better-bibtex.sqlite-journal",
+    "better-bibtex/read-only.json",
 ];
+/// Logs before their databases; SHM (3) is activity evidence, never copied.
+const COPY_ORDER: [usize; 7] = [1, 2, 0, 5, 6, 4, 7];
+
+fn source_path(data: &Path, name: &str) -> PathBuf {
+    name.split('/').fold(data.to_owned(), |path, part| path.join(part))
+}
+
+/// The flat name of a source file in the private copy.
+pub(super) fn private_name(name: &str) -> String {
+    name.replace('/', "-")
+}
 
 pub(super) struct Store {
     root: PathBuf,
@@ -133,9 +151,9 @@ impl Store {
         let copy = Copy::new(&self.root, control)?;
         // WAL is copied before main. We make no claim to concurrent-copy
         // support: process checks and source validation must all remain quiet.
-        for index in [1, 2, 0] {
+        for index in COPY_ORDER {
             if let Some(source) = &mut sources.files[index] {
-                let mut target = private_file(&copy.path.join(FILES[index]))?;
+                let mut target = private_file(&copy.path.join(private_name(FILES[index])))?;
                 source.file.rewind().map_err(|_| ClosedError::Unreadable)?;
                 let mut remaining = source.metadata.len();
                 let mut buffer = vec![0; CHUNK];
@@ -163,9 +181,10 @@ impl Store {
         check_closed()?;
         // Drop *every* source handle before SQLite is opened privately.
         drop(sources);
-        let result = database::read(&copy, control);
+        let (mut snapshot, zotero) = database::read(&copy, control)?;
+        keys::attach(&copy, zotero, &mut snapshot, control)?;
         control.check()?;
-        result
+        Ok(snapshot)
     }
 }
 
@@ -200,6 +219,11 @@ pub(super) struct Copy {
 impl Copy {
     pub(super) fn database_path(&self) -> PathBuf {
         self.path.join("zotero.sqlite")
+    }
+
+    /// The private copy of a source file named in `FILES`.
+    pub(super) fn file(&self, name: &str) -> PathBuf {
+        self.path.join(private_name(name))
     }
 
     fn new(root: &Path, control: &Control) -> Result<Self, ClosedError> {
@@ -254,7 +278,7 @@ impl Sources {
     fn open(data: &Path) -> Result<Self, ClosedError> {
         let mut files = Vec::new();
         for (i, name) in FILES.iter().enumerate() {
-            let path = data.join(name);
+            let path = source_path(data, name);
             match std::fs::symlink_metadata(&path) {
                 Ok(m) if m.is_file() && !m.file_type().is_symlink() && platform::resident(&m) => {
                     let mut file = platform::open_source(&path)?;
@@ -279,7 +303,7 @@ impl Sources {
         }
         for (i, source) in self.files.iter_mut().enumerate() {
             control.check()?;
-            let current = std::fs::symlink_metadata(data.join(FILES[i]));
+            let current = std::fs::symlink_metadata(source_path(data, FILES[i]));
             match (source, current) {
                 (None, Err(e)) if e.kind() == std::io::ErrorKind::NotFound => (),
                 (Some(source), Ok(m)) if !m.file_type().is_symlink() && platform::same(&source.metadata, &m) => {
@@ -296,7 +320,8 @@ impl Sources {
                     } // SHM is activity evidence, never copied.
                     // Full byte comparison defeats coarse/restored mtimes and
                     // detects source WAL changes through the recorded EOF.
-                    let mut private = File::open(copy.join(FILES[i])).map_err(|_| ClosedError::PrivateStorage)?;
+                    let mut private =
+                        File::open(copy.join(private_name(FILES[i]))).map_err(|_| ClosedError::PrivateStorage)?;
                     source.file.rewind().map_err(|_| ClosedError::Changing)?;
                     let mut a = vec![0; CHUNK];
                     let mut b = vec![0; CHUNK];
@@ -328,7 +353,7 @@ impl Sources {
         }
         // A sidecar could appear while another was being compared.
         for (name, source) in FILES.iter().zip(&self.files) {
-            match (source, std::fs::symlink_metadata(data.join(name))) {
+            match (source, std::fs::symlink_metadata(source_path(data, name))) {
                 (None, Err(e)) if e.kind() == std::io::ErrorKind::NotFound => (),
                 (Some(s), Ok(m)) if !m.file_type().is_symlink() && platform::same(&s.metadata, &m) => (),
                 _ => return Err(ClosedError::Changing),
