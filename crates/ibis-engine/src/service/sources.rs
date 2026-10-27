@@ -12,6 +12,8 @@ const MAX_WARNING_DETAILS: usize = 256;
 pub(super) struct Owners {
     operation: Mutex<()>,
     watches: Mutex<BTreeMap<u64, SourceWatch>>,
+    #[cfg(test)]
+    fail_watches: std::sync::atomic::AtomicBool,
 }
 #[derive(Default)]
 pub(super) struct Registry {
@@ -42,6 +44,7 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
         warnings_total: loaded.warnings.len(),
         refresh_error: None,
         updated_at_ms: now_ms(),
+        watch_warning: None,
     }
 }
 impl Engine {
@@ -102,11 +105,14 @@ impl Engine {
                 shared.file_changed(id, generation, candidate);
             }
         };
-        let watch = match observation {
-            Some(observation) => SourceWatch::with_snapshot(&path, observation, callback),
-            None => SourceWatch::new(&path, callback),
-        }
-        .map_err(source_error)?;
+        let (watch, watch_warning) = if self.watch_files {
+            match self.watch(&path, observation, callback) {
+                Ok(watch) => (Some(watch), None),
+                Err(_) => (None, Some(WatchWarning::LiveRefreshOff)),
+            }
+        } else {
+            (None, None)
+        };
         let previous = existing.as_ref().map(|entry| entry.2.clone()).filter(|old| {
             *old != loaded.library
                 && !registry
@@ -114,7 +120,9 @@ impl Engine {
                     .iter()
                     .any(|(other, slot)| *other != id && slot.loaded.library == *old)
         });
-        if let Err(error) = self.shared.install(info(&loaded), &loaded.snapshot, previous) {
+        let mut library_info = info(&loaded);
+        library_info.watch_warning = watch_warning;
+        if let Err(error) = self.shared.install(library_info, &loaded.snapshot, previous) {
             drop(registry);
             drop(operation);
             drop(watch);
@@ -130,15 +138,31 @@ impl Engine {
             },
         );
         drop(registry);
-        let old = self
-            .resources
-            .watches
-            .lock()
-            .map_err(|_| error(ErrorCode::Internal))?
-            .insert(id, watch);
+        let old = {
+            let mut watches = self.resources.watches.lock().map_err(|_| error(ErrorCode::Internal))?;
+            match watch {
+                Some(watch) => watches.insert(id, watch),
+                None => watches.remove(&id),
+            }
+        };
         drop(operation);
         drop(old);
         cancel.check()
+    }
+    fn watch(
+        &self,
+        path: &Path,
+        observation: Option<ibis_sources::SourceSnapshot>,
+        callback: impl Fn(Result<LoadedLibrary, SourceError>) + Send + Sync + 'static,
+    ) -> Result<SourceWatch, SourceError> {
+        #[cfg(test)]
+        if self.resources.fail_watches.load(Ordering::Relaxed) {
+            return Err(SourceError::WatchUnavailable);
+        }
+        match observation {
+            Some(observation) => SourceWatch::with_snapshot(path, observation, callback),
+            None => SourceWatch::new(path, callback),
+        }
     }
     pub(super) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
         let state = self.state()?;
@@ -218,6 +242,69 @@ impl Shared {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn readable_file_still_returns_results_when_watch_creation_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@article{demo,title={Synthetic widgets},year={2026}}\n").unwrap();
+        let engine = Engine::new().unwrap();
+        engine.resources.fail_watches.store(true, Ordering::Relaxed);
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        let result = engine
+            .dispatch(Method::Search, &json!({"query":"widgets"}), &cancel)
+            .unwrap();
+        assert_eq!(result.exit_code, ExitCode::Ok);
+        assert_eq!(result.data["hits"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            engine.libraries().unwrap().libraries[0].watch_warning,
+            Some(WatchWarning::LiveRefreshOff)
+        );
+        assert!(engine.resources.watches.lock().unwrap().is_empty());
+        let listed = engine
+            .dispatch(Method::Libraries, &json!({"action":"list"}), &cancel)
+            .unwrap();
+        assert_eq!(listed.exit_code, ExitCode::Ok);
+        assert_eq!(listed.data["libraries"][0]["watch_warning"], "live-refresh-off");
+        let cited = engine
+            .cite_keys(
+                &KeyCitationRequest {
+                    keys: vec!["demo".into()],
+                    output: OutputSpec::Key {
+                        syntax: KeySyntax::Pandoc,
+                        command: None,
+                    },
+                    form: CitationForm::Normal,
+                    output_locale: None,
+                },
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(
+            engine
+                .finalize(DispatchResult::citation(cited, 1).unwrap())
+                .unwrap()
+                .text
+                .as_deref(),
+            Some("[@demo]")
+        );
+        engine.reload_files(None, &cancel).unwrap();
+        assert_eq!(
+            engine.libraries().unwrap().libraries[0].watch_warning,
+            Some(WatchWarning::LiveRefreshOff)
+        );
+    }
+    #[test]
+    fn one_shot_file_load_does_not_attempt_a_watch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@article{demo,title={Synthetic widgets}}\n").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        engine.resources.fail_watches.store(true, Ordering::Relaxed);
+        engine.open_file(&path, &Cancellation::default()).unwrap();
+        assert_eq!(engine.libraries().unwrap().libraries[0].watch_warning, None);
+        assert!(engine.resources.watches.lock().unwrap().is_empty());
+    }
     #[test]
     fn old_callbacks_cannot_replace_new_data_and_equal_hash_updates_still_replace_owner() {
         let dir = tempfile::tempdir().unwrap();

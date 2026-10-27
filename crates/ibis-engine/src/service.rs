@@ -24,6 +24,12 @@ pub use formatting::Cancellation;
 mod prepared;
 pub use prepared::{CitationCommitError, PreparedCitation};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum WatchWarning {
+    LiveRefreshOff,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LibraryInfo {
     pub id: LibraryId,
@@ -32,6 +38,9 @@ pub struct LibraryInfo {
     pub warnings_total: usize,
     pub refresh_error: Option<ErrorCode>,
     pub updated_at_ms: u64,
+    /// A readable source remains usable when automatic updates are unavailable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watch_warning: Option<WatchWarning>,
 }
 impl LibraryInfo {
     fn clean(id: LibraryId, objects: usize) -> Self {
@@ -42,6 +51,7 @@ impl LibraryInfo {
             warnings_total: 0,
             refresh_error: None,
             updated_at_ms: now_ms(),
+            watch_warning: None,
         }
     }
 }
@@ -192,12 +202,18 @@ struct Shared {
 pub struct Engine {
     shared: Arc<Shared>,
     resources: Arc<sources::Owners>,
+    watch_files: bool,
 }
 impl Engine {
     pub fn new() -> Result<Self, EngineError> {
         Ok(Self::from_snapshot(Arc::new(
             Snapshot::new(vec![]).map_err(|_| error(ErrorCode::Internal))?,
         )))
+    }
+    /// One-shot callers read files without installing background watches.
+    pub fn without_file_watches(mut self) -> Self {
+        self.watch_files = false;
+        self
     }
     pub fn from_snapshot(snapshot: Arc<Snapshot>) -> Self {
         let mut libraries = BTreeMap::<LibraryId, LibraryInfo>::new();
@@ -223,6 +239,7 @@ impl Engine {
                 sources: Mutex::new(sources::Registry::default()),
             }),
             resources: Arc::new(sources::Owners::default()),
+            watch_files: true,
         }
     }
     fn state(&self) -> Result<Arc<State>, EngineError> {
