@@ -13,5 +13,8 @@ ibis-core = { path = "../ibis-core" }
 ibis-engine = { path = "../ibis-engine" }
 serde_json = "1.0.154"
 
+[dev-dependencies]
+ibis-sources = { path = "../ibis-sources" }
+
 [lints]
 workspace = true

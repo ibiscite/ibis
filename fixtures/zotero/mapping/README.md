@@ -17,7 +17,7 @@ Ibis addresses records with `ItemRef`, independent of Zotero database IDs or
 export URIs. The normalizer keeps CSL field hacks in the converted Extra/note
 field, as Zotero does, for citeproc to consume during formatting.
 
-The 293-case corpus covers all 37 bibliographic item types in schema version 45. Every
+The 297-case corpus covers all 37 bibliographic item types in schema version 45. Every
 valid field is populated, including type-specific base fields; every valid
 creator role has personal and institutional examples. Further cases cover
 Extra field spelling and date overrides, interruption rules, invalid dates,
@@ -33,6 +33,9 @@ also exercise all four JavaScript line terminators in family and given names.
 Review regressions preserve greedy blank Extra values, literal unsupported era
 ranges, unspaced era markers and the pinned JavaScript behavior of uppercase
 particles and quoted dates across Unicode line separators.
+The four `formatted-*` cases are the invented records of
+`fixtures/formatted/source-files` as Zotero holds them; `fixtures/formatted/zotero`
+formats their expected CSL.
 Attachments, notes and annotations are deliberately excluded.
 
 The harness stands in for Zotero's field/type/creator registries using the

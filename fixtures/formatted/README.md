@@ -13,3 +13,6 @@ same processor/style configuration with Node.
 The CLI formatted integration test replays each case through typed Engine,
 human style arguments, canonical `cite --request`, `call cite` and framed stdio.
 Canonical strings and hashes must remain byte-identical across those paths.
+
+`source-files/` and `zotero/` start from invented `.bib`, CSL-JSON and Zotero
+items instead, with expectations from pinned Zotero code; see their READMEs.
