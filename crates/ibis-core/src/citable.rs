@@ -27,6 +27,18 @@ pub fn citable_fields(fields: &mut Map<String, Value>) {
         apply_overrides(fields, &note);
         private_url(fields);
     }
+    // Zotero's names for the short titles, which citeproc copies in when the
+    // CSL ones are missing.
+    for (alias, canonical) in [
+        ("shortTitle", "title-short"),
+        ("journalAbbreviation", "container-title-short"),
+    ] {
+        if let Some(value) = fields.remove(alias)
+            && !fields.get(canonical).is_some_and(truthy)
+        {
+            fields.insert(canonical.into(), value);
+        }
+    }
     // Custom keys a source kept, and custom parts of names and dates, are
     // not bibliographic data.
     fields.retain(|name, _| is_variable(name));
@@ -450,6 +462,14 @@ mod tests {
                 "issued": {"date-parts": [[2020]], "x-private": "invented"},
             })),
             json!({"author": [{"family": "Invented"}], "issued": {"date-parts": [[2020]]}})
+        );
+    }
+
+    #[test]
+    fn zotero_short_titles_become_csl_ones() {
+        assert_eq!(
+            citable(json!({"journalAbbreviation": "Inv. J.", "shortTitle": "Invented", "title-short": "Kept"})),
+            json!({"container-title-short": "Inv. J.", "title-short": "Kept"})
         );
     }
 
