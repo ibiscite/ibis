@@ -1,6 +1,7 @@
-// The Copied notice window. It shows the text it is sent, fades out by
+// The Copied or Pasted notice window. It shows the message it is sent, fades out by
 // itself and never takes focus; the app closes or hides the window.
 import { listen } from "@tauri-apps/api/event";
+import type { NoticeMessage } from "./api";
 import { commands } from "./bindings";
 import { leaveNotice, noticePlatform, renderNotice } from "./copyFeedback";
 import { copiedNoticeText } from "./messages";
@@ -19,8 +20,8 @@ if (root) {
   const show = renderNotice(root, platform);
   // Listen first, then ask for the text in case the event came before the page.
   void listen("notice:leave", () => leaveNotice(root)).catch(() => console.error(copiedNoticeText.noticeFailed));
-  void listen<string>("notice:show", (event) => show(event.payload))
+  void listen<NoticeMessage>("notice:show", (event) => show(event.payload))
     .then(() => commands.copiedNotice())
-    .then((text) => { if (text !== null) show(text); })
+    .then((message) => { if (message !== null) show(message); })
     .catch(() => console.error(copiedNoticeText.noticeFailed));
 }

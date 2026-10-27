@@ -1,5 +1,5 @@
-//! The short "Copied" notice shown after a clean copy hides the picker
-//! (design rule 6, "Say what happened").
+//! The short "Copied" or "Pasted into …" notice shown after a clean copy
+//! hides the picker (design rule 6, "Say what happened").
 //!
 //! It is a second, small window drawn by Ibis. It never takes focus, so the
 //! editor that focus was just returned to keeps it, and it is left out of the
@@ -11,9 +11,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::diagnostics::{NativeIssue, checked, report};
+use crate::paste::Delivered;
 use crate::placement::{Area, display};
 
 pub(crate) const LABEL: &str = "notice";
@@ -91,32 +93,54 @@ pub(crate) fn summary(text: &str) -> String {
 /// earlier notice's timer never hides a later one.
 #[derive(Default)]
 pub(crate) struct Notice {
-    text: Mutex<Option<String>>,
+    text: Mutex<Option<NoticeMessage>>,
     showing: AtomicU64,
     /// Held while the window is looked up or created, so two quick copies
     /// cannot both create it.
     window: Mutex<()>,
 }
 
-/// The text of the notice being shown, for a notice page that has just
-/// loaded and missed the event that announced it.
+/// What the notice says: whether the citation was pasted or only copied, and
+/// one line of it.
+#[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
+pub(crate) struct NoticeMessage {
+    delivered: Delivered,
+    text: String,
+}
+
+/// The notice being shown, for a notice page that has just loaded and missed
+/// the event that announced it.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<String> {
+pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> {
     notice.text.lock().ok().and_then(|text| text.clone())
 }
 
-/// Say "Copied" after the picker has hidden. The interface calls this only
-/// after a copy without warnings that hid the picker (see `copyFeedback.ts`);
-/// copies with warnings keep their notice inside the picker. Failures are
-/// reported as fixed diagnostics: the citation is on the clipboard either way.
+/// After the picker has hidden: paste into the app it was opened from when
+/// that is safe (#27), then say "Pasted into …" or "Copied" and why. The
+/// interface calls this only after a copy without warnings that hid the
+/// picker (see `copyFeedback.ts`); copies with warnings keep their notice
+/// inside the picker. Failures are reported as fixed diagnostics: the
+/// citation is on the clipboard either way.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn show_copied_notice(app: AppHandle, text: String) {
-    show(&app, summary(&text));
+    // A paste may wait up to a second for the app to come back to the front.
+    let delivered = {
+        let (app, text) = (app.clone(), text.clone());
+        tauri::async_runtime::spawn_blocking(move || crate::paste::deliver_copy(&app, &text)).await
+    }
+    .unwrap_or(Delivered::Copied { reason: None });
+    show(
+        &app,
+        NoticeMessage {
+            delivered,
+            text: summary(&text),
+        },
+    );
 }
 
-fn show(app: &AppHandle, text: String) {
+fn show(app: &AppHandle, text: NoticeMessage) {
     let notice = app.state::<Notice>();
     if let Ok(mut current) = notice.text.lock() {
         *current = Some(text.clone());
