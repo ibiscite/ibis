@@ -46,15 +46,22 @@ pub(crate) struct RawEntry {
 }
 
 /// Find all top-level blocks. Text between blocks is a comment, as in BibTeX.
-pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
+pub(crate) fn split_blocks(src: &str) -> (Vec<Block<'_>>, bool) {
     let bytes = src.as_bytes();
     let mut blocks = Vec::new();
     let mut headers = Vec::new();
     let mut i = 0;
     let mut recovering = false;
+    let mut limited = false;
     // Line numbers are counted incrementally so splitting stays linear.
     let (mut line, mut counted_to) = (1, 0);
     while let Some(offset) = src[i..].find('@') {
+        // Keep one extra block to report truncation before allocating the
+        // rest of a hostile file, including recovery headers.
+        if blocks.len() + headers.len() > crate::MAX_LIBRARY_RECORDS {
+            limited = true;
+            break;
+        }
         let start = i + offset;
         let mut j = start + 1;
         // Keep stray closing braces in a candidate type so damaged entries
@@ -97,6 +104,9 @@ pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
         });
         i = k + 1;
     }
+    // Recovery can collapse many candidate headers into one block, so the
+    // truncation flag must survive independently of the final block count.
+    limited |= blocks.len() + headers.len() > crate::MAX_LIBRARY_RECORDS;
     find_closes(bytes, &mut headers);
     let mut resume = 0;
     for Header {
@@ -126,7 +136,7 @@ pub(crate) fn split_blocks(src: &str) -> Vec<Block<'_>> {
             complete,
         });
     }
-    blocks
+    (blocks, limited)
 }
 
 struct Header {
@@ -493,6 +503,13 @@ mod tests {
     use proptest::prelude::*;
 
     #[test]
+    fn block_collection_stops_before_allocating_a_whole_hostile_file() {
+        let repeated = "@misc{same}\n".repeat(crate::MAX_LIBRARY_RECORDS + 100);
+        assert_eq!(split_blocks(&repeated).0.len(), crate::MAX_LIBRARY_RECORDS + 1);
+        let recovery = "@misc{same, title={\n".repeat(crate::MAX_LIBRARY_RECORDS + 100);
+        assert!(split_blocks(&recovery).0.len() <= crate::MAX_LIBRARY_RECORDS + 1);
+    }
+    #[test]
     fn raw_nesting_and_unmatched_closes_need_only_one_query_bucket() {
         for text in [
             "{".repeat(500_000) + &"}".repeat(500_000),
@@ -534,7 +551,7 @@ mod tests {
 
     #[test]
     fn quoted_parentheses_do_not_close_a_parenthesis_entry() {
-        let blocks = split_blocks("@book(q, title = \"A (B) C\", year = 2020)\n@book{after, title={After}}");
+        let (blocks, _) = split_blocks("@book(q, title = \"A (B) C\", year = 2020)\n@book{after, title={After}}");
         assert_eq!(blocks.len(), 2);
         assert!(blocks[0].complete);
         assert!(blocks[0].body.ends_with("2020"));
@@ -542,7 +559,7 @@ mod tests {
 
     #[test]
     fn recovery_resumes_at_indented_entries() {
-        let blocks = split_blocks("@article{broken, title={Unclosed}\n  @article{indented, title={Indented}}\n");
+        let (blocks, _) = split_blocks("@article{broken, title={Unclosed}\n  @article{indented, title={Indented}}\n");
         assert_eq!(blocks.len(), 2);
         assert!(!blocks[0].complete);
         assert!(blocks[1].complete);
@@ -551,7 +568,7 @@ mod tests {
 
     #[test]
     fn fields_with_concatenation_numbers_and_macros() {
-        let blocks = split_blocks("@article{k, title = \"A {B} C\" # x, year = 2020, month = mar,}");
+        let (blocks, _) = split_blocks("@article{k, title = \"A {B} C\" # x, year = 2020, month = mar,}");
         let entry = parse_entry(&blocks[0]).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(entry.key, "k");
         assert_eq!(
@@ -564,7 +581,7 @@ mod tests {
 
     #[test]
     fn entry_without_fields() {
-        let blocks = split_blocks("@misc{lonely}");
+        let (blocks, _) = split_blocks("@misc{lonely}");
         let entry = parse_entry(&blocks[0]).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(entry.key, "lonely");
         assert!(entry.fields.is_empty());

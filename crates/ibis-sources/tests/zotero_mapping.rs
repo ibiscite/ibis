@@ -405,3 +405,27 @@ fn file_transport_urls_and_inline_key_conflicts_are_not_hidden() {
         assert_eq!(result.record.citation_key(), Err(ModelError::ConflictingCitationKeys));
     }
 }
+
+#[test]
+fn private_extra_urls_remove_the_entire_line_including_braces_and_lone_cr() {
+    for extra in [
+        "URL: file:///C:/Users/Invented/AppData/{0000-INVENTED}/private.pdf",
+        "URL: file:///invented/a}/private.pdf",
+        "Title: Invented\nURL: file:///invented/a\rb/private.pdf",
+        "{:URL: file:///invented/{x}/private.pdf}",
+        "URL:\nfile:///invented/private.pdf",
+        "{:URL:\nfile:///invented/private.pdf}",
+    ] {
+        let result = mapped(json!({"extra": extra}));
+        let public = serde_json::to_string(&result.record).unwrap();
+        assert!(!public.contains("private.pdf"), "private URL tail leaked");
+        assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
+    }
+    for separator in ["\n", "\u{2028}", "\u{2029}"] {
+        let result =
+            mapped(json!({"extra": format!("URL: file:///invented/{{x}}/private.pdf{separator}Visible prose")}));
+        let note = result.record.csl["note"].as_str().unwrap();
+        assert!(!note.contains("private.pdf"));
+        assert!(note.contains("Visible prose"));
+    }
+}

@@ -24,7 +24,13 @@ entries and exhausted work budgets. Stable empty files produce empty snapshots.
 Opens recheck the descriptor type and size; on Unix they are nonblocking so a
 regular file replaced by a FIFO cannot hang a reload. Files are limited to 64 MiB.
 BibTeX retains its existing field, recursion and load-work budgets.
-CSL-JSON arrays allow at most 1,000,000 records. CSL-JSON validates each record and known field independently;
+File libraries allow at most 50,000 entries in either format (BibTeX counts
+all blocks, including string definitions and comments). Review measured about
+2.6 KiB per minimal record before snapshot indexes, so this bounds that graph
+near 130 MiB. Overflow keeps the accepted prefix with a work-limit warning;
+strict reloads refuse it. BibTeX charges another 2 KiB of fixed work per block,
+and both scanners retain only a bounded prefix of entry metadata.
+CSL-JSON arrays share the same cap. CSL-JSON validates each record and known field independently;
 record property names must be unique; an ambiguous record is skipped with a
 syntax warning. A record above 1 MiB is skipped with a work-limit warning, and a
 limited reload is refused. Unknown/vendor metadata is retained only in raw provenance. Raw
@@ -41,9 +47,10 @@ access; HTTP(S) links are marked online and never fetched. Ambiguous encodings
 produce an attachment warning rather than a guessed location. Windows UNC,
 network/device namespaces (including mixed separators), drive-relative paths and
 file URIs never trigger metadata probes. MIME values require bounded type/subtype
-tokens. Local absolute/relative file URLs (including bare relative paths without
-an absolute URI scheme) and vendor location fields are omitted
-from public CSL data and retained only in raw provenance.
+tokens. All adapters share one public URL policy, including citeproc URL overrides in
+`note`: local file URLs, UNC paths, file-sharing schemes and bare document
+filenames are omitted from public CSL data and retained only in private
+provenance. Public URLs and bare domain names remain available for formatting.
 
 Attachment fields are scanned lazily: at most 256 tokens and 64 KiB per record,
 16 KiB per token and 4096 bytes per decoded/native location. A library permits
