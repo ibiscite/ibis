@@ -6,7 +6,6 @@ use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
 use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
-use ibis_core::source::SourceWatch;
 #[cfg(debug_assertions)]
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -21,15 +20,8 @@ use super::error::LoadError;
 use super::load::{Loaded, load_source};
 use super::retry::{begin_check, begin_focus_retry, begin_zotero_retry, retry, zotero_choice, zotero_to_check};
 use super::source::Source;
-use super::state::{
-    Library, LoadRequests, begin_open, candidate, dialog_path_error, install_automatic, install_loaded,
-    take_watch_source,
-};
+use super::state::{Library, LoadRequests, begin_open, dialog_path_error, install_automatic, install_loaded};
 use super::status::{LibraryProblem, LibraryState, LibraryStatus, status};
-
-/// The platform watcher and its worker stop when replaced or the app exits.
-#[derive(Default)]
-pub(crate) struct LibraryWatch(pub(crate) Mutex<Option<SourceWatch>>);
 
 pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStatus) {
     if let Some(message) = &status.error {
@@ -83,7 +75,14 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
     refresh();
 }
 
-pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_file::FileLibrary>) -> bool {
+/// Apply an engine notification for `file`; `updated` when its references
+/// changed, since a refresh that failed or found nothing new also notifies.
+/// Returns whether `file` is still the open library.
+pub(super) fn engine_changed(
+    library: &mut Library,
+    file: &std::sync::Arc<super::engine_file::FileLibrary>,
+    updated: bool,
+) -> bool {
     if !library
         .file
         .as_ref()
@@ -99,88 +98,52 @@ pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super:
         library.error = None;
         library.retained_error = None;
     }
+    if updated {
+        let now = std::time::SystemTime::now();
+        library.changed_at = Some(now);
+        library.checked_at = Some(now);
+    }
     true
 }
 
-pub(super) fn watch_current(app: &AppHandle, request: u64) {
-    let file = app
+/// Publish each change the engine reports for the open library until
+/// another library replaces it.
+pub(super) fn watch_current(app: &AppHandle) {
+    let Some(file) = app
         .state::<Mutex<Library>>()
         .lock()
         .ok()
-        .and_then(|library| library.file.clone());
-    if let Some(file) = file {
-        let Ok(Some(events)) = file.observe_once() else {
-            return;
-        };
-        let handle = app.clone();
-        std::thread::spawn(move || {
-            loop {
-                let changed = events.recv_timeout(std::time::Duration::from_millis(200));
-                let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|mut library| {
-                    if changed.is_ok() {
-                        engine_changed(&mut library, &file)
-                    } else {
-                        library
-                            .file
-                            .as_ref()
-                            .is_some_and(|active| std::sync::Arc::ptr_eq(active, &file))
-                    }
-                });
-                if !current || matches!(changed, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) {
-                    break;
-                }
-                if changed.is_ok() {
-                    publish_current(&handle);
-                }
-            }
-        });
+        .and_then(|library| library.file.clone())
+    else {
         return;
-    }
-
-    let path = app
-        .state::<Mutex<Library>>()
-        .lock()
-        .ok()
-        .and_then(|mut library| take_watch_source(&mut library, &app.state(), request));
-    let Some((path, snapshot)) = path else {
-        // Zotero has no file to watch; it is checked for changes each time
-        // the picker is shown. Stop watching a previous file.
-        let watch = app.state::<LibraryWatch>();
-        if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request
-            && let Ok(mut current) = watch.0.lock()
-        {
-            *current = None;
-        }
+    };
+    let Ok(Some(events)) = file.observe_once() else {
         return;
     };
     let handle = app.clone();
-    let selected = path.clone();
-    let changed = move |loaded: Result<ibis_core::model::LoadResult, ibis_core::source::SourceError>| {
-        let loaded = loaded
-            .map(|loaded| candidate(selected.clone(), loaded))
-            .map_err(LoadError::from);
-        if install_automatic(&handle.state(), &handle.state(), request, loaded).is_some() {
-            publish_current(&handle);
-        }
-    };
-    let watch = match snapshot {
-        Some(snapshot) => SourceWatch::with_snapshot(&path, snapshot, changed),
-        None => SourceWatch::new(&path, changed),
-    };
-    let state = app.state::<LibraryWatch>();
-    if let Ok(mut current) = state.0.lock() {
-        if app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request {
-            return;
-        }
-        match watch {
-            Ok(watch) => *current = Some(watch),
-            Err(error) => {
-                if install_automatic(&app.state(), &app.state(), request, Err(error.into())).is_some() {
-                    publish_current(app);
+    std::thread::spawn(move || {
+        let mut revision = file.revision();
+        loop {
+            let changed = events.recv_timeout(std::time::Duration::from_millis(200));
+            let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|mut library| {
+                if changed.is_ok() {
+                    let previous = std::mem::replace(&mut revision, file.revision());
+                    engine_changed(&mut library, &file, previous != revision)
+                } else {
+                    library
+                        .file
+                        .as_ref()
+                        .is_some_and(|active| std::sync::Arc::ptr_eq(active, &file))
                 }
+            });
+            if !current || matches!(changed, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) {
+                break;
+            }
+            if changed.is_ok() {
+                publish_current(&handle);
             }
         }
-    }
+    });
 }
 
 #[derive(Clone, Copy)]
@@ -399,7 +362,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                 phases.publish_ms = publishing.elapsed().as_secs_f64() * 1000.0;
             }
             // Reattach even after a failed choice so the retained source keeps updating.
-            watch_current(&app, request);
+            watch_current(&app);
         }
         #[cfg(debug_assertions)]
         {
@@ -492,7 +455,6 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         .lock()
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
-            file_engine: false,
             revision: String::new(),
             state: LibraryState::Error,
             zotero: false,

@@ -13,8 +13,6 @@ use super::state::Library;
 /// Sent to the interface with the `library:changed` event.
 #[derive(Clone, Serialize, specta::Type)]
 pub(crate) struct LibraryStatus {
-    #[specta(optional)]
-    pub(crate) file_engine: bool,
     pub(crate) state: LibraryState,
     pub(crate) revision: String,
     /// Whether the requested library is Zotero rather than a file.
@@ -107,23 +105,19 @@ fn has_references(library: &Library) -> bool {
         .file
         .as_ref()
         .and_then(|file| file.engine.libraries().ok())
-        .map_or_else(
-            || !library.index.references().is_empty(),
-            |info| info.libraries.iter().any(|i| i.objects > 0),
-        )
+        .is_some_and(|info| info.libraries.iter().any(|i| i.objects > 0))
 }
 
 pub(crate) fn status(library: &Library) -> LibraryStatus {
     let has_references = has_references(library);
-    let mut source_counts = library.index.source_counts().clone();
+    let mut source_counts = BTreeMap::new();
     if let Some(Source::Zotero(chosen)) = &library.source {
         for library in chosen.libraries() {
             source_counts.entry(zotero_library(*library).to_string()).or_default();
         }
     }
     let mut result = LibraryStatus {
-        file_engine: library.file.is_some(),
-        revision: library.revision.to_string(),
+        revision: String::new(),
         state: if library.opening {
             if library.source.is_some() && library.source == library.requested {
                 LibraryState::Reloading
@@ -152,9 +146,9 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             .or(library.source.as_ref())
             .and_then(Source::name),
         snapshot_name: library.source.as_ref().and_then(Source::name),
-        references: library.index.references().len(),
+        references: 0,
         source_counts,
-        warnings: library.warnings.len(),
+        warnings: 0,
         error: library.error.map(|error| {
             let zotero = matches!(library.source, Some(Source::Zotero(_)));
             error_with_snapshot_context(error, has_references, zotero)
@@ -238,10 +232,7 @@ mod tests {
 
     #[test]
     fn native_presentation_facts_do_not_change_the_picker_payload() {
-        let mut library = candidate(
-            PathBuf::from("synthetic/retained.bib"),
-            ibis_core::bibtex::load_str("synthetic", "@misc{kept}"),
-        );
+        let mut library = candidate(PathBuf::from("synthetic/retained.bib"), "@misc{kept}");
         library.error = Some(SourceError::Unavailable.into());
         library.choice_save_warning = Some("the choice could not be saved".into());
         let current = status(&library);
@@ -249,7 +240,6 @@ mod tests {
         assert!(current.kept_references && current.choice_not_saved);
         let payload = serde_json::to_value(&current).unwrap_or_else(|e| panic!("{e}"));
         let expected = [
-            "file_engine",
             "state",
             "revision",
             "zotero",
@@ -346,7 +336,6 @@ mod tests {
             SourceError::WatchUnavailable.into(),
             LoadError::Stopped,
             LoadError::NotLocal,
-            LoadError::RevisionExhausted,
         ] {
             assert_eq!(error_with_snapshot_context(error, true, false), error.to_string());
         }
@@ -355,10 +344,7 @@ mod tests {
     #[test]
     fn a_failed_switch_is_not_a_failed_update_of_the_searched_library() {
         let open = |source: Source, error: LoadError| {
-            let library = Mutex::new(candidate(
-                source,
-                ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Kept}}"),
-            ));
+            let library = Mutex::new(candidate(source, "@misc{kept, title={Kept}}"));
             let requests = LoadRequests::default();
             let (request, _, _) = begin_open(&library, &requests, PathBuf::from("missing B.bib"))
                 .unwrap_or_else(|| panic!("the choice starts"));
@@ -380,10 +366,7 @@ mod tests {
         }
 
         // From a file to Zotero while Zotero is closed: the file is still searched.
-        let library = Mutex::new(candidate(
-            PathBuf::from("thesis.bib"),
-            ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Kept}}"),
-        ));
+        let library = Mutex::new(candidate(PathBuf::from("thesis.bib"), "@misc{kept, title={Kept}}"));
         let requests = LoadRequests::default();
         let (request, _, _) = begin_open(&library, &requests, Source::Zotero(ZoteroLibrary::User.into()))
             .unwrap_or_else(|| panic!("the choice starts"));

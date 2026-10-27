@@ -6,11 +6,15 @@ use super::error::LoadError;
 use super::source::Source;
 use super::state::Library;
 
-/// Read, parse and index off the main thread. Initial loads tolerate damaged
-/// entries; reloads retain the last good snapshot for demonstrably partial data.
+/// Read a library file through the engine off the main thread. Initial loads
+/// tolerate damaged entries; rereads keep the last good references when the
+/// file is demonstrably partial.
 #[cfg(test)]
 pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, LoadError> {
-    load_file(path, reload, None, &|| false)
+    match load_file(path, reload, None, &|| false)? {
+        Loaded::New(library) => Ok(*library),
+        Loaded::Unchanged => Err(LoadError::Stopped),
+    }
 }
 
 fn load_file(
@@ -18,22 +22,32 @@ fn load_file(
     reload: bool,
     previous: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
     cancelled: &impl Fn() -> bool,
-) -> Result<Library, LoadError> {
+) -> Result<Loaded, LoadError> {
     check_cancelled(cancelled)?;
-    let file = match previous {
-        Some(file) => file,
-        None => std::sync::Arc::new(super::engine_file::FileLibrary::open(&path)?),
+    let (file, unchanged) = match previous {
+        Some(file) => {
+            let before = file.revision();
+            if reload {
+                file.reload()?;
+            }
+            let unchanged = before == file.revision();
+            (file, unchanged)
+        }
+        None => (
+            std::sync::Arc::new(super::engine_file::FileLibrary::open(&path)?),
+            false,
+        ),
     };
-    if reload {
-        file.reload()?;
-    }
     check_cancelled(cancelled)?;
-    Ok(Library {
+    if unchanged {
+        return Ok(Loaded::Unchanged);
+    }
+    Ok(Loaded::New(Box::new(Library {
         source: Some(Source::File(path)),
         file: Some(file),
         checked_at: Some(std::time::SystemTime::now()),
         ..Library::default()
-    })
+    })))
 }
 
 fn check_cancelled(cancelled: &impl Fn() -> bool) -> Result<(), LoadError> {
@@ -43,7 +57,7 @@ fn check_cancelled(cancelled: &impl Fn() -> bool) -> Result<(), LoadError> {
 /// What a background load produced.
 pub(crate) enum Loaded {
     New(Box<Library>),
-    /// A Zotero refresh found nothing changed; keep the current references.
+    /// A reread found nothing changed; keep the current references.
     Unchanged,
 }
 
@@ -59,9 +73,7 @@ pub(super) fn load_source(
         return Err(LoadError::Stopped);
     }
     match source {
-        Source::File(path) => {
-            load_file(path, reload, previous_file, &cancelled).map(|library| Loaded::New(Box::new(library)))
-        }
+        Source::File(path) => load_file(path, reload, previous_file, &cancelled),
         Source::Zotero(chosen) => {
             super::engine_file::FileLibrary::validate_zotero(&chosen)?;
             let (bridge, unchanged) = if let Some(bridge) = previous_file {
@@ -121,16 +133,6 @@ mod tests {
     }
 
     #[test]
-    fn only_regular_files_are_read() {
-        assert!(ibis_core::source::read_library_file(std::path::Path::new(".")).is_err());
-        #[cfg(unix)]
-        assert!(ibis_core::source::read_library_file(std::path::Path::new("/dev/zero")).is_err());
-        let file = std::env::temp_dir().join(format!("ibis-read-{}.bib", std::process::id()));
-        std::fs::write(&file, "@misc{k}").unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(ibis_core::source::read_library_file(&file).as_deref(), Ok("@misc{k}"));
-    }
-
-    #[test]
     fn a_loaded_library_is_indexed_once_and_searchable() {
         let file = std::env::temp_dir().join(format!("ibis-load-{}.bib", std::process::id()));
         std::fs::write(&file, "@article{smith2020, title={Sleep and memory}}\n@article{bad,\n")
@@ -143,7 +145,7 @@ mod tests {
         let query = serde_json::from_value(serde_json::json!({"text":"sleep","interpret_locators":false}))
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            file.search(&query, 10, None)
+            file.search(&query, 10, None, &ibis_engine::Cancellation::default())
                 .unwrap_or_else(|e| panic!("{e}"))
                 .results
                 .len(),

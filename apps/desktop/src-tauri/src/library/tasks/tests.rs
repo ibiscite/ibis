@@ -1,3 +1,4 @@
+use super::super::state::candidate;
 use super::*;
 
 #[test]
@@ -36,7 +37,7 @@ fn three_rapid_choices_run_only_first_and_last_loads_and_the_last_wins() {
                         .recv_timeout(Duration::from_secs(5))
                         .unwrap_or_else(|e| panic!("{e}"));
                 }
-                let loaded = candidate(open.source, ibis_core::bibtex::load_str("synthetic", "@misc{key}"));
+                let loaded = candidate(open.source, "@misc{key}");
                 let installed = open
                     .intent
                     .install(library, requests, open.request, Ok(Loaded::New(Box::new(loaded))));
@@ -77,7 +78,7 @@ fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_
     use super::super::state::install;
 
     let source = Source::Zotero(ZoteroLibrary::Group(7).into());
-    let mut opened = candidate(source.clone(), ibis_core::bibtex::load_str("synthetic", "@misc{first}"));
+    let mut opened = candidate(source.clone(), "@misc{first}");
     let note = "the library opened but could not be saved for next time: synthetic";
     opened.choice_save_warning = Some(note.to_string());
     let library = Mutex::new(opened);
@@ -90,7 +91,7 @@ fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_
     let changed = || {
         Ok(Loaded::New(Box::new(candidate(
             source.clone(),
-            ibis_core::bibtex::load_str("synthetic", "@misc{first}\n@misc{second}"),
+            "@misc{first}\n@misc{second}",
         ))))
     };
     let recovered = OpenIntent::retry(reload)

@@ -79,7 +79,7 @@ mod tests {
             begin_open(&library, &requests, source).unwrap_or_else(|| panic!("the choice should start"));
         assert!(opening.zotero);
         assert_eq!(opening.zotero_libraries, [ZoteroLibrary::Group(7), ZoteroLibrary::User]);
-        let file = candidate(PathBuf::from("refs.bib"), ibis_core::bibtex::load_str("synthetic", ""));
+        let file = candidate(PathBuf::from("refs.bib"), "");
         assert!(status(&file).zotero_libraries.is_empty());
     }
 }
