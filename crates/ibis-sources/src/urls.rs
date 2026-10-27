@@ -71,6 +71,7 @@ fn public_url(url: &str) -> bool {
             && !url.chars().any(char::is_whitespace);
     };
     scheme.len() > 1
+        && !url.chars().any(char::is_whitespace)
         && !["file", "smb", "afp", "nfs", "jar"]
             .iter()
             .any(|private| scheme.eq_ignore_ascii_case(private))
@@ -109,21 +110,20 @@ fn without_private_urls(note: &str) -> (String, bool) {
                 line_start = true;
                 continue;
             }
-            // citeproc reads the value through any `{` up to the closing
-            // brace or the end of the line, so judge exactly that text.
+            // citeproc splits notes only at `\n` and reads the value through
+            // any `{`, CR or Unicode separator up to the closing brace or the
+            // end of the line, so judge exactly that text.
             let value_end = value_start
                 + rest[value_start..]
-                    .find(['}', '\r', '\n', '\u{2028}', '\u{2029}'])
+                    .find(['}', '\n'])
                     .unwrap_or(rest.len() - value_start);
             let value = rest[value_start..value_end].trim();
             if !value.is_empty() && (value.contains('{') || !public_url(value)) {
                 removed = true;
-                // Braces and lone CR can be part of a private path. Remove
-                // through the actual line separator, including inline fields.
-                let end = value_start
-                    + rest[value_start..]
-                        .find(['\n', '\u{2028}', '\u{2029}'])
-                        .unwrap_or(rest.len() - value_start);
+                // Braces, CR and Unicode separators can be part of a private
+                // path. Remove through the end of citeproc's line, including
+                // inline fields.
+                let end = value_start + rest[value_start..].find('\n').unwrap_or(rest.len() - value_start);
                 // Keep line boundaries: deleting a field cannot turn following
                 // prose into the first line accepted by citeproc's field hacks.
                 for ch in rest[..end]
@@ -186,6 +186,13 @@ mod tests {
             "{:URL: {file:///home/invented/private.pdf}",
             "URL: example.invalid{/home/invented/private.pdf",
             "Prose\nURL: {C:\\invented\\private.pdf",
+            // citeproc splits only at `\n`: CR and Unicode separators stay in
+            // the value, and so does a space after a URL.
+            "URL: https://example.invalid\r/home/invented/private.pdf",
+            "URL: https://example.invalid\u{2028}/home/invented/private.pdf",
+            "URL: https://example.invalid\u{2029}/home/invented/private.pdf",
+            "{:URL: https://example.invalid\r/home/invented/private.pdf}",
+            "URL: https://example.invalid /home/invented/private.pdf",
         ] {
             let mut fields = BTreeMap::from([("note".into(), Value::String(note.into()))]);
             assert!(remove_private_urls(&mut fields), "{note}");

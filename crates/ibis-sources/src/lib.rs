@@ -17,9 +17,10 @@ pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, load_file, load_file_snapshot, reload_file,
 };
 
-// Review measured about 2.6 KiB per minimal record before snapshot indexes.
-// Real bibliographies reach 100,000 entries (#1251); 200,000 keeps that
-// graph near 520 MiB rather than multiple GiB.
+// Real bibliographies reach 100,000 entries (#1251). Memory follows file size
+// more than record count: a release build loaded 200,000 small records in
+// about 0.85 GiB, and a 58 MiB file of 200,000 records in about 2.6 GiB. The
+// 64 MiB file cap is the real bound.
 pub const MAX_LIBRARY_RECORDS: usize = 200_000;
 
 /// Safe source diagnostics contain a location and fixed code, never payloads.
