@@ -477,16 +477,22 @@ pub(crate) async fn preview_file_citation(
     library: State<'_, Mutex<Library>>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let file = {
-        let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
+        let library = library
+            .lock()
+            .map_err(|_| CommandError::from("The library is unavailable."))?;
         let _ = expected_revision;
         if library.opening {
-            return Err(CommandError::SnapshotChanged);
+            return Err("The library is loading. Try again after it opens.".into());
         }
-        library.file.clone().ok_or(CommandError::SnapshotChanged)?
+        library
+            .file
+            .clone()
+            .ok_or_else(|| CommandError::from("The selected file is no longer open."))?
     };
-    tauri::async_runtime::spawn_blocking(move || file.preview(items, format, style))
+    let reservation = file.reserve_preview();
+    tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
         .await
-        .map_err(|_| CommandError::SnapshotChanged)?
+        .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?
 }
 #[tauri::command]
 #[specta::specta]
@@ -498,7 +504,7 @@ pub(crate) fn copy_file_citation(
 ) -> Result<Copied, CommandError> {
     let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
     if library.opening {
-        return Err(CommandError::SnapshotChanged);
+        return Err("The library is loading. Try again after it opens.".into());
     }
     library
         .file

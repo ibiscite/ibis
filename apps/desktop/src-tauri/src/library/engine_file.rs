@@ -19,6 +19,7 @@ static TICKETS: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
     prepared: Mutex<Option<(String, PreparedCitation)>>,
+    latest_preview: AtomicU64,
 }
 #[derive(Deserialize, specta::Type)]
 pub(crate) struct FileSelection {
@@ -54,6 +55,7 @@ impl FileLibrary {
         Ok(Self {
             engine,
             prepared: Mutex::new(None),
+            latest_preview: AtomicU64::new(0),
         })
     }
     pub(super) fn reload(&self) -> Result<(), super::LoadError> {
@@ -161,8 +163,14 @@ impl FileLibrary {
             interpretation,
         })
     }
+    pub(crate) fn reserve_preview(&self) -> u64 {
+        let request = TICKETS.fetch_add(1, Ordering::Relaxed);
+        self.latest_preview.fetch_max(request, Ordering::SeqCst);
+        request
+    }
     pub(crate) fn preview(
         &self,
+        reservation: u64,
         items: Vec<FileSelection>,
         format: KeyFormat,
         style: Option<CitationStyle>,
@@ -183,20 +191,31 @@ impl FileLibrary {
         };
         let items: Vec<_> = items
             .into_iter()
-            .map(|item| json!({"item":item.id,"expected_cite":item.cite,"locator":item.locator}))
+            .map(|item| json!({"item":item.id,"expected_cite":item.cite,"locator":item.locator.map(|locator| json!({"term":locator.label,"value":locator.value}))}))
             .collect();
-        let request: CitationRequest = serde_json::from_value(json!({"items":items,"output":output,"form":if style == Some(CitationStyle::Ieee) { "bibliography-only" } else { "normal" },"keep_order":true}))
-            .map_err(|_| CommandError::SnapshotChanged)?;
+        let request: CitationRequest = serde_json::from_value(json!({"items":items,"output":output,"form":if style == Some(CitationStyle::Ieee) { "bibliography-only" } else { "normal" },"keep_order":style.is_none()}))
+            .map_err(|_| CommandError::from("The selected references could not be read. Search again."))?;
         let citation = self
             .engine
             .prepare_citation(&request, &Cancellation::default())
-            .map_err(|_| CommandError::SnapshotChanged)?;
+            .map_err(CommandError::from)?;
         let result = citation.result();
         if result.copy_content(request.items.len()).is_none() {
             return Err("These references cannot be copied in this format.".into());
         }
+        self.publish_preview(reservation, citation)
+    }
+    fn publish_preview(&self, reservation: u64, citation: PreparedCitation) -> Result<FilePreview, CommandError> {
+        let mut slot = self
+            .prepared
+            .lock()
+            .map_err(|_| CommandError::from("The preview is unavailable."))?;
+        if self.latest_preview.load(Ordering::SeqCst) != reservation {
+            return Err("A newer citation preview replaced this request.".into());
+        }
+        let result = citation.result();
         let preview = FilePreview {
-            ticket: TICKETS.fetch_add(1, Ordering::Relaxed).to_string(),
+            ticket: reservation.to_string(),
             content_hash: result.content_hash.as_str().to_owned(),
             text: result.text.clone(),
             html: result.html.clone(),
@@ -206,10 +225,11 @@ impl FileLibrary {
                 vec!["This format cannot express part of the citation.".into()]
             },
         };
-        *self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)? = Some((preview.ticket.clone(), citation));
+        *slot = Some((preview.ticket.clone(), citation));
         Ok(preview)
     }
     pub(super) fn invalidate(&self) {
+        self.reserve_preview();
         if let Ok(mut prepared) = self.prepared.lock() {
             *prepared = None;
         }
@@ -227,7 +247,12 @@ impl FileLibrary {
         }
         self.engine
             .commit_citation(citation, &citation.result().content_hash, write)
-            .map_err(|_| CommandError::SnapshotChanged)??;
+            .map_err(|error| match error {
+                ibis_engine::CitationCommitError::Engine(_) => {
+                    CommandError::from("The citation could not be copied. Try again.")
+                }
+                _ => CommandError::SnapshotChanged,
+            })??;
         Ok(crate::copy::Copied {
             text: citation.result().text.clone(),
             warnings: if citation.result().losses.is_empty() {
@@ -238,3 +263,6 @@ impl FileLibrary {
         })
     }
 }
+
+#[cfg(test)]
+mod review_tests;
