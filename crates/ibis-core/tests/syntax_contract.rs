@@ -442,7 +442,7 @@ fn first_citation(value: &Value) -> Option<&Value> {
 
 #[test]
 fn prefix_support_matches_every_supported_output_and_form() {
-    use syntax::FieldSupport::{Flattened, Native, Unsupported};
+    use syntax::FieldSupport::{Flattened, Native, SingleItem, Unsupported};
     let mut case = seed();
     case.request.items[0].locator = None;
     case.request.items[0].suffix.clear();
@@ -458,12 +458,14 @@ fn prefix_support_matches_every_supported_output_and_form() {
             case.request.form = form;
             let expected = match (caps.syntax, form) {
                 (KeySyntax::Pandoc, CitationForm::Narrative) | (KeySyntax::Latex | KeySyntax::Typst, _) => Flattened,
+                (KeySyntax::Natbib, CitationForm::Narrative | CitationForm::AuthorOnly) => Flattened,
+                (KeySyntax::Natbib, _) => SingleItem,
                 (KeySyntax::Keys | KeySyntax::CslJson, _) => Unsupported,
                 _ => Native,
             };
             assert_eq!(caps.prefix_support(form), expected, "{caps:?} {form:?}");
             let result = syntax::cite(&case.library, &case.request).unwrap();
-            let expected_losses = if expected == Native {
+            let expected_losses = if matches!(expected, Native | SingleItem) {
                 vec![]
             } else {
                 vec![Loss {
@@ -497,7 +499,11 @@ fn prefix_support_matches_every_supported_output_and_form() {
                     .collect::<String>();
                 assert_eq!(
                     (native.trim(), outside.trim()),
-                    if expected == Native { ("see", "") } else { ("", "see") },
+                    if matches!(expected, Native | SingleItem) {
+                        ("see", "")
+                    } else {
+                        ("", "see")
+                    },
                     "{caps:?} {form:?}: {}",
                     result.text
                 );
@@ -969,6 +975,126 @@ fn unusual_keys_are_preserved_or_explicitly_refused_for_each_target() {
             assert_eq!(ids, [key], "{caps:?}: {}", result.text);
         }
     }
+}
+
+#[test]
+fn natbib_forms_keep_single_item_notes_in_their_actual_consumer_positions() {
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Natbib,
+        command: None,
+    };
+    case.request.items[0].prefix = vec![TextRun {
+        text: "see".into(),
+        ..TextRun::default()
+    }];
+    case.request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "12".into(),
+    });
+    case.request.items[0].suffix = vec![TextRun {
+        text: "note".into(),
+        ..TextRun::default()
+    }];
+    for (form, expected, flattened) in [
+        (CitationForm::Normal, r"\citep[see][p.~12, note]{Example2026}", false),
+        (CitationForm::Narrative, r"see \citet[p.~12, note]{Example2026}", true),
+        (
+            CitationForm::AuthorOnly,
+            r"see \citeauthor[p.~12, note]{Example2026}",
+            true,
+        ),
+        (
+            CitationForm::YearOnly,
+            r"\citeyearpar[see][p.~12, note]{Example2026}",
+            false,
+        ),
+    ] {
+        case.request.form = form;
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        assert_eq!(result.copy_content(1).unwrap().text, expected);
+        assert_eq!(
+            result.losses,
+            if flattened {
+                vec![Loss {
+                    item: Some(0),
+                    field: LossField::Prefix,
+                    reason: LossReason::Flattened,
+                }]
+            } else {
+                vec![]
+            }
+        );
+    }
+    case.request.form = CitationForm::Normal;
+    case.request.items[0].suppress_author = true;
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(result.text, r"\citeyearpar[see][p.~12, note]{Example2026}");
+    assert!(result.losses.is_empty());
+}
+
+#[test]
+fn natbib_multiple_items_never_assign_per_item_notes_to_the_whole_cluster() {
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Natbib,
+        command: None,
+    };
+    case.request.items.push(case.request.items[0].clone());
+    case.request.items[0].prefix = vec![TextRun {
+        text: "see".into(),
+        ..TextRun::default()
+    }];
+    case.request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "12".into(),
+    });
+    case.request.items[0].suffix = vec![TextRun {
+        text: "note".into(),
+        ..TextRun::default()
+    }];
+    case.request.items[0].suppress_author = true;
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(result.copy_content(2).unwrap().text, r"\citep{Example2026,Example2026}");
+    assert_eq!(
+        result.losses.iter().map(|loss| loss.field).collect::<Vec<_>>(),
+        [
+            LossField::Locator,
+            LossField::Prefix,
+            LossField::Suffix,
+            LossField::AuthorSuppression
+        ]
+    );
+    assert!(
+        result
+            .losses
+            .iter()
+            .all(|loss| loss.item == Some(0) && loss.reason == LossReason::Unsupported)
+    );
+    case.request.items[0].suppress_author = false;
+    case.request.items[0].form = Some(CitationForm::Narrative);
+    case.request.items[1].suffix = vec![TextRun {
+        text: "second".into(),
+        ..TextRun::default()
+    }];
+    let result = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(result.text, r"\citep{Example2026}");
+    assert!(result.copy_content(2).is_none());
+    assert_eq!(
+        result.outcomes[0],
+        ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::UnsupportedForm
+        }
+    );
+    assert_eq!(
+        result.losses,
+        [Loss {
+            item: Some(1),
+            field: LossField::Suffix,
+            reason: LossReason::Unsupported
+        }]
+    );
 }
 
 proptest! {

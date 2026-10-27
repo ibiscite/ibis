@@ -59,7 +59,7 @@ impl SyntaxCapabilities {
 use CitationForm::{Narrative, Normal, YearOnly};
 use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
-pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
+pub const CAPABILITIES: [SyntaxCapabilities; 9] = [
     SyntaxCapabilities {
         syntax: KeySyntax::Pandoc,
         command: None,
@@ -106,6 +106,23 @@ pub const CAPABILITIES: [SyntaxCapabilities; 8] = [
         suffix: Native,
         rich_text: Native,
         author_suppression: Unsupported,
+        escaping: Escaping::Latex,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::Natbib,
+        command: None,
+        forms: &[Normal, Narrative, CitationForm::AuthorOnly, YearOnly],
+        single_item_forms: &[Narrative, CitationForm::AuthorOnly, YearOnly],
+        locator: SingleItem,
+        prefix: &[
+            (Normal, SingleItem),
+            (Narrative, Flattened),
+            (CitationForm::AuthorOnly, Flattened),
+            (YearOnly, SingleItem),
+        ],
+        suffix: SingleItem,
+        rich_text: Native,
+        author_suppression: SingleItem,
         escaping: Escaping::Latex,
     },
     SyntaxCapabilities {
@@ -266,7 +283,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
             }
         }
     }
-    let text = render::render(caps, &picks)?;
+    let text = render::render(caps, &picks, request.items.len())?;
     if text.len() > MAX_OUTPUT_BYTES {
         return Err(CitationError::OutputTooLarge);
     }

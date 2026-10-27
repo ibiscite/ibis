@@ -143,8 +143,15 @@ is not a test of every app. Reports help: use the "Writing app report" form.
 
 Numeric styles such as IEEE copy the reference entry without its number: the
 in-text number depends on every reference your document cites, which one copy
-cannot see ([#1129](https://github.com/ibiscite/ibis/issues/1129)). Emacs org-cite, MyST
-and natbib key forms are planned for 0.2.
+cannot see ([#1129](https://github.com/ibiscite/ibis/issues/1129)). Emacs org-cite and
+MyST key forms are planned.
+
+Engine citation requests support Natbib (`"syntax": "natbib"`): normal,
+narrative, author-only and year-only forms use its standard commands. Narrative
+and author-only prefixes stay before the command and report flattening. A normal
+multi-reference cluster retains key order; per-item locators, affixes and author
+suppression report unsupported losses because Natbib has only one pair of notes
+for the whole cluster. The other forms currently require one reference.
 
 ## What the tests establish
 

@@ -6,13 +6,18 @@ use serde::{Serialize, Serializer, ser::SerializeMap};
 use super::escape::*;
 use super::*;
 
-pub(super) fn render(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> Result<String, CitationError> {
+pub(super) fn render(
+    caps: &SyntaxCapabilities,
+    picks: &[Pick<'_>],
+    requested_items: usize,
+) -> Result<String, CitationError> {
     if picks.is_empty() {
         return Ok(String::new());
     }
     let text = match caps.syntax {
         KeySyntax::Pandoc => pandoc(picks),
         KeySyntax::Biblatex => biblatex(caps.command.unwrap_or("autocite"), picks),
+        KeySyntax::Natbib => natbib(picks, requested_items),
         KeySyntax::Latex => latex(picks),
         KeySyntax::Typst => typst(picks),
         KeySyntax::Keys => picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(", "),
@@ -126,6 +131,48 @@ fn biblatex(command: &str, picks: &[Pick<'_>]) -> String {
                 .collect::<String>()
         )
     }
+}
+
+fn natbib(picks: &[Pick<'_>], requested_items: usize) -> String {
+    if requested_items != 1 {
+        // Natbib has one pre/postnote for the whole cluster. Per-item notes and
+        // author suppression were reported as losses before rendering.
+        return format!(
+            "\\citep{{{}}}",
+            picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(",")
+        );
+    }
+    let pick = &picks[0];
+    let command = match pick.form {
+        Narrative => "citet",
+        CitationForm::AuthorOnly => "citeauthor",
+        _ if pick.suppress => "citeyearpar",
+        _ => "citep",
+    };
+    let prefix = rich(&pick.item.prefix, Escaping::Latex);
+    let outside = matches!(pick.form, Narrative | CitationForm::AuthorOnly);
+    let post = pick
+        .item
+        .locator
+        .as_ref()
+        .map(latex_escape_locator)
+        .into_iter()
+        .chain((!pick.item.suffix.is_empty()).then(|| rich(&pick.item.suffix, Escaping::Latex)))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let notes = if !outside && !prefix.is_empty() {
+        format!("[{prefix}][{post}]")
+    } else if !post.is_empty() {
+        format!("[{post}]")
+    } else {
+        String::new()
+    };
+    format!(
+        "{}\\{command}{notes}{{{}}}",
+        if outside { before(&prefix) } else { String::new() },
+        pick.key
+    )
 }
 
 fn latex(picks: &[Pick<'_>]) -> String {
