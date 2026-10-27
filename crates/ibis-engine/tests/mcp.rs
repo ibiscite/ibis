@@ -270,6 +270,20 @@ fn malformed_messages_are_answered() {
     assert_eq!(no_method["error"]["code"], -32600);
     let bad_id = mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":[1],"method":7})).unwrap();
     assert_eq!(bad_id["id"], Value::Null);
+    let old_version = mcp::handle(&engine, &json!({"id":{"invented":1},"method":"ping"})).unwrap();
+    assert_eq!(old_version["id"], Value::Null);
     // A response to a request the server never sent needs no answer.
     assert_eq!(mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":1,"result":{}})), None);
+}
+
+#[test]
+fn an_override_cannot_slip_past_the_formatter_checks() {
+    // An "others" marker is refused whether it is a field or a note override.
+    let (_dir, engine) = library(
+        "synthetic.json",
+        &json!([{"id":"others","type":"book","title":"Invented","issued":{"date-parts":[[2020]]},"note":"author: others"}])
+            .to_string(),
+    );
+    let cited = tool(&engine, "cite", json!({"items":[{"id":item_id(&engine)}]}));
+    assert_eq!(cited["isError"], true);
 }

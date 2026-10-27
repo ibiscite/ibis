@@ -25,7 +25,7 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const MAX_HITS: usize = 25;
 /// Characters kept of any one text value.
 pub const MAX_TEXT: usize = 1_000;
-/// Entries kept of any one list (authors, keywords) or object (CSL fields).
+/// Entries kept of any one list (authors, keywords).
 pub const MAX_LIST: usize = 20;
 /// Bytes of JSON one tool answer may carry. Search returns fewer hits rather
 /// than more; anything else larger is refused.
@@ -102,13 +102,13 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
         return Some(error(Value::Null, -32600, "Invalid Request"));
     };
     let id = object.get("id").cloned();
-    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-        return Some(error(id.unwrap_or(Value::Null), -32600, "Invalid Request"));
-    }
     let valid_id = id
         .as_ref()
         .is_none_or(|id| id.is_string() || id.is_i64() || id.is_u64());
     let reply_id = id.clone().filter(|_| valid_id).unwrap_or(Value::Null);
+    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return Some(error(reply_id, -32600, "Invalid Request"));
+    }
     let method = match object.get("method") {
         Some(Value::String(method)) => method.as_str(),
         // A response to a request we never sent.

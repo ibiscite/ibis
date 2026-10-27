@@ -3,6 +3,7 @@ use ibis_core::contract::*;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::io::{self, Write};
 
 pub(crate) struct Prepared {
@@ -60,6 +61,7 @@ pub(crate) fn prepare(
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();
+    let mut citable = BTreeMap::<ItemRef, serde_json::Map<String, Value>>::new();
     let mut outcomes = Vec::new();
     let mut losses = Vec::new();
     let mut notices = Vec::new();
@@ -91,15 +93,31 @@ pub(crate) fn prepare(
         let LibraryObject::Record(record) = &object.object else {
             return Err(FormatError::InvalidRequest);
         };
+        let record = match citable.entry(pick.item.clone()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let bytes = bounded_json(&record.csl, remaining)?;
+                remaining = remaining.saturating_sub(bytes.len());
+                let mut value: serde_json::Map<String, Value> =
+                    serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
+                // Notes, annotations and private links never reach the
+                // processor; every check below sees what it will print.
+                ibis_core::citable::citable_fields(&mut value);
+                normalize_strings(value.values_mut());
+                if value.keys().any(|key| crate::output::unsupported_controls(key)) || record_controls(value.values()) {
+                    return Err(FormatError::InvalidRequest);
+                }
+                entry.insert(value)
+            }
+        };
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
         // When an item has authors, the in-text layouts of the bundled
         // author-date styles print only these name lists; every other one is
         // a substitute after `author` or appears only in entries.
-        let has_authors = named(record.csl.get("author"));
+        let has_authors = named(record.get("author"));
         if record
-            .csl
             .iter()
             .filter(|(field, _)| {
                 bibliography
@@ -163,16 +181,7 @@ pub(crate) fn prepare(
             id.clone()
         } else {
             let id = format!("ibis-{}", items.len());
-            let bytes = bounded_json(&record.csl, remaining)?;
-            remaining = remaining.saturating_sub(bytes.len());
-            let mut value: serde_json::Map<String, Value> =
-                serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
-            // Notes, annotations and private links never reach the processor.
-            ibis_core::citable::citable_fields(&mut value);
-            normalize_strings(value.values_mut());
-            if value.keys().any(|key| crate::output::unsupported_controls(key)) || record_controls(value.values()) {
-                return Err(FormatError::InvalidRequest);
-            }
+            let mut value = record.clone();
             // Source identities and keys never become JavaScript object lookup keys.
             value.insert("id".into(), json!(id));
             items.push(Value::Object(value));

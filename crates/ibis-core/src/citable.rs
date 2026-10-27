@@ -27,7 +27,41 @@ pub fn citable_fields(fields: &mut Map<String, Value>) {
         apply_overrides(fields, &note);
         private_url(fields);
     }
+    // Custom keys a source kept, and custom parts of names and dates, are
+    // not bibliographic data.
+    fields.retain(|name, _| is_variable(name));
+    for (name, value) in fields.iter_mut() {
+        let parts: &[&str] = if NAMES.contains(&name.as_str()) {
+            &NAME_PARTS
+        } else if DATES.contains(&name.as_str()) {
+            &DATE_PARTS
+        } else {
+            continue;
+        };
+        let objects: Vec<&mut Value> = match value {
+            Value::Array(names) => names.iter_mut().collect(),
+            date => vec![date],
+        };
+        for object in objects {
+            if let Value::Object(object) = object {
+                object.retain(|part, _| parts.contains(&part.as_str()));
+            }
+        }
+    }
 }
+
+const NAME_PARTS: [&str; 9] = [
+    "family",
+    "given",
+    "literal",
+    "suffix",
+    "dropping-particle",
+    "non-dropping-particle",
+    "comma-suffix",
+    "static-ordering",
+    "parse-names",
+];
+const DATE_PARTS: [&str; 5] = ["date-parts", "season", "circa", "literal", "raw"];
 
 /// A CSL variable a note may set and an agent may see. Fields a source keeps
 /// beyond these (custom keys, processor state) are not bibliographic data.
@@ -68,7 +102,7 @@ pub fn public_url(url: &str) -> bool {
 
 const DOCUMENT_SUFFIXES: &[&str] = &[
     "pdf", "epub", "djvu", "doc", "docx", "odt", "rtf", "txt", "md", "tex", "bib", "ris", "json", "sqlite", "html",
-    "htm", "png", "jpg", "jpeg", "gif", "svg", "webp", "mp3", "mp4",
+    "htm", "png", "jpg", "jpeg", "gif", "svg", "webp", "mp3", "mp4", "zip",
 ];
 
 const NAMES: &[&str] = &[
@@ -175,18 +209,24 @@ const TEXT: &[&str] = &[
     "volume",
     "volume-title",
     "volume-title-short",
+    "collection-title-short",
 ];
+
+/// citeproc splits only at `\n`, so a CR or Unicode separator after an
+/// override would carry the following prose into the field. Every line break
+/// ends a field here.
+const LINE_BREAKS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
 /// citeproc-js `parseNoteFieldHacks` with dates allowed to override, as the
 /// bundled processor runs it, limited to CSL variables.
 fn apply_overrides(fields: &mut Map<String, Value>, note: &str) {
     let mut lines = Vec::new();
-    for (index, line) in note.split('\n').enumerate() {
+    for (index, line) in note.split(LINE_BREAKS).enumerate() {
         lines.push(inline_fields(line, index == 0));
     }
     let lines = lines.join("\n");
     let mut names = Map::new();
-    for (index, line) in lines.split('\n').enumerate() {
+    for (index, line) in lines.split(LINE_BREAKS).enumerate() {
         if js_trim(line).is_empty() {
             continue;
         }
@@ -255,12 +295,12 @@ fn next_inline(text: &str) -> Option<(usize, usize)> {
         let start = from + offset;
         let body = &text[start + 2..];
         let key = key_length(body);
-        if key > 0
-            && body[key..].starts_with(':')
-            && let Some(close) = body[key + 1..].find('}')
-            && close > 0
-        {
-            return Some((start, start + 2 + key + 1 + close + 1));
+        if key > 0 && body[key..].starts_with(':') {
+            // No later candidate can close either: stop rather than rescan.
+            let close = body[key + 1..].find('}')?;
+            if close > 0 {
+                return Some((start, start + 2 + key + 1 + close + 1));
+            }
         }
         from = start + 1;
     }
@@ -387,6 +427,7 @@ mod tests {
             "C:\\invented\\private.pdf",
             "/home/invented/private.pdf",
             "private.pdf",
+            "papers.zip",
             "https://example.invalid /home/invented",
         ] {
             assert!(!public_url(url), "{url}");
@@ -398,5 +439,35 @@ mod tests {
         ] {
             assert!(public_url(url), "{url}");
         }
+    }
+
+    #[test]
+    fn custom_keys_and_name_or_date_parts_are_dropped() {
+        assert_eq!(
+            citable(json!({
+                "x-todo": "invented private task",
+                "author": [{"family": "Invented", "x-private": "invented"}],
+                "issued": {"date-parts": [[2020]], "x-private": "invented"},
+            })),
+            json!({"author": [{"family": "Invented"}], "issued": {"date-parts": [[2020]]}})
+        );
+    }
+
+    #[test]
+    fn every_line_break_ends_an_override() {
+        for separator in ["\r", "\u{2028}", "\u{2029}", "\r\n"] {
+            assert_eq!(
+                citable(json!({"note": format!("title: Invented title{separator}Invented private memo")})),
+                json!({"title": "Invented title"}),
+                "{separator:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unclosed_inline_fields_take_linear_time() {
+        let started = std::time::Instant::now();
+        assert_eq!(citable(json!({"note": "{:a:".repeat(1 << 18)})), json!({}));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
 }
