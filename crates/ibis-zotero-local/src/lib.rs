@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use ibis_core::zotero::api::{Response, Transport, TransportError};
 
+pub mod bbt;
 pub mod closed;
 pub mod discovery;
 
