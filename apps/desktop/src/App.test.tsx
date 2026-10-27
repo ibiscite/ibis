@@ -874,29 +874,13 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
   expect(box.getAttribute("aria-activedescendant")).toBe(count === 1 ? "result-0" : "result-1");
 });
 
-test("the Windows focus ring contrasts with both themes independent of the system accent", () => {
-  // macOS and Linux draw the ring in the system accent, as their own controls do
-  // (docs/design.md); increased contrast and forced colours make it CanvasText.
-  // Windows uses Fluent's ink ring, which must reach 3:1 on every row fill.
+test("every system shares the Mac focus ring and accessibility overrides", () => {
   expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
-  const focusToken = tokens.match(/:root\[data-platform="windows"\]\s*\{[^}]*--focus-ring-color:\s*var\((--[\w-]+)\)/)?.[1];
-  expect(focusToken).toBe("--text");
-  const theme = (token: string) => {
-    const pair = tokens.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]+),\\s*(#[0-9a-f]+)\\)`));
-    expect(pair, `${token} needs defined theme colors`).not.toBeNull();
-    return [pair?.[1], pair?.[2]].map((hex) => [1, 3, 5].map((i) => parseInt(hex?.slice(i, i + 2) ?? "", 16) / 255));
-  };
-  const luminance = (rgb: number[]) => rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4)
-    .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
-  const surface = theme("--surface"), text = theme("--text"), focus = theme(focusToken!);
-  for (const mode of [0, 1]) {
-    for (const tint of [0, .04, .08]) {
-      const background = surface[mode]!.map((c, i) => c * (1 - tint) + text[mode]![i]! * tint);
-      const [lighter, darker] = [luminance(focus[mode]!), luminance(background)].sort((a, b) => b - a);
-      expect((lighter! + .05) / (darker! + .05)).toBeGreaterThanOrEqual(3);
-    }
-  }
+  expect(tokens).toMatch(/--focus-ring-color:\s*var\(--accent\)/);
+  expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--focus-ring-color/);
+  expect(tokens).toContain("--focus-ring-color: CanvasText");
 });
+
 
 test("combobox focus is separate from citation selection and only additions/removals are announced", async () => {
   backend({ search: ({ query: { text: query } }) => query === "reorder"
@@ -2837,13 +2821,13 @@ test("each system's login item is in its own words, and its problems name where 
 
 test("the More menu names starting at login as the page's platform does", async () => {
   backend({ login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
-  document.documentElement.dataset.platform = "macos";
+  document.documentElement.dataset.system = "macos";
   try {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^More/ }));
     expect(await screen.findByRole("menuitemcheckbox", { name: "Open at Login" })).toBeTruthy();
   } finally {
-    delete document.documentElement.dataset.platform;
+    delete document.documentElement.dataset.system;
   }
 });
 
