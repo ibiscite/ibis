@@ -2022,7 +2022,9 @@ name = "ibis-desktop"
 version = "0.1.1"
 dependencies = [
  "auto-launch",
+ "ibis",
  "ibis-core",
+ "ibis-engine",
  "ibis-zotero-local",
  "objc2-app-kit",
  "objc2-core-graphics",

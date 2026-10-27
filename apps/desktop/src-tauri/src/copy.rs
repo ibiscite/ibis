@@ -460,3 +460,6 @@ mod tests {
         assert!(csl_json(&loaded.references, &[missing]).is_err());
     }
 }
+
+#[cfg(test)]
+mod engine_file_acceptance;
