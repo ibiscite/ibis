@@ -10,8 +10,8 @@ pub use ibis_zotero_local::live::LiveError;
 use ibis_zotero_local::live::{Library, LiveReader};
 use ibis_zotero_local::{closed, discovery};
 use std::{
-    path::PathBuf,
-    sync::{Arc, OnceLock},
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 use thiserror::Error;
 
@@ -128,12 +128,7 @@ impl ZoteroSource {
             return Err(LiveError::Cancelled.into());
         }
         let data = default_directory()?;
-        static READER: OnceLock<Result<closed::ClosedReader, closed::ClosedError>> = OnceLock::new();
-        let reader = READER
-            .get_or_init(|| closed::ClosedReader::new(&std::env::temp_dir()))
-            .as_ref()
-            .map_err(|error| ZoteroError::Closed(*error))?;
-        let acquired = reader.read_cancellable(&data, cancelled.clone())?;
+        let acquired = read_closed_at(&data, &std::env::temp_dir(), cancelled.clone())?;
         self.publish_closed(&acquired, &|| cancelled())
     }
     pub fn refresh(
@@ -276,6 +271,17 @@ impl ZoteroSource {
     }
 }
 
+// Hold the existing private-root lease only while reading. An idle desktop
+// must not keep the shared temporary cache locked against a separate CLI.
+fn read_closed_at(
+    data: &Path,
+    cache: &Path,
+    cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+) -> Result<closed::ClosedSnapshot, ZoteroError> {
+    let reader = closed::ClosedReader::new(cache)?;
+    reader.read_cancellable(data, cancelled).map_err(Into::into)
+}
+
 fn default_directory() -> Result<PathBuf, ZoteroError> {
     let platform = if cfg!(target_os = "macos") {
         discovery::Platform::MacOs
@@ -340,7 +346,10 @@ mod tests {
             .unwrap();
         drop(db);
         let before = std::fs::read(data.path().join("zotero.sqlite")).unwrap();
-        let acquired = closed::ClosedReader::new(cache.path())
+        let acquired = read_closed_at(data.path(), cache.path(), Arc::new(|| false)).unwrap();
+        // A completed source load must release its cache lease for another
+        // process/reader, rather than retaining it for the app's lifetime.
+        closed::ClosedReader::new(cache.path())
             .unwrap()
             .read(data.path())
             .unwrap();
