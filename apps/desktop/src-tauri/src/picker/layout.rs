@@ -42,12 +42,23 @@ pub(super) fn translate(shortcut: Shortcut, typed: impl Fn(u16, Modifiers) -> Op
         .map(|&(code, ..)| Shortcut::new(Some(shortcut.mods), code))
 }
 
+/// The macOS virtual key that types `code`'s letter with Command on the active
+/// layout, for posting ⌘V (#27): V is the period key on Dvorak.
+pub(crate) fn command_key(code: Code, typed: impl Fn(u16, Modifiers) -> Option<char>) -> Option<u16> {
+    let moved = translate(Shortcut::new(Some(Modifiers::SUPER), code), typed)?;
+    position(moved.key)
+}
+
+fn position(code: Code) -> Option<u16> {
+    POSITIONS.iter().find(|(c, ..)| *c == code).map(|&(_, key, _)| key)
+}
+
 /// Set a private key event’s Command layer before AppKit translates it.
 /// characters() keeps Command (Dvorak–QWERTY ⌘); ignoring modifiers loses it.
 /// These APIs predate macOS 10.13, unlike charactersByApplyingModifiers (10.15).
-/// Layout queries need the main thread; events are never posted.
+/// Layout queries need the main thread; these events are never posted.
 #[cfg(target_os = "macos")]
-pub(super) fn typing() -> impl Fn(u16, Modifiers) -> Option<char> {
+pub(crate) fn typing() -> impl Fn(u16, Modifiers) -> Option<char> {
     use objc2_app_kit::NSEvent;
     use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID};
     let source = CGEventSource::new(CGEventSourceStateID::Private);
@@ -172,6 +183,15 @@ mod tests {
                 Some(Shortcut::new(Some(modifiers), Code::KeyT))
             );
         }
+    }
+
+    #[test]
+    fn paste_uses_the_key_that_types_v_with_command() {
+        // US, German (QWERTZ), AZERTY and Dvorak.
+        for (changes, place) in [(&[][..], 0x09), (QWERTZ, 0x09), (AZERTY, 0x09), (DVORAK, 0x2F)] {
+            assert_eq!(command_key(Code::KeyV, layout(changes)), Some(place));
+        }
+        assert_eq!(command_key(Code::KeyV, |_, _| Some('я')), None);
     }
 
     #[test]
