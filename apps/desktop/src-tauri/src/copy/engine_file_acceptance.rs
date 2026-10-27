@@ -153,16 +153,23 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
         assert_eq!(preview.text, expected.text);
         assert_eq!(preview.html, expected.html);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
-        assert!(
-            preview.warnings.is_empty(),
-            "an ordinary formatted citation must not invent an order warning"
+        let warnings = if style == Some(CitationStyle::Apa) {
+            vec!["Year suffixes require the whole document; Ibis leaves them out."]
+        } else {
+            vec![]
+        };
+        assert_eq!(
+            preview.warnings, warnings,
+            "context notices must not become order-loss warnings"
         );
-        file.copy(&preview.ticket, &preview.content_hash, |content| {
-            assert_eq!(content.text, expected.text);
-            assert_eq!(content.html, expected.html.as_deref());
-            Ok(())
-        })
-        .map_err(|_| "native copy")?;
+        let copied = file
+            .copy(&preview.ticket, &preview.content_hash, |content| {
+                assert_eq!(content.text, expected.text);
+                assert_eq!(content.html, expected.html.as_deref());
+                Ok(())
+            })
+            .map_err(|_| "native copy")?;
+        assert_eq!(copied.warnings, preview.warnings);
     }
     Ok(())
 }

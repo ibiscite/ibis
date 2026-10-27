@@ -176,3 +176,108 @@ fn repeated_reloads_and_failed_choices_emit_one_engine_notification() -> Result<
     );
     Ok(())
 }
+
+#[test]
+fn same_author_year_notice_survives_native_preview_and_copy() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic.bib");
+    std::fs::write(
+        &path,
+        "@book{a,title={Synthetic first},author={Researcher, Synthetic},year={2026}}\n@book{b,title={Synthetic second},author={Researcher, Synthetic},year={2026}}",
+    )?;
+    let file = FileLibrary::open(&path).map_err(|_| "file")?;
+    let rows = file
+        .search(
+            &serde_json::from_value(json!({"text":"synthetic","interpret_locators":false}))?,
+            10,
+            None,
+        )
+        .map_err(|_| "search")?;
+    let rows = serde_json::to_value(rows)?;
+    let selected = rows["results"]
+        .as_array()
+        .ok_or("results")?
+        .iter()
+        .map(|row| serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null})))
+        .collect::<Result<Vec<FileSelection>, _>>()?;
+    assert_eq!(selected.len(), 2);
+    let preview = file
+        .preview(
+            file.reserve_preview(),
+            selected,
+            KeyFormat::Pandoc,
+            Some(CitationStyle::Apa),
+        )
+        .map_err(|e| e.to_string())?;
+    assert_eq!(
+        preview.warnings,
+        ["Year suffixes require the whole document; Ibis leaves them out."]
+    );
+    let copied = file
+        .copy(&preview.ticket, &preview.content_hash, |content| {
+            assert_eq!(content.text, preview.text);
+            Ok(())
+        })
+        .map_err(|e| e.to_string())?;
+    assert_eq!(copied.warnings, preview.warnings);
+    Ok(())
+}
+
+#[test]
+fn conflicting_keys_explain_refusal_without_a_copy_receipt() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_core::contract::{CitationKey, CitationKeySource, GoldenCase, Snapshot};
+    let case: GoldenCase = serde_json::from_str(include_str!("../../../../../../fixtures/cases/02-pandoc.json"))?;
+    let mut object = case.library.objects()[0].object.clone();
+    let LibraryObject::Record(record) = &mut object else {
+        return Err("record".into());
+    };
+    record.citation_keys = vec![
+        CitationKey {
+            value: "First2026".into(),
+            source: CitationKeySource::Zotero,
+        },
+        CitationKey {
+            value: "Other2026".into(),
+            source: CitationKeySource::Extra,
+        },
+    ];
+    let file = FileLibrary::from_engine(Engine::from_snapshot(Arc::new(Snapshot::new(vec![object])?)));
+    let snapshot = file.engine.snapshot().map_err(|_| "snapshot")?;
+    let record = &snapshot.objects()[0];
+    let selected = json!({"id":record.object.id(),"cite":record.fingerprints.cite,"locator":null});
+    let error = match file.preview(
+        file.reserve_preview(),
+        vec![serde_json::from_value(selected.clone())?],
+        KeyFormat::Pandoc,
+        None,
+    ) {
+        Err(error) => error,
+        Ok(_) => return Err("conflicting keys produced a preview receipt".into()),
+    };
+    let error = serde_json::to_value(error)?;
+    assert_eq!(error["code"], "failed");
+    assert_eq!(
+        error["message"],
+        "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
+    );
+    let writes = std::cell::Cell::new(0);
+    assert!(
+        file.copy("refused", "refused", |_| {
+            writes.set(writes.get() + 1);
+            Ok(())
+        })
+        .is_err()
+    );
+    assert_eq!(writes.get(), 0);
+    // Conflicting keys do not prevent a formatted citation of this record.
+    assert!(
+        file.preview(
+            file.reserve_preview(),
+            vec![serde_json::from_value(selected)?],
+            KeyFormat::Pandoc,
+            Some(CitationStyle::Apa)
+        )
+        .is_ok()
+    );
+    Ok(())
+}
