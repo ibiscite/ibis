@@ -53,12 +53,16 @@ impl FileLibrary {
                     _ => ibis_core::source::SourceError::Unreadable,
                 })
             })?;
-        Ok(Self {
+        Ok(Self::from_engine(engine))
+    }
+
+    fn from_engine(engine: Engine) -> Self {
+        Self {
             engine,
             prepared: Mutex::new(None),
             latest_preview: AtomicU64::new(0),
             observing: AtomicBool::new(false),
-        })
+        }
     }
     pub(super) fn observe_once(
         &self,
@@ -286,3 +290,6 @@ impl FileLibrary {
 
 #[cfg(test)]
 mod review_tests;
+
+#[cfg(test)]
+mod zotero_acceptance;
