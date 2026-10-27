@@ -13,6 +13,8 @@ use serde::Serialize;
 /// Whether Ibis may paste, and where the person turns that on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub(crate) struct PastePermission {
+    /// Ibis pastes on this system; where it only copies, Settings offers no pasting choices.
+    pub(crate) pastes: bool,
     /// This system asks the person before an app may paste for them.
     pub(crate) needed: bool,
     pub(crate) granted: bool,
@@ -55,16 +57,18 @@ pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
 #[cfg(target_os = "macos")]
 fn current() -> PastePermission {
     PastePermission {
+        pastes: true,
         needed: true,
         granted: objc2_core_graphics::CGPreflightPostEventAccess(),
         list: list_name(macos::major_version()).to_string(),
     }
 }
 
-/// Windows and Linux ask nothing before a paste; Linux only copies.
+/// Windows and Linux ask nothing before a paste, and for now they only copy.
 #[cfg(not(target_os = "macos"))]
 fn current() -> PastePermission {
     PastePermission {
+        pastes: false,
         needed: false,
         granted: true,
         list: String::new(),
@@ -125,6 +129,7 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     fn other_systems_need_no_permission() {
         let permission = paste_permission();
+        assert!(!permission.pastes);
         assert!(!permission.needed);
         assert!(permission.granted);
     }

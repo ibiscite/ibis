@@ -10,7 +10,7 @@ afterEach(() => vi.useRealTimers());
 
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
   const state = {
-    permission: { needed: true, granted: false, list: "Device Control and Data Access", ...permission },
+    permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
     preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
     opened: 0,
@@ -80,10 +80,17 @@ test("a permission already given shows one quiet line, and turning pasting off h
 });
 
 test("systems where Ibis only copies show no pasting choices", async () => {
-  const { api } = fakeApi({ needed: false, granted: true, list: "" });
+  const { api } = fakeApi({ pastes: false, needed: false, granted: true, list: "" });
   render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("switch", { name: "Larger text" });
   expect(screen.queryByRole("switch", { name: "Paste into the app you came from" })).toBeNull();
+  expect(screen.queryByText(/Privacy & Security/)).toBeNull();
+});
+
+test("systems that paste without asking show the switch and no guide", async () => {
+  const { api } = fakeApi({ needed: false, granted: true, list: "" });
+  render(<SettingsApp api={api} initialPage="general" />);
+  await screen.findByRole("switch", { name: "Paste into the app you came from" });
   expect(screen.queryByText(/Privacy & Security/)).toBeNull();
 });
 

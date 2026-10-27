@@ -371,6 +371,8 @@ export type Page = "general" |
 
 /**  Whether Ibis may paste, and where the person turns that on. */
 export type PastePermission = {
+	/**  Ibis pastes on this system; where it only copies, Settings offers no pasting choices. */
+	pastes: boolean,
 	/**  This system asks the person before an app may paste for them. */
 	needed: boolean,
 	granted: boolean,
