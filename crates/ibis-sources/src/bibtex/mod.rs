@@ -69,8 +69,7 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
         });
         return (result, true);
     }
-    let mut blocks = split_blocks(text);
-    let limited = blocks.len() > crate::MAX_LIBRARY_RECORDS;
+    let (mut blocks, limited) = split_blocks(text);
     if limited {
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
@@ -180,7 +179,7 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
 
 /// Whether a recognized block is demonstrably unfinished, for reload safety.
 pub(crate) fn has_incomplete_blocks(text: &str) -> bool {
-    split_blocks(text).iter().any(|block| !block.complete)
+    split_blocks(text).0.iter().any(|block| !block.complete)
 }
 
 /// Resolve, parse and convert one entry.
@@ -215,6 +214,20 @@ fn load_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recovery_header_limits_are_reported_even_when_candidates_collapse() {
+        let text = format!(
+            "@book{{broken,title={{ {}\n@book{{good}}",
+            "@misc{nested}".repeat(crate::MAX_LIBRARY_RECORDS + 1)
+        );
+        let result = load_str(&LibraryId::file(b"synthetic"), &text);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::WorkLimit)
+        );
+    }
     #[test]
     fn minimal_entries_pay_fixed_allocation_work() {
         let (result, limited) = load_with_budget(&LibraryId::file(b"synthetic"), "@misc{one}", Budget::new(1024));

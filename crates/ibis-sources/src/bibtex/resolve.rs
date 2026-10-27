@@ -924,7 +924,7 @@ mod tests {
     use super::*;
 
     fn resolve(src: &str, key: &str) -> Resolved {
-        let blocks = split_blocks(src);
+        let (blocks, _) = split_blocks(src);
         let mut macros = Vec::new();
         let mut entries = Vec::new();
         for block in &blocks {
@@ -974,6 +974,7 @@ mod tests {
         let text = "@book{root,xdata={p}}\n@xdata{p,xdata={one,two}}\n\
                     @xdata{one,note={One}}\n@xdata{two,publisher={Two}}";
         let entries: Vec<_> = split_blocks(text)
+            .0
             .iter()
             .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
             .collect();
@@ -1031,6 +1032,7 @@ mod tests {
             depth.as_str(),
         ] {
             let entries: Vec<_> = split_blocks(text)
+                .0
                 .iter()
                 .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
                 .collect();
@@ -1050,6 +1052,7 @@ mod tests {
             }
         }
         let entries: Vec<_> = split_blocks("@book{r,xdata={p}}\n@xdata{p,publisher={Press}}")
+            .0
             .iter()
             .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
             .collect();
@@ -1096,6 +1099,7 @@ mod tests {
                 text.push_str(&format!("@inbook{{child{i},title={{Child}},crossref={{parent}}}}\n"));
             }
             let entries: Vec<_> = split_blocks(&text)
+                .0
                 .iter()
                 .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
                 .collect();
