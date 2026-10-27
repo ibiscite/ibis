@@ -1,0 +1,31 @@
+-- Invented minimal subset of Zotero's physical userdata tables (AGPL-3.0-or-later).
+-- Layout verified against upstream 7.0.0, 8.0, 9.0 and 10.0.6; no user data.
+CREATE TABLE version(schema TEXT PRIMARY KEY,version INTEGER);
+CREATE TABLE libraries(libraryID INTEGER PRIMARY KEY,type TEXT);
+CREATE TABLE groups(groupID INTEGER PRIMARY KEY,libraryID INTEGER UNIQUE);
+CREATE TABLE itemTypesCombined(itemTypeID INTEGER PRIMARY KEY,typeName TEXT);
+CREATE TABLE fieldsCombined(fieldID INTEGER PRIMARY KEY,fieldName TEXT);
+CREATE TABLE items(itemID INTEGER PRIMARY KEY,libraryID INTEGER,key TEXT,version INTEGER,itemTypeID INTEGER,dateAdded TEXT,dateModified TEXT);
+CREATE TABLE itemData(itemID INTEGER,fieldID INTEGER,valueID INTEGER);
+CREATE TABLE itemDataValues(valueID INTEGER PRIMARY KEY,value UNIQUE);
+CREATE TABLE creators(creatorID INTEGER PRIMARY KEY,firstName TEXT,lastName TEXT,fieldMode INTEGER);
+CREATE TABLE creatorTypes(creatorTypeID INTEGER PRIMARY KEY,creatorType TEXT);
+CREATE TABLE itemCreators(itemID INTEGER,creatorID INTEGER,creatorTypeID INTEGER,orderIndex INTEGER);
+CREATE TABLE deletedItems(itemID INTEGER);
+INSERT INTO libraries VALUES(1,'user'),(2,'group'),(3,'feed');
+INSERT INTO groups VALUES(4321,2);
+INSERT INTO itemTypesCombined VALUES(1,'book'),(2,'journalArticle'),(3,'note'),(4,'attachment'),(5,'annotation');
+INSERT INTO fieldsCombined VALUES(1,'title'),(2,'date'),(3,'accessDate'),(4,'citationKey'),(5,'extra');
+INSERT INTO items VALUES(10,1,'SYNTH001',1,1,'2020-01-01 00:00:00','2020-02-02 00:00:00');
+INSERT INTO items VALUES(11,2,'SYNTH001',2,2,'2020-01-01 00:00:00','2020-03-03 00:00:00');
+INSERT INTO items VALUES(12,1,'TRASH001',1,1,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+INSERT INTO items VALUES(13,1,'NOTE0001',1,3,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+INSERT INTO items VALUES(14,1,'FILE0001',1,4,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+INSERT INTO items VALUES(15,1,'ANNO0001',1,5,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+INSERT INTO items VALUES(16,3,'FEED0001',1,1,'2020-01-01 00:00:00','2020-01-01 00:00:00');
+INSERT INTO deletedItems VALUES(12);
+INSERT INTO itemDataValues VALUES(1,'The Synthetic Atlas'),(2,'2020-00-00 Spring 2020'),(3,'2020-02-03 04:05:06'),(4,'Synthetic2020'),(5,'Citation Key: Synthetic2020');
+INSERT INTO itemData VALUES(10,1,1),(10,2,2),(10,3,3),(11,1,1),(11,5,5);
+INSERT INTO creators VALUES(1,'Ada','Example',0),(2,'','Synthetic Institute',1);
+INSERT INTO creatorTypes VALUES(1,'author'),(2,'editor');
+INSERT INTO itemCreators VALUES(10,2,2,1),(10,1,1,0);
