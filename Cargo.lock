@@ -1981,6 +1981,7 @@ dependencies = [
  "clap",
  "ibis-core",
  "ibis-engine",
+ "ibis-sources",
  "serde_json",
 ]
 

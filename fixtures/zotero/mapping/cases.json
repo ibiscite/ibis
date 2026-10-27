@@ -10998,5 +10998,150 @@
         ]
       }
     }
+  },
+  {
+    "name": "formatted-particle2026",
+    "item": {
+      "key": "S0000294",
+      "itemType": "book",
+      "title": "Invented <i>orchid</i> atlas",
+      "date": "2026",
+      "publisher": "Synthetic Press",
+      "citationKey": "particle2026",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Ada",
+          "lastName": "de Vries"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "citation-key": "particle2026",
+      "publisher": "Synthetic Press",
+      "title": "Invented <i>orchid</i> atlas",
+      "author": [
+        {
+          "family": "Vries",
+          "given": "Ada",
+          "non-dropping-particle": "de"
+        }
+      ],
+      "issued": {
+        "date-parts": [
+          [
+            2026
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "formatted-nonlatin2024",
+    "item": {
+      "key": "S0000295",
+      "itemType": "book",
+      "title": "合成の記録",
+      "date": "2024",
+      "publisher": "架空出版",
+      "citationKey": "nonlatin2024",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "花子",
+          "lastName": "例"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "citation-key": "nonlatin2024",
+      "publisher": "架空出版",
+      "title": "合成の記録",
+      "author": [
+        {
+          "family": "例",
+          "given": "花子"
+        }
+      ],
+      "issued": {
+        "date-parts": [
+          [
+            2024
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "formatted-corporate",
+    "item": {
+      "key": "S0000296",
+      "itemType": "book",
+      "title": "Invented field guide",
+      "publisher": "Imaginary Press",
+      "citationKey": "corporate",
+      "creators": [
+        {
+          "creatorType": "author",
+          "name": "Synthetic Institute"
+        }
+      ]
+    },
+    "expected": {
+      "type": "book",
+      "citation-key": "corporate",
+      "publisher": "Imaginary Press",
+      "title": "Invented field guide",
+      "author": [
+        {
+          "literal": "Synthetic Institute"
+        }
+      ]
+    }
+  },
+  {
+    "name": "formatted-ranges2023",
+    "item": {
+      "key": "S0000297",
+      "itemType": "journalArticle",
+      "title": "Invented mineral observations",
+      "date": "2023",
+      "publicationTitle": "Journal of Imagined Samples",
+      "volume": "4",
+      "issue": "2",
+      "pages": "101-109",
+      "citationKey": "ranges2023",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Noor",
+          "lastName": "Example"
+        }
+      ]
+    },
+    "expected": {
+      "type": "article-journal",
+      "citation-key": "ranges2023",
+      "container-title": "Journal of Imagined Samples",
+      "issue": "2",
+      "page": "101-109",
+      "title": "Invented mineral observations",
+      "volume": "4",
+      "author": [
+        {
+          "family": "Example",
+          "given": "Noor"
+        }
+      ],
+      "issued": {
+        "date-parts": [
+          [
+            2023
+          ]
+        ]
+      }
+    }
   }
 ]
