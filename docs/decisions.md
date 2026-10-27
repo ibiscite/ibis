@@ -27,7 +27,10 @@ stable error codes. One citation request, one result, with typed losses and
 refusals instead of plausible but wrong text. Records, attachments, notes,
 annotations, collections, tags and saved searches are addressed by
 `library + native key`; Ibis maps Zotero's raw data to CSL itself so Zotero
-open and closed give identical results. Details: [architecture](architecture.md).
+open and closed give identical results. Records keep only the normalised data
+Ibis uses; the source stays the original, and an export that needs the original
+entry reads it from the source (2026-10-27: in-memory raw copies dropped, which
+nothing read and which doubled memory). Details: [architecture](architecture.md).
 
 ## 0004 Desktop shell (with 0012)
 

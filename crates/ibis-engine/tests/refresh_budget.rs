@@ -1,5 +1,6 @@
-//! Release budgets for a 100,000-reference library (#1251): first open, a
-//! one-record refresh, the delay a concurrent copy sees, search, and peak memory.
+//! Benchmark, not a gate: a 100,000-reference library (#1251) in release. It
+//! prints first open, a one-record refresh, the delay a concurrent copy sees,
+//! search p95 and peak memory, and asserts only that the refresh landed.
 //! Run with `cargo test -p ibis-engine --release --test refresh_budget -- --nocapture`.
 #![cfg(not(debug_assertions))]
 #![allow(clippy::unwrap_used)]
