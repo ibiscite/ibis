@@ -457,6 +457,36 @@ removable chips (Backspace in an empty box removes the last). Recently cited,
 Recently added and With PDF show while the query is empty; suggestions for `#`
 and `a:` take their place while typing.
 
+**Search rules** (#1204, in `ibis-core` so every front end shares them). The
+index is built once per library change; a keystroke only scans it.
+
+- Any word order; case, accents and letter variants folded; "et al." and an
+  "and" between names ignored. Every word must match somewhere.
+- Per word, the best of: a whole word, the start of a word, inside a word
+  (three or more characters, or Chinese, Japanese and Korean), then one typo
+  (one letter changed, added, left out or two swapped) in words of five or
+  more Latin, Greek or Cyrillic letters, first letter right, at most one
+  misspelt word per search. The word still being typed may be a misspelt
+  start of a word. Numbers, years, identifiers and tags are never guessed.
+- Single letters and two-letter words match word starts only, so `j smith`
+  reads as an initial; `jrr tolkien` matches J. R. R. Tolkien.
+- Hints limit the word after them to one field: `a:` any person (authors,
+  editors, translators…), `t:` title (and short title), `j:` journal (and its
+  abbreviation), `k:` citation key, `#` tag or keyword (a whole word once typed
+  out), `y:2019`, `y:2019-2022`, `y:-1990`, `y:2015-`. Quotes keep a phrase
+  together and make text literal: `t:"cell signaling"`, `"a:b"`. A bare year
+  is searched everywhere, never as a filter. An exact citation key always
+  matches, even one that looks like a hint.
+- Ranking follows ordered rules, each breaking the ties of the one before
+  (as Meilisearch, Algolia and Typesense do): exact citation key, then exact
+  title; matches as typed, then with a typo, then those found only in
+  abstracts; the field-weighted score (key, title, people and identifiers over
+  year, tags, journal and abstract; whole words over starts over insides);
+  newest year; a stable order. Typos and abstracts are only searched when the
+  passes before them found fewer results than were asked for, so a shorter
+  list is always the start of a longer one.
+- A typo match is marked (`typo`) so the list can say "Close match".
+
 **Learning and parity** (#788). First minute: type, Enter, paste; first week:
 one footer tip at a time, retired once done (local "seen" flags only); power:
 filters, the format menu, More, pin. No tour or "what's new". Every task works

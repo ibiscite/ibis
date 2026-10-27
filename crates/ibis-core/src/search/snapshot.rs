@@ -1,7 +1,7 @@
 //! Prepared search data over an immutable contract snapshot; no legacy model conversion.
 use std::sync::Arc;
 
-use super::{MatchField, SearchDocument, by_identifier, key_eq, normalize, rank};
+use super::{MatchField, SearchDocument, Texts, by_identifier, key_eq, name_text, normalize, rank};
 use crate::{
     contract::*,
     identifier,
@@ -12,6 +12,8 @@ pub struct RecordHit<'a> {
     pub item: &'a SnapshotObject,
     pub score: u32,
     pub matched: Vec<MatchField>,
+    /// Some term matched only with one typo.
+    pub typo: bool,
 }
 
 struct Entry {
@@ -19,7 +21,6 @@ struct Entry {
     id: ItemRef,
     keys: Vec<String>,
     year: Option<i32>,
-    fields: [String; 8],
     identifiers: Vec<identifier::Identifier>,
 }
 impl SearchDocument for Entry {
@@ -42,9 +43,11 @@ impl SearchDocument for Entry {
 pub struct SnapshotIndex {
     snapshot: Arc<Snapshot>,
     entries: Vec<Entry>,
+    texts: Texts,
 }
 impl SnapshotIndex {
     pub fn new(snapshot: Arc<Snapshot>) -> Self {
+        let mut texts = Texts::default();
         let entries = snapshot
             .objects()
             .iter()
@@ -68,7 +71,7 @@ impl SnapshotIndex {
                     .and_then(serde_json::Value::as_i64)
                     .and_then(|year| i32::try_from(year).ok());
                 let text = |field: &str| record.csl.get(field).and_then(serde_json::Value::as_str).unwrap_or("");
-                let names = record
+                let names: Vec<Name> = record
                     .csl
                     .values()
                     .filter_map(serde_json::Value::as_array)
@@ -76,40 +79,58 @@ impl SnapshotIndex {
                     .filter_map(|value| {
                         let object = value.as_object()?;
                         let field = |key: &str| object.get(key).and_then(serde_json::Value::as_str).map(str::to_owned);
-                        Some(
-                            Name {
-                                family: field("family"),
-                                given: field("given"),
-                                literal: field("literal"),
-                                dropping_particle: field("dropping-particle"),
-                                non_dropping_particle: field("non-dropping-particle"),
-                                suffix: field("suffix"),
-                            }
-                            .display(),
-                        )
+                        Some(Name {
+                            family: field("family"),
+                            given: field("given"),
+                            literal: field("literal"),
+                            dropping_particle: field("dropping-particle"),
+                            non_dropping_particle: field("non-dropping-particle"),
+                            suffix: field("suffix"),
+                        })
                     })
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                Some(Entry {
-                    position,
-                    id: record.id.clone(),
-                    year,
-                    fields: [
+                    .collect();
+                texts.push(
+                    [
                         normalize(&keys.join(" ")),
                         normalize(&strip_markup(text("title"))),
-                        normalize(&names),
+                        name_text(names.iter()),
                         year.map(|year| year.to_string()).unwrap_or_default(),
                         normalize(text("DOI")),
                         normalize(text("keyword")),
                         normalize(&strip_markup(text("container-title"))),
                         normalize(text("abstract")),
                     ],
+                    &strip_markup(text("title-short")),
+                    &strip_markup(text("container-title-short")),
+                );
+                Some(Entry {
+                    position,
+                    id: record.id.clone(),
+                    year,
                     keys,
                     identifiers: identifier::of_record(record),
                 })
             })
             .collect();
-        Self { snapshot, entries }
+        Self {
+            snapshot,
+            entries,
+            texts: texts.shrink(),
+        }
+    }
+    /// About how many bytes the index holds besides the snapshot itself.
+    pub fn heap_bytes(&self) -> usize {
+        self.texts.heap_bytes()
+            + self.entries.capacity() * std::mem::size_of::<Entry>()
+            + self
+                .entries
+                .iter()
+                .map(|entry| {
+                    entry.keys.capacity() * std::mem::size_of::<String>()
+                        + entry.keys.iter().map(String::capacity).sum::<usize>()
+                        + entry.identifiers.capacity() * std::mem::size_of::<identifier::Identifier>()
+                })
+                .sum::<usize>()
     }
     pub fn snapshot(&self) -> &Arc<Snapshot> {
         &self.snapshot
@@ -130,13 +151,7 @@ impl SnapshotIndex {
             stop,
         )? {
             Some(hits) => hits,
-            None => rank(
-                self.entries.iter().map(|entry| (entry, &entry.fields)),
-                query,
-                limit,
-                scope,
-                stop,
-            )?,
+            None => rank(&self.entries, &self.texts, query, limit, scope, stop)?,
         };
         Some(
             hits.into_iter()
@@ -144,6 +159,7 @@ impl SnapshotIndex {
                     item: &self.snapshot.objects()[hit.reference.position],
                     score: hit.score,
                     matched: hit.matched,
+                    typo: hit.typo,
                 })
                 .collect(),
         )
