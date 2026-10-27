@@ -3,6 +3,7 @@ mod attachments;
 mod bibtex;
 mod csl_json;
 mod file;
+mod urls;
 pub mod zotero;
 
 use std::collections::BTreeMap;
@@ -11,7 +12,6 @@ use std::path::PathBuf;
 use ibis_core::contract::{ItemRef, LibraryId, Record, Snapshot};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, load_file, load_file_snapshot, reload_file,
@@ -67,22 +67,4 @@ struct ParsedLibrary {
     records: Vec<Record>,
     warnings: Vec<SourceWarning>,
     attachments: Vec<(ItemRef, String, Option<usize>)>,
-}
-
-fn remove_local_urls(csl: &mut BTreeMap<String, Value>, problems: &mut Vec<String>) {
-    if csl.get("URL").and_then(Value::as_str).is_some_and(|url| {
-        let url = url.trim();
-        url.to_ascii_lowercase().starts_with("file:")
-            || url.starts_with(['/', '\\'])
-            || ["~", ".", ".."].contains(&url)
-            || ["~/", "~\\", "./", ".\\", "../", "..\\"]
-                .iter()
-                .any(|prefix| url.starts_with(prefix))
-            || attachments::windows_drive(url)
-            || url.contains('\\')
-            || url.contains('/') && attachments::scheme(url).is_none()
-    }) {
-        csl.remove("URL");
-        problems.push("local file URL omitted".into());
-    }
 }

@@ -205,7 +205,9 @@ fn load_entry(
         .get(&entry.key)
         .ok_or_else(|| "entry could not be read; skipped".to_string())?;
     let mut record = convert::convert(source, &entry.kind, raw, parsed, &resolved.fields, &mut problems);
-    crate::remove_local_urls(&mut record.csl, &mut problems);
+    if crate::urls::remove_private_urls(&mut record.csl) {
+        problems.push("private URL omitted".into());
+    }
     let file = resolved.fields.get("file").map(|value| convert::file_value(value));
     Ok((record, file, problems))
 }

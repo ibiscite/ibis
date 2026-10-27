@@ -2,7 +2,7 @@
 // Copyright © 2021 Corporation for Digital Scholarship. See vendor/zotero.
 use std::collections::BTreeMap;
 
-use super::{MappingWarning, Schema, dates, public_url, warn};
+use super::{Schema, dates};
 use serde_json::Value;
 
 const STANDARD: &str = "abstract accessed annote archive archive-place author authority call-number chapter-number citation-label citation-number collection-editor collection-number collection-title composer container container-author container-title container-title-short dimensions director edition editor editorial-director event event-date event-place first-reference-note-number genre illustrator interviewer issue issued jurisdiction keyword language locator medium note number number-of-pages number-of-volumes original-author original-date original-publisher original-publisher-place original-title page page-first publisher publisher-place recipient references reviewed-author reviewed-title scale section source status submitted title title-short translator type version volume year-suffix";
@@ -127,76 +127,4 @@ pub(super) fn date_overrides(note: &str) -> (String, BTreeMap<String, Value>) {
         }
     }
     (lines.join("\n"), overrides)
-}
-
-pub(super) fn without_private_urls(note: &str, warnings: &mut Vec<MappingWarning>) -> String {
-    let mut safe = String::with_capacity(note.len());
-    let mut cursor = 0;
-    let mut line_start = true;
-    while cursor < note.len() {
-        let rest = &note[cursor..];
-        let inline = rest.starts_with("{:");
-        let label_start = if inline { 2 } else { 0 };
-        if (inline || line_start)
-            && rest
-                .get(label_start..label_start + 4)
-                .is_some_and(|label| label.eq_ignore_ascii_case("URL:"))
-        {
-            let start = label_start + 4;
-            let value_start = start + rest[start..].len() - rest[start..].trim_start().len();
-            if rest[start..value_start].contains(['\r', '\n', '\u{2028}', '\u{2029}'])
-                && rest
-                    .get(value_start..value_start + 4)
-                    .is_some_and(|label| label.eq_ignore_ascii_case("URL:"))
-            {
-                // A blank URL line cannot swallow the next URL field as if
-                // its label were a URI scheme. Recheck that field separately.
-                safe.push_str(&rest[..value_start]);
-                cursor += value_start;
-                line_start = true;
-                continue;
-            }
-            let value_end = value_start
-                + rest[value_start..]
-                    .find(['{', '}', '\r', '\n', '\u{2028}', '\u{2029}'])
-                    .unwrap_or(rest.len() - value_start);
-            let value = rest[value_start..value_end].trim();
-            if !value.is_empty() && !public_url(value) {
-                warn(warnings, MappingWarning::PrivateUrl);
-                // Braces and lone CR can be part of a private path. Remove
-                // through the actual line separator, including inline fields.
-                let end = rest.find(['\n', '\u{2028}', '\u{2029}']).unwrap_or(rest.len());
-                // Keep line boundaries: deleting a field cannot turn following
-                // prose into the first line accepted by citeproc's field hacks.
-                for ch in rest[..end]
-                    .chars()
-                    .filter(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'))
-                {
-                    safe.push(ch);
-                }
-                line_start = inline
-                    || rest[..end]
-                        .chars()
-                        .next_back()
-                        .is_some_and(|c| matches!(c, '\r' | '\n' | '\u{2028}' | '\u{2029}'));
-                cursor += end;
-                continue;
-            }
-            if !value.is_empty() {
-                // Consume each segment once, including adversarial repeated
-                // inline fields with no closing brace. Nested fields start a
-                // new segment and receive the same URL check.
-                safe.push_str(&rest[..value_end]);
-                cursor += value_end;
-                line_start = false;
-                continue;
-            }
-        }
-        if let Some(ch) = rest.chars().next() {
-            safe.push(ch);
-            cursor += ch.len_utf8();
-            line_start = matches!(ch, '}' | '\r' | '\n' | '\u{2028}' | '\u{2029}');
-        }
-    }
-    safe
 }

@@ -123,11 +123,9 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 _ => result.warnings.push(warning(WarningCode::Field)),
             }
         }
-        let mut problems = Vec::new();
-        crate::remove_local_urls(&mut csl, &mut problems);
-        result
-            .warnings
-            .extend(problems.into_iter().map(|_| warning(WarningCode::Field)));
+        if crate::urls::remove_private_urls(&mut csl) {
+            result.warnings.push(warning(WarningCode::Field));
+        }
         csl.insert("id".into(), Value::String(native.into()));
         for (alias, canonical) in [
             ("shortTitle", "title-short"),

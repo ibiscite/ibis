@@ -47,9 +47,10 @@ access; HTTP(S) links are marked online and never fetched. Ambiguous encodings
 produce an attachment warning rather than a guessed location. Windows UNC,
 network/device namespaces (including mixed separators), drive-relative paths and
 file URIs never trigger metadata probes. MIME values require bounded type/subtype
-tokens. Local absolute/relative file URLs (including bare relative paths without
-an absolute URI scheme) and vendor location fields are omitted
-from public CSL data and retained only in raw provenance.
+tokens. All adapters share one public URL policy, including citeproc URL overrides in
+`note`: local file URLs, UNC paths, file-sharing schemes and bare document
+filenames are omitted from public CSL data and retained only in private
+provenance. Public URLs and bare domain names remain available for formatting.
 
 Attachment fields are scanned lazily: at most 256 tokens and 64 KiB per record,
 16 KiB per token and 4096 bytes per decoded/native location. A library permits
