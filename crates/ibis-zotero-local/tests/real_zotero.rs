@@ -12,10 +12,9 @@ use std::net::TcpStream;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use ibis_core::model::LoadResult;
-use ibis_core::zotero::Library;
-use ibis_core::zotero::api::{self, Refresh, Snapshot};
+use ibis_core::zotero::api::{Response, Transport};
 use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
+use serde_json::Value;
 
 const ARTICLE: &str = r#"{
   "itemType": "journalArticle",
@@ -29,7 +28,7 @@ const ARTICLE: &str = r#"{
   "volume": "12",
   "pages": "101-120",
   "DOI": "10.0000/synthetic.1",
-  "extra": "Citation Key: example2020sleep"
+  "extra": "Synthetic raw Extra marker\nCitation Key: example2020sleep"
 }"#;
 
 const BOOK: &str = r#"{
@@ -94,106 +93,99 @@ fn save(items: &[&str], session: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Scans until Zotero lists `count` items; saving finishes after the
-/// connector answers.
-fn scan_until(count: usize) -> (LoadResult, Snapshot) {
+/// Read only the maintained transport boundary. Mapping/parity is tested in
+/// Sources; this fixture proves what the actual isolated Zotero sends.
+fn response(path: &str) -> Result<Response, Box<dyn Error>> {
+    let response = LocalZotero::on_port(port()).get(path)?;
+    if response.status != 200 {
+        return Err("Zotero refused the synthetic read".into());
+    }
+    Ok(response)
+}
+fn version(response: &Response) -> Result<u64, Box<dyn Error>> {
+    Ok(response
+        .header("Last-Modified-Version")
+        .ok_or("missing library version")?
+        .parse()?)
+}
+fn read_items() -> Result<(Vec<Value>, u64), Box<dyn Error>> {
+    let response = response("users/0/items/top?format=json&include=data&limit=100")?;
+    Ok((serde_json::from_slice(&response.body)?, version(&response)?))
+}
+fn scan_until(count: usize) -> Result<(Vec<Value>, u64), Box<dyn Error>> {
     let started = Instant::now();
     loop {
-        let scanned = api::scan(&mut LocalZotero::on_port(port()), Library::User);
-        match scanned {
-            Ok((result, snapshot)) if result.references.len() >= count => return (result, snapshot),
-            other if started.elapsed() > Duration::from_secs(60) => {
-                panic!("Zotero did not list {count} items within a minute: {other:?}")
-            }
-            _ => thread::sleep(Duration::from_millis(500)),
+        if let Ok((items, version)) = read_items()
+            && items.len() >= count
+        {
+            return Ok((items, version));
         }
+        if started.elapsed() > Duration::from_secs(60) {
+            return Err("Zotero did not list the synthetic items within a minute".into());
+        }
+        thread::sleep(Duration::from_millis(500));
     }
+}
+fn data_with_title<'a>(items: &'a [Value], title: &str) -> Result<&'a Value, Box<dyn Error>> {
+    items
+        .iter()
+        .map(|item| &item["data"])
+        .find(|data| data["title"] == title)
+        .ok_or_else(|| "synthetic item was not listed".into())
+}
+fn has_key(data: &Value, expected: &str) -> bool {
+    data["citationKey"].as_str() == Some(expected)
+        || data["extra"]
+            .as_str()
+            .is_some_and(|extra| extra.lines().any(|line| line == format!("Citation Key: {expected}")))
 }
 
 #[test]
 #[ignore = "needs a running Zotero; see scripts/real-zotero.sh"]
 fn ibis_reads_what_a_real_zotero_sends() -> Result<(), Box<dyn Error>> {
-    // Items are added to the library, so only ever run against the empty
-    // Zotero that scripts/real-zotero.sh starts.
+    // Never touch a default server or a library that was not explicitly
+    // started as an empty throwaway profile by the existing CI harness.
     if std::env::var_os("IBIS_THROWAWAY_ZOTERO").is_none() || port() == 0 {
         return Err("run this through scripts/real-zotero.sh, which starts a throwaway Zotero".into());
     }
-    let (empty, _) = api::scan(&mut LocalZotero::on_port(port()), Library::User)?;
-    if !empty.references.is_empty() {
+    let (empty, _) = read_items()?;
+    if !empty.is_empty() {
         return Err("this Zotero library is not empty; refusing to add synthetic items".into());
     }
     save(&[ARTICLE, BOOK, KEYLESS], "ibis-synthetic-1")?;
-    let (result, snapshot) = scan_until(3);
-    assert_eq!(result.references.len(), 3, "{:#?}", result.references);
-    assert!(result.warnings.is_empty(), "{:#?}", result.warnings);
-
-    let article = result
-        .references
-        .iter()
-        .find(|r| r.citekey.as_deref() == Some("example2020sleep"))
-        .ok_or("the article lost its citation key from Extra")?;
-    assert!(
-        article
-            .title
-            .as_deref()
-            .unwrap_or_default()
-            .contains("Sleep and memory")
-    );
-    let families: Vec<_> = article.authors.iter().filter_map(|a| a.family.as_deref()).collect();
-    assert_eq!(families, ["Example", "Sample"]);
-    assert_eq!(article.issued.as_ref().map(|i| i.start.year), Some(2020));
-    assert_eq!(article.item_type, "article-journal");
-    assert!(article.id.source.starts_with("zotero"), "{}", article.id.source);
-
-    let book = result
-        .references
-        .iter()
-        .find(|r| r.citekey.as_deref() == Some("institute2019"))
-        .ok_or("the book lost its citation key")?;
-    assert!(book.title.as_deref().unwrap_or_default().contains("数据与记忆"));
-    assert_eq!(book.item_type, "book");
-
-    let keyless = result
-        .references
-        .iter()
-        .find(|r| {
-            r.title
-                .as_deref()
-                .unwrap_or_default()
-                .contains("without a citation key")
-        })
-        .ok_or("an item without a citation key was not listed")?;
-    assert_eq!(keyless.citekey, None);
-
-    // Nothing changed: the cheap check says so without reading everything.
-    let again = api::refresh(&mut LocalZotero::on_port(port()), Library::User, Some(&snapshot))?;
-    assert_eq!(again, Refresh::Unchanged);
-
-    // A new item is noticed and the whole library is read again.
+    let (items, original_version) = scan_until(3)?;
+    assert_eq!(items.len(), 3);
+    let article = data_with_title(&items, "Sleep and memory consolidation in synthetic subjects")?;
+    assert!(has_key(article, "example2020sleep"));
+    assert_eq!(article["itemType"], "journalArticle");
+    assert_eq!(article["date"], "2020-03-14");
+    assert_eq!(article["DOI"], "10.0000/synthetic.1");
+    assert_eq!(article["creators"][0]["lastName"], "Example");
+    // Zotero10 migrates recognized Citation Key lines into citationKey.
+    // Ordinary Extra prose is preserved rather than reconstructed by Ibis.
+    let expected_extra = if article["citationKey"].as_str() == Some("example2020sleep") {
+        "Synthetic raw Extra marker"
+    } else {
+        "Synthetic raw Extra marker\nCitation Key: example2020sleep"
+    };
+    assert_eq!(article["extra"], expected_extra);
+    let book = data_with_title(&items, "Résumé des données: 数据与记忆")?;
+    assert!(has_key(book, "institute2019"));
+    assert_eq!(book["itemType"], "book");
+    let keyless = data_with_title(&items, "A report without a citation key")?;
+    assert!(keyless["citationKey"].as_str().is_none_or(str::is_empty));
+    assert!(!keyless["extra"].as_str().unwrap_or_default().contains("Citation Key:"));
+    let unchanged = response("users/0/items/top?format=versions&limit=1")?;
+    assert_eq!(version(&unchanged)?, original_version);
     save(&[LATER], "ibis-synthetic-2")?;
-    let started = Instant::now();
-    loop {
-        match api::refresh(&mut LocalZotero::on_port(port()), Library::User, Some(&snapshot))? {
-            Refresh::Loaded {
-                result,
-                snapshot: newer,
-            } => {
-                assert_eq!(result.references.len(), 4, "{:#?}", result.references);
-                assert!(newer.version > snapshot.version);
-                assert!(
-                    result
-                        .references
-                        .iter()
-                        .any(|r| r.citekey.as_deref() == Some("standin2022"))
-                );
-                return Ok(());
-            }
-            Refresh::Unchanged if started.elapsed() < Duration::from_secs(60) => {
-                thread::sleep(Duration::from_millis(500))
-            }
-            Refresh::Unchanged => panic!("Zotero never reported the added item"),
-        }
-    }
+    let (newer, newer_version) = scan_until(4)?;
+    assert_eq!(newer.len(), 4);
+    assert!(newer_version > original_version);
+    assert!(has_key(
+        data_with_title(&newer, "Added while Ibis was watching")?,
+        "standin2022"
+    ));
+    Ok(())
 }
 
 const CAPTURE_OWNERSHIP_ERROR: &str = "Zotero capture socket ownership could not be verified.";
