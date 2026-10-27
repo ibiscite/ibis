@@ -112,7 +112,7 @@ test("50 choices fit narrow and 200% text rows, keeping hidden source identities
   const onRemove = vi.fn();
   function Picker() {
     const [selected, setSelected] = useState(new Map(records.map((r, i) => [`identity${i}`, r])));
-    return shelf({ selected, removeLabel: (r) => `Remove ${r.id.source}/${r.id.native_key}`, onRemove: (r) => {
+    return shelf({ selected, removeLabel: (r) => { const id = r.id as { source: string; native_key: string }; return `Remove ${id.source}/${id.native_key}`; }, onRemove: (r) => {
       onRemove(r); setSelected((previous) => new Map([...previous].filter(([, value]) => value !== r)));
     } });
   }

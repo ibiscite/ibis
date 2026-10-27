@@ -13,6 +13,7 @@ tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
 ibis-core = { path = "../../../crates/ibis-core", features = ["type-export"] }
+ibis-engine = { path = "../../../crates/ibis-engine" }
 ibis-zotero-local = { path = "../../../crates/ibis-zotero-local" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -55,6 +56,7 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 smappservice-rs = "0.1.3"
 
 [dev-dependencies]
+ibis = { path = "../../../crates/ibis-cli" }
 tempfile = "3.27.0"
 # A mock app for the offline update check test.
 tauri = { version = "2.12", features = ["test"] }

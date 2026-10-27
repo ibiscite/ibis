@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ibis_core::locator_query::{self, LocatorQuery};
-use ibis_core::model::{RecordId, Reference};
+use ibis_core::model::Reference;
 use ibis_core::search::{MatchField, OwnedIndex};
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +29,12 @@ pub(crate) struct SearchResult {
     /// Revision captured with the index used for this result.
     pub(super) revision: String,
     /// Identity of the record; selection and copying use this, not the key.
-    pub(super) id: RecordId,
+    #[specta(type = specta_typescript::Unknown)]
+    pub(super) id: serde_json::Value,
+    #[specta(optional)]
+    pub(super) cite: String,
+    #[specta(optional)]
+    pub(super) source: String,
     pub(super) key: String,
     title: String,
     authors: String,
@@ -69,6 +74,62 @@ pub(super) fn surname(name: &ibis_core::model::Name) -> String {
 }
 
 impl SearchResult {
+    pub(super) fn from_engine(
+        record: &ibis_core::contract::Record,
+        cite: &str,
+        matched: Vec<MatchField>,
+        revision: &str,
+    ) -> Self {
+        let text = |field: &str| {
+            record
+                .csl
+                .get(field)
+                .and_then(serde_json::Value::as_str)
+                .map(ibis_core::model::strip_markup)
+                .unwrap_or_default()
+        };
+        let authors: Vec<_> = record
+            .csl
+            .get("author")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|author| {
+                author
+                    .get("literal")
+                    .or_else(|| author.get("family"))
+                    .and_then(serde_json::Value::as_str)
+            })
+            .map(ibis_core::model::strip_markup)
+            .collect();
+        let container = ["container-title", "publisher"]
+            .into_iter()
+            .map(text)
+            .find(|text| !text.is_empty());
+        Self {
+            revision: revision.into(),
+            id: serde_json::json!(&record.id),
+            source: record.id.library.as_str().to_owned(),
+            cite: cite.into(),
+            key: record.citation_key().ok().flatten().unwrap_or_default().into(),
+            title: text("title"),
+            first_author: authors.first().cloned().unwrap_or_default(),
+            author_count: u32::try_from(authors.len()).unwrap_or(u32::MAX),
+            authors: authors.join(", "),
+            year: record
+                .csl
+                .get("issued")
+                .and_then(|issued| issued.get("date-parts"))
+                .and_then(|parts| parts.get(0))
+                .and_then(|parts| parts.get(0))
+                .and_then(serde_json::Value::as_i64)
+                .and_then(|year| i32::try_from(year).ok()),
+            matched,
+            container,
+            item_type: text("type"),
+        }
+    }
+
     fn from(reference: &Reference, matched: Vec<MatchField>, revision: &str) -> Self {
         SearchResult {
             revision: revision.into(),
@@ -76,7 +137,9 @@ impl SearchResult {
             author_count: u32::try_from(reference.authors.len()).unwrap_or(u32::MAX),
             container: reference.container_plain().map(|text| capped(text, CONTAINER_LIMIT)),
             item_type: reference.item_type.clone(),
-            id: reference.id.clone(),
+            id: serde_json::json!(&reference.id),
+            cite: String::new(),
+            source: reference.id.source.to_string(),
             key: reference
                 .citekey
                 .clone()
@@ -273,7 +336,8 @@ mod tests {
             );
             assert_eq!(reply.results.len(), 1);
             selected.push(CitationSelection {
-                id: reply.results[0].id.clone(),
+                id: serde_json::from_value(reply.results[0].id.clone())
+                    .unwrap_or_else(|e| panic!("synthetic legacy ID: {e}")),
                 locator: reply.interpretation.map(|query| query.locator),
             });
         }
@@ -426,7 +490,7 @@ mod tests {
         let scope = vec!["zotero:group:7".into()];
         let results = search_newest(&index, "synthetic", "研究", 1, 2, &requests.newest(1), Some(&scope));
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id.source, "zotero:group:7");
+        assert_eq!(results[0].source, "zotero:group:7");
         assert!(search_newest(&index, "synthetic", "10.1000/scope", 20, 1, &requests.newest(1), None).is_empty());
         assert_eq!(
             search_newest(&index, "synthetic", "10.1000/scope", 20, 1, &requests.newest(2), None).len(),
@@ -483,7 +547,7 @@ mod tests {
         );
         assert_eq!(scoped.revision, captured.revision);
         assert_eq!(scoped.results.len(), 1);
-        assert_eq!(scoped.results[0].id.source, "zotero:group:7");
+        assert_eq!(scoped.results[0].source, "zotero:group:7");
         assert_eq!(scoped.results[0].revision, captured.revision);
         let all = search_snapshot(
             &index,
@@ -559,7 +623,7 @@ mod tests {
             Some(&scope),
         );
         assert_eq!(results.len(), 200);
-        assert!(results.iter().all(|r| r.id.source == "file"));
+        assert!(results.iter().all(|r| r.source == "file"));
         assert_eq!(index.source_counts().get("file"), Some(&220));
     }
 

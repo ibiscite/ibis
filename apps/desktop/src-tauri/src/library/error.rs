@@ -78,6 +78,15 @@ pub(crate) enum CommandError {
     Failed { message: String },
 }
 
+// Engine faults (including formatter capacity/timeouts) are not source revisions.
+impl From<ibis_core::contract::EngineError> for CommandError {
+    fn from(_: ibis_core::contract::EngineError) -> Self {
+        Self::Failed {
+            message: "The citation could not be prepared. Try again.".into(),
+        }
+    }
+}
+
 impl From<String> for CommandError {
     fn from(message: String) -> Self {
         CommandError::Failed { message }

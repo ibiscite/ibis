@@ -25,6 +25,8 @@ export const {
   quit,
   shortcutStatus,
   copyCitation,
+  previewFileCitation,
+  copyFileCitation,
   copyFormat,
   cslItems,
   copyFormatted,

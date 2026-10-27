@@ -10,6 +10,8 @@ pub const APP_COMMANDS: &[&str] = &[
     "library_status",
     "search",
     "copy_citation",
+    "preview_file_citation",
+    "copy_file_citation",
     "citation_text",
     "copy_format",
     "csl_items",
