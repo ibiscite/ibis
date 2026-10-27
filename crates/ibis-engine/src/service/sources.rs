@@ -241,11 +241,29 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?;
         let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
-        let port = self
-            .resources
-            .zotero_port
-            .unwrap_or(ibis_sources::zotero_source::DEFAULT_PORT);
-        match source.refresh_local(port, reload, &|| cancel.is_cancelled()) {
+        let reload = reload || !self.state()?.zotero_ready;
+        let mut guard_error = None;
+        let mut began = false;
+        let mut on_full = || {
+            if !began {
+                if let Err(failure) = self.shared.begin_zotero_read() {
+                    guard_error = Some(failure);
+                    return Err(ibis_sources::zotero_source::LiveError::Cancelled);
+                }
+                began = true;
+            }
+            Ok(())
+        };
+        let result = if let Some(port) = self.resources.zotero_port {
+            source.refresh_observed(port, reload, &|| cancel.is_cancelled(), &mut on_full)
+        } else {
+            let cancel = cancel.clone();
+            source.refresh_native(reload, Arc::new(move || cancel.is_cancelled()), &mut on_full)
+        };
+        if let Some(failure) = guard_error {
+            return Err(failure);
+        }
+        match result {
             Ok(loaded) => {
                 cancel.check()?;
                 self.shared.install(info(&loaded), &loaded.snapshot, None)
@@ -256,15 +274,20 @@ impl Engine {
                     ErrorCode::Cancelled
                 } else if failure.limited() {
                     ErrorCode::ResourceLimit
+                } else if failure.newer() {
+                    ErrorCode::NewerFormat
                 } else if failure == ZoteroError::InvalidData {
                     ErrorCode::BadInput
                 } else {
                     ErrorCode::SourceUnavailable
                 };
-                if code != ErrorCode::Cancelled
-                    && let Some(previous) = source.current()
-                {
-                    let _ = self.shared.failed(&previous.library, code);
+                if code != ErrorCode::Cancelled {
+                    if !began {
+                        self.shared.begin_zotero_read()?;
+                    }
+                    if let Some(previous) = source.current() {
+                        let _ = self.shared.failed(&previous.library, code);
+                    }
                 }
                 Err(error(code))
             }

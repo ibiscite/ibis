@@ -25,6 +25,7 @@ pub const MAX_LIBRARY_RECORDS: usize = 50_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum WarningCode {
+    CloudSyncedDirectory,
     Syntax,
     DuplicateKey,
     Field,

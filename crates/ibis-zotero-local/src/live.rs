@@ -205,6 +205,16 @@ impl LiveReader {
         reload: bool,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Refresh, LiveError> {
+        self.refresh_observed(transport, reload, cancelled, &mut || Ok(()))
+    }
+    /// Retire a native preview before a full read with unproven continuity.
+    pub fn refresh_observed(
+        &mut self,
+        transport: &mut impl Transport,
+        reload: bool,
+        cancelled: &impl Fn() -> bool,
+        on_full: &mut impl FnMut() -> Result<(), LiveError>,
+    ) -> Result<Refresh, LiveError> {
         if self.library == Library::Group(0) {
             return Err(LiveError::GroupNotFound);
         }
@@ -214,8 +224,11 @@ impl LiveReader {
             cancelled,
         };
         for attempt in 0..3 {
-            let next = match self.read(transport, reload || attempt != 0, &mut budget) {
-                Err(LiveError::Changing) => continue,
+            let next = match self.read(transport, reload || attempt != 0, &mut budget, on_full) {
+                Err(LiveError::Changing) => {
+                    on_full()?;
+                    continue;
+                }
                 outcome => outcome?,
             };
             budget.check()?;
@@ -268,7 +281,13 @@ impl LiveReader {
             versions,
         })
     }
-    fn read(&self, transport: &mut impl Transport, reload: bool, budget: &mut Budget<'_>) -> Result<State, LiveError> {
+    fn read(
+        &self,
+        transport: &mut impl Transport,
+        reload: bool,
+        budget: &mut Budget<'_>,
+        on_full: &mut impl FnMut() -> Result<(), LiveError>,
+    ) -> Result<State, LiveError> {
         let before = self.inventory(transport, budget)?;
         let previous = self.state.as_ref().filter(|s| {
             !reload
@@ -276,8 +295,12 @@ impl LiveReader {
                 && s.inventory.server == before.server
                 && s.inventory.version <= before.version
         });
+        if previous.is_none() {
+            on_full()?;
+        }
         let mut entries = previous.map(|s| s.entries.clone()).unwrap_or_default();
         entries.retain(|key, _| before.versions.contains_key(key));
+        let mut seen_version = before.version;
         let changed: Vec<_> = before
             .versions
             .iter()
@@ -293,7 +316,11 @@ impl LiveReader {
                     keys.join(",")
                 ),
             )?;
-            fence(&response, &before)?;
+            let version = fence(&response, &before)?;
+            if version < seen_version {
+                return Err(LiveError::Changing);
+            }
+            seen_version = version;
             let rows = rows(&response)?;
             if rows.len() != keys.len() || count(&response)? != keys.len() {
                 return Err(LiveError::Changing);
@@ -312,7 +339,8 @@ impl LiveReader {
         }
         let after = self.inventory(transport, budget)?;
         if before.server != after.server
-            || before.version != after.version
+            || after.version < seen_version
+            || before.server.major != 10 && before.version != after.version
             || before.versions != after.versions
             || entries.len() != after.versions.len()
         {
@@ -390,12 +418,12 @@ fn metadata(response: &Response) -> Result<(Server, u64), LiveError> {
         .ok_or(LiveError::Incomplete)?;
     Ok((server, version))
 }
-fn fence(response: &Response, inventory: &Inventory) -> Result<(), LiveError> {
+fn fence(response: &Response, inventory: &Inventory) -> Result<u64, LiveError> {
     let (server, version) = metadata(response)?;
-    if server != inventory.server || version != inventory.version {
+    if server != inventory.server || inventory.server.major != 10 && version != inventory.version {
         return Err(LiveError::Changing);
     }
-    Ok(())
+    Ok(version)
 }
 fn number(value: &str) -> Option<u64> {
     (!value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))

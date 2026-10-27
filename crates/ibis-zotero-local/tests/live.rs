@@ -135,6 +135,7 @@ fn a_changed_scan_retries_from_full_data_even_when_versions_return_to_cached_val
                 self.inventories += 1;
             }
             self.inner.version = if self.inventories == 2 { 2 } else { 1 };
+            self.inner.rows = vec![row(self.inner.version, "Restored synthetic atlas")];
             self.inner.get(path)
         }
     }
@@ -144,4 +145,18 @@ fn a_changed_scan_retries_from_full_data_even_when_versions_return_to_cached_val
     };
     reader.refresh(&mut drifting, false, &|| false).unwrap();
     assert_eq!(reader.items()[0].fields["title"], "Restored synthetic atlas");
+}
+
+#[test]
+fn unrelated_library_writes_do_not_starve_a_stable_ten_item_map() {
+    struct Churning(Fake);
+    impl Transport for Churning {
+        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+            self.0.version += 1;
+            self.0.get(path)
+        }
+    }
+    let mut reader = LiveReader::new(Library::User);
+    reader.refresh(&mut Churning(Fake::new(10)), false, &|| false).unwrap();
+    assert_eq!(reader.items()[0].fields["title"], "Invented atlas");
 }

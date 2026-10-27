@@ -8,6 +8,7 @@ use std::{
 
 pub struct PreparedCitation {
     origin: Weak<Shared>,
+    zotero_generation: Option<u64>,
     snapshot: Arc<Snapshot>,
     request: CitationRequest,
     result: CitationResult,
@@ -41,9 +42,25 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<PreparedCitation, EngineError> {
         cancel.check()?;
-        let snapshot = self.snapshot()?;
+        let state = self.state()?;
+        let uses_zotero = request
+            .items
+            .iter()
+            .any(|pick| pick.item.library == ibis_sources::zotero_source::library_id());
+        if uses_zotero && !state.zotero_ready {
+            return Err(error(ErrorCode::SourceUnavailable));
+        }
+        let zotero_generation = uses_zotero.then_some(state.zotero_generation);
+        let snapshot = state.index.snapshot().clone();
         let result = self.cite_snapshot(&snapshot, request, cancel)?;
+        if let Some(generation) = zotero_generation {
+            let latest = self.state()?;
+            if !latest.zotero_ready || latest.zotero_generation != generation {
+                return Err(error(ErrorCode::SourceUnavailable));
+            }
+        }
         Ok(PreparedCitation {
+            zotero_generation,
             origin: Arc::downgrade(&self.shared),
             snapshot,
             request: request.clone(),
@@ -76,12 +93,15 @@ impl Engine {
                 .unwrap_or(CitationCommitError::PreviewChanged));
         };
         for _ in 0..3 {
-            let latest = self.snapshot()?;
-            prepared.validate(&latest)?;
+            let latest = self.state()?;
+            prepared.validate_source(&latest)?;
+            let latest = latest.index.snapshot();
+            prepared.validate(latest)?;
             let state = self.shared.state.read().map_err(|_| error(ErrorCode::Internal))?;
             if state.index.snapshot().fingerprints().cite != latest.fingerprints().cite {
                 continue;
             }
+            prepared.validate_source(&state)?;
             // Publication cannot replace cited data until the native write returns.
             return Ok(write(content));
         }
@@ -89,6 +109,17 @@ impl Engine {
     }
 }
 impl PreparedCitation {
+    fn validate_source(&self, state: &super::State) -> Result<(), CitationCommitError> {
+        if let Some(generation) = self.zotero_generation {
+            if !state.zotero_ready {
+                return Err(error(ErrorCode::SourceUnavailable).into());
+            }
+            if state.zotero_generation != generation {
+                return Err(CitationCommitError::PreviewChanged);
+            }
+        }
+        Ok(())
+    }
     fn validate(&self, latest: &Snapshot) -> Result<(), CitationCommitError> {
         if latest.fingerprints().cite == self.snapshot.fingerprints().cite {
             return Ok(());
