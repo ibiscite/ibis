@@ -13,6 +13,8 @@ use serde::Serialize;
 pub(crate) enum LoadError {
     Source(SourceError),
     Zotero(ZoteroError),
+    EngineZotero(ibis_core::contract::ErrorCode),
+    UnsupportedZoteroLibraries,
     /// The file dialog returned something that is not a local file.
     NotLocal,
     /// The background load ended without a result.
@@ -36,6 +38,8 @@ impl LoadError {
                     | SourceError::LoadLimit
                     | SourceError::Changing
             ) | LoadError::Zotero(_)
+                | LoadError::EngineZotero(_)
+                | LoadError::UnsupportedZoteroLibraries
         )
     }
 }
@@ -57,6 +61,13 @@ impl fmt::Display for LoadError {
         match self {
             LoadError::Source(error) => error.fmt(f),
             LoadError::Zotero(error) => error.fmt(f),
+            LoadError::EngineZotero(code) => f.write_str(match code {
+                ibis_core::contract::ErrorCode::Cancelled => "reading Zotero was cancelled",
+                ibis_core::contract::ErrorCode::ResourceLimit => "reading Zotero exceeded its work limit",
+                ibis_core::contract::ErrorCode::NewerFormat => "this Zotero database is newer than Ibis can read",
+                _ => "Zotero could not be read; allow other applications in Zotero, or close it and try again",
+            }),
+            LoadError::UnsupportedZoteroLibraries => f.write_str("Zotero group libraries are not available yet"),
             LoadError::NotLocal => f.write_str("the chosen file is not on this computer"),
             LoadError::Stopped => f.write_str("loading the library stopped unexpectedly"),
             LoadError::RevisionExhausted => f.write_str("the library could not be updated; restart Ibis"),

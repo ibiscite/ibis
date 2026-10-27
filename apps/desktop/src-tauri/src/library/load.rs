@@ -2,14 +2,21 @@
 
 use std::path::PathBuf;
 
+#[cfg(test)]
 use ibis_core::settings::ZoteroLibraries;
+#[cfg(test)]
+use ibis_core::zotero;
+#[cfg(test)]
 use ibis_core::zotero::api::{Response, Transport, TransportError};
-use ibis_core::zotero::{self, libraries};
-use ibis_zotero_local::LocalZotero;
+use ibis_core::zotero::libraries;
 
 use super::error::LoadError;
-use super::source::{Source, zotero_library};
-use super::state::{Library, candidate};
+use super::source::Source;
+#[cfg(test)]
+use super::source::zotero_library;
+use super::state::Library;
+#[cfg(test)]
+use super::state::candidate;
 
 /// Read, parse and index off the main thread. Initial loads tolerate damaged
 /// entries; reloads retain the last good snapshot for demonstrably partial data.
@@ -45,11 +52,13 @@ fn check_cancelled(cancelled: &impl Fn() -> bool) -> Result<(), LoadError> {
     if cancelled() { Err(LoadError::Stopped) } else { Ok(()) }
 }
 
+#[cfg(test)]
 struct Cancellable<'a, T, C> {
     transport: &'a mut T,
     cancelled: C,
 }
 
+#[cfg(test)]
 impl<T: Transport, C: Fn() -> bool> Transport for Cancellable<'_, T, C> {
     fn get(&mut self, path: &str) -> Result<Response, TransportError> {
         // Unreachable aborts the whole multi-library scan. The obsolete
@@ -74,6 +83,7 @@ pub(crate) enum Loaded {
 
 /// Read the Zotero libraries, or only check for changes when `previous`
 /// holds the versions already loaded.
+#[cfg(test)]
 pub(super) fn load_zotero(
     chosen: ZoteroLibraries,
     previous: Option<&libraries::Snapshots>,
@@ -100,21 +110,46 @@ pub(super) fn load_zotero(
 pub(super) fn load_source(
     source: Source,
     reload: bool,
-    previous: Option<libraries::Snapshots>,
+    _previous: Option<libraries::Snapshots>,
     previous_file: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    cancel: &ibis_engine::Cancellation,
     cancelled: impl Fn() -> bool,
 ) -> Result<Loaded, LoadError> {
     check_cancelled(&cancelled)?;
+    if cancel.is_cancelled() {
+        return Err(LoadError::Stopped);
+    }
     match source {
         Source::File(path) => {
             load_file(path, reload, previous_file, &cancelled).map(|library| Loaded::New(Box::new(library)))
         }
-        Source::Zotero(chosen) => load_zotero(
-            chosen,
-            previous.as_ref().filter(|_| reload),
-            &mut LocalZotero::default(),
-            cancelled,
-        ),
+        Source::Zotero(chosen) => {
+            super::engine_file::FileLibrary::validate_zotero(&chosen)?;
+            let (bridge, unchanged) = if let Some(bridge) = previous_file {
+                let before = bridge.revision();
+                bridge.refresh_zotero(reload, cancel)?;
+                let unchanged = before == bridge.revision();
+                (bridge, unchanged)
+            } else {
+                (
+                    std::sync::Arc::new(super::engine_file::FileLibrary::open_zotero(cancel)?),
+                    false,
+                )
+            };
+            check_cancelled(&cancelled)?;
+            if cancel.is_cancelled() {
+                return Err(LoadError::Stopped);
+            }
+            if unchanged {
+                return Ok(Loaded::Unchanged);
+            }
+            Ok(Loaded::New(Box::new(Library {
+                source: Some(Source::Zotero(chosen)),
+                file: Some(bridge),
+                checked_at: Some(std::time::SystemTime::now()),
+                ..Library::default()
+            })))
+        }
     }
 }
 
@@ -170,7 +205,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = dir.path().join("synthetic.bib");
         assert!(matches!(
-            load_source(Source::File(file.clone()), false, None, None, || true),
+            load_source(
+                Source::File(file.clone()),
+                false,
+                None,
+                None,
+                &ibis_engine::Cancellation::default(),
+                || true
+            ),
             Err(LoadError::Stopped)
         ));
         std::fs::write(&file, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));

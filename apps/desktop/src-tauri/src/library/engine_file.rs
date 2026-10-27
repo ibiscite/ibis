@@ -1,4 +1,4 @@
-//! The file picker delegates acquisition, search, rendering and copy validation to the engine.
+//! The picker delegates acquisition, search, rendering and copy validation to the engine.
 use super::search::{SearchQuery, SearchReply, SearchResult};
 use super::{CommandError, LibraryStatus};
 use ibis_core::{
@@ -53,13 +53,50 @@ impl FileLibrary {
                     _ => ibis_core::source::SourceError::Unreadable,
                 })
             })?;
-        Ok(Self {
+        Ok(Self::from_engine(engine))
+    }
+
+    fn from_engine(engine: Engine) -> Self {
+        Self {
             engine,
             prepared: Mutex::new(None),
             latest_preview: AtomicU64::new(0),
             observing: AtomicBool::new(false),
-        })
+        }
     }
+    pub(super) fn validate_zotero(chosen: &ibis_core::settings::ZoteroLibraries) -> Result<(), super::LoadError> {
+        if chosen.libraries() != [ibis_core::settings::ZoteroLibrary::User] {
+            return Err(super::LoadError::UnsupportedZoteroLibraries);
+        }
+        Ok(())
+    }
+
+    pub(super) fn open_zotero(cancel: &Cancellation) -> Result<Self, super::LoadError> {
+        let engine = Engine::new().map_err(|e| super::LoadError::EngineZotero(e.code))?;
+        engine
+            .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), cancel)
+            .map_err(|e| super::LoadError::EngineZotero(e.code))?;
+        Ok(Self::from_engine(engine))
+    }
+
+    pub(super) fn refresh_zotero(&self, force: bool, cancel: &Cancellation) -> Result<(), super::LoadError> {
+        self.engine
+            .dispatch(
+                Method::Libraries,
+                &json!({"action": if force { "reload" } else { "open-zotero" }}),
+                cancel,
+            )
+            .map_err(|e| super::LoadError::EngineZotero(e.code))?;
+        let info = self
+            .engine
+            .libraries()
+            .map_err(|e| super::LoadError::EngineZotero(e.code))?;
+        if let Some(code) = info.libraries.iter().find_map(|info| info.refresh_error) {
+            return Err(super::LoadError::EngineZotero(code));
+        }
+        Ok(())
+    }
+
     pub(super) fn observe_once(
         &self,
     ) -> Result<Option<ibis_engine::LibrarySubscription>, ibis_core::contract::EngineError> {
@@ -286,3 +323,6 @@ impl FileLibrary {
 
 #[cfg(test)]
 mod review_tests;
+
+#[cfg(test)]
+mod zotero_acceptance;
