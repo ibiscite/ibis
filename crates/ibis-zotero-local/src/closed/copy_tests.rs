@@ -24,6 +24,32 @@ fn cancelled_private_store_setup_releases_ownership_for_a_later_read() {
     assert!(Store::open(scratch.path(), &control()).is_ok());
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn cancelled_private_store_with_inherited_acl_can_be_initialized_again() {
+    let scratch = scratch();
+    let status = std::process::Command::new("/bin/chmod")
+        .args(["+a", "everyone allow list,search,directory_inherit,file_inherit"])
+        .arg(scratch.path())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap_or_else(|_| panic!("synthetic inherited ACL"));
+    assert!(status.success());
+    let root = scratch.path().join(ROOT);
+    let created = root.clone();
+    let cancelled = Control::new(std::sync::Arc::new(move || created.exists()));
+    assert_eq!(
+        Store::open(scratch.path(), &cancelled).err(),
+        Some(ClosedError::Cancelled)
+    );
+    assert!(
+        !root.exists(),
+        "only the newly created empty directory should be removed"
+    );
+    assert!(Store::open(scratch.path(), &control()).is_ok());
+}
+
 #[test]
 fn exactly_three_mutating_attempts_then_refusal_and_cleanup() {
     let source = fixture(10);

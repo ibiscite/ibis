@@ -266,13 +266,27 @@ pub(super) fn create_private(path: &Path, control: &Control) -> Result<(), Close
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
+        use std::os::unix::fs::MetadataExt;
         std::fs::DirBuilder::new()
             .mode(0o700)
             .create(path)
             .map_err(|_| ClosedError::PrivateStorage)?;
-        #[cfg(target_os = "macos")]
-        clear_inherited_acl(path, control)?;
-        secure(path, control)?;
+        let created = std::fs::symlink_metadata(path).map_err(|_| ClosedError::PrivateStorage)?;
+        let result = (|| {
+            #[cfg(target_os = "macos")]
+            clear_inherited_acl(path, control)?;
+            secure(path, control)
+        })();
+        if result.is_err()
+            && std::fs::symlink_metadata(path).is_ok_and(|current| {
+                current.is_dir() && current.dev() == created.dev() && current.ino() == created.ino()
+            })
+        {
+            // Nothing has been written yet. Never recurse or repair an existing
+            // root; a cancelled fresh hardening must leave a retry possible.
+            let _ = std::fs::remove_dir(path);
+        }
+        result?;
     }
     #[cfg(windows)]
     {
