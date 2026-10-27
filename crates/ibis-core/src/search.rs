@@ -80,12 +80,14 @@ const WORD_START: u32 = 3;
 const INSIDE_WORD: u32 = 2;
 const ONE_TYPO: u32 = 1;
 
-/// Fields a plain term may match, and those a typo may match: citation keys,
-/// identifiers and years are too exact to guess at, abstracts too long.
+/// Fields a plain term may match, and those a typo may match (titles, people
+/// and journals): keys, identifiers, years and tags are too exact to guess
+/// at, abstracts too long.
 const ANY_FIELD: u8 = u8::MAX;
-/// Longer words are pasted, not typed, and get no typo allowance.
+/// Longer words and queries are pasted, not typed, and get no typo allowance.
 const MAX_TYPO_TERM: usize = 32;
-const TYPO_FIELDS: u8 = 0b0110_0110;
+const MAX_TYPO_QUERY_TERMS: usize = 8;
+const TYPO_FIELDS: u8 = 0b0100_0110;
 
 /// One search result.
 #[derive(Debug, Clone, Serialize)]
@@ -159,7 +161,7 @@ impl Texts {
         let title_len = fields[1].len();
         for (field, short) in [(1, title_short), (6, container_short)] {
             let short = normalize(short);
-            if !short.is_empty() && !fields[field].contains(&short) {
+            if !short.is_empty() && !format!(" {} ", fields[field]).contains(&format!(" {short} ")) {
                 push_words(&mut fields[field], &short);
             }
         }
@@ -492,11 +494,15 @@ struct Query {
 impl Query {
     /// `None` means cancellation; a query with nothing to search for has no terms.
     fn parse(query: &str, stop: &dyn Fn() -> bool) -> Option<Query> {
-        // Each word with the fields it may match and whether it was quoted.
-        let mut words: Vec<(String, u8, bool)> = Vec::new();
+        // Each word with the fields it may match, whether it was quoted and
+        // whether it is still being typed (the query's last word, no space after).
+        let mut words: Vec<(String, u8, bool, bool)> = Vec::new();
         let mut years = None;
         let mut hinted = false;
-        for (n, token) in tokens(query).into_iter().enumerate() {
+        let tokens = tokens(query);
+        let typing_token = tokens.len().wrapping_sub(1);
+        let still_typing = !query.ends_with(char::is_whitespace);
+        for (n, token) in tokens.into_iter().enumerate() {
             if n % TERM_CHECK_INTERVAL == 0 && stop() {
                 return None;
             }
@@ -512,18 +518,21 @@ impl Query {
                 }
                 None => (ANY_FIELD, token),
             };
+            let typing = n == typing_token && still_typing;
             if text.contains(is_quote) {
                 // A quoted phrase is one term, searched as written.
                 let phrase = normalize(&text.replace(is_quote, " "));
                 if !phrase.is_empty() {
-                    words.push((phrase, fields, true));
+                    words.push((phrase, fields, true, typing));
                 }
             } else {
+                let text = normalize(text);
+                let last = text.split(' ').count() - 1;
                 words.extend(
-                    normalize(text)
-                        .split(' ')
-                        .filter(|word| !word.is_empty())
-                        .map(|word| (word.into(), fields, false)),
+                    text.split(' ')
+                        .enumerate()
+                        .filter(|(_, word)| !word.is_empty())
+                        .map(|(w, word)| (word.into(), fields, false, typing && w == last)),
                 );
             }
         }
@@ -531,13 +540,13 @@ impl Query {
         let kept: Vec<_> = words
             .iter()
             .enumerate()
-            .filter(|(n, (word, fields, quoted))| {
+            .filter(|(n, (word, fields, quoted, _))| {
                 let next = words.get(n + 1).map(|(word, ..)| word.as_str());
                 let previous = n.checked_sub(1).map(|n| words[n].0.as_str());
                 let plain = |n: usize| {
                     words
                         .get(n)
-                        .is_some_and(|(_, fields, quoted)| *fields == ANY_FIELD && !quoted)
+                        .is_some_and(|(_, fields, quoted, _)| *fields == ANY_FIELD && !quoted)
                 };
                 let between = *n > 0 && plain(n - 1) && plain(n + 1);
                 *fields != ANY_FIELD
@@ -551,12 +560,13 @@ impl Query {
         if !kept.is_empty() || hinted {
             words = kept;
         }
-        let still_typing = !query.ends_with(char::is_whitespace);
-        let last = words.len().wrapping_sub(1);
         let mut terms: Vec<Term> = Vec::new();
-        for (n, (text, fields, quoted)) in words.into_iter().enumerate() {
+        let mut seen = BTreeMap::new();
+        for (n, (text, fields, quoted, typing)) in words.into_iter().enumerate() {
+            if n % TERM_CHECK_INTERVAL == 0 && stop() {
+                return None;
+            }
             let chars: Vec<char> = text.chars().collect();
-            let typing = n == last && still_typing;
             let tag = fields == MatchField::Keyword.bit();
             let typo = if tag
                 || quoted
@@ -570,15 +580,20 @@ impl Query {
                 Typo::Word
             };
             let whole_only = tag && !typing;
-            if let Some(same) = terms.iter_mut().find(|term| {
-                term.text == text && term.fields == fields && term.typo == typo && term.whole_only == whole_only
-            }) {
-                same.count = same.count.wrapping_add(1);
-                continue;
+            match seen.entry((text.clone(), fields, typo as u8, whole_only)) {
+                std::collections::btree_map::Entry::Occupied(same) => {
+                    let same: &mut Term = &mut terms[*same.get()];
+                    same.count = same.count.wrapping_add(1);
+                    continue;
+                }
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert(terms.len());
+                }
             }
             terms.push(Term {
                 finder: Finder::new(text.as_bytes()).into_owned(),
-                starts_only: chars.len() < 3 && !chars.iter().copied().any(is_cjk_char),
+                // Tags are matched from their start, like short words.
+                starts_only: tag || chars.len() < 3 && !chars.iter().copied().any(is_cjk_char),
                 whole_only,
                 chars,
                 text,
@@ -678,15 +693,21 @@ fn rank<'r, T: SearchDocument>(
     stop: &dyn Fn() -> bool,
 ) -> Option<Vec<Hit<'r, T>>> {
     let query = Query::parse(query, stop)?;
-    if (query.terms.is_empty() && query.years.is_none()) || limit == 0 {
+    if limit == 0 {
         return Some(Vec::new());
     }
     let mut found = vec![false; docs.len()];
     let mut candidates: Vec<Candidate<'r, T>> = Vec::new();
     let mut packed = Vec::new();
     let all: Vec<usize> = (0..query.terms.len()).collect();
+    // A query of only unfinished or invalid hints searches nothing but keys.
+    let searches = !query.terms.is_empty() || query.years.is_some();
 
-    let exact = matching(&query, docs, texts, &all, false, scope, &found, &mut packed, stop)?;
+    let exact = if searches {
+        matching(&query, docs, texts, &all, false, scope, &found, &mut packed, stop)?
+    } else {
+        Vec::new()
+    };
     for (n, score, matched) in exact {
         found[n] = true;
         candidates.push(candidate(&query, &docs[n], texts, n, Pass::Exact, score, matched));
@@ -711,15 +732,21 @@ fn rank<'r, T: SearchDocument>(
     // One typo in one term, tried only in records that match every other term.
     // Every term is tried once this pass starts, so its results rank alike
     // whatever the limit.
+    // Long pasted queries are not typed by hand and get no typo allowance,
+    // which also bounds this pass to a few scans.
     let mut word = Vec::new();
-    let typos = candidates.len() < limit;
+    let typos = candidates.len() < limit && query.terms.len() <= MAX_TYPO_QUERY_TERMS;
     for (t, term) in query.terms.iter().enumerate() {
         if !typos || term.typo == Typo::Never {
             continue;
         }
         let others: Vec<usize> = all.iter().copied().filter(|&other| other != t).collect();
-        for (n, score, matched) in matching(&query, docs, texts, &others, false, scope, &found, &mut packed, stop)? {
-            if let Some((bit, weight)) = best_typo(term, texts, n, &mut word) {
+        let near = matching(&query, docs, texts, &others, false, scope, &found, &mut packed, stop)?;
+        for (i, (n, score, matched)) in near.into_iter().enumerate() {
+            if i % STOP_CHECK_INTERVAL == 0 && stop() {
+                return None;
+            }
+            if let Some((bit, weight)) = best_typo(term, texts, n, &mut word, stop)? {
                 found[n] = true;
                 let score = weighted_score(score, weight, term.count);
                 candidates.push(candidate(
@@ -850,6 +877,9 @@ fn matching<T: SearchDocument>(
         }
     }
     for &t in rest {
+        if records.is_empty() {
+            break;
+        }
         if stop() {
             return None;
         }
@@ -902,7 +932,7 @@ fn scan(term: &Term, texts: &Texts, abstracts: bool, packed: &mut Vec<u16>, stop
     for &(is_abstract, buffer) in buffers {
         let bytes = buffer.as_bytes();
         let mut n = 0;
-        for (count, at) in term.finder.find_iter(bytes).enumerate() {
+        for (count, at) in occurrences(&term.finder, bytes).enumerate() {
             if (count + 1) % STOP_CHECK_INTERVAL == 0 && stop() {
                 return None;
             }
@@ -926,6 +956,17 @@ fn scan(term: &Term, texts: &Texts, abstracts: bool, packed: &mut Vec<u16>, stop
     Some(())
 }
 
+/// Every place `finder` occurs in `bytes`, overlapping ones included, so an
+/// occurrence that does not count cannot hide one that does.
+fn occurrences<'a>(finder: &'a Finder<'static>, bytes: &'a [u8]) -> impl Iterator<Item = usize> + 'a {
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        let at = from + finder.find(bytes.get(from..)?)?;
+        from = at + 1;
+        Some(at)
+    })
+}
+
 /// The best match of `term` in record `n` alone, packed. `None` means cancellation.
 fn best_in(term: &Term, texts: &Texts, n: usize, abstracts: bool, stop: &dyn Fn() -> bool) -> Option<u16> {
     let (meta, abstract_start) = texts.starts(n);
@@ -941,7 +982,7 @@ fn best_in(term: &Term, texts: &Texts, n: usize, abstracts: bool, stop: &dyn Fn(
         ),
     ];
     for (is_abstract, bytes, start, end) in buffers.into_iter().take(1 + usize::from(abstracts)) {
-        for (count, at) in term.finder.find_iter(&bytes[start..end]).enumerate() {
+        for (count, at) in occurrences(&term.finder, &bytes[start..end]).enumerate() {
             if (count + 1) % STOP_CHECK_INTERVAL == 0 && stop() {
                 return None;
             }
@@ -983,41 +1024,54 @@ fn rate(term: &Term, texts: &Texts, n: usize, is_abstract: bool, bytes: &[u8], a
 }
 
 /// The field and weight of the term's best match with one typo in record `n`.
-fn best_typo(term: &Term, texts: &Texts, n: usize, word: &mut Vec<char>) -> Option<(usize, u32)> {
+/// `None` means cancellation.
+fn best_typo(
+    term: &Term,
+    texts: &Texts,
+    n: usize,
+    word: &mut Vec<char>,
+    stop: &dyn Fn() -> bool,
+) -> Option<Option<(usize, u32)>> {
     let mut best = None;
     for (bit, field) in MatchField::ALL.iter().enumerate() {
         if term.fields & TYPO_FIELDS & field.bit() != 0
-            && has_typo_match(texts.field(n, bit), term, word)
+            && has_typo_match(texts.field(n, bit), term, word, stop)?
             && best.is_none_or(|(_, previous)| field.weight() >= previous)
         {
             best = Some((bit, field.weight()));
         }
     }
-    best.map(|(bit, weight)| (bit, weight * ONE_TYPO))
+    Some(best.map(|(bit, weight)| (bit, weight * ONE_TYPO)))
 }
 
 /// Whether a word in `text` is one typo away from `term`, as [`Typo`] allows.
-fn has_typo_match(text: &str, term: &Term, word: &mut Vec<char>) -> bool {
+/// `None` means cancellation.
+fn has_typo_match(text: &str, term: &Term, word: &mut Vec<char>, stop: &dyn Fn() -> bool) -> Option<bool> {
     let bytes = text.as_bytes();
     let prefix = term.typo == Typo::WordStart;
     let ascii = term.text.is_ascii();
-    for at in memchr::memchr_iter(term.text.as_bytes()[0], bytes) {
+    // One edit never reaches past two more letters than the term has.
+    let reach = term.chars.len() + 2;
+    for (count, at) in memchr::memchr_iter(term.text.as_bytes()[0], bytes).enumerate() {
+        if (count + 1) % STOP_CHECK_INTERVAL == 0 && stop() {
+            return None;
+        }
         if at > 0 && bytes[at - 1] != b' ' {
             continue;
         }
         let end = memchr::memchr(b' ', &bytes[at..]).map_or(bytes.len(), |end| at + end);
         let near = if ascii {
-            one_edit(term.text.as_bytes(), &bytes[at..end], prefix)
+            one_edit(term.text.as_bytes(), &bytes[at..end.min(at + reach)], prefix)
         } else {
             word.clear();
-            word.extend(text[at..end].chars());
+            word.extend(text[at..end].chars().take(reach));
             one_edit(&term.chars, word, prefix)
         };
         if near {
-            return true;
+            return Some(true);
         }
     }
-    false
+    Some(false)
 }
 
 /// Whether `word`, or with `prefix` some start of it, is one edit away from
@@ -1856,5 +1910,82 @@ mod tests {
         assert!(edit("nueros", "neuroscience", true), "start of a word");
         assert!(!edit("nueros", "neuroscience", false), "not a whole word");
         assert!(!edit("neuro", "neuroscience", true), "exact start is not an edit");
+    }
+
+    #[test]
+    fn review_findings_on_hints_tags_and_typing_state() {
+        let mut tagged = reference("tagged", "Unrelated", "Example", 2020);
+        tagged.keywords = vec!["sleepiness".into()];
+        let mut abbreviated = reference("rna", "MicroRNA", "Example", 2019);
+        abbreviated.variables.insert("title-short".into(), "RNA".into());
+        let mut keyword_only = reference("kw", "Other", "Example", 2018);
+        keyword_only.keywords = vec!["sleep".into()];
+        let index = OwnedIndex::new(vec![
+            tagged,
+            abbreviated,
+            keyword_only,
+            reference("y:smith", "Other", "Example", 2017),
+            reference("neuro", "Neuroscience", "Example", 2021),
+        ]);
+        // A word followed by a hint is finished, not still being typed.
+        assert!(keys(&index, "#sleep y:2020", 10).is_empty());
+        assert!(keys(&index, "nueros y:2021", 10).is_empty());
+        assert_eq!(keys(&index, "#sleep", 10), ["kw", "tagged"]);
+        // Tags match from their start only, and are never guessed.
+        assert!(keys(&index, "#leep", 10).is_empty());
+        assert!(keys(&index, "sleeq ", 10).is_empty());
+        // A short title inside a longer word is still its own word.
+        assert_eq!(keys(&index, "t:rn", 10), ["rna"]);
+        // A key that looks like an unfinished hint is still found exactly.
+        assert_eq!(keys(&index, "y:smith", 10), ["y:smith"]);
+    }
+
+    #[test]
+    fn an_occurrence_that_does_not_count_cannot_hide_one_that_does() {
+        let mut first = reference("foo", "foo foo", "Example", 2020);
+        first.abstract_text = Some("foo foo".into());
+        let index = OwnedIndex::new(vec![first, reference("bar", "foo foo stuff", "Example", 2020)]);
+        assert_eq!(keys(&index, "\"foo foo\"", 10), ["foo", "bar"]);
+        assert_eq!(keys(&index, "\"foo foo\"", 1), ["foo"]);
+    }
+
+    #[test]
+    fn hostile_queries_do_bounded_work_and_typos_poll_cancellation() {
+        use std::cell::Cell;
+        let index = OwnedIndex::new(
+            (0..10)
+                .map(|n| reference(&format!("k{n}"), "Title", "Example", 2020))
+                .collect(),
+        );
+        let words: String = (0..9_000u32)
+            .map(|n| {
+                let letters: String = (0..5)
+                    .map(|i| char::from(b'a' + ((n / 26u32.pow(i)) % 26) as u8))
+                    .collect();
+                format!("q{letters} ")
+            })
+            .collect();
+        let checks = Cell::new(0);
+        let stop = || {
+            checks.set(checks.get() + 1);
+            false
+        };
+        assert!(
+            index
+                .search_until(&words, 20, &stop)
+                .is_some_and(|hits| hits.is_empty())
+        );
+        // Parsing polls every 64 words; nothing rescans the index per word.
+        assert!(checks.get() < 1_000, "{}", checks.get());
+
+        let alphas = vec!["α"; 50_000].join(" ");
+        let index = OwnedIndex::new(vec![reference("greek", &alphas, "Example", 2020)]);
+        checks.set(0);
+        assert!(
+            index
+                .search_until("αβγδε ", 20, &stop)
+                .is_some_and(|hits| hits.is_empty())
+        );
+        assert!(checks.get() > 10, "the typo pass polls while it scans");
     }
 }

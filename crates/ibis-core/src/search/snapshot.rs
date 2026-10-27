@@ -126,7 +126,9 @@ impl SnapshotIndex {
                 .entries
                 .iter()
                 .map(|entry| {
-                    entry.keys.capacity() * std::mem::size_of::<String>()
+                    entry.id.key.capacity()
+                        + entry.id.library.as_str().len()
+                        + entry.keys.capacity() * std::mem::size_of::<String>()
                         + entry.keys.iter().map(String::capacity).sum::<usize>()
                         + entry.identifiers.capacity() * std::mem::size_of::<identifier::Identifier>()
                 })
