@@ -383,15 +383,15 @@ impl Engine {
             .iter()
             .map(|key| {
                 cancel.check()?;
-                let selected = select(&snapshot, &ItemSelector::Key(key.clone()))?;
+                let selected = select(&snapshot, &ItemSelector::Key(key.key.clone()))?;
                 Ok(CitationItem {
                     item: selected.object.id().clone(),
                     expected_cite: Some(selected.fingerprints.cite.clone()),
                     form: None,
-                    locator: None,
-                    prefix: vec![],
-                    suffix: vec![],
-                    suppress_author: false,
+                    locator: key.locator.clone(),
+                    prefix: key.prefix.clone(),
+                    suffix: key.suffix.clone(),
+                    suppress_author: key.suppress_author,
                     annotation: None,
                     expected_annotation_cite: None,
                 })

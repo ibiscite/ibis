@@ -184,6 +184,8 @@ pub(super) fn field(text: &str) -> String {
 /// What a `cite` run asked for, so findings can name the key and the output.
 pub(super) struct Citing {
     pub labels: Vec<String>,
+    /// The per-key options each item was given, such as `--omit-author`.
+    pub flags: Vec<Vec<&'static str>>,
     pub output: String,
     pub form: CitationForm,
 }
@@ -203,9 +205,30 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     let notices: Vec<Notice> = serde_json::from_value(parse("notices")).unwrap_or_default();
     let output = field(&citing.output);
     let mut lines = Vec::new();
-    for outcome in outcomes {
-        if let ItemOutcome::Refused { item, error } = outcome {
-            lines.push(refusal(error, &citing.label(item), &output, citing.form));
+    let refused: Vec<_> = outcomes
+        .into_iter()
+        .filter_map(|outcome| match outcome {
+            ItemOutcome::Refused { item, error } => Some((item, error)),
+            ItemOutcome::Rendered { .. } => None,
+        })
+        .collect();
+    // The formatter refuses a whole citation it cannot print in full, so no one key is to blame.
+    if refused.len() > 1
+        && citing.form == CitationForm::Normal
+        && refused
+            .iter()
+            .all(|(_, error)| *error == CitationError::UnsupportedForm)
+    {
+        lines.push(format!(
+            "{output} cannot print these keys together as asked; cite them one at a time to see which one fails."
+        ));
+    } else {
+        for (item, error) in refused {
+            let flags = citing
+                .flags
+                .get(item)
+                .map_or_else(String::new, |flags| flags.join(" and "));
+            lines.push(refusal(error, &citing.label(item), &output, citing.form, &flags));
         }
     }
     for loss in losses {
@@ -244,17 +267,20 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     lines
 }
 
-fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm) -> String {
+fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, flags: &str) -> String {
     match error {
         CitationError::UnsupportedForm => {
             let form = serde_json::to_value(form)
                 .ok()
                 .and_then(|form| form.as_str().map(str::to_owned))
                 .unwrap_or_default();
-            if form == "normal" {
-                format!("cannot cite {label} in {output}: its metadata cannot be printed correctly in this form.")
-            } else {
+            if form != "normal" {
                 format!("cannot cite {label} in {output} with --form {form}; try --form normal.")
+            } else if !flags.is_empty() {
+                let it = if flags.contains(" and ") { "them" } else { "it" };
+                format!("cannot cite {label} with {flags} in {output}; try without {it}.")
+            } else {
+                format!("{output} cannot print {label} correctly here; try another style, or cite it separately.")
             }
         }
         CitationError::InvalidLocator => format!("the locator for {label} is empty or has control characters."),

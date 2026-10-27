@@ -71,6 +71,10 @@ fn command() -> Command {
                 .arg(Arg::new("id").long("id").value_name("ITEM_REF_JSON")),
             Method::Cite => subcommand
                 .about("Render a citation through the shared engine")
+                .after_help(
+                    "Options after a key apply to that key, as in the picker:\n  \
+                     ibis cite smith2020 --locator \"p. 12\" --prefix see jones2019 --omit-author",
+                )
                 .arg(
                     Arg::new("keys")
                         .num_args(1..)
@@ -81,7 +85,18 @@ fn command() -> Command {
                     Arg::new("request")
                         .long("request")
                         .action(ArgAction::SetTrue)
-                        .conflicts_with_all(["keys", "format", "style", "form", "locale", "bibliography"])
+                        .conflicts_with_all([
+                            "keys",
+                            "format",
+                            "style",
+                            "form",
+                            "locale",
+                            "bibliography",
+                            "locator",
+                            "prefix",
+                            "suffix",
+                            "omit-author",
+                        ])
                         .help("Read a canonical CitationRequest JSON object from stdin"),
                 )
                 .arg(Arg::new("format").long("format").conflicts_with("style").value_parser([
@@ -111,7 +126,34 @@ fn command() -> Command {
                     "full",
                     "bibliography-only",
                 ]))
-                .arg(Arg::new("locale").long("locale").value_name("LOCALE")),
+                .arg(Arg::new("locale").long("locale").value_name("LOCALE"))
+                .arg(
+                    Arg::new("locator")
+                        .long("locator")
+                        .value_name("LOCATOR")
+                        .action(ArgAction::Append)
+                        .help("Pinpoint the key before it, such as \"p. 12\", \"ch. 3\" or \"12-14\""),
+                )
+                .arg(
+                    Arg::new("prefix")
+                        .long("prefix")
+                        .value_name("TEXT")
+                        .action(ArgAction::Append)
+                        .help("Text before the key before it, such as \"see\""),
+                )
+                .arg(
+                    Arg::new("suffix")
+                        .long("suffix")
+                        .value_name("TEXT")
+                        .action(ArgAction::Append)
+                        .help("Text after the key before it"),
+                )
+                .arg(
+                    Arg::new("omit-author")
+                        .long("omit-author")
+                        .action(ArgAction::Count)
+                        .help("Leave out the author of the key before it"),
+                ),
             Method::Styles => subcommand.about("List available bundled CSL styles"),
             Method::Schema => subcommand
                 .about("Print generated method JSON schemas")
@@ -422,12 +464,7 @@ fn execute<R: BufRead, W: Write + Send>(
                 ))
                 .map_err(|_| EngineError { code: ErrorCode::Usage })?
             };
-            let keys = args
-                .get_many::<String>("keys")
-                .into_iter()
-                .flatten()
-                .cloned()
-                .collect::<Vec<_>>();
+            let keys = key_items(args)?;
             if keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
                 return Err(Failure::new(
                     ErrorCode::BadInput,
@@ -438,7 +475,21 @@ fn execute<R: BufRead, W: Write + Send>(
                 ));
             }
             let citing = human::Citing {
-                labels: keys.clone(),
+                labels: keys.iter().map(|item| item.key.clone()).collect(),
+                flags: keys
+                    .iter()
+                    .map(|item| {
+                        [
+                            (item.locator.is_some(), "--locator"),
+                            (!item.prefix.is_empty(), "--prefix"),
+                            (!item.suffix.is_empty(), "--suffix"),
+                            (item.suppress_author, "--omit-author"),
+                        ]
+                        .into_iter()
+                        .filter_map(|(given, flag)| given.then_some(flag))
+                        .collect()
+                    })
+                    .collect(),
                 output: args
                     .get_one::<String>("style")
                     .or_else(|| args.get_one::<String>("format"))
@@ -458,7 +509,7 @@ fn execute<R: BufRead, W: Write + Send>(
                 )
                 .map_err(|error| {
                     // The engine reports only a code; find the key that caused it.
-                    let culprit = keys.iter().find_map(|key| {
+                    let culprit = keys.iter().map(|item| &item.key).find_map(|key| {
                         engine
                             .dispatch(Method::Show, &json!({"item":{"by":"key","value":key}}), &cancel)
                             .err()
@@ -517,6 +568,7 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
     let request: CitationRequest = serde_json::from_value(params.clone()).ok()?;
     Some(human::Citing {
         labels: vec![],
+        flags: vec![],
         output: match &request.output {
             OutputSpec::Csl { style } => style.clone(),
             OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
@@ -527,6 +579,85 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
         },
         form: request.form,
     })
+}
+/// Keys with the options that follow each one, the way the picker attaches them.
+fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
+    let mut items: Vec<(usize, KeyItem)> = args
+        .get_many::<String>("keys")
+        .into_iter()
+        .flatten()
+        .zip(args.indices_of("keys").into_iter().flatten())
+        .map(|(key, index)| (index, KeyItem::from(key.as_str())))
+        .collect();
+    let owner = |flag: &str, index: usize| {
+        items
+            .iter()
+            .rposition(|(start, _)| *start < index)
+            .ok_or_else(|| Failure::new(ErrorCode::Usage, format!("--{flag} must follow the key it belongs to.")))
+    };
+    let mut options: Vec<(usize, &str, Option<&String>)> = vec![];
+    for flag in ["locator", "prefix", "suffix"] {
+        let values = args.get_many::<String>(flag).into_iter().flatten();
+        let indices = args.indices_of(flag).into_iter().flatten();
+        options.extend(indices.zip(values).map(|(index, value)| (index, flag, Some(value))));
+    }
+    // A count flag reports its default's index when absent, so only typed flags count.
+    if args.get_count("omit-author") > 0 {
+        options.extend(
+            args.indices_of("omit-author")
+                .into_iter()
+                .flatten()
+                .map(|index| (index, "omit-author", None)),
+        );
+    }
+    let mut resolved = vec![];
+    for (index, flag, value) in options {
+        resolved.push((owner(flag, index)?, flag, value));
+    }
+    for (position, flag, value) in resolved {
+        let item = &mut items[position].1;
+        let text = || {
+            vec![TextRun {
+                text: value.cloned().unwrap_or_default(),
+                italic: false,
+                bold: false,
+                script: Script::Normal,
+            }]
+        };
+        let repeated = match flag {
+            "locator" => item
+                .locator
+                .replace(locator(value.map_or("", String::as_str))?)
+                .is_some(),
+            "prefix" => !std::mem::replace(&mut item.prefix, text()).is_empty(),
+            "suffix" => !std::mem::replace(&mut item.suffix, text()).is_empty(),
+            _ => std::mem::replace(&mut item.suppress_author, true),
+        };
+        if repeated {
+            return Err(Failure::new(
+                ErrorCode::Usage,
+                format!("--{flag} is given twice for '{}'.", human::field(&item.key)),
+            ));
+        }
+    }
+    Ok(items.into_iter().map(|(_, item)| item).collect())
+}
+/// The picker's locator reader, applied to the whole value.
+fn locator(text: &str) -> Result<Locator, Failure> {
+    [format!("x {text}"), format!("x, {text}")]
+        .iter()
+        .filter_map(|query| ibis_core::locator_query::split(query))
+        .find(|split| split.search == "x")
+        .and_then(|split| serde_json::from_value(json!({"term":split.locator.label,"value":split.locator.value})).ok())
+        .ok_or_else(|| {
+            Failure::new(
+                ErrorCode::Usage,
+                format!(
+                    "--locator '{}' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".",
+                    human::field(text)
+                ),
+            )
+        })
 }
 const ITEM_REF_HELP: &str = "--id must be an ItemRef JSON object, as ibis search --json prints it.";
 fn method_named(name: &str) -> Result<Method, Failure> {
