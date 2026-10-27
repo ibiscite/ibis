@@ -52,10 +52,10 @@ fn summary(method: Method, data: &Value, libraries_open: bool, names: &BTreeMap<
                     field(&{
                         let id = library.get("id")?.as_str()?;
                         names.get(id).cloned().unwrap_or_else(|| {
-                            if id.starts_with("zotero:") {
-                                "Zotero".into()
-                            } else {
-                                id.into()
+                            match library.pointer("/zotero/group").and_then(Value::as_u64) {
+                                Some(group) => format!("Zotero group {group}"),
+                                None if id.starts_with("zotero:") => "Zotero".into(),
+                                None => id.into(),
                             }
                         })
                     }),

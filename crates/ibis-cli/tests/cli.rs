@@ -14,7 +14,8 @@ fn toggle_forwards_one_argument_and_keeps_child_output_out_of_json() {
     let cli = directory.join("ibis");
     std::fs::write(
         &desktop,
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.args\"\nprintf 'child output must be private\\n'\n",
+        // Write then rename, so the test never reads a marker the shell has created but not yet filled.
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.part\"\nmv \"$0.part\" \"$0.args\"\nprintf 'child output must be private\\n'\n",
     )
     .unwrap_or_else(|error| panic!("{error}"));
     std::fs::copy(env!("CARGO_BIN_EXE_ibis"), &cli).unwrap_or_else(|error| panic!("{error}"));

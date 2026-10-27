@@ -167,16 +167,6 @@ pub struct BbtLibrary {
     pub name: String,
 }
 
-/// The local library ID of the group Zotero's local API calls `name`, when
-/// exactly one Better BibTeX library has that name. The local API addresses
-/// groups by their online ID, Better BibTeX by local ID, and only the name is
-/// shared; an ambiguous name gives no keys rather than another library's.
-pub fn library_named(libraries: &[BbtLibrary], name: &str) -> Option<i64> {
-    let mut matches = libraries.iter().filter(|library| library.name == name);
-    let first = matches.next()?;
-    matches.next().is_none().then_some(first.library_id)
-}
-
 /// Better BibTeX's JSON-RPC endpoint while Zotero runs.
 #[derive(Debug, Clone, Copy)]
 pub struct LiveBbt {

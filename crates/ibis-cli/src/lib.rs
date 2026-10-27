@@ -41,7 +41,16 @@ fn command() -> Command {
             .long("zotero")
             .global(true)
             .action(ArgAction::SetTrue)
-            .help("Read the active local Zotero personal library"),
+            .help("Read the local Zotero personal library, open or closed"),
+    );
+    root = root.arg(
+        Arg::new("zotero-group")
+            .long("zotero-group")
+            .global(true)
+            .value_name("GROUP_ID")
+            .value_parser(clap::value_parser!(u64))
+            .action(ArgAction::Append)
+            .help("Read a local Zotero group library by its group ID; repeat for several"),
     );
     for method in Method::ALL {
         let subcommand = Command::new(method.as_str());
@@ -303,9 +312,22 @@ fn execute<R: BufRead, W: Write + Send>(
             }
         }
     }
-    if matches.get_flag("zotero") {
+    let groups = matches.get_many::<u64>("zotero-group").into_iter().flatten();
+    let zotero: Vec<_> = matches
+        .get_flag("zotero")
+        .then_some(ZoteroLibrary::Personal)
+        .into_iter()
+        .chain(groups.map(|id| ZoteroLibrary::Group(*id)))
+        .collect();
+    if !zotero.is_empty() {
+        let params = serde_json::to_value(LibrariesRequest::OpenZotero {
+            libraries: Some(zotero),
+        })
+        .map_err(|_| EngineError {
+            code: ErrorCode::BadInput,
+        })?;
         explain(
-            engine.dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel),
+            engine.dispatch(Method::Libraries, &params, &cancel),
             human::zotero_failure,
         )?;
     }
