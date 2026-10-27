@@ -67,7 +67,7 @@ fn zotero_process(name: &str) -> bool {
         .unwrap_or_default()
         .to_string_lossy()
         .to_lowercase();
-    name == "zotero" || name.starts_with("zotero-") || name.starts_with("zotero.")
+    matches!(name.as_str(), "zotero" | "zotero-bin")
 }
 
 /// Bounded native-helper output stays private. Read concurrently so a full pipe
@@ -592,13 +592,51 @@ mod tests {
             "zotero",
             "/Applications/Zotero.app/Contents/MacOS/zotero",
             "zotero-bin",
-            "Zotero.Beta",
+            "ZoTeRo",
         ] {
             assert!(super::zotero_process(name));
         }
-        for name in ["ibis_zotero_local-test", "zotero_reader_test", "ps", "/tmp/zotero/test"] {
+        for name in [
+            "ibis_zotero_local-test",
+            "zotero_reader_test",
+            "zotero-mcp",
+            "Zotero.Beta",
+            "zotero-sync-helper",
+            "ps",
+            "/tmp/zotero/test",
+        ] {
             assert!(!super::zotero_process(name));
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zotero_mcp_process_does_not_mean_zotero_is_running() {
+        assert_eq!(process_list(b"42 ibis\n43 /synthetic/zotero-mcp\n", 42), Ok(()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_synthetic_zotero_mcp_executable_is_not_the_zotero_process() {
+        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic process directory"));
+        let executable = root.path().join("zotero-mcp");
+        std::fs::copy("/bin/sleep", &executable).unwrap_or_else(|_| panic!("synthetic executable"));
+        let mut child = Command::new(executable)
+            .arg("10")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap_or_else(|_| panic!("synthetic process"));
+        let own = std::process::id();
+        // Inspect only our test and its invented helper, never other processes.
+        let bytes = output(
+            Command::new("/bin/ps").args(["-ww", "-p", &format!("{own},{}", child.id()), "-o", "pid=,comm="]),
+            &control(),
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(bytes.and_then(|bytes| process_list(&bytes, own)), Ok(()));
     }
 }
 
