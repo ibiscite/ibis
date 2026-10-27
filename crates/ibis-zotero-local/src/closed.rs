@@ -132,9 +132,14 @@ pub struct ClosedSnapshot {
     pub warnings: Vec<ClosedWarning>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ClosedWarning {
     CloudSyncedDirectory,
+    /// The bounded source key identifies an omitted item without its contents.
+    ItemTooLarge {
+        library_id: i64,
+        key: String,
+    },
 }
 
 // A panic or a diagnostic must not dump library content/provenance.
@@ -154,7 +159,8 @@ private_debug!(
     StoredValue,
     ClosedItem,
     ClosedLibrary,
-    ClosedSnapshot
+    ClosedSnapshot,
+    ClosedWarning
 );
 
 /// One owner of the private copy root, initialized during the first read.
