@@ -123,6 +123,8 @@ PY
     echo 'The signing keychain does not hold exactly the pinned certificate.' >&2
     return 1
   fi
+  # Public facts only: shows whether the key is paired with the pinned certificate.
+  security find-identity -p codesigning "$KEYCHAIN" >&2 || true
   run_step 'codesign sign' codesign --force --deep --timestamp=none --preserve-metadata=entitlements,flags,runtime \
     --keychain "$KEYCHAIN" -s "$leaf" "$app"
   requirement "$app" "$identifier" "$leaf"
