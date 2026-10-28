@@ -75,9 +75,10 @@ exactly what the picker would copy.
 | `format=natbib` with `command`; aliases `latex`, `cite`, `citep`, `citet` | done as a syntax | #42 | `natbib_sources.rs` |
 | `format=pandoc` with `brackets` | done as a syntax | #42 | `syntax_contract.rs` |
 | `format=typst` | done as a syntax | #42 | `citation_typst_prefix.rs` |
-| `format=mmd`, `asciidoctor-bibtex`, `jupyter`, `scannable-cite` | planned | #1207 | to add |
+| `format=mmd`, `asciidoctor-bibtex`, `jupyter` | done as syntaxes (`multi-markdown`, `ascii-doc`, `jupyter`) | #1207 | `key_syntaxes.rs` |
+| `format=scannable-cite` | planned | #1207 | to add |
 | `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the chosen style) | planned | #42 | to add |
-| `format=json` (the picks themselves) | planned | #1207 (`cayw-json`) | to add |
+| `format=json` (the picks themselves) | done as `cayw-json` (BBT's `pick` shape, without Zotero item ids) | #1207 | `key_syntaxes.rs` |
 | Picks carry locator, prefix, suffix and suppress author | done in the contract | #42 | to add, one recorded request per editor |
 | `clipboard` also copies the result | planned | #42 | to add |
 | `selected` cites what is selected in Zotero | planned | #1314 | to add |

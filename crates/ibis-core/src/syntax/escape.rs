@@ -1,5 +1,9 @@
 //! Scalar escaping shared by the old entrypoints and the contract renderer.
 
+use crate::contract::{Locator, RichText};
+
+use super::Escaping;
+
 pub(crate) fn is_range(value: &str) -> bool {
     value.contains(['-', '–', '—', ','])
 }
@@ -167,6 +171,100 @@ pub(crate) fn typst_markup_escape(text: &str) -> String {
             line_start = true;
         } else if !c.is_whitespace() {
             line_start = false;
+        }
+    }
+    out
+}
+
+/// Whether `runs` can be written literally as an affix. Org mode and
+/// MultiMarkdown have no reliable escape for some text; it is dropped with a
+/// typed loss rather than written as markup or smart typography.
+pub(crate) fn carries(escaping: Escaping, runs: &RichText, suffix: bool, locator: bool) -> bool {
+    let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+    let text = text.trim();
+    if text.is_empty() {
+        return true;
+    }
+    match escaping {
+        Escaping::Org => {
+            // A suffix without a locator must not start like one: Org's CSL,
+            // BibLaTeX and Pandoc processors read it as the locator.
+            if suffix && !locator && starts_like_locator(text) {
+                return false;
+            }
+            org_literal(text)
+        }
+        Escaping::MultiMarkdown => mmd_literal(text),
+        _ => true,
+    }
+}
+
+fn starts_like_locator(text: &str) -> bool {
+    let mut words = text.split_whitespace();
+    let first = words.next().unwrap_or_default();
+    first.starts_with(|c: char| c.is_ascii_digit())
+        || crate::locator::parse(first).is_some()
+        || words
+            .next()
+            .is_some_and(|second| crate::locator::parse(&format!("{first} {second}")).is_some())
+}
+
+/// Org reads emphasis only from a marker that opens a word, sub- and
+/// superscripts from any `_` or `^`, and special strings such as `--`.
+pub(crate) fn org_literal(text: &str) -> bool {
+    let mut previous: Option<char> = None;
+    for c in text.chars() {
+        let opens = previous.is_none_or(|p| p.is_whitespace() || "-('{\"".contains(p));
+        if ";[]@\\$^_{}<>".contains(c) || "*/=~+".contains(c) && opens {
+            return false;
+        }
+        previous = Some(c);
+    }
+    !text.contains("--") && !text.contains("...")
+}
+
+/// MultiMarkdown applies Markdown, HTML and smart typography inside the
+/// citation's locator brackets.
+pub(crate) fn mmd_literal(text: &str) -> bool {
+    !text.contains("--") && !text.contains("...") && !text.contains(|c| "[]\\*_`<>&^~$#\"'|".contains(c))
+}
+
+pub(crate) fn key_fits(escaping: Escaping, key: &str) -> bool {
+    let forbidden: &[char] = match escaping {
+        Escaping::Myst => &['`', ';', '<', '>'],
+        Escaping::MultiMarkdown => &['[', ']', '\\', '^'],
+        Escaping::AsciiDoc => &['(', ')', '[', ']'],
+        Escaping::Liquid => &['%', '"', '\''],
+        Escaping::Org => &[';', '[', ']'],
+        _ => &[],
+    };
+    !key.contains(forbidden) && !(escaping == Escaping::Liquid && key.starts_with('-'))
+}
+
+pub(crate) fn locator_fits(escaping: Escaping, locator: &Locator) -> bool {
+    let value = locator.value.trim();
+    match escaping {
+        Escaping::Org => org_literal(&normalize_dashes(value, "–")),
+        Escaping::MultiMarkdown => mmd_literal(&normalize_dashes(value, "–")),
+        Escaping::AsciiDoc => !value.contains(['(', ')', '[', ']', ',', '{', '}']),
+        Escaping::Liquid => {
+            !value.starts_with('-') && !value.contains(|c: char| c.is_whitespace() || "\"'%{}".contains(c))
+        }
+        _ => true,
+    }
+}
+
+/// Text for an HTML attribute or element.
+pub(crate) fn html_escape(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
         }
     }
     out
