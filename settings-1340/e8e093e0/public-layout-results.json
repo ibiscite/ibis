@@ -1,0 +1,271 @@
+{
+  "source_head": "e8e093e091bd480ecf4644a32784e302ddfc2c88",
+  "render": "Chromium browser render, synthetic Settings API; macOS labels, shared look",
+  "native_checks": "not run",
+  "cases": [
+    {
+      "theme": "light",
+      "size": 16,
+      "width": 480,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": false
+        },
+        {
+          "text": "Comfortable",
+          "visible": false
+        },
+        {
+          "text": "Spacious",
+          "visible": false
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "size": 16,
+      "width": 720,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "size": 20,
+      "width": 480,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": false
+        },
+        {
+          "text": "Comfortable",
+          "visible": false
+        },
+        {
+          "text": "Spacious",
+          "visible": false
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "size": 20,
+      "width": 720,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "size": 16,
+      "width": 480,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": false
+        },
+        {
+          "text": "Comfortable",
+          "visible": false
+        },
+        {
+          "text": "Spacious",
+          "visible": false
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "size": 16,
+      "width": 720,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "size": 20,
+      "width": 480,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": false
+        },
+        {
+          "text": "Comfortable",
+          "visible": false
+        },
+        {
+          "text": "Spacious",
+          "visible": false
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "size": 20,
+      "width": 720,
+      "before": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ],
+      "after": [
+        {
+          "text": "Compact",
+          "visible": true
+        },
+        {
+          "text": "Comfortable",
+          "visible": true
+        },
+        {
+          "text": "Spacious",
+          "visible": true
+        }
+      ]
+    }
+  ]
+}
