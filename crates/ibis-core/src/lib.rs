@@ -10,6 +10,7 @@ pub mod locator;
 pub mod locator_query;
 pub mod model;
 pub mod panic_guard;
+mod scan;
 pub mod search;
 pub mod settings;
 pub mod source;

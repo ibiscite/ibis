@@ -484,6 +484,34 @@ and `a:` take their place while typing.
 **Search rules** (#1204, in `ibis-core` so every front end shares them). The
 index is built once per library change; a keystroke only scans it.
 
+- Pasted lists (#1326): every key syntax in the writer's capability table,
+  including BibLaTeX multicites, literal Typst `label("…")` constructors,
+  Org, MyST, MultiMarkdown, AsciiDoc, HTML and the key-bearing JSON outputs;
+  bare `@key` (also `-@key` and `@{any key}`), keys separated by newlines,
+  tabs, commas or semicolons, and identifiers separated by whitespace. Citation
+  syntax ignores surrounding prose and locators; it does not attach those
+  locators to the new citation. Keys and identifiers can be mixed in paste
+  order. Complete identifiers are read before their internal punctuation;
+  whitespace ends a DOI token, so a semicolon and `@` in its suffix stay literal.
+  Plain lists need at least two entries and every unqualified key must resolve
+  exactly, otherwise ordinary word search runs. In comma-separated bare-key
+  output, semicolons inside keys stay literal.
+  Keys and aliases ignore case; identifiers use their canonical forms.
+  Results keep paste order, deduplicate by record identity and ignore the
+  ordinary result limit. The heading is “Pasted list”. Missing explicit
+  keys and identifiers appear in “Not in your library: …”, including when all
+  are missing. Missing identifiers deduplicate by their canonical value.
+  With no explicit selection, the preview, Enter and Copy use every current
+  list result; the footer says “Copy N citations”. A selection takes priority.
+  A pending or stale search cannot supply list results or a missing-key notice.
+  A pasted list takes priority over trailing-locator interpretation, so a
+  numeric key stays a key. Closest matches never join a recognized list.
+  Unclosed citation syntax runs to the end of input.
+  Multiline paste replaces line breaks with tabs in the single-line search
+  field, preserving whitespace inside citation arguments without adding punctuation.
+  Recognition stops at 1,000 entries or 64 KiB; overflow falls back to search
+  rather than offering a truncated list. No document text is saved.
+
 - Any word order; case, accents and letter variants folded; "et al." and an
   "and" between names ignored. Every word must match somewhere.
 - Per word, the best of: a whole word, the start of a word, inside a word

@@ -12,12 +12,13 @@ export type Operation = keyof typeof operationFailures;
 
 /** Problems and confirmations above the results: library and settings
  * problems, failed actions, search and copy errors, and what was copied. */
-export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied, updateProgress }: {
+export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [] }: {
   updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
   startAtLogin: LoginItem | null;
   error: string | null;
+  missing?: string[];
   copyError: string | null;
   copied: Copied | null;
   showCopiedText: boolean;
@@ -40,6 +41,7 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
         <p role="alert">{loginItemText.problem(startAtLogin.problem, currentPlatform(), startAtLogin.name)}</p>
       )}
       {error && <p role="alert">{error}</p>}
+      {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}
       {copyError && <p role="alert">{copyError}</p>}
       {copied && (
         <div role="status" className="copy-notice">

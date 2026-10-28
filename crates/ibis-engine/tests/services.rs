@@ -67,6 +67,184 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
 }
 
 #[test]
+fn pasted_search_is_ordered_unlimited_and_reports_missing_keys() {
+    let case = case();
+    let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let objects = (0..205)
+        .map(|n| {
+            let mut record = base.clone();
+            record.id.key = format!("key{n}");
+            record.citation_keys[0].value = record.id.key.clone();
+            LibraryObject::Record(record)
+        })
+        .collect();
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    let query = (0..205).rev().map(|n| format!("@key{n}")).collect::<Vec<_>>().join(" ");
+    let request = SearchRequest {
+        query: format!("{query} @absent"),
+        limit: 1,
+        libraries: None,
+        interpret_locator: true,
+    };
+    let cancel = Cancellation::default();
+    let reply = engine.search(&request, &cancel).unwrap();
+    assert_eq!(reply.hits.len(), 205);
+    assert_eq!(reply.hits[0].item.object.id().key, "key204");
+    assert_eq!(reply.hits[204].item.object.id().key, "key0");
+    assert_eq!(reply.list.as_ref().unwrap().missing, ["absent"]);
+    assert_eq!(
+        serde_json::to_value(reply).unwrap(),
+        engine
+            .dispatch(Method::Search, &serde_json::to_value(&request).unwrap(), &cancel)
+            .unwrap()
+            .data
+    );
+    let empty = engine
+        .search(
+            &SearchRequest {
+                libraries: Some(vec![]),
+                ..request
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert!(empty.hits.is_empty());
+    assert_eq!(empty.list.unwrap().missing.len(), 206);
+}
+
+#[test]
+fn exact_lists_win_over_closest_matches_and_trailing_locators() {
+    let case = case();
+    let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let objects = [
+        ("sleep", "First"),
+        ("photon", "Second"),
+        ("12", "Numeric key"),
+        ("close", "Sleep"),
+    ]
+    .into_iter()
+    .map(|(key, title)| {
+        let mut record = base.clone();
+        record.id.key = key.into();
+        record.citation_keys[0].value = key.into();
+        record.csl.insert("title".into(), json!(title));
+        LibraryObject::Record(record)
+    })
+    .collect();
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    let cancel = Cancellation::default();
+    let ordinary = engine
+        .dispatch(Method::Search, &json!({"query":"sleep photon"}), &cancel)
+        .unwrap();
+    let hits = ordinary.data["hits"].as_array().unwrap();
+    assert!(!hits.is_empty());
+    assert!(hits.iter().all(|hit| hit["partial"] == true));
+    assert!(ordinary.data.get("list").is_none());
+
+    for (query, keys, missing) in [
+        ("photon,sleep", vec!["photon", "sleep"], vec![]),
+        ("sleep,12", vec!["sleep", "12"], vec![]),
+        ("[@sleep; @absent, p. 4]", vec!["sleep"], vec!["absent"]),
+        ("@absent", vec![], vec!["absent"]),
+    ] {
+        let reply = engine
+            .dispatch(
+                Method::Search,
+                &json!({"query":query,"limit":1,"interpret_locator":true}),
+                &cancel,
+            )
+            .unwrap();
+        let hits = reply.data["hits"].as_array().unwrap();
+        assert_eq!(
+            hits.iter()
+                .map(|hit| hit["item"]["object"]["data"]["id"]["key"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            keys,
+            "{query}"
+        );
+        assert!(
+            hits.iter().all(|hit| hit["partial"] == false && hit["typo"] == false),
+            "{query}"
+        );
+        assert_eq!(reply.data["list"]["missing"], json!(missing), "{query}");
+        assert!(reply.data.get("locator").is_none(), "{query}");
+    }
+}
+
+#[test]
+fn pasted_syntax_and_identifier_tokens_keep_their_types_through_search() {
+    let case = case();
+    let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let objects = ["a", "b", "日本🌙", "doi", "[a]", "@a"]
+        .into_iter()
+        .map(|key| {
+            let mut record = base.clone();
+            record.id.key = key.into();
+            record.citation_keys[0].value = key.into();
+            record.csl.remove("DOI");
+            record.identifiers = match key {
+                "b" => vec![ibis_core::identifier::Identifier::Doi("10.1000/b".into())],
+                "doi" => vec![ibis_core::identifier::Identifier::Doi("10.1000/x;@b".into())],
+                _ => vec![],
+            };
+            LibraryObject::Record(record)
+        })
+        .collect();
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    for (query, expected, missing) in [
+        ("\\cite{a,\tb}", vec!["a", "b"], vec![]),
+        ("\\autocites{b}[p. 4]{a}", vec!["b", "a"], vec![]),
+        ("@a #cite(label(\"日本🌙\"))", vec!["a", "日本🌙"], vec![]),
+        ("https://doi.org/10.1000/x;@b", vec!["doi"], vec![]),
+        ("@a; 10.1000/b", vec!["@a", "b"], vec![]),
+        ("[@a]; 10.1000/b", vec!["a", "b"], vec![]),
+        ("@missing; PMID:999", vec![], vec!["missing", "PMID:999"]),
+        ("[a], b", vec!["[a]", "b"], vec![]),
+        ("@a, b", vec!["@a", "b"], vec![]),
+        ("([@a]); @b", vec!["a", "b"], vec![]),
+        ("([@missing]); @b", vec!["b"], vec!["missing"]),
+        (r#"[{"citation-key":"a","title":"}][#b]"}]"#, vec!["a"], vec![]),
+    ] {
+        let request = SearchRequest {
+            query: query.into(),
+            limit: 1,
+            libraries: None,
+            interpret_locator: true,
+        };
+        let reply = engine.search(&request, &Cancellation::default()).unwrap();
+        assert_eq!(
+            reply
+                .hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            expected,
+            "{query}"
+        );
+        assert_eq!(reply.list.as_ref().unwrap().missing, missing, "{query}");
+        assert!(reply.hits.iter().all(|hit| !hit.partial && !hit.typo));
+        assert!(reply.locator.is_none());
+        assert_eq!(
+            serde_json::to_value(&reply).unwrap(),
+            engine
+                .dispatch(
+                    Method::Search,
+                    &serde_json::to_value(request).unwrap(),
+                    &Cancellation::default()
+                )
+                .unwrap()
+                .data
+        );
+    }
+}
+
+#[test]
 fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
     let case = case();
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
@@ -233,6 +411,11 @@ fn typed_search_refuses_oversized_results_before_public_object_cloning() {
     assert_eq!(error.code, ErrorCode::ResourceLimit);
     request.limit = 1;
     assert_eq!(engine.search(&request, &Cancellation::default()).unwrap().hits.len(), 1);
+    request.query = "@Example2026 @Other2026".into();
+    assert_eq!(
+        engine.search(&request, &Cancellation::default()).unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
 }
 
 #[test]

@@ -65,6 +65,22 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
           autoFocus
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text/plain");
+            if (!/[\r\n\t]/.test(text)) return;
+            // Search inputs strip line breaks but retain tabs. Keep whitespace
+            // inside citation arguments; punctuation would change their keys.
+            e.preventDefault();
+            const field = e.currentTarget;
+            const start = field.selectionStart ?? query.length;
+            const end = field.selectionEnd ?? start;
+            const pasted = text.replace(/[\r\n]+/g, "\t");
+            const next = query.slice(0, start) + pasted + query.slice(end);
+            onQueryChange(next);
+            requestAnimationFrame(() => {
+              if (field.value === next) field.setSelectionRange(start + pasted.length, start + pasted.length);
+            });
+          }}
           onKeyDown={onSearchKeyDown}
         />
         {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}
