@@ -10,6 +10,7 @@
     "core:event:allow-unlisten",
     "core:app:allow-version",
     "core:window:allow-start-dragging",
+    "core:window:allow-destroy",
     "allow-picker-preferences",
     "allow-set-picker-preferences",
     "allow-login-item",

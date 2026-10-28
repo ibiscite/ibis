@@ -69,6 +69,13 @@ fn human_result_rows_cannot_inject_extra_lines_or_terminal_controls() -> Result<
 fn empty_large_and_keyless_searches_remain_explicit() -> Result<(), Box<dyn std::error::Error>> {
     let (_, text, _) = run(engine()?, &["ibis", "search", "absent"])?;
     assert_eq!(text, "No references found.\n");
+    // Closest matches are introduced as such.
+    let (_, full, _) = run(engine()?, &["ibis", "search", "signals"])?;
+    let (_, closest, _) = run(engine()?, &["ibis", "search", "signals absentword"])?;
+    assert_eq!(
+        closest,
+        format!("No reference matches every word. Closest matches:\n{full}")
+    );
     let empty = Engine::from_snapshot(Arc::new(Snapshot::new(vec![])?));
     let (_, text, _) = run(empty, &["ibis", "libraries"])?;
     assert!(text.contains("No libraries loaded"));
@@ -136,6 +143,19 @@ fn year_letters_notice_appears_only_when_two_cited_works_share_author_and_year()
 fn a_refused_citation_prints_its_reason_and_fails() -> Result<(), Box<dyn std::error::Error>> {
     let path = library_file("refused.bib", SAME_AUTHOR_YEAR)?;
     let (code, text, errors) = run_file(&path, &["cite", "--style", "apa", "--form", "narrative", "first"])?;
+    assert_eq!((code, text.as_str(), errors.as_str()), (0, "Taylor (2026)\n", ""));
+    let (code, text, errors) = run_file(
+        &path,
+        &[
+            "cite",
+            "--style",
+            "apa",
+            "--form",
+            "narrative",
+            "first",
+            "--omit-author",
+        ],
+    )?;
     assert_eq!(code, 1);
     assert!(text.is_empty(), "{text}");
     assert_eq!(
@@ -151,7 +171,16 @@ fn a_refused_citation_prints_its_reason_and_fails() -> Result<(), Box<dyn std::e
     );
     let (code, text, _) = run_file(
         &path,
-        &["cite", "--style", "apa", "--form", "narrative", "first", "--json"],
+        &[
+            "cite",
+            "--style",
+            "apa",
+            "--form",
+            "narrative",
+            "first",
+            "--omit-author",
+            "--json",
+        ],
     )?;
     assert_eq!(code, 1);
     let envelope: serde_json::Value = serde_json::from_str(&text)?;
@@ -309,7 +338,7 @@ fn call_cite_explains_its_findings_too() -> Result<(), Box<dyn std::error::Error
     let (_, shown, _) = run_file(&path, &["show", "first", "--json"])?;
     let shown: serde_json::Value = serde_json::from_str(&shown)?;
     let params = serde_json::json!({
-        "items":[{"item":shown["data"]["object"]["data"]["id"]}],
+        "items":[{"item":shown["data"]["object"]["data"]["id"],"suppress_author":true}],
         "output":{"kind":"csl","style":"apa"},
         "form":"narrative",
     });

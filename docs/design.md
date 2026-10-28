@@ -304,9 +304,10 @@ needs no fade, as a cut row already shows it.
 content and never break a word; a table that does not fit scrolls or drops a
 column, it does not hyphenate.
 
-**Labels and long strings.** Labels on actions, menu items and settings never
-wrap, also at Larger text: the layout widens, or the label truncates with a
-tooltip. Data truncates with a tooltip; file names shorten in the middle and
+**Labels and long strings.** Labels on actions and menu items never wrap,
+also at Larger text: the layout widens, or the label truncates with a tooltip.
+Settings rows and segmented choices follow the wrapping rule in **Settings**.
+Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical
 properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
@@ -478,7 +479,8 @@ index is built once per library change; a keystroke only scans it.
   list result; the footer says “Copy N citations”. A selection takes priority.
   A pending or stale search cannot supply list results or a missing-key notice.
   A pasted list takes priority over trailing-locator interpretation, so a
-  numeric key stays a key. Unclosed citation syntax runs to the end of input.
+  numeric key stays a key. Closest matches never join a recognized list.
+  Unclosed citation syntax runs to the end of input.
   Recognition stops at 1,000 entries or 64 KiB; overflow falls back to search
   rather than offering a truncated list. No document text is saved.
 
@@ -492,6 +494,12 @@ index is built once per library change; a keystroke only scans it.
   start of a word. Numbers, years, identifiers and tags are never guessed.
 - Single letters and two-letter words match word starts only, so `j smith`
   reads as an initial; `jrr tolkien` matches J. R. R. Tolkien.
+- Other spellings: `mueller` finds Müller (also `oe`, `ue`, `aa` for ö, ø, ü,
+  å; `muller` finds it anyway, accents being folded), and a Greek letter
+  standing alone is found by its name: `beta amyloid` finds β-amyloid,
+  `nf kappab` finds NF-κB. Greek text keeps its letters, and μ before a
+  letter is a unit (μm), not mu. Other spellings never join with nearby words
+  into a quoted phrase the text does not have.
 - Hints limit the word after them to one field: `a:` any person (authors,
   editors, translators…), `t:` title (and short title), `j:` journal (and its
   abbreviation), `k:` citation key, `#` tag or keyword (a whole word once typed
@@ -508,6 +516,11 @@ index is built once per library change; a keystroke only scans it.
   passes before them found fewer results than were asked for, so a shorter
   list is always the start of a longer one.
 - A typo match is marked (`typo`) so the list can say "Close match".
+- When nothing matches every word, the closest matches show instead, marked
+  (`partial`) so the list can say so: records matching at least half the words
+  (numbers and one- or two-letter words not counted, abstracts not searched)
+  and every hinted word, most words first, then by the rules above. One-word
+  searches, pasted identifiers and long pasted text get none.
 
 **Learning and parity** (#788). First minute: type, Enter, paste; first week:
 one footer tip at a time, retired once done (local "seen" flags only); power:
@@ -542,6 +555,8 @@ in the Later milestone. New interface work uses the shared look and the
 fallbacks above.
 
 - **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
+  The macOS veil is the surface at 75%, so the glass shows light and colour from
+  behind but never readable shapes under the list.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
   1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
@@ -640,15 +655,24 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   The title and line are announced once; "Use another library" shows the no
   library screen. A failure with references kept stays a notice above them.
 - **First run:** one step at most, and none when a library is found. Ibis
-  never asks "What do you write in?": it picks the output from the app that was
-  in front when the shortcut was pressed (Markdown editors and terminals get
-  Pandoc keys, LaTeX and Typst editors their syntax, word processors, mail and
-  web apps a formatted citation in APA) and shows that choice in the footer.
-  One key changes it just this once or for that app, and "Automatic" returns
-  to the guess; apps that host several syntaxes (code editors, terminals,
-  browsers) are guessed only as a starting point. The citation style is asked once, on the
-  first formatted copy, with APA chosen. Setup steps finish themselves: when
-  Zotero is not sharing, the screen shows where to turn it on and continues on
+  never asks "What do you write in?". The format pop-up beside search names
+  the exact output and the captured app, such as `\cite · Browser` or
+  `APA · Word`; a long value ends with an ellipsis but keeps its full accessible
+  name. ⇧⌘F (Ctrl+Shift+F elsewhere) opens the chooser from search. A format
+  pick is remembered for that app. "Just this once" makes the
+  next pick apply to one successful copy, then restores the app's output;
+  reopening also clears it. "Automatic" removes only that app's remembered
+  choice. Priority is one-time override, remembered app output, app-table
+  suggestion, then the global default (Pandoc until chosen). "Use as global
+  default" deliberately changes the fallback without erasing app choices.
+  Markdown editors suggest Pandoc and known LaTeX editors BibLaTeX; formatted
+  apps suggest the global style, or APA when the global output uses keys.
+  Browsers and code editors cannot identify a document's syntax: Overleaf,
+  web Typst and Google Docs share a browser ID, and several writing syntaxes
+  can share an editor. They follow the global default until an app choice is
+  remembered. Ibis never reads or stores a document title or URL to choose an
+  output. No format question interrupts each citation. Setup steps finish
+  themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
   with several Zotero profiles, Ibis asks which one; with no library at all,
   built-in sample references let people try Ibis, labelled "Sample" on every
@@ -698,6 +722,15 @@ shared `Switch` (38 × 22) and `Segmented` in `ui/`. Changes apply at once and
 reach an open picker; resets offer Undo. Built so far: General (login, pasting,
 picker look) and About (version, updates); Shortcuts, Libraries and Citations
 follow (#776). The picker's More keeps its quick toggles until then.
+Queued choices finish saving before the window closes, with at most a two-second
+wait. A failed save shows an alert and restores the saved choice; reloading
+choices on return never replaces an edit still being saved.
+Each window saves only fields deliberately changed, under the native settings
+lock, and uses the returned saved state. Queued view changes never replay an
+already-saved output choice. Out-of-order reads never replace newer choices.
+When a row's text and control do not fit side by side, the control wraps below
+and its choices or labels wrap within the card, including at the minimum
+window width and larger system text sizes.
 
 **Permissions.** Ibis asks for a system permission only through a guide that
 says why in one sentence, names the exact list in the system's current words
@@ -745,7 +778,9 @@ scheduled.
 | Zotero while closed (0.2) | Footer status with words and a dot; detail in the tooltip and More |
 | Output per app, self-finishing setup (0.3) | First run above |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
+| Selected text as the search (0.3) | The picker opens with the selection in the search field, all selected so typing replaces it; Enter pastes over the selection |
 | Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf: each reference shows its page, prefix and suffix in place; the form and style in the format pop-up; Settings › Citations |
+| `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in, like the shortcut; the Zotero actions sit in More and the row's context menu |
 | Settings window (0.4, #776) | **Settings**; General, Shortcuts, Libraries and Citations first |
 | Browse, "Selected in Zotero", reader (0.5) | Collections and tags as search filters; the reader opens beside the picker; "Cite this page ⌘↩" |
 | Bibliography, session bibliography, DOI lookup (0.6) | More and the format pop-up; DOI lookup as a no-results fallback, opt-in |

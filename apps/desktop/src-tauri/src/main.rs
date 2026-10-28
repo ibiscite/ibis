@@ -8,6 +8,7 @@
 
 mod bindings;
 mod copy;
+mod destination;
 mod diagnostics;
 mod feedback;
 mod library;
@@ -253,6 +254,7 @@ fn main() {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
+            destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));
             }

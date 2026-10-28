@@ -43,7 +43,11 @@ fn citation_syntaxes_ignore_locators_and_preserve_paste_order() {
         let keys: Vec<_> = list.hits.iter().map(|hit| hit.item.object.id().key.as_str()).collect();
         assert_eq!(keys, ["b", "a"], "{query}");
         assert!(list.missing.is_empty(), "{query}");
-        assert!(list.hits.iter().all(|hit| hit.score == 3000 && !hit.typo));
+        assert!(
+            list.hits
+                .iter()
+                .all(|hit| hit.score == 3000 && !hit.typo && !hit.partial)
+        );
     }
     let list = index
         .pasted_list("@{any key} @日本🌙", None, &|| false)

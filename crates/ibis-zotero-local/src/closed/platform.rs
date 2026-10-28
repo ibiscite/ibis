@@ -3,11 +3,10 @@ use super::{ClosedError, Control};
 use std::fs::{File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::{Command, Stdio};
+#[cfg(unix)]
 use std::time::Duration;
-
-#[cfg(windows)]
-const SCRIPT: &str = include_str!("windows.ps1");
 
 /// Conservative: refuse every running Zotero, even a different profile. An
 /// incomplete/failed process enumeration is never evidence that Zotero is closed.
@@ -23,11 +22,7 @@ pub(super) fn closed(control: &Control) -> Result<(), ClosedError> {
     }
     #[cfg(windows)]
     {
-        match windows("closed", Path::new(""), 0, control)?.as_slice() {
-            b"closed" => Ok(()),
-            b"running" => Err(ClosedError::Running),
-            _ => Err(ClosedError::ProcessCheck),
-        }
+        windows::closed(control)
     }
     #[cfg(not(any(unix, windows)))]
     Err(ClosedError::ProcessCheck)
@@ -72,6 +67,7 @@ fn zotero_process(name: &str) -> bool {
 
 /// Bounded native-helper output stays private. Read concurrently so a full pipe
 /// cannot turn process enumeration or locality checking into an unbounded wait.
+#[cfg(unix)]
 pub(super) fn output(command: &mut Command, control: &Control) -> Result<Vec<u8>, ClosedError> {
     const LIMIT: u64 = 4 * 1024 * 1024;
     control.check()?;
@@ -80,12 +76,7 @@ pub(super) fn output(command: &mut Command, control: &Control) -> Result<Vec<u8>
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|_| {
-            let error = control.check().err().unwrap_or(ClosedError::ProcessCheck);
-            #[cfg(test)]
-            report_failure(error, "spawn");
-            error
-        })?;
+        .map_err(|_| control.check().err().unwrap_or(ClosedError::ProcessCheck))?;
     let stdout = child.stdout.take().ok_or(ClosedError::ProcessCheck)?;
     let reader = std::thread::spawn(move || {
         let mut bytes = Vec::new();
@@ -102,7 +93,7 @@ pub(super) fn output(command: &mut Command, control: &Control) -> Result<Vec<u8>
         }
     };
     if outcome.is_err() {
-        // Reap before releasing the single-flight permit or returning a stop.
+        // Reap before returning a stop.
         let _ = child.kill();
         let _ = child.wait();
     }
@@ -116,36 +107,8 @@ pub(super) fn output(command: &mut Command, control: &Control) -> Result<Vec<u8>
             Ok(())
         }
     });
-    #[cfg(test)]
-    if let Err(error) = result {
-        let phase = match bytes.as_deref().unwrap_or_default() {
-            [1, 2, ..] => "action",
-            [1, ..] => "script-entry",
-            _ => "spawn",
-        };
-        report_failure(error, phase);
-    }
     result?;
     bytes.ok_or(ClosedError::ProcessCheck)
-}
-
-#[cfg(test)]
-fn report_failure(error: ClosedError, phase: &str) {
-    let reason = match error {
-        ClosedError::Cancelled => "cancelled",
-        ClosedError::TimedOut => "deadline",
-        _ => "native",
-    };
-    eprintln!("closed native helper stopped: phase={phase} reason={reason}");
-}
-
-#[cfg(any(windows, test))]
-fn gated_output(command: &mut Command, control: &Control, gate: &std::sync::Mutex<()>) -> Result<Vec<u8>, ClosedError> {
-    let _permit = control.lock(gate, ClosedError::ProcessCheck).inspect_err(|_error| {
-        #[cfg(test)]
-        report_failure(*_error, "queue");
-    })?;
-    output(command, control)
 }
 
 pub(super) fn directory(path: &Path, control: &Control) -> Result<PathBuf, ClosedError> {
@@ -156,7 +119,7 @@ pub(super) fn directory(path: &Path, control: &Control) -> Result<PathBuf, Close
     }
     #[cfg(windows)]
     {
-        windows("local", path, 0, control).map_err(|e| e.context(ClosedError::UnsafeSource))?;
+        windows::local(path, control).map_err(|e| e.context(ClosedError::UnsafeSource))?;
         Ok(path.to_owned())
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
@@ -289,7 +252,7 @@ pub(super) fn create_private(path: &Path, control: &Control) -> Result<(), Close
     }
     #[cfg(windows)]
     {
-        windows("create", path, 0, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
+        windows::create(path, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
     }
     #[cfg(not(any(unix, windows)))]
     return Err(ClosedError::PrivateStorage);
@@ -330,7 +293,7 @@ pub(super) fn secure(path: &Path, control: &Control) -> Result<(), ClosedError> 
     }
     #[cfg(windows)]
     {
-        windows("private", path, 0, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
+        windows::verify(path, true, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
     }
     Ok(())
 }
@@ -377,7 +340,7 @@ pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), Clos
     )
     .map_err(|_| ClosedError::PrivateStorage)?;
     #[cfg(windows)]
-    windows("backup", path, 0, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
+    windows::backup(path, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
     Ok(())
 }
 
@@ -392,7 +355,7 @@ pub(super) fn space(path: &Path, needed: u64, control: &Control) -> Result<(), C
     }
     #[cfg(windows)]
     {
-        windows("space", path, needed, control).map_err(|e| e.context(ClosedError::NoSpace))?;
+        windows::space(path, needed, control).map_err(|e| e.context(ClosedError::NoSpace))?;
     }
     Ok(())
 }
@@ -406,43 +369,17 @@ fn drive_path(path: &Path) -> bool {
         && parts.all(|p| matches!(p, Component::Normal(_)))
 }
 
+// SAFETY: Win32 owns the handles and buffers in this boundary. Unsafe calls are
+// confined here, with checked lengths, explicit ownership and fixed errors.
 #[cfg(windows)]
-fn windows(action: &str, path: &Path, needed: u64, control: &Control) -> Result<Vec<u8>, ClosedError> {
-    use std::os::windows::process::CommandExt;
-    static GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let system = std::env::var_os("SystemRoot").ok_or(ClosedError::ProcessCheck)?;
-    if !drive_path(Path::new(&system)) {
-        return Err(ClosedError::ProcessCheck);
-    }
-    let mut cmd = Command::new(PathBuf::from(system).join(r"System32\WindowsPowerShell\v1.0\powershell.exe"));
-    cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", SCRIPT])
-        .env("IBIS_CLOSED_ACTION", action)
-        .env("IBIS_CLOSED_PATH", path)
-        .env("IBIS_CLOSED_SPACE", needed.to_string())
-        .creation_flags(0x0800_0000);
-    #[cfg(test)]
-    let started = std::time::Instant::now();
-    let result = gated_output(&mut cmd, control, &GATE).and_then(|bytes| {
-        bytes
-            .strip_prefix(&[1, 2])
-            .map(<[u8]>::to_vec)
-            .ok_or(ClosedError::ProcessCheck)
-    });
-    #[cfg(test)]
-    if result.is_err() {
-        eprintln!(
-            "closed Windows helper action {action} failed after {}ms",
-            started.elapsed().as_millis()
-        );
-    }
-    result
-}
+#[allow(unsafe_code)]
+mod windows;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::closed::tests::control;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn synthetic_helper(root: &Path) -> Command {
         let mut command = Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")));
@@ -472,103 +409,52 @@ mod tests {
     }
 
     #[test]
-    fn expired_native_call_does_not_spawn_and_releases_its_permit() {
+    fn expired_native_call_does_not_spawn() {
         let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
-        let gate = Mutex::new(());
         let mut expired = control();
         expired.deadline = std::time::Instant::now();
         assert_eq!(
-            gated_output(&mut synthetic_helper(root.path()), &expired, &gate).err(),
+            output(&mut synthetic_helper(root.path()), &expired).err(),
             Some(ClosedError::TimedOut)
         );
         assert!(!root.path().join("ready").exists());
-        assert!(gate.try_lock().is_ok());
     }
 
     #[test]
-    fn cancelled_native_permit_wait_never_spawns_a_second_child() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
-        let gate = Mutex::new(());
-        let held = gate.lock().unwrap_or_else(|_| panic!("native permit"));
-        let polls = Arc::new(AtomicUsize::new(0));
-        let observed = polls.clone();
-        let cancelled = Control::new(Arc::new(move || observed.fetch_add(1, Ordering::SeqCst) >= 2));
-        assert_eq!(
-            gated_output(&mut synthetic_helper(root.path()), &cancelled, &gate).err(),
-            Some(ClosedError::Cancelled)
-        );
-        assert!(polls.load(Ordering::SeqCst) >= 3);
-        assert!(!root.path().join("ready").exists());
-        assert!(gate.try_lock().is_err());
-        drop(held);
-        assert!(gate.try_lock().is_ok());
-    }
-
-    #[test]
-    fn queued_native_wait_spends_the_callers_deadline_without_spawning() {
-        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
-        let gate = Mutex::new(());
-        let held = gate.lock().unwrap_or_else(|_| panic!("native permit"));
-        let mut expired = control();
-        expired.deadline = std::time::Instant::now() + Duration::from_millis(20);
-        assert_eq!(
-            gated_output(&mut synthetic_helper(root.path()), &expired, &gate).err(),
-            Some(ClosedError::TimedOut)
-        );
-        assert!(!root.path().join("ready").exists());
-        assert!(gate.try_lock().is_err());
-        drop(held);
-        assert!(gate.try_lock().is_ok());
-    }
-
-    #[test]
-    fn running_native_child_is_cancelled_reaped_and_releases_its_permit() {
+    fn running_native_child_is_cancelled_and_reaped() {
         let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
         let ready = root.path().join("ready");
         let cancelled = Control::new(Arc::new(move || ready.exists()));
-        let gate = Mutex::new(());
         assert_eq!(
-            gated_output(&mut synthetic_helper(root.path()), &cancelled, &gate).err(),
+            output(&mut synthetic_helper(root.path()), &cancelled).err(),
             Some(ClosedError::Cancelled)
         );
         assert!(root.path().join("ready").exists(), "cancellation follows child entry");
         let held = File::open(root.path().join("held")).unwrap_or_else(|_| panic!("synthetic child lock file"));
         assert!(held.try_lock().is_ok(), "return must follow child termination");
-        assert!(gate.try_lock().is_ok());
     }
 
     #[test]
-    fn running_native_child_uses_the_callers_deadline_and_releases_its_permit() {
+    fn running_native_child_uses_the_callers_deadline() {
         let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
-        let gate = Mutex::new(());
         let mut expired = control();
         expired.deadline = std::time::Instant::now() + Duration::from_millis(100);
         assert_eq!(
-            gated_output(&mut synthetic_helper(root.path()), &expired, &gate).err(),
+            output(&mut synthetic_helper(root.path()), &expired).err(),
             Some(ClosedError::TimedOut)
         );
-        assert!(gate.try_lock().is_ok());
     }
 
     #[test]
-    fn native_permit_is_released_after_spawn_failure_and_success() {
+    fn native_output_handles_spawn_failure_and_success() {
         let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic child root"));
-        let gate = Mutex::new(());
         assert_eq!(
-            gated_output(
-                &mut Command::new(root.path().join("missing-executable")),
-                &control(),
-                &gate
-            )
-            .err(),
+            output(&mut Command::new(root.path().join("missing-executable")), &control()).err(),
             Some(ClosedError::ProcessCheck)
         );
-        assert!(gate.try_lock().is_ok());
         let mut success = Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")));
         success.arg("--list");
-        assert!(gated_output(&mut success, &control(), &gate).is_ok());
-        assert!(gate.try_lock().is_ok());
+        assert!(output(&mut success, &control()).is_ok());
     }
 
     #[cfg(unix)]

@@ -57,7 +57,7 @@ fn pasted_lists_precede_locator_interpretation_and_keep_missing_keys() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let file = library(
         directory.path(),
-        "@misc{b,title={Second}}\n@misc{12,title={Numeric key}}",
+        "@misc{b,title={Second}}\n@misc{12,title={Numeric key}}\n@misc{close,title={b 12}}",
     );
     for text in ["b,12", "[@b; @12, p. 4]", "\\cite{b,12}"] {
         let reply = file
@@ -75,6 +75,14 @@ fn pasted_lists_precede_locator_interpretation_and_keep_missing_keys() {
     assert_eq!(reply.list.unwrap_or_else(|| panic!("pasted list")).missing, ["absent"]);
     let reply = search(&file, "Second", None);
     assert!(reply.list.is_none());
+}
+
+#[test]
+fn closest_matches_are_left_out_until_the_picker_can_mark_them() {
+    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let file = library(directory.path(), "@misc{a,title={Sleep}}");
+    assert_eq!(search(&file, "sleep", None).results.len(), 1);
+    assert!(search(&file, "sleep photon", None).results.is_empty());
 }
 
 #[test]

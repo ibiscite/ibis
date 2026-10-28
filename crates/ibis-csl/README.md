@@ -1,7 +1,7 @@
 # Shared CSL formatting
 
 `Formatter::format(&snapshot, &request)` returns the same canonical
-`CitationResult` for every client. `submit(Arc<Snapshot>, request, priority)`
+`CitationResult` for every client. `submit(Arc<Snapshot>, request)`
 returns a cancellable task; dropping a task cancels it. Callers use the result's
 `copy_content(request.items.len())` gate before copying. Diagnostics are fixed
 codes, with no reference text or JavaScript exception messages.
@@ -20,16 +20,14 @@ rejects embedded NUL in text, HTML or RTF. JavaScript stack and heap exhaustion,
 including the processor's exact native-error forwarding forms, return the fixed
 `ResourceLimit` code; arbitrary exception text never crosses the boundary.
 
-Two worker threads own separate QuickJS runtimes. Interactive work takes
-priority; a running background operation is interrupted and restarted after
-interactive work finishes, keeping its original deadline. Queued cancellation
-releases its slot immediately, and queued deadlines expire even while
-interactive work continues. Every interrupted or failing runtime is discarded
-before the next operation.
+One worker thread owns a QuickJS runtime and a bounded FIFO queue. Queued
+cancellation releases its slot immediately; running work is cancelled through
+QuickJS's interrupt handler. Deadlines include time in the queue. Every
+interrupted or failing runtime is discarded before the next operation. Shutdown
+cancels pending work and joins the worker; worker failure refuses further work.
 
-Defaults are 8 interactive and 2 background slots, counting running work;
-5-second interactive and 30-second background deadlines; 128 MiB of JavaScript
-memory per runtime; a 2 MiB JavaScript stack on an 8 MiB worker stack; 4 MiB
+Defaults are 8 slots, counting running work; a 30-second request deadline;
+128 MiB of JavaScript memory; a 2 MiB JavaScript stack on an 8 MiB worker stack; 4 MiB
 input/output boundaries and at most 1,000 requested items. The software-stack
 maximum is also 2 MiB; the native stack is four times that cap. Windows measurements
 found 1 MiB necessary for a synthetic APA citation; the default doubles that
@@ -48,11 +46,19 @@ ignores locale parameters for those operations.
 
 Ibis intentionally differs from document-aware Zotero rendering: it disables
 `disambiguate-add-year-suffix` in the bundled style data before processor
-construction and reports `YearSuffixWithheld`; IEEE produces an unnumbered
-reference entry with `NeedsDocumentContext` and `ReferenceEntry`. These changes
+construction and reports `YearSuffixWithheld`; styles declaring
+`<info><category citation-format="numeric"/></info>` produce an unnumbered
+reference entry with `NeedsDocumentContext` and `ReferenceEntry`. `label` does
+not imply document numbering. The processor's XML tree removes bibliography
+layout `citation-number` text nodes (any affixes) and `second-field-align`,
+preserving citation layouts, macros and sort keys. These changes
 never mutate the vendor files. Node comparisons use the same Ibis-safe style
-configuration. A citation form the fallback cannot represent is refused. MLA has
-no year in its citation layout, so year-only intent is refused. A transparent
+configuration. Numeric fallback refuses author-only and year-only forms.
+Cached XML traits also drive the bridge. Year-only requires `issued` rendering
+in the layout or reachable macros, excluding sort keys, bibliography dates and
+conditions. The conservative scan does not prove every branch prints a year;
+macro names must use matching XML encodings. #1306 owns `YearSuffixWithheld`'s
+remaining name check; its general rule is `disambiguate-add-year-suffix="true"`. A transparent
 observer checks each final member's printed blob leaves in every representation,
 ignoring layout affixes. Missing or empty coverage refuses the candidate cluster as `UnsupportedForm` and clears its output; no unchecked member
 is exposed as rendered. This uses one pass over existing output under the same

@@ -6,8 +6,26 @@ globalThis.CSL = CSL;
 const base = new URL("../vendor/", import.meta.url);
 globalThis.__ibisStyles = ["apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"].map((style) => [style, fs.readFileSync(new URL(`styles/${style}.csl`, base), "utf8")]);
 globalThis.__ibisLocale = fs.readFileSync(new URL("locales/en-US.xml", base), "utf8");
+const patchCases = ["numeric", "author-date", "label"].map((format) => [format, `<style xmlns="http://purl.org/net/xbiblio/csl"><info><category citation-format='${format}'/></info><macro name="outside"><text variable="citation-number"/></macro><citation><layout><text variable="citation-number"/></layout></citation><bibliography second-field-align='margin'><sort><key variable="citation-number"/></sort><layout><group><text suffix=')' variable='citation-number' prefix='('/><text variable="title"/><text variable="citation-number"></text></group></layout></bibliography></style>`]);
+__ibisStyles.push(...patchCases);
 const unobservedGetCite = CSL.getCite;
 await import("../src/bridge.js");
+// Inspect exactly what the bridge hands the processor, without rendering data.
+const Engine = CSL.Engine;
+try {
+  for (const [style] of patchCases) {
+    let tree;
+    CSL.Engine = function (_, xml) { tree = typeof xml === "string" ? CSL.parseXml(xml) : xml; throw "captured"; };
+    assert.throws(() => __ibisFormat({ style, numeric: style === "numeric", items: [], locale: null, keep_order: false }), (error) => error === "captured");
+    const bibliography = tree.children.find((node) => node.name === "bibliography");
+    assert.equal(bibliography.attrs["second-field-align"], style === "numeric" ? undefined : "margin");
+    const group = bibliography.children.find((node) => node.name === "layout").children[0];
+    assert.equal(group.children.filter((node) => node.attrs.variable === "citation-number").length, style === "numeric" ? 0 : 2);
+    assert.equal(tree.children.find((node) => node.name === "citation").children[0].children[0].attrs.variable, "citation-number");
+    assert.equal(tree.children.find((node) => node.name === "macro").children[0].attrs.variable, "citation-number");
+    assert.equal(bibliography.children[0].children[0].attrs.variable, "citation-number");
+  }
+} finally { CSL.Engine = Engine; }
 // CSL inline strings use the same documented whitespace contract before either
 // processor. Keep this independent regex oracle separate from Rust's traversal.
 const requests = JSON.parse(fs.readFileSync(0, "utf8"), (_, value) => typeof value === "string" ? value.replace(/[\r\n\u0085\u2028\u2029]+/gu, " ").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u0084\u0086-\u009f]/gu, " ") : value);
@@ -20,7 +38,7 @@ CSL.Engine.prototype.updateItems = function (ids, ...args) {
 };
 const observed = requests.map((request) => {
   const before = registrations;
-  const output = JSON.parse(__ibisFormat(request));
+  const output = JSON.parse(__ibisFormat({ ...request, numeric: request.style === "ieee" }));
   assert.equal(registrations - before, 1, "one item-registration pass per request");
   return output;
 });

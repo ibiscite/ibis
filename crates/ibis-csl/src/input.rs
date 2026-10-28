@@ -5,6 +5,125 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::io::{self, Write};
+use std::sync::LazyLock;
+
+#[derive(Clone, Copy, Default)]
+struct StyleTraits {
+    numeric: bool,
+    citation_has_issued: bool,
+}
+
+static STYLE_TRAITS: LazyLock<BTreeMap<&str, StyleTraits>> = LazyLock::new(|| {
+    crate::runtime::style_xml()
+        .iter()
+        .map(|(id, xml)| (*id, style_traits(xml)))
+        .collect()
+});
+
+// Read only trusted embedded CSL tags, preserving quoted attributes and skipping
+// comments. This is a capability scan, not a validator or an external XML loader.
+fn style_traits(mut xml: &str) -> StyleTraits {
+    let mut traits = StyleTraits::default();
+    let mut stack = Vec::<(&str, Option<&str>)>::new();
+    let mut dependencies = BTreeMap::<&str, Vec<&str>>::new();
+    let mut issued = Vec::new();
+    while let Some(start) = xml.find('<') {
+        xml = &xml[start + 1..];
+        if let Some(comment) = xml.strip_prefix("!--") {
+            xml = comment.split_once("-->").map_or("", |(_, rest)| rest);
+            continue;
+        }
+        let mut quote = None;
+        let Some(end) = xml.find(|ch| {
+            if quote == Some(ch) {
+                quote = None;
+            } else if quote.is_none() && matches!(ch, '\'' | '"') {
+                quote = Some(ch);
+            }
+            ch == '>' && quote.is_none()
+        }) else {
+            break;
+        };
+        let tag = xml[..end].trim();
+        xml = &xml[end + 1..];
+        if tag.starts_with(['?', '!']) {
+            continue;
+        }
+        if tag.starts_with('/') {
+            stack.pop();
+            continue;
+        }
+        let self_closing = tag.ends_with('/');
+        let tag = tag.trim_end_matches('/').trim_end();
+        let name_end = tag.find(char::is_whitespace).unwrap_or(tag.len());
+        let (name, attrs) = tag.split_at(name_end);
+        let parent = stack.last().copied();
+        let mut scope = parent.and_then(|(_, scope)| scope);
+        if name == "category" && parent.is_some_and(|(name, _)| name == "info") {
+            // Labels need not be document citation numbers; only numeric falls back.
+            traits.numeric |= trait_attribute(attrs, "citation-format").as_deref() == Some("numeric");
+        }
+        if name == "macro" {
+            scope = attribute(attrs, "name");
+        } else if name == "layout" && parent.is_some_and(|(name, _)| name == "citation") {
+            scope = Some(""); // Citation layout, excluding its sort keys.
+        }
+        if let Some(scope) = scope {
+            if matches!(name, "date" | "text") && trait_attribute(attrs, "variable").as_deref() == Some("issued") {
+                issued.push(scope);
+            }
+            if let Some(called) = attribute(attrs, "macro") {
+                dependencies.entry(scope).or_default().push(called);
+            }
+        }
+        if !self_closing {
+            stack.push((name, scope));
+        }
+    }
+    let mut pending = vec![""];
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(scope) = pending.pop() {
+        if seen.insert(scope) {
+            traits.citation_has_issued |= issued.contains(&scope);
+            pending.extend(dependencies.get(scope).into_iter().flatten().copied());
+        }
+    }
+    traits
+}
+
+fn attribute<'a>(mut attrs: &'a str, key: &str) -> Option<&'a str> {
+    while let Some((name, rest)) = attrs.trim_start().split_once('=') {
+        let rest = rest.trim_start();
+        let quote = rest.chars().next()?;
+        if !matches!(quote, '\'' | '"') {
+            return None;
+        }
+        let (value, rest) = rest[1..].split_once(quote)?;
+        if name.trim_end() == key {
+            return Some(value);
+        }
+        attrs = rest;
+    }
+    None
+}
+
+// These ASCII trait values cannot contain named XML entities, but may use
+// decimal or hexadecimal character references. Decode those exactly once.
+fn trait_attribute(attrs: &str, key: &str) -> Option<String> {
+    let mut value = attribute(attrs, key)?;
+    let mut decoded = String::new();
+    while let Some(start) = value.find("&#") {
+        decoded.push_str(&value[..start]);
+        let (entity, rest) = value[start + 2..].split_once(';')?;
+        let code = entity
+            .strip_prefix('x')
+            .map_or_else(|| entity.parse(), |hex| u32::from_str_radix(hex, 16));
+        decoded.push(code.ok().and_then(char::from_u32)?);
+        value = rest;
+    }
+    decoded.push_str(value);
+    Some(decoded)
+}
 
 pub(crate) struct Prepared {
     pub json: String,
@@ -26,9 +145,19 @@ pub(crate) fn prepare(
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
-    if !crate::STYLES.iter().any(|(id, _)| id == style) {
+    let traits = STYLE_TRAITS.get(style.as_str()).ok_or(FormatError::UnsupportedStyle)?;
+    prepare_with_traits(snapshot, request, limits, *traits)
+}
+
+fn prepare_with_traits(
+    snapshot: &Snapshot,
+    request: &CitationRequest,
+    limits: &Limits,
+    traits: StyleTraits,
+) -> Result<Prepared, FormatError> {
+    let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
-    }
+    };
     if request
         .output_locale
         .as_deref()
@@ -57,7 +186,7 @@ pub(crate) fn prepare(
         return Err(FormatError::InvalidRequest);
     }
 
-    let bibliography = style == "ieee" || matches!(request.form, CitationForm::BibliographyOnly | CitationForm::Full);
+    let bibliography = traits.numeric || matches!(request.form, CitationForm::BibliographyOnly | CitationForm::Full);
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();
@@ -65,19 +194,21 @@ pub(crate) fn prepare(
     let mut outcomes = Vec::new();
     let mut losses = Vec::new();
     let mut notices = Vec::new();
-    if style == "ieee" {
+    let mut affixes = Vec::new();
+    if traits.numeric {
         notices.extend([Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
     }
     let mut remaining = limits.input_bytes;
     for (index, pick) in request.items.iter().enumerate() {
         let form = pick.form.unwrap_or(request.form);
         let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
-            || form == CitationForm::Narrative
-            || (style == "ieee" && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
-            // MLA's citation layout has no year; a nonempty locator is not a year.
-            || (style == "modern-language-association" && !bibliography && form == CitationForm::YearOnly)
+            // A narrative citation is one sentence's subject: one reference.
+            || (form == CitationForm::Narrative && (pick.suppress_author || bibliography || request.items.len() > 1))
+            || (traits.numeric && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
+            // A nonempty locator cannot stand in for an absent publication year.
+            || (!traits.citation_has_issued && !bibliography && form == CitationForm::YearOnly)
             || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography
-                && style != "ieee")
+                && !traits.numeric)
         {
             Some(CitationError::UnsupportedForm)
         } else {
@@ -113,6 +244,10 @@ pub(crate) fn prepare(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
+        // APA's parenthetical names use a symbol conjunction that cannot be
+        // reused as a narrative subject. Refuse multiple names until the
+        // narrative path has its own verified name rendering.
+        let apa_narrative = style == "apa" && form == CitationForm::Narrative;
         // When an item has authors, the in-text layouts of the bundled
         // author-date styles print only these name lists; every other one is
         // a substitute after `author` or appears only in entries.
@@ -162,6 +297,7 @@ pub(crate) fn prepare(
                 names
                     .iter()
                     .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
+                    || apa_narrative && names.len() > 1
             })
         {
             outcomes.push(ItemOutcome::Refused {
@@ -170,7 +306,7 @@ pub(crate) fn prepare(
             });
             continue;
         }
-        if form == CitationForm::AuthorOnly && !has_authors {
+        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative) && !has_authors {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
@@ -190,8 +326,8 @@ pub(crate) fn prepare(
         };
         let mut cite = json!({"id":id});
         for (present, field) in [
-            (!pick.prefix.is_empty(), LossField::Prefix),
-            (!pick.suffix.is_empty(), LossField::Suffix),
+            (bibliography && !pick.prefix.is_empty(), LossField::Prefix),
+            (bibliography && !pick.suffix.is_empty(), LossField::Suffix),
         ] {
             if present {
                 losses.push(Loss {
@@ -231,10 +367,21 @@ pub(crate) fn prepare(
             }
             // Rich affixes belong to the 0.4 builder. Omitting them is explicit,
             // never citeproc markup that could reinterpret literal input.
-            cite["prefix"] = json!("");
-            cite["suffix"] = json!("");
+            // citeproc-js would read affix text as markup and curl its quotes, so
+            // it sees inert placeholders and the bridge writes each affix in
+            // every output format afterwards, with citeproc's own escaping.
+            for (key, runs) in [("prefix", &pick.prefix), ("suffix", &pick.suffix)] {
+                if runs.iter().any(|run| !run.text.is_empty()) {
+                    let placeholder = placeholder(affixes.len(), key, runs);
+                    cite[key] = json!(placeholder);
+                    affixes.push(json!({"placeholder": placeholder, "kind": key, "runs": runs}));
+                }
+            }
             cite["suppress-author"] = json!(pick.suppress_author || form == CitationForm::YearOnly);
             cite["author-only"] = json!(form == CitationForm::AuthorOnly);
+            if form == CitationForm::Narrative {
+                cite["narrative"] = json!(true);
+            }
         }
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
@@ -249,7 +396,15 @@ pub(crate) fn prepare(
             reason: LossReason::Unsupported,
         });
     }
-    let json=String::from_utf8(bounded_json(&json!({"style":style,"items":items,"cites":cites,"bibliography":bibliography,"keep_order":request.keep_order,"locale":request.output_locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    let json=String::from_utf8(bounded_json(&json!({"style":style,"numeric":traits.numeric,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":request.output_locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    // Each placeholder (in its cite and in the affix list) must be the only
+    // place its sentinel occurs, or the bridge could write an affix into a
+    // record's own text.
+    if json.matches(PLACEHOLDER_OPEN).count() != 2 * affixes.len()
+        || json.matches(PLACEHOLDER_CLOSE).count() != 2 * affixes.len()
+    {
+        return Err(FormatError::InvalidRequest);
+    }
     Ok(Prepared {
         json,
         outcomes,
@@ -464,4 +619,121 @@ fn named(names: Option<&Value>) -> bool {
             })
         })
     })
+}
+
+/// Sentinels for affix placeholders. Requests whose text contains them are
+/// refused, so a placeholder can only ever match itself.
+pub(crate) const PLACEHOLDER_OPEN: char = '\u{E000}';
+pub(crate) const PLACEHOLDER_CLOSE: char = '\u{E001}';
+
+/// An inert stand-in for one affix. citeproc-js decides delimiter spacing from
+/// a suffix's last and a prefix's first character when it is `;`, `.` or `,`,
+/// so that character stays visible to it and is part of what gets replaced.
+fn placeholder(index: usize, kind: &str, runs: &[TextRun]) -> String {
+    let digits: String = index
+        .to_string()
+        .chars()
+        .map(|d| char::from_u32(0xE010 + d.to_digit(10).unwrap_or(0)).unwrap_or(PLACEHOLDER_CLOSE))
+        .collect();
+    let token = format!("{PLACEHOLDER_OPEN}{digits}{PLACEHOLDER_CLOSE}");
+    let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+    let edge = if kind == "prefix" {
+        text.chars().next()
+    } else {
+        text.chars().next_back()
+    };
+    match edge.filter(|c| matches!(c, ';' | '.' | ',')) {
+        Some(c) if kind == "prefix" => format!("{c}{token}"),
+        Some(c) => format!("{token}{c}"),
+        None => token,
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use CitationForm::{AuthorOnly, Full, Narrative, Normal, YearOnly};
+
+    #[test]
+    fn xml_traits_drive_fallback_and_form_refusals_independently_of_style_name() {
+        let id = ItemRef {
+            library: LibraryId::file(b"synthetic-traits"),
+            key: "work".into(),
+        };
+        let csl = json!({"type":"book","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}});
+        let record = serde_json::from_value(json!({"id":id,"csl":csl})).unwrap();
+        let snapshot = Snapshot::new(vec![LibraryObject::Record(record)]).unwrap();
+        for (name, format, numeric) in [
+            ("invented-numbered", "numeric", true),
+            ("invented-escaped", "nu&#109;eric", true),
+            ("ieee", "author-date", false),
+            ("invented-label", "label", false),
+        ] {
+            let xml = format!(
+                "<style><info><title>{name}</title><category citation-format = '{format}'/></info><citation><layout><date variable='issued'/></layout></citation></style>"
+            );
+            let traits = style_traits(&xml);
+            let mut request: CitationRequest =
+                serde_json::from_value(json!({"items":[{"item":id}],"output":{"kind":"csl","style":name}})).unwrap();
+            for form in [Normal, Full, AuthorOnly, YearOnly, Narrative] {
+                request.form = form;
+                let prepared = prepare_with_traits(&snapshot, &request, &Limits::default(), traits).unwrap();
+                let json: Value = serde_json::from_str(&prepared.json).unwrap();
+                assert_eq!(json["numeric"], numeric);
+                assert_eq!(json["bibliography"], numeric || form == Full);
+                assert_eq!(prepared.notices.contains(&Notice::NeedsDocumentContext), numeric);
+                assert_eq!(prepared.notices.contains(&Notice::ReferenceEntry), numeric);
+                assert_eq!(
+                    prepared.empty,
+                    numeric && matches!(form, AuthorOnly | YearOnly | Narrative)
+                );
+                if !numeric && form == Narrative {
+                    assert_eq!(json["cites"][0]["narrative"], true);
+                }
+            }
+        }
+        let traits = style_traits(
+            "<style><macro name='unused'><date variable='issued'/></macro><citation><sort><key macro='unused'/></sort><layout><text variable='locator'/></layout></citation><bibliography><layout><date variable='issued'/></layout></bibliography></style>",
+        );
+        let request = serde_json::from_value(json!({"items":[{"item":id,"locator":{"term":"page","value":"42"}}],"form":"year-only","output":{"kind":"csl","style":"invented-no-year"}})).unwrap();
+        let prepared = prepare_with_traits(&snapshot, &request, &Limits::default(), traits).unwrap();
+        let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form"}]);
+        assert_eq!(serde_json::to_value(&prepared.outcomes).unwrap(), refused);
+    }
+
+    #[test]
+    fn bundled_styles_keep_the_behaviour_their_names_used_to_choose() {
+        let traits: Vec<_> = STYLE_TRAITS
+            .iter()
+            .map(|(id, traits)| (*id, traits.numeric, traits.citation_has_issued))
+            .collect();
+        assert_eq!(
+            traits,
+            [
+                ("apa", false, true),
+                ("chicago-author-date", false, true),
+                ("harvard-cite-them-right", false, true),
+                ("ieee", true, false),
+                ("modern-language-association", false, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn issued_scan_follows_only_reachable_macros_and_terminates_cycles() {
+        for (layout, expected) in [
+            ("<text macro='outer'/>", true),
+            ("<date variable='issued'/>", true),
+            ("<if variable='issued'><text variable='locator'/></if>", false),
+            ("<text macro='cycle'/>", false),
+        ] {
+            let xml = format!(
+                "<style><!-- <category citation-format='numeric'/> --><macro name='outer'><text macro='inner'/></macro><macro name='inner'><choose><if type='book'><date variable='issued' date-parts='year'/></if></choose></macro><macro name='cycle'><text macro='cycle'/></macro><citation><layout prefix='>'>{layout}</layout></citation></style>"
+            );
+            let traits = style_traits(&xml);
+            assert!(!traits.numeric);
+            assert_eq!(traits.citation_has_issued, expected);
+        }
+    }
 }

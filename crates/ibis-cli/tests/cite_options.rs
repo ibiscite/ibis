@@ -156,11 +156,8 @@ fn flags_print_what_each_output_shows_and_report_what_it_cannot() -> Result {
     let (code, text, _) = run(&["cite", "--style", "apa", "taylor2026", "--locator", "pp. 12-14"], b"")?;
     assert_eq!((code, text.as_str()), (0, "(Taylor, 2026, pp. 12–14)\n"));
     let (code, text, errors) = run(&["cite", "--style", "apa", "taylor2026", "--prefix", "see"], b"")?;
-    assert_eq!((code, text.as_str()), (1, "(Taylor, 2026)\n"));
-    assert_eq!(
-        errors,
-        "ibis: apa cannot show the prefix for 'taylor2026', so it was left out.\n"
-    );
+    assert_eq!((code, text.as_str()), (0, "(see Taylor, 2026)\n"));
+    assert!(errors.is_empty(), "{errors}");
     let (code, _, errors) = run(&["cite", "--format", "keys", "taylor2026", "--locator", "12"], b"")?;
     assert_eq!(code, 1);
     assert!(

@@ -17,6 +17,9 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::copy_format,
             crate::preferences::picker_preferences,
             crate::preferences::set_picker_preferences::<tauri::Wry>,
+            crate::destination::picker_destination,
+            crate::destination::remember_app_output,
+            crate::destination::forget_app_outputs,
             crate::login_item::login_item,
             crate::login_item::set_login_item,
             crate::picker::hide_picker,
@@ -150,6 +153,7 @@ mod tests {
             "core:event:allow-unlisten",
             "core:app:allow-version",
             "core:window:allow-start-dragging",
+            "core:window:allow-destroy",
         ]
         .map(str::to_owned)
         .to_vec();

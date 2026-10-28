@@ -17,6 +17,9 @@ pub struct RecordHit<'a> {
     pub matched: Vec<MatchField>,
     /// Some term matched only with one typo.
     pub typo: bool,
+    /// Some terms did not match: one of the closest matches, given only when
+    /// nothing matches every term.
+    pub partial: bool,
 }
 
 /// Exact matches in paste order, with unmatched explicit citation keys.
@@ -98,19 +101,26 @@ impl SnapshotIndex {
                         })
                     })
                     .collect();
+                let title = strip_markup(text("title"));
+                let container = strip_markup(text("container-title"));
                 texts.push(
                     [
                         normalize(&keys.join(" ")),
-                        normalize(&strip_markup(text("title"))),
+                        normalize(&title),
                         name_text(names.iter()),
                         year.map(|year| year.to_string()).unwrap_or_default(),
                         normalize(text("DOI")),
                         normalize(text("keyword")),
-                        normalize(&strip_markup(text("container-title"))),
+                        normalize(&container),
                         normalize(text("abstract")),
                     ],
-                    &strip_markup(text("title-short")),
-                    &strip_markup(text("container-title-short")),
+                    &[
+                        (1, &title),
+                        (1, &strip_markup(text("title-short"))),
+                        (5, text("keyword")),
+                        (6, &container),
+                        (6, &strip_markup(text("container-title-short"))),
+                    ],
                 );
                 Some(Entry {
                     position,
@@ -230,6 +240,7 @@ impl SnapshotIndex {
                     score: 3000,
                     matched: vec![field],
                     typo: false,
+                    partial: false,
                 });
             }
         }
@@ -260,6 +271,7 @@ impl SnapshotIndex {
                     score: hit.score,
                     matched: hit.matched,
                     typo: hit.typo,
+                    partial: hit.partial,
                 })
                 .collect(),
         )

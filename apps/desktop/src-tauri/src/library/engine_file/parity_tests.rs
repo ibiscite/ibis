@@ -206,6 +206,7 @@ fn picker_rows_list_the_engines_search_hits_in_order() -> Result<(), Box<dyn std
             let hits: Vec<Value> = engine
                 .search(
                     &SearchRequest {
+                        interpret_locator: false,
                         query: word.clone(),
                         limit: 50,
                         libraries: None,
