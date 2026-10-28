@@ -42,8 +42,8 @@ impl Captured {
 
 /// The capture for `front`, or `None` when Ibis itself is in front (the
 /// picker shown again, or another Ibis window), so the earlier capture stays.
-/// Password fields need accessibility calls Ibis does not make yet; the
-/// destination table still refuses terminals, remote desktops and VMs.
+/// Secure input is checked at delivery, after the app has regained focus;
+/// its state when the picker opened cannot prove that a later paste is safe.
 pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option<Captured> {
     let Some(front) = front else {
         return Some(Captured::unknown(system));

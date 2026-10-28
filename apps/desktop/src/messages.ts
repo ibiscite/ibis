@@ -454,6 +454,8 @@ export const copiedNoticeText = {
     "remote-desktop": "Copied. Not pasted into a remote desktop",
     "virtual-machine": "Copied. Not pasted into a virtual machine",
     "secure-field": "Copied. Not pasted into a password field",
+    "secure-input": "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste.",
+    "paste-unavailable": "Copied. Press ⌘V to paste.",
     "elevated-app": "Copied. Not pasted into an administrator app",
   } as Record<string, string>,
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",

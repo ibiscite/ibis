@@ -351,6 +351,12 @@ age ticks every 30 s outside the live region.
 **Notices.** "Copied" or "Inserted" shows after the picker hides, in a window
 that never takes focus: the same pill near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.
+On macOS, system-wide Secure Event Input only copies and says "Copied. Secure
+typing is on, possibly in another app. Press ⌘V to paste." An unavailable or
+timed-out paste check says "Copied. Press ⌘V to paste." Keep these reasons
+distinct: the flag does not identify the destination's field and does not
+detect every password control. Neither notice calls the destination a
+password field.
 
 **Empty states.** First run, no library, an actually empty library and a library that could not be opened
 use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
