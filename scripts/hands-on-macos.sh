@@ -36,35 +36,40 @@ absent_destination() {
   no_links "$1" || return 1
   [ ! -e "$1" ] || { fail "Refusing an occupied destination."; return 1; }
 }
+lock_refusal() {
+  fail "$* Lock directory: $lock. It can be deleted if no other hands-on check is running."
+}
 acquire_lock() {
-  local record name pid
+  local record name pid command
   lock="$settings.hands-on.lock"
-  no_links "$lock" || return 1
-  mkdir -p "$lock" || return 1
+  no_links "$lock" || { lock_refusal "Unsafe profile lock."; return 1; }
+  mkdir -p "$lock" || { lock_refusal "Could not create profile lock."; return 1; }
   # PID-named records remain reclaimable even if publication is interrupted.
   for record in "$lock"/* "$lock"/.[!.]* "$lock"/..?*; do
     [ -e "$record" ] || [ -L "$record" ] || continue
-    regular_destination "$record" || return 1
+    regular_destination "$record" || { lock_refusal "Unsafe profile lock entry."; return 1; }
     name=${record##*/}
     if [[ ! "$name" =~ ^pid-([1-9][0-9]*)-.+$ ]]; then
-      fail "Unrecognized profile lock entry; leaving it untouched."
+      lock_refusal "Unrecognized profile lock entry; leaving it untouched."
       return 1
     fi
     pid=${BASH_REMATCH[1]}
-    if kill -0 "$pid" 2>/dev/null; then
-      fail "Another hands-on check holds this profile lock (PID $pid). Wait for it to finish."
+    command=$(ps -o comm= -p "$pid" 2>/dev/null || true)
+    if kill -0 "$pid" 2>/dev/null &&
+      [[ "$command" =~ ^[[:space:]]*([^[:space:]]*/)?(bash|sh)([[:space:]]|$) ]]; then
+      lock_refusal "Another hands-on check holds this profile lock (PID $pid). Wait for it to finish."
       return 1
     fi
-    rm -f "$record" || return 1
+    rm -f "$record" || { lock_refusal "Could not remove stale profile lock entry."; return 1; }
   done
   # The workspace token prevents an old reclaimer deleting a reused PID's record.
   lock_record="$lock/pid-$$-${dir##*/}"
-  regular_destination "$lock_record" || return 1
-  (set -C; printf '%s\n' "$$" > "$lock_record") || return 1
+  regular_destination "$lock_record" || { lock_refusal "Unsafe profile lock entry."; return 1; }
+  (set -C; printf '%s\n' "$$" > "$lock_record") || { lock_refusal "Could not publish profile lock."; return 1; }
   # Publish before checking: overlapping contenders cannot both see only themselves.
   for record in "$lock"/* "$lock"/.[!.]* "$lock"/..?*; do
     [ -e "$record" ] || [ -L "$record" ] || continue
-    [ "$record" = "$lock_record" ] || { fail "Another hands-on check acquired the profile lock. Retry later."; return 1; }
+    [ "$record" = "$lock_record" ] || { lock_refusal "Another hands-on check acquired the profile lock. Retry later."; return 1; }
   done
 }
 release_lock() {

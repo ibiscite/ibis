@@ -20,16 +20,43 @@ function fixture(t) {
   }) };
 }
 
-test("a live profile lock refuses another run without removing its owner", { skip }, (t) => {
+test("a live bash/sh PID holds the lock, including curl | bash without a script argument", { skip }, (t) => {
   const { root, run } = fixture(t);
   const lock = join(root, "profile.hands-on.lock");
   const owner = join(lock, `pid-${process.pid}-live`);
-  mkdirSync(lock);
-  writeFileSync(owner, `${process.pid}\n`);
-  const result = run(`settings="$dir/profile"\n${traps}\nacquire_lock`);
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Another hands-on check holds this profile lock/);
-  assert.equal(readFileSync(owner, "utf8"), `${process.pid}\n`);
+  for (const [command, args, holds] of [
+    ["bash", "bash", true], // curl ... | bash has no script-name argument.
+    ["/bin/bash", "bash /tmp/hands-on-macos.sh", true],
+    ["sh", "sh scripts/hands-on-macos.sh", true],
+    ["node", "node scripts/hands-on-macos.sh", false],
+    ["/bin/bash", "bash other.sh", true],
+    ["/bin/bash", "bash hands-on-macos.sh.old", true],
+    ["", "", false],
+  ]) {
+    mkdirSync(lock);
+    writeFileSync(owner, `${process.pid}\n`);
+    const result = run(`settings="$dir/profile"
+      ps() {
+        case "$*" in
+          '-o comm= -p ${process.pid}') printf '%s\\n' ${quote(command)} ;;
+          '-o args= -p ${process.pid}') printf '%s\\n' ${quote(args)} ;;
+          *) return 99 ;;
+        esac
+      }
+      ${traps}
+      acquire_lock`);
+    if (holds) {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Another hands-on check holds this profile lock/);
+      assert.ok(result.stderr.includes(`Lock directory: ${lock}.`));
+      assert.match(result.stderr, /It can be deleted if no other hands-on check is running/);
+      assert.equal(readFileSync(owner, "utf8"), `${process.pid}\n`);
+      rmSync(lock, { recursive: true });
+    } else {
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(existsSync(lock), false);
+    }
+  }
 });
 
 test("a dead PID lock is cleared, claimed and released on exit or signals", { skip }, (t) => {
