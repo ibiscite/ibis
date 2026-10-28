@@ -2,34 +2,21 @@
 //! other native calls use safe objc2 bindings.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use objc2_app_kit::NSWorkspace;
+use objc2_app_kit::{NSPasteboard, NSWorkspace};
 use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess};
 use tauri::{AppHandle, Manager};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::Code;
 
-use super::Desk;
 use super::capture::Front;
+use super::{Desk, PendingPost, PostDesk, PostRequest, PostResult, checked_post};
 
 #[allow(unsafe_code)]
 mod secure_input;
 
 const ASK_LIMIT: Duration = Duration::from_millis(250);
-
-/// At most one AX query can outlive its caller. A stuck provider must not
-/// accumulate threads when the person tries another paste.
-static CHECKING: AtomicBool = AtomicBool::new(false);
-
-struct Checking;
-
-impl Drop for Checking {
-    fn drop(&mut self) {
-        CHECKING.store(false, Ordering::SeqCst);
-    }
-}
 
 /// The app in front, by bundle ID, process and name; never its windows.
 pub(super) fn frontmost() -> Option<Front> {
@@ -46,20 +33,11 @@ static ASKED: AtomicBool = AtomicBool::new(false);
 
 pub(super) struct Mac {
     app: AppHandle,
-    /// The picker showing that this copy belongs to; showing it again stops the paste.
-    generation: u64,
 }
 
 impl Mac {
     pub(super) fn new(app: &AppHandle) -> Self {
-        Self {
-            app: app.clone(),
-            generation: app.state::<crate::picker::PickerGeneration>().current(),
-        }
-    }
-
-    fn picker_unchanged(&self) -> bool {
-        self.app.state::<crate::picker::PickerGeneration>().current() == self.generation
+        Self { app: app.clone() }
     }
 
     /// AppKit state and layouts are read on the main thread; the paste waits
@@ -91,69 +69,88 @@ impl Desk for Mac {
     }
 
     fn frontmost(&self) -> Option<Front> {
-        if !self.picker_unchanged() {
-            return None;
-        }
         self.on_main(frontmost).flatten()
     }
 
-    fn clipboard(&self) -> Option<String> {
-        self.app.clipboard().read_text().ok()
-    }
-
-    fn secure_field(&self, pid: i32) -> Option<bool> {
-        let deadline = Instant::now() + ASK_LIMIT;
-        // Carbon documents this flag as not thread safe. Only this quick
-        // local read runs on the main thread; AX messaging never does.
-        if self.on_main_for(
-            deadline.saturating_duration_since(Instant::now()),
-            secure_input::enabled,
-        )?? {
-            return Some(true);
-        }
-        CHECKING
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .ok()?;
-        let checking = Checking;
-        let secure = super::bounded(deadline.saturating_duration_since(Instant::now()), move || {
-            let _checking = checking;
-            super::security::secure_field(&secure_input::Ax { deadline }, pid)
-        })??;
-        if secure {
-            return Some(true);
-        }
-        // Secure Event Input may have been enabled while the AX provider
-        // answered. Do not paste on a stale negative result.
-        let enabled = self.on_main_for(
-            deadline.saturating_duration_since(Instant::now()),
-            secure_input::enabled,
-        )??;
-        (Instant::now() < deadline).then_some(enabled)
-    }
-
-    fn paste_key(&self) -> Option<u16> {
-        self.on_main(|| crate::picker::command_key(Code::KeyV, crate::picker::typing()))
-            .flatten()
-    }
-
-    fn post(&self, pid: i32, key: u16) -> bool {
-        if !self.picker_unchanged() {
-            return false;
-        }
-        // A source of its own, so keys the person still holds are not added.
-        let source = CGEventSource::new(CGEventSourceStateID::Private);
-        let events = [true, false].map(|down| CGEvent::new_keyboard_event(source.as_deref(), key, down));
-        let [Some(down), Some(up)] = events else {
-            return false;
-        };
-        for event in [&down, &up] {
-            CGEvent::set_flags(Some(event), CGEventFlags::MaskCommand);
-            CGEvent::post_to_pid(pid, Some(event));
-        }
-        true
+    fn finish(&self, request: PostRequest) -> PostResult {
+        // This deadline belongs to the queued task too, not just its caller.
+        let request = request.queued(Instant::now());
+        let limit = request.deadline.saturating_duration_since(Instant::now());
+        let pending = Arc::new(PendingPost::default());
+        let queued = Arc::clone(&pending);
+        let app = self.app.clone();
+        self.on_main_for(limit, move || {
+            if Instant::now() >= request.deadline {
+                return PostResult::Secure;
+            }
+            // Resolve the layout and create the events before the final
+            // guards. No separate main-thread wait may follow the flag.
+            let Some(key) = crate::picker::command_key(Code::KeyV, crate::picker::typing()) else {
+                return PostResult::Refused;
+            };
+            let source = CGEventSource::new(CGEventSourceStateID::Private);
+            let events = [true, false].map(|down| CGEvent::new_keyboard_event(source.as_deref(), key, down));
+            let [Some(down), Some(up)] = events else {
+                return PostResult::Refused;
+            };
+            for event in [&down, &up] {
+                CGEvent::set_flags(Some(event), CGEventFlags::MaskCommand);
+            }
+            queued.run(|| {
+                checked_post(
+                    &Ready {
+                        app: &app,
+                        down: &down,
+                        up: &up,
+                    },
+                    &request,
+                )
+            })
+        })
+        .unwrap_or_else(|| pending.cancel())
     }
 
     fn wait(&self, time: Duration) {
         std::thread::sleep(time);
+    }
+}
+
+/// Constructed and used only inside the final main-thread task.
+struct Ready<'a> {
+    app: &'a AppHandle,
+    down: &'a CGEvent,
+    up: &'a CGEvent,
+}
+
+impl PostDesk for Ready<'_> {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
+    fn current(&self, presentation: u64) -> bool {
+        self.app.state::<super::LastTarget>().current(presentation)
+            && self
+                .app
+                .get_webview_window("main")
+                .is_some_and(|window| window.is_visible().ok() == Some(false))
+    }
+
+    fn frontmost(&self) -> Option<Front> {
+        frontmost()
+    }
+
+    fn change_count(&self) -> isize {
+        NSPasteboard::generalPasteboard().changeCount()
+    }
+
+    fn secure_input(&self) -> Option<bool> {
+        secure_input::enabled()
+    }
+
+    fn post(&self, pid: i32) -> bool {
+        for event in [self.down, self.up] {
+            CGEvent::post_to_pid(pid, Some(event));
+        }
+        true
     }
 }

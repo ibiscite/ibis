@@ -94,7 +94,7 @@ elevated windows and lost targets. Pasting is on by default (maintainer,
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
 by default; maintainer, 2026-10-28). The selection is read once, at the
-shortcut, through the same accessibility access paste uses; it is never read
+shortcut, through accessibility access separate from paste's PostEvent permission; it is never read
 from secure fields, never stored and never logged.
 
 ## 0029 Native calls
@@ -105,15 +105,24 @@ and `paste/macos/secure_input.rs` are scoped exceptions: their crates use
 `deny`, with an allow only on the native module and a safety comment on each
 block. Changes there need independent security-boundary review.
 
-The macOS check uses the already-locked `objc2-core-foundation` for owned CF
-results and checked string downcasts. The cached objc2 bindings offer no
-safe cross-app AX or Secure Event Input query, so the small boundary calls
-Carbon and ApplicationServices directly (#1280). Carbon's local flag is
-read on the main thread; AX messaging stays on a worker with a 250 ms total
-check budget and per-object messaging deadlines. Only the captured app's
-focused element, its role and its subrole are requested. Failed, missing,
-mistyped or late results only copy; an unresponsive query cannot accumulate
-workers or post a paste when it eventually returns.
+On macOS the boundary is just `IsSecureEventInputEnabled`, whose SDK result
+is a Boolean (`u8`). It is read on the main thread, as Carbon requires. An
+enabled or unavailable flag only copies with the password-field reason.
+The AX guard is removed: optional subroles, denied AX trust and dormant
+providers must not disable ordinary paste (#1280, #1360). Paste requests
+only PostEvent permission, never Accessibility trust; no AX attributes are
+read or providers activated.
+
+Ibis snapshots the pasteboard change count immediately after writing every
+format, checking that ownership did not change during publication. A
+one-use in-memory proof binds that count to Ibis's citation, captured app,
+picker presentation and write time. Reopening the picker retires that proof;
+repeated hide/blur notifications do not. The final foreground, Secure Event Input,
+change-count and deadline checks run with posting in one main-thread task,
+after layout/event preparation. No clipboard contents are read back. The
+task has at most 250 ms and delivery at most 1,500 ms from the write; expired
+or cancelled queued tasks cannot post later. Cancellation and posting share
+a lock so a completed paste is never reported as merely copied.
 
 ## 0010 Search
 

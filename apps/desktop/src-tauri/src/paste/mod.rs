@@ -17,8 +17,6 @@ mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
 pub(crate) mod permission;
-#[cfg(any(target_os = "macos", test))]
-mod security;
 
 use capture::{Captured, Front};
 
@@ -38,24 +36,72 @@ const RETURN_CHECKS: u32 = 40;
 const LATE: Duration = Duration::from_millis(1_500);
 /// Time for the app to give its window the keyboard again.
 const SETTLE: Duration = Duration::from_millis(50);
-
-/// An unresponsive accessibility provider must not hold up delivery. The
-/// worker can only return a check result; it never gets a chance to paste.
 #[cfg(any(target_os = "macos", test))]
-fn bounded<T: Send + 'static>(limit: Duration, check: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("paste-security".into())
-        .spawn(move || {
-            let _ = sender.send(check());
-        })
-        .ok()?;
-    receiver.recv_timeout(limit).ok()
-}
+const POST_LIMIT: Duration = Duration::from_millis(250);
 
 /// The app the picker was last opened from.
 #[derive(Default)]
-pub(crate) struct LastTarget(Mutex<Option<Captured>>);
+pub(crate) struct LastTarget(Mutex<TargetState>);
+
+#[derive(Default)]
+struct TargetState {
+    captured: Option<Captured>,
+    copied: Option<CopyProof>,
+    presentation: u64,
+}
+
+/// Evidence from Ibis's own successful clipboard write, consumed once. The
+/// text is Ibis's citation, never read back from another clipboard owner.
+struct CopyProof {
+    captured: Option<Captured>,
+    text: String,
+    change_count: isize,
+    presentation: u64,
+    written: Instant,
+}
+
+impl LastTarget {
+    /// Showing the picker invalidates an earlier delivery. Hide/blur events
+    /// may happen more than once and must not retire the successful copy.
+    fn begin_presentation(&self, captured: Option<Captured>) {
+        if let Ok(mut last) = self.0.lock() {
+            last.presentation = last.presentation.wrapping_add(1);
+            last.copied = None;
+            if let Some(captured) = captured {
+                last.captured = Some(captured);
+            }
+        }
+    }
+
+    #[cfg(any(target_os = "macos", test))]
+    fn current(&self, presentation: u64) -> bool {
+        self.0.lock().is_ok_and(|last| last.presentation == presentation)
+    }
+
+    #[cfg(any(target_os = "macos", test))]
+    pub(crate) fn write_copy(
+        &self,
+        text: &str,
+        write: impl FnOnce() -> Result<Option<isize>, String>,
+    ) -> Result<(), String> {
+        let mut last = self.0.lock().map_err(|_| "The clipboard could not be written.")?;
+        last.copied = None;
+        if let Some(change_count) = write()? {
+            last.copied = Some(CopyProof {
+                captured: last.captured.clone(),
+                text: text.to_owned(),
+                change_count,
+                presentation: last.presentation,
+                written: Instant::now(),
+            });
+        }
+        Ok(())
+    }
+
+    fn take_copy(&self, text: &str) -> Option<CopyProof> {
+        self.0.lock().ok()?.copied.take().filter(|proof| proof.text == text)
+    }
+}
 
 /// Remember the app in front, before the picker shows. Ibis in front keeps the earlier capture.
 pub(crate) fn capture(app: &AppHandle) {
@@ -64,17 +110,14 @@ pub(crate) fn capture(app: &AppHandle) {
     #[cfg(not(target_os = "macos"))]
     let front = None;
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
-    if let Some(captured) = capture::captured(SYSTEM, front, own)
-        && let Ok(mut last) = app.state::<LastTarget>().0.lock()
-    {
-        *last = Some(captured);
-    }
+    app.state::<LastTarget>()
+        .begin_presentation(capture::captured(SYSTEM, front, own));
 }
 
 /// The app the picker was last opened from, with the name the picker shows
 /// for it: the app's own, else the destination table's, else its ID.
 pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String)> {
-    let captured = app.state::<LastTarget>().0.lock().ok()?.clone()?;
+    let captured = app.state::<LastTarget>().0.lock().ok()?.captured.clone()?;
     let id = captured.target.app?;
     let name = captured
         .name
@@ -99,28 +142,109 @@ pub(crate) enum Delivered {
 }
 
 /// The system calls a paste needs, so the decision is testable without them.
-pub(crate) trait Desk {
-    /// Ibis may post key events (macOS Accessibility).
+trait Desk {
+    /// Ibis may post key events (PostEvent, independent of AX trust).
     fn may_post(&self) -> bool;
     /// Show where to give that permission; at most once per run.
     fn ask_to_post(&self);
     /// The app in front, or `None` once the picker has been shown again.
     fn frontmost(&self) -> Option<Front>;
-    fn clipboard(&self) -> Option<String>;
-    /// Whether the captured app's focused field is secure, checked at paste
-    /// time. `None` means an error or timeout: pasting has not proved safe.
-    fn secure_field(&self, pid: i32) -> Option<bool>;
-    /// The key that types V with Command on the current layout.
-    fn paste_key(&self) -> Option<u16>;
-    /// Post ⌘ and `key` down and up to `pid` only; false when nothing was posted.
-    fn post(&self, pid: i32, key: u16) -> bool;
+    /// All final guards and posting run together on the main thread.
+    fn finish(&self, request: PostRequest) -> PostResult;
     fn wait(&self, time: Duration);
 }
 
-/// Paste `text`, just copied, into the captured app, or say why it stays copied.
-pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str, enabled: bool) -> Delivered {
+#[derive(Clone)]
+// Other systems only copy until their native delivery implementation lands.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+struct PostRequest {
+    pid: i32,
+    id: String,
+    change_count: isize,
+    presentation: u64,
+    deadline: Instant,
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl PostRequest {
+    fn queued(mut self, now: Instant) -> Self {
+        self.deadline = self.deadline.min(now + POST_LIMIT);
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+enum PostResult {
+    Pasted,
+    Refused,
+    Secure,
+}
+
+/// These calls run in one main-thread task; none reads clipboard contents,
+/// the AX tree or a remote provider. Event creation/layout work runs first.
+#[cfg(any(target_os = "macos", test))]
+trait PostDesk {
+    fn now(&self) -> Instant;
+    fn current(&self, presentation: u64) -> bool;
+    fn frontmost(&self) -> Option<Front>;
+    fn change_count(&self) -> isize;
+    fn secure_input(&self) -> Option<bool>;
+    fn post(&self, pid: i32) -> bool;
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
+    if desk.now() >= request.deadline {
+        return PostResult::Secure;
+    }
+    if !desk.current(request.presentation)
+        || !desk
+            .frontmost()
+            .is_some_and(|front| front.pid == request.pid && front.id.as_deref() == Some(&request.id))
+    {
+        return PostResult::Refused;
+    }
+    if desk.secure_input() != Some(false) {
+        return PostResult::Secure;
+    }
+    if desk.change_count() != request.change_count {
+        return PostResult::Refused;
+    }
+    if desk.now() >= request.deadline {
+        return PostResult::Secure;
+    }
+    if desk.post(request.pid) {
+        PostResult::Pasted
+    } else {
+        PostResult::Refused
+    }
+}
+
+/// Cancellation and posting share a lock: a timed-out queued task cannot
+/// later post, and a completed post cannot be reported as merely copied.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Default)]
+struct PendingPost(Mutex<Option<PostResult>>);
+
+#[cfg(any(target_os = "macos", test))]
+impl PendingPost {
+    fn run(&self, work: impl FnOnce() -> PostResult) -> PostResult {
+        let Ok(mut result) = self.0.lock() else {
+            return PostResult::Secure;
+        };
+        *result.get_or_insert_with(work)
+    }
+
+    fn cancel(&self) -> PostResult {
+        self.run(|| PostResult::Secure)
+    }
+}
+
+/// Paste a proven copy into its captured app, or say why it stays copied.
+fn deliver(desk: &impl Desk, proof: Option<&CopyProof>, enabled: bool) -> Delivered {
     let unknown = Captured::unknown(SYSTEM);
-    let captured = captured.unwrap_or(&unknown);
+    let captured = proof.and_then(|proof| proof.captured.as_ref()).unwrap_or(&unknown);
     let permission = PastePermission {
         enabled,
         granted: enabled && desk.may_post(),
@@ -145,37 +269,33 @@ pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str,
             // The same process and app: a process number alone can be reused.
             let id = captured.target.app.as_ref().map(|app| app.id.as_str());
             let back = |front: Option<Front>| front.is_some_and(|front| front.pid == pid && front.id.as_deref() == id);
+            let Some(proof) = proof else {
+                return copied(None);
+            };
+            let deadline = proof.written + LATE;
             let started = Instant::now();
             let mut checks = 0;
             while !back(desk.frontmost()) {
-                if checks >= RETURN_CHECKS || started.elapsed() >= RETURN_LIMIT {
+                if checks >= RETURN_CHECKS || started.elapsed() >= RETURN_LIMIT || Instant::now() >= deadline {
                     return copied(None);
                 }
                 desk.wait(RETURN_STEP);
                 checks += 1;
             }
             desk.wait(SETTLE);
-            let key = desk.paste_key();
-            // Clipboard providers and layout queries can wait on another
-            // app. Finish them before asking whether its field is secure.
-            if desk.clipboard().as_deref() != Some(text) || !back(desk.frontmost()) || started.elapsed() > LATE {
-                return copied(None);
-            }
-            match desk.secure_field(pid) {
-                Some(false) => {}
-                Some(true) => return copied(Some(CopyReason::SecureField)),
-                None => return copied(None),
-            }
-            // Focus may have moved while the security provider answered.
-            // Never reopen a foreign clipboard provider after that check.
-            if !back(desk.frontmost()) || started.elapsed() > LATE {
-                return copied(None);
-            }
-            match key {
-                Some(key) if desk.post(pid, key) => Delivered::Pasted {
+            let request = PostRequest {
+                pid,
+                id: id.unwrap_or_default().to_owned(),
+                change_count: proof.change_count,
+                presentation: proof.presentation,
+                deadline,
+            };
+            match desk.finish(request) {
+                PostResult::Pasted => Delivered::Pasted {
                     app: captured.name.clone(),
                 },
-                _ => copied(None),
+                PostResult::Secure => copied(Some(CopyReason::SecureField)),
+                PostResult::Refused => copied(None),
             }
         }
     }
@@ -183,7 +303,7 @@ pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str,
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 pub(crate) fn deliver_copy(app: &AppHandle, text: &str) -> Delivered {
-    let captured = app.state::<LastTarget>().0.lock().ok().and_then(|last| last.clone());
+    let proof = app.state::<LastTarget>().take_copy(text);
     #[cfg(target_os = "macos")]
     let desk = macos::Mac::new(app);
     #[cfg(not(target_os = "macos"))]
@@ -192,7 +312,7 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str) -> Delivered {
         .settings
         .paste
         .unwrap_or(true);
-    deliver(&desk, captured.as_ref(), text, enabled)
+    deliver(&desk, proof.as_ref(), enabled)
 }
 
 /// Windows (until #1133) and Linux capture no target, so they only copy.
@@ -208,17 +328,8 @@ impl Desk for CopyOnly {
     fn frontmost(&self) -> Option<Front> {
         None
     }
-    fn clipboard(&self) -> Option<String> {
-        None
-    }
-    fn secure_field(&self, _: i32) -> Option<bool> {
-        None
-    }
-    fn paste_key(&self) -> Option<u16> {
-        None
-    }
-    fn post(&self, _: i32, _: u16) -> bool {
-        false
+    fn finish(&self, _: PostRequest) -> PostResult {
+        PostResult::Refused
     }
     fn wait(&self, _: Duration) {}
 }
@@ -229,38 +340,57 @@ mod tests {
     use ibis_core::destination::{AppId, Target};
     use std::cell::{Cell, RefCell};
 
-    type SecurityQuery = Box<dyn FnOnce() -> Option<bool> + Send>;
+    const TEXT: &str = "[@invented]";
+    const COUNT: isize = 11;
+    const PRESENTATION: u64 = 8;
 
     struct Fake {
         may_post: bool,
         asked: Cell<u32>,
-        /// Front-most process after each wait.
         fronts: RefCell<Vec<i32>>,
-        clipboard: String,
-        password: Cell<Option<bool>>,
-        password_query: RefCell<Option<SecurityQuery>>,
-        password_checks: RefCell<Vec<i32>>,
-        /// A deferred clipboard provider lets focus change before it returns.
-        password_after_clipboard: Option<bool>,
-        /// Simulate focus moving while the security query waits on the app.
-        after_password: Option<i32>,
-        posts: RefCell<Vec<(i32, u16)>>,
+        clock: Cell<Instant>,
+        presentation: Cell<u64>,
+        hidden: bool,
+        change_count: Cell<isize>,
+        secure: Cell<Option<bool>>,
+        query_delay: Duration,
+        queue_delay: Duration,
+        secure_after_queue: Option<bool>,
+        front_after_queue: Option<i32>,
+        replace_during_check: bool,
+        checks: RefCell<Vec<&'static str>>,
+        posts: RefCell<Vec<i32>>,
+        pending: PendingPost,
     }
 
     impl Fake {
-        fn new(clipboard: &str) -> Self {
+        fn new() -> Self {
             Self {
                 may_post: true,
                 asked: Cell::new(0),
                 fronts: RefCell::new(vec![42]),
-                clipboard: clipboard.into(),
-                password: Cell::new(Some(false)),
-                password_query: RefCell::default(),
-                password_checks: RefCell::default(),
-                password_after_clipboard: None,
-                after_password: None,
+                clock: Cell::new(Instant::now()),
+                presentation: Cell::new(PRESENTATION),
+                hidden: true,
+                change_count: Cell::new(COUNT),
+                secure: Cell::new(Some(false)),
+                query_delay: Duration::ZERO,
+                queue_delay: Duration::ZERO,
+                secure_after_queue: None,
+                front_after_queue: None,
+                replace_during_check: false,
+                checks: RefCell::default(),
                 posts: RefCell::default(),
+                pending: PendingPost::default(),
             }
+        }
+
+        fn front(&self) -> Option<Front> {
+            self.fronts.borrow().first().map(|&pid| Front {
+                id: Some("org.example.writer".into()),
+                pid,
+                name: None,
+            })
         }
     }
 
@@ -272,41 +402,57 @@ mod tests {
             self.asked.set(self.asked.get() + 1);
         }
         fn frontmost(&self) -> Option<Front> {
-            self.fronts.borrow().first().map(|&pid| Front {
-                id: Some("org.example.writer".into()),
-                pid,
-                name: None,
-            })
+            self.front()
         }
-        fn clipboard(&self) -> Option<String> {
-            if let Some(secure) = self.password_after_clipboard {
-                self.password.set(Some(secure));
+        fn finish(&self, request: PostRequest) -> PostResult {
+            let request = request.queued(self.clock.get());
+            self.clock.set(self.clock.get() + self.queue_delay);
+            if let Some(secure) = self.secure_after_queue {
+                self.secure.set(Some(secure));
             }
-            Some(self.clipboard.clone())
-        }
-        fn secure_field(&self, pid: i32) -> Option<bool> {
-            self.password_checks.borrow_mut().push(pid);
-            if let Some(front) = self.after_password {
-                self.fronts.replace(vec![front]);
+            if let Some(pid) = self.front_after_queue {
+                self.fronts.replace(vec![pid]);
             }
-            if let Some(query) = self.password_query.borrow_mut().take() {
-                bounded(Duration::from_millis(10), query).flatten()
-            } else {
-                self.password.get()
-            }
+            self.pending.run(|| checked_post(self, &request))
         }
-        fn paste_key(&self) -> Option<u16> {
-            Some(0x09)
-        }
-        fn post(&self, pid: i32, key: u16) -> bool {
-            self.posts.borrow_mut().push((pid, key));
-            true
-        }
-        fn wait(&self, _: Duration) {
+        fn wait(&self, time: Duration) {
+            self.clock.set(self.clock.get() + time);
             let mut fronts = self.fronts.borrow_mut();
             if fronts.len() > 1 {
                 fronts.remove(0);
             }
+        }
+    }
+
+    // Deliberately no clipboard-content or AX API: neither is needed by
+    // ordinary controls without subroles, denied AX trust or lazy providers.
+    impl PostDesk for Fake {
+        fn now(&self) -> Instant {
+            self.clock.get()
+        }
+        fn current(&self, presentation: u64) -> bool {
+            self.hidden && self.presentation.get() == presentation
+        }
+        fn frontmost(&self) -> Option<Front> {
+            self.checks.borrow_mut().push("foreground");
+            self.front()
+        }
+        fn change_count(&self) -> isize {
+            self.checks.borrow_mut().push("change-count");
+            self.change_count.get()
+        }
+        fn secure_input(&self) -> Option<bool> {
+            self.checks.borrow_mut().push("secure-input");
+            self.clock.set(self.clock.get() + self.query_delay);
+            if self.replace_during_check {
+                self.change_count.set(COUNT + 1);
+            }
+            self.secure.get()
+        }
+        fn post(&self, pid: i32) -> bool {
+            self.checks.borrow_mut().push("post");
+            self.posts.borrow_mut().push(pid);
+            true
         }
     }
 
@@ -326,172 +472,209 @@ mod tests {
         }
     }
 
+    fn proof() -> CopyProof {
+        CopyProof {
+            captured: Some(writer("org.example.writer")),
+            text: TEXT.into(),
+            change_count: COUNT,
+            presentation: PRESENTATION,
+            written: Instant::now(),
+        }
+    }
+
     fn copied(reason: Option<&str>) -> Delivered {
         Delivered::Copied {
             reason: reason.map(str::to_owned),
         }
     }
 
+    fn pasted() -> Delivered {
+        Delivered::Pasted {
+            app: Some("Writer".into()),
+        }
+    }
+
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn enter_posts_exactly_one_paste_to_the_captured_app_once_it_is_back_in_front() {
-        let desk = Fake::new("[@synthetic]");
-        // The picker is still in front for two checks.
+    fn ordinary_editor_without_subrole_or_ax_trust_pastes_once_after_returning() {
+        let desk = Fake::new();
         desk.fronts.replace(vec![7, 7, 42]);
-        let delivered = deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true);
+        assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+        assert_eq!(*desk.posts.borrow(), [42]);
         assert_eq!(
-            delivered,
-            Delivered::Pasted {
-                app: Some("Writer".into())
-            }
+            *desk.checks.borrow(),
+            ["foreground", "secure-input", "change-count", "post"]
         );
-        assert_eq!(*desk.posts.borrow(), [(42, 0x09)]);
-        assert_eq!(*desk.password_checks.borrow(), [42]);
     }
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn secure_fields_copy_with_the_existing_password_reason() {
-        let desk = Fake {
-            password: Cell::new(Some(true)),
-            ..Fake::new("[@synthetic]")
-        };
-        assert_eq!(
-            deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true),
-            copied(Some("secure-field"))
-        );
-        assert_eq!(*desk.password_checks.borrow(), [42]);
-        assert!(desk.posts.borrow().is_empty());
+    fn secure_input_on_or_unavailable_copies_with_the_password_reason() {
+        for secure in [Some(true), None] {
+            let desk = Fake {
+                secure: Cell::new(secure),
+                ..Fake::new()
+            };
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("secure-field")));
+            assert!(desk.posts.borrow().is_empty());
+        }
     }
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn a_failed_security_check_only_copies() {
+    fn secure_input_enabled_while_the_final_task_waits_refuses_the_paste() {
         let desk = Fake {
-            password: Cell::new(None),
-            ..Fake::new("[@synthetic]")
+            queue_delay: Duration::from_millis(100),
+            secure_after_queue: Some(true),
+            ..Fake::new()
         };
-        assert_eq!(
-            deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true),
-            copied(None)
-        );
-        assert_eq!(*desk.password_checks.borrow(), [42]);
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("secure-field")));
         assert!(desk.posts.borrow().is_empty());
     }
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn a_security_timeout_copies_and_a_late_safe_result_cannot_paste() {
-        let (release, blocked) = std::sync::mpsc::channel();
-        let (finished, completion) = std::sync::mpsc::channel();
+    fn clipboard_replaced_during_the_final_check_is_never_read_or_pasted() {
         let desk = Fake {
-            password_query: RefCell::new(Some(Box::new(move || {
-                blocked.recv().ok()?;
-                let _ = finished.send(());
-                Some(false)
-            }))),
-            ..Fake::new("[@synthetic]")
+            replace_during_check: true,
+            ..Fake::new()
         };
-        assert_eq!(
-            deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true),
-            copied(None)
-        );
-        assert_eq!(*desk.password_checks.borrow(), [42]);
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(None));
         assert!(desk.posts.borrow().is_empty());
-        assert!(release.send(()).is_ok());
-        assert!(completion.recv_timeout(Duration::from_secs(1)).is_ok());
-        assert!(desk.posts.borrow().is_empty());
+        assert_eq!(*desk.checks.borrow(), ["foreground", "secure-input", "change-count"]);
     }
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn a_field_becoming_secure_during_a_clipboard_read_refuses_the_paste() {
-        let desk = Fake {
-            password_after_clipboard: Some(true),
-            ..Fake::new("[@synthetic]")
-        };
+    fn an_expired_main_thread_task_or_slow_flag_check_cannot_paste() {
+        for (queue_delay, query_delay) in [(POST_LIMIT, Duration::ZERO), (Duration::ZERO, POST_LIMIT)] {
+            let desk = Fake {
+                queue_delay,
+                query_delay,
+                ..Fake::new()
+            };
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("secure-field")));
+            assert!(desk.posts.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn cancellation_prevents_a_queued_task_from_running_and_preserves_completed_results() {
+        let pending = PendingPost::default();
+        assert_eq!(pending.cancel(), PostResult::Secure);
         assert_eq!(
-            deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true),
-            copied(Some("secure-field"))
+            pending.run(|| panic!("cancelled task must not post")),
+            PostResult::Secure
         );
-        assert_eq!(*desk.password_checks.borrow(), [42]);
-        assert!(desk.posts.borrow().is_empty());
+        let completed = PendingPost::default();
+        assert_eq!(completed.run(|| PostResult::Pasted), PostResult::Pasted);
+        assert_eq!(completed.cancel(), PostResult::Pasted);
     }
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn focus_moving_during_the_security_check_cancels_the_paste() {
-        let desk = Fake {
-            after_password: Some(7),
-            ..Fake::new("[@synthetic]")
-        };
-        assert_eq!(
-            deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true),
-            copied(None)
-        );
-        assert_eq!(*desk.password_checks.borrow(), [42]);
+    fn final_task_revalidates_foreground_picker_presentation_and_visibility() {
+        for desk in [
+            Fake {
+                front_after_queue: Some(7),
+                ..Fake::new()
+            },
+            Fake {
+                presentation: Cell::new(PRESENTATION + 1),
+                ..Fake::new()
+            },
+            Fake {
+                hidden: false,
+                ..Fake::new()
+            },
+        ] {
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(None));
+            assert!(desk.posts.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
+        let last = LastTarget::default();
+        {
+            let mut state = last.0.lock().unwrap_or_else(|e| panic!("{e}"));
+            state.captured = Some(writer("org.example.writer"));
+        }
+        assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
+        let ticket = last.take_copy(TEXT).unwrap_or_else(|| panic!("copy proof"));
+        assert_eq!(ticket.change_count, COUNT);
+        assert_eq!(ticket.presentation, 0);
+        assert_eq!(ticket.captured, Some(writer("org.example.writer")));
+        assert!(last.take_copy(TEXT).is_none());
+        assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
+        assert!(last.take_copy("different citation").is_none());
+        assert!(last.take_copy(TEXT).is_none());
+        // A failed write or a concurrent replacement cannot reuse an old proof.
+        for result in [Err("write failed".into()), Ok(None)] {
+            assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
+            let _ = last.write_copy(TEXT, || result);
+            assert!(last.take_copy(TEXT).is_none());
+        }
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn delivery_deadline_starts_at_the_own_write_not_at_notice_or_queue_time() {
+        let mut stale = proof();
+        stale.written -= LATE;
+        let desk = Fake::new();
+        assert_eq!(deliver(&desk, Some(&stale), true), copied(Some("secure-field")));
         assert!(desk.posts.borrow().is_empty());
     }
 
     #[test]
-    fn nothing_is_posted_when_the_paste_is_unsafe_or_unproven() {
-        let cases: [(Fake, Captured, bool, Delivered); 5] = [
-            // The process number now belongs to another app.
-            (
-                Fake::new("[@synthetic]"),
-                writer("org.example.other"),
-                true,
-                copied(None),
-            ),
-            // Another app replaced the clipboard.
-            (
-                Fake::new("other text"),
-                writer("org.example.writer"),
-                true,
-                copied(None),
-            ),
-            // The switch is off.
-            (
-                Fake::new("[@synthetic]"),
-                writer("org.example.writer"),
-                false,
-                copied(None),
-            ),
-            // The captured app never came back.
-            (
-                Fake {
-                    fronts: RefCell::new(vec![7]),
-                    ..Fake::new("[@synthetic]")
-                },
-                writer("org.example.writer"),
-                true,
-                copied(None),
-            ),
-            // Nothing was in front.
-            (Fake::new("[@synthetic]"), Captured::unknown(SYSTEM), true, copied(None)),
-        ];
-        for (desk, captured, enabled, expected) in cases {
-            assert_eq!(deliver(&desk, Some(&captured), "[@synthetic]", enabled), expected);
+    fn a_new_presentation_invalidates_delivery_even_when_it_keeps_the_same_target() {
+        let last = LastTarget::default();
+        last.begin_presentation(Some(writer("org.example.writer")));
+        assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
+        let ticket = last.take_copy(TEXT).unwrap_or_else(|| panic!("copy proof"));
+        // Hide/blur can advance PickerGeneration repeatedly. This proof
+        // stays current until the next presentation, independently of that.
+        assert!(last.current(ticket.presentation));
+        last.begin_presentation(None);
+        assert!(!last.current(ticket.presentation));
+        {
+            let state = last.0.lock().unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(state.captured, ticket.captured);
+        }
+        last.begin_presentation(Some(writer("org.example.other")));
+        assert!(!last.current(ticket.presentation));
+        assert_eq!(ticket.captured, Some(writer("org.example.writer")));
+    }
+
+    #[test]
+    fn unsafe_unproven_and_disabled_targets_only_copy() {
+        for (captured, enabled) in [
+            (Some(writer("org.example.other")), true),
+            (Some(writer("org.example.writer")), false),
+            (None, true),
+        ] {
+            let desk = Fake::new();
+            let ticket = CopyProof { captured, ..proof() };
+            assert_eq!(deliver(&desk, Some(&ticket), enabled), copied(None));
             assert!(desk.posts.borrow().is_empty());
         }
     }
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn terminals_and_missing_permission_copy_with_a_reason_and_ask_once_per_copy() {
-        let desk = Fake::new("[@synthetic]");
-        assert_eq!(
-            deliver(&desk, Some(&writer("com.apple.Terminal")), "[@synthetic]", true),
-            copied(Some("terminal"))
-        );
+    fn terminals_and_missing_postevent_permission_keep_the_existing_flow() {
+        let desk = Fake::new();
+        let terminal = CopyProof {
+            captured: Some(writer("com.apple.Terminal")),
+            ..proof()
+        };
+        assert_eq!(deliver(&desk, Some(&terminal), true), copied(Some("terminal")));
         let desk = Fake {
             may_post: false,
-            ..Fake::new("[@synthetic]")
+            ..Fake::new()
         };
-        assert_eq!(
-            deliver(&desk, Some(&writer("org.example.writer")), "[@synthetic]", true),
-            copied(Some("no-permission"))
-        );
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("no-permission")));
         assert_eq!(desk.asked.get(), 1);
         assert!(desk.posts.borrow().is_empty());
     }

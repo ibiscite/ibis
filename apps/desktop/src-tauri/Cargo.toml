@@ -42,15 +42,12 @@ x11rb = { version = "0.14.0", default-features = false, features = ["xkb"] }
 # macOS-only adapter provides NSPanel conversion without unsafe app code.
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = "=2.1.1"
-# Safe native accessibility queries; no raw native calls in Ibis.
+# Safe AppKit bindings for workspace, appearance, events and the clipboard.
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "objc2-core-graphics"] }
 # Already locked through Tauri. Reads what a key types on the active layout, so
 # a shortcut letter follows the layout (#196), and posts ⌘V to the app the
 # picker was opened from (#27).
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "libc", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
-# Already locked through objc2. Own and type-check AX results in the scoped
-# macOS secure-input boundary (ADR 0029); no new registry package.
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString"] }
 # Already locked through Tauri. Reads whether macOS opened Ibis as a login
 # item (#525), so the picker stays hidden then.
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSThread", "objc2-core-services"] }
