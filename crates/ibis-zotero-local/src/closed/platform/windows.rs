@@ -784,7 +784,7 @@ mod tests {
             .0
             .iter()
             .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .chain((data.len() % 4 != 0).then(|| {
+            .chain((!data.len().is_multiple_of(4)).then(|| {
                 let mut tail = [0; 4];
                 let rest = &data[data.len() / 4 * 4..];
                 tail[..rest.len()].copy_from_slice(rest);
