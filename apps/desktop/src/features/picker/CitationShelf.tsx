@@ -70,6 +70,12 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
   const keysOf = [...selected.keys()];
   const [editing, setEditing] = useState<string | null>(null);
   const edited = (editing ? selected.get(editing) : undefined) ?? records[0] ?? highlightedReference;
+  const page = useRef<HTMLInputElement>(null);
+  const [editRequest, setEditRequest] = useState(0);
+  useLayoutEffect(() => {
+    // After the chosen editor mounts, bypass intervening reference controls.
+    if (editRequest > 0) page.current?.focus({ preventScroll: true });
+  }, [editRequest]);
   const labels = chipLabels(records);
   const partialWarnings = closestMatchWarnings(records);
   const warnings = [...(shown && typeof shown === "object" ? shown.warnings : []), ...partialWarnings];
@@ -143,7 +149,7 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
                 <li key={keysOf[i]} ref={preserveFocus} className="chip" title={r.key} data-partial={r.partial || undefined} hidden={!expanded && i >= visibleChips}
                   onFocusCapture={() => setEditing(keysOf[i]!)}>
                   {onChangeReference ? <Button variant="quiet" size="small" aria-label={citationDetailsText.edit(labels[i]!)}
-                    aria-pressed={edited === r} onPress={() => setEditing(keysOf[i]!)}><bdi className="chip-label">{labels[i]}</bdi></Button>
+                    aria-pressed={edited === r} onPress={() => { setEditing(keysOf[i]!); setEditRequest((request) => request + 1); }}><bdi className="chip-label">{labels[i]}</bdi></Button>
                     : <bdi className="chip-label">{labels[i]}</bdi>}
                   {r.partial && <span className="shelf-pill" title={pickerText.closestMatchWarning(r.title || r.key)}>
                     <span aria-hidden="true">{pickerText.closestMatch}</span>
@@ -165,7 +171,7 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
               )}
             </ul>
           )}
-          {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} label={citationDetailsText.details(edited.title || edited.key)}
+          {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} label={citationDetailsText.details(edited.title || edited.key)}
             page={edited.locator?.label === "page" ? edited.locator.value : ""} form={edited.form ?? "normal"}
             onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value } : null })}
             onFormChange={(form) => onChangeReference(edited, { form })} />}

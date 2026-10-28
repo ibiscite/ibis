@@ -333,10 +333,19 @@ impl FileLibrary {
         let items: Vec<_> = items
             .into_iter()
             .map(|item| {
+                let locator = item.locator.map(|mut locator| {
+                    if locator.label == ibis_core::cite::LocatorLabel::Page
+                        && let Some(page) = ibis_core::locator::parse(&locator.value)
+                            .filter(|parsed| parsed.term == ibis_core::contract::LocatorTerm::Page)
+                    {
+                        locator.value = page.value;
+                    }
+                    json!({"term":locator.label,"value":locator.value})
+                });
                 json!({"item":item.id,"expected_cite":item.cite,
                 "form":(item.form == Some(ReferenceForm::Narrative)).then_some("narrative"),
                 "suppress_author":item.form == Some(ReferenceForm::AuthorOmitted),
-                "locator":item.locator.map(|locator| json!({"term":locator.label,"value":locator.value}))})
+                "locator":locator})
             })
             .collect();
         let request: CitationRequest = serde_json::from_value(json!({"items":items,"output":output,"form":if style == Some(CitationStyle::Ieee) { "bibliography-only" } else { "normal" },"keep_order":style.is_none()}))

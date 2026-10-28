@@ -392,6 +392,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const ownsCompletion = () => request === copyRequest.current && context === copyContext.current && visibility === copyVisibility.current && destination.isCurrentCopy(outputToken);
     setCopied(null);
     setCopyError(null);
+    // The shelf already shows the actionable refusal, even with its text hidden.
+    if (shown === "failed") return;
     if (shown === "stale" || !chosenRevision) {
       setCopyError(pickerText.snapshotChanged);
       refreshSnapshot();

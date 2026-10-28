@@ -5,6 +5,60 @@ import { backend, prepared, receipt, resetApp, result, type PreviewRequest } fro
 
 afterEach(resetApp);
 
+test.each(["pointer", "Enter", " "])("Edit activated with %s focuses Page and edits the chosen reference", async (activation) => {
+  const previews: PreviewRequest[] = [];
+  const calls = backend({ search: () => [result("a", "First work"), result("b", "Second work")],
+    preview_file_citation: (request) => { previews.push(request); return receipt(`preview ${previews.length}`); } });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
+  fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
+  for (const [key, title, value] of [["b", "Second work", "29"], ["a", "First work", "12–15"], ["a", "First work", "16"]]) {
+    const chip = screen.getByRole("button", { name: `Remove ${key} from the selection` }).closest("li")!;
+    const edit = within(chip).getByRole("button", { name: /^Edit/ });
+    act(() => edit.focus());
+    if (activation === "pointer") fireEvent.click(edit);
+    else {
+      const code = activation === " " ? "Space" : "Enter";
+      fireEvent.keyDown(edit, { key: activation, code });
+      fireEvent.keyUp(edit, { key: activation, code });
+    }
+    const page = screen.getByRole("textbox", { name: "Page" });
+    expect(document.activeElement).toBe(page);
+    expect(screen.getByRole("region", { name: `Citation details for ${title}` }).contains(page)).toBe(true);
+    fireEvent.change(page, { target: { value } });
+    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.locator?.value).toBe(value));
+  }
+  expect(previews.at(-1)?.items).toMatchObject([
+    { id: result("a", "").id, locator: { label: "page", value: "16" } },
+    { id: result("b", "").id, locator: { label: "page", value: "29" } },
+  ]);
+  expect(calls).not.toContain("copy_file_citation");
+});
+
+test.each([true, false])("actionable refusals remain visible with the preview hidden (hide before failure: %s)", async (hideBefore) => {
+  const message = "Reference 1: Narrative cannot be expressed in this output. Choose Normal or another output.";
+  const calls = backend({ search: () => [result("a", "Synthetic work")],
+    preview_file_citation: ({ items }) => {
+      if (items[0]?.form === "narrative") throw { code: "failed", message };
+      return receipt("Synthetic output");
+    } });
+  render(<App />);
+  await screen.findByRole("textbox", { name: "Page" });
+  const search = screen.getByLabelText("Search references");
+  const hide = () => fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
+  if (hideBefore) hide();
+  fireEvent.click(screen.getByRole("radio", { name: "Narrative" }));
+  await screen.findByRole("alert");
+  if (!hideBefore) hide();
+  expect(screen.getByRole("alert").textContent).toBe(message);
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toEqual([message]));
+  expect(calls).not.toContain("copy_file_citation");
+  fireEvent.click(screen.getByRole("radio", { name: "Normal" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+});
+
 test("editing the highlighted reference freezes its page and form for preview and canonical copy", async () => {
   const previews: PreviewRequest[] = [];
   const copies: PreviewRequest[] = [];

@@ -388,17 +388,21 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   ellipsis; the full text is in the tooltip and the wide pane.
 - **Page and form** (#1366). The focused shelf reference has a labelled Page
   field (a page or range, including Roman numerals) and the shared Normal,
-  Narrative and Omit author choices. Tab to or activate a reference's label to
-  edit it; the first reference is shown initially. With no built selection,
-  these controls edit the highlighted result. The first edit adds that result
-  to the shelf; subsequent searches cannot change its page or form. Editing
-  keeps focus in the control, clears a queued copy and prepares a new preview.
-  Clearing Page removes only that reference's page. Controls remain available
-  with the paste preview hidden. Engine losses name the reference and field
-  beside the preview; an unsupported form explains the refusal there and blocks
-  copying until corrected. Mixed narrative clusters, other locator controls,
-  prefixes and suffixes remain in #24/#1315. Controls wrap at narrow widths and
-  keep the shared keyboard focus and touch targets.
+  Narrative and Omit author choices. Focusing a reference's label shows its
+  details; activating Edit moves focus directly into that reference's Page
+  field, past other chips. The first reference is shown initially. With no built
+  selection, these controls edit the highlighted result. The first edit adds
+  that result to the shelf; subsequent searches cannot change its page or form.
+  Editing keeps focus in the control, clears a queued copy and prepares a new preview.
+  Clearing Page removes only that reference's page. Optional page labels such
+  as `p. 12` or `pp. 12–15` use the shared locator parser before formatting;
+  the field keeps the typed text. Controls and actionable formatting refusals
+  remain visible with the paste preview hidden. Engine losses name the reference
+  and field beside the preview; an unsupported form explains the refusal there
+  and blocks copying until corrected. Enter leaves that explanation visible.
+  Mixed narrative clusters, other locator controls, prefixes and suffixes
+  remain in #24/#1315. Controls wrap at narrow widths and keep the shared
+  keyboard focus and touch targets.
 - **Year-only citations.** Keep supported style forms available through conditional
   layouts. Each selected item's output must show its issued year, or the style's
   own no-date term for an undated or zero-year item; otherwise refuse the citation.
@@ -415,7 +419,9 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Show what will be pasted.** On by default (`show_paste_preview`, decision 0020),
   ⌘I / Ctrl+I, in More until Settings exists. Off hides only the line and
   closes the wide pane; the chosen references and copy readiness stay. If the
-  output had focus, Search receives it first. Copied while the window is kept
+  output had focus, Search receives it first. Formatting refusals stay visible
+  until corrected, including refusals received while the output is hidden.
+  Copied while the window is kept
   open says "Copied" without repeating text only when the visible output is
   exactly the copied string.
 - **Per OS** [C13]. A tint on the macOS glass, a stroked card on Windows,

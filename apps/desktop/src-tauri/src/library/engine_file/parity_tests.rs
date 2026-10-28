@@ -299,6 +299,76 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
 }
 
 #[test]
+fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> Result<(), Box<dyn std::error::Error>> {
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let file = FileLibrary::from_engine(engine_for(&case)?);
+    let pick = &case.library.objects()[0];
+    let selection = |label: &str, value: &str| {
+        serde_json::from_value::<FileSelection>(json!({
+            "id":pick.object.id(), "cite":pick.fingerprints.cite, "locator":{"label":label,"value":value}
+        }))
+    };
+    for (format, style) in [
+        (KeyFormat::Pandoc, None),
+        (KeyFormat::Typst, None),
+        (KeyFormat::Autocite, None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Apa)),
+        (KeyFormat::Pandoc, Some(CitationStyle::ChicagoAuthorDate)),
+        (KeyFormat::Pandoc, Some(CitationStyle::HarvardCiteThemRight)),
+        (KeyFormat::Pandoc, Some(CitationStyle::Ieee)),
+        (KeyFormat::Pandoc, Some(CitationStyle::ModernLanguageAssociation)),
+    ] {
+        for (typed, value) in [
+            ("p. 12", "12"),
+            ("pp. 12–15", "12–15"),
+            (" PP.  iv–vi ", "iv–vi"),
+            ("pp. \"١٢–١٥\"", "١٢–١٥"),
+        ] {
+            let expected = file
+                .preview(file.reserve_preview(), vec![selection("page", value)?], format, style)
+                .map_err(|e| e.to_string())?;
+            let actual = file
+                .preview(file.reserve_preview(), vec![selection("page", typed)?], format, style)
+                .map_err(|e| e.to_string())?;
+            assert_eq!(actual.text, expected.text, "{format:?} {style:?}: {typed}");
+            assert_eq!(actual.html, expected.html);
+            assert_eq!(actual.content_hash, expected.content_hash);
+            assert_eq!(actual.warnings, expected.warnings);
+            file.copy(&actual.ticket, &actual.content_hash, |content| {
+                assert_eq!(content.text, expected.text);
+                assert_eq!(content.html, expected.html.as_deref());
+                Ok(())
+            })
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    // Parsing is whole-value and page-only: other locator types and literal
+    // labels such as p53 keep their existing meaning.
+    for (label, value) in [("chapter", "pp. 12–15"), ("page", "p53"), ("page", "pp. 12 appendix")] {
+        let mut request = case.request.clone();
+        request.items[0].locator = Some(serde_json::from_value(json!({"term":label,"value":value}))?);
+        let expected = file
+            .engine
+            .cite(&request, &Cancellation::default())
+            .map_err(|_| "cite")?;
+        let preview = file
+            .preview(
+                file.reserve_preview(),
+                vec![selection(label, value)?],
+                KeyFormat::Pandoc,
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+        assert_eq!(preview.text, expected.text);
+        assert_eq!(preview.content_hash, expected.content_hash.as_str());
+    }
+    Ok(())
+}
+
+#[test]
 fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Result<(), Box<dyn std::error::Error>> {
     let case = cases()?
         .into_iter()
