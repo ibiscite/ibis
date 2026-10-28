@@ -182,12 +182,18 @@ fn when_nothing_matches_every_term_the_closest_matches_are_marked() {
     // One- and two-letter words are not counted.
     assert!(keys(&index, "of in quantum memory").iter().all(|(_, partial)| *partial));
     assert!(keys(&index, "of in quantum").is_empty());
-    // A repeated word counts once, typed out or still being typed.
+    // A repeated word counts each time it is typed, typed out or not.
+    let sleep = crate::index(&[("sleep", json!({"title": "Sleep"}))]);
+    assert_eq!(
+        keys(&sleep, "sleep sleep quantum photon "),
+        [("sleep".to_string(), true)]
+    );
+    assert!(keys(&sleep, "sleep quantum quantum ").is_empty());
+    assert!(keys(&sleep, "sleep quantum quantum").is_empty());
     assert_eq!(
         keys(&index, "sleep quantum quantum"),
         keys(&index, "sleep quantum quantum ")
     );
-    assert!(!keys(&index, "sleep quantum quantum").is_empty());
     // Long pasted text gets none even when its words repeat.
     assert!(keys(&index, &"sleep quantum ".repeat(1000)).is_empty());
     assert!(keys(&index, &format!("sleep memory {}", "z".repeat(10_000))).is_empty());

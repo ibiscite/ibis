@@ -909,13 +909,17 @@ fn rank<'r, T: SearchDocument>(
     // every earlier pass runs in full when nothing has been found. Long pasted
     // queries are left out, as for typos.
     let (hinted, words): (Vec<usize>, Vec<usize>) = all.iter().partition(|&&t| query.terms[t].fields != ANY_FIELD);
-    // A word typed twice, or once more while still being typed, counts once.
-    let mut texts_seen = std::collections::BTreeSet::new();
-    let words: Vec<usize> = words
-        .into_iter()
-        .filter(|&t| !query.terms[t].starts_only && query.terms[t].text.chars().any(char::is_alphabetic))
-        .filter(|&t| texts_seen.insert(query.terms[t].text.as_str()))
-        .collect();
+    // Each word with how many times it was typed: a word typed twice counts
+    // twice, the same whether or not it is still being typed.
+    let mut times: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for t in words {
+        let term = &query.terms[t];
+        if !term.starts_only && term.text.chars().any(char::is_alphabetic) {
+            let word = times.entry(term.text.as_str()).or_insert((t, 0));
+            word.1 = word.1.saturating_add(term.count as usize);
+        }
+    }
+    let words: Vec<(usize, usize)> = times.into_values().collect();
     // A word longer than any a person types also marks pasted text.
     let typed = raw.len() <= 512 && query.terms.iter().all(|term| term.chars.len() <= MAX_TYPO_TERM);
     if candidates.is_empty() && short_query && typed && words.len() >= 2 && identifier::parse_query(raw).is_none() {
@@ -927,14 +931,15 @@ fn rank<'r, T: SearchDocument>(
                 partial[n] = Some((0, score, matched));
             }
         }
-        for &t in &words {
+        for &(t, typed) in &words {
             for (n, score, matched) in matching(&query, docs, texts, &[t], false, scope, &found, &mut packed, stop)? {
                 if let Some(record) = &mut partial[n] {
-                    *record = (record.0 + 1, weighted_score(record.1, score, 1), record.2 | matched);
+                    *record = (record.0 + typed, weighted_score(record.1, score, 1), record.2 | matched);
                 }
             }
         }
-        let needed = words.len().div_ceil(2);
+        // At least half the words typed, repeats included.
+        let needed = words.iter().map(|&(_, typed)| typed).sum::<usize>().div_ceil(2);
         for (n, record) in partial.iter().enumerate() {
             if let &Some((terms, score, matched)) = record
                 && terms >= needed
