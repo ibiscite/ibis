@@ -27,7 +27,7 @@ use std::collections::HashSet;
 use biblatex::Bibliography;
 
 use crate::{ParsedLibrary, SourceWarning, WarningCode};
-use ibis_core::contract::{LibraryId, Record};
+use ibis_core::contract::{LibraryId, Record, Snapshot};
 use ibis_core::panic_guard;
 use lexer::{RawEntry, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
@@ -57,10 +57,15 @@ impl Budget {
 /// and becomes part of each record's identity.
 #[cfg(test)]
 fn load_str(source: &LibraryId, text: &str) -> ParsedLibrary {
-    load_with_budget(source, text, Budget::for_input(text.len())).0
+    load_with_budget(source, text, Budget::for_input(text.len()), None).0
 }
 
-pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -> (ParsedLibrary, bool) {
+pub(crate) fn load_with_budget(
+    source: &LibraryId,
+    text: &str,
+    budget: Budget,
+    previous: Option<&Snapshot>,
+) -> (ParsedLibrary, bool) {
     let mut result = ParsedLibrary::default();
     if !budget.charge(text.len()) {
         result.warnings.push(SourceWarning {
@@ -135,10 +140,13 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
         }
     }
 
+    // These are needed only while parsing and deduplicating entry headers.
+    drop(blocks);
+    drop(seen);
     let resolver = Resolver::new(macros, &entries, &budget);
     // `@xdata` entries only supply fields to other entries; they are not
     // references themselves and are never shown or exported.
-    for (i, entry) in entries.iter().enumerate().filter(|(_, e)| e.kind != "xdata") {
+    for (i, entry) in entries.iter().enumerate().filter(|(_, entry)| entry.kind != "xdata") {
         let outcome = panic_guard::attempt(|| load_entry(source, &resolver, i, entry, raw_texts[i]));
         let warn = |code, _message: &str| SourceWarning {
             code,
@@ -165,7 +173,7 @@ pub(crate) fn load_with_budget(source: &LibraryId, text: &str, budget: Budget) -
                 if let Some(file) = file {
                     result.attachments.push((record.id.clone(), file, Some(entry.line)));
                 }
-                result.records.push(record);
+                result.push_record(record, previous);
             }
             Ok(Err(message)) => result.warnings.push(warn(WarningCode::Syntax, &message)),
             Err(_) => result.warnings.push(warn(
@@ -215,6 +223,69 @@ fn load_entry(
 mod tests {
     use super::*;
     #[test]
+    fn reused_records_keep_macro_epochs_and_parent_reads() {
+        let source = LibraryId::file(b"synthetic field ownership");
+        let macros = load_str(
+            &source,
+            "@string{label={First}}\n@book{a,title=label}\n@string{label={Second}}\n@book{b,title=label}",
+        );
+        assert_eq!(macros.records[0].csl["title"], "First");
+        assert_eq!(macros.records[1].csl["title"], "Second");
+        for text in [
+            "@book{parent,title={Inherited},publisher={Press}}\n@inbook{child,crossref={parent}}\n@inbook{later,crossref={parent}}",
+            "@inbook{child,crossref={parent}}\n@book{parent,title={Inherited},publisher={Press}}\n@inbook{later,crossref={parent}}",
+            "@xdata{parent,publisher={Press}}\n@book{child,xdata={parent}}\n@book{later,xdata={parent}}",
+        ] {
+            let loaded = load_str(&source, text);
+            for record in loaded.records.iter().filter(|record| record.id.key != "record:parent") {
+                assert_eq!(record.csl["publisher"], "Press");
+            }
+            assert!(loaded.records.iter().any(|record| record.id.key == "record:later"));
+            let previous = Snapshot::new(
+                loaded
+                    .records
+                    .into_iter()
+                    .map(ibis_core::contract::LibraryObject::Record)
+                    .collect(),
+            )
+            .unwrap_or_else(|error| panic!("{error}"));
+            let repeated = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous)).0;
+            assert!(repeated.records.is_empty());
+            assert_eq!(repeated.reused.len(), previous.objects().len());
+        }
+    }
+    #[test]
+    fn refresh_retains_only_changed_csl_payloads() {
+        use ibis_core::contract::LibraryObject;
+        let source = LibraryId::file(b"synthetic candidate reuse");
+        let old = load_str(
+            &source,
+            "@book{a,title={Keep}}\n@book{b,title={Before}}\n@book{c,title={Deleted}}",
+        );
+        let previous = Snapshot::new(old.records.into_iter().map(LibraryObject::Record).collect())
+            .unwrap_or_else(|error| panic!("{error}"));
+        let text = "@book{a,title={Keep}}\n@book{b,title={After}}\n@book{d,title={Added}}";
+        let (candidate, limited) = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous));
+        assert!(!limited);
+        assert_eq!(candidate.records.len(), 2);
+        assert_eq!(candidate.reused.len(), 1);
+        let next = Snapshot::new_reusing(
+            candidate.records.into_iter().map(LibraryObject::Record).collect(),
+            &previous,
+            &candidate.reused,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let fresh = Snapshot::new(
+            load_str(&source, text)
+                .records
+                .into_iter()
+                .map(LibraryObject::Record)
+                .collect(),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(next, fresh);
+    }
+    #[test]
     fn recovery_header_limits_are_reported_even_when_candidates_collapse() {
         let text = format!(
             "@book{{broken,title={{ {}\n@book{{good}}",
@@ -230,7 +301,7 @@ mod tests {
     }
     #[test]
     fn minimal_entries_pay_fixed_allocation_work() {
-        let (result, limited) = load_with_budget(&LibraryId::file(b"synthetic"), "@misc{one}", Budget::new(1024));
+        let (result, limited) = load_with_budget(&LibraryId::file(b"synthetic"), "@misc{one}", Budget::new(1024), None);
         assert!(limited);
         assert!(result.records.is_empty());
         assert!(

@@ -438,7 +438,9 @@ impl<'a> Parser<'a> {
 
     /// `part # part # ...` up to the next top-level comma or end of body.
     fn value(&mut self) -> Result<Vec<Part>, String> {
-        let mut parts = Vec::new();
+        // Nearly every field is one literal. Vec's first growth reserves four
+        // Parts, which otherwise keeps three unused slots per ordinary field.
+        let mut parts = Vec::with_capacity(1);
         loop {
             self.skip_ws();
             let part = match self.peek() {
@@ -585,5 +587,45 @@ mod tests {
         let entry = parse_entry(&blocks[0]).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(entry.key, "lonely");
         assert!(entry.fields.is_empty());
+    }
+
+    #[test]
+    fn ordinary_fields_have_a_bounded_raw_working_set() {
+        let text = (0..1_000)
+            .map(|i| format!("@article{{synthetic{i},title={{Signals}},author={{Invented, Avery}},year=2026,journal={{Letters}},pages={{1--20}},doi={{10.1000/synthetic{i}}},volume=1,number=2}}\n"))
+            .collect::<String>();
+        let (blocks, limited) = split_blocks(&text);
+        assert!(!limited);
+        let entries: Vec<_> = blocks
+            .iter()
+            .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
+            .collect();
+        let retained: usize = entries
+            .iter()
+            .map(|entry| {
+                std::mem::size_of::<RawEntry>()
+                    + entry.key.capacity()
+                    + entry.kind.capacity()
+                    + entry.fields.capacity() * std::mem::size_of::<Field>()
+                    + entry
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            field.name.capacity()
+                                + field.parts.capacity() * std::mem::size_of::<Part>()
+                                + field
+                                    .parts
+                                    .iter()
+                                    .map(|part| match part {
+                                        Part::Text(value) | Part::Number(value) | Part::Macro(value) => {
+                                            value.capacity()
+                                        }
+                                    })
+                                    .sum::<usize>()
+                        })
+                        .sum::<usize>()
+            })
+            .sum();
+        assert!(retained <= 1_024 * entries.len(), "retained raw bytes: {retained}");
     }
 }

@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, load_file, load_file_snapshot, reload_file,
+    reload_file_reusing,
 };
 
 // Real bibliographies reach 100,000 entries (#1251). Memory follows file size
@@ -71,8 +72,19 @@ impl LoadedLibrary {
 #[derive(Default)]
 struct ParsedLibrary {
     records: Vec<Record>,
+    reused: Vec<usize>,
     warnings: Vec<SourceWarning>,
     attachments: Vec<(ItemRef, String, Option<usize>)>,
+}
+
+impl ParsedLibrary {
+    fn push_record(&mut self, record: Record, previous: Option<&Snapshot>) {
+        if let Some(position) = previous.and_then(|snapshot| snapshot.matching_record(&record)) {
+            self.reused.push(position);
+        } else {
+            self.records.push(record);
+        }
+    }
 }
 
 pub mod zotero_source;

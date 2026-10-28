@@ -510,17 +510,14 @@ impl Shared {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
         // Unchanged libraries keep their prepared objects; nothing is re-fingerprinted.
-        let empty = Snapshot::new(vec![]).map_err(|_| error(ErrorCode::Internal))?;
-        let mut combined = old
+        let combined = old
             .index
             .snapshot()
-            .merged(&empty, |id| !replaced(id))
+            .merged_many(
+                &entries.iter().map(|(_, snapshot)| *snapshot).collect::<Vec<_>>(),
+                |id| !replaced(id),
+            )
             .map_err(|_| error(ErrorCode::BadInput))?;
-        for (_, snapshot) in &entries {
-            combined = combined
-                .merged(snapshot, |_| true)
-                .map_err(|_| error(ErrorCode::BadInput))?;
-        }
         let combined = Arc::new(combined);
         let zotero = entries
             .iter()
@@ -528,10 +525,15 @@ impl Shared {
         let mut libraries = old.libraries.clone();
         libraries.retain(|id, _| !replaced(id));
         libraries.extend(entries.into_iter().map(|(info, _)| (info.id.clone(), info)));
+        let index = if combined.fingerprints().full == old.index.snapshot().fingerprints().full {
+            old.index.clone()
+        } else {
+            Arc::new(SnapshotIndex::updated(combined, &old.index))
+        };
         let next = Arc::new(State {
             zotero_generation: old.zotero_generation,
             zotero_ready: zotero || old.zotero_ready,
-            index: Arc::new(SnapshotIndex::new(combined)),
+            index,
             libraries,
         });
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
