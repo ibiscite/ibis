@@ -265,11 +265,13 @@ fn push_words(text: &mut String, words: &str) {
 /// finds it as well as `j tolkien`.
 fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
     let mut text = String::new();
+    // Other spellings go after every name, apart, so no phrase spans names.
+    let mut aliases = String::new();
     for name in names {
         let raw = name.display();
         let display = normalize(&raw);
         push_words(&mut text, &display);
-        push_apart(&mut text, &spelling_aliases(&raw));
+        push_apart(&mut aliases, &spelling_aliases(&raw));
         // "山田 太郎" is also written without the space.
         if display.contains(' ') && display.chars().any(is_cjk_char) {
             push_words(&mut text, &display.replace(' ', ""));
@@ -280,6 +282,7 @@ fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
             push_words(&mut text, &initials);
         }
     }
+    text.push_str(&aliases);
     text
 }
 
@@ -301,26 +304,44 @@ fn spelling_aliases(text: &str) -> String {
         .split(|c| c.is_whitespace())
         .filter(|word| !word.is_empty())
         .collect();
-    let only_greek = |word: &[char]| word.iter().filter(|c| c.is_alphanumeric()).all(|&c| greek(c));
-    // A word of two or more Greek letters and nothing else makes the text Greek,
-    // so its one-letter words are Greek words too (Η γη), not symbols.
-    let greek_text = words
-        .iter()
-        .any(|word| only_greek(word) && word.iter().filter(|&&c| greek(c)).count() > 1);
+    // Letters and digits between punctuation, so α/β is two symbols.
+    let pieces = |word: &'_ [char]| -> Vec<(usize, usize)> {
+        let mut start = 0;
+        word.split(|c| !c.is_alphanumeric())
+            .map(|piece| {
+                let span = (start, start + piece.len());
+                start = span.1 + 1;
+                span
+            })
+            .collect()
+    };
+    let greek_count = |piece: &[char]| piece.iter().filter(|&&c| greek(c)).count();
+    let only_greek = |piece: &[char]| piece.iter().all(|&c| greek(c));
+    // A piece of two or more Greek letters and nothing else makes the text
+    // Greek, so its one-letter words are Greek words too (Η γη), not symbols.
+    let greek_text = words.iter().any(|word| {
+        pieces(word)
+            .into_iter()
+            .any(|(start, end)| only_greek(&word[start..end]) && greek_count(&word[start..end]) > 1)
+    });
+    let greek_word = |c: char| matches!(c.to_lowercase().next(), Some('ο' | 'η' | 'ω'));
     let mut aliases = String::new();
     for word in words {
         // A lone Greek letter is a symbol, except the one-letter Greek words
-        // (ο, η, ω) in Greek text.
-        let lone = word.iter().filter(|&&c| greek(c)).collect::<Vec<_>>();
-        let greek_word = |c: &char| matches!(c.to_lowercase().next(), Some('ο' | 'η' | 'ω'));
-        let symbols = !only_greek(word) || lone.len() == 1 && !(greek_text && greek_word(lone[0]));
+        // (ο, η, ω) in Greek text; so is any in a piece with other letters.
+        let mut symbols = vec![false; word.len()];
+        for (start, end) in pieces(word) {
+            let piece = &word[start..end];
+            symbols[start..end]
+                .fill(!only_greek(piece) || greek_count(piece) == 1 && !(greek_text && greek_word(piece[0])));
+        }
         let mut alias = String::new();
         let mut changed = false;
         for (i, &c) in word.iter().enumerate() {
             let next = word.get(i + 1).copied();
             let beside_greek = i > 0 && greek(word[i - 1]) || next.is_some_and(greek);
             let unit = matches!(c, 'μ' | 'µ') && next.is_some_and(char::is_alphabetic);
-            let symbol = symbols && !beside_greek && !unit;
+            let symbol = symbols[i] && !beside_greek && !unit;
             let spelt = match c.to_lowercase().next().unwrap_or(c) {
                 'ä' => "ae",
                 'ö' | 'ø' => "oe",

@@ -32,7 +32,15 @@ fn summary(method: Method, data: &Value, libraries_open: bool, names: &BTreeMap<
             if hits.is_empty() {
                 return Some("No references found.".into());
             }
-            Some(hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n"))
+            let rows = hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n");
+            // Closest matches are said to be so, never shown as full matches.
+            if hits
+                .iter()
+                .any(|hit| hit.get("partial").and_then(Value::as_bool) == Some(true))
+            {
+                return Some(format!("No reference matches every word. Closest matches:\n{rows}"));
+            }
+            Some(rows)
         }
         Method::Libraries => {
             let libraries = data.get("libraries")?.as_array()?;

@@ -152,6 +152,20 @@ fn a_greek_letter_standing_alone_is_found_by_its_name() {
     assert!(keys(&more, "mum").is_empty() && keys(&more, "muomega").is_empty());
     assert_eq!(keys(&more, "t:beta sheets")[0].0, "phrase");
     assert_eq!(keys(&more, "j:beta")[0].0, "mixed");
+    // Third review: author aliases sit after every name; α/β is two symbols.
+    let third = crate::index(&[
+        (
+            "authors",
+            json!({"title": "Synthetic", "author": [{"family": "Andersen", "given": "Jürgen"}, {"family": "Smith", "given": "Ada"}]}),
+        ),
+        ("slash", json!({"title": "α/β signaling"})),
+    ]);
+    assert!(keys(&third, "a:\"juergen ada\"").is_empty());
+    assert_eq!(keys(&third, "a:juergen a:andersen")[0], ("authors".to_string(), false));
+    assert_eq!(keys(&third, "a:\"ada smith\"")[0], ("authors".to_string(), false));
+    for query in ["t:alpha", "t:beta", "alpha beta signaling"] {
+        assert_eq!(keys(&third, query), [("slash".to_string(), false)], "{query}");
+    }
     // μ before a Latin letter is a unit; standing alone it is mu.
     assert!(keys(&index, "mum").is_empty());
     assert_eq!(keys(&index, "mu opioid"), [("units".to_string(), false)]);
