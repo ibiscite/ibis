@@ -141,17 +141,42 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
 }
 
 #[test]
-fn unsupported_group_choices_are_refused_before_acquisition() {
+fn chosen_group_libraries_are_read_named_and_replaced() -> Result<(), Box<dyn std::error::Error>> {
     use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
-    assert!(FileLibrary::validate_zotero(&ZoteroLibrary::User.into()).is_ok());
-    for chosen in [
-        ZoteroLibrary::Group(7).into(),
-        ZoteroLibraries::new(vec![ZoteroLibrary::User, ZoteroLibrary::Group(7)])
-            .unwrap_or_else(|| panic!("valid synthetic choices")),
-    ] {
-        assert!(matches!(
-            FileLibrary::validate_zotero(&chosen),
-            Err(crate::library::LoadError::UnsupportedZoteroLibraries)
-        ));
-    }
+    let server = fixture::Server::new();
+    let choice = |libraries| ZoteroLibraries::new(libraries).ok_or("valid synthetic choice");
+    let sources = |bridge: &FileLibrary| -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let query = serde_json::from_value(json!({"text":"atlas","interpret_locators":false}))?;
+        let found = serde_json::to_value(bridge.search(&query, 10, None, &Cancellation::default())?)?;
+        let mut sources: Vec<String> = found["results"]
+            .as_array()
+            .ok_or("results")?
+            .iter()
+            .filter_map(|row| row["source"].as_str().map(str::to_owned))
+            .collect();
+        sources.sort();
+        Ok(sources)
+    };
+    let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
+    let both = choice(vec![ZoteroLibrary::User, ZoteroLibrary::Group(7)])?;
+    let bridge = FileLibrary::open_zotero_with(engine, &both, &Cancellation::default()).map_err(|e| e.to_string())?;
+    // The same item in two libraries is two references, each named for the interface.
+    assert_eq!(sources(&bridge)?, ["zotero:group:7", "zotero:user"]);
+    bridge
+        .refresh_zotero(&both, true, &Cancellation::default())
+        .map_err(|e| e.to_string())?;
+    assert_eq!(sources(&bridge)?, ["zotero:group:7", "zotero:user"]);
+    let group = choice(vec![ZoteroLibrary::Group(7)])?;
+    bridge
+        .refresh_zotero(&group, false, &Cancellation::default())
+        .map_err(|e| e.to_string())?;
+    assert_eq!(sources(&bridge)?, ["zotero:group:7"]);
+    // A group that does not exist is named and never read as another library.
+    let missing = bridge
+        .refresh_zotero(&choice(vec![ZoteroLibrary::Group(99)])?, true, &Cancellation::default())
+        .err()
+        .ok_or("a missing group must fail")?;
+    assert!(missing.to_string().contains("group library was not found"), "{missing}");
+    assert_eq!(sources(&bridge)?, ["zotero:group:7"]);
+    Ok(())
 }

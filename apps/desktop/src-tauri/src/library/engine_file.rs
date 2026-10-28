@@ -4,11 +4,12 @@ use super::{CommandError, LibraryStatus};
 use ibis_core::{
     cite::{KeyFormat, Locator},
     contract::{CitationError, CitationRequest, CitationResult, ItemOutcome, LibraryObject, Notice},
-    settings::CitationStyle,
+    settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
 };
 use ibis_engine::{Cancellation, Engine, Method, PreparedCitation, request::SearchRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{
     Mutex,
@@ -64,28 +65,46 @@ impl FileLibrary {
             observing: AtomicBool::new(false),
         }
     }
-    pub(super) fn validate_zotero(chosen: &ibis_core::settings::ZoteroLibraries) -> Result<(), super::LoadError> {
-        if chosen.libraries() != [ibis_core::settings::ZoteroLibrary::User] {
-            return Err(super::LoadError::UnsupportedZoteroLibraries);
-        }
-        Ok(())
-    }
-
-    pub(super) fn open_zotero(cancel: &Cancellation) -> Result<Self, super::LoadError> {
+    /// Read these Zotero libraries; the engine refuses an invalid choice and
+    /// never falls back to another library when a group is missing.
+    pub(super) fn open_zotero(chosen: &ZoteroLibraries, cancel: &Cancellation) -> Result<Self, super::LoadError> {
         let engine = Engine::new().map_err(|e| super::LoadError::EngineZotero(e.code))?;
-        engine
-            .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), cancel)
-            .map_err(|e| super::LoadError::EngineZotero(e.code))?;
-        Ok(Self::from_engine(engine))
+        Self::open_zotero_with(engine, chosen, cancel)
     }
 
-    pub(super) fn refresh_zotero(&self, force: bool, cancel: &Cancellation) -> Result<(), super::LoadError> {
+    fn open_zotero_with(
+        engine: Engine,
+        chosen: &ZoteroLibraries,
+        cancel: &Cancellation,
+    ) -> Result<Self, super::LoadError> {
+        let library = Self::from_engine(engine);
+        library.refresh_zotero(chosen, false, cancel)?;
+        Ok(library)
+    }
+
+    /// Read the chosen libraries again; `force` rereads every item. A new
+    /// choice replaces the old one once all its libraries are read.
+    pub(super) fn refresh_zotero(
+        &self,
+        chosen: &ZoteroLibraries,
+        force: bool,
+        cancel: &Cancellation,
+    ) -> Result<(), super::LoadError> {
+        let libraries: Vec<Value> = chosen
+            .libraries()
+            .iter()
+            .map(|library| match library {
+                ZoteroLibrary::User => json!("personal"),
+                ZoteroLibrary::Group(id) => json!({ "group": id }),
+            })
+            .collect();
+        let request = if force && self.chosen() == libraries {
+            json!({"action": "reload"})
+        } else {
+            json!({"action": "open-zotero", "libraries": libraries})
+        };
         self.engine
-            .dispatch(
-                Method::Libraries,
-                &json!({"action": if force { "reload" } else { "open-zotero" }}),
-                cancel,
-            )
+            .dispatch(Method::Libraries, &request, cancel)
             .map_err(|e| super::LoadError::EngineZotero(e.code))?;
         let info = self
             .engine
@@ -95,6 +114,41 @@ impl FileLibrary {
             return Err(super::LoadError::EngineZotero(code));
         }
         Ok(())
+    }
+
+    /// The Zotero libraries the engine publishes now, in its request form.
+    fn chosen(&self) -> Vec<Value> {
+        self.engine
+            .libraries()
+            .map(|info| {
+                info.libraries
+                    .iter()
+                    .filter_map(|info| info.zotero.as_ref())
+                    .filter_map(|zotero| serde_json::to_value(zotero).ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The interface names Zotero libraries `zotero:user` and
+    /// `zotero:group:<id>`; other libraries keep their engine ID.
+    fn source_names(&self) -> HashMap<String, String> {
+        self.engine
+            .libraries()
+            .map(|info| {
+                info.libraries
+                    .iter()
+                    .filter_map(|info| {
+                        let name = match serde_json::to_value(info.zotero.as_ref()?).ok()? {
+                            Value::String(personal) if personal == "personal" => "zotero:user".to_owned(),
+                            Value::Object(group) => format!("zotero:group:{}", group.get("group")?.as_u64()?),
+                            _ => return None,
+                        };
+                        Some((info.id.as_str().to_owned(), name))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub(super) fn observe_once(
@@ -210,16 +264,19 @@ impl FileLibrary {
             Err(_) => return Err("The library could not be searched.".to_string()),
         };
         let revision = reply.snapshot.full.as_str().to_owned();
+        let names = self.source_names();
         let results = reply
             .hits
             .into_iter()
             .filter_map(|hit| match hit.item.object {
-                LibraryObject::Record(record) => Some(SearchResult::from_engine(
-                    &record,
-                    hit.item.fingerprints.cite.as_str(),
-                    hit.matched,
-                    &revision,
-                )),
+                LibraryObject::Record(record) => {
+                    let mut result =
+                        SearchResult::from_engine(&record, hit.item.fingerprints.cite.as_str(), hit.matched, &revision);
+                    if let Some(name) = names.get(record.id.library.as_str()) {
+                        result.source.clone_from(name);
+                    }
+                    Some(result)
+                }
                 _ => None,
             })
             .collect();
