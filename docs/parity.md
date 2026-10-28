@@ -46,10 +46,10 @@ documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
 | Locator type and value per reference, all 29 CSL types | done in the contract | #24 | `citation.rs::all_29_csl_locator_terms_roundtrip`; picker editor in #24 |
 | Ranges and literal locators (no type) | planned | #24 | to add |
 | Empty locator refused rather than dropped | done | — | `cite_outputs.rs::empty_locators_are_refused_before_any_syntax_can_drop_them` |
-| Prefix and suffix per reference, with italic, bold, sub- and superscript | done in the contract | #947 | `citation.rs::hostile_and_large_rich_text_is_plain_data_and_unknown_fields_fail`, `syntax_contract.rs::capabilities_drive_forms_and_report_each_dropped_field` |
+| Prefix and suffix per reference, with italic, bold, sub- and superscript, kept as literal text in every CSL style and output | done in the engine; picker editor in #947 | #947 | `format.rs::affixes_keep_their_text_and_styling_in_every_representation`, `format.rs::affix_text_is_literal_never_markup_or_typography`, `syntax_contract.rs::capabilities_drive_forms_and_report_each_dropped_field` |
 | Omit author (suppress author) | done | — | `cite_outputs.rs::biblatex_suppressed_author_uses_star_form_for_one_reference` |
-| Narrative citation, Smith (2020); Zotero lacks it | done for key syntaxes; planned for CSL styles | #1315 | `syntax_contract.rs::commands_forms_and_partial_outcomes_never_change_intent_silently` |
-| Author only, year only and full citation | done for key syntaxes; planned for CSL styles | #1315 | as above |
+| Narrative citation, Smith (2020); Zotero lacks it | done for key syntaxes and for one reference in CSL author-date and MLA styles; numeric styles and several references refused | #1315 | `format.rs::narrative_citations_name_the_author_then_cite_the_rest`, `syntax_contract.rs::commands_forms_and_partial_outcomes_never_change_intent_silently` |
+| Author only, year only and full citation | done for key syntaxes and CSL styles, refused where a style can't say it (IEEE, year-only MLA) | #1315 | `format.rs` form tests, `syntax_contract.rs` |
 | Mixed forms in one citation | done where the syntax can say it, refused otherwise | #1207 | `mixed_pandoc_forms_are_explicitly_refused_in_one_request` |
 | Cite a PDF annotation, citing its page | done in the engine | #54 | `prepared.rs::annotation_uses_printed_label_and_rechecks_its_file` |
 | Add a note instead of a citation (replaces the yellow "Add Note") | planned (0.5) | #55 | to add |
