@@ -204,16 +204,12 @@ fn hostile_huge_stale_and_duplicate_inputs_never_copy_wrong_output() {
         ..TextRun::default()
     }];
     let result = formatter.format(&snapshot, &request).unwrap();
-    assert!(!result.html.as_ref().unwrap().contains("<img"));
-    assert_eq!(result.text, "(Taylor, 2026)");
-    assert_eq!(
-        result.losses,
-        vec![Loss {
-            item: Some(0),
-            field: LossField::Prefix,
-            reason: LossReason::Unsupported
-        }]
-    );
+    let html = result.html.as_deref().unwrap();
+    assert!(!html.contains("<img"));
+    assert!(html.contains("<i>&#60;img src=x onerror=bad()&#62; &#38; \\input{bad}</i>"));
+    assert!(!result.rtf.as_deref().unwrap().contains("\\input{bad}"));
+    assert_eq!(result.text, "(<img src=x onerror=bad()> & \\input{bad}Taylor, 2026)");
+    assert!(result.losses.is_empty());
     assert!(result.copy_content(1).is_some());
     request.items[0].expected_cite = Some(Fingerprint::of_bytes(b"different synthetic snapshot"));
     let stale = formatter.format(&snapshot, &request).unwrap();
@@ -329,46 +325,6 @@ fn formatter_measurement_gate() {
     assert!(cold <= Duration::from_secs(2), "cold formatter exceeded 2s");
     assert!(p95 <= Duration::from_millis(250), "warm preview exceeded 250ms");
     assert!(batch <= Duration::from_secs(10), "100-entry bibliography exceeded 10s");
-}
-
-#[test]
-fn affixes_are_omitted_with_exact_typed_losses_until_builder_support() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
-    let formatter = Formatter::new().unwrap();
-    let (snapshot, mut request) = sample();
-    for (text, italic, bold) in [
-        ("<i>", false, false),
-        ("<", false, false),
-        ("&", false, false),
-        ("plain text", false, false),
-        ("styled text", true, true),
-    ] {
-        let run = TextRun {
-            text: text.into(),
-            italic,
-            bold,
-            ..TextRun::default()
-        };
-        request.items[0].prefix = vec![run.clone()];
-        request.items[0].suffix = vec![run];
-        let result = formatter.format(&snapshot, &request).unwrap();
-        assert_eq!(result.text, "(Taylor, 2026)");
-        assert_eq!(
-            result.losses,
-            vec![
-                Loss {
-                    item: Some(0),
-                    field: LossField::Prefix,
-                    reason: LossReason::Unsupported
-                },
-                Loss {
-                    item: Some(0),
-                    field: LossField::Suffix,
-                    reason: LossReason::Unsupported
-                }
-            ]
-        );
-    }
 }
 
 #[test]
@@ -793,4 +749,103 @@ fn genuinely_printed_literal_processor_marker_text_remains_valid() {
             assert_eq!(result.outcomes, vec![ItemOutcome::Rendered { item: 0 }]);
         }
     }
+}
+fn run(text: &str, italic: bool) -> TextRun {
+    TextRun {
+        text: text.into(),
+        italic,
+        bold: false,
+        script: Script::Normal,
+    }
+}
+#[test]
+fn affixes_keep_their_text_and_styling_in_every_representation() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let (snapshot, mut request) = sample();
+    request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "12".into(),
+    });
+    request.items[0].prefix = vec![run("cf. ", false), run("passim", true), run(" ", false)];
+    request.items[0].suffix = vec![run(", emphasis added", false)];
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert_eq!(result.text, "(cf. passim Taylor, 2026, p. 12, emphasis added)");
+    assert_eq!(
+        result.html.as_deref(),
+        Some("(cf. <i>passim</i> Taylor, 2026, p. 12, emphasis added)")
+    );
+    assert!(result.rtf.as_deref().unwrap().contains("{\\i{}passim}"));
+    assert!(result.losses.is_empty());
+    assert!(result.copy_content(1).is_some());
+    // A prefix without a trailing space gets one, as citeproc-js gives it.
+    request.items[0].prefix = vec![run("see", false)];
+    request.items[0].suffix = vec![];
+    assert_eq!(
+        formatter.format(&snapshot, &request).unwrap().text,
+        "(see Taylor, 2026, p. 12)"
+    );
+}
+#[test]
+fn affix_text_is_literal_never_markup_or_typography() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let (snapshot, mut request) = sample();
+    request.items[0].prefix = vec![run("say \"it\" & <b>x</b> it's &#38; ", false)];
+    request.items[0].suffix = vec![run(" -- 'q' {\\b}", false)];
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert_eq!(
+        result.text,
+        "(say \"it\" & <b>x</b> it's &#38; Taylor, 2026 -- 'q' {\\b})"
+    );
+    assert_eq!(
+        result.html.as_deref(),
+        Some("(say \"it\" &#38; &#60;b&#62;x&#60;/b&#62; it's &#38;#38; Taylor, 2026 -- 'q' {\\b})")
+    );
+    assert!(result.rtf.as_deref().unwrap().contains("-- 'q' \\{\\\\b\\})"));
+    // The placeholder sentinel is refused wherever it appears.
+    for sentinel in ['\u{E000}', '\u{E001}'] {
+        request.items[0].suffix = vec![run(&format!("x{sentinel}"), false)];
+        assert_eq!(formatter.format(&snapshot, &request), Err(FormatError::InvalidRequest));
+    }
+}
+#[test]
+fn affixes_in_a_bibliography_are_reported_as_losses() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let (snapshot, mut request) = sample();
+    request.form = CitationForm::BibliographyOnly;
+    request.items[0].prefix = vec![run("see ", false)];
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert!(!result.text.contains("see"));
+    assert!(result.losses.iter().any(|loss| loss.field == LossField::Prefix));
+}
+#[test]
+fn narrative_citations_name_the_author_then_cite_the_rest() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let (snapshot, mut request) = sample();
+    request.form = CitationForm::Narrative;
+    request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "12".into(),
+    });
+    for (style, expected) in [
+        ("apa", "Taylor (2026, p. 12)"),
+        ("chicago-author-date", "Taylor (2026, 12)"),
+        ("modern-language-association", "Taylor (12)"),
+    ] {
+        request.output = OutputSpec::Csl { style: style.into() };
+        let result = formatter.format(&snapshot, &request).unwrap();
+        assert_eq!(result.text, expected, "{style}");
+        assert!(result.copy_content(1).is_some());
+    }
+    request.output = OutputSpec::Csl { style: "ieee".into() };
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert!(result.copy_content(1).is_none());
+    // One citation can have only one sentence subject.
+    request.output = OutputSpec::Csl { style: "apa".into() };
+    request.items.push(request.items[0].clone());
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert!(result.copy_content(2).is_none());
 }
