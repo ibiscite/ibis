@@ -7,6 +7,7 @@
 //! explicit prefixes), so ordinary search words are never taken for one.
 
 use crate::model::Reference;
+use crate::scan::Work;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -45,17 +46,33 @@ const MAX_QUERY_LEN: usize = 512;
 
 /// Read a complete identifier at the start of a pasted list, before citation
 /// punctuation is considered. The returned label omits surrounding punctuation.
-pub(crate) fn parse_token(text: &str) -> Option<(&str, Identifier, &str)> {
-    let end = text.find(char::is_whitespace).unwrap_or(text.len());
-    if let Some(value) = parse_query(&text[..end]) {
+pub(crate) fn parse_token<'a>(text: &'a str, work: &mut Work<'_>) -> Option<(&'a str, Identifier, &'a str)> {
+    // Never search the entire remaining paste for a word boundary. Identifiers
+    // already have a fixed bound; oversized words are handled by the outer scan.
+    let mut bound = text.len().min(MAX_QUERY_LEN + 1);
+    while !text.is_char_boundary(bound) {
+        bound -= 1;
+    }
+    let head = &text[..bound];
+    let end = work.find(head, char::is_whitespace).unwrap_or(head.len());
+    if !work.spend(end) {
+        return None;
+    }
+    if (end < head.len() || bound == text.len())
+        && let Some(value) = parse_query(&text[..end])
+    {
         return Some((trim_wrapping(&text[..end]), value, &text[end..]));
     }
     // Strict identifiers such as PMID stop at a separator. The complete DOI
     // attempt above always wins if punctuation belongs to its suffix.
     if let Some(end) = text[..end].find([',', ';'])
+        && work.spend(end)
         && let Some(value) = parse_query(&text[..end])
     {
         return Some((trim_wrapping(&text[..end]), value, &text[end..]));
+    }
+    if end > MAX_QUERY_LEN || end == head.len() && bound < text.len() {
+        return None;
     }
     let prefix = text[..end].trim_end_matches(':');
     if !["doi", "pmid", "isbn", "isbn-10", "isbn-13", "arxiv", "978", "979"]
@@ -67,16 +84,32 @@ pub(crate) fn parse_token(text: &str) -> Option<(&str, Identifier, &str)> {
     // Prefixes may be separated from their value, and ISBNs can contain spaces.
     // The shared identifier bound limits lookahead, including malformed input.
     let mut best = None;
-    for end in text
+    let spaced_isbn = ["isbn", "isbn-10", "isbn-13", "978", "979"]
+        .iter()
+        .any(|head| prefix.eq_ignore_ascii_case(head));
+    for end in head
         .char_indices()
         .filter_map(|(i, c)| (c.is_whitespace() || matches!(c, ',' | ';')).then_some(i))
-        .chain([text.len()])
+        .chain([head.len()])
     {
         if end > MAX_QUERY_LEN {
             break;
         }
+        if !work.spend(end) {
+            return None;
+        }
         if let Some(value) = parse_query(&text[..end]) {
             best = Some((trim_wrapping(&text[..end]), value, &text[end..]));
+            if !spaced_isbn {
+                break;
+            }
+        } else if best.is_some()
+            && !text[prefix.len()..end]
+                .trim_start_matches(':')
+                .chars()
+                .all(|c| c.is_ascii_digit() || c.is_whitespace() || c == '-')
+        {
+            break;
         }
     }
     best
@@ -398,6 +431,20 @@ fn isbn13_sum(digits: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_lookahead_does_not_truncate_unicode_or_hide_a_short_identifier() {
+        let query = format!("10.1000/{}🌙", "x".repeat(504));
+        let mut work = Work::new(query.len(), &|| false);
+        assert!(parse_token(&query, &mut work).is_none());
+
+        let query = format!("PMID:999;{}", "x".repeat(1000));
+        let mut work = Work::new(query.len(), &|| false);
+        let (text, value, rest) = parse_token(&query, &mut work).unwrap_or_else(|| panic!("identifier token"));
+        assert_eq!(text, "PMID:999");
+        assert_eq!(value, Identifier::Pmid("999".into()));
+        assert_eq!(rest.len(), 1001);
+    }
 
     #[test]
     fn long_bracket_runs_are_rejected_quickly() {

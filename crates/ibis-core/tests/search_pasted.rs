@@ -4,12 +4,17 @@ use proptest::prelude::*;
 use std::sync::Arc;
 
 fn index() -> SnapshotIndex {
+    index_with_keys(&["a", "b", "日本🌙", "any key", "doi"])
+}
+
+fn index_with_keys(keys: &[&str]) -> SnapshotIndex {
     let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
     let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
         panic!("record")
     };
-    let records = ["a", "b", "日本🌙", "any key", "doi"]
-        .into_iter()
+    let records = keys
+        .iter()
+        .copied()
         .enumerate()
         .map(|(n, key)| {
             let mut record = base.clone();
@@ -29,6 +34,97 @@ fn index() -> SnapshotIndex {
 }
 
 #[test]
+fn raw_lists_resolve_marker_keys_before_citation_syntax() {
+    let index = index_with_keys(&["a", "b", "c", "[a]", "@a"]);
+    for (query, expected) in [
+        ("[a], b, c", vec!["[a]", "b", "c"]),
+        ("@a, b", vec!["@a", "b"]),
+        ("@a; b", vec!["@a", "b"]),
+        ("@a\nb", vec!["@a", "b"]),
+        ("[A], B, c", vec!["[a]", "b", "c"]),
+    ] {
+        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
+        assert_eq!(
+            list.hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            expected,
+            "{query}"
+        );
+        assert!(list.missing.is_empty(), "{query}");
+    }
+    let list = index
+        .pasted_list("[a], @a, b PMID:999", None, &|| false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        list.hits
+            .iter()
+            .map(|hit| hit.item.object.id().key.as_str())
+            .collect::<Vec<_>>(),
+        ["[a]", "@a", "b"]
+    );
+    assert_eq!(list.missing, ["PMID:999"]);
+    // A bracket without a citation is still a literal token. It cannot vanish
+    // and turn an incomplete raw-key list into a successful partial list.
+    for query in ["[absent], b", "[absent], b, c"] {
+        assert!(index.pasted_list(query, None, &|| false).unwrap().is_none(), "{query}");
+    }
+}
+
+#[test]
+fn json_metadata_is_not_read_as_citation_syntax() {
+    let index = index();
+    for field in ["citation-key", "citationKey"] {
+        let query = serde_json::json!([{field: "a", "title": "}][#b]", "note": "[@absent] #cite(<b>)"}]).to_string();
+        let list = index.pasted_list(&query, None, &|| false).unwrap().unwrap();
+        assert_eq!(
+            list.hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            ["a"],
+            "{query}"
+        );
+        assert!(list.missing.is_empty(), "{query}");
+        let followed = format!("{query} @b");
+        let list = index.pasted_list(&followed, None, &|| false).unwrap().unwrap();
+        assert_eq!(
+            list.hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+    }
+}
+
+#[test]
+fn citations_at_punctuation_boundaries_keep_hits_and_missing_keys() {
+    let index = index();
+    for (query, expected, missing) in [
+        ("([@a]); @b", vec!["a", "b"], vec![]),
+        ("([@absent]); @b", vec!["b"], vec!["absent"]),
+        ("See ([@a]); @b.", vec!["a", "b"], vec![]),
+        ("See (text)[@a]; @b.", vec!["a", "b"], vec![]),
+        ("See (#cite(<a>)); @b", vec!["a", "b"], vec![]),
+        ("See:{cite:p}`a`; @b", vec!["a", "b"], vec![]),
+    ] {
+        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
+        assert_eq!(
+            list.hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            expected,
+            "{query}"
+        );
+        assert_eq!(list.missing, missing, "{query}");
+    }
+}
+
+#[test]
 fn citation_syntaxes_ignore_locators_and_preserve_paste_order() {
     let index = index();
     for query in [
@@ -38,6 +134,7 @@ fn citation_syntaxes_ignore_locators_and_preserve_paste_order() {
         "#cite(<b>, <a>, supplement: [p. 4])",
         "@b @a",
         "[@b; @a",
+        "[[see @b]; @a]",
         "\\cite{b,a",
     ] {
         let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
@@ -117,6 +214,25 @@ fn lists_keep_scope_cancellation_and_work_limits() {
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn long_lists_of_prefixed_identifiers_fit_the_shared_work_allowance() {
+    let index = index();
+    for token in [
+        "PMID: 999; ",
+        "ISBN: 978 0 306 40615 7; ",
+        "doi: 10.1000/absent; ",
+        "arXiv: 2101.00001; ",
+    ] {
+        let query = token.repeat(1000);
+        let list = index
+            .pasted_list(&query, None, &|| false)
+            .unwrap()
+            .unwrap_or_else(|| panic!("not a list: {token}"));
+        assert!(list.hits.is_empty());
+        assert_eq!(list.missing.len(), 1, "{token}");
+    }
 }
 
 #[test]
@@ -343,7 +459,7 @@ fn mixed_keys_and_identifiers_keep_order_and_report_every_missing_item() {
     assert_eq!(list.missing, ["PMID:999", "10.1000/absent"]);
 }
 
-fn round_trip(caps: &syntax::SyntaxCapabilities, keys: &[String], form: CitationForm, noted: bool) {
+fn round_trip(caps: &syntax::SyntaxCapabilities, keys: &[String], form: CitationForm, noted: bool, title: &str) {
     let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
     let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
         panic!("record")
@@ -361,6 +477,7 @@ fn round_trip(caps: &syntax::SyntaxCapabilities, keys: &[String], form: Citation
             let mut record = base.clone();
             record.id.key = key.clone();
             record.citation_keys[0].value = key.clone();
+            record.csl.insert("title".into(), title.into());
             LibraryObject::Record(record)
         })
         .collect();
@@ -432,14 +549,18 @@ fn round_trip(caps: &syntax::SyntaxCapabilities, keys: &[String], form: Citation
         written.text
     );
     let followed = format!("{} PMID:999", written.text);
-    let read = index.pasted_list(&followed, None, &|| false).unwrap().unwrap();
+    let read = index
+        .pasted_list(&followed, None, &|| false)
+        .unwrap()
+        .unwrap_or_else(|| panic!("not a list: {caps:?}: {followed}"));
     assert_eq!(read.missing, ["PMID:999"], "{caps:?}: {followed}");
     assert_eq!(
         read.hits
             .iter()
             .map(|hit| hit.item.object.id().key.clone())
             .collect::<Vec<_>>(),
-        expected
+        expected,
+        "{caps:?}: {followed}"
     );
 }
 
@@ -463,9 +584,11 @@ fn every_writer_syntax_round_trips_unicode_and_punctuation_keys() {
         "x%mark",
         "tail.",
         "backslash\\",
+        "[a]",
+        "@a",
     ];
     for caps in &syntax::CAPABILITIES {
-        round_trip(caps, &keys.map(str::to_owned), CitationForm::Normal, false);
+        round_trip(caps, &keys.map(str::to_owned), CitationForm::Normal, false, "}][#b]");
     }
 }
 
@@ -473,7 +596,13 @@ fn every_writer_syntax_round_trips_unicode_and_punctuation_keys() {
 fn writer_multikey_forms_and_notes_round_trip_without_becoming_keys() {
     for caps in &syntax::CAPABILITIES {
         for &form in caps.forms.iter().filter(|form| !caps.single_item_forms.contains(form)) {
-            round_trip(caps, &["b".into(), "a".into(), "日本🌙".into()], form, true);
+            round_trip(
+                caps,
+                &["b".into(), "a".into(), "日本🌙".into()],
+                form,
+                true,
+                "Synthetic title",
+            );
         }
     }
 }
@@ -482,14 +611,15 @@ proptest! {
     #![proptest_config(ProptestConfig { cases: 64, failure_persistence: None, ..ProptestConfig::default() })]
     #[test]
     fn writer_lists_round_trip_generated_keys(
-        pieces in prop::collection::vec(prop::collection::vec(prop::sample::select(vec!["日本🌙", "é", ";", "[", "]", "@", ":", ".", "/", "<", ">", "\\", "\"", "'", "%", "&", "(", ")", "#", "`", "$", "-", "!", "?", "~", "^"]), 0..7), 1..5),
+        pieces in prop::collection::vec((prop::sample::select(vec!["k", "[", "@"]), prop::collection::vec(prop::sample::select(vec!["日本🌙", "é", ";", "[", "]", "@", ":", ".", "/", "<", ">", "\\", "\"", "'", "%", "&", "(", ")", "#", "`", "$", "-", "!", "?", "~", "^"]), 0..7)), 1..5),
+        title in prop::collection::vec(prop::sample::select(vec!["}][#b]", "[@absent]", "#cite(<absent>)", "\\cite{absent}", "日本🌙", "[", "]", "{", "}", "\"", "\\", " "]), 0..8),
         noted in any::<bool>(), narrative in any::<bool>()
     ) {
         let mut keys = vec!["first".into(), "second".into()];
-        keys.extend(pieces.into_iter().enumerate().map(|(i, parts)| format!("k{}{i}", parts.concat())));
+        keys.extend(pieces.into_iter().enumerate().map(|(i, (head, parts))| format!("{head}{}{i}", parts.concat())));
         for caps in &syntax::CAPABILITIES {
             let form = if narrative && caps.forms.contains(&CitationForm::Narrative) && !caps.single_item_forms.contains(&CitationForm::Narrative) { CitationForm::Narrative } else { CitationForm::Normal };
-            round_trip(caps, &keys, form, noted);
+            round_trip(caps, &keys, form, noted, &title.concat());
         }
     }
 

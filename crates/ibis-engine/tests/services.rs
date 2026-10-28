@@ -181,7 +181,7 @@ fn pasted_syntax_and_identifier_tokens_keep_their_types_through_search() {
     let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
         panic!("record")
     };
-    let objects = ["a", "b", "日本🌙", "doi"]
+    let objects = ["a", "b", "日本🌙", "doi", "[a]", "@a"]
         .into_iter()
         .map(|key| {
             let mut record = base.clone();
@@ -202,8 +202,14 @@ fn pasted_syntax_and_identifier_tokens_keep_their_types_through_search() {
         ("\\autocites{b}[p. 4]{a}", vec!["b", "a"], vec![]),
         ("@a #cite(label(\"日本🌙\"))", vec!["a", "日本🌙"], vec![]),
         ("https://doi.org/10.1000/x;@b", vec!["doi"], vec![]),
-        ("@a; 10.1000/b", vec!["a", "b"], vec![]),
+        ("@a; 10.1000/b", vec!["@a", "b"], vec![]),
+        ("[@a]; 10.1000/b", vec!["a", "b"], vec![]),
         ("@missing; PMID:999", vec![], vec!["missing", "PMID:999"]),
+        ("[a], b", vec!["[a]", "b"], vec![]),
+        ("@a, b", vec!["@a", "b"], vec![]),
+        ("([@a]); @b", vec!["a", "b"], vec![]),
+        ("([@missing]); @b", vec!["b"], vec!["missing"]),
+        (r#"[{"citation-key":"a","title":"}][#b]"}]"#, vec!["a"], vec![]),
     ] {
         let request = SearchRequest {
             query: query.into(),

@@ -9,6 +9,7 @@ use crate::{
     contract::*,
     identifier,
     model::{Name, strip_markup},
+    scan::{Stopped, Work},
 };
 
 pub struct RecordHit<'a> {
@@ -166,9 +167,34 @@ impl SnapshotIndex {
         if stop() {
             return None;
         }
-        let Some(parsed) = pasted::entries(query) else {
+        if query.len() > 64 * 1024 {
             return Some(None);
-        };
+        }
+        let mut work = Work::new(query.len(), stop);
+        let parsed = (|| {
+            if let Some(raw) = pasted::raw_entries(query, &mut work)?
+                && let Some(list) = self.resolve_list(raw, scope, stop, true).ok_or(Stopped::Cancelled)?
+            {
+                return Ok(Some(list));
+            }
+            let Some(parsed) = pasted::entries(query, &mut work)? else {
+                return Ok(None);
+            };
+            self.resolve_list(parsed, scope, stop, false).ok_or(Stopped::Cancelled)
+        })();
+        match parsed {
+            Ok(list) => Some(list),
+            Err(Stopped::Cancelled) => None,
+            Err(Stopped::Limit) => Some(None),
+        }
+    }
+    fn resolve_list(
+        &self,
+        mut parsed: pasted::Entries<'_>,
+        scope: Option<&[LibraryId]>,
+        stop: &dyn Fn() -> bool,
+        raw: bool,
+    ) -> Option<Option<PastedList<'_>>> {
         let mut keys: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut identifiers: BTreeMap<identifier::Identifier, Vec<usize>> = BTreeMap::new();
         for (n, entry) in parsed.entries.iter().enumerate() {
@@ -218,6 +244,30 @@ impl SnapshotIndex {
             if let Some((entry, field)) = first {
                 matches[entry].push((n, field));
             }
+        }
+        // Exact raw keys keep their interpretation even when followed by a
+        // strict identifier. Only unmatched raw tokens may become identifiers;
+        // a key that itself looks like a DOI still wins over the DOI record.
+        if raw && matched.iter().any(|matched| !matched) {
+            for (entry, matched) in parsed.entries.iter_mut().zip(&matched) {
+                if stop() {
+                    return None;
+                }
+                if !matched {
+                    let pasted::Entry::Key {
+                        value: std::borrow::Cow::Borrowed(text),
+                        ..
+                    } = entry
+                    else {
+                        return Some(None);
+                    };
+                    let Some(value) = identifier::parse_query(text) else {
+                        return Some(None);
+                    };
+                    *entry = pasted::Entry::Identifier { text, value };
+                }
+            }
+            return self.resolve_list(parsed, scope, stop, false);
         }
         let mut hits = Vec::new();
         let mut missing = Vec::new();

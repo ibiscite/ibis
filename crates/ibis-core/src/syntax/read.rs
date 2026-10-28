@@ -2,6 +2,7 @@
 use std::borrow::Cow;
 
 use super::{CAPABILITIES, KeySyntax};
+use crate::scan::{Stopped, Work};
 
 pub(crate) struct Citation<'a> {
     pub keys: Vec<Cow<'a, str>>,
@@ -9,40 +10,61 @@ pub(crate) struct Citation<'a> {
     pub explicit: bool,
 }
 
+/// Cheap starts only: lookahead must not run the readers at every prose byte.
+pub(crate) fn starts(text: &str) -> bool {
+    text.starts_with(['\\', '[', '@'])
+        || ["-@", "#cite(", "{cite:", "{% cite ", "cite:[", "<cite data-cite=\""]
+            .iter()
+            .any(|head| text.starts_with(head))
+}
+
 /// Read one written citation. The capabilities table selects the supported
 /// syntaxes and TeX commands; the round-trip tests cover every table entry.
-pub(crate) fn citation(text: &str) -> Option<Citation<'_>> {
+pub(crate) fn citation<'a>(text: &'a str, work: &mut Work<'_>) -> Result<Option<Citation<'a>>, Stopped> {
+    let read = select(text, work);
+    work.check()?;
+    Ok(read)
+}
+
+fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
+    // JSON is a protected span. Its metadata never reaches Markdown readers,
+    // including when the JSON is damaged or does not contain citation keys.
+    if let Some(read) = json(text, work) {
+        return Some(read);
+    }
     for caps in &CAPABILITIES {
+        if !work.spend(1) {
+            return None;
+        }
         let read = match caps.syntax {
             KeySyntax::Biblatex | KeySyntax::Latex => caps.command.and_then(|command| {
-                tex(text, command, false).or_else(|| {
+                tex(text, command, false, work).or_else(|| {
                     (caps.syntax == KeySyntax::Biblatex)
-                        .then(|| tex(text, command, true))
+                        .then(|| tex(text, command, true, work))
                         .flatten()
                 })
             }),
-            // These are the four command choices in render::natbib.
             KeySyntax::Natbib => ["citep", "citet", "citeauthor", "citeyearpar"]
                 .into_iter()
-                .find_map(|command| tex(text, command, false)),
-            KeySyntax::Typst => typst(text),
-            KeySyntax::OrgCite => org(text),
-            KeySyntax::Myst => myst(text),
-            KeySyntax::MultiMarkdown => mmd(text),
-            KeySyntax::AsciiDoc => asciidoc(text),
-            KeySyntax::Jupyter => html(text),
-            KeySyntax::JekyllScholar => jekyll(text),
-            KeySyntax::CslJson => json(text, "citation-key"),
-            KeySyntax::CaywJson => json(text, "citationKey"),
-            // Bare keys have no citation delimiters. Pandoc's generic brackets
-            // run last so notes, HTML and JSON cannot become extra citations.
-            KeySyntax::Pandoc | KeySyntax::Keys | KeySyntax::ScannableCite => None,
+                .find_map(|command| tex(text, command, false, work)),
+            KeySyntax::Typst => typst(text, work),
+            KeySyntax::OrgCite => org(text, work),
+            KeySyntax::Myst => myst(text, work),
+            KeySyntax::MultiMarkdown => mmd(text, work),
+            KeySyntax::AsciiDoc => asciidoc(text, work),
+            KeySyntax::Jupyter => html(text, work),
+            KeySyntax::JekyllScholar => jekyll(text, work),
+            KeySyntax::Pandoc
+            | KeySyntax::Keys
+            | KeySyntax::ScannableCite
+            | KeySyntax::CslJson
+            | KeySyntax::CaywJson => None,
         };
         if read.is_some() {
             return read;
         }
     }
-    pandoc(text)
+    pandoc(text, work)
 }
 
 fn explicit<'a>(keys: impl IntoIterator<Item = Cow<'a, str>>, rest: &'a str) -> Citation<'a> {
@@ -57,44 +79,50 @@ fn comma_keys(text: &str) -> impl Iterator<Item = Cow<'_, str>> {
     text.split(',').map(|key| Cow::Borrowed(key.trim()))
 }
 
-fn tex<'a>(text: &'a str, command: &str, multi: bool) -> Option<Citation<'a>> {
+fn tex<'a>(text: &'a str, command: &str, multi: bool, work: &mut Work<'_>) -> Option<Citation<'a>> {
     let mut rest = text.strip_prefix('\\')?.strip_prefix(command)?;
     if multi {
         rest = rest.strip_prefix('s')?;
     }
-    rest = rest.strip_prefix('*').unwrap_or(rest).trim_start();
+    rest = work.trim_start(rest.strip_prefix('*').unwrap_or(rest));
     let mut keys = Vec::new();
     loop {
         while let Some(after) = rest.strip_prefix('[') {
-            rest = group(after, '[', ']', false).1.trim_start();
+            let (_, after) = group(after, '[', ']', false, work);
+            rest = work.trim_start(after);
         }
         let Some(after) = rest.strip_prefix('{') else { break };
-        let (body, after) = group(after, '{', '}', false);
+        let (body, after) = group(after, '{', '}', false, work);
+        if !work.spend(body.len()) {
+            return None;
+        }
         keys.extend(comma_keys(body));
         rest = after;
         if !multi {
             break;
         }
-        rest = rest.trim_start();
+        rest = work.trim_start(rest);
     }
     // Even a damaged optional argument is consumed once, keeping scanning linear.
     (rest.len() < text.len() - command.len() - 1).then(|| explicit(keys, rest))
 }
 
-fn typst(text: &str) -> Option<Citation<'_>> {
+fn typst<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     let after = text.strip_prefix("#cite(")?;
-    let (mut args, rest) = group(after, '(', ')', true);
+    let (mut args, rest) = group(after, '(', ')', true, work);
     let mut keys = Vec::new();
     loop {
-        args = args.trim_start();
+        args = work.trim_start(args);
         if let Some(after) = args.strip_prefix('<') {
-            let end = after.find('>').unwrap_or(after.len());
+            let end = work.find(after, |c| c == '>').unwrap_or(after.len());
             keys.push(Cow::Borrowed(&after[..end]));
             args = after.get(end + 1..).unwrap_or("");
         } else if let Some(after) = args.strip_prefix("label(") {
-            let (body, after) = group(after, '(', ')', true);
-            let (key, tail) = string(body.trim_start())?;
-            if !tail.trim().is_empty() {
+            let (body, after) = group(after, '(', ')', true, work);
+            let Some((key, tail)) = string(work.trim_start(body), work) else {
+                break;
+            };
+            if !work.trim_start(tail).is_empty() {
                 break; // Only a literal constructor, never a Typst expression.
             }
             keys.push(Cow::Owned(key));
@@ -102,7 +130,7 @@ fn typst(text: &str) -> Option<Citation<'_>> {
         } else {
             break; // Named form/supplement arguments are notes, not keys.
         }
-        match args.trim_start().strip_prefix(',') {
+        match work.trim_start(args).strip_prefix(',') {
             Some(after) => args = after,
             None => break,
         }
@@ -111,15 +139,21 @@ fn typst(text: &str) -> Option<Citation<'_>> {
 }
 
 /// Typst's string escapes, including the two emitted by render::quoted.
-fn string(text: &str) -> Option<(String, &str)> {
+fn string<'a>(text: &'a str, work: &mut Work<'_>) -> Option<(String, &'a str)> {
     let mut rest = text.strip_prefix('"')?;
     let mut value = String::new();
     while let Some(c) = rest.chars().next() {
+        if !work.spend(c.len_utf8()) {
+            return None;
+        }
         rest = &rest[c.len_utf8()..];
         match c {
             '"' => return Some((value, rest)),
             '\\' => {
                 let escaped = rest.chars().next()?;
+                if !work.spend(escaped.len_utf8()) {
+                    return None;
+                }
                 rest = &rest[escaped.len_utf8()..];
                 value.push(match escaped {
                     '\\' | '"' => escaped,
@@ -128,7 +162,10 @@ fn string(text: &str) -> Option<(String, &str)> {
                     't' => '\t',
                     'u' => {
                         let hex = rest.strip_prefix('{')?;
-                        let end = hex.find('}')?;
+                        let end = work.find(hex, |c| c == '}')?;
+                        if !work.spend(end) {
+                            return None;
+                        }
                         let code = u32::from_str_radix(&hex[..end], 16).ok()?;
                         rest = &hex[end + 1..];
                         char::from_u32(code)?
@@ -142,13 +179,16 @@ fn string(text: &str) -> Option<(String, &str)> {
     None
 }
 
-fn org(text: &str) -> Option<Citation<'_>> {
+fn org<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     let after = text.strip_prefix("[cite")?;
-    let colon = after.find(':')?;
+    let colon = work.find(after, |c| c == ':')?;
     if !matches!(&after[..colon], "" | "/t" | "/a" | "/na") {
         return None;
     }
-    let (body, rest) = group(&after[colon + 1..], '[', ']', false);
+    let (body, rest) = group(&after[colon + 1..], '[', ']', false, work);
+    if !work.spend(body.len()) {
+        return None;
+    }
     let keys = body.split(';').filter_map(|item| {
         let (_, key) = item.split_once('@')?;
         let end = key.find(|c: char| c.is_whitespace() || c == ',').unwrap_or(key.len());
@@ -157,49 +197,55 @@ fn org(text: &str) -> Option<Citation<'_>> {
     Some(explicit(keys, rest))
 }
 
-fn myst(text: &str) -> Option<Citation<'_>> {
+fn myst<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     let after = text.strip_prefix("{cite:")?;
     let after = after.strip_prefix("p}`").or_else(|| after.strip_prefix("t}`"))?;
-    let end = after.find('`').unwrap_or(after.len());
+    let end = work.find(after, |c| c == '`').unwrap_or(after.len());
+    if !work.spend(end) {
+        return None;
+    }
     Some(explicit(comma_keys(&after[..end]), after.get(end + 1..).unwrap_or("")))
 }
 
-fn mmd(text: &str) -> Option<Citation<'_>> {
-    let (body, rest) = group(text.strip_prefix('[')?, '[', ']', false);
+fn mmd<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
+    let (body, rest) = group(text.strip_prefix('[')?, '[', ']', false, work);
     let (key, rest) = match body.strip_prefix('#') {
         Some(key) => (key, rest.strip_prefix("[]").unwrap_or(rest)),
-        None => group(rest.strip_prefix("[#")?, '[', ']', false),
+        None => group(rest.strip_prefix("[#")?, '[', ']', false, work),
     };
     Some(explicit([Cow::Borrowed(key)], rest))
 }
 
-fn asciidoc(text: &str) -> Option<Citation<'_>> {
+fn asciidoc<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     // Keys and page values cannot contain brackets, and backslashes are literal.
     let after = text.strip_prefix("cite:[")?;
-    let end = after.find(']').unwrap_or(after.len());
+    let end = work.find(after, |c| c == ']').unwrap_or(after.len());
     let (body, rest) = (&after[..end], after.get(end + 1..).unwrap_or(""));
+    if !work.spend(body.len()) {
+        return None;
+    }
     let keys = body
         .split(',')
         .map(|item| Cow::Borrowed(item.split('(').next().unwrap_or(item).trim()));
     Some(explicit(keys, rest))
 }
 
-fn html(text: &str) -> Option<Citation<'_>> {
+fn html<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     let after = text.strip_prefix("<cite data-cite=\"")?;
-    let end = after.find('"')?;
-    let key = entities(&after[..end])?;
-    let rest = after[end + 1..]
-        .find("</cite>")
+    let end = work.find(after, |c| c == '"')?;
+    let key = entities(&after[..end], work)?;
+    let rest = work
+        .find_str(&after[end + 1..], "</cite>")
         .map_or("", |i| &after[end + 1 + i + 7..]);
     Some(explicit([Cow::Owned(key)], rest))
 }
 
-fn entities(mut text: &str) -> Option<String> {
+fn entities(mut text: &str, work: &mut Work<'_>) -> Option<String> {
     let mut value = String::new();
-    while let Some(start) = text.find('&') {
+    while let Some(start) = work.find(text, |c| c == '&') {
         value.push_str(&text[..start]);
         let after = &text[start + 1..];
-        let end = after.find(';')?;
+        let end = work.find(after, |c| c == ';')?;
         value.push(match &after[..end] {
             "amp" => '&',
             "lt" => '<',
@@ -221,9 +267,12 @@ fn entities(mut text: &str) -> Option<String> {
     Some(value)
 }
 
-fn jekyll(text: &str) -> Option<Citation<'_>> {
+fn jekyll<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     let after = text.strip_prefix("{% cite ")?;
-    let end = after.find("%}").unwrap_or(after.len());
+    let end = work.find_str(after, "%}").unwrap_or(after.len());
+    if !work.spend(end) {
+        return None;
+    }
     let keys = after[..end]
         .split_whitespace()
         .take_while(|key| !key.starts_with("--"))
@@ -231,30 +280,56 @@ fn jekyll(text: &str) -> Option<Citation<'_>> {
     Some(explicit(keys, after.get(end + 2..).unwrap_or("")))
 }
 
-fn json<'a>(text: &'a str, field: &str) -> Option<Citation<'a>> {
-    if !text.starts_with('[') {
+fn json<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
+    let after = text.strip_prefix('[')?;
+    let first = work.trim_start(after);
+    if !first.starts_with(['{', '[', '"', ']']) {
         return None;
     }
-    let mut stream = serde_json::Deserializer::from_str(text).into_iter::<Vec<serde_json::Value>>();
-    let records = stream.next()?.ok()?;
-    let keys: Option<Vec<_>> = records
-        .iter()
-        .map(|record| Some(Cow::Owned(record.get(field)?.as_str()?.to_owned())))
-        .collect();
-    Some(explicit(keys?, &text[stream.byte_offset()..]))
+    let (_, rest) = group(after, '[', ']', true, work);
+    let span = &text[..text.len() - rest.len()];
+    if !work.spend(span.len()) {
+        return None;
+    }
+    let records = serde_json::from_str::<Vec<serde_json::Value>>(span).ok();
+    // Nested Pandoc brackets can start with [[ too. Only valid JSON protects
+    // that shape; damaged arrays of objects/strings still protect metadata.
+    if records.is_none() && first.starts_with('[') {
+        return None;
+    }
+    let keys = records.and_then(|records| {
+        records
+            .iter()
+            .map(|record| {
+                record
+                    .get("citation-key")
+                    .or_else(|| record.get("citationKey"))?
+                    .as_str()
+                    .map(|key| Cow::Owned(key.to_owned()))
+            })
+            .collect::<Option<Vec<_>>>()
+    });
+    Some(Citation {
+        explicit: keys.is_some(),
+        keys: keys.unwrap_or_default(),
+        rest,
+    })
 }
 
-fn pandoc(text: &str) -> Option<Citation<'_>> {
+fn pandoc<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     if let Some(after) = text.strip_prefix('@') {
-        let (key, rest) = at_key(after);
+        let (key, rest) = at_key(after, work);
         return Some(explicit([Cow::Borrowed(key)], rest));
     }
-    let (mut body, rest) = pandoc_bracket(text.strip_prefix('[')?);
+    let (mut body, rest) = pandoc_bracket(text.strip_prefix('[')?, work);
     let whole = body;
     let mut keys = Vec::new();
     // JSON strings and objects are not Markdown citations.
     if !body.trim_start().starts_with(['{', '"']) {
         while !body.is_empty() {
+            if !work.spend(1) {
+                return None;
+            }
             if let Some(after) = body.strip_prefix('\\') {
                 body = after.chars().next().map_or("", |c| &after[c.len_utf8()..]);
             } else if let Some(after) = body.strip_prefix('@').filter(|_| {
@@ -266,7 +341,7 @@ fn pandoc(text: &str) -> Option<Citation<'_>> {
                     .next_back()
                     .is_none_or(|c| c.is_whitespace() || "[({;,\"'".contains(c))
             }) {
-                let (key, after) = at_key(after);
+                let (key, after) = at_key(after, work);
                 keys.push(Cow::Borrowed(key));
                 body = after;
             } else {
@@ -278,14 +353,17 @@ fn pandoc(text: &str) -> Option<Citation<'_>> {
     Some(Citation { keys, rest, explicit })
 }
 
-fn pandoc_bracket(text: &str) -> (&str, &str) {
+fn pandoc_bracket<'a>(text: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) {
     let mut rest = text;
     let mut depth = 1;
     while let Some(c) = rest.chars().next() {
+        if !work.spend(c.len_utf8()) {
+            return (text, "");
+        }
         // Braced keys are literal: neither brackets nor a trailing backslash
         // inside one can close or escape the surrounding citation bracket.
         if let Some(after) = rest.strip_prefix("@{") {
-            let end = after.find('}').unwrap_or(after.len());
+            let end = work.find(after, |c| c == '}').unwrap_or(after.len());
             rest = after.get(end + 1..).unwrap_or("");
             continue;
         }
@@ -306,15 +384,15 @@ fn pandoc_bracket(text: &str) -> (&str, &str) {
     (text, "")
 }
 
-fn at_key(after: &str) -> (&str, &str) {
+fn at_key<'a>(after: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) {
     if let Some(after) = after.strip_prefix('{') {
         // Braced Pandoc keys are literal, including backslashes. The writer
         // rejects braces in keys, so a backslash cannot hide their closing brace.
-        let end = after.find('}').unwrap_or(after.len());
+        let end = work.find(after, |c| c == '}').unwrap_or(after.len());
         return (&after[..end], after.get(end + 1..).unwrap_or(""));
     }
-    let end = after
-        .find(|c: char| c.is_whitespace() || ";,[]{}()\"'".contains(c))
+    let end = work
+        .find(after, |c: char| c.is_whitespace() || ";,[]{}()\"'".contains(c))
         .unwrap_or(after.len());
     let key = after[..end].trim_end_matches(['.', ':', '!', '?']);
     // Attached Typst supplements belong to this citation, not the pasted list.
@@ -322,19 +400,22 @@ fn at_key(after: &str) -> (&str, &str) {
     (
         key,
         rest.strip_prefix('[')
-            .map_or(rest, |body| group(body, '[', ']', true).1),
+            .map_or(rest, |body| group(body, '[', ']', true, work).1),
     )
 }
 
 /// Consume one group without recursion. TeX optional notes respect brace groups;
 /// Typst strings and nested content blocks cannot close a code argument.
-fn group(text: &str, open: char, close: char, quoted: bool) -> (&str, &str) {
+fn group<'a>(text: &'a str, open: char, close: char, quoted: bool, work: &mut Work<'_>) -> (&'a str, &'a str) {
     let mut depth = 1;
     let mut braces = 0_usize;
     let mut brackets = 0_usize;
     let mut string = false;
     let mut escaped = false;
     for (i, c) in text.char_indices() {
+        if !work.spend(c.len_utf8()) {
+            return (text, "");
+        }
         if escaped {
             escaped = false;
             continue;
