@@ -6,8 +6,13 @@ import type * as api from "../api";
 import type { FilePreview } from "../bindings";
 
 export async function resetApp() {
-  vi.useRealTimers();
   cleanup();
+  // Unmount effects and React Aria's focus restoration must finish on the clock
+  // that created them, before discarding fake timers or the mocked native API.
+  if (vi.isFakeTimers()) {
+    await act(() => vi.runOnlyPendingTimersAsync());
+    vi.useRealTimers();
+  }
   // Event listeners are removed asynchronously after unmount; let that
   // finish before the mocked Tauri internals are cleared.
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -91,6 +96,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
     // Builds without an update key have no update controls.
     update_checks: () => null,
+    update_available: () => false,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };

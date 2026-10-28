@@ -74,14 +74,26 @@ fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
     }
 }
 #[test]
-fn schema_search_and_call_use_the_same_versioned_results() {
-    let output = ibis(&["schema", "--json"]);
-    assert!(output.status.success());
-    let value: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(
-        value["data"].as_array().map(Vec::len),
-        Some(ibis_engine::Method::ALL.len())
-    );
+fn schema_matches_the_published_contract() {
+    let expected: Value = serde_json::from_str(include_str!("../../../fixtures/cli-schema.json"))
+        .unwrap_or_else(|error| panic!("{error}"));
+    for (args, expected) in [
+        (&["schema"][..], &expected["data"]),
+        (&["schema", "--json"][..], &expected),
+    ] {
+        let output = ibis(args);
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            &value, expected,
+            "update the snapshot only after reviewing an intentional schema change"
+        );
+    }
+}
+
+#[test]
+fn search_and_call_use_the_same_versioned_results() {
     let search = ibis(&["search", "no matches", "--json"]);
     let call = ibis(&["call", "search", "--params", r#"{"query":"no matches"}"#, "--json"]);
     assert!(search.status.success());

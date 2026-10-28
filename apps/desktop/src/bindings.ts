@@ -128,18 +128,25 @@ export const commands = {
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**  "Check for Updates…": the same check the tray starts. */
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	/**  Whether an automatic check found an update that has not been presented. */
+	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
 	/**
-	 *  Open Settings, or bring it forward, on `page` when one is named. Async so
+	 *  Open Settings, or bring it forward, on `page` (General by default). Async so
 	 *  the window is built from the event loop: a sync command runs inside the
 	 *  WebView2 callback, where building a second webview deadlocks on Windows.
 	 */
 	openSettings: (page: "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+"paste" | "shortcuts" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
 	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */
 	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
+	/**
+	 *  Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
+	 *  Every window and the menu bar item show the change at once.
+	 */
+	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus>("set_shortcut", { shortcut }),
 };
 
 /* Types */
@@ -336,7 +343,7 @@ export type NoticeMessage = {
 /**  Where Settings opens. */
 export type Page = "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "citations" | "about";
+"paste" | "shortcuts" | "citations" | "about";
 
 /**  Whether Ibis may paste, and where the person turns that on. */
 export type PastePermission = {
@@ -470,6 +477,23 @@ export type SearchResult = {
 	/**  CSL item type, such as `article-journal`. */
 	item_type: string,
 };
+
+/**  Why a shortcut change failed. Only NotSaved changes the working shortcut. */
+export type ShortcutRefusal =
+/**  Not a key combination Ibis can register. */
+"invalid" |
+/**  Shift alone, or no modifier: typing would open Ibis. */
+"needs-modifier" |
+/**  ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands. */
+"app-shortcut" |
+/**  Windows uses Ctrl+Alt (also with Shift) to type with AltGr. */
+"alt-gr" |
+/**  Another app or the system already has it. */
+"in-use" |
+/**  This desktop gives apps no global shortcuts (Wayland, no X11). */
+"unavailable" |
+/**  It works now, but could not be saved for the next start. */
+"not-saved";
 
 /**  Whether the global shortcut is working, shown in the interface. */
 export type ShortcutStatus = {

@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager};
 
+mod offer;
 mod progress;
 pub(crate) mod setting;
 #[cfg(any(target_os = "macos", test))]
@@ -36,10 +37,12 @@ Nothing from your library is sent, and updates install only when you agree.";
 #[derive(Default)]
 pub(crate) struct Updates {
     automatic: AtomicBool,
-    /// One check or installation at a time.
+    /// One check, consent dialog or installation at a time.
     busy: Arc<AtomicBool>,
     /// A version the person chose not to install; automatic checks don't offer it again.
     declined: Mutex<Option<String>>,
+    /// Availability only: deferred offers retain neither metadata nor a check lease.
+    offer_available: AtomicBool,
     progress: Mutex<progress::Progress>,
     saver: setting::Saver,
     #[cfg(any(target_os = "macos", test))]
@@ -187,43 +190,30 @@ async fn find_update(client: &Updater, download_timeout: Duration) -> tauri_plug
 }
 
 async fn check(app: &AppHandle, asked: bool) {
-    let updates = app.state::<Updates>();
-    let Some(busy) = updates.begin() else {
-        if asked {
-            tell(
-                app,
-                "Ibis is already checking for updates, or an update is waiting for your answer.",
-            );
+    offer::check(app, asked, async {
+        let found = match updater(app, CHECK_TIMEOUT) {
+            Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
+                .await
+                .map_err(|e| failure_kind(&e)),
+            Err(e) => Err(failure_kind(&e)),
+        };
+        if !asked {
+            application_message(&automatic_outcome(&found));
         }
-        return;
-    };
-    let found = match updater(app, CHECK_TIMEOUT) {
-        Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
-            .await
-            .map_err(|e| failure_kind(&e)),
-        Err(e) => Err(failure_kind(&e)),
-    };
-    if !asked {
-        application_message(&automatic_outcome(&found));
-    }
-    match found {
-        Ok(Some(update)) => {
-            let declined = updates.declined.lock().ok().and_then(|d| d.clone());
-            if asked || declined.as_deref() != Some(update.version.as_str()) {
-                offer(app, update, busy);
-            }
-        }
-        Ok(None) if asked => tell(
-            app,
-            &format!("You have the newest version, {}.", app.package_info().version),
-        ),
-        // Automatic checks stay quiet and try again later.
-        Err(_) if asked => tell(
-            app,
-            "Ibis could not check for updates. Check your internet connection and try again later.",
-        ),
-        _ => {}
-    }
+        found.map(|update| update.map(|update| offer::Candidate::new(app, update)))
+    })
+    .await;
+}
+
+/// The existing tray command changes only its words when an update is pending.
+pub(crate) struct UpdateMenuItem(pub(crate) tauri::menu::MenuItem<tauri::Wry>);
+pub(crate) use offer::menu_label as update_menu_label;
+
+/// Whether an automatic check found an update that has not been presented.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn update_available(app: AppHandle) -> bool {
+    app.state::<Updates>().offer_available.load(Ordering::SeqCst)
 }
 
 /// Why a check failed, from a fixed list: the error text itself can carry
@@ -249,61 +239,34 @@ fn automatic_outcome(found: &Result<Option<Update>, &'static str>) -> String {
     }
 }
 
-fn offer(app: &AppHandle, update: Update, busy: BusyGuard) {
-    let handle = app.clone();
-    present_offer(
-        app,
-        offer_text(&app.package_info().version.to_string(), &update),
-        move |install| {
-            if install {
-                tauri::async_runtime::spawn(async move { install_update(&handle, update, busy).await });
-            } else {
-                let updates = handle.state::<Updates>();
-                if let Ok(mut declined) = updates.declined.lock() {
-                    *declined = Some(update.version.clone());
-                }
-            }
-        },
-    );
-}
-
 #[cfg(any(target_os = "macos", test))]
 fn offer_parent<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<tauri::WebviewWindow<R>> {
     app.get_webview_window("main")
 }
 
-fn present_offer(app: &AppHandle, text: String, answer: impl FnOnce(bool) + Send + 'static) {
+fn present_offer(
+    app: &AppHandle,
+    parent: &tauri::WebviewWindow,
+    owner: crate::picker::ChooserLease,
+    text: String,
+    answer: impl FnOnce(bool) + Send + 'static,
+) {
     let dialog = app
         .dialog()
         .message(text)
         .title("An update is available")
         .buttons(offer_buttons());
     #[cfg(target_os = "macos")]
-    let (dialog, owner) = {
-        let Some(owner) = app.state::<crate::picker::ChooserOpen>().begin() else {
-            return;
-        };
-        let Some(parent) = offer_parent(app) else {
-            report(Err::<(), ()>(()), NativeIssue::Window);
-            return;
-        };
-        crate::picker::show_picker(app);
+    let dialog = {
         crate::panel::activate_for_dialog(app);
-        (dialog.parent(&parent), owner)
+        dialog.parent(parent)
     };
+    #[cfg(not(target_os = "macos"))]
+    let _ = parent;
     let handle = app.clone();
     dialog.show(move |accepted| {
-        let callback = handle.clone();
         let result = handle.run_on_main_thread(move || {
-            #[cfg(target_os = "macos")]
-            let owner = owner;
-            if accepted {
-                crate::picker::show_picker(&callback);
-            }
-            // Pinned Wry executes nested main-thread tasks inline, so the
-            // actual panel-show hook still sees this owner. Never hold it
-            // for the download.
-            #[cfg(target_os = "macos")]
+            // Never hold the dialog's blur protection for the download.
             drop(owner);
             answer(accepted);
         });
@@ -449,8 +412,15 @@ fn installation_failed(app: &AppHandle) {
 /// Called after an actual native panel show, never from a timer or at login.
 pub(crate) fn picker_presented(app: &AppHandle) {
     publish_progress(app);
+    picker_focused(app);
     #[cfg(target_os = "macos")]
     present_installation_failure(app, false);
+}
+
+/// Windows/Linux may deliver focus after the show hook has already run.
+/// A focus event re-checks pending availability, never showing or focusing a window.
+pub(crate) fn picker_focused(app: &AppHandle) {
+    offer::refresh_pending(app);
 }
 
 #[cfg(target_os = "macos")]

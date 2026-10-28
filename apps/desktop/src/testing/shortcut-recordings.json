@@ -1,0 +1,93 @@
+[
+  {
+    "name": "Dvorak apostrophe stays on physical Q",
+    "event": { "key": "'", "code": "KeyQ", "ctrlKey": true },
+    "shortcut": "Control+KeyQ",
+    "typed": { "12": "'", "7": "q" },
+    "registered": "Control+KeyQ",
+    "windows_refusal": "app-shortcut"
+  },
+  {
+    "name": "Dvorak Q follows the logical letter",
+    "event": { "key": "q", "code": "KeyX", "ctrlKey": true },
+    "shortcut": "Control+Q",
+    "typed": { "12": "'", "7": "q" },
+    "registered": "Control+KeyX",
+    "windows_refusal": "app-shortcut"
+  },
+  {
+    "name": "Dvorak shifted apostrophe stays on physical Q",
+    "event": { "key": "\"", "code": "KeyQ", "ctrlKey": true, "shiftKey": true },
+    "shortcut": "Control+Shift+KeyQ",
+    "typed": { "12": "'", "7": "q" },
+    "registered": "Control+Shift+KeyQ"
+  },
+  {
+    "name": "non-Latin key stays physical",
+    "event": { "key": "й", "code": "KeyQ", "altKey": true },
+    "shortcut": "Alt+KeyQ",
+    "typed": { "12": "я", "7": "q" },
+    "registered": "Alt+KeyQ"
+  },
+  {
+    "name": "AZERTY A follows the logical letter",
+    "event": { "key": "a", "code": "KeyQ", "altKey": true },
+    "shortcut": "Alt+A",
+    "typed": { "0": "q", "12": "a" },
+    "registered": "Alt+KeyQ"
+  },
+  {
+    "name": "Polish AltGr C is refused on Windows",
+    "event": { "key": "ć", "code": "KeyC", "ctrlKey": true, "altKey": true },
+    "shortcut": "Control+Alt+KeyC",
+    "typed": { "8": "c" },
+    "registered": "Control+Alt+KeyC",
+    "windows_refusal": "alt-gr"
+  },
+  {
+    "name": "Polish Shift AltGr C is refused on Windows",
+    "event": { "key": "Ć", "code": "KeyC", "ctrlKey": true, "altKey": true, "shiftKey": true },
+    "shortcut": "Control+Alt+Shift+KeyC",
+    "typed": { "8": "c" },
+    "registered": "Control+Alt+Shift+KeyC",
+    "windows_refusal": "alt-gr"
+  },
+  {
+    "name": "ASCII Ctrl Alt C also protects AltGr typing",
+    "event": { "key": "c", "code": "KeyC", "ctrlKey": true, "altKey": true },
+    "shortcut": "Control+Alt+C",
+    "typed": { "8": "c" },
+    "registered": "Control+Alt+KeyC",
+    "windows_refusal": "alt-gr"
+  },
+  {
+    "name": "Ctrl Alt digit protects AltGr symbols",
+    "event": { "key": "€", "code": "Digit5", "ctrlKey": true, "altKey": true },
+    "shortcut": "Control+Alt+Digit5",
+    "typed": {},
+    "registered": "Control+Alt+Digit5",
+    "windows_refusal": "alt-gr"
+  },
+  {
+    "name": "Ctrl Alt punctuation protects AltGr symbols",
+    "event": { "key": "~", "code": "BracketRight", "ctrlKey": true, "altKey": true },
+    "shortcut": "Control+Alt+BracketRight",
+    "typed": {},
+    "registered": "Control+Alt+BracketRight",
+    "windows_refusal": "alt-gr"
+  },
+  {
+    "name": "Ctrl Alt function key is available",
+    "event": { "key": "F8", "code": "F8", "ctrlKey": true, "altKey": true },
+    "shortcut": "Control+Alt+F8",
+    "typed": {},
+    "registered": "Control+Alt+F8"
+  },
+  {
+    "name": "adding the Windows key does not consume AltGr typing",
+    "event": { "key": "ć", "code": "KeyC", "ctrlKey": true, "altKey": true, "metaKey": true },
+    "shortcut": "Control+Alt+Command+KeyC",
+    "typed": {},
+    "registered": "Control+Alt+Command+KeyC"
+  }
+]

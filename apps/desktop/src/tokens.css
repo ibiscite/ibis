@@ -5,6 +5,7 @@
   /* Type: size / line height. Nothing is smaller than 12 px. */
   --type-search-size: 1.375rem; --type-search-line: 1.75rem;     /* 22/28 */
   --type-title-size: .9375rem; --type-title-line: 1.25rem;        /* 15/20 */
+  --type-page-title-size: 1.75rem; --type-page-title-line: 2.25rem; /* 28/36 */
   --type-body-size: .875rem; --type-body-line: 1.25rem;           /* 14/20 */
   --type-meta-size: .8125rem; --type-meta-line: 1.125rem;         /* 13/18 */
   --type-label-size: .75rem; --type-label-line: 1rem;             /* 12/16 */
@@ -329,6 +330,11 @@
   --surface-grouped-card: var(--surface-raised);
   --surface-sidebar: color-mix(in srgb, var(--text) 6%, var(--surface));
   --titlebar-height: 3.25rem;
+  --settings-sidebar-width: min(12.5rem, 35%);
+  --settings-page-inset: var(--space-5);
+  --settings-group-width: 40rem;
+  --settings-row-height: 3rem;
+  --settings-described-row-height: 3.5rem;
 }
 @supports (color: light-dark(white, black)) {
   :root {
