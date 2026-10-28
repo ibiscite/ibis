@@ -204,11 +204,22 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     let acceptInitialStatus = true;
     let mounted = true;
     let visibilityEvents = 0;
+    let focusAfterActivation = false;
     const subscriptionFailure = (operation: Operation) => {
       if (mounted) report(operation);
       else console.error(FAILURE_MESSAGES[operation]);
       return () => undefined;
     };
+    const selectSearch = () => {
+      input.current?.focus();
+      input.current?.select();
+    };
+    const activated = (event: FocusEvent) => {
+      if (event.target !== event.currentTarget || !focusAfterActivation) return;
+      focusAfterActivation = false;
+      selectSearch();
+    };
+    window.addEventListener("focus", activated);
     const focusSearch = () => {
       resetPointer();
       copyVisibility.current += 1;
@@ -225,13 +236,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       destination.read();
       readLoginItem();
       readShortcut();
-      input.current?.focus();
-      input.current?.select();
+      // On X11, showing can precede native activation. WebKit restores the
+      // previous control then, so finish Search focus once activation arrives.
+      focusAfterActivation = !document.hasFocus();
+      selectSearch();
     };
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
       visibilityEvents += 1;
+      focusAfterActivation = false;
       // A hidden native window may not throttle the web view: pause looping animations.
       document.documentElement.dataset.pickerHidden = "";
       resetPointer();
@@ -275,6 +289,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return () => {
       acceptInitialStatus = false;
       mounted = false;
+      window.removeEventListener("focus", activated);
       copyVisibility.current += 1;
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
