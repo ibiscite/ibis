@@ -5,6 +5,12 @@ import { isSnapshotChanged, newerUpdate, search } from "./api";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 
 it("sends scope changes as fresh requests on the same interface page", async () => {
+  // The interface page and counter live for the module's lifetime, across
+  // searches (and tests). Exercise a prior search rather than assuming this
+  // test runs first, and inspect only this scope-changing sequence's calls.
+  await search("Earlier synthetic query");
+  const previous = vi.mocked(invoke).mock.lastCall![1] as { request: number };
+  vi.mocked(invoke).mockClear();
   await search("研究", 7);
   await search("研究", 7, []);
   await search("研究", 7, ["zotero:group:7"]);
@@ -20,7 +26,7 @@ it("sends scope changes as fresh requests on the same interface page", async () 
     { query: { text: "研究", interpret_locators: true }, limit: 7, scope: ["zotero:group:7"] },
   ]);
   expect(new Set(args.map(({ page }) => page)).size).toBe(1);
-  expect(args.map(({ request }) => request)).toEqual([1, 2, 3]);
+  expect(args.map(({ request }) => request)).toEqual([1, 2, 3].map((offset) => previous.request + offset));
 });
 
 it("recognizes a changed library by its error code, not its wording", () => {

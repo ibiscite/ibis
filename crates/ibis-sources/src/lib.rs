@@ -52,6 +52,7 @@ pub struct LoadedLibrary {
     pub snapshot: Snapshot,
     pub warnings: Vec<SourceWarning>,
     attachment_paths: BTreeMap<ItemRef, PathBuf>,
+    best_attachments: BTreeMap<ItemRef, zotero_source::AttachmentKind>,
 }
 impl std::fmt::Debug for LoadedLibrary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -66,6 +67,12 @@ impl LoadedLibrary {
     /// Number of privately resolved attachment locations, without exporting them.
     pub fn local_attachment_count(&self) -> usize {
         self.attachment_paths.len()
+    }
+
+    /// Zotero's best-attachment classification, without locations or raw links.
+    /// Unknown or absent attachment metadata returns `None`.
+    pub fn best_attachment_kind(&self, record: &ItemRef) -> Option<zotero_source::AttachmentKind> {
+        self.best_attachments.get(record).copied()
     }
 }
 

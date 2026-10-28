@@ -34,6 +34,17 @@ use resolve::Resolver;
 
 const LOAD_LIMIT: &str = "load work limit reached; this entry and remaining entries were skipped";
 
+#[cfg(test)]
+thread_local! {
+    // Per-thread so concurrent generated cases cannot hide each other's panics.
+    static CAUGHT_PARSER_PANICS: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+fn take_caught_parser_panics() -> usize {
+    CAUGHT_PARSER_PANICS.with(|count| count.replace(0))
+}
+
 /// One sticky counter for actual work, including empty operations and byte copies.
 pub(crate) struct Budget(Cell<Option<usize>>);
 impl Budget {
@@ -148,6 +159,10 @@ pub(crate) fn load_with_budget(
     // references themselves and are never shown or exported.
     for (i, entry) in entries.iter().enumerate().filter(|(_, entry)| entry.kind != "xdata") {
         let outcome = panic_guard::attempt(|| load_entry(source, &resolver, i, entry, raw_texts[i]));
+        #[cfg(test)]
+        if outcome.is_err() {
+            CAUGHT_PARSER_PANICS.with(|count| count.set(count.get() + 1));
+        }
         let warn = |code, _message: &str| SourceWarning {
             code,
             line: Some(entry.line),
@@ -222,6 +237,34 @@ fn load_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    // These properties live beside the private panic hook: integration tests
+    // cannot distinguish a caught parser panic from an ordinary Syntax warning.
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(512))]
+
+        #[test]
+        fn arbitrary_text_never_panics(text in any::<String>()) {
+            take_caught_parser_panics();
+            let _ = load_str(&LibraryId::file(b"synthetic-property"), &text);
+            prop_assert_eq!(take_caught_parser_panics(), 0);
+        }
+
+        #[test]
+        fn mutated_entries_never_panic(
+            prefix in "\\PC{0,40}",
+            field in prop::sample::select(vec!["title", "crossref", "xdata", "author", "editor", "date", "year", "month", "journal", "pages", "langid"]),
+            value in "\\PC{0,40}",
+            closer in prop::sample::select(vec!["}", ")", "", "}}", "{"]),
+        ) {
+            let text = format!("{prefix}@article{{k, {field} = {{{value}}}{closer}\n@book(b, title={{{value}}})");
+            take_caught_parser_panics();
+            let _ = load_str(&LibraryId::file(b"synthetic-property"), &text);
+            prop_assert_eq!(take_caught_parser_panics(), 0);
+        }
+    }
+
     #[test]
     fn reused_records_keep_macro_epochs_and_parent_reads() {
         let source = LibraryId::file(b"synthetic field ownership");

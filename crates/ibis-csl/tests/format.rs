@@ -152,6 +152,24 @@ fn all_styles_match_node_for_multilingual_text_html_and_rtf() {
             let cites:Vec<_>=(0..items.len()).map(|index|json!({"id":format!("ibis-{index}"),"prefix":"","suffix":"","suppress-author":false,"author-only":false})).collect();
             oracle_inputs.push(json!({"style":style,"items":oracle_items,"cites":cites,"bibliography":bibliography||style=="ieee","keep_order":false,"locale":null}));
         }
+        if !matches!(style, "ieee" | "modern-language-association") {
+            for issued in [
+                Some(json!({"date-parts":[[2026]]})),
+                None,
+                Some(json!({"date-parts":[[0]]})),
+            ] {
+                let mut item = json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor"}]});
+                if let Some(issued) = issued {
+                    item["issued"] = issued;
+                }
+                let snapshot = library(&[item.clone()]);
+                let mut request = selection(&snapshot, style, false);
+                request.form = CitationForm::YearOnly;
+                actual.push(formatter.format(&snapshot, &request).unwrap());
+                item["id"] = json!("ibis-0");
+                oracle_inputs.push(json!({"style":style,"items":[item],"cites":[{"id":"ibis-0","suppress-author":true,"year-only":true}],"bibliography":false,"keep_order":false,"locale":null}));
+            }
+        }
     }
     let mut node = Command::new(std::env::var("IBIS_NODE").unwrap_or_else(|_| "node".into()))
         .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/node-oracle.mjs"))
@@ -172,7 +190,7 @@ fn all_styles_match_node_for_multilingual_text_html_and_rtf() {
         assert_eq!(actual.text, expected["text"].as_str().unwrap(), "text case {index}");
         assert_eq!(actual.html.as_deref(), expected["html"].as_str(), "HTML case {index}");
         assert_eq!(actual.rtf.as_deref(), expected["rtf"].as_str(), "RTF case {index}");
-        assert!(actual.copy_content(items.len()).is_some());
+        assert!(actual.copy_content(actual.outcomes.len()).is_some());
     }
 }
 
@@ -343,6 +361,81 @@ fn numeric_style_refuses_forms_its_reference_fallback_cannot_carry() {
         }
     ));
     assert!(result.copy_content(1).is_none());
+}
+
+#[test]
+fn year_only_preserves_bundled_support_for_dated_undated_and_zero_year_items() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for (issued, dated) in [
+        (Some(json!({"date-parts":[[2026]]})), true),
+        (None, false),
+        (Some(json!({"date-parts":[[0]]})), false),
+    ] {
+        let mut item = json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor"}]});
+        if let Some(issued) = &issued {
+            item["issued"] = issued.clone();
+        }
+        let snapshot = library(&[item]);
+        for (style, _) in ibis_csl::STYLES {
+            let mut request = selection(&snapshot, style, false);
+            request.form = CitationForm::YearOnly;
+            let result = formatter.format(&snapshot, &request).unwrap();
+            // Match main's supported forms: IEEE's fallback and MLA have no year-only form.
+            if matches!(style, "ieee" | "modern-language-association") {
+                assert!(result.copy_content(1).is_none(), "{style}");
+                assert_eq!(
+                    result.outcomes,
+                    vec![ItemOutcome::Refused {
+                        item: 0,
+                        error: CitationError::UnsupportedForm,
+                    }]
+                );
+            } else {
+                let expected = if dated {
+                    "2026"
+                } else if style == "harvard-cite-them-right" {
+                    "no date"
+                } else {
+                    "n.d."
+                };
+                assert_eq!(result.text, format!("({expected})"), "{style}");
+                assert!(result.copy_content(1).is_some(), "{style}");
+            }
+        }
+    }
+}
+
+#[test]
+fn year_only_undated_titles_and_locators_do_not_prove_no_date_output() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for (title, locator) in [
+        ("Synthetic n.d. observations", "42"),
+        ("Synthetic observations", "n.d."),
+        ("Synthetic observations", "42"),
+    ] {
+        let snapshot = library(&[json!({"type":"classic","title":title,"author":[{"family":"Taylor"}]})]);
+        let mut request = selection(&snapshot, "chicago-author-date", false);
+        request.form = CitationForm::YearOnly;
+        request.items[0].locator = Some(Locator {
+            term: LocatorTerm::Page,
+            value: locator.into(),
+        });
+        let result = formatter.format(&snapshot, &request).unwrap();
+        assert_eq!(
+            result.outcomes,
+            vec![ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::UnsupportedForm,
+            }],
+            "title={title}, locator={locator}"
+        );
+        assert!(result.text.is_empty());
+        assert!(result.html.is_none());
+        assert!(result.rtf.is_none());
+        assert!(result.copy_content(1).is_none());
+    }
 }
 
 #[test]

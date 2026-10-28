@@ -28,6 +28,7 @@ mod preferences;
 mod row_context;
 mod settings_window;
 mod setup;
+mod shortcut_setting;
 mod sizing;
 mod tray;
 mod updater;
@@ -170,6 +171,7 @@ fn main() {
         .manage(sizing::Sizing::default())
         .manage(picker::PickerGeneration::default())
         .manage(picker::Registered::default())
+        .manage(shortcut_setting::Changing::default())
         .manage(notice::Notice::default())
         .manage(paste::LastTarget::default())
         .manage(picker::FullScreenGuard::default())
@@ -207,6 +209,7 @@ fn main() {
                 WindowEvent::Focused(true) => {
                     #[cfg(target_os = "windows")]
                     window.state::<picker::FocusChanges>().record();
+                    updater::picker_focused(window.app_handle());
                     library::retry_zotero_on_focus(window.app_handle());
                 }
                 // Like other launchers, the picker hides when it loses focus, but

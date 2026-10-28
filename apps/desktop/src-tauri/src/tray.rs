@@ -4,13 +4,14 @@ use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem}
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
+use crate::diagnostics::{NativeIssue, report};
 use crate::feedback::{idea_url, open_in_browser, problem_url};
 use crate::library::{
     LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
 };
 use crate::login_item::{self, LoginItems, LoginMenuItem};
 use crate::picker::show_picker;
-use crate::updater::{self, AutomaticMenuItem};
+use crate::updater::{self, AutomaticMenuItem, UpdateMenuItem};
 
 /// One line describing the library, for the menu bar or tray menu.
 pub(crate) fn library_line(status: &LibraryStatus) -> String {
@@ -55,17 +56,30 @@ fn version_line(name: &str, version: &str) -> String {
     format!("{name} {version}")
 }
 
+/// "Open Picker", which names the shortcut that opens it.
+pub(crate) struct OpenMenuItem(MenuItem<tauri::Wry>);
+
+fn open_label(shortcut: Option<&str>) -> String {
+    match shortcut {
+        Some(shortcut) => format!("Open Picker ({shortcut})"),
+        None => "Open Picker".to_string(),
+    }
+}
+
+/// Name a changed shortcut in the menu at once.
+pub(crate) fn show_shortcut(app: &AppHandle, shortcut: Option<&str>) {
+    if let Some(item) = app.try_state::<OpenMenuItem>() {
+        report(item.0.set_text(open_label(shortcut)), NativeIssue::Shortcut);
+    }
+}
+
 /// The disabled menu item that shows the library line.
 pub(crate) struct LibraryMenuItem(pub(crate) MenuItem<tauri::Wry>);
 
 /// The menu bar (macOS) or tray (Windows, Linux) item and its menu.
 pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Result<()> {
-    let open_label = match shortcut {
-        Some(shortcut) => format!("Open Picker ({shortcut})"),
-        None => "Open Picker".to_string(),
-    };
     let line = MenuItem::with_id(app, "library", library_line(&current_status(app)), false, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", open_label, true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", open_label(shortcut), true, None::<&str>)?;
     let choose = MenuItem::with_id(app, "choose", "Choose Library File…", true, None::<&str>)?;
     let zotero = MenuItem::with_id(app, "zotero", "Use Zotero Library", true, None::<&str>)?;
     let reload = MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?;
@@ -87,7 +101,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     // Builds without an update key have no update items.
     let update_items = if updater::available(app) {
         Some((
-            MenuItem::with_id(app, "update_now", "Check for Updates…", true, None::<&str>)?,
+            MenuItem::with_id(app, "update_now", updater::update_menu_label(false), true, None::<&str>)?,
             CheckMenuItem::with_id(
                 app,
                 updater::setting::AUTOMATIC_ON,
@@ -129,10 +143,12 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     }
     items.extend([&settings as &dyn IsMenuItem<tauri::Wry>, &problem, &idea, &third, &quit]);
     let menu = Menu::with_items(app, &items)?;
-    if let Some((_, off, on)) = update_items {
+    if let Some((now, off, on)) = update_items {
+        app.manage(UpdateMenuItem(now));
         app.manage(AutomaticMenuItem::new(menu.clone(), [off, on], automatic_position));
     }
     app.manage(LibraryMenuItem(line));
+    app.manage(OpenMenuItem(open.clone()));
     if let Some(at_login) = at_login {
         app.manage(LoginMenuItem(at_login));
     }

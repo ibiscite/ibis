@@ -22,7 +22,7 @@ use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::is_combining_mark;
 
 use crate::identifier::{self, Identifier};
-use crate::model::{Name, Reference, is_cjk_char, strip_markup};
+use crate::model::{Name, is_cjk_char};
 
 mod snapshot;
 pub use snapshot::{RecordHit, SnapshotIndex};
@@ -93,7 +93,7 @@ const TYPO_FIELDS: u8 = 0b0100_0110;
 
 /// One search result.
 #[derive(Debug, Clone, Serialize)]
-pub struct Hit<'a, T = Reference> {
+struct Hit<'a, T> {
     pub reference: &'a T,
     pub score: u32,
     /// Fields that matched, strongest first, so the UI can say why.
@@ -121,23 +121,6 @@ fn key_eq(key: &str, query: &str) -> bool {
 fn lower(c: char) -> impl Iterator<Item = char> {
     c.to_lowercase().map(|c| if c == 'ς' { 'σ' } else { c })
 }
-impl SearchDocument for Reference {
-    type Identity = crate::model::RecordId;
-    type Source = String;
-    fn identity(&self) -> &Self::Identity {
-        &self.id
-    }
-    fn source(&self) -> &Self::Source {
-        &self.id.source
-    }
-    fn year(&self) -> Option<i32> {
-        Reference::year(self)
-    }
-    fn exact_key(&self, query: &str) -> bool {
-        self.citekey.as_deref().is_some_and(|key| key_eq(key, query))
-    }
-}
-
 /// The normalised text of every record of an index in two buffers, abstracts
 /// apart because they are searched last. One scan finds a term in every
 /// record, and the index holds two allocations instead of eight per record.
@@ -400,116 +383,6 @@ fn spelling_aliases(text: &str) -> String {
         }
     }
     aliases.trim_start().to_owned()
-}
-
-/// Search index that owns its references, for front ends that keep a library
-/// open and search it many times. Normalization happens once, when it is built.
-#[derive(Default)]
-pub struct OwnedIndex {
-    references: Vec<Reference>,
-    texts: Texts,
-    identifiers: Vec<Vec<Identifier>>,
-    source_counts: BTreeMap<String, usize>,
-}
-
-impl OwnedIndex {
-    pub fn new(references: Vec<Reference>) -> Self {
-        let mut texts = Texts::default();
-        for reference in &references {
-            prepare(reference, &mut texts);
-        }
-        let mut source_counts = BTreeMap::new();
-        for reference in &references {
-            *source_counts.entry(reference.id.source.clone()).or_default() += 1;
-        }
-        let identifiers = references.iter().map(identifier::of_reference).collect();
-        OwnedIndex {
-            references,
-            texts: texts.shrink(),
-            identifiers,
-            source_counts,
-        }
-    }
-
-    /// Counts by unchanged record source ID, computed once with the snapshot.
-    /// Sources with no records have no entry.
-    pub fn source_counts(&self) -> &BTreeMap<String, usize> {
-        &self.source_counts
-    }
-
-    pub fn references(&self) -> &[Reference] {
-        &self.references
-    }
-
-    /// Return up to `limit` matches, best first. An empty query matches nothing.
-    pub fn search(&self, query: &str, limit: usize) -> Vec<Hit<'_>> {
-        self.search_until(query, limit, &|| false).unwrap_or_default()
-    }
-
-    /// Like [`OwnedIndex::search`], but gives up and returns `None` as soon as
-    /// `stop` returns true, so a search for an outdated query does not keep
-    /// the caller waiting. `stop` is checked during record and term processing.
-    pub fn search_until(&self, query: &str, limit: usize, stop: &dyn Fn() -> bool) -> Option<Vec<Hit<'_>>> {
-        self.search_scoped_until(query, limit, None, stop)
-    }
-
-    /// Search only these exact source IDs before ranking or limiting results.
-    /// `None` searches all sources; an empty slice searches none.
-    pub fn search_scoped(&self, query: &str, limit: usize, scope: Option<&[String]>) -> Vec<Hit<'_>> {
-        self.search_scoped_until(query, limit, scope, &|| false)
-            .unwrap_or_default()
-    }
-
-    /// Scoped search with the same cancellation contract as [`Self::search_until`].
-    pub fn search_scoped_until(
-        &self,
-        query: &str,
-        limit: usize,
-        scope: Option<&[String]>,
-        stop: &dyn Fn() -> bool,
-    ) -> Option<Vec<Hit<'_>>> {
-        let ids = self.references.iter().zip(self.identifiers.iter().map(Vec::as_slice));
-        if let Some(hits) = by_identifier(ids, query, limit, scope, stop)? {
-            return Some(hits);
-        }
-        rank(&self.references, &self.texts, query, limit, scope, stop)
-    }
-}
-
-fn prepare(r: &Reference, texts: &mut Texts) {
-    let variable = |name: &str| {
-        r.variables
-            .get(name)
-            .map(|value| strip_markup(value))
-            .unwrap_or_default()
-    };
-    let title = r.title_plain().unwrap_or_default();
-    let keywords = r.keywords.join(" ");
-    let container = r.container_title.as_deref().map(strip_markup).unwrap_or_default();
-    texts.push(
-        [
-            normalize(r.citekey.as_deref().unwrap_or("")),
-            normalize(&title),
-            name_text(
-                r.authors
-                    .iter()
-                    .chain(&r.editors)
-                    .chain(r.other_names.values().flatten()),
-            ),
-            r.year().map(|y| y.to_string()).unwrap_or_default(),
-            normalize(r.doi.as_deref().unwrap_or("")),
-            normalize(&keywords),
-            normalize(&container),
-            normalize(r.abstract_text.as_deref().unwrap_or("")),
-        ],
-        &[
-            (1, &title),
-            (1, &variable("title-short")),
-            (5, &keywords),
-            (6, &container),
-            (6, &variable("container-title-short")),
-        ],
-    );
 }
 
 /// When the whole query is a DOI, ISBN, PubMed ID or arXiv ID that some
@@ -1432,73 +1305,78 @@ fn is_optional_mark(c: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Issued, Name, RecordId};
+    use crate::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, LibraryObject, Record, Snapshot};
+    use serde_json::json;
+    use std::sync::Arc;
 
-    fn reference(key: &str, title: &str, family: &str, year: i32) -> Reference {
-        Reference {
-            id: RecordId {
-                source: "t".into(),
-                native_key: key.into(),
+    fn library_id(name: &str) -> LibraryId {
+        LibraryId::file(name.as_bytes())
+    }
+
+    fn build_index(records: Vec<Record>) -> SnapshotIndex {
+        SnapshotIndex::new(Arc::new(
+            Snapshot::new(records.into_iter().map(LibraryObject::Record).collect())
+                .unwrap_or_else(|error| panic!("{error}")),
+        ))
+    }
+
+    fn reference(key: &str, title: &str, family: &str, year: i32) -> Record {
+        Record {
+            id: ItemRef {
+                library: library_id("t"),
+                key: key.into(),
             },
-            citekey: Some(key.into()),
-            item_type: "article-journal".into(),
-            title: Some(title.into()),
-            authors: vec![Name {
-                family: Some(family.into()),
-                ..Name::default()
+            citation_keys: vec![CitationKey {
+                value: key.into(),
+                source: CitationKeySource::Bibtex,
             }],
-            editors: vec![],
-            other_names: Default::default(),
-            dates: Default::default(),
-            issued: Some(Issued::year(year)),
-            container_title: None,
-            doi: None,
-            url: None,
-            abstract_text: None,
-            keywords: vec![],
-            language: None,
-            eprints: vec![],
-            variables: Default::default(),
-            attachment: None,
-            raw: None,
+            aliases: vec![],
+            identifiers: vec![],
+            csl: serde_json::from_value(json!({
+                "type": "article-journal", "title": title,
+                "author": [{"family": family}], "issued": {"date-parts": [[year]]}
+            }))
+            .unwrap_or_else(|error| panic!("{error}")),
         }
     }
 
     #[test]
     fn container_search_ignores_rich_text_markup_and_entities() {
         let mut r = reference("k", "Title", "Smith", 2020);
-        r.container_title = Some("<i>Q</i> &amp; A".into());
+        r.csl.insert("container-title".into(), json!("<i>Q</i> &amp; A"));
         let refs = [r];
-        let index = OwnedIndex::new(refs.into());
+        let index = build_index(refs.into());
         for query in ["q & a", "Q A", "q&a"] {
-            let hits = index.search(query, 10);
+            let hits = index.search(query, 10, None, &|| false).unwrap_or_default();
             assert_eq!(hits.len(), 1, "{query}");
             assert!(hits[0].matched.contains(&MatchField::Container), "{query}");
         }
-        assert!(index.search("amp", 10).is_empty());
-        assert_eq!(index.texts.field(0, 6), "q a");
+        assert!(index.search("amp", 10, None, &|| false).unwrap_or_default().is_empty());
     }
 
     #[test]
     fn source_scopes_filter_before_limits_for_words_unicode_and_identifiers() {
-        let mut refs = crate::bibtex::load_str(
-            "zotero:user",
-            "@article{same,title={García 研究},doi={10.1000/scope},isbn={0-306-40615-2},pmid={12345},eprint={2101.00001},archiveprefix={arXiv},year={2026}}",
-        )
-        .references;
+        let mut first = reference("same", "García 研究", "Example", 2026);
+        first.id.library = library_id("zotero:user");
+        for (name, value) in [
+            ("DOI", json!("10.1000/scope")),
+            ("ISBN", json!("0-306-40615-2")),
+            ("PMID", json!("12345")),
+        ] {
+            first.csl.insert(name.into(), value);
+        }
+        first.identifiers.push(Identifier::Arxiv("2101.00001".into()));
+        let mut refs = vec![first];
         for n in 0..3 {
             let mut r = refs[0].clone();
-            r.id.source = "zotero:group:7".into();
-            r.id.native_key = format!("group{n}");
-            r.issued = Some(Issued::year(2020 + n));
+            r.id.library = library_id("zotero:group:7");
+            r.id.key = format!("group{n}");
+            r.csl.insert("issued".into(), json!({"date-parts": [[2020 + n]]}));
             refs.push(r);
         }
-        let owned = OwnedIndex::new(refs.clone());
-        assert_eq!(owned.source_counts().get("zotero:user"), Some(&1));
-        assert_eq!(owned.source_counts().get("zotero:group:7"), Some(&3));
-        assert_eq!(owned.source_counts().values().sum::<usize>(), owned.references().len());
-        let group = vec!["zotero:group:7".into()];
-        let all = vec!["zotero:user".into(), "zotero:group:7".into()];
+        let owned = build_index(refs.clone());
+        let group = vec![library_id("zotero:group:7")];
+        let all = vec![library_id("zotero:user"), library_id("zotero:group:7")];
         for query in [
             "garcia",
             "研究",
@@ -1512,32 +1390,45 @@ mod tests {
                 Some(all.as_slice()),
                 Some(group.as_slice()),
                 Some(&[]),
-                Some(&["missing".into()][..]),
+                Some(&[library_id("missing")][..]),
             ] {
                 let expected: Vec<_> = owned
-                    .search(query, 10)
+                    .search(query, 10, None, &|| false)
+                    .unwrap_or_default()
                     .into_iter()
-                    .filter(|h| scope.is_none_or(|s| s.contains(&h.reference.id.source)))
+                    .filter(|h| scope.is_none_or(|s| s.contains(&h.item.object.id().library)))
                     .take(2)
-                    .map(|h| h.reference.id.clone())
+                    .map(|h| h.item.object.id().clone())
                     .collect();
-                let hits = owned.search_scoped(query, 2, scope);
+                let hits = owned.search(query, 2, scope, &|| false).unwrap_or_default();
                 assert_eq!(
-                    hits.iter().map(|h| h.reference.id.clone()).collect::<Vec<_>>(),
+                    hits.iter().map(|h| h.item.object.id().clone()).collect::<Vec<_>>(),
                     expected
                 );
             }
-            assert!(owned.search_scoped(query, 0, Some(&group)).is_empty());
-            assert!(owned.search_scoped_until(query, 2, Some(&group), &|| true).is_none());
+            assert!(
+                owned
+                    .search(query, 0, Some(&group), &|| false)
+                    .unwrap_or_default()
+                    .is_empty()
+            );
+            assert!(owned.search(query, 2, Some(&group), &|| true).is_none());
         }
-        assert!(owned.search_scoped("", 2, Some(&group)).is_empty());
+        assert!(
+            owned
+                .search("", 2, Some(&group), &|| false)
+                .unwrap_or_default()
+                .is_empty()
+        );
         // An identifier outside this scope must not suppress an ordinary match inside it.
         let mut fallback = reference("fallback", "10.1000/scope", "Example", 2020);
-        fallback.id.source = "file".into();
+        fallback.id.library = library_id("file");
         refs.push(fallback);
-        let owned = OwnedIndex::new(refs);
-        let hits = owned.search_scoped("10.1000/scope", 1, Some(&["file".into()]));
-        assert_eq!(hits[0].reference.id.native_key, "fallback");
+        let owned = build_index(refs);
+        let hits = owned
+            .search("10.1000/scope", 1, Some(&[library_id("file")]), &|| false)
+            .unwrap_or_default();
+        assert_eq!(hits[0].item.object.id().key, "fallback");
         assert_eq!(hits[0].matched, [MatchField::Title]);
     }
 
@@ -1548,8 +1439,16 @@ mod tests {
             mpsc,
         };
         let mut r = reference("a", "Synthetic research", "Example", 2020);
-        r.doi = Some("10.1000/scope".into());
-        let index = OwnedIndex::new(vec![r; 10_000]);
+        r.csl.insert("DOI".into(), json!("10.1000/scope"));
+        let index = build_index(
+            (0..10_000)
+                .map(|n| {
+                    let mut r = r.clone();
+                    r.id.key = format!("item{n}");
+                    r
+                })
+                .collect(),
+        );
         for query in ["research", "10.1000/scope"] {
             let cancelled = AtomicBool::new(false);
             let (paused, ready) = mpsc::channel();
@@ -1568,7 +1467,7 @@ mod tests {
                         }
                         cancelled.load(Ordering::SeqCst)
                     };
-                    index.search_scoped_until(query, 20, Some(&["excluded".into()]), &stop)
+                    index.search(query, 20, Some(&[library_id("excluded")]), &stop)
                 });
                 ready
                     .recv_timeout(std::time::Duration::from_secs(5))
@@ -1580,64 +1479,11 @@ mod tests {
         }
     }
 
-    /// Manual scale evidence, separated from parsing, IPC and rendering.
-    #[test]
-    #[ignore = "manual synthetic scale measurement; no timing assertion"]
-    fn owned_index_100000_reference_measurement() {
-        use std::time::{Duration, Instant};
-        let refs: Vec<_> = (0..100_000)
-            .map(|i| {
-                let mut r = reference(&format!("ref{i:05}"), "Synthetic research 研究", "García", 2024);
-                r.id.source = if i < 50_000 { "synthetic-a" } else { "synthetic-b" }.into();
-                r.id.native_key = format!("n{:05}", i % 50_000);
-                r
-            })
-            .collect();
-        let expected: Vec<_> = refs.iter().take(200).map(|r| r.id.clone()).collect();
-        let last = refs[99_999].id.clone();
-        let started = Instant::now();
-        let index = OwnedIndex::new(refs);
-        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
-        eprintln!(
-            "synthetic records=100000 profile={profile} index_build_us={}",
-            started.elapsed().as_micros()
-        );
-        assert_eq!(index.references().len(), 100_000);
-        for (query, limit, count) in [
-            ("r", 20, 20),
-            ("研", 20, 20),
-            ("research", 20, 20),
-            ("research", 200, 200),
-            ("研究", 20, 20),
-            ("研究", 200, 200),
-            ("ref99999", 20, 1),
-            ("missing-synthetic-term", 20, 0),
-        ] {
-            let mut elapsed = Duration::ZERO;
-            for _ in 0..10 {
-                let started = Instant::now();
-                let hits = index.search(query, limit);
-                elapsed += started.elapsed();
-                assert_eq!(hits.len(), count);
-                let ids: Vec<_> = hits.iter().map(|hit| hit.reference.id.clone()).collect();
-                if count == 1 {
-                    assert_eq!(ids.as_slice(), std::slice::from_ref(&last));
-                } else {
-                    assert_eq!(ids, expected[..count]);
-                }
-            }
-            eprintln!(
-                "query={query:?} limit={limit} returned={count} samples=10 mean_us={}",
-                elapsed.as_micros() / 10
-            );
-        }
-    }
-
     #[test]
     fn accents_and_case_are_ignored() {
         let refs = [reference("garcia2022", "Sueño y memoria", "García", 2022)];
-        let index = OwnedIndex::new(refs.into());
-        let hits = index.search("GARCIA sueno", 10);
+        let index = build_index(refs.into());
+        let hits = index.search("GARCIA sueno", 10, None, &|| false).unwrap_or_default();
         assert_eq!(hits.len(), 1);
         // A whole surname is better evidence than the start of a key.
         assert_eq!(hits[0].matched, [MatchField::Title, MatchField::Author]);
@@ -1649,10 +1495,10 @@ mod tests {
             reference("a", "Sleep and memory", "Smith", 2020),
             reference("b", "Sleep and diet", "Jones", 2021),
         ];
-        let index = OwnedIndex::new(refs.into());
-        let hits = index.search("sleep memory", 10);
+        let index = build_index(refs.into());
+        let hits = index.search("sleep memory", 10, None, &|| false).unwrap_or_default();
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].reference.id.native_key, "a");
+        assert_eq!(hits[0].item.object.id().key, "a");
     }
 
     #[test]
@@ -1664,8 +1510,7 @@ mod tests {
             ("a", format!("b{}", "a".repeat(65_535))),
         ] {
             let r = reference("k", &title, "Example", 2024);
-            let mut texts = Texts::default();
-            prepare(&r, &mut texts);
+            let index = build_index(vec![r]);
             let parse_checks = Cell::new(0);
             assert!(
                 Query::parse(query, &|| {
@@ -1674,15 +1519,16 @@ mod tests {
                 })
                 .is_some()
             );
-            // Cancellation becomes visible only after query preparation, while
-            // processing one matching record, without relying on elapsed time.
+            // Allow the identifier probe and query preparation, then cancel
+            // while processing one matching record, without relying on time.
             let checks = Cell::new(0);
             assert!(
-                rank(std::slice::from_ref(&r), &texts, query, 10, None, &|| {
-                    checks.set(checks.get() + 1);
-                    checks.get() > parse_checks.get() + 1
-                })
-                .is_none(),
+                index
+                    .search(query, 10, None, &|| {
+                        checks.set(checks.get() + 1);
+                        checks.get() > parse_checks.get() + 2
+                    })
+                    .is_none(),
                 "{}",
                 &query[..10.min(query.len())]
             );
@@ -1692,28 +1538,41 @@ mod tests {
     #[test]
     fn repeated_folded_terms_keep_scores_explanations_and_order() {
         let mut red = reference("r", "Red", "Example", 2000);
-        red.abstract_text = Some("Blue".into());
+        red.csl.insert("abstract".into(), json!("Blue"));
         let mut blue = reference("b", "Blue", "Example", 2025);
-        blue.abstract_text = Some("Red".into());
+        blue.csl.insert("abstract".into(), json!("Red"));
         let refs = [blue, red];
-        let owned = OwnedIndex::new(refs.into());
-        let hits = owned.search("RÉD red blue", 10);
+        let owned = build_index(refs.into());
+        let hits = owned.search("RÉD red blue", 10, None, &|| false).unwrap_or_default();
         assert_eq!(
             hits.iter()
-                .map(|h| (&*h.reference.id.native_key, h.score, h.matched.clone()))
+                .map(|h| (&*h.item.object.id().key, h.score, h.matched.clone()))
                 .collect::<Vec<_>>(),
             [
                 ("r", 84, vec![MatchField::Title, MatchField::Abstract]),
                 ("b", 48, vec![MatchField::Title, MatchField::Abstract]),
             ]
         );
-        let hits = owned.search_scoped("red red blue", 1, Some(&["t".into()]));
-        assert_eq!(hits[0].reference.id.native_key, "r");
-        assert!(owned.search_scoped("red red blue", 1, Some(&[])).is_empty());
+        let hits = owned
+            .search("red red blue", 1, Some(&[library_id("t")]), &|| false)
+            .unwrap_or_default();
+        assert_eq!(hits[0].item.object.id().key, "r");
+        assert!(
+            owned
+                .search("red red blue", 1, Some(&[]), &|| false)
+                .unwrap_or_default()
+                .is_empty()
+        );
         // Coalescing terms must not turn a repeated query into an exact match.
-        assert_eq!(owned.search("red red", 1)[0].score, 80);
-        let exact = OwnedIndex::new(vec![reference("red red", "red red", "Example", 2024)]);
-        assert_eq!(exact.search("red red", 1)[0].score, 2096);
+        assert_eq!(
+            owned.search("red red", 1, None, &|| false).unwrap_or_default()[0].score,
+            80
+        );
+        let exact = build_index(vec![reference("red red", "red red", "Example", 2024)]);
+        assert_eq!(
+            exact.search("red red", 1, None, &|| false).unwrap_or_default()[0].score,
+            2096
+        );
     }
 
     #[test]
@@ -1729,7 +1588,7 @@ mod tests {
     #[ignore = "manual synthetic repetitive-query measurement; no timing assertion"]
     fn repetitive_query_measurement() {
         use std::time::{Duration, Instant};
-        let index = OwnedIndex::new(
+        let index = build_index(
             (0..5_000)
                 .map(|n| reference(&format!("key{n}"), "Synthetic research", "Example", 2024))
                 .collect(),
@@ -1738,7 +1597,7 @@ mod tests {
             let mut elapsed = Duration::ZERO;
             for _ in 0..10 {
                 let started = Instant::now();
-                let hits = index.search(&query, 20);
+                let hits = index.search(&query, 20, None, &|| false).unwrap_or_default();
                 elapsed += started.elapsed();
                 assert_eq!(hits.len(), 20);
                 assert_eq!(hits[0].score, 20 * query.split_whitespace().count() as u32);
@@ -1757,11 +1616,19 @@ mod tests {
             reference("smith2020", "On smith2020 data", "Other", 2019),
             reference("smith2020x", "Unrelated", "Smith", 2020),
         ];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("smith2020", 10)[0].reference.id.native_key, "smith2020");
+        let index = build_index(refs.into());
+        assert_eq!(
+            index.search("smith2020", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "smith2020"
+        );
         assert!(
             index
-                .search("202", 10)
+                .search("202", 10, None, &|| false)
+                .unwrap_or_default()
                 .iter()
                 .all(|h| !h.matched.contains(&MatchField::Year))
         );
@@ -1773,10 +1640,31 @@ mod tests {
             reference("gr", "Οδός προς την ΓΝΩΣΙΣ", "Παπαδόπουλος", 2020),
             reference("de", "Die Straße der Erinnerung", "Weiß", 2021),
         ];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("γνωσις", 10)[0].reference.id.native_key, "gr");
-        assert_eq!(index.search("ΓΝΏΣΙΣ", 10)[0].reference.id.native_key, "gr");
-        assert_eq!(index.search("strasse weiss", 10)[0].reference.id.native_key, "de");
+        let index = build_index(refs.into());
+        assert_eq!(
+            index.search("γνωσις", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "gr"
+        );
+        assert_eq!(
+            index.search("ΓΝΏΣΙΣ", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "gr"
+        );
+        assert_eq!(
+            index.search("strasse weiss", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "de"
+        );
     }
 
     #[test]
@@ -1785,21 +1673,48 @@ mod tests {
             reference("a:b", "Newer", "X", 2024),
             reference("a-b", "Older", "Y", 2001),
         ];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("a-b", 10)[0].reference.id.native_key, "a-b");
-        assert_eq!(index.search("a:b", 10)[0].reference.id.native_key, "a:b");
+        let index = build_index(refs.into());
+        assert_eq!(
+            index.search("a-b", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "a-b"
+        );
+        assert_eq!(
+            index.search("a:b", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "a:b"
+        );
     }
 
     #[test]
     fn translators_and_other_roles_are_searchable() {
-        let refs = crate::bibtex::load_str(
-            "t",
-            "@book{translation,title={Synthetic},translator={Translator, Taylor},year={2024}}\n@book{compilation,title={Another},editor={Compiler, Casey},editortype={compiler},year={2024}}",
-        )
-        .references;
-        let index = OwnedIndex::new(refs);
-        assert_eq!(index.search("Translator", 10).len(), 1);
-        assert_eq!(index.search("Compiler", 10).len(), 1);
+        let mut translation = reference("translation", "Synthetic", "Example", 2024);
+        translation
+            .csl
+            .insert("translator".into(), json!([{"family":"Translator","given":"Taylor"}]));
+        let mut compilation = reference("compilation", "Another", "Example", 2024);
+        compilation
+            .csl
+            .insert("compiler".into(), json!([{"family":"Compiler","given":"Casey"}]));
+        let refs = vec![translation, compilation];
+        let index = build_index(refs);
+        assert_eq!(
+            index
+                .search("Translator", 10, None, &|| false)
+                .unwrap_or_default()
+                .len(),
+            1
+        );
+        assert_eq!(
+            index.search("Compiler", 10, None, &|| false).unwrap_or_default().len(),
+            1
+        );
     }
 
     #[test]
@@ -1808,9 +1723,23 @@ mod tests {
             reference("zh", "睡眠与记忆", "示例", 2025),
             reference("ar", "النوم والذاكرة", "مثال", 2021),
         ];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("记忆", 10)[0].reference.id.native_key, "zh");
-        assert_eq!(index.search("الذاكرة", 10)[0].reference.id.native_key, "ar");
+        let index = build_index(refs.into());
+        assert_eq!(
+            index.search("记忆", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "zh"
+        );
+        assert_eq!(
+            index.search("الذاكرة", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "ar"
+        );
     }
 
     #[test]
@@ -1821,14 +1750,41 @@ mod tests {
             reference("fr", "Œuvres et Cæsar", "Đorđević", 2022),
             reference("tr", "Uykunun ışığı", "Yılmaz", 2023),
         ];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("lodzi", 10)[0].reference.id.native_key, "pl");
-        assert_eq!(index.search("sovn odegard", 10)[0].reference.id.native_key, "no");
+        let index = build_index(refs.into());
         assert_eq!(
-            index.search("oeuvres caesar dordevic", 10)[0].reference.id.native_key,
+            index.search("lodzi", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "pl"
+        );
+        assert_eq!(
+            index.search("sovn odegard", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "no"
+        );
+        assert_eq!(
+            index
+                .search("oeuvres caesar dordevic", 10, None, &|| false)
+                .unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
             "fr"
         );
-        assert_eq!(index.search("isigi yilmaz", 10)[0].reference.id.native_key, "tr");
+        assert_eq!(
+            index.search("isigi yilmaz", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "tr"
+        );
     }
 
     #[test]
@@ -1838,18 +1794,39 @@ mod tests {
             reference("fa", "كتاب الذكي", "علي", 2020),
             reference("tw", "العـــلم", "مثال", 2021),
         ];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("کتاب", 10)[0].reference.id.native_key, "fa");
-        assert_eq!(index.search("علی", 10)[0].reference.id.native_key, "fa");
-        assert_eq!(index.search("العلم", 10)[0].reference.id.native_key, "tw");
+        let index = build_index(refs.into());
+        assert_eq!(
+            index.search("کتاب", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "fa"
+        );
+        assert_eq!(
+            index.search("علی", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "fa"
+        );
+        assert_eq!(
+            index.search("العلم", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "tw"
+        );
     }
 
     #[test]
     fn hiragana_and_katakana_match_each_other() {
         let refs = [reference("ja", "ヤマダの研究", "ヤマダ", 2020)];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("やまだ", 10).len(), 1);
-        assert_eq!(index.search("ﾔﾏﾀﾞ", 10).len(), 1);
+        let index = build_index(refs.into());
+        assert_eq!(index.search("やまだ", 10, None, &|| false).unwrap_or_default().len(), 1);
+        assert_eq!(index.search("ﾔﾏﾀﾞ", 10, None, &|| false).unwrap_or_default().len(), 1);
     }
 
     #[test]
@@ -1859,12 +1836,13 @@ mod tests {
             reference("ka", "かっこう", "例", 2021),
             reference("hi", "किताब", "उदाहरण", 2022),
         ];
-        let index = OwnedIndex::new(refs.into());
+        let index = build_index(refs.into());
         let keys = |q| {
             index
-                .search(q, 10)
+                .search(q, 10, None, &|| false)
+                .unwrap_or_default()
                 .iter()
-                .map(|h| h.reference.id.native_key.clone())
+                .map(|h| h.item.object.id().key.clone())
                 .collect::<Vec<_>>()
         };
         assert_eq!(keys("がっこう"), ["ga"]);
@@ -1877,17 +1855,31 @@ mod tests {
             reference("vs", "葛\u{E0100}城の研究", "例", 2020),
             reference("he", "בית־ספר", "דוגמה", 2021),
         ];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("葛城", 10)[0].reference.id.native_key, "vs");
-        assert_eq!(index.search("ספר", 10)[0].reference.id.native_key, "he");
+        let index = build_index(refs.into());
+        assert_eq!(
+            index.search("葛城", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "vs"
+        );
+        assert_eq!(
+            index.search("ספר", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "he"
+        );
         assert_eq!(normalize("❤\u{FE0F}x"), "x");
         assert_eq!(normalize("か゛ き"), "か き");
         assert_eq!(normalize("בית־ספר"), "בית ספר");
 
         let refs = [reference("ko", "한국어 연구", "김", 2020)];
-        let index = OwnedIndex::new(refs.into());
-        assert_eq!(index.search("한국", 10).len(), 1);
-        assert!(index.search("하국", 10).is_empty());
+        let index = build_index(refs.into());
+        assert_eq!(index.search("한국", 10, None, &|| false).unwrap_or_default().len(), 1);
+        assert!(index.search("하국", 10, None, &|| false).unwrap_or_default().is_empty());
     }
 
     #[test]
@@ -1895,13 +1887,13 @@ mod tests {
         let refs: Vec<_> = (0..10_000)
             .map(|n| reference(&format!("k{n}"), "Sleep study", "Smith", 2000 + (n % 20)))
             .collect();
-        let index = OwnedIndex::new(refs);
-        assert!(index.search_until("sleep", 10, &|| true).is_none());
-        assert!(index.search("sleep", 0).is_empty());
-        let top = index.search("sleep", 5);
-        let all = index.search("sleep", 10_000);
+        let index = build_index(refs);
+        assert!(index.search("sleep", 10, None, &|| true).is_none());
+        assert!(index.search("sleep", 0, None, &|| false).unwrap_or_default().is_empty());
+        let top = index.search("sleep", 5, None, &|| false).unwrap_or_default();
+        let all = index.search("sleep", 10_000, None, &|| false).unwrap_or_default();
         assert_eq!(all.len(), 10_000);
-        let ids = |hits: &[Hit]| hits.iter().map(|h| h.reference.id.clone()).collect::<Vec<_>>();
+        let ids = |hits: &[RecordHit<'_>]| hits.iter().map(|h| h.item.object.id().clone()).collect::<Vec<_>>();
         assert_eq!(ids(&top), ids(&all[..5]));
         assert_eq!(top[0].matched, [MatchField::Title]);
     }
@@ -1912,10 +1904,10 @@ mod tests {
             reference("ΜΑΣ", "Other", "X", 2020),
             reference("μας13", "Other", "Y", 2021),
         ];
-        let index = OwnedIndex::new(refs.into());
+        let index = build_index(refs.into());
         for (query, key) in [("μας", "ΜΑΣ"), ("Μας", "ΜΑΣ"), ("ΜΑΣ13", "μας13")] {
-            let hits = index.search(query, 10);
-            assert_eq!(hits[0].reference.id.native_key, key, "{query}");
+            let hits = index.search(query, 10, None, &|| false).unwrap_or_default();
+            assert_eq!(hits[0].item.object.id().key, key, "{query}");
             assert!(hits[0].score >= 2000, "{query}");
         }
     }
@@ -1926,25 +1918,36 @@ mod tests {
             reference("a", "Insomnia", "X", 2020),
             reference("b", "The somnia", "Y", 2020),
         ];
-        let index = OwnedIndex::new(refs.into());
-        let hits = index.search("somnia", 10);
-        assert_eq!(hits[0].reference.id.native_key, "b");
+        let index = build_index(refs.into());
+        let hits = index.search("somnia", 10, None, &|| false).unwrap_or_default();
+        assert_eq!(hits[0].item.object.id().key, "b");
         assert_eq!(hits[0].score, 2 * hits[1].score);
     }
 
     #[test]
     fn a_pasted_identifier_finds_the_record_that_carries_it() {
-        let refs = crate::bibtex::load_str(
-            "t",
-            "@article{doi1, title={Sleep}, doi={10.1000/ABC.1}, year={2020}}
-             @book{isbn1, title={Memory}, isbn={0-306-40615-2}, year={2019}}
-             @article{arx, title={Dreams}, url={https://arxiv.org/abs/2101.00001v2}, year={2021}}
-             @article{pm, title={Naps}, url={https://pubmed.ncbi.nlm.nih.gov/12345/}, year={2022}}
-             @article{old, title={Strings}, eprint={hep-th/9711200}, archiveprefix={arXiv}, year={1997}}
-             @article{other, title={Mentions 10.1000/abc.1 in passing}, year={2023}}",
-        )
-        .references;
-        let owned = OwnedIndex::new(refs);
+        let mut doi = reference("doi1", "Sleep", "Example", 2020);
+        doi.csl.insert("DOI".into(), json!("10.1000/ABC.1"));
+        let mut isbn = reference("isbn1", "Memory", "Example", 2019);
+        isbn.csl.insert("ISBN".into(), json!("0-306-40615-2"));
+        let mut arxiv = reference("arx", "Dreams", "Example", 2021);
+        arxiv
+            .csl
+            .insert("URL".into(), json!("https://arxiv.org/abs/2101.00001v2"));
+        let mut pmid = reference("pm", "Naps", "Example", 2022);
+        pmid.csl
+            .insert("URL".into(), json!("https://pubmed.ncbi.nlm.nih.gov/12345/"));
+        let mut old = reference("old", "Strings", "Example", 1997);
+        old.identifiers.push(Identifier::Arxiv("hep-th/9711200".into()));
+        let refs = vec![
+            doi,
+            isbn,
+            arxiv,
+            pmid,
+            old,
+            reference("other", "Mentions 10.1000/abc.1 in passing", "Example", 2023),
+        ];
+        let owned = build_index(refs);
         for (query, key, field) in [
             ("https://doi.org/10.1000/abc.1", "doi1", MatchField::Doi),
             ("978-0-306-40615-7", "isbn1", MatchField::Identifier),
@@ -1954,18 +1957,31 @@ mod tests {
             ("arXiv:hep-th/9711200", "old", MatchField::Identifier),
             ("https://arxiv.org/abs/hep-th/9711200", "old", MatchField::Identifier),
         ] {
-            let hits = owned.search(query, 10);
+            let hits = owned.search(query, 10, None, &|| false).unwrap_or_default();
             assert_eq!(hits.len(), 1, "{query}");
-            assert_eq!(hits[0].reference.id.native_key, key, "{query}");
+            assert_eq!(hits[0].item.object.id().key, key, "{query}");
             assert_eq!(hits[0].matched, [field], "{query}");
         }
         // An identifier nobody carries falls back to ordinary search.
-        assert_eq!(owned.search("10.1000/zzz", 10).len(), 0);
-        assert_eq!(owned.search("passing", 10)[0].reference.id.native_key, "other");
+        assert_eq!(
+            owned
+                .search("10.1000/zzz", 10, None, &|| false)
+                .unwrap_or_default()
+                .len(),
+            0
+        );
+        assert_eq!(
+            owned.search("passing", 10, None, &|| false).unwrap_or_default()[0]
+                .item
+                .object
+                .id()
+                .key,
+            "other"
+        );
     }
 
     /// A small synthetic library for the forgiving-search rules below.
-    fn library() -> OwnedIndex {
+    fn library() -> SnapshotIndex {
         let mut refs = vec![
             reference("smith2020", "Sleep and memory consolidation", "Smith", 2020),
             reference("smyth2019", "Dreams in the laboratory", "Smyth", 2019),
@@ -1979,32 +1995,32 @@ mod tests {
             reference("yamada2022", "研究", "山田 太郎", 2022),
             reference("plain2014", "Unrelated title", "Plain", 2014),
         ];
-        refs[0].authors.push(Name {
-            family: Some("Jones".into()),
-            given: Some("Ann".into()),
-            ..Name::default()
-        });
-        refs[0].authors[0].given = Some("John".into());
-        refs[0].keywords = vec!["sleep".into(), "memory".into()];
-        refs[0].container_title = Some("Journal of Sleep Research".into());
+        refs[0].csl.insert(
+            "author".into(),
+            json!([{"family":"Smith","given":"John"},{"family":"Jones","given":"Ann"}]),
+        );
+        refs[0].csl.insert("keyword".into(), json!("sleep, memory"));
         refs[0]
-            .variables
-            .insert("container-title-short".into(), "J Sleep Res".into());
-        refs[1].keywords = vec!["sleepiness".into()];
-        refs[8].authors[0].given = Some("J. R. R.".into());
-        refs[9].authors[0] = Name {
-            literal: Some("山田 太郎".into()),
-            ..Name::default()
-        };
-        refs[10].abstract_text = Some("A study of sleep and memory in rats".into());
-        OwnedIndex::new(refs)
+            .csl
+            .insert("container-title".into(), json!("Journal of Sleep Research"));
+        refs[0].csl.insert("container-title-short".into(), json!("J Sleep Res"));
+        refs[1].csl.insert("keyword".into(), json!("sleepiness"));
+        refs[8]
+            .csl
+            .insert("author".into(), json!([{"family":"Tolkien","given":"J. R. R."}]));
+        refs[9].csl.insert("author".into(), json!([{"literal":"山田 太郎"}]));
+        refs[10]
+            .csl
+            .insert("abstract".into(), json!("A study of sleep and memory in rats"));
+        build_index(refs)
     }
 
-    fn keys(index: &OwnedIndex, query: &str, limit: usize) -> Vec<String> {
+    fn keys(index: &SnapshotIndex, query: &str, limit: usize) -> Vec<String> {
         index
-            .search(query, limit)
+            .search(query, limit, None, &|| false)
+            .unwrap_or_default()
             .iter()
-            .map(|hit| hit.reference.id.native_key.clone())
+            .map(|hit| hit.item.object.id().key.clone())
             .collect()
     }
 
@@ -2014,7 +2030,10 @@ mod tests {
         // Completed words: one letter swapped, changed, missing or extra.
         for query in ["smtih ", "smiht ", "smitj ", "smithh ", "consolidaton "] {
             assert_eq!(keys(&index, query, 10), ["smith2020"], "{query:?}");
-            assert!(index.search(query, 10)[0].typo, "{query:?}");
+            assert!(
+                index.search(query, 10, None, &|| false).unwrap_or_default()[0].typo,
+                "{query:?}"
+            );
         }
         // A word still being typed may be a misspelt start of a word.
         assert_eq!(keys(&index, "nueros", 10), ["li2021"]);
@@ -2022,7 +2041,7 @@ mod tests {
         // Exact matches come first; a close match only follows them.
         assert_eq!(keys(&index, "trial ", 10), ["trial2016", "trail2015"]);
         assert_eq!(keys(&index, "trial ", 1), ["trial2016"]);
-        assert!(!index.search("trial ", 1)[0].typo);
+        assert!(!index.search("trial ", 1, None, &|| false).unwrap_or_default()[0].typo);
         assert_eq!(keys(&index, "smith ", 10), ["smith2020", "smyth2019"]);
     }
 
@@ -2105,7 +2124,10 @@ mod tests {
         // The title match fills a limit of one; the abstract adds a second.
         assert_eq!(keys(&index, "sleep memory", 1), ["smith2020"]);
         assert_eq!(keys(&index, "sleep memory", 10), ["smith2020", "plain2014"]);
-        assert_eq!(index.search("sleep memory", 10)[1].matched, [MatchField::Abstract]);
+        assert_eq!(
+            index.search("sleep memory", 10, None, &|| false).unwrap_or_default()[1].matched,
+            [MatchField::Abstract]
+        );
         assert_eq!(keys(&index, "rats", 10), ["plain2014"]);
     }
 
@@ -2149,12 +2171,12 @@ mod tests {
     #[test]
     fn review_findings_on_hints_tags_and_typing_state() {
         let mut tagged = reference("tagged", "Unrelated", "Example", 2020);
-        tagged.keywords = vec!["sleepiness".into()];
+        tagged.csl.insert("keyword".into(), json!("sleepiness"));
         let mut abbreviated = reference("rna", "MicroRNA", "Example", 2019);
-        abbreviated.variables.insert("title-short".into(), "RNA".into());
+        abbreviated.csl.insert("title-short".into(), json!("RNA"));
         let mut keyword_only = reference("kw", "Other", "Example", 2018);
-        keyword_only.keywords = vec!["sleep".into()];
-        let index = OwnedIndex::new(vec![
+        keyword_only.csl.insert("keyword".into(), json!("sleep"));
+        let index = build_index(vec![
             tagged,
             abbreviated,
             keyword_only,
@@ -2177,8 +2199,8 @@ mod tests {
     #[test]
     fn an_occurrence_that_does_not_count_cannot_hide_one_that_does() {
         let mut first = reference("foo", "foo foo", "Example", 2020);
-        first.abstract_text = Some("foo foo".into());
-        let index = OwnedIndex::new(vec![first, reference("bar", "foo foo stuff", "Example", 2020)]);
+        first.csl.insert("abstract".into(), json!("foo foo"));
+        let index = build_index(vec![first, reference("bar", "foo foo stuff", "Example", 2020)]);
         assert_eq!(keys(&index, "\"foo foo\"", 10), ["foo", "bar"]);
         assert_eq!(keys(&index, "\"foo foo\"", 1), ["foo"]);
     }
@@ -2186,7 +2208,7 @@ mod tests {
     #[test]
     fn hostile_queries_do_bounded_work_and_typos_poll_cancellation() {
         use std::cell::Cell;
-        let index = OwnedIndex::new(
+        let index = build_index(
             (0..10)
                 .map(|n| reference(&format!("k{n}"), "Title", "Example", 2020))
                 .collect(),
@@ -2206,18 +2228,18 @@ mod tests {
         };
         assert!(
             index
-                .search_until(&words, 20, &stop)
+                .search(&words, 20, None, &stop)
                 .is_some_and(|hits| hits.is_empty())
         );
         // Parsing polls every 64 words; nothing rescans the index per word.
         assert!(checks.get() < 1_000, "{}", checks.get());
 
         let alphas = vec!["α"; 50_000].join(" ");
-        let index = OwnedIndex::new(vec![reference("greek", &alphas, "Example", 2020)]);
+        let index = build_index(vec![reference("greek", &alphas, "Example", 2020)]);
         checks.set(0);
         assert!(
             index
-                .search_until("αβγδε ", 20, &stop)
+                .search("αβγδε ", 20, None, &stop)
                 .is_some_and(|hits| hits.is_empty())
         );
         assert!(checks.get() > 10, "the typo pass polls while it scans");

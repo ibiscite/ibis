@@ -4,9 +4,8 @@
 //! before the old file is replaced, and keeps the previous file as a backup,
 //! so a crash, a power cut or a bad edit never loses the last working
 //! settings. Fields this build does not know are kept on save, so builds
-//! that add fields within one format do not erase each other's (ADR 0022). A file written by a newer version of Ibis is refused
-//! rather than overwritten; a file written by an older version is migrated
-//! when it is read, one version step at a time (ADR 0018).
+//! that add fields within one format do not erase each other's (ADR 0022).
+//! Other format versions are refused, without migration (ADR 0016).
 
 use std::fs;
 use std::io::{self, Write};
@@ -226,11 +225,11 @@ fn backup_path(path: &Path) -> PathBuf {
 
 fn parse(text: &str) -> Result<Settings, SettingsError> {
     let invalid = |e: serde_json::Error| SettingsError::Invalid(e.to_string());
-    let mut value: Value = serde_json::from_str(text).map_err(invalid)?;
+    let value: Value = serde_json::from_str(text).map_err(invalid)?;
     // The version is checked before any other field: a newer format may
     // change field types, and must still be recognised as newer.
     let version = match value.get("schema_version") {
-        None | Some(Value::Null) => 1,
+        None => u64::from(SCHEMA_VERSION),
         Some(v) => v
             .as_u64()
             .ok_or_else(|| SettingsError::Invalid("schema_version must be a whole number".into()))?,
@@ -238,8 +237,8 @@ fn parse(text: &str) -> Result<Settings, SettingsError> {
     if version > u64::from(SCHEMA_VERSION) {
         return Err(SettingsError::NewerVersion(u32::try_from(version).unwrap_or(u32::MAX)));
     }
-    if version < 2 {
-        value = v1_to_v2(value);
+    if version < u64::from(SCHEMA_VERSION) {
+        return Err(SettingsError::Invalid(format!("unsupported settings format {version}")));
     }
     Settings::deserialize(&value).map_err(|error| {
         // Untagged enums discard the failing member's context. Inspect the
@@ -253,18 +252,6 @@ fn parse(text: &str) -> Result<Settings, SettingsError> {
         }
         invalid(error)
     })
-}
-
-/// Version 1 named the library by a bare path, always a BibTeX file.
-/// Version 2 says which kind of library it is. Other fields are unchanged.
-fn v1_to_v2(mut value: Value) -> Value {
-    if let Some(object) = value.as_object_mut() {
-        if let Some(path) = object.get("library").filter(|l| l.is_string()).cloned() {
-            object.insert("library".into(), serde_json::json!({ "bibtex": path }));
-        }
-        object.insert("schema_version".into(), Value::from(2));
-    }
-    value
 }
 
 /// Load settings, falling back to the backup, then to defaults. Report a missing
@@ -611,7 +598,7 @@ mod tests {
         let directory = dir("backup-temporary-alias");
         let path = directory.path().join("settings.json");
         let temporary = path.with_extension("json.tmp");
-        let bytes = br#"{"library":"refs.bib","future_choice":[true,null]}"#;
+        let bytes = br#"{"library":{"bibtex":"refs.bib"},"future_choice":[true,null]}"#;
         fs::write(&temporary, bytes).unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
         // An occupied output name must never be followed or overwritten either.
@@ -675,7 +662,7 @@ mod tests {
     fn missing_primary_recovery_keeps_real_settings_after_two_saves() {
         for backup in [
             "{}",
-            r#"{"library":"参考.bib","shortcut":"Alt+Space","future_choice":{"kept":[true,null,"参考"]}}"#,
+            r#"{"library":{"bibtex":"参考.bib"},"shortcut":"Alt+Space","future_choice":{"kept":[true,null,"参考"]}}"#,
         ] {
             for change_first in [false, true] {
                 let directory = dir("missing-recover-save");
@@ -860,7 +847,7 @@ mod tests {
     fn a_backup_recovery_saves_and_keeps_each_damaged_file() {
         for backup in [
             "{}",
-            r#"{"library":"refs.bib","future_choice":{"kept":[true,null,"参考"]}}"#,
+            r#"{"library":{"bibtex":"refs.bib"},"future_choice":{"kept":[true,null,"参考"]}}"#,
         ] {
             let directory = dir("recover-save");
             let path = directory.path().join("settings.json");
@@ -1018,7 +1005,12 @@ mod tests {
 
     #[test]
     fn an_invalid_backup_cannot_authorize_recovery() {
-        for backup in [b"{".as_slice(), br#"{"schema_version":99}"#, b"\xff"] {
+        for backup in [
+            b"{".as_slice(),
+            br#"{"schema_version":1}"#,
+            br#"{"schema_version":99}"#,
+            b"\xff",
+        ] {
             let directory = dir("invalid-backup");
             let path = directory.path().join("settings.json");
             fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
@@ -1112,7 +1104,7 @@ mod tests {
         let path = directory.path().join("settings.json");
         update(&path, |s| s.copy_format = Some(KeyFormat::Typst)).unwrap_or_else(|e| panic!("{e}"));
         // The user edits the file while the app runs.
-        let edited = r#"{"schema_version": 1, "shortcut": "Alt+Space", "copy_format": "typst"}"#;
+        let edited = r#"{"schema_version": 2, "shortcut": "Alt+Space", "copy_format": "typst"}"#;
         fs::write(&path, edited).unwrap_or_else(|e| panic!("{e}"));
         let after = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(after.shortcut.as_deref(), Some("Alt+Space"));
@@ -1144,15 +1136,6 @@ mod tests {
         assert_eq!(saved["citation_style"], "apa");
         assert_eq!(saved["window_position"], newer_build["window_position"]);
         assert_eq!(saved["later_flag"], newer_build["later_flag"]);
-
-        // A format 1 file keeps its unknown fields through migration too.
-        fs::write(&path, r#"{"library": "/synthetic/refs.bib", "kept": "yes"}"#).unwrap_or_else(|e| panic!("{e}"));
-        update(&path, |s| s.larger_text = Some(true)).unwrap_or_else(|e| panic!("{e}"));
-        let saved: Value =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved["kept"], "yes");
-        assert_eq!(saved["schema_version"], 2);
-        assert_eq!(saved["library"], serde_json::json!({ "bibtex": "/synthetic/refs.bib" }));
     }
 
     #[test]
@@ -1171,56 +1154,56 @@ mod tests {
     }
 
     #[test]
-    fn version_1_files_are_migrated_when_read() {
-        let v1 = serde_json::json!({ "schema_version": 1, "library": "/synthetic/refs.bib", "shortcut": "Alt+Y" });
-        assert_eq!(
-            v1_to_v2(v1),
-            serde_json::json!({ "schema_version": 2, "library": { "bibtex": "/synthetic/refs.bib" }, "shortcut": "Alt+Y" })
-        );
-        // No library, no version, and already-migrated values pass through.
-        assert_eq!(
-            v1_to_v2(serde_json::json!({})),
-            serde_json::json!({ "schema_version": 2 })
-        );
-        let migrated = serde_json::json!({ "schema_version": 2, "library": { "bibtex": "/x.bib" } });
-        assert_eq!(v1_to_v2(migrated.clone()), migrated);
-
-        for text in [
+    fn old_formats_use_invalid_settings_recovery_without_migration() {
+        for old in [
             r#"{"schema_version": 1, "library": "/synthetic/refs.bib", "copy_format": "typst"}"#,
             r#"{"library": "/synthetic/refs.bib", "copy_format": "typst"}"#,
-            r#"{"schema_version": 0, "library": "/synthetic/refs.bib", "copy_format": "typst"}"#,
+            r#"{"schema_version": 1, "shortcut": "Alt+Y"}"#,
+            r#"{"schema_version": 0, "library": {"bibtex": "/synthetic/refs.bib"}}"#,
         ] {
-            let settings = parse(text).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(settings.schema_version, SCHEMA_VERSION);
+            let directory = dir("old-format");
+            let path = directory.path().join("settings.json");
+            fs::write(&path, old).unwrap_or_else(|e| panic!("{e}"));
+            let loaded = load(&path);
+            assert!(matches!(loaded.problem, Some(SettingsError::Invalid(_))));
+            assert_eq!(loaded.settings, Settings::default());
+            assert!(!loaded.from_backup);
+            assert!(matches!(
+                update(&path, |_| panic!("cannot update an old format without a valid backup")),
+                Err(SettingsError::Invalid(_))
+            ));
+            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), old);
+
+            let backup = r#"{"schema_version":2,"shortcut":"Alt+Space"}"#;
+            fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
+            let loaded = load(&path);
+            assert!(matches!(loaded.problem, Some(SettingsError::Invalid(_))));
+            assert!(loaded.from_backup);
+            assert_eq!(loaded.settings.shortcut.as_deref(), Some("Alt+Space"));
+            assert_eq!(loaded.settings.copy_format, None);
+            assert_eq!(loaded.settings.library, None);
+            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), old);
+
+            let saved = update(&path, |_| {}).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(saved, loaded.settings);
+            assert_eq!(load(&path).settings, saved);
+            assert!(load(&path).problem.is_none());
+            assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
             assert_eq!(
-                settings.library,
-                Some(LibrarySetting::Bibtex(PathBuf::from("/synthetic/refs.bib")))
+                fs::read_to_string(path.with_extension("json.invalid-1")).unwrap_or_default(),
+                old
             );
-            assert_eq!(settings.copy_format, Some(KeyFormat::Typst));
         }
-        assert!(matches!(
-            parse(r#"{"schema_version": "1"}"#),
-            Err(SettingsError::Invalid(_))
-        ));
     }
 
     #[test]
-    fn a_migrated_file_is_written_in_the_new_format_and_the_old_one_is_kept_as_backup() {
-        let directory = dir("migrate");
-        let path = directory.path().join("settings.json");
-        fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("no parent"))).unwrap_or_else(|e| panic!("{e}"));
-        let v1 = r#"{"schema_version": 1, "library": "/synthetic/refs.bib"}"#;
-        fs::write(&path, v1).unwrap_or_else(|e| panic!("{e}"));
-        assert!(load(&path).problem.is_none());
-        update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
-        let written: Value =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(written["schema_version"], 2);
-        assert_eq!(
-            written["library"],
-            serde_json::json!({ "bibtex": "/synthetic/refs.bib" })
-        );
-        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), v1);
+    fn invalid_format_versions_are_refused() {
+        for version in ["\"1\"", "null", "-1", "1.5"] {
+            assert!(matches!(
+                parse(&format!(r#"{{"schema_version":{version}}}"#)),
+                Err(SettingsError::Invalid(_))
+            ));
+        }
     }
 
     #[test]

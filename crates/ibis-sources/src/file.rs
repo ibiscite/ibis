@@ -206,6 +206,7 @@ fn parse_with_budget(
         snapshot,
         warnings,
         attachment_paths,
+        best_attachments: Default::default(),
     })
 }
 
@@ -516,7 +517,7 @@ fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
 }
 
 #[cfg(all(test, unix))]
-#[path = "../../ibis-core/tests/support/subprocess_watchdog.rs"]
+#[path = "../tests/support/subprocess_watchdog.rs"]
 mod subprocess_watchdog;
 
 #[cfg(test)]
