@@ -53,7 +53,8 @@ On Windows the closed reader's process, drive, attribute and ACL checks call
 Win32 directly through `windows-sys`, never PowerShell (changed 2026-10-28 in
 #1261: PowerShell was slow and fails under AppLocker and Constrained Language
 Mode). That module is the only `unsafe` code in Ibis: `ibis-zotero-local`
-denies it elsewhere and every other crate forbids it.
+denies it elsewhere and every other crate forbids it. This is the existing
+scoped native-call exception described in decision 0029.
 
 ## 0007 Formatting (with 0028)
 
@@ -98,9 +99,12 @@ from secure fields, never stored and never logged.
 
 ## 0029 Native calls
 
-Ibis's own code has no `unsafe`: the workspace lint `unsafe_code = "forbid"`
-stays. System calls go through maintained safe bindings that keep the unsafe
-part in their own reviewed code: objc2's generated AppKit and Core Graphics
+The workspace lint `unsafe_code = "forbid"` stays. The sole existing exception
+is decision 0006's reviewed Windows closed-reader module: `ibis-zotero-local`
+uses `deny` with a scoped allow there; every other crate keeps `forbid`
+(reconciled 2026-10-28 with #1261). Other system calls go through maintained
+safe bindings that keep the unsafe part in their own reviewed code: objc2's
+generated AppKit and Core Graphics
 bindings on macOS; on Windows, `winsafe` for Win32 (the window in front, its
 process, name and integrity level, `SendInput`) and `uiautomation` for UI
 Automation (password fields). A new binding crate needs `cargo deny` and a

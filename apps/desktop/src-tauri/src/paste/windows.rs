@@ -1,40 +1,30 @@
 //! The Windows calls behind a paste (#1133), through the safe winsafe and
 //! uiautomation bindings only.
 
-use std::sync::{Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
-use tauri_plugin_clipboard_manager::ClipboardExt;
-use winsafe::{self as w, co, prelude::*};
+use winsafe::{self as w, co};
 
-use super::Desk;
 use super::capture::Front;
-
-/// The window the picker was opened from and its process, to give it the
-/// keyboard back once the picker hides.
-static WINDOW: Mutex<Option<(w::HWND, u32)>> = Mutex::new(None);
+use super::{Desk, PasteEvent, TicketDesk};
 
 /// UI Automation waits on the app in front, which may be busy. A field that
-/// does not answer in time is treated as an ordinary field: a citation in a
-/// password box is harmless, a paste that never happens is not.
+/// does not answer in time has not proved that it is safe to paste.
 const ASK_LIMIT: Duration = Duration::from_millis(250);
+
+/// winsafe handles are Send but neither Clone nor Sync. Share an immutable
+/// HWND by borrowing it under a lock; no raw copying or unsafe is needed.
+#[derive(Clone)]
+pub(crate) struct Window(Arc<Mutex<w::HWND>>);
 
 /// The app in front, before the picker shows; its window is kept unless it is
 /// Ibis itself, so showing the picker again keeps the earlier one.
-pub(super) fn capture(own: i32) -> Option<Front> {
+pub(super) fn capture() -> (Option<Front>, Option<Window>) {
     let window = w::HWND::GetForegroundWindow();
     let front = window.as_ref().and_then(|window| front(window, true));
-    if let Ok(mut kept) = WINDOW.lock() {
-        match (window, &front) {
-            (Some(window), Some(front)) if front.pid != own => {
-                *kept = u32::try_from(front.pid).ok().map(|pid| (window, pid));
-            }
-            (_, Some(_)) => {}
-            _ => *kept = None,
-        }
-    }
-    front
+    (front, window.map(|window| Window(Arc::new(Mutex::new(window)))))
 }
 
 /// The app behind `window`, by executable file name and process; never the
@@ -44,10 +34,19 @@ fn front(window: &w::HWND, capture: bool) -> Option<Front> {
     let (_, pid) = window.GetWindowThreadProcessId();
     let process = w::HPROCESS::OpenProcess(co::PROCESS::QUERY_LIMITED_INFORMATION, false, pid).ok()?;
     let path = process.QueryFullProcessImageName(co::PROCESS_NAME::WIN32).ok()?;
+    let id = path.rsplit(['\\', '/']).next().map(str::to_owned);
+    let name = if capture {
+        let executable = id.clone().unwrap_or_default();
+        // Version resources can live on an unavailable share. Only the
+        // worker touches that file; the picker waits at most 50 ms.
+        Some(super::display_name(executable, move || described(&path)))
+    } else {
+        None
+    };
     Some(Front {
-        id: path.rsplit(['\\', '/']).next().map(str::to_owned),
+        id,
         pid: i32::try_from(pid).ok()?,
-        name: if capture { described(&path) } else { None },
+        name,
         elevated: capture && above_ibis(&process),
     })
 }
@@ -103,81 +102,82 @@ fn foreground_pid() -> Option<i32> {
 }
 
 /// The focused field of the app in front takes a password.
-fn password_focused() -> bool {
-    let (sender, receiver) = mpsc::channel();
+fn password_focused() -> Option<bool> {
     // A thread of its own: UI Automation needs COM set up on the thread that
     // calls it, and a hung app must not hold the paste.
-    std::thread::spawn(move || {
-        let password = uiautomation::UIAutomation::new()
+    super::bounded(ASK_LIMIT, || {
+        uiautomation::UIAutomation::new()
             .and_then(|automation| automation.get_focused_element())
-            .and_then(|field| field.is_password());
-        let _ = sender.send(password.unwrap_or(false));
-    });
-    receiver.recv_timeout(ASK_LIMIT).unwrap_or(false)
+            .and_then(|field| field.is_password())
+            .ok()
+    })
+    .flatten()
 }
 
 /// Ctrl+V to whatever has the keyboard, in one call, so no other input lands
 /// between the four events.
 fn send_paste() -> bool {
-    let paste = [
-        press(co::VK::CONTROL, false),
-        press(co::VK::CHAR_V, false),
-        press(co::VK::CHAR_V, true),
-        press(co::VK::CONTROL, true),
-    ];
-    matches!(w::SendInput(&paste), Ok(4))
+    super::send_paste(|events| {
+        let inputs: Vec<_> = events
+            .iter()
+            .map(|event| match event {
+                PasteEvent::ControlDown => press(co::VK::CONTROL, false),
+                PasteEvent::VDown => press(co::VK::CHAR_V, false),
+                PasteEvent::VUp => press(co::VK::CHAR_V, true),
+                PasteEvent::ControlUp => press(co::VK::CONTROL, true),
+            })
+            .collect();
+        w::SendInput(&inputs).unwrap_or(0)
+    })
 }
 
 pub(super) struct Win {
     app: AppHandle,
-    /// The picker showing that this copy belongs to; showing it again stops the paste.
-    generation: u64,
-    /// The captured window, so a paste never lands in another window of the
-    /// same app; `None` when there is nothing safe to paste into.
-    window: Option<w::HWND>,
-    /// The clipboard's change count after the copy. Another app's clipboard
-    /// is never read: a hung owner of delayed text would block the read.
-    clipboard: u32,
 }
 
 impl Win {
-    /// The picker has just hidden. Windows hands the keyboard to whichever
-    /// window is next, so Ibis gives it back to the captured window, if that
-    /// window still belongs to the captured process. A picker that is showing
-    /// again was opened from somewhere new: this copy then only stays copied,
-    /// and focus is left alone.
+    /// Construction never reads a capture, generation or clipboard baseline.
+    /// The successful copy's ticket owns those throughout delivery.
     pub(super) fn new(app: &AppHandle) -> Self {
-        let reopened = app
+        Self { app: app.clone() }
+    }
+}
+
+impl TicketDesk for Win {
+    type Window = Window;
+
+    fn generation(&self) -> u64 {
+        self.app.state::<crate::picker::PickerGeneration>().current()
+    }
+
+    fn picker_hidden(&self) -> bool {
+        self.app
             .get_webview_window("main")
-            .is_none_or(|picker| picker.is_visible().unwrap_or(true));
-        // Taken, not copied: each showing of the picker captures afresh.
-        let window = WINDOW
-            .lock()
-            .ok()
-            .filter(|_| !reopened)
-            .and_then(|mut kept| kept.take())
-            .filter(|(window, pid)| window.GetWindowThreadProcessId().1 == *pid)
-            .map(|(window, _)| window);
-        if let Some(window) = &window
-            && w::HWND::GetForegroundWindow().as_ref() != Some(window)
-        {
+            .is_some_and(|picker| picker.is_visible().ok() == Some(false))
+    }
+
+    fn restore(&self, window: &Window, pid: i32) -> bool {
+        let Ok(window) = window.0.lock() else {
+            return false;
+        };
+        if i32::try_from(window.GetWindowThreadProcessId().1).ok() != Some(pid) {
+            return false;
+        }
+        if w::HWND::GetForegroundWindow().as_ref() != Some(&*window) {
             window.SetForegroundWindow();
         }
-        Self {
-            app: app.clone(),
-            generation: app.state::<crate::picker::PickerGeneration>().current(),
-            window,
-            clipboard: w::HCLIPBOARD::NULL.GetClipboardSequenceNumber(),
-        }
+        true
     }
 
-    fn picker_unchanged(&self) -> bool {
-        self.app.state::<crate::picker::PickerGeneration>().current() == self.generation
+    fn window_in_front(&self, window: &Window) -> bool {
+        window
+            .0
+            .lock()
+            .is_ok_and(|window| w::HWND::GetForegroundWindow().as_ref() == Some(&*window))
     }
 
-    /// The captured window itself is in front, not just its app.
-    fn window_in_front(&self) -> bool {
-        self.window.is_some() && w::HWND::GetForegroundWindow() == self.window
+    fn clipboard_sequence(&self) -> Option<u32> {
+        clipboard_win::seq_num().map(std::num::NonZeroU32::get)
     }
 }
 
@@ -207,21 +207,18 @@ impl Desk for Win {
     /// and while a key from the picker is still held, so the paste waits for
     /// the keyboard to be free as it waits for the window.
     fn frontmost(&self) -> Option<Front> {
-        if !self.picker_unchanged() || !self.window_in_front() || keys_held() {
+        if keys_held() {
             return None;
         }
-        front(self.window.as_ref()?, false)
+        front(&w::HWND::GetForegroundWindow()?, false)
     }
 
-    /// The citation Ibis wrote, while nothing has replaced it since.
-    fn clipboard(&self) -> Option<String> {
-        if w::HCLIPBOARD::NULL.GetClipboardSequenceNumber() != self.clipboard {
-            return None;
-        }
-        self.app.clipboard().read_text().ok()
+    /// Windows must go through the shared ticket guard's sequence proof.
+    fn clipboard_matches(&self, _: &str) -> bool {
+        false
     }
 
-    fn secure_field(&self) -> bool {
+    fn secure_field(&self) -> Option<bool> {
         password_focused()
     }
 
@@ -231,12 +228,7 @@ impl Desk for Win {
     }
 
     fn post(&self, pid: i32, key: u16) -> bool {
-        if !self.picker_unchanged()
-            || key != co::VK::CHAR_V.raw()
-            || keys_held()
-            || !self.window_in_front()
-            || foreground_pid() != Some(pid)
-        {
+        if key != co::VK::CHAR_V.raw() || keys_held() || foreground_pid() != Some(pid) {
             return false;
         }
         send_paste()
@@ -291,7 +283,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         };
         assert!(!front.elevated);
-        assert!(!password_focused());
+        assert_eq!(password_focused(), Some(false));
         assert!(!keys_held());
         assert!(send_paste());
         let started = Instant::now();

@@ -417,7 +417,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         await hidePicker();
         if (request !== copyRequest.current || shownAt !== pickerShows.current || completedContext !== copyContext.current) return;
         // The notice is extra; a failure to show it never undoes the copy.
-        await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
+        await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
       });
     }
   };

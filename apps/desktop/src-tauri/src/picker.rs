@@ -79,8 +79,12 @@ pub(crate) fn configured_shortcut(setting: Option<&str>) -> (Shortcut, String, O
 
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
+    // Cancel an older Windows delivery before capture's bounded name lookup.
+    #[cfg(target_os = "windows")]
+    app.state::<PickerGeneration>().advance();
     // Before the panel takes the front: the app Enter will paste into (#1241).
     crate::paste::capture(app);
+    #[cfg(not(target_os = "windows"))]
     app.state::<PickerGeneration>().advance();
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
         report(window.unminimize(), NativeIssue::Unminimize);

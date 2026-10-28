@@ -76,12 +76,12 @@ impl Desk for Mac {
         self.on_main(frontmost).flatten()
     }
 
-    fn clipboard(&self) -> Option<String> {
-        self.app.clipboard().read_text().ok()
+    fn clipboard_matches(&self, text: &str) -> bool {
+        self.app.clipboard().read_text().ok().as_deref() == Some(text)
     }
 
-    fn secure_field(&self) -> bool {
-        false
+    fn secure_field(&self) -> Option<bool> {
+        Some(false)
     }
 
     fn paste_key(&self) -> Option<u16> {

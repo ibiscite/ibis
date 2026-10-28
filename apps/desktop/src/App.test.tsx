@@ -2221,7 +2221,21 @@ test("a clean copy hides the picker, then says Copied with the copied text", asy
   render(<App />);
   await screen.findByText("First");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(notices).toEqual([{ text: "[@a]" }]));
+  await waitFor(() => expect(notices).toEqual([{ text: "[@a]", delivery: null }]));
+  expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
+});
+
+test("a Windows copy carries its delivery receipt through hiding to the notice", async () => {
+  const notices: unknown[] = [];
+  const calls = backend({
+    search: () => [result("a", "First")],
+    copy_file_citation: () => ({ text: "[@a]", warnings: [], delivery: 17 }),
+    show_copied_notice: (args) => { notices.push(args); return null; },
+  });
+  render(<App />);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(notices).toEqual([{ text: "[@a]", delivery: 17 }]));
   expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
 });
 

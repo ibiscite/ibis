@@ -64,12 +64,12 @@ pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> R
 
 /// One opening of the clipboard, retried briefly while another app holds it.
 #[cfg(target_os = "windows")]
-pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(), String> {
+pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
     write_windows(content)
 }
 
 #[cfg(target_os = "windows")]
-fn write_windows(content: ClipboardContent<'_>) -> Result<(), String> {
+fn write_windows(content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
     use clipboard_win::{Clipboard, formats::Html, options::NoClear, raw};
     // About 100 ms in all: 20 retries, 5 ms apart.
     let _open = Clipboard::new_attempts(20).map_err(|_| FAILED.to_string())?;
@@ -88,7 +88,9 @@ fn write_windows(content: ClipboardContent<'_>) -> Result<(), String> {
         }
         .map_err(|_| FAILED.to_string())?;
     }
-    Ok(())
+    // Sample before `_open` closes: a foreign owner can never become this
+    // copy's baseline. No contents need to be read during delivery.
+    Ok(clipboard_win::seq_num().map(std::num::NonZeroU32::get))
 }
 
 /// Text and HTML; Linux apps read HTML for formatting and rarely RTF.
@@ -200,11 +202,15 @@ int main(int argc, const char **argv) { @autoreleasepool {
         let text = "Ŝynthetic 山田";
         let html = "<i>Ŝynthetic 山田</i>";
         let rtf = "{\\rtf1\\ansi\\uc1 {\\i \\u348?ynthetic \\u23665?\\u30000?}}";
-        write_windows(ClipboardContent {
+        let sequence = write_windows(ClipboardContent {
             text,
             html: Some(html),
             rtf: Some(rtf),
-        })?;
+        })?
+        .ok_or("clipboard sequence")?;
+        // The sequence sampled before closing must still identify our write
+        // after closing; delivery relies on it without reading any contents.
+        assert_eq!(clipboard_win::seq_num().map(std::num::NonZeroU32::get), Some(sequence));
         let html_format = raw::register_format("HTML Format").ok_or("HTML format")?.get();
         let rtf_format = raw::register_format("Rich Text Format").ok_or("RTF format")?.get();
         {
@@ -244,11 +250,13 @@ int main(int argc, const char **argv) { @autoreleasepool {
             assert_eq!(bytes, text.as_bytes());
         }
         // A later key-only copy must remove stale rich formats.
-        write_windows(ClipboardContent {
+        let next_sequence = write_windows(ClipboardContent {
             text: "[@Synthetic2026]",
             html: None,
             rtf: None,
-        })?;
+        })?
+        .ok_or("next clipboard sequence")?;
+        assert_ne!(next_sequence, sequence);
         let _open = Clipboard::new_attempts(20).map_err(|_| "reopen clipboard")?;
         assert!(!raw::is_format_avail(html_format) && !raw::is_format_avail(rtf_format));
         let mut bytes = vec![];
