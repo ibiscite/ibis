@@ -141,12 +141,13 @@ pub(crate) struct SearchQuery {
     pub(super) interpret_locators: bool,
 }
 
-/// A search keeps its snapshot identity even when no references match.
+/// Missing explicit citation keys in a recognized pasted list.
 #[derive(Serialize, specta::Type)]
 pub(crate) struct PastedList {
     pub(super) missing: Vec<String>,
 }
 
+/// A search keeps its snapshot identity even when no references match.
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchReply {
     pub(super) revision: String,

@@ -34,7 +34,7 @@ test("a pasted list previews and copies every result in order, with a safe missi
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
-  const request = prepared(copied.mock.calls[0][0]).request;
+  const request = prepared(copied.mock.calls[0]![0]).request;
   expect(request.items.map(({ id }) => id.key)).toEqual(["b", "a"]);
   await waitFor(() => expect(calls).toContain("hide_picker"));
 });
@@ -57,7 +57,7 @@ test("an explicit selection overrides the pasted list and a pending query cannot
   expect(chipKeys()).toEqual(["b"]);
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
-  expect(prepared(copied.mock.calls[0][0]).request.items.map(({ id }) => id.key)).toEqual(["b"]);
+  expect(prepared(copied.mock.calls[0]![0]).request.items.map(({ id }) => id.key)).toEqual(["b"]);
   fireEvent.change(box, { target: { value: "pending" } });
   expect(screen.queryByText("Not in your library: absent")).toBeNull();
   fireEvent.keyDown(box, { key: "Enter" });
