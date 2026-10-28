@@ -12,6 +12,10 @@ export function ShortcutRecorder({ shortcut, label, prompt, isDisabled, onRecord
   return (
     <span onKeyDownCapture={(event) => {
       if (!recording || isDisabled) return;
+      if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        setRecording(false);
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") { setRecording(false); return; }

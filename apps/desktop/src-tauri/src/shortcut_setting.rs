@@ -4,10 +4,12 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_global_shortcut::{Modifiers, Shortcut};
+use tauri_plugin_global_shortcut::{Code, Modifiers};
 
 use crate::diagnostics::{NativeIssue, report};
-use crate::picker::{SHORTCUT_BACKEND_UNAVAILABLE, ShortcutStatus, default_shortcut, replace_shortcut, shortcut_label};
+use crate::picker::{
+    OpeningShortcut, SHORTCUT_BACKEND_UNAVAILABLE, ShortcutStatus, default_shortcut, replace_shortcut, shortcut_label,
+};
 use crate::preferences::SettingsFile;
 
 /// Serialize registration, publication and saving, including across window closes.
@@ -24,6 +26,8 @@ pub(crate) enum ShortcutRefusal {
     NeedsModifier,
     /// ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands.
     AppShortcut,
+    /// Windows uses Ctrl+Alt (also with Shift) to type with AltGr.
+    AltGr,
     /// Another app or the system already has it.
     InUse,
     /// This desktop gives apps no global shortcuts (Wayland, no X11).
@@ -34,23 +38,59 @@ pub(crate) enum ShortcutRefusal {
 
 /// Whether `text` can open Ibis. It needs Control, Option/Alt or Command, and
 /// not the command key alone, which every app uses for its own menu commands.
-pub(crate) fn check_shortcut(text: &str) -> Result<Shortcut, ShortcutRefusal> {
-    let shortcut: Shortcut = text.parse().map_err(|_| ShortcutRefusal::Invalid)?;
+pub(crate) fn check_shortcut(text: &str) -> Result<OpeningShortcut, ShortcutRefusal> {
+    let command = if cfg!(target_os = "macos") {
+        Modifiers::SUPER
+    } else {
+        Modifiers::CONTROL
+    };
+    check_shortcut_for(text, command, cfg!(target_os = "windows"))
+}
+
+fn check_shortcut_for(text: &str, command: Modifiers, windows: bool) -> Result<OpeningShortcut, ShortcutRefusal> {
+    let requested: OpeningShortcut = text.parse().map_err(|_| ShortcutRefusal::Invalid)?;
+    let shortcut = requested.shortcut;
     if !shortcut
         .mods
         .intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER)
     {
         return Err(ShortcutRefusal::NeedsModifier);
     }
-    let command = if cfg!(target_os = "macos") {
-        Modifiers::SUPER
-    } else {
-        Modifiers::CONTROL
-    };
     if shortcut.mods == command {
         return Err(ShortcutRefusal::AppShortcut);
     }
-    Ok(shortcut)
+    if windows && uses_altgr(requested) {
+        return Err(ShortcutRefusal::AltGr);
+    }
+    Ok(requested)
+}
+
+pub(crate) fn uses_altgr(requested: OpeningShortcut) -> bool {
+    requested.shortcut.mods.difference(Modifiers::SHIFT) == Modifiers::CONTROL | Modifiers::ALT
+        && printable_key(requested.shortcut.key)
+}
+
+/// All printable codes the shortcut parser accepts, including keypad keys.
+fn printable_key(key: Code) -> bool {
+    let name = key.to_string();
+    name.starts_with("Key")
+        || name.starts_with("Digit")
+        || (name.starts_with("Numpad") && key != Code::NumpadEnter)
+        || matches!(
+            key,
+            Code::Backquote
+                | Code::Backslash
+                | Code::BracketLeft
+                | Code::BracketRight
+                | Code::Comma
+                | Code::Equal
+                | Code::Minus
+                | Code::Period
+                | Code::Quote
+                | Code::Semicolon
+                | Code::Slash
+                | Code::Space
+        )
 }
 
 /// Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
@@ -117,6 +157,125 @@ fn save_shortcut(file: &SettingsFile, shortcut: Option<String>) -> Result<(), Sh
 mod tests {
     use super::*;
 
+    #[derive(serde::Deserialize)]
+    struct Recording {
+        name: String,
+        shortcut: String,
+        typed: std::collections::BTreeMap<u16, char>,
+        registered: String,
+        windows_refusal: Option<String>,
+    }
+
+    /// DOM tests send these exact accelerators to Settings. Exercise the same
+    /// values through validation, disk, startup parsing and native replacement.
+    #[test]
+    fn recorded_shortcuts_keep_key_intent_through_save_restart_and_registration() {
+        let cases: Vec<Recording> = serde_json::from_str(include_str!("../../src/testing/shortcut-recordings.json"))
+            .unwrap_or_else(|error| panic!("invalid shortcut recordings: {error}"));
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        for case in cases {
+            let requested = check_shortcut_for(&case.shortcut, Modifiers::SUPER, false)
+                .unwrap_or_else(|error| panic!("{}: {error:?}", case.name));
+            assert_eq!(save_shortcut(&file, Some(case.shortcut.clone())), Ok(()));
+            let saved = ibis_core::settings::load(&file.path);
+            assert!(saved.problem.is_none());
+            let (restarted, label, error) =
+                crate::picker::configured_shortcut_for(saved.settings.shortcut.as_deref(), false);
+            assert_eq!(error, None, "{}", case.name);
+            assert_eq!(label, case.shortcut);
+            assert_eq!(restarted, requested, "{}", case.name);
+            if case.windows_refusal.as_deref() == Some("alt-gr") {
+                let (safe, label, error) =
+                    crate::picker::configured_shortcut_for(saved.settings.shortcut.as_deref(), true);
+                assert_eq!(safe, default_shortcut(), "{}", case.name);
+                assert_eq!(label, shortcut_label());
+                assert!(error.is_some_and(|error| error.contains("AltGr")));
+            }
+            for binding in [requested, restarted] {
+                let (key, note) = crate::picker::on_layout_with(binding, |key, _| case.typed.get(&key).copied());
+                assert_eq!(note, None, "{}", case.name);
+                let expected = case
+                    .registered
+                    .parse::<tauri_plugin_global_shortcut::Shortcut>()
+                    .unwrap_or_else(|error| panic!("fixture failed: {error}"));
+                assert_eq!(key, expected, "{}", case.name);
+                let old = default_shortcut().shortcut;
+                let operations = std::cell::RefCell::new(Vec::new());
+                assert_eq!(
+                    crate::picker::replace_with(
+                        Some(old),
+                        key,
+                        |key| {
+                            operations.borrow_mut().push(("register", key));
+                            Ok(())
+                        },
+                        |key| {
+                            operations.borrow_mut().push(("unregister", key));
+                            Ok(())
+                        }
+                    ),
+                    Ok(())
+                );
+                assert_eq!(*operations.borrow(), [("register", expected), ("unregister", old)]);
+                if !binding.logical_letter {
+                    assert_eq!(
+                        crate::picker::on_layout_with(binding, |_, _| panic!(
+                            "physical keys must not query the layout"
+                        )),
+                        (expected, None)
+                    );
+                }
+            }
+            let refusal = check_shortcut_for(&case.shortcut, Modifiers::CONTROL, true)
+                .err()
+                .map(|error| serde_json::to_value(error).unwrap_or_else(|error| panic!("fixture failed: {error}")));
+            assert_eq!(
+                refusal,
+                case.windows_refusal.map(serde_json::Value::String),
+                "{}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn windows_shortcuts_leave_altgr_printing_keys_available() {
+        for key in [
+            "C",
+            "KeyC",
+            "Digit1",
+            "Quote",
+            "BracketRight",
+            "Space",
+            "Numpad0",
+            "NumpadAdd",
+            "NumpadDecimal",
+        ] {
+            for modifiers in ["Control+Alt", "Control+Alt+Shift"] {
+                let text = format!("{modifiers}+{key}");
+                assert_eq!(
+                    check_shortcut_for(&text, Modifiers::CONTROL, true).err(),
+                    Some(ShortcutRefusal::AltGr),
+                    "{text}"
+                );
+                assert!(check_shortcut_for(&text, Modifiers::SUPER, false).is_ok());
+                assert!(check_shortcut_for(&text, Modifiers::CONTROL, false).is_ok());
+            }
+        }
+        for text in [
+            "Control+Alt+F8",
+            "Control+Alt+Shift+ArrowLeft",
+            "Control+Alt+Delete",
+            "Control+Alt+NumpadEnter",
+            "Control+Alt+Command+KeyC",
+            "Control+Shift+C",
+            "Alt+KeyC",
+        ] {
+            assert!(check_shortcut_for(text, Modifiers::CONTROL, true).is_ok(), "{text}");
+        }
+    }
+
     #[test]
     fn saving_and_resetting_the_shortcut_keeps_other_settings() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
@@ -161,12 +320,7 @@ mod tests {
             check_shortcut("CommandOrControl+Space").err(),
             Some(ShortcutRefusal::AppShortcut)
         );
-        for good in [
-            "Control+Command+R",
-            "Alt+Space",
-            "CommandOrControl+Shift+Y",
-            "Control+Alt+C",
-        ] {
+        for good in ["Control+Command+R", "Alt+Space", "CommandOrControl+Shift+Y"] {
             assert!(check_shortcut(good).is_ok(), "{good}");
         }
     }
@@ -177,6 +331,7 @@ mod tests {
             (ShortcutRefusal::Invalid, "invalid"),
             (ShortcutRefusal::NeedsModifier, "needs-modifier"),
             (ShortcutRefusal::AppShortcut, "app-shortcut"),
+            (ShortcutRefusal::AltGr, "alt-gr"),
             (ShortcutRefusal::InUse, "in-use"),
             (ShortcutRefusal::Unavailable, "unavailable"),
             (ShortcutRefusal::NotSaved, "not-saved"),

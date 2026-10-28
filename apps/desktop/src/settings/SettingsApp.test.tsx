@@ -8,6 +8,7 @@ import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
+import recordings from "../testing/shortcut-recordings.json";
 
 afterEach(() => vi.useRealTimers());
 
@@ -401,8 +402,28 @@ test("a focus read started before recording cannot restore the old shortcut", as
 
 test("default aliases and modifier order do not show Use Default", async () => {
   const { api, state } = fakeApi({ granted: true });
-  state.shortcut = { shortcut: "Shift+CommandOrControl+KeyY", registered: true, error: null };
+  state.shortcut = { shortcut: "Shift+CommandOrControl+Y", registered: true, error: null };
   render(<SettingsApp api={api} initialPage="shortcuts" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+});
+
+// Rust consumes the same cases through validation, saving, reloading and
+// native registration, so the recorder's accelerator syntax cannot drift.
+test.each(recordings)("recorder-to-registration: $name", async ({ event, shortcut }) => {
+  const { api, state } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  fireEvent.click(recorder);
+  fireEvent.keyDown(recorder, event);
+  await waitFor(() => expect(state.shortcutChoices).toEqual([shortcut]));
+});
+
+test("a physical default-position key still offers the logical default", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  state.shortcut = { shortcut: "CommandOrControl+Shift+KeyY", registered: true, error: null };
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  await screen.findByRole("button", { name: /^Open Ibis:/ });
+  fireEvent.click(screen.getByRole("button", { name: "Use Default" }));
+  await waitFor(() => expect(state.shortcutChoices).toEqual([null]));
 });

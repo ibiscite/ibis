@@ -9,6 +9,7 @@ use tauri::Emitter;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
+use super::OpeningShortcut;
 #[cfg(any(target_os = "macos", test))]
 use super::ShortcutStatus;
 #[cfg(target_os = "macos")]
@@ -26,22 +27,36 @@ const NO_KEY_TYPES_THE_LETTER: &str =
 
 /// The shortcut from settings and the key registered for it on the active layout.
 #[derive(Default)]
-pub(crate) struct Registered(Mutex<Option<(Shortcut, Shortcut)>>);
+pub(crate) struct Registered(Mutex<Option<(OpeningShortcut, Shortcut)>>);
 
 /// The key to register for `shortcut` on the active keyboard layout, and a
 /// note when no key types its letter. Only macOS registers physical keys.
-fn on_layout(shortcut: Shortcut) -> (Shortcut, Option<&'static str>) {
+fn on_layout(requested: OpeningShortcut) -> (Shortcut, Option<&'static str>) {
     #[cfg(target_os = "macos")]
-    return layout::translate(shortcut, layout::typing())
-        .map_or((shortcut, Some(NO_KEY_TYPES_THE_LETTER)), |key| (key, None));
+    return on_layout_with(requested, layout::typing());
     #[cfg(not(target_os = "macos"))]
-    (shortcut, None)
+    (requested.shortcut, None)
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn on_layout_with(
+    requested: OpeningShortcut,
+    typed: impl Fn(u16, tauri_plugin_global_shortcut::Modifiers) -> Option<char>,
+) -> (Shortcut, Option<&'static str>) {
+    if !requested.logical_letter {
+        return (requested.shortcut, None);
+    }
+    super::layout::translate(requested.shortcut, typed)
+        .map_or((requested.shortcut, Some(NO_KEY_TYPES_THE_LETTER)), |key| (key, None))
 }
 
 /// The Linux plugin can return success after its X11 worker exits. Confirm its
 /// required backend first; session labels alone do not identify usable X11.
 /// Success can carry a note for the person, such as a missing layout letter.
-pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<Option<&'static str>, &'static str> {
+pub(crate) fn register_shortcut(
+    app: &AppHandle,
+    shortcut: OpeningShortcut,
+) -> Result<Option<&'static str>, &'static str> {
     let (key, note) = on_layout(shortcut);
     register_with(
         || {
@@ -61,7 +76,10 @@ pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<O
 /// Swap the registered shortcut for `requested`, from Settings. The new key is
 /// registered before the working one is released, so a refusal keeps it.
 /// Runs on the main thread, where layout queries are answered.
-pub(crate) fn replace_shortcut(app: &AppHandle, requested: Shortcut) -> Result<Option<&'static str>, &'static str> {
+pub(crate) fn replace_shortcut(
+    app: &AppHandle,
+    requested: OpeningShortcut,
+) -> Result<Option<&'static str>, &'static str> {
     let state = app.state::<Registered>();
     let mut registered = state.0.lock().map_err(|_| SHORTCUT_REGISTRATION_FAILED)?;
     let (key, note) = on_layout(requested);
@@ -90,7 +108,7 @@ pub(crate) fn replace_shortcut(app: &AppHandle, requested: Shortcut) -> Result<O
 }
 
 /// A failed registration keeps the old key; a failed release rolls back the new one.
-fn replace_with(
+pub(crate) fn replace_with(
     current: Option<Shortcut>,
     key: Shortcut,
     register: impl FnOnce(Shortcut) -> Result<(), &'static str>,

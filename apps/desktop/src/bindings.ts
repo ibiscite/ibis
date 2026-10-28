@@ -477,6 +477,8 @@ export type ShortcutRefusal =
 "needs-modifier" |
 /**  ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands. */
 "app-shortcut" |
+/**  Windows uses Ctrl+Alt (also with Shift) to type with AltGr. */
+"alt-gr" |
 /**  Another app or the system already has it. */
 "in-use" |
 /**  This desktop gives apps no global shortcuts (Wayland, no X11). */

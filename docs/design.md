@@ -715,10 +715,15 @@ window width and larger system text sizes.
 
 **Shortcuts.** The recorder button shows the current shortcut in the system's
 own notation (⇧⌘Y on macOS). Clicking it says **Type a shortcut…**; Esc or
-moving focus cancels. ASCII letters follow the typed letter, other keys their
-physical code; recorded modifiers are Control, Alt, Shift, Command, in that
+moving focus cancels. Tab and Shift+Tab cancel and move focus normally.
+ASCII letters are saved as logical letters and follow the typed letter on macOS;
+all other keys are saved as physical codes and stay at that position, including
+after a restart or layout change. Recorded modifiers are Control, Alt, Shift, Command, in that
 order. A shortcut needs Control, Alt/Option or Command; **⌘ + one key is
 refused** (Ctrl + one key elsewhere) because apps use it for their own commands.
+On Windows, Ctrl+Alt with a printable key (also with Shift) is refused because
+it can consume AltGr typing; a Windows-key combination or a non-typing key is available instead.
+An unsafe saved shortcut falls back to the default at startup with an explanation.
 Refusals explain how to choose another and keep the working shortcut.
 The new shortcut is registered before the old one is released. A failed save
 keeps it working for this run and says it was not saved for next time.

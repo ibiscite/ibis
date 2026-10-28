@@ -175,7 +175,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const name = login?.name ?? "Ibis";
   const mac = platform === "macos";
   const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
-  const isDefault = shortcut && shortcutLabel(shortcut.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
+  const isDefault = shortcut && /^[a-z]$/i.test(shortcut.shortcut.split("+").at(-1)?.trim() ?? "")
+    && shortcutLabel(shortcut.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
 
   return (
     <div className="settings">

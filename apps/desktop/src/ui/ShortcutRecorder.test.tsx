@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { ShortcutRecorder } from "./ShortcutRecorder";
 
@@ -50,5 +50,26 @@ test.each(["Escape", "blur"])("%s cancels without changing the shortcut", (cance
   expect(record).not.toHaveBeenCalled();
   expect(button.textContent).not.toBe("Type a shortcut…");
   fireEvent.keyDown(button, { key: "k", code: "KeyK", altKey: true });
+  expect(record).not.toHaveBeenCalled();
+});
+
+test.each([false, true])("Tab cancels and permits focus to move (Shift=%s)", (shiftKey) => {
+  const record = vi.fn();
+  render(<>
+    <button type="button">Before</button>
+    <ShortcutRecorder shortcut="Alt+K" label="Open Ibis" prompt="Type a shortcut…" isDisabled={false} onRecord={record} />
+    <button type="button">After</button>
+  </>);
+  const button = screen.getByRole("button", { name: /^Open Ibis:/ });
+  act(() => button.focus());
+  fireEvent.click(button);
+  // JSDOM does not perform native Tab navigation. Only move focus when the
+  // browser would be allowed to do so; a trapped Tab must fail this check.
+  const allowed = fireEvent.keyDown(button, { key: "Tab", code: "Tab", shiftKey });
+  expect(allowed).toBe(true);
+  expect(button.textContent).toBe("Alt+K");
+  const next = screen.getByRole("button", { name: shiftKey ? "Before" : "After" });
+  if (allowed) act(() => next.focus());
+  expect(document.activeElement).toBe(next);
   expect(record).not.toHaveBeenCalled();
 });
