@@ -691,6 +691,9 @@ shared `Switch` (38 × 22) and `Segmented` in `ui/`. Changes apply at once and
 reach an open picker; resets offer Undo. Built so far: General (login, pasting,
 picker look) and About (version, updates); Shortcuts, Libraries and Citations
 follow (#776). The picker's More keeps its quick toggles until then.
+Queued choices finish saving before the window closes, with at most a two-second
+wait. A failed save shows an alert and restores the saved choice; reloading
+choices on return never replaces an edit still being saved.
 
 **Permissions.** Ibis asks for a system permission only through a guide that
 says why in one sentence, names the exact list in the system's current words
