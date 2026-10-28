@@ -377,6 +377,10 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
+- **Year-only citations.** Keep supported style forms available through conditional
+  layouts. Each selected item's output must show its issued year, or the style's
+  no-date term for an undated item; otherwise refuse the citation. A locator alone
+  or another item's year does not establish a year-only result.
 - **Beak mark** (#888). The supplied two-head SVG in `currentColor` from
   `--citation`, 20 px tall (`--space-5`), scaled with text, `aria-hidden`,
   mirrored in RTL, 45 % while pending, `CanvasText` in contrast modes [C16].

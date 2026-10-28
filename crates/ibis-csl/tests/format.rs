@@ -346,6 +346,45 @@ fn numeric_style_refuses_forms_its_reference_fallback_cannot_carry() {
 }
 
 #[test]
+fn year_only_preserves_bundled_support_for_dated_and_undated_items() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for issued in [Some(json!({"date-parts":[[2026]]})), None] {
+        let mut item = json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor"}]});
+        if let Some(issued) = &issued {
+            item["issued"] = issued.clone();
+        }
+        let snapshot = library(&[item]);
+        for (style, _) in ibis_csl::STYLES {
+            let mut request = selection(&snapshot, style, false);
+            request.form = CitationForm::YearOnly;
+            let result = formatter.format(&snapshot, &request).unwrap();
+            // Match main's supported forms: IEEE's fallback and MLA have no year-only form.
+            if matches!(style, "ieee" | "modern-language-association") {
+                assert!(result.copy_content(1).is_none(), "{style}");
+                assert_eq!(
+                    result.outcomes,
+                    vec![ItemOutcome::Refused {
+                        item: 0,
+                        error: CitationError::UnsupportedForm,
+                    }]
+                );
+            } else {
+                let expected = if issued.is_some() {
+                    "2026"
+                } else if style == "harvard-cite-them-right" {
+                    "no date"
+                } else {
+                    "n.d."
+                };
+                assert_eq!(result.text, format!("({expected})"), "{style}");
+                assert!(result.copy_content(1).is_some(), "{style}");
+            }
+        }
+    }
+}
+
+#[test]
 fn presentation_equivalent_titles_are_valid_without_rewriting_canonical_output() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();

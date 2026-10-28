@@ -51,13 +51,16 @@ construction and reports `YearSuffixWithheld`; styles declaring
 reference entry with `NeedsDocumentContext` and `ReferenceEntry`. `label` does
 not imply document numbering. The processor's XML tree removes bibliography
 layout `citation-number` text nodes (any affixes) and `second-field-align`,
-preserving citation layouts, macros and sort keys. These changes
+following macro calls through bibliography-only clones to preserve citation
+rendering and sort keys. These changes
 never mutate the vendor files. Node comparisons use the same Ibis-safe style
 configuration. Numeric fallback refuses author-only and year-only forms.
-Cached XML traits also drive the bridge. Year-only requires `issued` rendering
-in the layout or reachable macros, excluding sort keys, bibliography dates and
-conditions. The conservative scan does not prove every branch prints a year;
-macro names must use matching XML encodings. #1306 owns `YearSuffixWithheld`'s
+Cached XML traits also drive the bridge. Year-only remains eligible when `issued`
+is reachable from the citation layout, including conditional macro calls. Each
+year-only item's emitted text must contain its issued year in the style's year
+form, or the style's no-date term for an undated item; a locator or another
+item's year cannot establish coverage. Macro names must use matching XML encodings.
+#1306 owns `YearSuffixWithheld`'s
 remaining name check; its general rule is `disambiguate-add-year-suffix="true"`. A transparent
 observer checks each final member's printed blob leaves in every representation,
 ignoring layout affixes. Missing or empty coverage refuses the candidate cluster as `UnsupportedForm` and clears its output; no unchecked member
