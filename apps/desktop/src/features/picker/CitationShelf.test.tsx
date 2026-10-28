@@ -30,6 +30,60 @@ test("chips read as author and year, and add the key only where two would read t
   expect(chipLabels([record("garcia2021a"), record("garcia2021b")])).toEqual(["García 2021 · garcia2021a", "García 2021 · garcia2021b"]);
 });
 
+test("closest-match chips and announcements keep provenance with the preview hidden", () => {
+  const partial = { ...record("partial"), title: "Synthetic near match", partial: true };
+  const { rerender } = render(shelf({ announce: true, selected: chosen([record("exact"), partial]) }));
+  const chip = screen.getByRole("button", { name: "Remove partial" }).closest("li")!;
+  expect(within(chip).getByText("Closest match").className).not.toContain("visually-hidden");
+  expect(within(chip).getByText(/only some search words matched/).className).toBe("visually-hidden");
+  expect(within(chip).getByText("Closest match").parentElement?.className).toBe("shelf-pill");
+  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toContain("Synthetic near match");
+  rerender(shelf({ selected: chosen([record("exact")]) }));
+  expect(screen.queryByText("Closest match")).toBeNull();
+});
+
+test("folded closest matches remain marked and their warning uses the existing preview pill", () => {
+  const records = Array.from({ length: 8 }, (_, i) => ({ ...record(`k${i}`), partial: i === 7 }));
+  render(shelf({ selected: chosen(records), shown: { markup: [], text: "Synthetic citation", html: "", warnings: [] } }));
+  const more = screen.getByRole("button", { name: "Show all 8 selected references" });
+  expect(more.textContent).toBe("+2 · Closest matches");
+  expect(more.getAttribute("title")).toContain("only some search words matched");
+  const output = screen.getByRole("region", { name: "Preview" });
+  expect(within(output).getByText("1 warning")).toBeTruthy();
+  expect(within(output).getByText(/only some search words matched/)).toBeTruthy();
+  fireEvent.click(more);
+  const chip = screen.getByRole("button", { name: "Remove k7" }).closest("li")!;
+  expect(within(chip).getByText("Closest match")).toBeTruthy();
+});
+
+test("marked chips fold without squeezing the warning or cycling when hidden, then return on growth", () => {
+  let width = 350;
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+    if (!element.matches(".chip, .shelf-chips")) return computed(element);
+    const style = document.createElement("div").style;
+    style.minWidth = "80px";
+    style.maxWidth = "192px";
+    style.columnGap = "4px";
+    style.paddingInlineStart = style.paddingInlineEnd = "12px";
+    return style;
+  });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("shelf-chips") ? width : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { width: this.matches(".chip-fit-measure > button") ? 120 : this.hasAttribute("data-partial") && !this.hidden ? 192 : 0 } as DOMRect;
+  });
+  render(shelf({ selected: chosen([record("a"), record("b"), { ...record("near"), partial: true }]) }));
+  const list = screen.getByRole("list", { name: "Selected references" });
+  expect(within(list).getAllByRole("button", { name: /^Remove/ })).toHaveLength(1);
+  expect(within(list).getByRole("button", { name: "Show all 3 selected references" }).textContent).toContain("Closest matches");
+  width = 650;
+  fireEvent(window, new Event("resize"));
+  expect(within(list).getAllByRole("button", { name: /^Remove/ })).toHaveLength(3);
+  expect(within(list).getByText("Closest match")).toBeTruthy();
+});
+
 test("six chips show, the rest fold into +N, and +N shows every chip so each can be removed", () => {
   const records = Array.from({ length: 9 }, (_, i) => record(`k${i}`, `Author${i}`));
   const onRemove = vi.fn();

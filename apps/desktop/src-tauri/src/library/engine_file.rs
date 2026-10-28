@@ -50,12 +50,11 @@ impl FileLibrary {
                 &json!({"action":"open-file","path":path}),
                 &Cancellation::default(),
             )
-            .map_err(|error| {
-                super::LoadError::Source(match error.code {
-                    ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable,
-                    ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge,
-                    _ => ibis_core::source::SourceError::Unreadable,
-                })
+            .map_err(|error| match error.code {
+                ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
+                ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
+                ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
+                _ => ibis_core::source::SourceError::Unreadable.into(),
             })?;
         Ok(Self::from_engine(engine))
     }

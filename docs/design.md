@@ -503,6 +503,7 @@ index is built once per library change; a keystroke only scans it.
   and every hinted word, most words first, then by the rules above. One-word
   searches, pasted identifiers and long pasted text get none.
 - Partial results use the existing results heading, labelled "Closest matches" instead of "Best matches"; the screen-reader result count includes that label.
+- A selected partial result keeps a "Closest match" warning pill on its shelf chip across searches; marked chips retain their width before folding, folded choices name "Closest matches", and selection announcements and copy/paste warnings retain that provenance.
 
 **Learning and parity** (#788). First minute: type, Enter, paste; first week:
 one footer tip at a time, retired once done (local "seen" flags only); power:

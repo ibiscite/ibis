@@ -171,6 +171,8 @@ export const pickerText = {
   removeNamed: (name: string) => `Remove ${name} from citation`,
   bestMatches: "Best matches",
   closestMatches: "Closest matches",
+  closestMatch: "Closest match",
+  closestMatchWarning: (title: string) => `“${title}” is a closest match: only some search words matched.`,
   noMatches: "No matching references",
   noMatchesHint: "Try a surname, year or fewer words.",
   clearSearch: "Clear search",

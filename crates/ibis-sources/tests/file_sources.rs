@@ -1,6 +1,31 @@
 use ibis_core::contract::{Availability, LibraryObject};
 
 #[test]
+fn nonempty_json_without_csl_records_is_a_format_error_but_empty_libraries_are_allowed()
+-> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::SourceError;
+    let dir = tempfile::tempdir()?;
+    for extension in ["json", "csljson"] {
+        let path = dir.path().join(format!("synthetic.{extension}"));
+        for text in [r#"[{"theme":"dark"}]"#, "[null, 1, []]", r#"[{"id":"no-type"}]"#] {
+            std::fs::write(&path, text)?;
+            assert_eq!(ibis_sources::load_file(&path).err(), Some(SourceError::InvalidData));
+            assert_eq!(ibis_sources::reload_file(&path).err(), Some(SourceError::InvalidData));
+        }
+        for text in ["", " \n", "[]", "[ \n ]"] {
+            std::fs::write(&path, text)?;
+            assert!(ibis_sources::load_file(&path)?.snapshot.objects().is_empty());
+            assert!(ibis_sources::reload_file(&path)?.snapshot.objects().is_empty());
+        }
+        std::fs::write(&path, r#"[{"theme":"dark"},{"id":"synthetic","type":"book"}]"#)?;
+        let loaded = ibis_sources::load_file(&path)?;
+        assert_eq!(loaded.snapshot.objects().len(), 1);
+        assert!(!loaded.warnings.is_empty());
+    }
+    Ok(())
+}
+
+#[test]
 fn damaged_bibtex_keeps_records_and_private_attachments() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     std::fs::write(dir.path().join("synthetic.pdf"), b"invented attachment")?;
@@ -313,13 +338,10 @@ fn numeric_json_ids_use_consistent_citation_processor_spelling() -> Result<(), B
     }
     for id in ["1e20", "1e21", "9007199254740992", "9007199254740993"] {
         std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
-        let loaded = ibis_sources::load_file(&path)?;
-        assert!(loaded.snapshot.objects().is_empty(), "unsafe identifier {id}");
-        assert!(
-            loaded
-                .warnings
-                .iter()
-                .any(|warning| warning.code == ibis_sources::WarningCode::Field)
+        assert_eq!(
+            ibis_sources::load_file(&path).err(),
+            Some(ibis_sources::SourceError::InvalidData),
+            "unsafe identifier {id}"
         );
     }
     Ok(())

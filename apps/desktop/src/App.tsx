@@ -16,6 +16,7 @@ import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
+import { closestMatchWarnings } from "./features/picker/rows";
 import { EmptyState } from "./features/picker/EmptyState";
 import { useFitWindow } from "./features/picker/useFitWindow";
 import { PickerFooter } from "./features/picker/PickerFooter";
@@ -391,6 +392,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         return;
       }
       outcome = await copyFileCitation(shown.fileTicket, shown.fileHash);
+      outcome = { ...outcome, warnings: [...outcome.warnings, ...closestMatchWarnings(chosen)] };
     } catch (error) {
       const stale = nativeApi.isSnapshotChanged(error);
       const shared = nativeApi.sharedCitationKey(error);

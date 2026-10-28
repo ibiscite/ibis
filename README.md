@@ -15,8 +15,8 @@ Ibis is an early preview.
 
 - Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Command+Shift+Y** on macOS, if the shortcut is available. Existing custom shortcuts are kept. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
 - Search a BibTeX/BibLaTeX (`.bib`, `.bibtex`) or CSL-JSON (`.json`, `.csljson`) file, or your Zotero library and any group libraries you choose (Zotero 7–10, open or closed).
-- Cite with a key for Pandoc, BibLaTeX, LaTeX or Typst, a formatted citation in APA, Chicago, Harvard or MLA, or an IEEE reference entry. Output is chosen per app and can be changed in the picker.
-- Press **Enter** to paste on macOS. Elsewhere, or when pasting is unavailable, Ibis copies and says why. The paste permission guide is in **Settings > General > Pasting**.
+- Cite with a key for Pandoc, BibLaTeX, LaTeX or Typst, a formatted citation in APA, Chicago, Harvard or MLA, or an IEEE reference entry. On macOS, output is chosen per app; on Windows and Linux, choosing a format changes the global default. Change the output in the picker.
+- Press **Enter** to paste on macOS. Elsewhere, or when pasting is unavailable, Ibis copies. The paste permission guide is in **Settings > General > Pasting**.
 - Works offline and never changes your library.
 - **Nightly only, until the next release:** start Ibis when you log in, and paste a DOI, ISBN, PubMed ID (`PMID:…`) or arXiv ID to find that record in your library (Ibis does not fetch it from the internet).
 
@@ -39,13 +39,13 @@ On Linux you can also use the `.deb` on either release page. See [compatibility]
 
 On first start, Ibis asks whether to check for updates. If you say yes, it can update itself; updates are signed and checked before they install. The menu bar or tray menu shows which build and version you are running.
 
-Some Linux desktops, including GNOME without a tray extension, show no tray icon. Use the launcher to reopen Ibis and the picker's **More** menu for library choices and Quit. Nightly also has its start-at-login switch there. Update controls still need the tray menu.
+Some Linux desktops, including GNOME without a tray extension, show no tray icon. Use the launcher to reopen Ibis and the picker's **More** menu for library choices and Quit. Nightly also has its start-at-login switch there. Builds with updates enabled expose update controls in **More** too.
 
 ## First use
 
-1. Press the shortcut. Choose **Zotero** or a **BibTeX, BibLaTeX or CSL-JSON file**. **Look for libraries on this computer** checks for running Zotero and `.bib` files in your Documents, Desktop and Downloads folders when asked. The format beside search follows the app you came from; choose another format there to remember it for that app, or use **Just this once** for one citation.
+1. Press the shortcut. Choose **Zotero** or a **BibTeX, BibLaTeX or CSL-JSON file**. **Look for libraries on this computer** checks for running Zotero and `.bib` files in your Documents, Desktop and Downloads folders when asked. On macOS, the format beside search follows the app you came from; choose another format there to remember it for that app. On Windows and Linux, choosing a format changes the global default. Use **Just this once** for one citation.
 2. Search by author, title, year, journal, citation key or keywords. You can combine words from different fields. Use the arrow keys to pick a reference.
-3. Press **Enter** to paste into your document on macOS. If permission is needed, follow the guide in **Settings > General > Pasting**. On Windows and Linux, or when pasting is unavailable, Ibis copies the citation and gives the reason; paste it into your document yourself. **Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on macOS) to see every key.
+3. Press **Enter** to paste into your document on macOS. If permission is needed, follow the guide in **Settings > General > Pasting**. On Windows and Linux, or when pasting is unavailable, Ibis copies the citation; paste it into your document yourself. **Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on macOS) to see every key.
 
 Hide or show the citation output with **Show what will be pasted** in **More**, or **Ctrl+I** (**⌘I** on macOS). Ibis remembers this choice; the references you added stay selected.
 
@@ -63,8 +63,7 @@ Choose **Zotero** during setup, or **Use Zotero** in the picker's More menu (or 
 
 If any selected library fails during a refresh, Ibis keeps the whole previous
 snapshot searchable and reports that it could not be updated. Even libraries
-that did respond wait until all selected libraries can be read again. The first
-load can still show available libraries with a warning naming any skipped ones.
+that did respond wait until all selected libraries can be read again.
 
 To read while Zotero runs, turn on its local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis reads Zotero's Citation Key field, a `Citation Key:` line in Extra and Better BibTeX keys. If the keys disagree, Ibis shows the conflict and refuses key output until you resolve it in Zotero.
 
