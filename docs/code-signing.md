@@ -6,8 +6,21 @@ source, reviews and build workflows are public in the
 
 ## Current status
 
-Windows installers and macOS apps are not yet signed with an operating-system
-code signing certificate. The operating system may warn on first install.
+Windows installers and macOS apps are not yet signed with a certificate the
+operating system trusts, so it may warn on first install.
+
+macOS apps are signed with Ibis's own self-signed certificate (#1242). It gives
+every build the same designated requirement, `identifier "<bundle id>" and
+certificate leaf = H"<SHA-1>"`, so macOS keeps permissions such as pasting
+(Privacy & Security) across updates; an ad-hoc signature would tie them to one
+build. The certificate is made once by the maintainer with
+`scripts/macos-signing-setup.sh`, lives only in the `macos-signing` environment
+(main and `v*` tags), and is pinned by the `MACOS_SIGNING_LEAF` variable. The
+`sign-macos` job of the preview workflow applies it with
+`scripts/macos-sign.sh` on a runner that never installs the build's
+dependencies, and refuses any other certificate. It must never be replaced:
+a new certificate makes every user grant those permissions again. Builds without
+it (forks, before setup) stay ad-hoc signed.
 Ibis's updater signatures are separate: the app accepts an update only when
 its signature matches the Ibis update key built into the app and authenticates
 the advertised version within the installed channel
