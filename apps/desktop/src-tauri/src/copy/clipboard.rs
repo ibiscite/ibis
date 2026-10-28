@@ -357,7 +357,6 @@ int main(int argc, const char **argv) { @autoreleasepool {
             formats::{CF_TEXT, CF_UNICODETEXT},
             raw,
         };
-        use winsafe::prelude::Handle;
         // A stable native HWND for this clipboard-only test; no UI is shown.
         let owner = winsafe::HWND::GetDesktopWindow();
         let text = "Ŝynthetic 山田";
