@@ -46,27 +46,10 @@ export const commands = {
 	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
-	/**
-	 *  Copy the selected records as a citation to the clipboard. Format choices
-	 *  are saved separately when selected, even if no citation is copied.
-	 */
-	copyCitation: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<Copied>("copy_citation", { items, format, expectedRevision }),
 	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision }),
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash }),
-	/**  Preview a key citation without writing the clipboard or saving a choice. */
-	citationText: (items: CitationSelection_Deserialize[], format: KeyFormat, expectedRevision: string) => __TAURI_INVOKE<CitationPreview>("citation_text", { items, format, expectedRevision }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
-	/**
-	 *  The selected records as CSL-JSON, in the order given, for the citation
-	 *  engine. Sent as JSON text so the fields stay exactly as the core writes them.
-	 */
-	cslItems: (ids: RecordId[], expectedRevision: string) => __TAURI_INVOKE<string>("csl_items", { ids, expectedRevision }),
-	/**
-	 *  Copy a formatted citation or bibliography as HTML with a plain-text
-	 *  alternative, so word processors keep italics and plain editors get text.
-	 */
-	copyFormatted: (text: string, html: string, expectedRevision: string) => __TAURI_INVOKE<null>("copy_formatted", { text, html, expectedRevision }),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**  Remember the picker preferences; other settings in the file are kept. */
@@ -143,28 +126,6 @@ export const commands = {
 };
 
 /* Types */
-/**  Request-local display pieces; copied output keeps its existing payload. */
-export type CitationPreview = {
-	text: string,
-	warnings: string[],
-	segments: PreviewSegment[],
-};
-
-/**  One transient citation choice, resolved by full source identity. */
-export type CitationSelection = CitationSelection_Serialize | CitationSelection_Deserialize;
-
-/**  One transient citation choice, resolved by full source identity. */
-export type CitationSelection_Deserialize = {
-	id: RecordId,
-	locator?: Locator | null,
-};
-
-/**  One transient citation choice, resolved by full source identity. */
-export type CitationSelection_Serialize = {
-	id: RecordId,
-	locator?: Locator | null,
-};
-
 /**  A bundled citation style the picker can format with (ADR 0020). */
 export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
 
@@ -256,7 +217,6 @@ export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error"
 
 /**  Sent to the interface with the `library:changed` event. */
 export type LibraryStatus = {
-	file_engine?: boolean,
 	state: LibraryState,
 	revision: string,
 	/**  Whether the requested library is Zotero rather than a file. */
@@ -365,19 +325,6 @@ export type PickerPreferences = {
 	show_paste_preview: boolean,
 	/**  The Ibis mark in place of the search glyph; off by default. */
 	search_mark: boolean,
-};
-
-export type PreviewSegment = {
-	item: number | null,
-	text: string,
-};
-
-/**  Stable identity of a record: which source it came from and its key there. */
-export type RecordId = {
-	/**  Source identifier, e.g. a canonical file path or `zotero:group:123`. */
-	source: string,
-	/**  Key of the record inside that source (BibTeX key, Zotero item key, ...). */
-	native_key: string,
 };
 
 export type RowAction = "copy" | "toggle";

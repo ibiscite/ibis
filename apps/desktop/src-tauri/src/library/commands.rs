@@ -8,7 +8,7 @@ use ibis_zotero_local::LocalZotero;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
-use super::search::{SearchQuery, SearchReply, SearchRequests, search_snapshot};
+use super::search::{SearchQuery, SearchReply, SearchRequests};
 use super::source::Source;
 use super::state::Library;
 use super::status::LibraryStatus;
@@ -97,31 +97,27 @@ pub(crate) async fn search(
     library: State<'_, Mutex<Library>>,
     requests: State<'_, SearchRequests>,
 ) -> Result<SearchReply, String> {
-    // The library lock is held only to take the index.
-    let (index, revision, file) = {
+    // The library lock is held only to take the engine.
+    let file = {
         let library = library.lock().map_err(|_| "library state is unavailable".to_string())?;
-        if library.source.is_none() {
-            return Err(match &library.error {
-                Some(error) => format!("the library could not be opened: {error}"),
-                None => "no library is open".to_string(),
-            });
+        match (&library.source, &library.file) {
+            (Some(_), Some(file)) => Arc::clone(file),
+            _ => {
+                return Err(match &library.error {
+                    Some(error) => format!("the library could not be opened: {error}"),
+                    None => "no library is open".to_string(),
+                });
+            }
         }
-        (
-            Arc::clone(&library.index),
-            library.revision.to_string(),
-            library.file.clone(),
-        )
     };
-    if let Some(file) = file {
-        return file.search(&query, limit, scope);
-    }
-    Ok(search_snapshot(
-        &index,
-        revision,
-        &query,
-        limit,
-        request,
-        &requests.newest(page),
-        scope.as_deref(),
-    ))
+    let Some(cancel) = requests.start(page, request) else {
+        return Ok(SearchReply {
+            revision: file.revision(),
+            results: Vec::new(),
+            interpretation: None,
+        });
+    };
+    tauri::async_runtime::spawn_blocking(move || file.search(&query, limit, scope, &cancel))
+        .await
+        .map_err(|_| "searching stopped unexpectedly".to_string())?
 }

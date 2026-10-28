@@ -1041,6 +1041,155 @@ mod tests {
         );
     }
 
+    /// The local API serving `items`, each at version 1.
+    struct ItemsApi(Vec<Value>);
+    impl Transport for ItemsApi {
+        fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+            let body = if path.ends_with("format=versions") {
+                Value::Object(
+                    self.0
+                        .iter()
+                        .map(|item| (item["key"].as_str().unwrap().to_owned(), json!(1)))
+                        .collect(),
+                )
+            } else {
+                Value::Array(
+                    self.0
+                        .iter()
+                        .map(|item| {
+                            let mut data = item.clone();
+                            data["version"] = json!(1);
+                            data["dateModified"] = json!("2020-02-02T00:00:00Z");
+                            json!({"key": item["key"], "version": 1, "data": data})
+                        })
+                        .collect(),
+                )
+            };
+            Ok(Response {
+                status: 200,
+                body: serde_json::to_vec(&body).unwrap(),
+                headers: vec![
+                    ("Zotero-API-Version".into(), "3".into()),
+                    ("X-Zotero-Version".into(), "10.0.6".into()),
+                    ("Zotero-Server-ID".into(), "invented-goldens".into()),
+                    ("Last-Modified-Version".into(), "1".into()),
+                    ("Total-Results".into(), self.0.len().to_string()),
+                ],
+            })
+        }
+    }
+
+    /// Writes `items` into a synthetic Zotero 10 database the way Zotero stores
+    /// them: one row per field value, dates in Zotero's multipart form and
+    /// single-field names with `fieldMode` 1.
+    fn write_database(db: &rusqlite::Connection, items: &[Value]) {
+        db.execute_batch(include_str!("../../ibis-zotero-local/fixtures/closed/schema.sql"))
+            .unwrap();
+        db.execute_batch(
+            "DELETE FROM items; DELETE FROM itemData; DELETE FROM itemDataValues; DELETE FROM creators;
+             DELETE FROM itemCreators; DELETE FROM deletedItems; INSERT INTO version VALUES('userdata',130);",
+        )
+        .unwrap();
+        let id = |db: &rusqlite::Connection, table: &str, key: &str, name: &str| -> i64 {
+            let found = db.query_row(&format!("SELECT rowid FROM {table} WHERE {key}=?1"), [name], |row| {
+                row.get(0)
+            });
+            found.unwrap_or_else(|_| {
+                db.execute(&format!("INSERT INTO {table}({key}) VALUES(?1)"), [name])
+                    .unwrap();
+                db.last_insert_rowid()
+            })
+        };
+        for (row, item) in (1_i64..).zip(items) {
+            let kind = id(db, "itemTypesCombined", "typeName", item["itemType"].as_str().unwrap());
+            db.execute(
+                "INSERT INTO items VALUES(?1,1,?2,1,?3,'2020-01-01 00:00:00','2020-02-02 00:00:00')",
+                rusqlite::params![row, item["key"].as_str().unwrap(), kind],
+            )
+            .unwrap();
+            for (field, value) in item.as_object().unwrap() {
+                let Some(value) = value.as_str() else { continue };
+                if matches!(field.as_str(), "key" | "itemType") {
+                    continue;
+                }
+                let stored = if field == "date" {
+                    // Every golden date is a bare year.
+                    assert!(value.len() == 4 && value.bytes().all(|b| b.is_ascii_digit()), "{value}");
+                    format!("{value}-00-00 {value}")
+                } else {
+                    value.to_owned()
+                };
+                let field = id(db, "fieldsCombined", "fieldName", field);
+                let value = id(db, "itemDataValues", "value", &stored);
+                db.execute("INSERT INTO itemData VALUES(?1,?2,?3)", [row, field, value])
+                    .unwrap();
+            }
+            for (order, creator) in (0_i64..).zip(item["creators"].as_array().unwrap()) {
+                let (first, last, mode) = match creator["name"].as_str() {
+                    Some(name) => ("", name, 1),
+                    None => (
+                        creator["firstName"].as_str().unwrap(),
+                        creator["lastName"].as_str().unwrap(),
+                        0,
+                    ),
+                };
+                db.execute(
+                    "INSERT INTO creators(firstName,lastName,fieldMode) VALUES(?1,?2,?3)",
+                    rusqlite::params![first, last, mode],
+                )
+                .unwrap();
+                let person = db.last_insert_rowid();
+                let role = id(
+                    db,
+                    "creatorTypes",
+                    "creatorType",
+                    creator["creatorType"].as_str().unwrap(),
+                );
+                db.execute(
+                    "INSERT INTO itemCreators VALUES(?1,?2,?3,?4)",
+                    [row, person, role, order],
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    /// The command-line goldens replay the local API's records of these items
+    /// against pinned Zotero, so a closed read that publishes the same records
+    /// formats the same way.
+    #[test]
+    fn golden_items_read_from_a_closed_database_publish_the_local_api_records() {
+        if !cfg!(target_os = "macos") || std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
+            eprintln!("actual-reader goldens require disposable macOS CI; native local check skipped");
+            return;
+        }
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/formatted/zotero/expected.json")).unwrap();
+        let items = fixture["items"].as_array().unwrap().clone();
+        let data = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        write_database(
+            &rusqlite::Connection::open(data.path().join("zotero.sqlite")).unwrap(),
+            &items,
+        );
+        let acquired = read_closed_at(data.path(), cache.path(), Arc::new(|| false)).unwrap();
+        let closed = ZoteroSource::default()
+            .publish_closed(&acquired, &|| false)
+            .unwrap()
+            .remove(0);
+        let live = ZoteroSource::default()
+            .refresh(&mut ItemsApi(items.clone()), false, &|| false)
+            .unwrap()
+            .remove(0);
+        assert_eq!(closed.snapshot.objects().len(), items.len());
+        assert_eq!(
+            serde_json::to_value(&closed.snapshot).unwrap(),
+            serde_json::to_value(&live.snapshot).unwrap()
+        );
+        assert_eq!(closed.snapshot.fingerprints(), live.snapshot.fingerprints());
+        assert_eq!(closed.warnings, live.warnings);
+    }
+
     #[test]
     fn actual_closed_reader_matches_live_public_records_in_disposable_ci() {
         if !cfg!(target_os = "macos") || std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
