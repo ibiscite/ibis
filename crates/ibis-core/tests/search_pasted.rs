@@ -686,6 +686,28 @@ fn mmd_suffix_round_trip(suffix: &str) {
 }
 
 #[test]
+fn multimarkdown_recognized_keys_can_end_without_a_closing_bracket() {
+    let index = index();
+    for (query, expected) in [
+        ("[#a][][#b", vec!["a", "b"]),
+        ("[#b", vec!["b"]),
+        ("[#a][][{section][#b]", vec!["a", "b"]),
+        ("[#a][][{section][#b", vec!["a", "b"]),
+    ] {
+        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
+        assert_eq!(
+            list.hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            expected,
+            "{query}"
+        );
+        assert!(list.missing.is_empty(), "{query}");
+    }
+}
+
+#[test]
 fn multimarkdown_suffix_only_braces_round_trip_before_json_protection() {
     for suffix in ["{section", "}section", "{section}", "section{", "section}"] {
         mmd_suffix_round_trip(suffix);

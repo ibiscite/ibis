@@ -215,20 +215,26 @@ fn myst<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
 fn mmd<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     // MultiMarkdown notes and keys are flat brackets; braces are literal.
     let after = text.strip_prefix('[')?;
-    let end = work.find(after, |c| matches!(c, '[' | ']'))?;
+    let end = work.find(after, |c| matches!(c, '[' | ']')).unwrap_or(after.len());
     let body = &after[..end];
-    let rest = after[end..].strip_prefix(']')?;
+    let rest = &after[end..];
     let (key, rest) = match body.strip_prefix('#') {
-        Some(key) => (key, rest.strip_prefix("[]").unwrap_or(rest)),
+        Some(key) => {
+            // A recognized key may be truncated at EOF, but never at a '['.
+            let rest = rest.strip_prefix(']').or_else(|| rest.is_empty().then_some(rest))?;
+            (key, rest.strip_prefix("[]").unwrap_or(rest))
+        }
         None => {
-            let after = rest.strip_prefix("[#")?;
+            let after = rest.strip_prefix(']')?.strip_prefix("[#")?;
             // In particular, JSON strings/objects cannot become notes even if
             // their metadata contains a closing bracket and citation marker.
             if !work.spend(body.len()) || !super::escape::mmd_literal(body) {
                 return None;
             }
-            let end = work.find(after, |c| matches!(c, '[' | ']'))?;
-            (&after[..end], after[end..].strip_prefix(']')?)
+            let end = work.find(after, |c| matches!(c, '[' | ']')).unwrap_or(after.len());
+            let rest = &after[end..];
+            let rest = rest.strip_prefix(']').or_else(|| rest.is_empty().then_some(rest))?;
+            (&after[..end], rest)
         }
     };
     Some(explicit([Cow::Borrowed(key)], rest))
