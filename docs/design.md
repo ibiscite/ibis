@@ -734,6 +734,7 @@ without an update key show neither. Both show only the saved choice, and clicks 
 either are saved in the order they were made.
 The tray click carries the absolute choice its item displayed, so a queued save
 repainting the check cannot change an earlier click's intent.
+On every OS, an available update never shows or focuses the picker: its offer waits quietly while the picker is hidden or unfocused, then appears when the person opens the picker.
 
 ## Brand and mark
 

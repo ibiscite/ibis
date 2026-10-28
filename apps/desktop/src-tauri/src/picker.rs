@@ -21,7 +21,6 @@ mod registration;
 #[cfg(target_os = "linux")]
 mod x11_focus;
 
-#[cfg(any(target_os = "macos", test))]
 pub(crate) use dialogs::ChooserLease;
 pub(crate) use dialogs::ChooserOpen;
 pub(crate) use full_screen::FullScreenGuard;
@@ -135,7 +134,7 @@ fn resolve_focus(native: Result<Option<bool>, ()>, toolkit: impl FnOnce() -> Opt
     }
 }
 
-fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool> {
+pub(crate) fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool> {
     #[cfg(target_os = "linux")]
     return resolve_focus(x11_focus::query(window), || {
         checked(window.is_focused(), NativeIssue::FocusState)
