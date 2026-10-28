@@ -10,11 +10,8 @@ mod bindings;
 mod copy;
 mod diagnostics;
 mod feedback;
-mod identity;
 mod library;
 mod login_item;
-#[cfg(target_os = "macos")]
-mod macos_reapproval;
 #[cfg(target_os = "macos")]
 mod native_corners;
 mod native_feel;
@@ -127,9 +124,7 @@ fn main() {
     let initial_panel = panel::prepare_startup(&mut context);
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
-    let builder = builder
-        .manage(initial_panel)
-        .manage(macos_reapproval::Delivery::default());
+    let builder = builder.manage(initial_panel);
     #[cfg(target_os = "windows")]
     let builder = builder.manage(picker::FocusChanges::default());
     let builder = builder
@@ -248,8 +243,7 @@ fn main() {
                 #[cfg(not(target_os = "macos"))]
                 report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
             }
-            let location = identity::settings_location(&app.path().app_config_dir()?, &app.config().identifier);
-            let settings_path = location.path;
+            let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
             if let Some(problem) = &loaded.problem {
@@ -257,12 +251,6 @@ fn main() {
             }
             if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
                 library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
-                if location.using_legacy {
-                    library.settings_notice = Some(match library.settings_notice.take() {
-                        Some(problem) => format!("{} {problem}", identity::MIGRATION_NOTICE),
-                        None => identity::MIGRATION_NOTICE.to_string(),
-                    });
-                }
             }
             let (shortcut, label, setting_error) = configured_shortcut(loaded.settings.shortcut.as_deref());
             let wayland = cfg!(target_os = "linux")

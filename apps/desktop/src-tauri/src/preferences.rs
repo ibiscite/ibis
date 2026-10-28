@@ -101,18 +101,9 @@ impl SettingsFile {
     }
 
     /// Refresh under the library lock so a reload cannot carry forward a stale
-    /// recovery warning. The separate identity-migration warning still applies.
+    /// recovery warning.
     pub(crate) fn refresh_notice(&self, library: &mut Library) {
-        let migration = library
-            .settings_notice
-            .as_deref()
-            .is_some_and(|notice| notice.starts_with(crate::identity::MIGRATION_NOTICE));
-        let notice = settings_notice(&self.path, &settings::load(&self.path));
-        library.settings_notice = match (migration, notice) {
-            (true, Some(notice)) => Some(format!("{} {notice}", crate::identity::MIGRATION_NOTICE)),
-            (true, None) => Some(crate::identity::MIGRATION_NOTICE.to_string()),
-            (false, notice) => notice,
-        };
+        library.settings_notice = settings_notice(&self.path, &settings::load(&self.path));
     }
 }
 
@@ -295,21 +286,14 @@ mod tests {
         use std::time::Duration;
         use tauri::Listener;
 
-        for (has_backup, migrating) in [(false, false), (true, false), (true, true)] {
+        for has_backup in [false, true] {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
             let path = directory.path().join("settings.json");
             std::fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
             if has_backup {
                 std::fs::write(path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
             }
-            let mut startup_notice = settings_notice(&path, &settings::load(&path));
-            if migrating {
-                startup_notice = Some(format!(
-                    "{} {}",
-                    crate::identity::MIGRATION_NOTICE,
-                    startup_notice.unwrap_or_default()
-                ));
-            }
+            let startup_notice = settings_notice(&path, &settings::load(&path));
             let mut library = crate::library::Library::default();
             library.settings_notice = startup_notice.clone();
             let app = tauri::test::mock_builder()
@@ -332,17 +316,15 @@ mod tests {
             let library = app.state::<Mutex<crate::library::Library>>();
             let library = library.lock().unwrap_or_else(|_| panic!("library lock poisoned"));
             if has_backup {
-                let expected = migrating.then_some(crate::identity::MIGRATION_NOTICE);
                 assert_eq!(
-                    library.settings_notice.as_deref(),
-                    expected,
+                    library.settings_notice, None,
                     "successful recovery must clear the damaged-settings warning"
                 );
                 let event = events
                     .recv_timeout(Duration::from_secs(3))
                     .unwrap_or_else(|e| panic!("{e}"));
                 let status: serde_json::Value = serde_json::from_str(&event).unwrap_or_else(|e| panic!("{e}"));
-                assert_eq!(status.get("settings_notice"), Some(&serde_json::json!(expected)));
+                assert_eq!(status.get("settings_notice"), Some(&serde_json::Value::Null));
             } else {
                 assert_eq!(library.settings_notice, startup_notice);
                 assert!(events.try_recv().is_err(), "failed saves must keep the warning");

@@ -53,12 +53,10 @@ pub(crate) struct DesktopFile {
     pub(crate) path: PathBuf,
     pub(crate) name: String,
     pub(crate) program: PathBuf,
-    canonical: Option<PathBuf>,
 }
 
 impl Entry for DesktopFile {
     fn is_enabled(&self) -> Result<bool, Failed> {
-        self.check_compatibility()?;
         match std::fs::read_to_string(&self.path) {
             Ok(text) => Ok(!switched_off(&text)),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -67,7 +65,6 @@ impl Entry for DesktopFile {
     }
 
     fn enable(&self) -> Result<(), Failed> {
-        self.check_compatibility()?;
         // An entry for a missing program would show as on and never start.
         if !self.program.is_file() {
             return Err(Failed);
@@ -77,7 +74,6 @@ impl Entry for DesktopFile {
     }
 
     fn disable(&self) -> Result<(), Failed> {
-        self.check_compatibility()?;
         match std::fs::remove_file(&self.path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -90,7 +86,6 @@ impl Entry for DesktopFile {
     /// person's own keys stay. A symbolic link, a file Ibis did not write,
     /// or one whose program still exists is left alone.
     fn refresh(&self) -> Result<(), Failed> {
-        self.check_compatibility()?;
         let Ok(metadata) = std::fs::symlink_metadata(&self.path) else {
             return Ok(());
         };
@@ -113,50 +108,16 @@ impl DesktopFile {
         name: &str,
         program: PathBuf,
     ) -> Self {
-        let legacy = if development {
-            None
-        } else {
-            match identifier {
-                "com.ibiscite.ibis" => Some("io.github.ibiscite.ibis"),
-                "com.ibiscite.ibis.nightly" => Some("io.github.ibiscite.ibis.nightly"),
-                _ => None,
-            }
-        };
         let file = if development {
             format!("{identifier}.development.desktop")
         } else {
-            format!("{}.desktop", legacy.unwrap_or(identifier))
+            format!("{identifier}.desktop")
         };
         Self {
             path: folder.join(file),
             name: name.to_string(),
             program,
-            canonical: legacy.map(|_| folder.join(format!("{identifier}.desktop"))),
         }
-    }
-
-    fn check_compatibility(&self) -> Result<(), Failed> {
-        let Some(canonical) = &self.canonical else {
-            return Ok(());
-        };
-        // An ambiguous slot or interrupted/foreign stage is never claimed.
-        for path in [canonical, &self.path.with_extension("desktop.partial")] {
-            if !matches!(std::fs::symlink_metadata(path), Err(error) if error.kind() == std::io::ErrorKind::NotFound) {
-                return Err(Failed);
-            }
-        }
-        let metadata = match std::fs::symlink_metadata(&self.path) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            other => other.map_err(|_| Failed)?,
-        };
-        if !metadata.is_file() || metadata.len() > 64 * 1024 {
-            return Err(Failed);
-        }
-        let text = std::fs::read_to_string(&self.path).map_err(|_| Failed)?;
-        if !owned(&text) {
-            return Err(Failed);
-        }
-        Ok(())
     }
 
     /// Written beside the entry and renamed, so a session starting meanwhile
@@ -180,16 +141,6 @@ impl DesktopFile {
         }
         result
     }
-}
-
-fn owned(text: &str) -> bool {
-    let mut in_entry = false;
-    text.lines().map(str::trim).any(|line| {
-        if line.starts_with('[') {
-            in_entry = line == "[Desktop Entry]";
-        }
-        in_entry && key_value(line) == Some(("X-Ibis-Autostart", "true"))
-    })
 }
 
 /// `text` with its `Exec` and `TryExec` pointing at `program`, or `None` when
@@ -346,39 +297,14 @@ mod tests {
             path,
             name: name.to_string(),
             program: PathBuf::from(program),
-            canonical: None,
         }
     }
 
     #[test]
-    fn permanent_identities_retain_each_channels_existing_startup_choice() -> Result<(), Box<dyn std::error::Error>> {
-        for (identifier, legacy) in [
-            ("com.ibiscite.ibis", "io.github.ibiscite.ibis"),
-            ("com.ibiscite.ibis.nightly", "io.github.ibiscite.ibis.nightly"),
-        ] {
-            let root = tempfile::tempdir()?;
-            let program = root.path().join("ibis");
-            std::fs::write(&program, b"synthetic program")?;
-            let legacy = root.path().join(format!("{legacy}.desktop"));
-            let original = desktop_entry("Ibis", &program).ok_or("entry")?;
-            std::fs::write(&legacy, &original)?;
-            let entry = DesktopFile::for_identity(root.path(), identifier, false, "Ibis", program);
-            assert_eq!(entry.is_enabled(), Ok(true));
-            assert_eq!(entry.path, legacy);
-            assert!(!root.path().join(format!("{identifier}.desktop")).exists());
-            assert_eq!(std::fs::read_to_string(&legacy)?, original);
-            std::fs::remove_file(&legacy)?;
-            assert_eq!(entry.is_enabled(), Ok(false));
-            assert_eq!(entry.enable(), Ok(()));
-            assert_eq!(entry.disable(), Ok(()));
-            assert!(!legacy.exists());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn development_and_unknown_identities_keep_their_own_slot() {
+    fn each_identity_and_development_build_has_its_own_slot() {
         for (identifier, development, filename) in [
+            ("com.ibiscite.ibis", false, "com.ibiscite.ibis.desktop"),
+            ("com.ibiscite.ibis.nightly", false, "com.ibiscite.ibis.nightly.desktop"),
             ("com.ibiscite.ibis", true, "com.ibiscite.ibis.development.desktop"),
             (
                 "com.ibiscite.ibis.nightly",
@@ -390,12 +316,11 @@ mod tests {
             let entry =
                 DesktopFile::for_identity(Path::new("/synthetic"), identifier, development, "Ibis", "/ibis".into());
             assert_eq!(entry.path, Path::new("/synthetic").join(filename));
-            assert!(entry.canonical.is_none());
         }
     }
 
     #[test]
-    fn compatibility_refresh_keeps_disabled_choices_and_custom_keys() -> Result<(), Box<dyn std::error::Error>> {
+    fn refresh_keeps_disabled_choices_and_custom_keys() -> Result<(), Box<dyn std::error::Error>> {
         for off in ["", "Hidden=true\n", "X-GNOME-Autostart-enabled=false\n"] {
             let root = tempfile::tempdir()?;
             let program = root.path().join("new-ibis");
@@ -420,70 +345,6 @@ mod tests {
             assert!(items.change(true).enabled); // Explicit On keeps its existing reset behavior.
             assert!(!items.change(false).enabled);
             assert!(!path.exists());
-            assert!(!root.path().join("com.ibiscite.ibis.desktop").exists());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn unsafe_compatibility_slots_are_unreadable_and_never_changed() -> Result<(), Box<dyn std::error::Error>> {
-        for case in [
-            "foreign",
-            "symlink",
-            "directory",
-            "large",
-            "canonical",
-            "absent-canonical",
-            "canonical-link",
-            "partial",
-            "partial-link",
-        ] {
-            let root = tempfile::tempdir()?;
-            let program = root.path().join("ibis");
-            std::fs::write(&program, b"program")?;
-            let entry = DesktopFile::for_identity(root.path(), "com.ibiscite.ibis", false, "Ibis", program.clone());
-            let canonical = root.path().join("com.ibiscite.ibis.desktop");
-            let partial = entry.path.with_extension("desktop.partial");
-            let original = desktop_entry("Ibis", &program).ok_or("entry")?;
-            std::fs::write(&entry.path, &original)?;
-            match case {
-                "foreign" => std::fs::write(&entry.path, "[Other]\nX-Ibis-Autostart=true\n")?,
-                "symlink" | "directory" => {
-                    std::fs::remove_file(&entry.path)?;
-                    if case == "symlink" {
-                        std::os::unix::fs::symlink(&program, &entry.path)?;
-                    } else {
-                        std::fs::create_dir(&entry.path)?;
-                    }
-                }
-                "large" => std::fs::write(&entry.path, format!("{original}{}", "x".repeat(64 * 1024)))?,
-                "canonical" | "absent-canonical" | "partial" => {
-                    std::fs::write(if case == "partial" { &partial } else { &canonical }, b"foreign")?
-                }
-                _ => {
-                    std::os::unix::fs::symlink(&program, if case == "canonical-link" { &canonical } else { &partial })?
-                }
-            }
-            if case == "absent-canonical" {
-                std::fs::remove_file(&entry.path)?;
-            }
-            let snapshot = || {
-                [&entry.path, &canonical, &partial, &program].map(|p| {
-                    (
-                        std::fs::symlink_metadata(p).ok().map(|m| m.file_type()),
-                        std::fs::read(p).ok(),
-                    )
-                })
-            };
-            let before = snapshot();
-            for on in [true, false] {
-                assert_eq!(
-                    change(Some(&entry), on, false),
-                    item(false, Some(LoginItemProblem::Unreadable))
-                );
-            }
-            assert_eq!(entry.refresh(), Err(Failed));
-            assert!(snapshot() == before, "{case}");
         }
         Ok(())
     }
@@ -661,8 +522,8 @@ mod tests {
         let home = tempfile::tempdir().unwrap_or_else(|e| panic!("temporary folder: {e}"));
         let path = home
             .path()
-            .join("config dir/autostart/io.github.ibiscite.ibis.nightly.desktop");
-        let stable = home.path().join("config dir/autostart/io.github.ibiscite.ibis.desktop");
+            .join("config dir/autostart/com.ibiscite.ibis.nightly.desktop");
+        let stable = home.path().join("config dir/autostart/com.ibiscite.ibis.desktop");
         let program = home.path().join("Ibis Nightly/ibis");
         std::fs::create_dir_all(home.path().join("Ibis Nightly")).unwrap_or_default();
         std::fs::write(&program, "").unwrap_or_default();
