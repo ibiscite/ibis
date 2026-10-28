@@ -151,7 +151,10 @@ fn command() -> Command {
                 .arg(
                     Arg::new("omit-author")
                         .long("omit-author")
-                        .action(ArgAction::Count)
+                        // Append keeps every occurrence's index; Count keeps only the last.
+                        .num_args(0)
+                        .default_missing_value("true")
+                        .action(ArgAction::Append)
                         .help("Leave out the author of the key before it"),
                 ),
             Method::Styles => subcommand.about("List available bundled CSL styles"),
@@ -222,7 +225,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> u8 {
     let json = arguments.iter().any(|argument| argument == "--json");
-    let matches = match command().try_get_matches_from(arguments) {
+    let matches = match command().try_get_matches_from(arguments.iter()) {
         Ok(matches) => matches,
         Err(error) => {
             if matches!(
@@ -246,8 +249,15 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                 }
                 return if write!(output, "{error}").is_ok() { 0 } else { 70 };
             }
-            // clap names the argument and prints the usage line; keep its words.
-            let message = error.to_string();
+            // clap names the argument and prints the usage line; keep its words,
+            // but a line break typed in an argument must not start a forged line.
+            let mut message = error.to_string();
+            for argument in &arguments {
+                let text = argument.to_string_lossy();
+                if text.contains(['\n', '\r']) {
+                    message = message.replace(text.as_ref(), &text.escape_debug().to_string());
+                }
+            }
             return emit(
                 json,
                 Err(Failure::new(
@@ -601,15 +611,12 @@ fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
         let indices = args.indices_of(flag).into_iter().flatten();
         options.extend(indices.zip(values).map(|(index, value)| (index, flag, Some(value))));
     }
-    // A count flag reports its default's index when absent, so only typed flags count.
-    if args.get_count("omit-author") > 0 {
-        options.extend(
-            args.indices_of("omit-author")
-                .into_iter()
-                .flatten()
-                .map(|index| (index, "omit-author", None)),
-        );
-    }
+    options.extend(
+        args.indices_of("omit-author")
+            .into_iter()
+            .flatten()
+            .map(|index| (index, "omit-author", None)),
+    );
     let mut resolved = vec![];
     for (index, flag, value) in options {
         resolved.push((owner(flag, index)?, flag, value));

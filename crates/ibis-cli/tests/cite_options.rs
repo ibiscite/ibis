@@ -52,7 +52,7 @@ fn picked(key: &str, options: &Value) -> Result<Value> {
 fn per_key_flags_match_the_picker_request_in_every_output() -> Result {
     let plain = |text: &str| json!([{"text":text,"italic":false,"bold":false,"script":"normal"}]);
     // Each key, the flags typed after it, and the options the picker attaches to that item.
-    let cases: [&[(&str, &[&str], Value)]; 4] = [
+    let cases: [&[(&str, &[&str], Value)]; 5] = [
         &[(
             "taylor2026",
             &["--locator", "p. 12"],
@@ -79,6 +79,10 @@ fn per_key_flags_match_the_picker_request_in_every_output() -> Result {
             ("morgan2025", &[], json!({})),
         ],
         &[("taylor2026", &["--omit-author"], json!({"suppress_author":true}))],
+        &[
+            ("taylor2026", &["--omit-author"], json!({"suppress_author":true})),
+            ("morgan2025", &["--omit-author"], json!({"suppress_author":true})),
+        ],
     ];
     let outputs: [(&[&str], Value); 6] = [
         (&[], json!({"kind":"key","syntax":"pandoc","command":null})),
@@ -178,6 +182,21 @@ fn misplaced_repeated_or_unreadable_flags_are_usage_errors() -> Result {
             "ibis: --locator is given twice for 'taylor2026'.\n",
         ),
         (
+            &["cite", "--omit-author", "taylor2026"],
+            "ibis: --omit-author must follow the key it belongs to.\n",
+        ),
+        (
+            &[
+                "cite",
+                "taylor2026",
+                "--omit-author",
+                "morgan2025",
+                "--omit-author",
+                "--omit-author",
+            ],
+            "ibis: --omit-author is given twice for 'morgan2025'.\n",
+        ),
+        (
             &["cite", "taylor2026", "--locator", "somewhere"],
             "ibis: --locator 'somewhere' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".\n",
         ),
@@ -187,5 +206,14 @@ fn misplaced_repeated_or_unreadable_flags_are_usage_errors() -> Result {
     }
     let (code, _, _) = run(&["cite", "--request", "--locator", "12"], b"{}")?;
     assert_eq!(code, 2);
+    Ok(())
+}
+
+#[test]
+fn a_line_break_in_a_bad_argument_cannot_forge_a_diagnostic_line() -> Result {
+    let (code, _, errors) = run(&["cite", "--bad\nibis: forged"], b"")?;
+    assert_eq!(code, 2);
+    assert!(!errors.lines().any(|line| line.starts_with("ibis: forged")), "{errors}");
+    assert!(errors.contains("--bad\\nibis: forged"), "{errors}");
     Ok(())
 }
