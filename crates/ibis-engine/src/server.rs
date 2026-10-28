@@ -65,9 +65,9 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                             Err(_) => None,
                         }
                     };
-                    let Some(event) = event else { break };
+                    let Some(_) = event else { break };
                     if output
-                        .send(json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":event}))
+                        .send(json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":{}}))
                         .is_err()
                     {
                         break;
@@ -347,7 +347,11 @@ mod tests {
         let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
         let message = protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap();
         assert_eq!(message["method"], "ibis/libraryChanged");
-        assert_eq!(message["params"]["sequence"], 1);
+        assert_eq!(message["params"], json!({}));
+        assert!(message.get("id").is_none());
+        let notification = message.to_string();
+        assert!(!notification.contains("path"));
+        assert!(!notification.contains("synthetic event"));
         drop(input);
         assert!(server.join().unwrap().is_ok());
     }

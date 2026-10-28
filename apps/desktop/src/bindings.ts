@@ -122,6 +122,18 @@ export const commands = {
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**  "Check for Updates…": the same check the tray starts. */
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	/**
+	 *  Open Settings, or bring it forward, on `page` when one is named. Async so
+	 *  the window is built from the event loop: a sync command runs inside the
+	 *  WebView2 callback, where building a second webview deadlocks on Windows.
+	 */
+	openSettings: (page: "general" |
+/**  General, scrolled to pasting and its permission. */
+"paste" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
+	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
+	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */
+	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
 };
 
 /* Types */
@@ -312,6 +324,22 @@ export type NoticeMessage = {
 	text: string,
 };
 
+/**  Where Settings opens. */
+export type Page = "general" |
+/**  General, scrolled to pasting and its permission. */
+"paste" | "citations" | "about";
+
+/**  Whether Ibis may paste, and where the person turns that on. */
+export type PastePermission = {
+	/**  Ibis pastes on this system; where it only copies, Settings offers no pasting choices. */
+	pastes: boolean,
+	/**  This system asks the person before an app may paste for them. */
+	needed: boolean,
+	granted: boolean,
+	/**  The list in System Settings that holds the switch, in the system's words. */
+	list: string,
+};
+
 /**
  *  How the picker looks and what it formats with, remembered across restarts
  *  (ADR 0020). A new key format is saved with the same preference change.
@@ -324,6 +352,8 @@ export type PickerPreferences = {
 	show_paste_preview: boolean,
 	/**  The Ibis mark in place of the search glyph; off by default. */
 	search_mark: boolean,
+	/**  Enter pastes into the app the picker was opened from; on by default. */
+	paste: boolean,
 };
 
 export type RowAction = "copy" | "toggle";

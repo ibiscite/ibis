@@ -1,4 +1,4 @@
-use crate::{FormatError, Limits, Priority, input::Prepared, runtime::Session};
+use crate::{FormatError, Limits, input::Prepared, runtime::Session};
 use ibis_core::contract::CitationResult;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,21 +16,14 @@ impl CancellationToken {
         self.cancelled.store(true, Ordering::Release);
         if let Some(shared) = self.shared.upgrade() {
             let mut removed = None;
-            if let Ok(mut state) = shared.state.lock() {
-                for lane in 0..2 {
-                    if let Some(index) = state.queues[lane]
-                        .iter()
-                        .position(|job| Arc::ptr_eq(&job.cancellation.cancelled, &self.cancelled))
-                    {
-                        removed = state.queues[lane].remove(index);
-                        state.outstanding[lane] = state.outstanding[lane].saturating_sub(1);
-                        break;
-                    }
-                }
-                shared.interactive.store(
-                    state.interactive_active || !state.queues[0].is_empty(),
-                    Ordering::Release,
-                );
+            if let Ok(mut state) = shared.state.lock()
+                && let Some(index) = state
+                    .queue
+                    .iter()
+                    .position(|job| Arc::ptr_eq(&job.cancellation.cancelled, &self.cancelled))
+            {
+                removed = state.queue.remove(index);
+                state.outstanding -= 1;
             }
             shared.wake.notify_all();
             if let Some(job) = removed {
@@ -73,73 +66,64 @@ pub(crate) struct Job {
 }
 #[derive(Default)]
 struct State {
-    queues: [VecDeque<Job>; 2],
-    outstanding: [usize; 2],
-    interactive_active: bool,
+    queue: VecDeque<Job>,
+    outstanding: usize,
 }
+#[derive(Default)]
 struct Shared {
     state: Mutex<State>,
     wake: Condvar,
     stopping: Arc<AtomicBool>,
-    interactive: Arc<AtomicBool>,
 }
 pub(crate) struct Service {
     shared: Arc<Shared>,
-    threads: Vec<JoinHandle<()>>,
+    thread: Option<JoinHandle<()>>,
     limits: Limits,
 }
 impl Service {
     pub(crate) fn new(limits: Limits) -> Result<Self, FormatError> {
-        let shared = Arc::new(Shared {
-            state: Mutex::new(State::default()),
-            wake: Condvar::new(),
-            stopping: Arc::new(AtomicBool::new(false)),
-            interactive: Arc::new(AtomicBool::new(false)),
-        });
         let mut service = Self {
-            shared,
-            threads: vec![],
+            shared: Arc::default(),
+            thread: None,
             limits,
         };
-        for lane in 0..2 {
-            let shared = service.shared.clone();
-            let limits = service.limits.clone();
-            let handle = thread::Builder::new()
-                .name(
-                    if lane == 0 {
-                        "ibis-csl-interactive"
-                    } else {
-                        "ibis-csl-background"
-                    }
-                    .into(),
-                )
-                .stack_size(crate::WORKER_STACK_BYTES)
-                .spawn(move || worker(shared, limits, lane))
-                .map_err(|_| FormatError::Runtime)?;
-            service.threads.push(handle);
-        }
+        service.start_worker()?;
         Ok(service)
+    }
+    fn start_worker(&mut self) -> Result<(), FormatError> {
+        let shared = self.shared.clone();
+        let limits = self.limits.clone();
+        self.thread = Some(
+            thread::Builder::new()
+                .name("ibis-csl".into())
+                .stack_size(crate::WORKER_STACK_BYTES)
+                .spawn(move || {
+                    // A panic must also release queued callers and refuse new work.
+                    let _ = std::panic::catch_unwind(|| worker(&shared, &limits));
+                    let mut state = shared.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let error = if shared.stopping.swap(true, Ordering::AcqRel) {
+                        FormatError::Cancelled
+                    } else {
+                        FormatError::Runtime
+                    };
+                    for job in state.queue.drain(..) {
+                        let _ = job.reply.send(Err(error));
+                    }
+                    state.outstanding = 0;
+                })
+                .map_err(|_| FormatError::Runtime)?,
+        );
+        Ok(())
     }
     pub(crate) fn limits(&self) -> &Limits {
         &self.limits
     }
-    pub(crate) fn submit(&self, prepared: Prepared, priority: Priority) -> Result<FormatTask, FormatError> {
-        let lane = usize::from(priority == Priority::Background);
-        let cap = if lane == 0 {
-            self.limits.interactive_queue
-        } else {
-            self.limits.background_queue
-        };
-        let timeout = if lane == 0 {
-            self.limits.interactive_timeout
-        } else {
-            self.limits.background_timeout
-        };
+    pub(crate) fn submit(&self, prepared: Prepared) -> Result<FormatTask, FormatError> {
         let mut state = self.shared.state.lock().map_err(|_| FormatError::Runtime)?;
         if self.shared.stopping.load(Ordering::Acquire) {
             return Err(FormatError::Runtime);
         }
-        if state.outstanding[lane] >= cap {
+        if state.outstanding >= self.limits.queue {
             return Err(FormatError::Busy);
         }
         let cancellation = CancellationToken {
@@ -147,16 +131,13 @@ impl Service {
             shared: Arc::downgrade(&self.shared),
         };
         let (reply, receiver) = mpsc::channel();
-        state.queues[lane].push_back(Job {
+        state.queue.push_back(Job {
             prepared,
             cancellation: cancellation.clone(),
-            deadline: Instant::now() + timeout,
+            deadline: Instant::now() + self.limits.timeout,
             reply,
         });
-        state.outstanding[lane] += 1;
-        if lane == 0 {
-            self.shared.interactive.store(true, Ordering::Release);
-        }
+        state.outstanding += 1;
         self.shared.wake.notify_all();
         Ok(FormatTask {
             cancellation,
@@ -177,7 +158,7 @@ impl Drop for Service {
             self.shared.stopping.store(true, Ordering::Release);
             self.shared.wake.notify_all();
         }
-        for thread in self.threads.drain(..) {
+        if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
     }
@@ -187,112 +168,54 @@ impl Drop for Service {
 pub(crate) struct Control {
     pub cancel: Arc<AtomicBool>,
     pub stopping: Arc<AtomicBool>,
-    pub interactive: Arc<AtomicBool>,
     pub deadline: Instant,
-    pub background: bool,
 }
 impl Control {
-    pub fn error(&self) -> Option<WorkError> {
+    pub fn error(&self) -> Option<FormatError> {
         if self.cancel.load(Ordering::Acquire) || self.stopping.load(Ordering::Acquire) {
-            Some(WorkError::Public(FormatError::Cancelled))
+            Some(FormatError::Cancelled)
         } else if Instant::now() >= self.deadline {
-            Some(WorkError::Public(FormatError::TimedOut))
-        } else if self.background && self.interactive.load(Ordering::Acquire) {
-            Some(WorkError::Preempted)
+            Some(FormatError::TimedOut)
         } else {
             None
         }
     }
 }
-#[derive(Debug)]
-pub(crate) enum WorkError {
-    Public(FormatError),
-    Preempted,
-}
-impl From<FormatError> for WorkError {
-    fn from(error: FormatError) -> Self {
-        Self::Public(error)
-    }
-}
-
-fn worker(shared: Arc<Shared>, limits: Limits, lane: usize) {
+fn worker(shared: &Shared, limits: &Limits) {
     let mut session = None;
     loop {
         let job = {
             let Ok(mut state) = shared.state.lock() else { return };
             loop {
                 if shared.stopping.load(Ordering::Acquire) {
-                    for queue in &mut state.queues {
-                        for job in queue.drain(..) {
-                            let _ = job.reply.send(Err(FormatError::Cancelled));
-                        }
-                    }
                     return;
                 }
-                let disposable = state.queues[lane].front().is_some_and(|job| {
-                    job.cancellation.cancelled.load(Ordering::Acquire) || Instant::now() >= job.deadline
-                });
-                if !state.queues[lane].is_empty()
-                    && (lane == 0 || disposable || (!state.interactive_active && state.queues[0].is_empty()))
-                {
-                    break;
+                if let Some(job) = state.queue.pop_front() {
+                    break job;
                 }
-                state = if let Some(job) = state.queues[lane].front() {
-                    let delay = job.deadline.saturating_duration_since(Instant::now());
-                    match shared.wake.wait_timeout(state, delay) {
-                        Ok((state, _)) => state,
-                        Err(_) => return,
-                    }
-                } else {
-                    match shared.wake.wait(state) {
-                        Ok(state) => state,
-                        Err(_) => return,
-                    }
+                state = match shared.wake.wait(state) {
+                    Ok(state) => state,
+                    Err(_) => return,
                 };
             }
-            if lane == 0 {
-                state.interactive_active = true;
-            }
-            let Some(job) = state.queues[lane].pop_front() else {
-                return;
-            };
-            job
         };
         let control = Control {
             cancel: job.cancellation.cancelled.clone(),
             stopping: shared.stopping.clone(),
-            interactive: shared.interactive.clone(),
             deadline: job.deadline,
-            background: lane == 1,
         };
         let result = match control.error() {
             Some(error) => Err(error),
             None if job.prepared.empty => Ok(crate::output::refused(&job.prepared)),
-            None => Session::format(&mut session, &job.prepared, &limits, &control),
+            None => Session::format(&mut session, &job.prepared, limits, &control),
         };
         if result.is_err() {
             session = None;
         }
-        finish(&shared, lane, job, result);
+        let Ok(mut state) = shared.state.lock() else { return };
+        state.outstanding -= 1;
+        let _ = job.reply.send(result);
     }
-}
-fn finish(shared: &Shared, lane: usize, job: Job, result: Result<CitationResult, WorkError>) {
-    let Ok(mut state) = shared.state.lock() else { return };
-    match result {
-        Err(WorkError::Preempted) => state.queues[lane].push_front(job),
-        result => {
-            state.outstanding[lane] = state.outstanding[lane].saturating_sub(1);
-            let _ = job.reply.send(result.map_err(|error| match error {
-                WorkError::Public(error) => error,
-                WorkError::Preempted => FormatError::Runtime,
-            }));
-        }
-    }
-    if lane == 0 {
-        state.interactive_active = false;
-        shared.interactive.store(!state.queues[0].is_empty(), Ordering::Release);
-    }
-    shared.wake.notify_all();
 }
 
 #[cfg(test)]
@@ -302,65 +225,53 @@ mod tests {
     use ibis_core::contract::{ItemOutcome, Notice};
     use serde_json::json;
     use std::time::Duration;
+    pub(super) fn queued_service(limits: Limits) -> Service {
+        Service {
+            shared: Arc::default(),
+            thread: None,
+            limits,
+        }
+    }
     fn prepared(count: usize, bibliography: bool) -> Prepared {
         let items:Vec<_>=(0..count).map(|index|json!({"id":format!("ibis-{index}"),"type":"book","title":format!("Synthetic {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
         let cites: Vec<_> = (0..count).map(|index| json!({"id":format!("ibis-{index}")})).collect();
         Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],empty:false}
     }
     #[test]
-    fn queue_is_bounded_and_cancelled_request_does_not_poison_worker() {
-        let service = Service::new(Limits {
-            background_queue: 1,
+    fn cancelling_queued_request_frees_its_slot_and_worker_recovers() {
+        let mut service = queued_service(Limits {
+            queue: 1,
             ..Limits::default()
-        })
-        .unwrap();
-        {
-            let mut state = service.shared.state.lock().unwrap();
-            state.interactive_active = true;
-            service.shared.interactive.store(true, Ordering::Release);
-        }
-        let first = service.submit(prepared(1, true), Priority::Background).unwrap();
-        assert!(matches!(
-            service.submit(prepared(1, true), Priority::Background),
-            Err(FormatError::Busy)
-        ));
-        first.cancel();
-        {
-            let mut state = service.shared.state.lock().unwrap();
-            state.interactive_active = false;
-            service.shared.interactive.store(false, Ordering::Release);
-            service.shared.wake.notify_all();
-        }
+        });
+        let first = service.submit(prepared(1, true)).unwrap();
+        assert!(matches!(service.submit(prepared(1, true)), Err(FormatError::Busy)));
+        first.cancellation().cancel();
         assert_eq!(first.wait(), Err(FormatError::Cancelled));
-        assert!(
-            service
-                .submit(prepared(1, true), Priority::Background)
-                .unwrap()
-                .wait()
-                .unwrap()
-                .copy_content(1)
-                .is_some()
-        );
+        drop(service.submit(prepared(1, true)).unwrap());
+        let replacement = service.submit(prepared(1, true)).unwrap();
+        service.start_worker().unwrap();
+        assert!(replacement.wait().unwrap().copy_content(1).is_some());
     }
     #[test]
     fn running_request_cancels_and_restarts_then_next_request_succeeds() {
         let service = Service::new(Limits::default()).unwrap();
-        service
-            .submit(prepared(1, false), Priority::Interactive)
-            .unwrap()
-            .wait()
-            .unwrap();
-        let task = service.submit(prepared(100, true), Priority::Interactive).unwrap();
+        service.submit(prepared(1, false)).unwrap().wait().unwrap();
+        let task = service.submit(prepared(100, true)).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !service.shared.state.lock().unwrap().interactive_active && Instant::now() < deadline {
+        while !service.shared.state.lock().unwrap().queue.is_empty() && Instant::now() < deadline {
             thread::yield_now();
         }
         thread::sleep(Duration::from_millis(20));
+        assert!(service.shared.state.lock().unwrap().queue.is_empty());
+        assert!(matches!(
+            task.receiver.as_ref().unwrap().try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
         task.cancel();
         assert_eq!(task.wait(), Err(FormatError::Cancelled));
         assert!(
             service
-                .submit(prepared(1, false), Priority::Interactive)
+                .submit(prepared(1, false))
                 .unwrap()
                 .wait()
                 .unwrap()
@@ -369,22 +280,25 @@ mod tests {
         );
     }
     #[test]
-    fn interactive_request_preempts_background_without_losing_it() {
+    fn shutdown_cancels_running_and_queued_requests() {
         let service = Service::new(Limits::default()).unwrap();
-        let background = service.submit(prepared(100, true), Priority::Background).unwrap();
+        let running = service.submit(prepared(100, true)).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !service.shared.state.lock().unwrap().queues[1].is_empty() && Instant::now() < deadline {
+        while !service.shared.state.lock().unwrap().queue.is_empty() && Instant::now() < deadline {
             thread::yield_now();
         }
-        let interactive = service.submit(prepared(1, false), Priority::Interactive).unwrap();
-        assert!(interactive.wait().unwrap().copy_content(1).is_some());
-        assert!(background.wait().unwrap().copy_content(100).is_some());
+        assert!(service.shared.state.lock().unwrap().queue.is_empty());
+        let queued = service.submit(prepared(1, false)).unwrap();
+        drop(service);
+        assert_eq!(running.wait(), Err(FormatError::Cancelled));
+        assert_eq!(queued.wait(), Err(FormatError::Cancelled));
     }
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod waiting_tests {
+    use super::tests::queued_service;
     use super::*;
     use std::time::Duration;
     fn empty_job() -> Prepared {
@@ -397,31 +311,39 @@ mod waiting_tests {
         }
     }
     #[test]
-    fn cancelling_queued_background_work_does_not_wait_for_interactive_idle() {
-        let service = Service::new(Limits::default()).unwrap();
-        service.shared.state.lock().unwrap().interactive_active = true;
-        service.shared.interactive.store(true, Ordering::Release);
-        let mut task = service.submit(empty_job(), Priority::Background).unwrap();
-        task.cancel();
+    fn worker_failure_releases_waiters_and_refuses_new_work() {
+        let mut service = queued_service(Limits::default());
+        let mut task = service.submit(empty_job()).unwrap();
+        let shared = service.shared.clone();
+        assert!(
+            thread::spawn(move || {
+                let _state = shared.state.lock().unwrap();
+                panic!("synthetic scheduler failure");
+            })
+            .join()
+            .is_err()
+        );
+        service.start_worker().unwrap();
         assert_eq!(
             task.receiver
                 .take()
                 .unwrap()
                 .recv_timeout(Duration::from_secs(1))
                 .unwrap(),
-            Err(FormatError::Cancelled)
+            Err(FormatError::Runtime)
         );
+        service.shared.state.clear_poison();
+        assert!(matches!(service.submit(empty_job()), Err(FormatError::Runtime)));
     }
     #[test]
-    fn queued_background_deadline_expires_while_interactive_remains_active() {
-        let service = Service::new(Limits {
-            background_timeout: Duration::from_millis(10),
+    fn queued_deadline_includes_time_waiting_for_worker() {
+        let mut service = queued_service(Limits {
+            timeout: Duration::from_millis(10),
             ..Limits::default()
-        })
-        .unwrap();
-        service.shared.state.lock().unwrap().interactive_active = true;
-        service.shared.interactive.store(true, Ordering::Release);
-        let mut task = service.submit(empty_job(), Priority::Background).unwrap();
+        });
+        let mut task = service.submit(empty_job()).unwrap();
+        thread::sleep(Duration::from_millis(20));
+        service.start_worker().unwrap();
         assert_eq!(
             task.receiver
                 .take()

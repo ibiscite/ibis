@@ -125,7 +125,7 @@ fn with_equivalents(mut ids: Vec<Identifier>) -> Vec<Identifier> {
 }
 
 /// Normalised CSL fields and source-neutral search-only identifiers, without
-/// parsing raw provenance or requiring knowledge of a particular source.
+/// requiring knowledge of a particular source.
 pub fn of_record(record: &crate::contract::Record) -> Vec<Identifier> {
     let mut ids = record
         .identifiers

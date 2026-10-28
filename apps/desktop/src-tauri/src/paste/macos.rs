@@ -5,9 +5,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use objc2_app_kit::NSWorkspace;
-use objc2_core_graphics::{
-    CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess, CGRequestPostEventAccess,
-};
+use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::Code;
@@ -25,7 +23,7 @@ pub(super) fn frontmost() -> Option<Front> {
     })
 }
 
-/// The system prompt for the permission is shown at most once per run.
+/// Settings opens on the permission guide at most once per run.
 static ASKED: AtomicBool = AtomicBool::new(false);
 
 pub(super) struct Mac {
@@ -66,7 +64,7 @@ impl Desk for Mac {
 
     fn ask_to_post(&self) {
         if !ASKED.swap(true, Ordering::SeqCst) {
-            CGRequestPostEventAccess();
+            crate::settings_window::open(&self.app, Some(crate::settings_window::Page::Paste));
         }
     }
 

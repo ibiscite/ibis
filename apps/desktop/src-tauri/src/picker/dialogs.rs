@@ -1,5 +1,4 @@
-//! Picker-owned native context menus, file choosers, macOS update consent/recovery and visible macOS login
-//! reapproval sheets prevent hiding on blur.
+//! Picker-owned native context menus, file choosers and macOS update consent/recovery prevent hiding on blur.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

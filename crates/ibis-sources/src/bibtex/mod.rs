@@ -203,7 +203,7 @@ fn load_entry(
     let parsed = bib
         .get(&entry.key)
         .ok_or_else(|| "entry could not be read; skipped".to_string())?;
-    let mut record = convert::convert(source, &entry.kind, raw, parsed, &resolved.fields, &mut problems);
+    let mut record = convert::convert(source, &entry.kind, parsed, &resolved.fields, &mut problems);
     if crate::urls::remove_private_urls(&mut record.csl) {
         problems.push("private URL omitted".into());
     }

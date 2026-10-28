@@ -7,6 +7,7 @@ use std::{
     io::{BufRead, Read, Write},
     path::PathBuf,
 };
+mod human;
 mod toggle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +71,10 @@ fn command() -> Command {
                 .arg(Arg::new("id").long("id").value_name("ITEM_REF_JSON")),
             Method::Cite => subcommand
                 .about("Render a citation through the shared engine")
+                .after_help(
+                    "Options after a key apply to that key, as in the picker:\n  \
+                     ibis cite smith2020 --locator \"p. 12\" --prefix see jones2019 --omit-author",
+                )
                 .arg(
                     Arg::new("keys")
                         .num_args(1..)
@@ -80,7 +85,18 @@ fn command() -> Command {
                     Arg::new("request")
                         .long("request")
                         .action(ArgAction::SetTrue)
-                        .conflicts_with_all(["keys", "format", "style", "form", "locale", "bibliography"])
+                        .conflicts_with_all([
+                            "keys",
+                            "format",
+                            "style",
+                            "form",
+                            "locale",
+                            "bibliography",
+                            "locator",
+                            "prefix",
+                            "suffix",
+                            "omit-author",
+                        ])
                         .help("Read a canonical CitationRequest JSON object from stdin"),
                 )
                 .arg(Arg::new("format").long("format").conflicts_with("style").value_parser([
@@ -110,7 +126,37 @@ fn command() -> Command {
                     "full",
                     "bibliography-only",
                 ]))
-                .arg(Arg::new("locale").long("locale").value_name("LOCALE")),
+                .arg(Arg::new("locale").long("locale").value_name("LOCALE"))
+                .arg(
+                    Arg::new("locator")
+                        .long("locator")
+                        .value_name("LOCATOR")
+                        .action(ArgAction::Append)
+                        .help("Pinpoint the key before it, such as \"p. 12\", \"ch. 3\" or \"12-14\""),
+                )
+                .arg(
+                    Arg::new("prefix")
+                        .long("prefix")
+                        .value_name("TEXT")
+                        .action(ArgAction::Append)
+                        .help("Text before the key before it, such as \"see\""),
+                )
+                .arg(
+                    Arg::new("suffix")
+                        .long("suffix")
+                        .value_name("TEXT")
+                        .action(ArgAction::Append)
+                        .help("Text after the key before it"),
+                )
+                .arg(
+                    Arg::new("omit-author")
+                        .long("omit-author")
+                        // Append keeps every occurrence's index; Count keeps only the last.
+                        .num_args(0)
+                        .default_missing_value("true")
+                        .action(ArgAction::Append)
+                        .help("Leave out the author of the key before it"),
+                ),
             Method::Styles => subcommand.about("List available bundled CSL styles"),
             Method::Schema => subcommand
                 .about("Print generated method JSON schemas")
@@ -161,7 +207,8 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
         Ok(engine) => run_with(engine, arguments, input, output, errors, mode),
         Err(error) => emit(
             arguments.iter().any(|argument| argument == "--json"),
-            Err(error),
+            Err(error.into()),
+            None,
             &mut output,
             &mut errors,
             mode,
@@ -178,7 +225,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> u8 {
     let json = arguments.iter().any(|argument| argument == "--json");
-    let matches = match command().try_get_matches_from(arguments) {
+    let matches = match command().try_get_matches_from(arguments.iter()) {
         Ok(matches) => matches,
         Err(error) => {
             if matches!(
@@ -194,6 +241,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                             source_findings: false,
                             exit_code: ibis_core::contract::ExitCode::Ok,
                         }),
+                        None,
                         &mut output,
                         &mut errors,
                         mode,
@@ -201,9 +249,22 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                 }
                 return if write!(output, "{error}").is_ok() { 0 } else { 70 };
             }
+            // clap names the argument and prints the usage line; keep its words,
+            // but a line break typed in an argument must not start a forged line.
+            let mut message = error.to_string();
+            for argument in &arguments {
+                let text = argument.to_string_lossy();
+                if text.contains(['\n', '\r']) {
+                    message = message.replace(text.as_ref(), &text.escape_debug().to_string());
+                }
+            }
             return emit(
                 json,
-                Err(EngineError { code: ErrorCode::Usage }),
+                Err(Failure::new(
+                    ErrorCode::Usage,
+                    message.trim_start_matches("error: ").trim_end(),
+                )),
+                None,
                 &mut output,
                 &mut errors,
                 mode,
@@ -217,21 +278,50 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     };
     match execute(&engine, &matches, &mut input, &mut output) {
         Ok(Execution::Stdio(code)) => code,
-        Ok(Execution::Result(result)) => emit(json, Ok(result), &mut output, &mut errors, mode),
-        Err(error) if matches.subcommand_name() == Some("serve") => {
+        Ok(Execution::Result(result, citing)) => {
+            emit(json, Ok(result), citing.as_ref(), &mut output, &mut errors, mode)
+        }
+        Err(failure) if matches.subcommand_name() == Some("serve") => {
+            let error = EngineError { code: failure.code };
             if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
                 70
             } else {
                 error.code.exit_code().value()
             }
         }
-        Err(error) => emit(json, Err(error), &mut output, &mut errors, mode),
+        Err(failure) => emit(json, Err(failure), None, &mut output, &mut errors, mode),
     }
 }
 
 enum Execution {
-    Result(DispatchResult),
+    Result(DispatchResult, Option<human::Citing>),
     Stdio(u8),
+}
+
+/// A failure keeps its contract code, and so its exit code; the message is for people only.
+struct Failure {
+    code: ErrorCode,
+    message: Option<String>,
+}
+impl Failure {
+    fn new(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: Some(message.into()),
+        }
+    }
+}
+impl From<EngineError> for Failure {
+    fn from(error: EngineError) -> Self {
+        Self {
+            code: error.code,
+            message: None,
+        }
+    }
+}
+/// Attach a sentence to an engine error without changing its code.
+fn explain<T>(result: Result<T, EngineError>, message: impl FnOnce(ErrorCode) -> String) -> Result<T, Failure> {
+    result.map_err(|error| Failure::new(error.code, message(error.code)))
 }
 
 fn execute<R: BufRead, W: Write + Send>(
@@ -239,24 +329,40 @@ fn execute<R: BufRead, W: Write + Send>(
     matches: &ArgMatches,
     input: &mut R,
     output: &mut W,
-) -> Result<Execution, EngineError> {
+) -> Result<Execution, Failure> {
     let (name, args) = matches.subcommand().ok_or(EngineError { code: ErrorCode::Usage })?;
     if name == "toggle" {
-        toggle::run(args.get_one::<PathBuf>("app").map(PathBuf::as_path))?;
-        return Ok(Execution::Result(DispatchResult {
-            data: json!({"toggled":true}),
-            text: None,
-            source_findings: false,
-            exit_code: ibis_core::contract::ExitCode::Ok,
-        }));
+        explain(
+            toggle::run(args.get_one::<PathBuf>("app").map(PathBuf::as_path)),
+            |_| "could not start the Ibis app; install it, or give its location with --app <path>.".into(),
+        )?;
+        return Ok(Execution::Result(
+            DispatchResult {
+                data: json!({"toggled":true}),
+                text: None,
+                source_findings: false,
+                exit_code: ibis_core::contract::ExitCode::Ok,
+            },
+            None,
+        ));
     }
     let cancel = Cancellation::default();
+    let mut names = std::collections::BTreeMap::new();
     for path in matches.get_many::<PathBuf>("file").into_iter().flatten() {
         let params =
             serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| EngineError {
                 code: ErrorCode::BadInput,
             })?;
-        engine.dispatch(Method::Libraries, &params, &cancel)?;
+        let before = engine.libraries()?.libraries;
+        explain(engine.dispatch(Method::Libraries, &params, &cancel), |code| {
+            human::file_failure(path, code)
+        })?;
+        // Library ids are digests, never locations; people see the path they gave.
+        for library in engine.libraries()?.libraries {
+            if !before.iter().any(|old| old.id == library.id) {
+                names.insert(library.id.as_str().to_owned(), path.display().to_string());
+            }
+        }
     }
     let groups = matches.get_many::<u64>("zotero-group").into_iter().flatten();
     let zotero: Vec<_> = matches
@@ -272,7 +378,10 @@ fn execute<R: BufRead, W: Write + Send>(
         .map_err(|_| EngineError {
             code: ErrorCode::BadInput,
         })?;
-        engine.dispatch(Method::Libraries, &params, &cancel)?;
+        explain(
+            engine.dispatch(Method::Libraries, &params, &cancel),
+            human::zotero_failure,
+        )?;
     }
     if name == "mcp" {
         return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {
@@ -290,14 +399,54 @@ fn execute<R: BufRead, W: Write + Send>(
         ));
     }
     let method = Method::parse(name).map_err(|code| EngineError { code })?;
+    let libraries_open = || engine.libraries().is_ok_and(|result| !result.libraries.is_empty());
     let params = match method {
         Method::Libraries => json!({"action":"list"}),
-        Method::Search => json!({"query":args.get_one::<String>("query"),"limit":args.get_one::<usize>("limit")}),
-        Method::Show => match args.get_one::<String>("id") {
-            Some(id) => json!({"item":{"by":"id","value":parse_json(id.as_bytes())?}}),
-            None => json!({"item":{"by":"key","value":args.get_one::<String>("key")}}),
-        },
-        Method::Cite if args.get_flag("request") => stdin_json(input)?,
+        Method::Search => {
+            let query = args.get_one::<String>("query").map_or("", String::as_str);
+            let limit = args.get_one::<usize>("limit").copied().unwrap_or(10);
+            let result = explain(
+                engine.dispatch(Method::Search, &json!({"query":query,"limit":limit}), &cancel),
+                |code| match code {
+                    ErrorCode::BadInput if limit > 1000 => "--limit must be 1000 or less.".into(),
+                    ErrorCode::BadInput => "the search words are too long; use fewer.".into(),
+                    code => human::code_sentence(code).into(),
+                },
+            )?;
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
+                None,
+            ));
+        }
+        Method::Show => {
+            let (params, key) = match args.get_one::<String>("id") {
+                Some(id) => (
+                    json!({"item":{"by":"id","value":explain(parse_json(id.as_bytes()), |_| ITEM_REF_HELP.into())?}}),
+                    None,
+                ),
+                None => {
+                    let key = args.get_one::<String>("key").cloned().unwrap_or_default();
+                    (json!({"item":{"by":"key","value":key}}), Some(key))
+                }
+            };
+            let result = explain(engine.dispatch(method, &params, &cancel), |code| match &key {
+                Some(key) => human::key_failure(key, code, libraries_open()),
+                None if code == ErrorCode::NotFound => "no open library holds the reference that --id names.".into(),
+                None if code == ErrorCode::BadInput => ITEM_REF_HELP.into(),
+                None => human::code_sentence(code).into(),
+            })?;
+            return Ok(Execution::Result(result, None));
+        }
+        Method::Cite if args.get_flag("request") => {
+            const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
+            let params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
+            let result = explain(engine.dispatch(method, &params, &cancel), |code| match code {
+                ErrorCode::BadInput => REQUEST_HELP.into(),
+                code => human::code_sentence(code).into(),
+            })?;
+            return Ok(Execution::Result(result, Some(citing)));
+        }
         Method::Cite => {
             let output = if let Some(style) = args.get_one::<String>("style") {
                 OutputSpec::Csl { style: style.clone() }
@@ -325,34 +474,207 @@ fn execute<R: BufRead, W: Write + Send>(
                 ))
                 .map_err(|_| EngineError { code: ErrorCode::Usage })?
             };
-            let keys = args
-                .get_many::<String>("keys")
-                .into_iter()
-                .flatten()
-                .cloned()
-                .collect::<Vec<_>>();
-            let result = engine.cite_keys(
-                &KeyCitationRequest {
-                    keys: keys.clone(),
-                    output,
-                    form,
-                    output_locale: args.get_one::<String>("locale").cloned(),
-                },
-                &cancel,
-            )?;
-            return engine
-                .finalize(DispatchResult::citation(result, keys.len())?)
-                .map(Execution::Result);
+            let keys = key_items(args)?;
+            if keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+                return Err(Failure::new(
+                    ErrorCode::BadInput,
+                    format!(
+                        "one citation can hold at most {} keys.",
+                        ibis_core::syntax::MAX_CITATION_ITEMS
+                    ),
+                ));
+            }
+            let citing = human::Citing {
+                labels: keys.iter().map(|item| item.key.clone()).collect(),
+                flags: keys
+                    .iter()
+                    .map(|item| {
+                        [
+                            (item.locator.is_some(), "--locator"),
+                            (!item.prefix.is_empty(), "--prefix"),
+                            (!item.suffix.is_empty(), "--suffix"),
+                            (item.suppress_author, "--omit-author"),
+                        ]
+                        .into_iter()
+                        .filter_map(|(given, flag)| given.then_some(flag))
+                        .collect()
+                    })
+                    .collect(),
+                output: args
+                    .get_one::<String>("style")
+                    .or_else(|| args.get_one::<String>("format"))
+                    .cloned()
+                    .unwrap_or_else(|| "pandoc".into()),
+                form,
+            };
+            let result = engine
+                .cite_keys(
+                    &KeyCitationRequest {
+                        keys: keys.clone(),
+                        output,
+                        form,
+                        output_locale: args.get_one::<String>("locale").cloned(),
+                    },
+                    &cancel,
+                )
+                .map_err(|error| {
+                    // The engine reports only a code; find the key that caused it.
+                    let culprit = keys.iter().map(|item| &item.key).find_map(|key| {
+                        engine
+                            .dispatch(Method::Show, &json!({"item":{"by":"key","value":key}}), &cancel)
+                            .err()
+                            .map(|failure| (key, failure.code))
+                    });
+                    match culprit {
+                        Some((key, code)) if code == error.code => {
+                            Failure::new(code, human::key_failure(key, code, libraries_open()))
+                        }
+                        _ => Failure::new(error.code, human::code_sentence(error.code)),
+                    }
+                })?;
+            let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
+            return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Styles => json!({}),
         Method::Schema => {
-            json!({"method":args.get_one::<String>("method").map(|name|Method::parse(name).map_err(|code|EngineError {code})).transpose()?})
+            json!({"method":args.get_one::<String>("method").map(|name|method_named(name)).transpose()?})
         }
         Method::Call => {
-            json!({"method":Method::parse(args.get_one::<String>("method").ok_or(EngineError {code:ErrorCode::Usage})?).map_err(|code|EngineError {code})?,"params":if args.get_flag("stdin") {stdin_json(input)?} else {args.get_one::<String>("params").map(|params|parse_json(params.as_bytes())).transpose()?.unwrap_or(Value::Null)}})
+            let called = method_named(args.get_one::<String>("method").map_or("", String::as_str))?;
+            let params_help = || {
+                format!(
+                    "--params must be the JSON parameters of {}; see: ibis schema {}",
+                    called.as_str(),
+                    called.as_str()
+                )
+            };
+            let params = if args.get_flag("stdin") {
+                explain(stdin_json(input), |_| params_help())?
+            } else {
+                args.get_one::<String>("params")
+                    .map(|params| explain(parse_json(params.as_bytes()), |_| params_help()))
+                    .transpose()?
+                    .unwrap_or(Value::Null)
+            };
+            let result = explain(
+                engine.dispatch(method, &json!({"method":called,"params":params}), &cancel),
+                |code| match code {
+                    ErrorCode::BadInput => params_help(),
+                    code => human::code_sentence(code).into(),
+                },
+            )?;
+            let citing = (called == Method::Cite).then(|| request_citing(&params)).flatten();
+            return Ok(Execution::Result(result, citing));
         }
     };
-    engine.dispatch(method, &params, &cancel).map(Execution::Result)
+    let result = engine.dispatch(method, &params, &cancel)?;
+    Ok(Execution::Result(
+        human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
+        None,
+    ))
+}
+/// What a canonical CitationRequest asked for, so its findings read as sentences.
+fn request_citing(params: &Value) -> Option<human::Citing> {
+    let request: CitationRequest = serde_json::from_value(params.clone()).ok()?;
+    Some(human::Citing {
+        labels: vec![],
+        flags: vec![],
+        output: match &request.output {
+            OutputSpec::Csl { style } => style.clone(),
+            OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
+                .ok()
+                .and_then(|syntax| syntax.as_str().map(str::to_owned))
+                .unwrap_or_default(),
+            OutputSpec::Preset { .. } => "this output".into(),
+        },
+        form: request.form,
+    })
+}
+/// Keys with the options that follow each one, the way the picker attaches them.
+fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
+    let mut items: Vec<(usize, KeyItem)> = args
+        .get_many::<String>("keys")
+        .into_iter()
+        .flatten()
+        .zip(args.indices_of("keys").into_iter().flatten())
+        .map(|(key, index)| (index, KeyItem::from(key.as_str())))
+        .collect();
+    let owner = |flag: &str, index: usize| {
+        items
+            .iter()
+            .rposition(|(start, _)| *start < index)
+            .ok_or_else(|| Failure::new(ErrorCode::Usage, format!("--{flag} must follow the key it belongs to.")))
+    };
+    let mut options: Vec<(usize, &str, Option<&String>)> = vec![];
+    for flag in ["locator", "prefix", "suffix"] {
+        let values = args.get_many::<String>(flag).into_iter().flatten();
+        let indices = args.indices_of(flag).into_iter().flatten();
+        options.extend(indices.zip(values).map(|(index, value)| (index, flag, Some(value))));
+    }
+    options.extend(
+        args.indices_of("omit-author")
+            .into_iter()
+            .flatten()
+            .map(|index| (index, "omit-author", None)),
+    );
+    let mut resolved = vec![];
+    for (index, flag, value) in options {
+        resolved.push((owner(flag, index)?, flag, value));
+    }
+    for (position, flag, value) in resolved {
+        let item = &mut items[position].1;
+        let text = || {
+            vec![TextRun {
+                text: value.cloned().unwrap_or_default(),
+                italic: false,
+                bold: false,
+                script: Script::Normal,
+            }]
+        };
+        let repeated = match flag {
+            "locator" => item
+                .locator
+                .replace(locator(value.map_or("", String::as_str))?)
+                .is_some(),
+            "prefix" => !std::mem::replace(&mut item.prefix, text()).is_empty(),
+            "suffix" => !std::mem::replace(&mut item.suffix, text()).is_empty(),
+            _ => std::mem::replace(&mut item.suppress_author, true),
+        };
+        if repeated {
+            return Err(Failure::new(
+                ErrorCode::Usage,
+                format!("--{flag} is given twice for '{}'.", human::field(&item.key)),
+            ));
+        }
+    }
+    Ok(items.into_iter().map(|(_, item)| item).collect())
+}
+/// The picker's locator reader, applied to the whole value.
+fn locator(text: &str) -> Result<Locator, Failure> {
+    [format!("x {text}"), format!("x, {text}")]
+        .iter()
+        .filter_map(|query| ibis_core::locator_query::split(query))
+        .find(|split| split.search == "x")
+        .and_then(|split| serde_json::from_value(json!({"term":split.locator.label,"value":split.locator.value})).ok())
+        .ok_or_else(|| {
+            Failure::new(
+                ErrorCode::Usage,
+                format!(
+                    "--locator '{}' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".",
+                    human::field(text)
+                ),
+            )
+        })
+}
+const ITEM_REF_HELP: &str = "--id must be an ItemRef JSON object, as ibis search --json prints it.";
+fn method_named(name: &str) -> Result<Method, Failure> {
+    Method::parse(name).map_err(|code| {
+        let names = Method::ALL.map(Method::as_str).join(", ");
+        Failure::new(
+            code,
+            format!("there is no method '{}'; choose one of: {names}", human::field(name)),
+        )
+    })
 }
 fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
     protocol::parse_json(bytes).map_err(|_| EngineError {
@@ -369,62 +691,50 @@ fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
         })?;
     parse_json(&bytes)
 }
-fn citation_findings(data: &Value, errors: &mut impl Write) {
-    let notices = data
-        .get("notices")
-        .and_then(|value| serde_json::from_value::<Vec<Notice>>(value.clone()).ok())
-        .unwrap_or_default();
-    for notice in notices {
-        let message = match notice {
-            Notice::NeedsDocumentContext => "this style needs the whole document for citation numbering or notes",
-            Notice::ReferenceEntry => "rendered a full reference entry",
-            Notice::FullFirstNote => "rendered a full first note",
-            Notice::YearSuffixWithheld => "year suffixes require the whole document",
-            Notice::InputLanguageUnsupported => "input language is unsupported; use typed locators",
-        };
-        let _ = writeln!(errors, "ibis: {message}");
-    }
-    if data
-        .get("losses")
-        .and_then(Value::as_array)
-        .is_some_and(|losses| !losses.is_empty())
-    {
-        let _ = writeln!(
-            errors,
-            "ibis: some requested citation fields were omitted; inspect cite --json"
-        );
-    }
-}
 fn emit(
     json: bool,
-    result: Result<DispatchResult, EngineError>,
+    result: Result<DispatchResult, Failure>,
+    citing: Option<&human::Citing>,
     output: &mut impl Write,
     errors: &mut impl Write,
     mode: OutputMode,
 ) -> u8 {
+    let mut say = |line: &str| {
+        let _ = writeln!(errors, "ibis: {}", terminal_display(line));
+    };
     if result.as_ref().is_ok_and(|result| result.source_findings) {
-        let _ = writeln!(
-            errors,
-            "ibis: source warnings or failed refresh; inspect libraries --json"
-        );
+        say(if json {
+            "note: a library has warnings or could not refresh; see: ibis libraries --json"
+        } else {
+            "note: a library has warnings or could not refresh; see: ibis libraries"
+        });
     }
-    if !json
-        && let Ok(result) = &result
-        && result.text.is_some()
-    {
-        citation_findings(&result.data, errors);
+    if !json && let (Ok(result), Some(citing)) = (&result, citing) {
+        for line in human::citation_report(&result.data, citing, result.text.is_some()) {
+            say(&line);
+        }
+        if result.text.is_none() {
+            // Refused citations print their reasons above and nothing to stdout.
+            return result.exit_code.value();
+        }
     }
-    let (code, envelope, text) = match result.and_then(DispatchResult::bounded) {
+    let (code, envelope, text) = match result.and_then(|result| result.bounded().map_err(Failure::from)) {
         Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),
-        Err(error) => (error.code.exit_code(), Envelope::failure(error.code), None),
+        Err(failure) => {
+            if !json {
+                say(failure
+                    .message
+                    .as_deref()
+                    .unwrap_or_else(|| human::code_sentence(failure.code)));
+                return failure.code.exit_code().value();
+            }
+            (failure.code.exit_code(), Envelope::failure(failure.code), None)
+        }
     };
     let encoded = if json {
         serde_json::to_value(&envelope)
             .ok()
             .and_then(|value| ibis_engine::wire::encode(&value, protocol::MAX_RESPONSE_BYTES).ok())
-    } else if let Some(error) = envelope.error() {
-        let _ = writeln!(errors, "ibis: {:?}", error.code);
-        return code.value();
     } else if let Some(text) = text {
         Some(text.into_bytes())
     } else {
@@ -490,7 +800,7 @@ mod tests {
             exit_code: ibis_core::contract::ExitCode::Ok,
         };
         assert_eq!(
-            emit(true, Ok(result), &mut Broken, &mut Vec::new(), OutputMode::Plain),
+            emit(true, Ok(result), None, &mut Broken, &mut Vec::new(), OutputMode::Plain),
             70
         );
     }

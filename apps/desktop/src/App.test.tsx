@@ -1374,7 +1374,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Rows: Comfortable", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Rows: Comfortable", "Settings…Ctrl+,", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Larger text" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
@@ -3575,7 +3575,7 @@ test("the Ibis mark can replace the search glyph and is remembered", async () =>
   let mark = false;
   backend({
     search: () => [],
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark }),
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark, paste: true }),
     set_picker_preferences: ({ preferences }) => { mark = (preferences as api.PickerPreferences).search_mark; return null; },
   });
   const first = render(<App />);
@@ -4155,4 +4155,21 @@ test("a picker visibility read completing after unmount cannot pause animations"
   view.unmount();
   await act(async () => { finish(false); });
   expect(document.documentElement.dataset.pickerHidden).toBeUndefined();
+});
+
+test("Ctrl+, opens Settings from the picker, and a change made there reaches the picker", async () => {
+  let largerText = false;
+  const pages: unknown[] = [];
+  const calls = backend({
+    open_settings: ({ page }) => { pages.push(page); return null; },
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: largerText, show_paste_preview: true, search_mark: false, paste: true }),
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  await waitFor(() => expect(calls).toContain("picker_preferences"));
+  fireEvent.keyDown(box, { key: ",", ctrlKey: true });
+  await waitFor(() => expect(pages).toEqual([null]));
+  largerText = true;
+  await act(async () => { await emit("preferences:changed", {}); });
+  await waitFor(() => expect(document.documentElement.dataset.textSize).toBe("larger"));
 });

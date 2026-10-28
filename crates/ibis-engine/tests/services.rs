@@ -27,7 +27,7 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
             item: ItemSelector::Key("Example2026".into()),
         })
         .unwrap();
-    assert_eq!(shown, case.library.objects()[0]);
+    assert_eq!(shown, *case.library.objects()[0]);
     assert_eq!(
         engine.cite(&case.request, &cancel).unwrap(),
         *case.expected.data().unwrap()
@@ -124,11 +124,14 @@ fn library_changes_invalidate_subscribers_without_mutating_previous_snapshots() 
     let case = case();
     let engine = Engine::new().unwrap();
     let events = engine.subscribe().unwrap();
-    let library = case.library.objects()[0].object.id().library.clone();
-    engine.publish_library(library.clone(), Arc::new(case.library)).unwrap();
-    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(event.libraries, [library]);
-    assert_eq!(event.snapshot, engine.snapshot().unwrap().fingerprints().clone());
+    let old = engine.snapshot().unwrap();
+    let snapshot = Arc::new(case.library);
+    let library = snapshot.objects()[0].object.id().library.clone();
+    engine.publish_library(library.clone(), snapshot.clone()).unwrap();
+    events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(engine.libraries().unwrap().libraries[0].id, library);
+    assert_eq!(engine.snapshot().unwrap().fingerprints(), snapshot.fingerprints());
+    assert!(old.objects().is_empty());
     drop(events);
     assert!(engine.subscribe().is_ok());
 }
@@ -156,74 +159,47 @@ fn a_named_missing_library_is_not_silently_an_empty_search() {
 }
 
 #[test]
-fn a_slow_subscriber_gets_latest_state_and_an_explicit_full_resync() {
+fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
     let engine = Engine::new().unwrap();
     let events = engine.subscribe().unwrap();
-    for number in 0..40 {
-        engine
-            .publish_library(
-                LibraryId::file(format!("synthetic-slow-{number}").as_bytes()),
-                Arc::new(Snapshot::new(vec![]).unwrap()),
-            )
-            .unwrap();
-    }
-    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(event.sequence, 40);
-    assert_eq!(serde_json::to_value(&event).unwrap()["resync"], true);
-    assert!(event.libraries.is_empty());
-    assert_eq!(engine.libraries().unwrap().libraries.len(), 40);
-    assert!(events.try_recv().is_err());
-    let library = LibraryId::file(b"synthetic-after-resync");
+    let newest = Arc::new(case().library);
+    let library = newest.objects()[0].object.id().library.clone();
+    let publishing = engine.clone();
+    let latest = newest.clone();
+    let (completed, done) = std::sync::mpsc::channel();
+    let publisher = std::thread::spawn(move || {
+        for _ in 0..40 {
+            publishing
+                .publish_library(library.clone(), Arc::new(Snapshot::new(vec![]).unwrap()))
+                .unwrap();
+        }
+        publishing.publish_library(library, latest).unwrap();
+        completed.send(()).unwrap();
+    });
+    // The publisher must finish while the subscriber leaves its single wake queued.
+    done.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+    publisher.join().unwrap();
+    events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(engine.snapshot().unwrap().fingerprints(), newest.fingerprints());
+    assert!(matches!(events.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
     engine
-        .publish_library(library.clone(), Arc::new(Snapshot::new(vec![]).unwrap()))
+        .publish_library(
+            newest.objects()[0].object.id().library.clone(),
+            Arc::new(Snapshot::new(vec![]).unwrap()),
+        )
         .unwrap();
-    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(event.sequence, 41);
-    assert_eq!(event.libraries, [library]);
-    assert_eq!(serde_json::to_value(&event).unwrap()["resync"], false);
+    events.try_recv().unwrap();
+    assert!(engine.snapshot().unwrap().objects().is_empty());
 }
 
 #[test]
-fn public_typed_views_do_not_clone_or_return_raw_source_payloads() {
-    let case = case();
-    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
-        panic!("record")
-    };
-    record.raw = Some(RawProvenance {
-        format: SourceFormat::Bibtex,
-        data: json!({"synthetic":"x".repeat(64*1024)}),
-    });
-    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()));
-    let shown = engine
-        .show(&ShowRequest {
-            item: ItemSelector::Key("Example2026".into()),
-        })
-        .unwrap();
-    let LibraryObject::Record(shown) = shown.object else {
-        panic!("record")
-    };
-    assert!(shown.raw.is_none());
-    let hits = engine
-        .search(
-            &SearchRequest {
-                query: "synthetic".into(),
-                limit: 10,
-                libraries: None,
-            },
-            &Cancellation::default(),
-        )
-        .unwrap();
-    for hit in hits.hits {
-        let LibraryObject::Record(record) = hit.item.object else {
-            panic!("record")
-        };
-        assert!(record.raw.is_none());
-    }
-    let snapshot = engine.snapshot().unwrap();
-    let LibraryObject::Record(record) = &snapshot.objects()[0].object else {
-        panic!("record")
-    };
-    assert!(record.raw.is_some());
+fn library_subscriptions_are_limited_and_drop_releases_a_slot() {
+    let engine = Engine::new().unwrap();
+    let mut events: Vec<_> = (0..64).map(|_| engine.subscribe().unwrap()).collect();
+    assert!(matches!(engine.subscribe(), Err(error) if error.code == ErrorCode::ResourceLimit));
+    drop(events.pop());
+    events.push(engine.subscribe().unwrap());
+    assert!(matches!(engine.subscribe(), Err(error) if error.code == ErrorCode::ResourceLimit));
 }
 
 #[test]
