@@ -466,6 +466,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return shared && library ? pickerText.removeReferenceIn(r.key, library) : pickerText.removeReference(r.key);
   };
   const openMore = () => {
+    setPendingCopy(null);
     // React Aria records the invoker before mounting its modal focus scope.
     moreButton.current?.focus();
     setMenuOpen(true);
@@ -475,11 +476,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (refocus) moreButton.current?.focus();
   };
   const runFromMenu = (operation: Operation, action: () => Promise<unknown>) => {
+    setPendingCopy(null);
     closeMenu(false);
     input.current?.focus();
     void perform(operation, action);
   };
   const openKeys = () => {
+    setPendingCopy(null);
     closeMenu(false);
     const focused = document.activeElement;
     // A menu item is gone once the menu closes; the search box takes its place.

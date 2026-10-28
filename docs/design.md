@@ -684,7 +684,8 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   exact preview is ready; a failed save uses the pick for this citation and
   asks again next time. "Just this once" keeps the question open for a pick.
   Changing the search or citation, hiding or reopening the picker, or switching
-  to another menu cancels the held action. The question uses known app IDs;
+  to another menu or dialog cancels the held action, including after dismissal
+  or a format pick while its preview or save is still pending. The question uses known app IDs;
   unknown apps keep the global fallback. App capture currently works on macOS;
   Windows and Linux keep their existing global output until capture is built.
   Ibis never reads or stores a document title or URL to choose an

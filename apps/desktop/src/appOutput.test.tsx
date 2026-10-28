@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { AppOutput, PickerDestination } from "./api";
-import { backend, chooseFromMore, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
+import { backend, chooseFromMore, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -183,6 +183,49 @@ test("hiding while a first choice saves cancels its pending copy", async () => {
   fireEvent.click(await screen.findByRole("menuitemradio", { name: "APA · text" }));
   await act(async () => { await emit("picker:hidden"); finish(); });
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
+  expect(copies).toEqual([]);
+});
+
+test.each(["More", "Keyboard shortcuts"])("opening %s cancels a dismissed question waiting for its preview", async (overlay) => {
+  let finish!: (preview: ReturnType<typeof receipt>) => void;
+  const rendering = new Promise<ReturnType<typeof receipt>>((resolve) => { finish = resolve; });
+  const { copies, calls } = opened(() => BROWSER, { preview_file_citation: () => rendering });
+  await screen.findByText("First");
+  await waitFor(() => expect(calls).toContain("preview_file_citation"));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  if (overlay === "More") fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "/", ctrlKey: true });
+  const role = overlay === "More" ? "menu" : "dialog";
+  await screen.findByRole(role, { name: new RegExp(`^${overlay}`) });
+  await act(async () => finish(receipt("Synthetic delayed preview")));
+  expect(copies).toEqual([]);
+  expect(calls).not.toContain("hide_picker");
+  fireEvent.keyDown(screen.getByRole(role), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole(role)).toBeNull());
+  expect(copies).toEqual([]);
+});
+
+test.each(["More", "Keyboard shortcuts"])("opening %s cancels a first-paste pick waiting for its save", async (overlay) => {
+  let finish!: () => void;
+  const saving = new Promise<null>((resolve) => { finish = () => resolve(null); });
+  const { copies, calls } = opened(() => BROWSER, { remember_app_output: () => saving });
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "APA · text" }));
+  await waitFor(() => expect(calls).toContain("remember_app_output"));
+  const button = formatButton();
+  if (overlay === "More") fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "/", ctrlKey: true });
+  const role = overlay === "More" ? "menu" : "dialog";
+  await screen.findByRole(role, { name: new RegExp(`^${overlay}`) });
+  await act(async () => finish());
+  await waitFor(() => expect(button.getAttribute("aria-label")).toBe("Copy as APA remembered for this browser"));
+  expect(copies).toEqual([]);
+  expect(calls).not.toContain("hide_picker");
+  fireEvent.keyDown(screen.getByRole(role), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole(role)).toBeNull());
   expect(copies).toEqual([]);
 });
 
