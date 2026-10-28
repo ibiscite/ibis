@@ -153,8 +153,8 @@ fn watcher_refreshes_search_and_notifies_without_mutating_prior_snapshots() {
             .unwrap()
             .contains("Original synthetic")
     );
-    let event = subscription.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(&event.snapshot, engine.snapshot().unwrap().fingerprints());
+    subscription.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(&result.snapshot, engine.snapshot().unwrap().fingerprints());
     assert_eq!(engine.libraries().unwrap().libraries[0].refresh_error, None);
 }
 #[cfg(unix)]
