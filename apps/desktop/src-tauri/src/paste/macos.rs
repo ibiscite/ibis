@@ -81,7 +81,7 @@ impl Desk for Mac {
         let app = self.app.clone();
         self.on_main_for(limit, move || {
             if Instant::now() >= request.deadline {
-                return PostResult::Secure;
+                return PostResult::Unavailable;
             }
             // Resolve the layout and create the events before the final
             // guards. No separate main-thread wait may follow the flag.

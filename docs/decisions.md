@@ -86,8 +86,10 @@ Every insertion ends in exactly one visible state: pasted, or copied with a
 reason. Ibis captures the target app, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
-restoring and per-app rules wait until after 1.0. It refuses secure input,
-elevated windows and lost targets. Pasting is on by default (maintainer,
+restoring and per-app rules wait until after 1.0. On macOS it refuses while
+system-wide Secure Event Input is on, including when another app enables it;
+this flag does not identify the destination's field or cover every password
+control. Elevated windows and lost targets are also refused. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
 
@@ -106,8 +108,12 @@ and `paste/macos/secure_input.rs` are scoped exceptions: their crates use
 block. Changes there need independent security-boundary review.
 
 On macOS the boundary is just `IsSecureEventInputEnabled`, whose SDK result
-is a Boolean (`u8`). It is read on the main thread, as Carbon requires. An
-enabled or unavailable flag only copies with the password-field reason.
+is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
+flag is system-wide and can be enabled by another app; it does not establish
+that the destination is a password field. An enabled flag copies with the
+`secure-input` reason: "Copied. Secure typing is on, possibly in another app.
+Press ⌘V to paste." An unavailable or timed-out check uses `paste-unavailable`:
+"Copied. Press ⌘V to paste." Neither outcome claims password-field detection.
 The AX guard is removed: optional subroles, denied AX trust and dormant
 providers must not disable ordinary paste (#1280, #1360). Paste requests
 only PostEvent permission, never Accessibility trust; no AX attributes are

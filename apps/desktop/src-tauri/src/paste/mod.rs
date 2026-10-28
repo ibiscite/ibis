@@ -178,7 +178,8 @@ impl PostRequest {
 enum PostResult {
     Pasted,
     Refused,
-    Secure,
+    SecureInput,
+    Unavailable,
 }
 
 /// These calls run in one main-thread task; none reads clipboard contents,
@@ -196,7 +197,7 @@ trait PostDesk {
 #[cfg(any(target_os = "macos", test))]
 fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
     if desk.now() >= request.deadline {
-        return PostResult::Secure;
+        return PostResult::Unavailable;
     }
     if !desk.current(request.presentation)
         || !desk
@@ -205,14 +206,20 @@ fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
     {
         return PostResult::Refused;
     }
-    if desk.secure_input() != Some(false) {
-        return PostResult::Secure;
+    let secure_input = desk.secure_input();
+    if desk.now() >= request.deadline {
+        return PostResult::Unavailable;
+    }
+    match secure_input {
+        Some(true) => return PostResult::SecureInput,
+        None => return PostResult::Unavailable,
+        Some(false) => {}
     }
     if desk.change_count() != request.change_count {
         return PostResult::Refused;
     }
     if desk.now() >= request.deadline {
-        return PostResult::Secure;
+        return PostResult::Unavailable;
     }
     if desk.post(request.pid) {
         PostResult::Pasted
@@ -231,13 +238,13 @@ struct PendingPost(Mutex<Option<PostResult>>);
 impl PendingPost {
     fn run(&self, work: impl FnOnce() -> PostResult) -> PostResult {
         let Ok(mut result) = self.0.lock() else {
-            return PostResult::Secure;
+            return PostResult::Unavailable;
         };
         *result.get_or_insert_with(work)
     }
 
     fn cancel(&self) -> PostResult {
-        self.run(|| PostResult::Secure)
+        self.run(|| PostResult::Unavailable)
     }
 }
 
@@ -294,7 +301,8 @@ fn deliver(desk: &impl Desk, proof: Option<&CopyProof>, enabled: bool) -> Delive
                 PostResult::Pasted => Delivered::Pasted {
                     app: captured.name.clone(),
                 },
-                PostResult::Secure => copied(Some(CopyReason::SecureField)),
+                PostResult::SecureInput => copied(Some(CopyReason::SecureInput)),
+                PostResult::Unavailable => copied(Some(CopyReason::PasteUnavailable)),
                 PostResult::Refused => copied(None),
             }
         }
@@ -509,13 +517,13 @@ mod tests {
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn secure_input_on_or_unavailable_copies_with_the_password_reason() {
-        for secure in [Some(true), None] {
+    fn secure_typing_and_unavailable_checks_have_distinct_copy_reasons() {
+        for (secure, reason) in [(Some(true), "secure-input"), (None, "paste-unavailable")] {
             let desk = Fake {
                 secure: Cell::new(secure),
                 ..Fake::new()
             };
-            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("secure-field")));
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some(reason)));
             assert!(desk.posts.borrow().is_empty());
         }
     }
@@ -528,7 +536,7 @@ mod tests {
             secure_after_queue: Some(true),
             ..Fake::new()
         };
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("secure-field")));
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("secure-input")));
         assert!(desk.posts.borrow().is_empty());
     }
 
@@ -547,13 +555,19 @@ mod tests {
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn an_expired_main_thread_task_or_slow_flag_check_cannot_paste() {
-        for (queue_delay, query_delay) in [(POST_LIMIT, Duration::ZERO), (Duration::ZERO, POST_LIMIT)] {
+        for (queue_delay, query_delay, secure) in [
+            (POST_LIMIT, Duration::ZERO, Some(false)),
+            (Duration::ZERO, POST_LIMIT, Some(false)),
+            // A positive flag that arrives late is still a timed-out check.
+            (Duration::ZERO, POST_LIMIT, Some(true)),
+        ] {
             let desk = Fake {
                 queue_delay,
                 query_delay,
+                secure: Cell::new(secure),
                 ..Fake::new()
             };
-            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("secure-field")));
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("paste-unavailable")));
             assert!(desk.posts.borrow().is_empty());
         }
     }
@@ -561,14 +575,16 @@ mod tests {
     #[test]
     fn cancellation_prevents_a_queued_task_from_running_and_preserves_completed_results() {
         let pending = PendingPost::default();
-        assert_eq!(pending.cancel(), PostResult::Secure);
+        assert_eq!(pending.cancel(), PostResult::Unavailable);
         assert_eq!(
             pending.run(|| panic!("cancelled task must not post")),
-            PostResult::Secure
+            PostResult::Unavailable
         );
-        let completed = PendingPost::default();
-        assert_eq!(completed.run(|| PostResult::Pasted), PostResult::Pasted);
-        assert_eq!(completed.cancel(), PostResult::Pasted);
+        for outcome in [PostResult::Pasted, PostResult::SecureInput] {
+            let completed = PendingPost::default();
+            assert_eq!(completed.run(|| outcome), outcome);
+            assert_eq!(completed.cancel(), outcome);
+        }
     }
 
     #[test]
@@ -623,7 +639,7 @@ mod tests {
         let mut stale = proof();
         stale.written -= LATE;
         let desk = Fake::new();
-        assert_eq!(deliver(&desk, Some(&stale), true), copied(Some("secure-field")));
+        assert_eq!(deliver(&desk, Some(&stale), true), copied(Some("paste-unavailable")));
         assert!(desk.posts.borrow().is_empty());
     }
 
