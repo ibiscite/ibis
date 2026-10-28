@@ -520,6 +520,8 @@ in the Later milestone. New interface work uses the shared look and the
 fallbacks above.
 
 - **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
+  The macOS veil is the surface at 75%, so the glass shows light and colour from
+  behind but never readable shapes under the list.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
   1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
