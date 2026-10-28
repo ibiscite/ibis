@@ -584,9 +584,11 @@ without hover.
 - **Opening.** On the focused window's display, at the last position there,
   with a 120 ms fade and focus in search. A search from under a minute ago
   returns selected (memory only). Reopening from a focused result or another
-  control still starts typing in search. If typing changes the query before
-  native activation, activation focuses search with the caret at the end;
-  only the untouched previous query is selected. The at-cursor form opens under the caret.
+  control still starts typing in search. Text received by Search while the
+  window opens survives activation, with the caret at the end; only the
+  untouched previous query is selected. On X11, keys sent before the picker
+  is mapped and has input focus go to the previously focused window. Ibis does
+  not capture those keys with a global keyboard grab. The at-cursor form opens under the caret.
 - **Moving.** Drag the empty header, never the list; snap to the centre line and
   upper third within 18 px (Alt places freely); remembered per display.
 - **Clicking outside** hides Ibis and the click reaches its target, unless
@@ -695,8 +697,10 @@ that owns its area in ROADMAP.md.
 3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
    while results load runs once, never twice. After the window closes a short
    receipt says what happened, and the last outcome stays readable in More.
-4. Open in under 100 ms with the last snapshot; keys typed before the window
-   appears are kept. Timing is reported on Linux only; the 100 ms p95 gate is
+4. Open in under 100 ms with the last snapshot; text received by Search during
+   opening is kept (see **Opening** for X11 input routing). The Linux smoke
+   types once as soon as the picker is mapped, without waiting for focus.
+   Timing is reported on Linux only; the 100 ms p95 gate is
    enforced nowhere yet. macOS/Windows open time is judged in the maintainer
    hand test [#79](https://github.com/ibiscite/ibis/issues/79).
 5. Forgiving search: accents and transliteration folded, any word order, one
