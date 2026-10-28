@@ -29,7 +29,9 @@ pub(crate) use full_screen::FullScreenGuard;
 pub(crate) use layout::{command_key, typing};
 #[cfg(target_os = "macos")]
 pub(crate) use registration::follow_layout;
-pub(crate) use registration::{Registered, register_shortcut};
+pub(crate) use registration::{Registered, SHORTCUT_BACKEND_UNAVAILABLE, register_shortcut, replace_shortcut};
+#[cfg(test)]
+pub(crate) use registration::{on_layout_with, replace_with};
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
@@ -39,14 +41,39 @@ pub(crate) struct ShortcutStatus {
     pub(crate) error: Option<String>,
 }
 
+/// Preserve the recorder's intent: `Q` follows a letter, `KeyQ` stays physical.
+/// The plugin's parser alone loses this distinction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct OpeningShortcut {
+    pub(crate) shortcut: Shortcut,
+    pub(crate) logical_letter: bool,
+}
+
+impl std::str::FromStr for OpeningShortcut {
+    type Err = <Shortcut as std::str::FromStr>::Err;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let shortcut = text.parse()?;
+        let key = text.rsplit('+').next().unwrap_or_default().trim();
+        Ok(Self {
+            shortcut,
+            logical_letter: key.len() == 1 && key.as_bytes()[0].is_ascii_alphabetic(),
+        })
+    }
+}
+
 /// One default letter everywhere: Cmd+Shift+Y on macOS, Ctrl+Shift+Y elsewhere.
 /// macOS registration resolves Y on the active layout before reserving it,
 /// avoiding QWERTZ's Redo key. Ctrl/Cmd+Shift+Space belongs to editors or Siri (#133).
-pub(crate) fn default_shortcut() -> Shortcut {
-    if cfg!(target_os = "macos") {
-        Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyY)
+pub(crate) fn default_shortcut() -> OpeningShortcut {
+    let command = if cfg!(target_os = "macos") {
+        Modifiers::SUPER
     } else {
-        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyY)
+        Modifiers::CONTROL
+    };
+    OpeningShortcut {
+        shortcut: Shortcut::new(Some(command | Modifiers::SHIFT), Code::KeyY),
+        logical_letter: true,
     }
 }
 
@@ -60,9 +87,24 @@ pub(crate) fn shortcut_label() -> &'static str {
 
 /// The shortcut from settings (for example `"CommandOrControl+Shift+Y"`), or the
 /// default. An invalid setting falls back to the default with an explanation.
-pub(crate) fn configured_shortcut(setting: Option<&str>) -> (Shortcut, String, Option<String>) {
+pub(crate) fn configured_shortcut(setting: Option<&str>) -> (OpeningShortcut, String, Option<String>) {
+    configured_shortcut_for(setting, cfg!(target_os = "windows"))
+}
+
+pub(crate) fn configured_shortcut_for(
+    setting: Option<&str>,
+    windows: bool,
+) -> (OpeningShortcut, String, Option<String>) {
     match setting {
-        Some(text) => match text.parse::<Shortcut>() {
+        Some(text) => match text.parse::<OpeningShortcut>() {
+            Ok(shortcut) if windows && crate::shortcut_setting::uses_altgr(shortcut) => (
+                default_shortcut(),
+                shortcut_label().to_string(),
+                Some(format!(
+                    "Ctrl+Alt with a typing key is reserved for AltGr on Windows; using {}",
+                    shortcut_label()
+                )),
+            ),
             Ok(shortcut) => (shortcut, text.to_string(), None),
             Err(e) => (
                 default_shortcut(),
@@ -486,9 +528,9 @@ mod tests {
 
     #[test]
     fn automatic_suggestion_policy_preserves_configured_and_empty_settings() {
-        for label in ["Ctrl+Q", "Ctrl+Alt+Y", "CmdOrCtrl+K", "Control+Command+R"] {
+        for label in ["Ctrl+Q", "CmdOrCtrl+K", "Control+Command+R", "Control+Alt+F8"] {
             let (shortcut, shown, error) = configured_shortcut(Some(label));
-            assert_eq!(Some(shortcut), label.parse::<Shortcut>().ok());
+            assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
             assert_eq!(shown, label);
             assert!(error.is_none());
         }
@@ -498,10 +540,38 @@ mod tests {
         assert!(error.is_some());
     }
 
+    #[test]
+    fn windows_shortcut_loading_refuses_altgr_but_keeps_other_explicit_choices() {
+        for label in [
+            "Control+Alt+C",
+            "Control+Alt+KeyC",
+            "Control+Alt+Shift+KeyC",
+            "Control+Alt+Space",
+        ] {
+            let (shortcut, shown, error) = configured_shortcut_for(Some(label), true);
+            assert_eq!(shortcut, default_shortcut());
+            assert_eq!(shown, shortcut_label());
+            assert!(error.is_some_and(|error| error.contains("AltGr")));
+            let (shortcut, shown, error) = configured_shortcut_for(Some(label), false);
+            assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
+            assert_eq!(shown, label);
+            assert!(error.is_none());
+        }
+        for label in ["Ctrl+Q", "Control+Alt+F8", "Control+Alt+Command+KeyC"] {
+            let (shortcut, shown, error) = configured_shortcut_for(Some(label), true);
+            assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
+            assert_eq!(shown, label);
+            assert!(error.is_none());
+        }
+    }
+
     /// The label users see must name the shortcut that is registered.
     #[test]
     fn the_default_shortcut_label_matches_the_registered_shortcut() {
-        assert_eq!(shortcut_label().parse::<Shortcut>().ok(), Some(default_shortcut()));
+        assert_eq!(
+            shortcut_label().parse::<OpeningShortcut>().ok(),
+            Some(default_shortcut())
+        );
     }
 
     /// Cmd+Shift+Space opens the macOS Siri typing field, which takes the
@@ -511,7 +581,7 @@ mod tests {
     fn the_macos_default_does_not_collide_with_siri() {
         assert_eq!(shortcut_label(), "Command+Shift+Y");
         assert_eq!(
-            default_shortcut(),
+            default_shortcut().shortcut,
             Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyY)
         );
     }
@@ -523,7 +593,7 @@ mod tests {
     fn the_default_shortcut_takes_no_keys_editors_type_with() {
         assert_eq!(shortcut_label(), "Ctrl+Shift+Y");
         assert_eq!(
-            default_shortcut(),
+            default_shortcut().shortcut,
             Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyY)
         );
     }

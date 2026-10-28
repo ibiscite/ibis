@@ -35,13 +35,35 @@
     if (this.output.current.value() !== parent) throw unverified;
     const pending = children.slice(offset);
     let printed = false;
+    const yearOnly = capture.format === "text" && args[1]?.["year-only"];
+    const issued = args[0].issued;
+    let formattedYear = false;
+    let noDate = false;
     while (pending.length) {
       const node = pending.pop();
-      if (typeof node === "string") printed ||= visible(node);
-      else if (node && typeof node.blobs === "string") printed ||= visible(node.blobs);
-      else if (node && Array.isArray(node.blobs)) for (const child of node.blobs) pending.push(child);
+      const value = typeof node === "string" ? node : typeof node?.blobs === "string" ? node.blobs : null;
+      if (value !== null) {
+        printed ||= visible(value);
+        if (yearOnly) {
+          // CSL.Blob preserves the term token's identity after localization and
+          // text formatting. Unrelated source text cannot supply this metadata.
+          noDate ||= node.strings?.term === "no date" && visible(value);
+          // Date-part blobs retain the style's year form (for example, 26).
+          if (node.strings?.name === "year") {
+            const format = CSL.Util.Dates.year[node.strings.form ?? "long"];
+            const expected = issued?.literal ?? (issued?.year !== undefined && typeof format === "function" && format(this, Math.abs(Number(issued.year))));
+            formattedYear ||= Boolean(expected) && (issued?.literal ? value.includes(expected) : value.split(/\D+/).includes(String(expected)));
+          }
+        }
+      } else if (node && Array.isArray(node.blobs)) for (const child of node.blobs) pending.push(child);
     }
     if (!printed) throw unverified;
+    if (yearOnly) {
+      // citeproc uses zero as its undated year sentinel.
+      if (issued?.literal || (issued?.year !== undefined && Number(issued.year) !== 0)) {
+        if (!formattedYear) throw unverified;
+      } else if (!noDate) throw unverified;
+    }
     const id = String(args[0].id);
     capture.seen.set(id, (capture.seen.get(id) ?? 0) + 1);
     return result;
@@ -92,14 +114,47 @@
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
   globalThis.__ibisFormat = (request) => {
     let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
-    // A selected bibliography cannot know a document's citation numbers.
-    if (request.style === "ieee") xml = xml.replace('<text variable="citation-number" prefix="[" suffix="]"/>', "").replace(' second-field-align="flush"', "");
     activeItems = new Map(request.items.map((item) => [item.id, item]));
     const key = JSON.stringify([request.style, request.locale, request.keep_order]);
     let engine = engines.get(key);
     if (!engine) {
       // Keep one warm style, rather than eight independent item registries.
       engines.clear();
+      if (request.numeric) {
+        const tree = CSL.parseXml(xml);
+        const macros = new Map(tree.children.filter((node) => node.name === "macro").map((node) => [node.attrs.name, node]));
+        const copies = new Map();
+        let serial = 0;
+        // A selected bibliography cannot know a document's citation numbers.
+        // Use the processor's XML tree so quoting and affixes do not matter.
+        for (const bibliography of tree.children.filter((node) => node.name === "bibliography")) {
+          delete bibliography.attrs["second-field-align"];
+          const pending = bibliography.children.filter((node) => node.name === "layout");
+          while (pending.length) {
+            const node = pending.pop();
+            node.children = node.children.filter((child) => !(child.name === "text" && child.attrs.variable === "citation-number"));
+            for (const child of node.children) {
+              const called = child.attrs?.macro;
+              if (macros.has(called)) {
+                if (!copies.has(called)) {
+                  // Shared citation and sort macros keep their original numbers.
+                  const copy = JSON.parse(JSON.stringify(macros.get(called)));
+                  let name;
+                  do { name = `ibis-bibliography-${serial++}`; } while (macros.has(name));
+                  copy.attrs.name = name;
+                  macros.set(name, copy);
+                  copies.set(called, name);
+                  tree.children.push(copy);
+                  pending.push(copy);
+                }
+                child.attrs.macro = copies.get(called);
+              }
+              if (child.children) pending.push(child);
+            }
+          }
+        }
+        xml = tree;
+      }
       engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id) }, xml, request.locale ?? undefined, request.locale !== null);
       engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];
@@ -115,7 +170,7 @@
       engine.updateItems(request.items.map((item) => item.id));
       for (const format of ["text", "html", "rtf"]) {
         engine.setOutputFormat(format);
-        const capture = { engine, area: request.bibliography ? "bibliography" : "citation", seen: new Map() };
+        const capture = { engine, format, area: request.bibliography ? "bibliography" : "citation", seen: new Map() };
         observation = capture;
         let output;
         if (request.bibliography) {

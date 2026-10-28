@@ -5,6 +5,8 @@ name: Preview builds
 #
 # - Every push to main replaces the rolling "nightly" pre-release, so the
 #   newest merged state can always be downloaded from one place.
+# - Nightly/release builds also check MSRV, release-mode tests and 60 seconds
+#   of offline behaviour. Real Zotero runs here and on the daily schedule.
 # - Once a day, and when run manually with "Only rerun the update test", the
 #   update-e2e job updates the nightly that the newest nightly replaced to the
 #   newest nightly, using the packages that nightly's run kept. Until #493 is
@@ -40,6 +42,11 @@ on:
         description: Publish verified packages (at a v tag, or refresh nightly on main)
         type: boolean
         default: false
+      zotero_capture_version:
+        description: "Exact Zotero release for an opt-in synthetic capture (empty keeps the ordinary smoke test)"
+        required: false
+        type: string
+        default: ""
       update_test:
         description: Only rerun the update test on the newest nightly (main only; builds nothing)
         type: boolean
@@ -67,6 +74,49 @@ jobs:
         run: |
           echo "::error::\"Only rerun the update test\" runs only on main and cannot be combined with publishing. Run it on main with publishing unchecked."
           exit 1
+
+  zotero:
+    name: Real Zotero
+    if: ${{ !inputs.update_test }}
+    # Reads what an actual Zotero sends, so a change in Zotero's answers or
+    # a wrong assumption about them fails here rather than on a tester's
+    # computer. Downloads the current Zotero release from zotero.org.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install Zotero's system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool libdbus-glib-1-2 libasound2t64 libgtk-3-0t64 libxtst6
+
+      - name: Run the real-Zotero test
+        if: github.event_name != 'workflow_dispatch' || inputs.zotero_capture_version == ''
+        run: scripts/real-zotero.sh
+
+      - name: Capture a pinned synthetic Zotero database and API pair
+        if: github.event_name == 'workflow_dispatch' && inputs.zotero_capture_version != ''
+        env:
+          ZOTERO_CAPTURE_VERSION: ${{ inputs.zotero_capture_version }}
+          ZOTERO_CAPTURE_OUTPUT: ${{ runner.temp }}/zotero-synthetic-capture
+        run: scripts/real-zotero.sh --capture "$ZOTERO_CAPTURE_VERSION" "$ZOTERO_CAPTURE_OUTPUT"
+
+      # These are unreviewed test artifacts, not committed/version-support fixtures.
+      - name: Keep the synthetic capture for fixture review
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.zotero_capture_version != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zotero-synthetic-capture-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/zotero-synthetic-capture/*
+          if-no-files-found: error
+          retention-days: 14
 
   build:
     name: Build (${{ matrix.name }})
@@ -114,7 +164,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev patchelf
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev patchelf xvfb xauth imagemagick iproute2 lsof
 
       - name: Choose the app identity
         id: identity
@@ -150,10 +200,25 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
+      - name: Test core in release mode (Linux)
+        if: runner.os == 'Linux'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo test -p ibis-core --release --locked
+
+      - name: Test the declared minimum Rust version (Linux)
+        if: runner.os == 'Linux'
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          cargo +1.90.0 test --locked
+
       # hdiutil on hosted macOS runners intermittently fails with "Resource
       # busy" while creating the disk image; a second attempt reuses the
       # compiled app and normally succeeds. Other failures are not retried.
       - name: Build the packages
+        id: native_build
         working-directory: apps/desktop
         env:
           TARGET: ${{ matrix.target }}
@@ -190,6 +255,87 @@ jobs:
           if [ "$TARGET" != x86_64-apple-darwin ]; then
             "target/$TARGET/release/ibis" --version
           fi
+
+      - name: Capture the picker (Linux and macOS)
+        if: runner.os != 'Windows' && matrix.target != 'x86_64-apple-darwin'
+        working-directory: .
+        env:
+          TARGET: ${{ matrix.target }}
+          CONFIG: ${{ steps.identity.outputs.config }}
+          IBIS_LIBRARY: ${{ github.workspace }}/fixtures/bibtex/real-world.bib
+        run: |
+          mkdir -p screenshots
+          capture() {
+            local binary=ibis-desktop
+            if [ -n "$CONFIG" ]; then
+              binary=$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1])).mainBinaryName || "ibis-desktop")' "$CONFIG")
+            fi
+            # Complete Linux fd/socket attribution needs a privileged observer.
+            local observer=()
+            if [ "$RUNNER_OS" = Linux ]; then observer=(sudo -n); fi
+            python3 scripts/check-offline.py --record-baseline screenshots/offline-$RUNNER_OS.json
+            "target/$TARGET/release/$binary" > screenshots/startup-$RUNNER_OS.log 2>&1 &
+            app_pid=$!
+            trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+            # Observe startup as well as the delayed background services.
+            "${observer[@]}" python3 scripts/check-offline.py --pid "$app_pid" --baseline screenshots/offline-$RUNNER_OS.json --seconds 60
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "::error::The picker exited during startup; see the startup log."
+              exit 1
+            fi
+            if [ "$RUNNER_OS" = Linux ]; then
+              import -window root screenshots/picker-Linux.png || echo "::warning::Linux screenshot capture failed."
+            else
+              screencapture -x screenshots/picker-macOS.png || echo "::warning::macOS screenshot capture failed."
+            fi
+          }
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- bash -e -c "$(declare -f capture); capture"
+          else
+            capture
+          fi
+
+      - name: Capture the picker (Windows)
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          IBIS_LIBRARY: ${{ github.workspace }}/fixtures/bibtex/real-world.bib
+        run: |
+          ./scripts/check-offline.tests.ps1
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $app = Start-Process "target/$env:TARGET/release/ibis-desktop.exe" -NoNewWindow -PassThru -RedirectStandardOutput screenshots/startup-Windows.log -RedirectStandardError screenshots/stderr-Windows.log
+          try {
+            # Observe startup as well as delayed WebView2 background services.
+            ./scripts/check-offline.ps1 -AppId $app.Id -Seconds 60
+            if ($app.HasExited) { throw 'The picker exited during startup; see the startup logs.' }
+            try {
+              Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+              $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+              $bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+              $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+              try {
+                $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+                $bitmap.Save("$PWD/screenshots/picker-Windows.png")
+              } finally { $graphics.Dispose(); $bitmap.Dispose() }
+            } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
+          } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
+
+      - name: Paste into Notepad (Windows)
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
+        run: cargo test -p ibis-desktop --release --locked --target "${{ matrix.target }}" one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
+
+      # Uploads still run after a job timeout (which counts as cancelled) so
+      # a hang leaves its logs.
+      - name: Keep screenshots and startup logs
+        if: always() && matrix.target != 'x86_64-apple-darwin'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: picker-${{ github.sha }}-${{ matrix.target }}
+          path: screenshots/*
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Collect packages and checksums
         id: collect

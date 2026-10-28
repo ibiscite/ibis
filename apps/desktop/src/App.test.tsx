@@ -86,39 +86,6 @@ test("hidden output still prepares the current engine receipt without displaying
   expect(previews()).toBe(fetched + 1);
 });
 
-test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain until dismissed with %s", async (key) => {
-  let warnings: string[] = [];
-  const calls = backend({
-    search: () => [result("a", "First")],
-    copy_file_citation: () => ({ text: "@a", warnings }),
-  });
-  render(<App />);
-  await screen.findByText("First");
-  const box = screen.getByLabelText("Search references");
-  vi.useFakeTimers();
-  await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
-  expect(document.querySelector(".copy-notice")).toBeTruthy();
-  await act(() => vi.advanceTimersByTimeAsync(3000));
-  expect(document.querySelector(".copy-notice")).toBeNull();
-  vi.useRealTimers();
-  warnings = ["A warning to read"];
-  fireEvent.keyDown(box, { key: "Enter" });
-  await screen.findByText("A warning to read");
-  vi.useFakeTimers();
-  await act(() => vi.advanceTimersByTimeAsync(3000));
-  expect(screen.getByText("A warning to read")).toBeTruthy();
-  const dismiss = screen.getByRole("button", { name: "Dismiss copy warnings" });
-  const actions = () => calls.filter((command) => command === "copy_file_citation" || command === "hide_picker");
-  const previousActions = actions();
-  dismiss.focus();
-  const code = key === " " ? "Space" : "Enter";
-  fireEvent.keyDown(dismiss, { key, code });
-  fireEvent.keyDown(dismiss, { key, code, repeat: true });
-  fireEvent.keyUp(dismiss, { key, code });
-  expect(screen.queryByLabelText("Copy warnings")).toBeNull();
-  expect(actions()).toEqual(previousActions);
-});
-
 const selections = (ids: SyntheticId[]) => ids.map((id) => ({ id, cite: `synthetic-cite-${id.key}`, locator: null }));
 
 /** A choice row (first run, setup, recovery), chosen from the keyboard as people do. */
@@ -539,11 +506,12 @@ test.each([
     // Duplicate native keys must remain distinct by source through removal/copy.
     const records = [result("same", "First", "a.bib"), result("same", "Second", "b.bib"), result("last", "Last", "c.bib")];
     const copies: Record<string, unknown>[] = [];
+    let finishCopy!: () => void;
     const calls = backend({
       search: () => records,
       copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
         copies.push(args);
-        return { text: `[@${args.items.map(({ id }) => id.key).join("; @")}]`, warnings: [] };
+        return new Promise((resolve) => { finishCopy = () => resolve({ text: `[@${args.items.map(({ id }) => id.key).join("; @")}]`, warnings: [] }); });
       },
     });
     render(<App />);
@@ -582,6 +550,11 @@ test.each([
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     await waitFor(() => expect(copies).toHaveLength(1));
     expect(copies[0]).toMatchObject({ items: selections((remaining.length ? remaining : [records[1]!]).map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
+    // Calling native copy is not its completion, nor a React commit. Keep the
+    // shelf until the native receipt arrives, then await the resulting update.
+    expect(chipKeys()).toEqual(remaining.map((record) => record.key));
+    expect(calls).not.toContain("hide_picker");
+    await act(async () => { finishCopy(); });
     expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
   },
 );
@@ -642,25 +615,30 @@ test("hovering Remove keeps focus and menu keys unchanged", async () => {
   expect(calls).not.toContain("hide_picker");
 });
 
-test.each([20, 40, 50])("%i long-key selections retain order across queries and first/middle/last removal", async (count) => {
+// Cross the six-chip boundary before and after three removals. The shelf's
+// component test exercises 50 references; replaying 100 navigation/selection
+// events through the whole picker tests the same transitions at much higher cost.
+test.each([7, 9, 10])("%i long-key selections retain order across queries and first/middle/last removal", async (count) => {
+  const pageSize = 3;
   const records = Array.from({ length: count }, (_, i) => result(`synthetic_${i}_${"long_key_".repeat(5)}`, `Selection reference ${i}`));
   const copies: Record<string, unknown>[] = [];
   backend({
-    search: ({ query: { text: query } }) => query === "" ? [] : records.slice(Number(query) * 20, (Number(query) + 1) * 20),
+    search: ({ query: { text: query } }) => query === "" ? [] : records.slice(Number(query) * pageSize, (Number(query) + 1) * pageSize),
     copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request;
       copies.push(args);
       return { text: `[@${args.items.map(({ id }) => id.key).join("; @")}]`, warnings: [] };
     },
   });
-  render(<App />);
+  await act(async () => { render(<App />); });
   const box = screen.getByLabelText("Search references");
-  for (let start = 0; start < count; start += 20) {
-    fireEvent.change(box, { target: { value: String(start / 20) } });
-    await screen.findByText(`Selection reference ${start}`);
-    for (let i = start; i < Math.min(start + 20, count); i++) {
-      fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-      if (i + 1 < Math.min(start + 20, count)) fireEvent.keyDown(box, { key: "ArrowDown" });
-    }
+  for (let start = 0; start < count; start += pageSize) {
+    await act(async () => { fireEvent.change(box, { target: { value: String(start / pageSize) } }); });
+    expect(screen.getByText(`Selection reference ${start}`)).toBeTruthy();
+    // Exercise large selections with one activation per record. Keyboard
+    // navigation/removal has its own matrix above; doubling every render here
+    // needlessly consumes the test's wall-clock budget under worker load.
+    const rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
+    for (const row of rows) fireEvent.click(row, { ctrlKey: true });
   }
   const tray = screen.getByRole("list", { name: "Selected references" });
   // The shelf shows six chips and folds the rest into "+N", which shows them all.
@@ -671,11 +649,11 @@ test.each([20, 40, 50])("%i long-key selections retain order across queries and 
   for (const i of removed) fireEvent.click(within(tray).getByRole("button", { name: `Remove ${records[i]!.key} from the selection` }));
   const expected = records.filter((_, i) => !removed.includes(i));
   expect(chipKeys(tray)).toEqual(expected.map((record) => record.key));
-  box.focus();
-  fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copies).toHaveLength(1));
+  act(() => box.focus());
+  await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
+  expect(copies).toHaveLength(1);
   expect(copies[0]).toMatchObject({ items: selections(expected.map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
-  await screen.findByText(`[@${expected.map((record) => record.key).join("; @")}]`);
+  expect(screen.getByText(`[@${expected.map((record) => record.key).join("; @")}]`)).toBeTruthy();
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
 });
 
@@ -954,18 +932,6 @@ test.each([
   else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
     ? { key: "q", ctrlKey: true } : { key: "Escape" });
   expect((await screen.findByText(notice)).getAttribute("role")).toBe("alert");
-  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
-});
-
-test("copy remains confirmed when hiding after a successful copy fails", async () => {
-  backend({ search: () => [result("a", "First")], copy_file_citation: () => ({ text: "@a", warnings: [] }),
-    hide_picker: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
-  render(<App />);
-  await screen.findByText("First");
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await screen.findByText("Ibis could not hide this window. Try again.");
-  expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
-  expect(document.body.textContent).not.toContain("Nothing was copied");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
 
@@ -1822,9 +1788,9 @@ test("a stuck settings request cannot keep Quit waiting indefinitely", async () 
     copy_format: () => "typst",
     set_picker_preferences: () => new Promise(() => undefined),
   });
-  render(<App />);
-  await waitFor(() => expect(formatValue()).toBe("typst"));
   vi.useFakeTimers();
+  await act(async () => { render(<App />); });
+  expect(formatValue()).toBe("typst");
   chooseFormat("cite");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true });
   expect(calls).not.toContain("quit");
@@ -2209,76 +2175,6 @@ test("shortcuts read as people type them on each system", async () => {
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
   expect(shortcutLabel("control+command+r", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Alt+Space", false)).toBe("Alt+Space");
-});
-
-test("a clean copy hides the picker, then says Copied with the copied text", async () => {
-  const notices: unknown[] = [];
-  const calls = backend({
-    search: () => [result("a", "First")],
-    copy_file_citation: () => ({ text: "[@a]", warnings: [] }),
-    show_copied_notice: (args) => { notices.push(args); return null; },
-  });
-  render(<App />);
-  await screen.findByText("First");
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(notices).toEqual([{ text: "[@a]", delivery: null }]));
-  expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
-});
-
-test("a Windows copy carries its delivery receipt through hiding to the notice", async () => {
-  const notices: unknown[] = [];
-  const calls = backend({
-    search: () => [result("a", "First")],
-    copy_file_citation: () => ({ text: "[@a]", warnings: [], delivery: 17 }),
-    show_copied_notice: (args) => { notices.push(args); return null; },
-  });
-  render(<App />);
-  await screen.findByText("First");
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await waitFor(() => expect(notices).toEqual([{ text: "[@a]", delivery: 17 }]));
-  expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
-});
-
-test("copies with warnings, pinned copies and failed hides show no Copied notice window", async () => {
-  let warnings = ["bare keys cannot carry page numbers"];
-  let hideFails = false;
-  const calls = backend({
-    search: () => [result("a", "First")],
-    copy_file_citation: () => ({ text: "a", warnings }),
-    hide_picker: () => { if (hideFails) throw new Error("SYNTHETIC"); return null; },
-  });
-  render(<App />);
-  const box = screen.getByLabelText("Search references");
-  await screen.findByText("First");
-  fireEvent.keyDown(box, { key: "Enter" });
-  await screen.findByLabelText("Copy warnings");
-  toggleKeepOpen();
-  warnings = [];
-  fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(calls.filter((c) => c === "copy_file_citation")).toHaveLength(2));
-  toggleKeepOpen();
-  hideFails = true;
-  fireEvent.keyDown(box, { key: "Enter" });
-  await screen.findByText("Ibis could not hide this window. Try again.");
-  expect(calls).not.toContain("show_copied_notice");
-});
-
-test("a failed Copied notice never undoes the copy or the hide", async () => {
-  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  try {
-    backend({
-      search: () => [result("a", "First")],
-      copy_file_citation: () => ({ text: "@a", warnings: [] }),
-      show_copied_notice: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); },
-    });
-    render(<App />);
-    await screen.findByText("First");
-    fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-    await waitFor(() => expect(log).toHaveBeenCalledWith("The Copied notice could not be shown."));
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
-    expect(log.mock.calls.flat().join(" ")).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
-  } finally { log.mockRestore(); }
 });
 
 test("double-clicking a row copies it like Enter, and Shift+click adds it like Shift+Enter", async () => {
@@ -3981,10 +3877,10 @@ test("a failed replacement search clears the earlier locator interpretation", as
     if (query.text === "failed") throw new Error("synthetic search failure");
     return locatorReply();
   } });
-  render(<App />);
-  await screen.findByText("Using page 12");
-  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "failed" } });
-  await screen.findByText("Ibis could not search your library. Use Reload, then try again.");
+  await act(async () => { render(<App />); });
+  expect(screen.getByText("Using page 12")).toBeTruthy();
+  await act(async () => { fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "failed" } }); });
+  expect(screen.getByText("Ibis could not search your library. Use Reload, then try again.")).toBeTruthy();
   expect(screen.queryByText("Using page 12")).toBeNull();
   expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
 });

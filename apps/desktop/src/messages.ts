@@ -1,4 +1,4 @@
-import type { KeyFormat, LibraryStatus, LoginItemProblem } from "./bindings";
+import type { KeyFormat, LibraryStatus, LoginItemProblem, ShortcutRefusal } from "./bindings";
 import type { Platform } from "./platform";
 
 /** Production picker text. Accessible names are stable automation contracts.
@@ -480,6 +480,7 @@ export const settingsText = {
   windowTitle: "Ibis Settings",
   pages: "Settings pages",
   general: "General",
+  shortcuts: "Shortcuts",
   about: "About",
   groups: { paste: "Pasting", picker: "Picker", updates: "Updates" },
   paste: {
@@ -509,6 +510,24 @@ export const settingsText = {
     previewDescription: "The line above the footer",
   },
   login: { description: "Keeps the shortcut ready after you restart" },
+  shortcut: {
+    open: "Open Ibis",
+    description: "Click the shortcut, then type a new one. Esc cancels.",
+    record: "Type a shortcut…",
+    useDefault: "Use Default",
+    inPicker: "In the picker",
+    failed: "Ibis could not change the shortcut. Try again.",
+    readFailed: "Ibis could not check the shortcut. Try reopening Settings.",
+    refusals: {
+      invalid: "Ibis cannot use that key combination. Try another shortcut.",
+      "needs-modifier": "Include Control, Alt or Command. Shift alone is not enough.",
+      "app-shortcut": "That shortcut is used for app commands. Add another modifier.",
+      "alt-gr": "Ctrl+Alt with a typing key is used for AltGr on Windows. Try another shortcut.",
+      "in-use": "Another app or the system may be using that shortcut. Try another.",
+      unavailable: "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.",
+      "not-saved": "The shortcut works now, but Ibis could not save it for next time. Try again.",
+    } satisfies Record<ShortcutRefusal, string>,
+  },
   updates: {
     automatic: "Check for updates automatically",
     automaticDescription: "Reads a small update file from GitHub a few times a day",

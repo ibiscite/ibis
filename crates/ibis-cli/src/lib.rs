@@ -17,6 +17,19 @@ pub enum OutputMode {
 }
 
 fn command() -> Command {
+    // Keep list values in their own scope: clap's global propagation replaces
+    // root values when the same flag also appears after the subcommand.
+    let file = Arg::new("file")
+        .long("file")
+        .value_parser(clap::value_parser!(PathBuf))
+        .action(ArgAction::Append)
+        .help("Open a BibTeX, BibLaTeX or CSL-JSON file; repeat for several libraries");
+    let group = Arg::new("zotero-group")
+        .long("zotero-group")
+        .value_name("GROUP_ID")
+        .value_parser(clap::value_parser!(u64))
+        .action(ArgAction::Append)
+        .help("Read a local Zotero group library by its group ID; repeat for several");
     let mut root = Command::new("ibis")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Find references and cite them anywhere.")
@@ -28,14 +41,7 @@ fn command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Print the versioned JSON envelope, including errors and findings"),
         )
-        .arg(
-            Arg::new("file")
-                .long("file")
-                .global(true)
-                .value_parser(clap::value_parser!(PathBuf))
-                .action(ArgAction::Append)
-                .help("Open a BibTeX, BibLaTeX or CSL-JSON file; repeat for several libraries"),
-        );
+        .arg(file.clone());
     root = root.arg(
         Arg::new("zotero")
             .long("zotero")
@@ -43,15 +49,7 @@ fn command() -> Command {
             .action(ArgAction::SetTrue)
             .help("Read the local Zotero personal library, open or closed"),
     );
-    root = root.arg(
-        Arg::new("zotero-group")
-            .long("zotero-group")
-            .global(true)
-            .value_name("GROUP_ID")
-            .value_parser(clap::value_parser!(u64))
-            .action(ArgAction::Append)
-            .help("Read a local Zotero group library by its group ID; repeat for several"),
-    );
+    root = root.arg(group.clone());
     for method in Method::ALL {
         let subcommand = Command::new(method.as_str());
         root = root.subcommand(match method {
@@ -202,6 +200,7 @@ fn command() -> Command {
             .about("Show or hide the desktop picker")
             .arg(Arg::new("app").long("app").value_parser(clap::value_parser!(PathBuf))),
     )
+    .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()))
 }
 /// Native entry point, with streams kept explicit for script and terminal clients.
 pub fn run<R: BufRead, W: Write + Send, E: Write>(
@@ -306,6 +305,18 @@ enum Execution {
     Stdio(u8),
 }
 
+fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id: &str) -> Vec<T> {
+    let mut values = Vec::new();
+    for scope in std::iter::once(matches).chain(matches.subcommand().map(|(_, args)| args)) {
+        for value in scope.get_many::<T>(id).into_iter().flatten() {
+            if !values.contains(value) {
+                values.push(value.clone());
+            }
+        }
+    }
+    values
+}
+
 /// A failure keeps its contract code, and so its exit code; the message is for people only.
 struct Failure {
     code: ErrorCode,
@@ -356,14 +367,14 @@ fn execute<R: BufRead, W: Write + Send>(
     }
     let cancel = Cancellation::default();
     let mut names = std::collections::BTreeMap::new();
-    for path in matches.get_many::<PathBuf>("file").into_iter().flatten() {
+    for path in source_values::<PathBuf>(matches, "file") {
         let params =
             serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| EngineError {
                 code: ErrorCode::BadInput,
             })?;
         let before = engine.libraries()?.libraries;
         explain(engine.dispatch(Method::Libraries, &params, &cancel), |code| {
-            human::file_failure(path, code)
+            human::file_failure(&path, code)
         })?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
@@ -372,12 +383,12 @@ fn execute<R: BufRead, W: Write + Send>(
             }
         }
     }
-    let groups = matches.get_many::<u64>("zotero-group").into_iter().flatten();
+    let groups = source_values::<u64>(matches, "zotero-group");
     let zotero: Vec<_> = matches
         .get_flag("zotero")
         .then_some(ZoteroLibrary::Personal)
         .into_iter()
-        .chain(groups.map(|id| ZoteroLibrary::Group(*id)))
+        .chain(groups.into_iter().map(ZoteroLibrary::Group))
         .collect();
     if !zotero.is_empty() {
         let params = serde_json::to_value(LibrariesRequest::OpenZotero {
@@ -791,6 +802,34 @@ fn terminal_display(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_flags_preserve_order_across_positions_and_ignore_duplicates() -> Result<(), clap::Error> {
+        let matches = command().try_get_matches_from([
+            "ibis",
+            "--zotero-group=9",
+            "--file=first.bib",
+            "--zotero-group",
+            "7",
+            "--file",
+            "second.bib",
+            "search",
+            "x",
+            "--zotero-group",
+            "11",
+            "--file",
+            "third.bib",
+            "--zotero-group",
+            "9",
+            "--file=first.bib",
+        ])?;
+        assert_eq!(source_values::<u64>(&matches, "zotero-group"), [9, 7, 11]);
+        assert_eq!(
+            source_values::<PathBuf>(&matches, "file"),
+            ["first.bib", "second.bib", "third.bib"].map(PathBuf::from)
+        );
+        Ok(())
+    }
+
     #[test]
     fn failure_to_write_a_bounded_json_error_is_an_internal_transport_error() {
         struct Broken;
