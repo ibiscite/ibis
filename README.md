@@ -102,8 +102,10 @@ cargo run -p ibis -- mcp --file fixtures/bibtex/fidelity.bib
 
 The command line calls the same typed engine methods as the app: `libraries`,
 `search`, `show`, `cite`, `styles`, `schema` and `call`. Repeat `--file` to open
-several BibTeX, BibLaTeX or CSL-JSON libraries. This first engine stage opens files;
-Zotero provider selection follows in the rebuild.
+several BibTeX, BibLaTeX or CSL-JSON libraries. Use `--zotero` for the local
+personal library or repeat `--zotero-group GROUP_ID` for chosen groups.
+Both `--file` and `--zotero-group` accumulate before and after the subcommand,
+in that order; duplicate choices are ignored.
 Library IDs are opaque and source paths stay private. `libraries` reports typed
 source warnings; loading never writes to a library.
 

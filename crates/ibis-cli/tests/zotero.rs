@@ -148,6 +148,32 @@ fn failed_reload_preserves_last_good_and_successful_reload_replaces_it() {
     assert!(engine.libraries().unwrap().libraries[0].refresh_error.is_none());
 }
 #[test]
+fn zotero_group_flags_accumulate_across_positions_and_ignore_duplicates() {
+    let server = Server::new();
+    for duplicates in [false, true] {
+        let engine = Engine::with_zotero_port(server.port).unwrap();
+        let mut args = vec!["ibis", "--zotero-group", "7", "search", "atlas", "--zotero-group", "9"];
+        if duplicates {
+            args.extend(["--zotero-group", "7", "--zotero-group", "9"]);
+        }
+        args.push("--json");
+        let (code, output) = run(&engine, &args);
+        assert_eq!(code, 0);
+        let response: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(response["data"]["hits"].as_array().unwrap().len(), 2);
+        let mut chosen: Vec<_> = engine
+            .libraries()
+            .unwrap()
+            .libraries
+            .into_iter()
+            .map(|library| serde_json::to_value(library.zotero).unwrap())
+            .collect();
+        chosen.sort_by_key(Value::to_string);
+        assert_eq!(chosen, [json!({"group":7}), json!({"group":9})]);
+    }
+}
+
+#[test]
 fn zotero_group_flags_choose_the_libraries_read() {
     let server = Server::new();
     let engine = Engine::with_zotero_port(server.port).unwrap();

@@ -7,6 +7,28 @@ fn ibis(args: &[&str]) -> std::process::Output {
         .unwrap_or_else(|error| panic!("{error}"))
 }
 #[test]
+fn file_flags_accumulate_across_positions_and_ignore_duplicates() -> Result<(), Box<dyn std::error::Error>> {
+    for duplicates in [false, true] {
+        let mut args = vec![
+            "--file",
+            "../../fixtures/bibtex/empty.bib",
+            "libraries",
+            "--file",
+            "../../fixtures/bibtex/fidelity.bib",
+        ];
+        if duplicates {
+            args.extend(["--file", "../../fixtures/bibtex/empty.bib"]);
+        }
+        args.push("--json");
+        let output = ibis(&args);
+        assert!(output.status.success());
+        let value: Value = serde_json::from_slice(&output.stdout)?;
+        assert_eq!(value["data"]["libraries"].as_array().map(Vec::len), Some(2));
+    }
+    Ok(())
+}
+
+#[test]
 fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
     for method in ibis_engine::Method::ALL {
         let help = ibis(&[method.as_str(), "--help"]);
