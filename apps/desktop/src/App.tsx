@@ -364,6 +364,18 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus({ preventScroll: true });
   };
 
+  const changeReference = (reference: CitationReference, change: Pick<CitationReference, "locator" | "form">) => {
+    setPendingCopy(null);
+    setSelectionChanged(true);
+    setSelected((previous) => {
+      const prepared = previous.get(idKey(reference.id));
+      if (prepared ? prepared !== reference : previous.size > 0) return previous;
+      const next = new Map(previous);
+      next.set(idKey(reference.id), { ...reference, ...change });
+      return next;
+    });
+  };
+
   const rowScope = useMemo(() => ({ api, current, selected, queryKey, format, snapshotRevision }), [api, current, selected, queryKey, format, snapshotRevision]);
   const latestRowScope = useRef(rowScope);
   latestRowScope.current = rowScope;
@@ -489,7 +501,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
-    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator }]);
+    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
@@ -690,7 +702,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <CitationShelf announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
         toggle(r);
         input.current?.focus({ preventScroll: true });
-      }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
+      }} onRemoveLocator={(r) => changeLocator(r, null)} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
+        onChangeReference={changeReference} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}

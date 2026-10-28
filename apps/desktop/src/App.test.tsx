@@ -588,7 +588,7 @@ test.each([
     for (let i = 1; i < count; i++) fireEvent.keyDown(box, { key: "ArrowUp" });
     const active = box.getAttribute("aria-activedescendant");
     const tray = screen.getByRole("list", { name: "Selected references" });
-    const remove = within(tray).getAllByRole("button")[index]!;
+    const remove = within(tray).getAllByRole("button", { name: /^Remove .* from the selection$/ })[index]!;
     act(() => remove.focus());
     if (activation === "pointer") {
       fireEvent.pointerDown(remove, { button: 0 });

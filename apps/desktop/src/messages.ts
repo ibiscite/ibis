@@ -1,6 +1,20 @@
 import type { KeyFormat, LibraryStatus, LoginItemProblem, ShortcutRefusal } from "./bindings";
 import type { Platform } from "./platform";
 
+export const citationDetailsText = {
+  page: "Page",
+  pageExample: "12–15",
+  pageHint: "A page or range",
+  form: "Citation form",
+  forms: [
+    { value: "normal", label: "Normal" },
+    { value: "narrative", label: "Narrative" },
+    { value: "author-omitted", label: "Omit author" },
+  ] as const,
+  edit: (reference: string) => `Edit ${reference}`,
+  details: (reference: string) => `Citation details for ${reference}`,
+};
+
 /** Production picker text. Accessible names are stable automation contracts.
  * Native error reasons, notes, settings notices, shortcut errors and copy warnings
  * arrive as English strings from Rust; translating those needs structured codes.

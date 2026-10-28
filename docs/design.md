@@ -386,6 +386,19 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
+- **Page and form** (#1366). The focused shelf reference has a labelled Page
+  field (a page or range, including Roman numerals) and the shared Normal,
+  Narrative and Omit author choices. Tab to or activate a reference's label to
+  edit it; the first reference is shown initially. With no built selection,
+  these controls edit the highlighted result. The first edit adds that result
+  to the shelf; subsequent searches cannot change its page or form. Editing
+  keeps focus in the control, clears a queued copy and prepares a new preview.
+  Clearing Page removes only that reference's page. Controls remain available
+  with the paste preview hidden. Engine losses name the reference and field
+  beside the preview; an unsupported form explains the refusal there and blocks
+  copying until corrected. Mixed narrative clusters, other locator controls,
+  prefixes and suffixes remain in #24/#1315. Controls wrap at narrow widths and
+  keep the shared keyboard focus and touch targets.
 - **Year-only citations.** Keep supported style forms available through conditional
   layouts. Each selected item's output must show its issued year, or the style's
   own no-date term for an undated or zero-year item; otherwise refuse the citation.
@@ -717,7 +730,8 @@ that owns its area in ROADMAP.md.
 9. Change the last citation: an explicit action in More (with its key)
    reopens that shelf, pages included. Ibis replaces text only when the old
    citation is selected; otherwise it copies the new one and says so.
-10. A page example in the empty state and a "Page…" control on the focused row.
+10. A page example in the empty state and a Page field for the focused shelf
+    reference (#1366, above); a row shortcut to it remains planned.
 11. Empty results name the obstacle and its one fix: a filter, a library
     scope, or "Not in your libraries".
 12. Peek: the focused reference's full title, edition, year, identifiers and

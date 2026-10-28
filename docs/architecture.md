@@ -90,6 +90,17 @@ longer carries the pre-engine library model, file loaders or citation renderer.
 Shared names, dates, settings choices, discovery and transport rules remain
 where clients still use them.
 
+The picker's small per-reference editor (#1366) sends its captured page and
+Normal, Narrative or Omit author intent through the native preview request.
+Narrative maps to an item form; Omit author maps to author suppression. A single
+BibLaTeX narrative pick selects `textcite` from the output family. Other form
+support and field losses come from the engine; unsupported mixed narrative
+groups are refused, never split into invented clusters. Indexed loss messages
+identify the reference and field. Page/form edits invalidate pending copy and
+preview identity, then prepare a fresh canonical receipt; copy still consumes
+only that receipt. This adds no polling or formatter runtime and retains only
+one page string and form per selected reference.
+
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
 report a typed prefix/flattened loss, since a footnote-style citation cannot
