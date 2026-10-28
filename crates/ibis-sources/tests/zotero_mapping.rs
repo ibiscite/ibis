@@ -206,7 +206,6 @@ fn malformed_oversized_and_nonbibliographic_inputs_are_bounded_and_private() {
     assert!(!public.contains("PRIVATE_FIELD"));
     assert!(!public.contains("private marker"));
     assert_eq!(data.record.csl["title"], "日本語 <script>invented</script>");
-    assert!(data.record.raw.is_some());
     for warning in data.warnings {
         assert!(!format!("{warning:?}").contains("Synthetic"));
     }
@@ -295,11 +294,6 @@ fn embedded_extra_url_hacks_cannot_expose_local_file_locations() {
         let data = mapped(json!({"extra": extra}));
         assert!(!serde_json::to_string(&data.record).unwrap().contains("private.pdf"));
         assert!(data.warnings.contains(&zotero::MappingWarning::PrivateUrl));
-        assert!(
-            serde_json::to_string(data.record.raw.as_ref().unwrap())
-                .unwrap()
-                .contains("private.pdf")
-        );
     }
 }
 
@@ -360,11 +354,6 @@ fn bare_document_filenames_stay_engine_only() {
         let public = serde_json::to_string(&result.record).unwrap();
         assert!(!public.contains(url));
         assert!(result.warnings.contains(&zotero::MappingWarning::PrivateUrl));
-        assert!(
-            serde_json::to_string(result.record.raw.as_ref().unwrap())
-                .unwrap()
-                .contains(url)
-        );
     }
 }
 

@@ -21,7 +21,7 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 - **The engine is the product; front ends are clients.** Every capability lives in the Rust engine as typed methods. The command line exposes all of it; the app, `ibis serve` and `ibis mcp` each expose an explicit subset suited to them (the picker does not administer the engine; headless clients do not open windows). A test fails when two front ends give different results for the same request. No front end formats, resolves or decides anything itself.
 - **One citation request, one result.** Preview, copy, paste, export, the command line and the editor endpoint all call `cite(snapshot, request) -> result`. What you see is exactly what is pasted.
 - **Only what Ibis can get right.** A field a format cannot carry is reported as a typed loss; a citation form it cannot carry is refused. Where correctness needs the whole document (numbering, ibid., 2020a/b), Ibis gives what is correct on its own and says why.
-- **Read-only sources.** Never write to Zotero, `.bib` files or any library. Raw records are kept next to normalised data.
+- **Read-only sources.** Never write to Zotero, `.bib` files or any library. Ibis keeps only the normalised data it uses; the source stays the original.
 - **Stable identity.** An item is `library + native key`, never a citation key or a file path.
 - **Never fail silently or guess data.** Skipped data becomes a warning; a failed paste leaves the citation copied with a reason; keys are never invented.
 - **Offline by default.** No telemetry. Network access needs a recorded decision and is opt-in (DOI lookup is planned this way for 0.6).
@@ -33,7 +33,7 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 
 ## Data model (ibis-core)
 
-- **Objects:** `Record` (a citable work: CSL-normalised fields plus raw provenance and citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
+- **Objects:** `Record` (a citable work: CSL-normalised fields plus citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
 - **Availability** of an attachment is computed by Ibis the same way in every mode: `OnDisk`, `CloudPlaceholder`, `NotDownloaded`, `Online`, `BrokenLink`, `Unreadable`, `Unknown`. Standalone notes and files are shown without inventing a parent.
 - **Library IDs are opaque** (`file:<hash>`, `zotero:<library>`). File locations stay in the engine and never serialise.
 - **Snapshots are immutable.** A refresh builds a new snapshot and reuses unchanged libraries. Each object has two fingerprints: `cite` (what a citation depends on) and `full` (everything shown). A picker session keeps the snapshot it started from. At copy time, in one step against the newest snapshot, each pick is checked by `ItemRef` and `cite` fingerprint and, for key outputs, its key is checked to still name exactly that one item across all loaded libraries; a pick that was deleted, changed what it cites or lost a required key to another item is refused with the reason. Formatted citations do not require a citation key. The picker shows the snapshot's age when it is old and says when a refresh failed.
@@ -41,8 +41,8 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 
 The initial shared vocabulary is in `ibis_core::contract`; its generated schema is
 `fixtures/engine-contract.schema.json`. Source adapters, formatters and front ends
-adopt it in the ordered rebuild issues. Raw provenance stays engine-only and is
-excluded from the public projection and both fingerprints. Non-item objects use
+adopt it in the ordered rebuild issues. Snapshots share their objects, so
+combining libraries never copies or re-fingerprints them. Non-item objects use
 source-namespaced native keys so tags and collections cannot collide with item
 keys. Rich text is a fixed-depth tree of styled text runs; strings remain
 untrusted data and are never injected as markup.
