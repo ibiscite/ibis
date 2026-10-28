@@ -16,7 +16,7 @@ use super::layout;
 #[cfg(target_os = "macos")]
 use crate::diagnostics::{NativeIssue, report};
 
-pub(super) const SHORTCUT_BACKEND_UNAVAILABLE: &str =
+pub(crate) const SHORTCUT_BACKEND_UNAVAILABLE: &str =
     "Global shortcuts need a working X11 connection with XKB. Open Ibis from your application launcher.";
 const SHORTCUT_REGISTRATION_FAILED: &str =
     "The shortcut could not be registered. Another app may be using it; choose a different shortcut in settings.";
@@ -56,6 +56,54 @@ pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<O
         *registered = Some((shortcut, key));
     }
     Ok(note)
+}
+
+/// Swap the registered shortcut for `requested`, from Settings. The new key is
+/// registered before the working one is released, so a refusal keeps it.
+/// Runs on the main thread, where layout queries are answered.
+pub(crate) fn replace_shortcut(app: &AppHandle, requested: Shortcut) -> Result<Option<&'static str>, &'static str> {
+    let state = app.state::<Registered>();
+    let mut registered = state.0.lock().map_err(|_| SHORTCUT_REGISTRATION_FAILED)?;
+    let (key, note) = on_layout(requested);
+    let current = registered.map(|(_, key)| key);
+    if current != Some(key) {
+        let shortcuts = app.global_shortcut();
+        replace_with(
+            current,
+            key,
+            |key| {
+                register_with(
+                    || {
+                        #[cfg(target_os = "linux")]
+                        return super::x11_focus::shortcut_ready();
+                        #[cfg(not(target_os = "linux"))]
+                        Ok(())
+                    },
+                    || shortcuts.register(key),
+                )
+            },
+            |key| shortcuts.unregister(key).map_err(|_| SHORTCUT_REGISTRATION_FAILED),
+        )?;
+    }
+    *registered = Some((requested, key));
+    Ok(note)
+}
+
+/// A failed registration keeps the old key; a failed release rolls back the new one.
+fn replace_with(
+    current: Option<Shortcut>,
+    key: Shortcut,
+    register: impl FnOnce(Shortcut) -> Result<(), &'static str>,
+    mut unregister: impl FnMut(Shortcut) -> Result<(), &'static str>,
+) -> Result<(), &'static str> {
+    register(key)?;
+    if let Some(old) = current
+        && let Err(error) = unregister(old)
+    {
+        let _ = unregister(key);
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// Move the shortcut when the person switches keyboard layout. objc2's
@@ -144,6 +192,70 @@ pub(super) fn register_with<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replacement_registers_first_and_keeps_the_old_key_on_conflict() {
+        use std::cell::RefCell;
+        let old = "Alt+Y"
+            .parse::<Shortcut>()
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
+        let new = "Alt+K"
+            .parse::<Shortcut>()
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
+        for registration in [
+            Ok(()),
+            Err(SHORTCUT_REGISTRATION_FAILED),
+            Err(SHORTCUT_BACKEND_UNAVAILABLE),
+        ] {
+            let operations = RefCell::new(Vec::new());
+            let result = replace_with(
+                Some(old),
+                new,
+                |key| {
+                    operations.borrow_mut().push(("register", key));
+                    registration
+                },
+                |key| {
+                    operations.borrow_mut().push(("unregister", key));
+                    Ok(())
+                },
+            );
+            assert_eq!(result, registration);
+            let expected = if registration.is_ok() {
+                vec![("register", new), ("unregister", old)]
+            } else {
+                vec![("register", new)]
+            };
+            assert_eq!(*operations.borrow(), expected);
+        }
+    }
+
+    #[test]
+    fn replacement_rolls_back_if_the_old_key_cannot_be_released() {
+        let old = "Alt+Y"
+            .parse::<Shortcut>()
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
+        let new = "Alt+K"
+            .parse::<Shortcut>()
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
+        let mut released = Vec::new();
+        let result = replace_with(
+            Some(old),
+            new,
+            |_| Ok(()),
+            |key| {
+                released.push(key);
+                if key == old {
+                    Err(SHORTCUT_REGISTRATION_FAILED)
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(result, Err(SHORTCUT_REGISTRATION_FAILED));
+        assert_eq!(released, [old, new]);
+        assert!(replace_with(None, new, |_| Ok(()), |_| panic!("no previous shortcut")).is_ok());
+    }
 
     #[test]
     fn unavailable_shortcut_backend_never_calls_the_registration_plugin() {

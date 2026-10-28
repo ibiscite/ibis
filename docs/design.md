@@ -699,10 +699,10 @@ pages runs under the window buttons, as in System Settings; each page is a
 stack of titled groups of rows: a label and optional description, then one
 control at the end, at least 48 px (56 with a description), on
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
-shared `Switch` (38 × 22) and `Segmented` in `ui/`. Changes apply at once and
-reach an open picker; resets offer Undo. Built so far: General (login, pasting,
-picker look) and About (version, updates); Shortcuts, Libraries and Citations
-follow (#776). The picker's More keeps its quick toggles until then.
+shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes apply at once and
+reach an open picker; preference resets offer Undo. Built so far: General (login, pasting,
+picker look), Shortcuts (open Ibis and the picker's key list) and About (version,
+updates); Libraries and Citations follow (#776). The picker's More keeps its quick toggles until then.
 Queued choices finish saving before the window closes, with at most a two-second
 wait. A failed save shows an alert and restores the saved choice; reloading
 choices on return never replaces an edit still being saved.
@@ -712,6 +712,18 @@ already-saved output choice. Out-of-order reads never replace newer choices.
 When a row's text and control do not fit side by side, the control wraps below
 and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.
+
+**Shortcuts.** The recorder button shows the current shortcut in the system's
+own notation (⇧⌘Y on macOS). Clicking it says **Type a shortcut…**; Esc or
+moving focus cancels. ASCII letters follow the typed letter, other keys their
+physical code; recorded modifiers are Control, Alt, Shift, Command, in that
+order. A shortcut needs Control, Alt/Option or Command; **⌘ + one key is
+refused** (Ctrl + one key elsewhere) because apps use it for their own commands.
+Refusals explain how to choose another and keep the working shortcut.
+The new shortcut is registered before the old one is released. A failed save
+keeps it working for this run and says it was not saved for next time.
+**Use Default** appears only for a different shortcut and restores ⇧⌘Y
+(Ctrl+Shift+Y elsewhere). **In the picker** is a read-only list from `KEY_TABLE`.
 
 **Permissions.** Ibis asks for a system permission only through a guide that
 says why in one sentence, names the exact list in the system's current words
