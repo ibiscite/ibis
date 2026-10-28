@@ -116,6 +116,7 @@ with tarfile.open(root / 'dist/Ibis-macOS-Apple-silicon.app.tar.gz', 'w:gz') as 
 `, dir], { encoding: "utf8" });
     assert.equal(made.status, 0, made.stderr);
     const stubs = {
+      uuidgen: "echo disposable-keychain-password",
       security: `echo "$1" >> "$SECURITY_LOG"\ncase "$1" in find-certificate) echo 'SHA-1 hash: ${leaf}';; esac`,
       plutil: "echo com.ibiscite.ibis.nightly",
       codesign: `case "$*" in *' -r-'*) echo '${pinned}' >&2;; esac`,
