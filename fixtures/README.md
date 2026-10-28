@@ -54,7 +54,5 @@ a PDF with MIME parameters and odd case, and a child attachment item. Each
 has malformed `links` values (numbers, arrays, oversized or empty MIME types,
 links as text) and sentinel private values (href, key, title, path, URL,
 size) that must never reach public data. `crates/ibis-sources/tests/zotero_rules.rs`
-checks parent records and withheld attachment details on the canonical source path.
-
-`zotero/payloads/` holds the three synthetic mapper regression inputs used by
-`crates/ibis-sources/tests/zotero_rules.rs`.
+checks parent records, best-attachment classification and withheld attachment
+details on the canonical source path, including the 256-byte MIME boundary.

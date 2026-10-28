@@ -198,6 +198,7 @@ fn parse_with_budget(
         snapshot,
         warnings,
         attachment_paths,
+        best_attachments: Default::default(),
     })
 }
 
