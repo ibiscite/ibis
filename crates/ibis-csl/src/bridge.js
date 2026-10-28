@@ -61,7 +61,7 @@
         const templates = styleTemplates.filter(([flag]) => run[flag]).map(([, name]) => name);
         if (scriptTemplates[run.script]) templates.push(scriptTemplates[run.script]);
         for (const name of templates) {
-          if (typeof formatter[name] === "string") text = formatter[name].replace("%%STRING%%", text);
+          if (typeof formatter[name] === "string") text = formatter[name].replace("%%STRING%%", () => text);
         }
         return text;
       }).join("");

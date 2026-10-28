@@ -74,7 +74,7 @@ pub(crate) fn prepare(
         let form = pick.form.unwrap_or(request.form);
         let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
             // A narrative citation is one sentence's subject: one reference.
-            || (form == CitationForm::Narrative && (bibliography || request.items.len() > 1))
+            || (form == CitationForm::Narrative && (pick.suppress_author || bibliography || request.items.len() > 1))
             || (style == "ieee" && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
             // MLA's citation layout has no year; a nonempty locator is not a year.
             || (style == "modern-language-association" && !bibliography && form == CitationForm::YearOnly)

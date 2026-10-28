@@ -849,3 +849,65 @@ fn narrative_citations_name_the_author_then_cite_the_rest() {
     let result = formatter.format(&snapshot, &request).unwrap();
     assert!(result.copy_content(2).is_none());
 }
+
+#[test]
+fn styled_dollar_sequences_stay_literal_in_prefixes_and_suffixes() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let (snapshot, mut request) = sample();
+    for token in ["$$", "$&", "$`", "$'"] {
+        for prefix in [false, true] {
+            request.items[0].prefix.clear();
+            request.items[0].suffix.clear();
+            let runs = if prefix {
+                &mut request.items[0].prefix
+            } else {
+                &mut request.items[0].suffix
+            };
+            runs.push(run(&format!(" {token} "), true));
+            let result = formatter.format(&snapshot, &request).unwrap();
+            assert!(result.text.contains(token), "{token}");
+            assert!(
+                result
+                    .html
+                    .as_deref()
+                    .unwrap()
+                    .contains(&format!("<i> {} </i>", token.replace('&', "&#38;")))
+            );
+            assert!(
+                result
+                    .rtf
+                    .as_deref()
+                    .unwrap()
+                    .contains(&format!("{{\\i{{}} {token} }}"))
+            );
+            assert!(result.losses.is_empty());
+            assert!(result.copy_content(1).is_some());
+        }
+    }
+}
+
+#[test]
+fn narrative_citations_refuse_author_suppression() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for per_item in [false, true] {
+        let (snapshot, mut request) = sample();
+        if per_item {
+            request.items[0].form = Some(CitationForm::Narrative);
+        } else {
+            request.form = CitationForm::Narrative;
+        }
+        request.items[0].suppress_author = true;
+        let result = formatter.format(&snapshot, &request).unwrap();
+        assert_eq!(
+            result.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::UnsupportedForm,
+            }]
+        );
+        assert!(result.text.is_empty());
+        assert!(result.copy_content(1).is_none());
+    }
+}
