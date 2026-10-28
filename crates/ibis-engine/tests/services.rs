@@ -257,6 +257,11 @@ fn typed_search_refuses_oversized_results_before_public_object_cloning() {
     assert_eq!(error.code, ErrorCode::ResourceLimit);
     request.limit = 1;
     assert_eq!(engine.search(&request, &Cancellation::default()).unwrap().hits.len(), 1);
+    request.query = "@Example2026 @Other2026".into();
+    assert_eq!(
+        engine.search(&request, &Cancellation::default()).unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
 }
 
 #[test]

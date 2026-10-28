@@ -72,7 +72,7 @@ fn pasted_lists_precede_locator_interpretation_and_keep_missing_keys() {
         assert!(reply.results.iter().all(|r| r.revision == reply.revision));
     }
     let reply = search(&file, "@b @absent", None);
-    assert_eq!(reply.list.unwrap().missing, ["absent"]);
+    assert_eq!(reply.list.unwrap_or_else(|| panic!("pasted list")).missing, ["absent"]);
     let reply = search(&file, "Second", None);
     assert!(reply.list.is_none());
 }

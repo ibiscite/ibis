@@ -464,7 +464,7 @@ and `a:` take their place while typing.
 **Search rules** (#1204, in `ibis-core` so every front end shares them). The
 index is built once per library change; a keystroke only scans it.
 
-- Pasted lists (#1326): `[@a; @b, p. 4]`, `\\cite{a,b}`, `#cite(<a>)`,
+- Pasted lists (#1326): `[@a; @b, p. 4]`, `\cite{a,b}`, `#cite(<a>)`,
   bare `@key` (also `-@key` and `@{any key}`), keys separated by newlines,
   tabs, commas or semicolons, and identifiers separated by spaces. Citation
   syntax ignores surrounding prose and locators; it does not attach those

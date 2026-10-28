@@ -15,6 +15,22 @@ pub(super) fn entries(query: &str) -> Option<Entries<'_>> {
     let mut cited = false;
     let mut rest = query;
     while !rest.is_empty() {
+        let offset = query.len() - rest.len();
+        let before = &query[..offset];
+        // DOI suffixes can themselves contain `@`, including after punctuation.
+        if before
+            .chars()
+            .next_back()
+            .is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ';'))
+        {
+            let end = rest
+                .find(|c: char| c.is_whitespace() || matches!(c, ',' | ';'))
+                .unwrap_or(rest.len());
+            if identifier::parse_query(&rest[..end]).is_some() {
+                rest = &rest[end..];
+                continue;
+            }
+        }
         if let Some(after) = rest.strip_prefix("#cite(") {
             cited = true;
             let (args, after) = delimited(after, '(', ')');
@@ -52,9 +68,8 @@ pub(super) fn entries(query: &str) -> Option<Entries<'_>> {
             }
         }
         if let Some(after) = rest.strip_prefix('@') {
-            let offset = query.len() - rest.len();
-            let previous = query[..offset].chars().next_back();
-            if previous.is_none_or(|c| !c.is_alphanumeric() && !matches!(c, '_' | '.' | '/' | '\\')) {
+            let previous = before.strip_suffix('-').unwrap_or(before).chars().next_back();
+            if previous.is_none_or(|c| c.is_whitespace() || "[({;,\"'".contains(c)) {
                 if let Some(after) = after.strip_prefix('{') {
                     cited = true;
                     let (key, after) = delimited(after, '{', '}');

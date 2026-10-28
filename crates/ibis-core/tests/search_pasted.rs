@@ -7,7 +7,7 @@ fn index() -> SnapshotIndex {
     let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
         panic!("record")
     };
-    let records = ["a", "b", "日本🌙", "any key"]
+    let records = ["a", "b", "日本🌙", "any key", "doi"]
         .into_iter()
         .enumerate()
         .map(|(n, key)| {
@@ -15,7 +15,11 @@ fn index() -> SnapshotIndex {
             record.id.key = key.into();
             record.citation_keys[0].value = key.into();
             record.aliases = if n == 0 { vec!["old-a".into()] } else { vec![] };
-            record.identifiers = vec![Identifier::Doi(format!("10.1000/synthetic{n}"))];
+            record.identifiers = vec![Identifier::Doi(if key == "doi" {
+                "10.1000/x-@a".into()
+            } else {
+                format!("10.1000/synthetic{n}")
+            })];
             record.csl.remove("DOI");
             LibraryObject::Record(record)
         })
@@ -135,5 +139,21 @@ fn hostile_syntax_and_duplicate_aliases_remain_bounded() {
                 checks.get() > 1
             })
             .is_none()
+    );
+}
+
+#[test]
+fn an_at_sign_inside_a_doi_is_not_a_citation_marker() {
+    let index = index();
+    let list = index
+        .pasted_list("10.1000/x-@a 10.1000/synthetic1", None, &|| false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        list.hits
+            .iter()
+            .map(|hit| hit.item.object.id().key.as_str())
+            .collect::<Vec<_>>(),
+        ["doi", "b"]
     );
 }
