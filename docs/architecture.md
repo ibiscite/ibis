@@ -5,9 +5,9 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 ```
                 ┌─ ibis (command line): every capability, for people, scripts and AI agents
                 │    --json on every command · ibis serve --stdio (JSON-RPC) · ibis mcp
- ENGINE ────────┼─ Desktop app: Tauri 2 shell + React/React Aria picker; links the engine in-process
+ ENGINE ────────┼─ Desktop app: Tauri 2 shell + React/React Aria picker; links the engine in-process; opens ibis:// links
  (Rust crates)  ├─ Editor endpoint compatible with Better BibTeX Cite as you Write
-                └─ Later: language server, launcher integrations
+                └─ Later: language server, launcher extensions
    │
    ├─ ibis-core     pure rules: model, citation request/result, key syntaxes, rich text, locators, search
    ├─ ibis-sources  Zotero (local API, private copy of the database), BibTeX/BibLaTeX, CSL-JSON, snapshots
@@ -29,6 +29,7 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 - **Escape every output** for its target: LaTeX, Pandoc, Typst, org, HTML, RTF.
 - **Keep private data private.** Paths never reach the webview; fixtures are synthetic; diagnostics use fixed codes, never raw text or payloads.
 - **Local endpoints** bind to `127.0.0.1`, require a token and reject browser `Origin` headers.
+- **Links** (`ibis://`) are untrusted input: they only fill in the picker and never copy, paste, change settings or read files ([decision 0030](decisions.md#0030-links-and-launchers)).
 - **Long-lived foundations.** Standards and widely used open source first (CSL 1.0.2, CSL-JSON, BibTeX, SQLite, Zotero's APIs, PDF.js). Each dependency that could fade sits behind one Ibis module so it can be replaced: Tauri, React Aria, PDF.js, citeproc-js, the BibTeX parser.
 
 ## Data model (ibis-core)
