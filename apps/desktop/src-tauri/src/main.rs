@@ -25,6 +25,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod row_context;
+mod settings_window;
 mod setup;
 mod sizing;
 mod tray;
@@ -175,6 +176,12 @@ fn main() {
         .manage(updater::Updates::default())
         .invoke_handler(bindings::commands().invoke_handler())
         .on_window_event(|window, event| {
+            if window.label() == settings_window::LABEL {
+                if let WindowEvent::Destroyed = event {
+                    settings_window::closed(window.app_handle());
+                }
+                return;
+            }
             // Only the picker hides on blur or close; the Copied notice never has focus.
             if window.label() != "main" {
                 return;
@@ -320,8 +327,13 @@ fn main() {
         Ok(app) => app.run(|app, event| {
             // macOS: a repeated OS open request brings back the hidden picker.
             #[cfg(target_os = "macos")]
+            // A Dock click while Settings is open brings Settings forward.
             if let tauri::RunEvent::Reopen { .. } = event {
-                show_picker(app);
+                if settings_window::is_open(app) {
+                    settings_window::open(app, None);
+                } else {
+                    show_picker(app);
+                }
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);

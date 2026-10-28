@@ -48,8 +48,11 @@ in that order. Light and dark come from
 `color-scheme` and `light-dark()`; components never read `prefers-color-scheme`.
 `data-system` records the actual OS for fonts, modifier labels and native
 material correctness; it does not choose a different layout. The copied
-notice uses the same 400×76-point frame near the top centre on every OS,
-including its 16-point shadow margin.
+notice uses the same 560×100-point frame near the top centre on every OS,
+including its 16-point shadow margin; the frame ignores the pointer. The
+notice never clips its words: a citation that would be cut short moves to a
+second line. A green check means pasted; copied without a paste shows the
+same mark in `--muted` with the reason in words.
 
 | Role | Tokens | Rule |
 |---|---|---|
@@ -126,8 +129,9 @@ keeps S to the edge, top and bottom.
 centre on the 32 px tile column; text starts on the title column: row titles,
 the search query, the status text and the shelf citation. The search glyph sits
 6 px inside the tile column on each side. It is the magnifier unless "Ibis mark
-in search" in More (`search_mark`, decision 0020) swaps in the brand mark, drawn
-from `brand/` at the same size and colour.
+in search" in Settings (`search_mark`, decision 0020) swaps in the brand mark, drawn
+from `brand/` at the same size in brand scarlet (`--citation`): it is the
+logo, not a control, so it keeps the brand colour (#1293).
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -677,13 +681,29 @@ validated config file for power users → the command line.
 
 ## Settings
 
-[C18] Not built yet (0.4); the detailed spec waits in #776. Its own window
-(Dock, taskbar and Alt+Tab while open) with a searchable sidebar of pages, each
-a stack of titled groups of rows: a label and optional description, then one
+[C18] Its own window (Dock, taskbar and Alt+Tab while open), opened with
+**Settings…** (⌘, / Ctrl+,) in More and the menu bar or tray. A sidebar of
+pages runs under the window buttons, as in System Settings; each page is a
+stack of titled groups of rows: a label and optional description, then one
 control at the end, at least 48 px (56 with a description), on
-`--surface-raised` [D17]. Changes apply at once; resets offer Undo.
+`--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
+shared `Switch` (38 × 22) and `Segmented` in `ui/`. Changes apply at once and
+reach an open picker; resets offer Undo. Built so far: General (login, pasting,
+picker look) and About (version, updates); Shortcuts, Libraries and Citations
+follow (#776). The picker's More keeps its quick toggles until then.
 
-Until then settings live in More and the tray menu. **Start Ibis when you log
+**Permissions.** Ibis asks for a system permission only through a guide that
+says why in one sentence, names the exact list in the system's current words
+(macOS 27: "Device Control and Data Access"; earlier: "Accessibility"), shows
+a picture of the switch to turn on, opens that pane with one button, and
+notices the change on its own (read again every second and on return), then
+confirms in words. It never claims success it has not read back. The guide
+opens by itself once per run, the first time a paste is refused, and lives in
+Settings › General › Pasting afterwards. Because macOS keys the permission to
+the code signature, opening the guide first clears Ibis's own entry when the
+permission is not working, so the list shows one fresh switch (#1292, #1242).
+
+Until the remaining pages exist, those settings live in More and the tray menu. **Start Ibis when you log
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
 ("Open at Login", "Start when you sign in", "Start on Login"), and is read from
 the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).

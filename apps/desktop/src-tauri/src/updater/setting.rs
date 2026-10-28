@@ -151,10 +151,12 @@ fn save(app: &AppHandle, on: bool) {
             &format!("Your choice could not be saved, so nothing changed: {problem}."),
         ),
     }
-    report(
-        app.emit_to("main", "update:automatic", automatic(app)),
-        NativeIssue::AutomaticMenuUpdate,
-    );
+    for window in ["main", crate::settings_window::LABEL] {
+        report(
+            app.emit_to(window, "update:automatic", automatic(app)),
+            NativeIssue::AutomaticMenuUpdate,
+        );
+    }
 }
 
 /// Whether update checks run on their own; `None` when this build has no updates.

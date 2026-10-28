@@ -349,7 +349,7 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     let result = if let Some(keys) = selectors
         .iter()
         .map(|selector| match selector {
-            ItemSelector::Key(key) => Some(key.clone()),
+            ItemSelector::Key(key) => Some(key.as_str().into()),
             ItemSelector::Id(_) => None,
         })
         .collect::<Option<Vec<_>>>()
