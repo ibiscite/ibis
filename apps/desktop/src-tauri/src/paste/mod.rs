@@ -2,9 +2,9 @@
 //!
 //! After a clean copy has hidden the picker, Ibis posts one ⌘V (macOS) or
 //! Ctrl+V (Windows, #1133), only to the captured process, once that app is in
-//! front again and the clipboard still holds the citation. `ibis_core::destination::decide` says when it must only
-//! copy, and the notice says why. The citation stays on the clipboard either
-//! way (ADR 0009).
+//! front again and the clipboard still holds the citation.
+//! `ibis_core::destination::decide` says when it must only copy, and the
+//! notice says why. The citation stays on the clipboard either way (ADR 0009).
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};

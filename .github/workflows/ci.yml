@@ -361,6 +361,10 @@ jobs:
             } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
 
+      - name: Paste into Notepad (Windows)
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
+        run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
+
       - name: Exercise the native picker (Linux)
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
         run: |

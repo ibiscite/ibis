@@ -77,6 +77,18 @@ clipboard: restoring the previous contents could paste them into a slow app, so
 restoring and per-app rules wait until after 1.0. It refuses secure input,
 elevated windows and lost targets.
 
+## 0029 Native calls
+
+Ibis's own code has no `unsafe`: the workspace lint `unsafe_code = "forbid"`
+stays. System calls go through maintained safe bindings that keep the unsafe
+part in their own reviewed code: objc2's generated AppKit and Core Graphics
+bindings on macOS; on Windows, `winsafe` for Win32 (the window in front, its
+process, name and integrity level, `SendInput`) and `uiautomation` for UI
+Automation (password fields). A new binding crate needs `cargo deny` and a
+line here. Only when no safe binding exists does one small module get a scoped
+`#[allow(unsafe_code)]` (the lint relaxed to `deny` for it), with a safety
+comment on every block and a review as a security boundary (2026-10-27, #1133).
+
 ## 0010 Search
 
 Proposed, awaiting measurements. Keyword search is instant, ignores accents and case, works in every script and

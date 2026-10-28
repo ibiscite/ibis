@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use winsafe::{self as w, co, prelude::*};
+use winsafe::{self as w, co};
 
 use super::Desk;
 use super::capture::Front;
@@ -82,9 +82,50 @@ fn integrity(process: &w::HPROCESS) -> Option<u32> {
     label.Label.Sid()?.SubAuthority().last().map(co::RID::raw)
 }
 
+/// Keys the person may still hold from the picker. `SendInput` would add them
+/// to Ctrl+V, and Ctrl+Alt+V types a character on some layouts.
+const HELD: [co::VK; 6] = [
+    co::VK::SHIFT,
+    co::VK::CONTROL,
+    co::VK::MENU,
+    co::VK::LWIN,
+    co::VK::RWIN,
+    co::VK::RETURN,
+];
+
+fn keys_held() -> bool {
+    HELD.into_iter().any(w::GetAsyncKeyState)
+}
+
 fn foreground_pid() -> Option<i32> {
     let window = w::HWND::GetForegroundWindow()?;
     i32::try_from(window.GetWindowThreadProcessId().1).ok()
+}
+
+/// The focused field of the app in front takes a password.
+fn password_focused() -> bool {
+    let (sender, receiver) = mpsc::channel();
+    // A thread of its own: UI Automation needs COM set up on the thread that
+    // calls it, and a hung app must not hold the paste.
+    std::thread::spawn(move || {
+        let password = uiautomation::UIAutomation::new()
+            .and_then(|automation| automation.get_focused_element())
+            .and_then(|field| field.is_password());
+        let _ = sender.send(password.unwrap_or(false));
+    });
+    receiver.recv_timeout(ASK_LIMIT).unwrap_or(false)
+}
+
+/// Ctrl+V to whatever has the keyboard, in one call, so no other input lands
+/// between the four events.
+fn send_paste() -> bool {
+    let paste = [
+        press(co::VK::CONTROL, false),
+        press(co::VK::CHAR_V, false),
+        press(co::VK::CHAR_V, true),
+        press(co::VK::CONTROL, true),
+    ];
+    matches!(w::SendInput(&paste), Ok(4))
 }
 
 pub(super) struct Win {
@@ -138,8 +179,10 @@ impl Desk for Win {
 
     fn ask_to_post(&self) {}
 
+    /// `None` also while a key from the picker is still held, so the paste
+    /// waits for the keyboard to be free as it waits for the app.
     fn frontmost(&self) -> Option<Front> {
-        if !self.picker_unchanged() {
+        if !self.picker_unchanged() || keys_held() {
             return None;
         }
         front(&w::HWND::GetForegroundWindow()?, false)
@@ -150,16 +193,7 @@ impl Desk for Win {
     }
 
     fn secure_field(&self) -> bool {
-        let (sender, receiver) = mpsc::channel();
-        // A thread of its own: UI Automation needs COM set up on the thread
-        // that calls it, and a hung app must not hold the paste.
-        std::thread::spawn(move || {
-            let password = uiautomation::UIAutomation::new()
-                .and_then(|automation| automation.get_focused_element())
-                .and_then(|field| field.is_password());
-            let _ = sender.send(password.unwrap_or(false));
-        });
-        receiver.recv_timeout(ASK_LIMIT).unwrap_or(false)
+        password_focused()
     }
 
     /// Windows' shortcuts follow the V key's virtual key on every layout.
@@ -168,20 +202,82 @@ impl Desk for Win {
     }
 
     fn post(&self, pid: i32, key: u16) -> bool {
-        if !self.picker_unchanged() || key != co::VK::CHAR_V.raw() || foreground_pid() != Some(pid) {
+        if !self.picker_unchanged() || key != co::VK::CHAR_V.raw() || keys_held() || foreground_pid() != Some(pid) {
             return false;
         }
-        // One call, so no other input lands between the four events.
-        let paste = [
-            press(co::VK::CONTROL, false),
-            press(co::VK::CHAR_V, false),
-            press(co::VK::CHAR_V, true),
-            press(co::VK::CONTROL, true),
-        ];
-        matches!(w::SendInput(&paste), Ok(4))
+        send_paste()
     }
 
     fn wait(&self, time: Duration) {
         std::thread::sleep(time);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+    use std::time::Instant;
+
+    #[test]
+    fn ibis_reads_its_own_integrity_level_and_is_not_above_itself() {
+        let own = w::HPROCESS::GetCurrentProcess();
+        assert!(integrity(&own).is_some_and(|level| level >= 0x2000));
+        assert!(!above_ibis(&own));
+    }
+
+    /// The whole Windows path on a real desktop: capture the app in front, see
+    /// it is no password field, send one Ctrl+V and read the text it received.
+    #[test]
+    #[ignore = "drives Notepad on a desktop session; CI's Windows job runs it"]
+    fn one_ctrl_v_pastes_the_clipboard_into_the_app_in_front() {
+        let text = "[@synthetic2026]";
+        let set = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &format!("Set-Clipboard -Value '{text}'")])
+            .status();
+        assert!(set.is_ok_and(|status| status.success()));
+        let mut notepad = Command::new("notepad.exe")
+            .spawn()
+            .unwrap_or_else(|e| panic!("notepad: {e}"));
+        let started = Instant::now();
+        let front = loop {
+            let front = w::HWND::GetForegroundWindow().and_then(|window| front(&window, true));
+            if let Some(front) = front.filter(|front| {
+                front
+                    .id
+                    .as_deref()
+                    .is_some_and(|id| id.eq_ignore_ascii_case("notepad.exe"))
+            }) {
+                break front;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(20),
+                "Notepad never came to the front"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        assert!(!front.elevated);
+        assert!(!password_focused());
+        assert!(!keys_held());
+        assert!(send_paste());
+        let started = Instant::now();
+        let pasted = loop {
+            let value = uiautomation::UIAutomation::new()
+                .and_then(|automation| automation.get_focused_element())
+                .and_then(|field| field.get_property_value(uiautomation::types::UIProperty::ValueValue))
+                .and_then(|value| value.get_string())
+                .unwrap_or_default();
+            if value.contains(text) || started.elapsed() > Duration::from_secs(5) {
+                break value;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        // Notepad may be a launcher for another process: close the one in front.
+        let _ = Command::new("taskkill")
+            .args(["/F", "/PID", &front.pid.to_string()])
+            .status();
+        let _ = notepad.kill();
+        let _ = notepad.wait();
+        assert_eq!(pasted.trim(), text);
     }
 }
