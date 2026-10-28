@@ -694,6 +694,9 @@ follow (#776). The picker's More keeps its quick toggles until then.
 Queued choices finish saving before the window closes, with at most a two-second
 wait. A failed save shows an alert and restores the saved choice; reloading
 choices on return never replaces an edit still being saved.
+When a row's text and control do not fit side by side, the control wraps below
+and its choices or labels wrap within the card, including at the minimum
+window width and larger system text sizes.
 
 **Permissions.** Ibis asks for a system permission only through a guide that
 says why in one sentence, names the exact list in the system's current words
