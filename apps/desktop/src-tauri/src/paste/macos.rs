@@ -1,8 +1,9 @@
-//! The macOS calls behind a paste, through safe objc2 bindings only.
+//! The macOS calls behind a paste. The secure-input FFI is isolated below;
+//! other native calls use safe objc2 bindings.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use objc2_app_kit::NSWorkspace;
 use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess};
@@ -12,6 +13,23 @@ use tauri_plugin_global_shortcut::Code;
 
 use super::Desk;
 use super::capture::Front;
+
+#[allow(unsafe_code)]
+mod secure_input;
+
+const ASK_LIMIT: Duration = Duration::from_millis(250);
+
+/// At most one AX query can outlive its caller. A stuck provider must not
+/// accumulate threads when the person tries another paste.
+static CHECKING: AtomicBool = AtomicBool::new(false);
+
+struct Checking;
+
+impl Drop for Checking {
+    fn drop(&mut self) {
+        CHECKING.store(false, Ordering::SeqCst);
+    }
+}
 
 /// The app in front, by bundle ID, process and name; never its windows.
 pub(super) fn frontmost() -> Option<Front> {
@@ -47,13 +65,17 @@ impl Mac {
     /// AppKit state and layouts are read on the main thread; the paste waits
     /// off it, never longer than a check step allows.
     fn on_main<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        self.on_main_for(ASK_LIMIT, work)
+    }
+
+    fn on_main_for<T: Send + 'static>(&self, limit: Duration, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
         let (sender, receiver) = mpsc::channel();
         self.app
             .run_on_main_thread(move || {
                 let _ = sender.send(work());
             })
             .ok()?;
-        receiver.recv_timeout(Duration::from_millis(250)).ok()
+        receiver.recv_timeout(limit).ok()
     }
 }
 
@@ -77,6 +99,36 @@ impl Desk for Mac {
 
     fn clipboard(&self) -> Option<String> {
         self.app.clipboard().read_text().ok()
+    }
+
+    fn secure_field(&self, pid: i32) -> Option<bool> {
+        let deadline = Instant::now() + ASK_LIMIT;
+        // Carbon documents this flag as not thread safe. Only this quick
+        // local read runs on the main thread; AX messaging never does.
+        if self.on_main_for(
+            deadline.saturating_duration_since(Instant::now()),
+            secure_input::enabled,
+        )?? {
+            return Some(true);
+        }
+        CHECKING
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()?;
+        let checking = Checking;
+        let secure = super::bounded(deadline.saturating_duration_since(Instant::now()), move || {
+            let _checking = checking;
+            super::security::secure_field(&secure_input::Ax { deadline }, pid)
+        })??;
+        if secure {
+            return Some(true);
+        }
+        // Secure Event Input may have been enabled while the AX provider
+        // answered. Do not paste on a stale negative result.
+        let enabled = self.on_main_for(
+            deadline.saturating_duration_since(Instant::now()),
+            secure_input::enabled,
+        )??;
+        (Instant::now() < deadline).then_some(enabled)
     }
 
     fn paste_key(&self) -> Option<u16> {

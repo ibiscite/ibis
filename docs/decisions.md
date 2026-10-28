@@ -52,8 +52,9 @@ no browser `Origin`, bypass proxies and check `Zotero-API-Version`.
 On Windows the closed reader's process, drive, attribute and ACL checks call
 Win32 directly through `windows-sys`, never PowerShell (changed 2026-10-28 in
 #1261: PowerShell was slow and fails under AppLocker and Constrained Language
-Mode). That module is the only `unsafe` code in Ibis: `ibis-zotero-local`
-denies it elsewhere and every other crate forbids it.
+Mode). That module and the macOS secure-input boundary are the scoped
+`unsafe` exceptions described in decision 0029; their crates deny it
+elsewhere and the workspace forbids it.
 
 ## 0007 Formatting (with 0028)
 
@@ -95,6 +96,24 @@ that text becomes the search and the paste replaces it (macOS and Windows, on
 by default; maintainer, 2026-10-28). The selection is read once, at the
 shortcut, through the same accessibility access paste uses; it is never read
 from secure fields, never stored and never logged.
+
+## 0029 Native calls
+
+The workspace keeps `unsafe_code = "forbid"`. Native calls use maintained
+safe bindings where available. Decision 0006's Windows closed-reader module
+and `paste/macos/secure_input.rs` are scoped exceptions: their crates use
+`deny`, with an allow only on the native module and a safety comment on each
+block. Changes there need independent security-boundary review.
+
+The macOS check uses the already-locked `objc2-core-foundation` for owned CF
+results and checked string downcasts. The cached objc2 bindings offer no
+safe cross-app AX or Secure Event Input query, so the small boundary calls
+Carbon and ApplicationServices directly (#1280). Carbon's local flag is
+read on the main thread; AX messaging stays on a worker with a 250 ms total
+check budget and per-object messaging deadlines. Only the captured app's
+focused element, its role and its subrole are requested. Failed, missing,
+mistyped or late results only copy; an unresponsive query cannot accumulate
+workers or post a paste when it eventually returns.
 
 ## 0010 Search
 
