@@ -16,7 +16,7 @@ use super::layout;
 #[cfg(target_os = "macos")]
 use crate::diagnostics::{NativeIssue, report};
 
-pub(super) const SHORTCUT_BACKEND_UNAVAILABLE: &str =
+pub(crate) const SHORTCUT_BACKEND_UNAVAILABLE: &str =
     "Global shortcuts need a working X11 connection with XKB. Open Ibis from your application launcher.";
 const SHORTCUT_REGISTRATION_FAILED: &str =
     "The shortcut could not be registered. Another app may be using it; choose a different shortcut in settings.";
@@ -55,6 +55,33 @@ pub(crate) fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<O
     if let Ok(mut registered) = app.state::<Registered>().0.lock() {
         *registered = Some((shortcut, key));
     }
+    Ok(note)
+}
+
+/// Swap the registered shortcut for `requested`, from Settings. The new key is
+/// registered before the working one is released, so a refusal keeps it.
+/// Runs on the main thread, where layout queries are answered.
+pub(crate) fn replace_shortcut(app: &AppHandle, requested: Shortcut) -> Result<Option<&'static str>, &'static str> {
+    let state = app.state::<Registered>();
+    let mut registered = state.0.lock().map_err(|_| SHORTCUT_REGISTRATION_FAILED)?;
+    let (key, note) = on_layout(requested);
+    let current = registered.map(|(_, key)| key);
+    if current != Some(key) {
+        let shortcuts = app.global_shortcut();
+        register_with(
+            || {
+                #[cfg(target_os = "linux")]
+                return super::x11_focus::shortcut_ready();
+                #[cfg(not(target_os = "linux"))]
+                Ok(())
+            },
+            || shortcuts.register(key),
+        )?;
+        if let Some(old) = current {
+            let _ = shortcuts.unregister(old);
+        }
+    }
+    *registered = Some((requested, key));
     Ok(note)
 }
 

@@ -29,7 +29,7 @@ pub(crate) use full_screen::FullScreenGuard;
 pub(crate) use layout::{command_key, typing};
 #[cfg(target_os = "macos")]
 pub(crate) use registration::follow_layout;
-pub(crate) use registration::{Registered, register_shortcut};
+pub(crate) use registration::{Registered, SHORTCUT_BACKEND_UNAVAILABLE, register_shortcut, replace_shortcut};
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]

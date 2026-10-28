@@ -134,6 +134,11 @@ export const commands = {
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
 	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */
 	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
+	/**
+	 *  Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
+	 *  Every window and the menu bar item show the change at once.
+	 */
+	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus>("set_shortcut", { shortcut }),
 };
 
 /* Types */
@@ -411,6 +416,21 @@ export type SearchResult = {
 	/**  CSL item type, such as `article-journal`. */
 	item_type: string,
 };
+
+/**  Why a new shortcut was not used. The working shortcut stays in each case. */
+export type ShortcutRefusal =
+/**  Not a key combination Ibis can register. */
+"invalid" |
+/**  Shift alone, or no modifier: typing would open Ibis. */
+"needs-modifier" |
+/**  ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands. */
+"app-shortcut" |
+/**  Another app or the system already has it. */
+"in-use" |
+/**  This desktop gives apps no global shortcuts (Wayland, no X11). */
+"unavailable" |
+/**  It works now, but could not be saved for the next start. */
+"not-saved";
 
 /**  Whether the global shortcut is working, shown in the interface. */
 export type ShortcutStatus = {

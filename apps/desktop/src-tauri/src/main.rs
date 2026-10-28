@@ -29,6 +29,7 @@ mod placement;
 mod preferences;
 mod row_context;
 mod settings_window;
+mod shortcut_setting;
 mod setup;
 mod sizing;
 mod tray;
