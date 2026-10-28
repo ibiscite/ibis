@@ -65,6 +65,7 @@ pub(crate) fn prepare(
     let mut outcomes = Vec::new();
     let mut losses = Vec::new();
     let mut notices = Vec::new();
+    let mut affixes = Vec::new();
     if style == "ieee" {
         notices.extend([Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
     }
@@ -72,7 +73,8 @@ pub(crate) fn prepare(
     for (index, pick) in request.items.iter().enumerate() {
         let form = pick.form.unwrap_or(request.form);
         let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
-            || form == CitationForm::Narrative
+            // A narrative citation is one sentence's subject: one reference.
+            || (form == CitationForm::Narrative && (pick.suppress_author || bibliography || request.items.len() > 1))
             || (style == "ieee" && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
             // MLA's citation layout has no year; a nonempty locator is not a year.
             || (style == "modern-language-association" && !bibliography && form == CitationForm::YearOnly)
@@ -113,6 +115,10 @@ pub(crate) fn prepare(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
+        // APA's parenthetical names use a symbol conjunction that cannot be
+        // reused as a narrative subject. Refuse multiple names until the
+        // narrative path has its own verified name rendering.
+        let apa_narrative = style == "apa" && form == CitationForm::Narrative;
         // When an item has authors, the in-text layouts of the bundled
         // author-date styles print only these name lists; every other one is
         // a substitute after `author` or appears only in entries.
@@ -162,6 +168,7 @@ pub(crate) fn prepare(
                 names
                     .iter()
                     .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
+                    || apa_narrative && names.len() > 1
             })
         {
             outcomes.push(ItemOutcome::Refused {
@@ -170,7 +177,7 @@ pub(crate) fn prepare(
             });
             continue;
         }
-        if form == CitationForm::AuthorOnly && !has_authors {
+        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative) && !has_authors {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
@@ -190,8 +197,8 @@ pub(crate) fn prepare(
         };
         let mut cite = json!({"id":id});
         for (present, field) in [
-            (!pick.prefix.is_empty(), LossField::Prefix),
-            (!pick.suffix.is_empty(), LossField::Suffix),
+            (bibliography && !pick.prefix.is_empty(), LossField::Prefix),
+            (bibliography && !pick.suffix.is_empty(), LossField::Suffix),
         ] {
             if present {
                 losses.push(Loss {
@@ -231,10 +238,21 @@ pub(crate) fn prepare(
             }
             // Rich affixes belong to the 0.4 builder. Omitting them is explicit,
             // never citeproc markup that could reinterpret literal input.
-            cite["prefix"] = json!("");
-            cite["suffix"] = json!("");
+            // citeproc-js would read affix text as markup and curl its quotes, so
+            // it sees inert placeholders and the bridge writes each affix in
+            // every output format afterwards, with citeproc's own escaping.
+            for (key, runs) in [("prefix", &pick.prefix), ("suffix", &pick.suffix)] {
+                if runs.iter().any(|run| !run.text.is_empty()) {
+                    let placeholder = placeholder(affixes.len(), key, runs);
+                    cite[key] = json!(placeholder);
+                    affixes.push(json!({"placeholder": placeholder, "kind": key, "runs": runs}));
+                }
+            }
             cite["suppress-author"] = json!(pick.suppress_author || form == CitationForm::YearOnly);
             cite["author-only"] = json!(form == CitationForm::AuthorOnly);
+            if form == CitationForm::Narrative {
+                cite["narrative"] = json!(true);
+            }
         }
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
@@ -249,7 +267,15 @@ pub(crate) fn prepare(
             reason: LossReason::Unsupported,
         });
     }
-    let json=String::from_utf8(bounded_json(&json!({"style":style,"items":items,"cites":cites,"bibliography":bibliography,"keep_order":request.keep_order,"locale":request.output_locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    let json=String::from_utf8(bounded_json(&json!({"style":style,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":request.output_locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    // Each placeholder (in its cite and in the affix list) must be the only
+    // place its sentinel occurs, or the bridge could write an affix into a
+    // record's own text.
+    if json.matches(PLACEHOLDER_OPEN).count() != 2 * affixes.len()
+        || json.matches(PLACEHOLDER_CLOSE).count() != 2 * affixes.len()
+    {
+        return Err(FormatError::InvalidRequest);
+    }
     Ok(Prepared {
         json,
         outcomes,
@@ -464,4 +490,32 @@ fn named(names: Option<&Value>) -> bool {
             })
         })
     })
+}
+
+/// Sentinels for affix placeholders. Requests whose text contains them are
+/// refused, so a placeholder can only ever match itself.
+pub(crate) const PLACEHOLDER_OPEN: char = '\u{E000}';
+pub(crate) const PLACEHOLDER_CLOSE: char = '\u{E001}';
+
+/// An inert stand-in for one affix. citeproc-js decides delimiter spacing from
+/// a suffix's last and a prefix's first character when it is `;`, `.` or `,`,
+/// so that character stays visible to it and is part of what gets replaced.
+fn placeholder(index: usize, kind: &str, runs: &[TextRun]) -> String {
+    let digits: String = index
+        .to_string()
+        .chars()
+        .map(|d| char::from_u32(0xE010 + d.to_digit(10).unwrap_or(0)).unwrap_or(PLACEHOLDER_CLOSE))
+        .collect();
+    let token = format!("{PLACEHOLDER_OPEN}{digits}{PLACEHOLDER_CLOSE}");
+    let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+    let edge = if kind == "prefix" {
+        text.chars().next()
+    } else {
+        text.chars().next_back()
+    };
+    match edge.filter(|c| matches!(c, ';' | '.' | ',')) {
+        Some(c) if kind == "prefix" => format!("{c}{token}"),
+        Some(c) => format!("{token}{c}"),
+        None => token,
+    }
 }

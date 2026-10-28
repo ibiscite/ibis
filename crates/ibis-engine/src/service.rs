@@ -77,6 +77,9 @@ pub struct SearchHit {
 pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
+    /// The locator read off the end of the query, when one was asked for and found.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locator: Option<ibis_core::locator::TrailingLocator>,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
@@ -269,9 +272,16 @@ impl Engine {
         {
             return Err(error(ErrorCode::NotFound));
         }
+        let locator = request
+            .interpret_locator
+            .then(|| ibis_core::locator::parse_trailing(&request.query))
+            .flatten();
+        let query = locator
+            .as_ref()
+            .map_or(request.query.as_str(), |read| read.search.as_str());
         let hits = state
             .index
-            .search(&request.query, request.limit, request.libraries.as_deref(), &|| {
+            .search(query, request.limit, request.libraries.as_deref(), &|| {
                 cancel.is_cancelled()
             })
             .ok_or_else(|| error(ErrorCode::Cancelled))?;
@@ -316,6 +326,7 @@ impl Engine {
                     partial: hit.partial,
                 })
                 .collect(),
+            locator,
         })
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {

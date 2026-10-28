@@ -22,6 +22,20 @@ pub(super) fn render(
         KeySyntax::Typst => typst(picks),
         KeySyntax::Keys => picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(", "),
         KeySyntax::CslJson => return csl_json(picks),
+        KeySyntax::OrgCite => org(picks),
+        KeySyntax::Myst => format!(
+            "{{cite:{}}}`{}`",
+            if picks[0].form == Narrative { "t" } else { "p" },
+            keys(picks, ",")
+        ),
+        KeySyntax::MultiMarkdown => mmd(caps, picks),
+        KeySyntax::AsciiDoc => asciidoc(picks),
+        KeySyntax::Jupyter => picks
+            .iter()
+            .map(|pick| format!("<cite data-cite=\"{0}\">{0}</cite>", html_escape(pick.key)))
+            .collect(),
+        KeySyntax::JekyllScholar => jekyll(picks),
+        KeySyntax::CaywJson => return cayw_json(caps, picks),
         _ => return Err(CitationError::UnsupportedOutput),
     };
     Ok(text)
@@ -493,4 +507,147 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
         }
     })?;
     String::from_utf8(output.0).map_err(|_| CitationError::InvalidRichText)
+}
+
+fn keys(picks: &[Pick<'_>], separator: &str) -> String {
+    picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(separator)
+}
+
+/// Plain affix text where the target carries it, after the typed losses.
+fn plain(caps: &SyntaxCapabilities, runs: &RichText, suffix: bool) -> String {
+    if !carries(caps.escaping, runs, suffix) {
+        return String::new();
+    }
+    runs.iter()
+        .map(|run| run.text.as_str())
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+/// Org 9.5 citations: `[cite/style:prefix @key, locator, suffix; ...]`.
+fn org(picks: &[Pick<'_>]) -> String {
+    let caps = CAPABILITIES
+        .iter()
+        .find(|caps| caps.syntax == KeySyntax::OrgCite)
+        .unwrap_or(&CAPABILITIES[0]);
+    let style = match picks[0].form {
+        Narrative => "/t",
+        CitationForm::AuthorOnly => "/a",
+        _ if picks.len() == 1 && picks[0].suppress => "/na",
+        _ => "",
+    };
+    let items = picks
+        .iter()
+        .map(|pick| {
+            let prefix = plain(caps, &pick.item.prefix, false);
+            let notes = pick
+                .item
+                .locator
+                .as_ref()
+                .map(|locator| locator_text(locator, "–", " "))
+                .into_iter()
+                .chain(Some(plain(caps, &pick.item.suffix, true)).filter(|suffix| !suffix.is_empty()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{}@{}{}",
+                before(&prefix),
+                pick.key,
+                if notes.is_empty() {
+                    String::new()
+                } else {
+                    format!(", {notes}")
+                }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("[cite{style}:{items}]")
+}
+
+/// MultiMarkdown 6: `[locator, suffix][#key]`, or `[#key][]` without notes.
+fn mmd(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> String {
+    picks
+        .iter()
+        .map(|pick| {
+            let notes = pick
+                .item
+                .locator
+                .as_ref()
+                .map(|locator| locator_text(locator, "–", " "))
+                .into_iter()
+                .chain(Some(plain(caps, &pick.item.suffix, true)).filter(|suffix| !suffix.is_empty()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if notes.is_empty() {
+                format!("[#{}][]", pick.key)
+            } else {
+                format!("[{notes}][#{}]", pick.key)
+            }
+        })
+        .collect()
+}
+
+/// asciidoctor-bibtex: `cite:[key(12), other(3)]`. Only pages are supported.
+fn asciidoc(picks: &[Pick<'_>]) -> String {
+    let items = picks
+        .iter()
+        .map(|pick| match &pick.item.locator {
+            Some(locator) => {
+                format!("{}({})", pick.key, normalize_dashes(locator.value.trim(), "–"))
+            }
+            None => pick.key.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("cite:[{items}]")
+}
+
+/// Jekyll Scholar: `{% cite a b %}`, with one locator for one reference.
+fn jekyll(picks: &[Pick<'_>]) -> String {
+    let locator = match picks {
+        [pick] => pick.item.locator.as_ref().map(|locator| {
+            let value = locator.value.trim();
+            if locator.term == LocatorTerm::Page {
+                format!(" --locator {value}")
+            } else {
+                let label = serde_json::to_value(locator.term)
+                    .ok()
+                    .and_then(|term| term.as_str().map(str::to_string))
+                    .unwrap_or_default();
+                format!(" --label {label} --locator {value}")
+            }
+        }),
+        _ => None,
+    };
+    format!("{{% cite {}{} %}}", keys(picks, " "), locator.unwrap_or_default())
+}
+
+/// Better BibTeX's Cite as You Write `pick` shape: the picks themselves.
+fn cayw_json(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> Result<String, CitationError> {
+    let picks: Vec<_> = picks
+        .iter()
+        .map(|pick| {
+            let mut value = serde_json::json!({ "citationKey": pick.key });
+            if let Some(locator) = &pick.item.locator {
+                value["label"] = serde_json::to_value(locator.term).unwrap_or_default();
+                value["locator"] = locator.value.trim().into();
+            }
+            for (field, runs, suffix) in [
+                ("prefix", &pick.item.prefix, false),
+                ("suffix", &pick.item.suffix, true),
+            ] {
+                let text = plain(caps, runs, suffix);
+                if !text.is_empty() {
+                    value[field] = text.into();
+                }
+            }
+            if pick.suppress {
+                value["suppressAuthor"] = true.into();
+            }
+            value
+        })
+        .collect();
+    serde_json::to_string(&picks).map_err(|_| CitationError::InvalidRichText)
 }

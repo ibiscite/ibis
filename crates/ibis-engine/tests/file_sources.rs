@@ -22,6 +22,7 @@ fn file_to_search_to_citation_uses_one_private_source_owner() {
     let hits = engine
         .search(
             &SearchRequest {
+                interpret_locator: false,
                 query: "research".into(),
                 limit: 10,
                 libraries: None,
@@ -140,6 +141,7 @@ fn watcher_refreshes_search_and_notifies_without_mutating_prior_snapshots() {
     let result = engine
         .search(
             &SearchRequest {
+                interpret_locator: false,
                 query: "تجربة".into(),
                 limit: 10,
                 libraries: None,
