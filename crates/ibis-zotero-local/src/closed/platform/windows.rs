@@ -719,9 +719,21 @@ mod tests {
 
     fn replace_acl(handle: &Handle, mask: u32, count: usize) {
         use windows_sys::Win32::Security::Authorization::SetSecurityInfo;
-        use windows_sys::Win32::Security::PROTECTED_DACL_SECURITY_INFORMATION;
+        use windows_sys::Win32::Security::{
+            ACL_SIZE_INFORMATION, AclSizeInformation, CreateWellKnownSid, GetAclInformation,
+            PROTECTED_DACL_SECURITY_INFORMATION, WinWorldSid,
+        };
         let control = control();
         let user = user(&control).unwrap_or_else(|_| panic!("synthetic user"));
+        let mut world = [0u32; 17];
+        let mut world_len = size_of_val(&world) as u32;
+        // SAFETY: DWORD-aligned storage has SECURITY_MAX_SID_SIZE bytes; the
+        // API initializes the universal World SID without account lookup.
+        assert_ne!(
+            unsafe { CreateWellKnownSid(WinWorldSid, null_mut(), world.as_mut_ptr().cast(), &mut world_len) },
+            0
+        );
+        assert!((8..=size_of_val(&world) as u32).contains(&world_len));
         let mut storage = [0u32; 64];
         let acl = storage.as_mut_ptr().cast::<ACL>();
         // SAFETY: storage is DWORD-aligned and has the advertised capacity.
@@ -729,13 +741,13 @@ mod tests {
             unsafe { InitializeAcl(acl, size_of_val(&storage) as u32, ACL_REVISION) },
             0
         );
-        for _ in 0..count {
+        // Distinct trustees keep the extra rule from coalescing with the
+        // owner's rule when Windows stores the DACL.
+        assert!(count <= 2);
+        for sid in [user.sid(), world.as_mut_ptr().cast()].into_iter().take(count) {
             // SAFETY: this initialized ACL has room for two maximum-sized
-            // SID ACEs, and user owns the validated SID throughout the call.
-            assert_ne!(
-                unsafe { AddAccessAllowedAceEx(acl, ACL_REVISION, 0, mask, user.sid()) },
-                0
-            );
+            // SID ACEs, and both SID allocations remain live through the call.
+            assert_ne!(unsafe { AddAccessAllowedAceEx(acl, ACL_REVISION, 0, mask, sid) }, 0);
         }
         // SAFETY: handle grants READ_CONTROL and WRITE_DAC; the ACL is live and
         // owner/group/SACL are unused. Only this invented object's DACL changes.
@@ -753,6 +765,25 @@ mod tests {
             },
             0
         );
+        let descriptor = Descriptor::read(handle, &control).unwrap_or_else(|_| panic!("synthetic ACL readback"));
+        let mut info = ACL_SIZE_INFORMATION::default();
+        // SAFETY: descriptor owns this OS-returned ACL; info is a writable,
+        // correctly sized output. Confirm the fixture Windows actually stored.
+        assert_ne!(
+            unsafe {
+                GetAclInformation(
+                    descriptor.acl,
+                    addr_of_mut!(info).cast(),
+                    size_of_val(&info) as u32,
+                    AclSizeInformation,
+                )
+            },
+            0
+        );
+        assert_eq!(
+            info.AceCount as usize, count,
+            "synthetic ACL mask={mask:#x} rules={count}"
+        );
     }
 
     #[test]
@@ -768,7 +799,11 @@ mod tests {
             open(&path, READ_CONTROL | WRITE_DAC, &control()).unwrap_or_else(|_| panic!("synthetic ACL handle"));
         for (mask, count) in [(FILE_ALL_ACCESS, 0), (FILE_ALL_ACCESS, 2), (FILE_ALL_ACCESS & !2, 1)] {
             replace_acl(&handle, mask, count);
-            assert_eq!(verify_acl(&handle, &user, true, &control()), Err(NATIVE));
+            assert_eq!(
+                verify_acl(&handle, &user, true, &control()),
+                Err(NATIVE),
+                "synthetic ACL mask={mask:#x} rules={count}"
+            );
             assert_eq!(
                 super::super::secure(&path, &control()),
                 Err(ClosedError::PrivateStorage)
