@@ -128,10 +128,7 @@ keeps S to the edge, top and bottom.
 **Two columns** [C3]. Icons, the search glyph, the status dot and type tiles
 centre on the 32 px tile column; text starts on the title column: row titles,
 the search query, the status text and the shelf citation. The search glyph sits
-6 px inside the tile column on each side. It is the magnifier unless "Ibis mark
-in search" in Settings (`search_mark`, decision 0020) swaps in the brand mark, drawn
-from `brand/` at the same size in brand scarlet (`--citation`): it is the
-logo, not a control, so it keeps the brand colour (#1293).
+6 px inside the tile column on each side and is always the magnifier.
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -365,8 +362,9 @@ above rows.
 
 **Shelf** [C7]. What Enter pastes, one 40 px line above the footer's Copy
 action: the beak mark hangs at the tile column's end and the citation starts on
-the title column. Shown while there are results; hidden on empty, error and
-choice screens. Results never move when a reference is added. With several
+the title column. Shown while there are results or a citation is being built,
+including through empty searches and refresh failures; hidden on choice
+screens. Results never move when a reference is added. With several
 references the citation itself holds them as segments (no chips line): each
 reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6)
 with a 16 px round remove button inside its end over a 6 px fade, so nothing
@@ -400,7 +398,9 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   full-bleed between dividers on GNOME. Without room it scrolls in its own area,
   keeping 24 px of results reachable.
 
-**Preview** [C17]. At 960 px or wider the list keeps 400 px and the pane takes
+**Preview** [C17]. Until the reader arrives (Later), the preview is Peek: the
+reference's full details and the full citation text, without the page area.
+At 960 px or wider the list keeps 400 px and the pane takes
 the rest; below that the preview replaces the list. Pane toolbar and bottom row
 are 48 px with S padding; the page area keeps S from the divider and the edge;
 the content ends S above the shelf. The pane shows the focused reference, the
@@ -432,7 +432,7 @@ an explicitly stored custom shortcut is never replaced.
 | Input | Does |
 |---|---|
 | Click a row | Selects it; the shelf shows its citation [C5] |
-| Double-click, Enter, or the footer Copy | Copies (or inserts) what the shelf shows; only copying closes the window |
+| Double-click, Enter, or the footer action | Pastes or copies what the shelf shows, as the footer says; success hides an unpinned window |
 | ⌘-click / Ctrl-click, the + on a hovered tile, Shift+Enter | Adds to the citation, in order (no Shift-click ranges) |
 | Right-click a row | Opens More for that row |
 | Esc | Steps back one layer: menu or dialog, preview, search and filters, then hide |
@@ -441,8 +441,8 @@ an explicitly stored custom shortcut is never replaced.
 | ⌘/ / Ctrl+/, or `?` outside a text field | The keyboard shortcuts list |
 | ⇧⌘P / Ctrl+Shift+P | Keep window open (the pin) [C6] |
 | ⌘I / Ctrl+I | Show or hide what will be pasted |
-| → in search | Opens the preview (planned, with attachments) |
-| Typing anywhere | Types into search |
+| Peek control on the focused row, or its key | Shows the reference's full details; arrow and text-editing keys in search keep their usual meaning |
+| Typing outside a text field | Types into search |
 
 **Pin** [C6]. A neutral icon button at the header's end, always visible. On:
 the filled glyph on the pressed fill, never the accent; More says "Keep window
@@ -567,7 +567,13 @@ anything over 280 ms, anything that loops except a busy indicator.
 
 Every action has a key, discoverable on screen; focus, contrast and screen
 reader names follow **Selection and focus**, **Tokens** and **List and row**.
-"Copied" is announced politely. VoiceOver, NVDA and Orca verify it for 1.0.
+"Copied" is announced politely. From 0.3 every release passes the whole
+citation (search, choose, page, paste, back in the document) with VoiceOver
+and NVDA and with Chinese, Japanese and Korean input methods; Orca joins for
+1.0 (decision 0032). An input method's confirming Enter never copies or
+pastes. Every action also has a visible, named control, so no task needs a
+key chord, and the full text of a truncated title or citation is reachable
+without hover.
 
 ## Window behaviour
 
@@ -591,7 +597,7 @@ reader names follow **Selection and focus**, **Tokens** and **List and row**.
 - **Never** take keys people type with (so Windows and Linux use Ctrl+Shift+Y,
   not Ctrl+Shift+Space; Ctrl+Alt and Ctrl+Space belong to layouts and input
   methods), open by itself, appear in the taskbar, Dock or Alt+Tab (only
-  Settings does), or animate past 280 ms. On X11 the first press over a
+  Settings and a pinned picker do), or animate past 280 ms. On X11 the first press over a
   full-screen app is ignored and a second within two seconds opens Ibis;
   Windows is #510.
 - **Platform limits.** macOS: a non-activating floating panel, also over
@@ -655,16 +661,20 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   apps suggest the global style, or APA when the global output uses keys.
   Browsers and code editors cannot identify a document's syntax: Overleaf,
   web Typst and Google Docs share a browser ID, and several writing syntaxes
-  can share an editor. They follow the global default until an app choice is
-  remembered. Ibis never reads or stores a document title or URL to choose an
+  can share an editor. The first paste in each of them opens the chooser
+  once, and the pick becomes that app's default; it never identifies the
+  document (Overleaf and Google Docs share it). Closing the chooser uses the
+  global default for that paste and asks again next time; "Automatic" or
+  "Forget formats for apps" brings the question back. Ibis never reads or stores a document title or URL to choose an
   output. No format question interrupts each citation. Setup steps finish
   themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
   with several Zotero profiles, Ibis asks which one; with no library at all,
   built-in sample references let people try Ibis, labelled "Sample" on every
   row and in the footer. The
-  first three copies say "Copied. Press ⌘V to paste." (the right key per
-  system), then just "Copied". The footer shows the library, Shortcuts and More.
+  footer, receipt and announcement describe the action actually taken:
+  "Paste into Word", "Copied. Press ⌘V to paste." (the right key per system)
+  when pasting is off or unavailable, or "Copied" with the reason. The footer shows the library, Shortcuts and More.
 
 ### Everyday details (rebuild, 2026-10-26)
 
@@ -672,25 +682,47 @@ Ranked by how much they help a first-time user; each is built with the release
 that owns its area in ROADMAP.md.
 
 1. Output per app, remembered (above).
-2. Setup that finishes itself (above).
-3. Open in under 100 ms with the last snapshot; keys typed before the window
+2. Setup that finishes itself (above); a permission detour keeps the prepared
+   citation, notices the grant and waits for a fresh Enter. The two grants are
+   named apart: "read your references" and "paste".
+3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
+   while results load runs once, never twice. After the window closes a short
+   receipt says what happened, and the last outcome stays readable in More.
+4. Open in under 100 ms with the last snapshot; keys typed before the window
    appears are kept.
-4. Forgiving search: accents and transliteration folded, any word order, one
+5. Forgiving search: accents and transliteration folded, any word order, one
    typo tolerated, initials, "et al." ignored, Chinese, Japanese and Korean
    names with or without spaces, Enter safe while an input method composes.
-5. "Cited here recently": up to three rows at an empty query, per app, local
-   only and forgettable.
-6. Change the last citation: pressing the shortcut within a minute of a paste
-   reopens that shelf, pages included.
-7. A page example in the empty state and a "Page…" control on the focused row.
-8. Plain words in the picker ("Page", "Citation style", "Your library"); jargon
-   only in Settings descriptions and docs.
-9. "Selected in Zotero" as the first row when Zotero has a selection.
-10. Undo instead of confirmation for every removal and reset.
-11. A row's menu: Copy key, Copy citation, Copy reference entry, Show in
-    Zotero, Open PDF.
-12. Text size with ⌘+ and ⌘− (Ctrl elsewhere) inside the picker.
-13. Drag the citation from the shelf into any app; reorder with Alt+← →.
+6. The shelf stays when the next search finds nothing, so a citation being
+   built never vanishes.
+7. A format pick says its scope: "Pandoc remembered for this browser" or "APA
+   for this citation". Output names say what lands: "Chicago · full note
+   text", "APA · text", "Pandoc key".
+8. "Cited here recently": up to three rows at an empty query, per app, local
+   only and forgettable. Choosing one picks the reference afresh; it never
+   brings back an old page.
+9. Change the last citation: an explicit action in More (with its key)
+   reopens that shelf, pages included. Ibis replaces text only when the old
+   citation is selected; otherwise it copies the new one and says so.
+10. A page example in the empty state and a "Page…" control on the focused row.
+11. Empty results name the obstacle and its one fix: a filter, a library
+    scope, or "Not in your libraries".
+12. Peek: the focused reference's full title, edition, year, identifiers and
+    abstract on a visible control and a key; Escape returns to the same row.
+13. Plain words in the picker ("Page", "Citation style", "Your library"); jargon
+    only in Settings descriptions and docs.
+14. "Selected in Zotero" as the first row when Zotero has a selection.
+15. Undo instead of confirmation for every removal and reset.
+16. A row's menu: Copy key, Copy citation, Copy reference entry, Show in
+    Zotero, Open PDF. More adds "Copy as plain text" and "Copy reference as
+    Markdown".
+17. Text size with ⌘+ and ⌘− (Ctrl elsewhere) inside the picker.
+18. Adding the identical reference again focuses it and says "Already in
+    citation"; the same reference with another page or affix is added as a
+    new segment.
+19. Drag the citation from the shelf into any app; reorder with Alt+← → or by
+    dragging. A `.bib` or CSL-JSON file dropped on the window becomes a
+    library; a PDF dropped there finds its reference (0.5).
 
 Customisation follows "defaults first, then choice": automatic (from the app
 and the system) → one key in the picker → the Settings window → a documented,
@@ -785,8 +817,9 @@ scheduled.
 | Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf: each reference shows its page, prefix and suffix in place; the form and style in the format pop-up; Settings › Citations |
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in, like the shortcut; the Zotero actions sit in More and the row's context menu |
 | Settings window (0.4, #776) | **Settings**; General, Shortcuts, Libraries and Citations first |
-| Browse, "Selected in Zotero", reader (0.5) | Collections and tags as search filters; the reader opens beside the picker; "Cite this page ⌘↩" |
-| Bibliography, session bibliography, DOI lookup (0.6) | More and the format pop-up; DOI lookup as a no-results fallback, opt-in |
+| Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights and notes unfold under its row, and choosing one fills in its page ("PDF page 8 · cite p. 417") |
+| Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; the session list is editable with Undo; with a project `.bib` chosen, rows say "In refs.bib" or "Not in refs.bib" and More offers its missing entry |
+| `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as a no-results fallback, opt-in |
 
 ## How the design changes
 
