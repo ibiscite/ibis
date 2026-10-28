@@ -157,6 +157,18 @@ impl Texts {
                 }
             }
         }
+        self.push_prepared(fields.each_ref().map(String::as_str), title_len);
+    }
+
+    /// Reuse normalization and spelling aliases from an unchanged record.
+    fn copy_record(&mut self, previous: &Self, n: usize) {
+        self.push_prepared(
+            std::array::from_fn(|bit| previous.field(n, bit)),
+            previous.title_proper(n).len(),
+        );
+    }
+
+    fn push_prepared(&mut self, fields: [&str; 8], title_len: usize) {
         // A space before every field makes word starts and ends checkable
         // from the buffer alone.
         let push = |buffer: &mut String, field: &str| {
@@ -167,12 +179,12 @@ impl Texts {
             buffer.len() as u32
         };
         let mut ends = [0; 7];
-        for (end, field) in ends.iter_mut().zip(&fields) {
+        for (end, field) in ends.iter_mut().zip(fields) {
             *end = push(&mut self.meta, field);
         }
         let title_start = ends[0] as usize + 1;
         let title_end = (title_start + title_len).min(ends[1] as usize) as u32;
-        push(&mut self.abstracts, &fields[7]);
+        push(&mut self.abstracts, fields[7]);
         self.records.push(Bounds {
             ends,
             title_end,

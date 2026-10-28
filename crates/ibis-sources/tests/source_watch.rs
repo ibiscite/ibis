@@ -42,6 +42,44 @@ fn settling_wait_ignores_the_watchers_transient_changing_notification() {
 }
 
 #[test]
+fn seeded_watches_reuse_bibtex_and_json_records_in_the_registration_gap() {
+    for extension in ["bib", "json"] {
+        let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = dir.path().join(format!("synthetic.{extension}"));
+        let write = |title: &str| {
+            let text = if extension == "bib" {
+                format!("@book{{a,title={{Keep}}}}\n@book{{b,title={{{title}}}}}\n")
+            } else {
+                serde_json::json!([{"id":"a","type":"book","title":"Keep"},{"id":"b","type":"book","title":title}])
+                    .to_string()
+            };
+            std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
+        };
+        write("Before");
+        let (loaded, observation) = ibis_sources::load_file_snapshot(&path).unwrap_or_else(|error| panic!("{error}"));
+        let original = loaded.snapshot;
+        write("After");
+        let (tx, rx) = mpsc::channel();
+        let _watch = SourceWatch::with_library(&path, Some(observation), original.clone(), move |result| {
+            let installed = result.as_ref().ok().map(|loaded| loaded.snapshot.clone());
+            let _ = tx.send(result);
+            installed
+        })
+        .unwrap_or_else(|error| panic!("{error}"));
+        let refreshed = next(&rx).unwrap_or_else(|error| panic!("{error}"));
+        assert!(records(&refreshed).iter().any(|record| record.csl["title"] == "After"));
+        assert!(std::sync::Arc::ptr_eq(
+            &original.objects()[0],
+            &refreshed.snapshot.objects()[0]
+        ));
+        assert!(!std::sync::Arc::ptr_eq(
+            &original.objects()[1],
+            &refreshed.snapshot.objects()[1]
+        ));
+    }
+}
+
+#[test]
 fn interrupted_writes_replacements_deletion_and_empty_files() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("références synthetic.bib");

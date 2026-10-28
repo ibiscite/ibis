@@ -306,7 +306,7 @@ pub(crate) fn convert(
         ("language", language),
     ] {
         if let Some(value) = value {
-            csl.insert(key.into(), json!(value));
+            csl.insert(key.into(), Value::String(value));
         }
     }
     for (role, people) in [("author".to_owned(), authors), ("editor".to_owned(), editors)]
@@ -314,7 +314,7 @@ pub(crate) fn convert(
         .chain(other_names)
     {
         if !people.is_empty() {
-            csl.insert(role, Value::Array(people.iter().map(name_json).collect()));
+            csl.insert(role, Value::Array(people.into_iter().map(name_json).collect()));
         }
     }
     for (role, date) in issued.map(|date| ("issued".to_owned(), date)).into_iter().chain(dates) {
@@ -342,18 +342,18 @@ pub(crate) fn convert(
     }
 }
 
-fn name_json(name: &Name) -> Value {
+fn name_json(name: Name) -> Value {
     let mut result = serde_json::Map::new();
     for (key, value) in [
-        ("family", &name.family),
-        ("given", &name.given),
-        ("dropping-particle", &name.dropping_particle),
-        ("non-dropping-particle", &name.non_dropping_particle),
-        ("suffix", &name.suffix),
-        ("literal", &name.literal),
+        ("family", name.family),
+        ("given", name.given),
+        ("dropping-particle", name.dropping_particle),
+        ("non-dropping-particle", name.non_dropping_particle),
+        ("suffix", name.suffix),
+        ("literal", name.literal),
     ] {
         if let Some(value) = value {
-            result.insert(key.into(), json!(value));
+            result.insert(key.into(), Value::String(value));
         }
     }
     Value::Object(result)
@@ -1333,16 +1333,32 @@ fn strip_tex(text: &str, unknown: &mut BTreeSet<String>) -> String {
 /// Collapse internal whitespace (BibTeX values often span lines) and turn
 /// literal-symbol placeholders back into literal braces and backslashes.
 fn clean(s: &str) -> String {
-    let joined = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut out = String::with_capacity(joined.len());
-    let mut chars = joined.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            ESCAPE => out.extend(chars.next()),
-            LEFT_BRACE => out.push('{'),
-            RIGHT_BRACE => out.push('}'),
-            BACKSLASH => out.push('\\'),
-            c => out.push(c),
+    let words = s.split_whitespace();
+    // Size the result without retaining tokens or an intermediate joined
+    // string. In particular, whitespace-heavy fields must not retain s.len().
+    let capacity = words
+        .clone()
+        .map(|word| word.len() + 1)
+        .sum::<usize>()
+        .saturating_sub(1);
+    let mut out = String::with_capacity(capacity);
+    for (i, word) in words.enumerate() {
+        if i != 0 {
+            out.push(' ');
+        }
+        if !word.contains([ESCAPE, LEFT_BRACE, RIGHT_BRACE, BACKSLASH]) {
+            out.push_str(word);
+            continue;
+        }
+        let mut chars = word.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                ESCAPE => out.extend(chars.next()),
+                LEFT_BRACE => out.push('{'),
+                RIGHT_BRACE => out.push('}'),
+                BACKSLASH => out.push('\\'),
+                c => out.push(c),
+            }
         }
     }
     out
@@ -1401,6 +1417,28 @@ pub(super) fn file_value(encoded: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cleaning_collapses_unicode_whitespace_and_decodes_literals_once() {
+        assert_eq!(
+            clean(" \tSynthetic\u{2003}  café\n signals\r"),
+            "Synthetic café signals"
+        );
+        assert_eq!(clean(" \t\u{2003}\n"), "");
+        assert_eq!(
+            clean(&format!(
+                "  {LEFT_BRACE}Synthetic{RIGHT_BRACE}\n{BACKSLASH}label {ESCAPE}{LEFT_BRACE}  "
+            )),
+            format!("{{Synthetic}} \\label {LEFT_BRACE}")
+        );
+        // Decode after collapsing whitespace, including escapes at a word's end.
+        assert_eq!(clean(&format!("{ESCAPE}  next  {ESCAPE}")), " next ");
+        assert_eq!(clean(&format!("{ESCAPE}{ESCAPE}{RIGHT_BRACE}")), format!("{ESCAPE}}}"));
+        let whitespace_heavy = format!("{}signal{}", " ".repeat(32_000), "\n".repeat(32_000));
+        let result = clean(&whitespace_heavy);
+        assert_eq!(result, "signal");
+        assert!(result.capacity() < 32, "retained discarded whitespace");
+    }
 
     #[test]
     fn name_whitespace_keeps_delimiter_boundaries_and_organizations() {
