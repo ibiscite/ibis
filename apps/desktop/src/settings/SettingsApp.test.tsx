@@ -104,6 +104,23 @@ test("sidebar arrows and Home/End move focus, select the page and reset its scro
   }
 });
 
+test("clicking the current sidebar page once resets its scroll to the top", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="general" />);
+  await screen.findByRole("switch", { name: "Larger text" });
+  for (const name of ["General", "About"]) {
+    const item = screen.getByRole("option", { name });
+    fireEvent.click(item);
+    const main = screen.getByRole("main", { name });
+    main.scrollTop = 240;
+    fireEvent.pointerDown(item, { button: 0, buttons: 1, pointerType: "mouse", pointerId: 1 });
+    fireEvent.pointerUp(item, { button: 0, buttons: 0, pointerType: "mouse", pointerId: 1 });
+    fireEvent.click(item, { button: 0, detail: 1 });
+    expect(main.scrollTop).toBe(0);
+    expect(item.getAttribute("aria-current")).toBe("page");
+  }
+});
+
 test("the title-bar drag region is outside the page scroller and sidebar list", async () => {
   const { api } = fakeApi();
   const { container } = render(<SettingsApp api={api} initialPage={null} />);

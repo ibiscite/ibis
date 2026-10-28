@@ -56,3 +56,20 @@ test("pointer selection and typeahead followed by Enter choose the current page"
   expect(libraries.getAttribute("aria-selected")).toBe("true");
   expect(changed).toHaveBeenLastCalledWith("libraries");
 });
+
+test("a single mouse click notifies once when selecting or reselecting a page", () => {
+  const changed = mount();
+  const click = (name: string, value: string) => {
+    const item = screen.getByRole("option", { name });
+    changed.mockClear();
+    fireEvent.pointerDown(item, { button: 0, buttons: 1, pointerType: "mouse", pointerId: 1 });
+    fireEvent.pointerUp(item, { button: 0, buttons: 0, pointerType: "mouse", pointerId: 1 });
+    fireEvent.click(item, { button: 0, detail: 1 });
+    expect(changed).toHaveBeenCalledExactlyOnceWith(value);
+    expect(item.getAttribute("aria-selected")).toBe("true");
+    expect(item.getAttribute("aria-current")).toBe("page");
+  };
+  click(options[0]!.label, "general");
+  click("About", "about");
+  click("About", "about");
+});

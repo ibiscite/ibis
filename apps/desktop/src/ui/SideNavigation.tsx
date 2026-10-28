@@ -17,6 +17,10 @@ export function SideNavigation<T extends string>({ label, value, options, onChan
       }} onAction={(key) => onChange(key as T)}>
       {options.map((option) => (
         <ListBoxItem key={option.value} id={option.value} textValue={option.label} className="ui-side-navigation-item"
+          onPressStart={(event) => {
+            // React Aria suppresses unchanged selection; mouse selection happens on press start.
+            if (event.pointerType === "mouse" && option.value === value) onChange(option.value);
+          }}
           render={(native) => <div {...native as ComponentPropsWithRef<"div">} aria-current={option.value === value ? "page" : undefined} />}>
           {option.label}
         </ListBoxItem>

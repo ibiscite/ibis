@@ -727,8 +727,9 @@ bar or traffic lights. Never reserve that space with a sticky spacer or a
 negative margin.
 Opening Settings normally, selecting a page or requesting General again
 starts that page at the top, with a large `--type-page-title-*` heading and
-`--settings-page-inset` around the content. An explicit Pasting deep link may
-reveal that group, after its data loads, by moving only the page scroller.
+`--settings-page-inset` around the content. A single click on the current
+sidebar page also returns that page to the top. An explicit Pasting deep link
+may reveal that group, after its data loads, by moving only the page scroller.
 Presenting an existing Settings window without a page (shortcut or tray)
 emits the General page event too, selecting General and resetting its scroll.
 
