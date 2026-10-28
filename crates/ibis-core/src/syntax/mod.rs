@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::contract::*;
 
 pub(crate) mod escape;
+pub(crate) mod read;
 mod render;
 
 pub const MAX_CITATION_ITEMS: usize = 1_000;

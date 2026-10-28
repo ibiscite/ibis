@@ -43,6 +43,45 @@ pub fn parse_query(query: &str) -> Option<Identifier> {
 /// Longer pasted text is searched as words, never as an identifier.
 const MAX_QUERY_LEN: usize = 512;
 
+/// Read a complete identifier at the start of a pasted list, before citation
+/// punctuation is considered. The returned label omits surrounding punctuation.
+pub(crate) fn parse_token(text: &str) -> Option<(&str, Identifier, &str)> {
+    let end = text.find(char::is_whitespace).unwrap_or(text.len());
+    if let Some(value) = parse_query(&text[..end]) {
+        return Some((trim_wrapping(&text[..end]), value, &text[end..]));
+    }
+    // Strict identifiers such as PMID stop at a separator. The complete DOI
+    // attempt above always wins if punctuation belongs to its suffix.
+    if let Some(end) = text[..end].find([',', ';'])
+        && let Some(value) = parse_query(&text[..end])
+    {
+        return Some((trim_wrapping(&text[..end]), value, &text[end..]));
+    }
+    let prefix = text[..end].trim_end_matches(':');
+    if !["doi", "pmid", "isbn", "isbn-10", "isbn-13", "arxiv", "978", "979"]
+        .iter()
+        .any(|head| prefix.eq_ignore_ascii_case(head))
+    {
+        return None;
+    }
+    // Prefixes may be separated from their value, and ISBNs can contain spaces.
+    // The shared identifier bound limits lookahead, including malformed input.
+    let mut best = None;
+    for end in text
+        .char_indices()
+        .filter_map(|(i, c)| (c.is_whitespace() || matches!(c, ',' | ';')).then_some(i))
+        .chain([text.len()])
+    {
+        if end > MAX_QUERY_LEN {
+            break;
+        }
+        if let Some(value) = parse_query(&text[..end]) {
+            best = Some((trim_wrapping(&text[..end]), value, &text[end..]));
+        }
+    }
+    best
+}
+
 /// Drop sentence punctuation and unbalanced brackets around a pasted
 /// identifier, keeping brackets that belong to it, as in `10.1000/abc(1)`.
 fn trim_wrapping(mut q: &str) -> &str {

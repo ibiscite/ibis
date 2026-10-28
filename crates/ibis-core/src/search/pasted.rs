@@ -1,136 +1,102 @@
-//! Bounded, transient citation-list recognition; no document text is retained.
-use crate::identifier;
+//! One bounded scan of typed citation keys and complete identifiers; no text is retained.
+use std::borrow::Cow;
 
-pub(super) struct Entries<'a> {
-    pub entries: Vec<&'a str>,
-    pub cited: bool,
+use crate::{
+    identifier::{self, Identifier},
+    syntax,
+};
+
+pub(super) enum Entry<'a> {
+    Key { value: Cow<'a, str>, explicit: bool },
+    Identifier { text: &'a str, value: Identifier },
+}
+impl Entry<'_> {
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Key { value, .. } => value,
+            Self::Identifier { text, .. } => text,
+        }
+    }
+    pub fn explicit(&self) -> bool {
+        !matches!(self, Self::Key { explicit: false, .. })
+    }
 }
 
-/// Ordinary prose stays a word search. Explicit citations may name missing keys.
+pub(super) struct Entries<'a> {
+    pub entries: Vec<Entry<'a>>,
+}
+
+/// Bare word lists still need exact keys, so ordinary prose stays a word search.
+/// Explicit citations and identifiers keep their types even when pasted together.
 pub(super) fn entries(query: &str) -> Option<Entries<'_>> {
     if query.len() > 64 * 1024 {
         return None;
     }
     let mut found = Vec::new();
     let mut cited = false;
+    let comma = query.contains(',');
+    let separated = query.contains(['\n', '\r', '\t', ',', ';']);
     let mut rest = query;
     while !rest.is_empty() {
-        let offset = query.len() - rest.len();
-        let before = &query[..offset];
-        // DOI suffixes can themselves contain `@`, including after punctuation.
-        if before
-            .chars()
-            .next_back()
-            .is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ';'))
-        {
-            let end = rest
-                .find(|c: char| c.is_whitespace() || matches!(c, ',' | ';'))
-                .unwrap_or(rest.len());
-            if identifier::parse_query(&rest[..end]).is_some() {
-                rest = &rest[end..];
-                continue;
-            }
+        let c = rest.chars().next()?;
+        if c.is_whitespace() || c == ',' || c == ';' && (!comma || cited || found.last().is_some_and(Entry::explicit)) {
+            rest = &rest[c.len_utf8()..];
+            continue;
         }
-        if let Some(after) = rest.strip_prefix("#cite(") {
-            cited = true;
-            let (args, after) = delimited(after, '(', ')');
-            let mut args = args.trim_start();
-            while let Some(key) = args.strip_prefix('<') {
-                let (key, after) = delimited(key, '<', '>');
-                add(&mut found, key)?;
-                args = after.trim_start().strip_prefix(',').unwrap_or(after).trim_start();
-            }
+        // A DOI suffix may itself contain commas, semicolons and @. Consume a
+        // complete identifier before exposing any of its internal punctuation.
+        if let Some((text, value, after)) = identifier::parse_token(rest) {
+            add(&mut found, Entry::Identifier { text, value })?;
             rest = after;
             continue;
         }
-        if let Some(after) = rest.strip_prefix('\\') {
-            let len = after
-                .bytes()
-                .take_while(|c| c.is_ascii_alphabetic() || *c == b'*')
-                .count();
-            if after[..len].to_ascii_lowercase().contains("cite") {
-                let mut args = after[len..].trim_start();
-                while let Some(after) = args.strip_prefix('[') {
-                    args = delimited(after, '[', ']').1.trim_start();
-                }
-                if let Some(after) = args.strip_prefix('{') {
-                    cited = true;
-                    let (keys, after) = delimited(after, '{', '}');
-                    for key in keys.split(',') {
-                        add(&mut found, key)?;
-                    }
-                    rest = after;
-                    continue;
-                }
-                // Even an unclosed optional argument is consumed once.
-                rest = args;
-                continue;
+        let citation_text = rest
+            .strip_prefix('-')
+            .filter(|after| after.starts_with('@'))
+            .unwrap_or(rest);
+        if let Some(read) = syntax::read::citation(citation_text) {
+            cited |= read.explicit;
+            for value in read.keys {
+                add(&mut found, Entry::Key { value, explicit: true })?;
             }
+            rest = read.rest;
+            continue;
         }
-        if let Some(after) = rest.strip_prefix('@') {
-            let previous = before.strip_suffix('-').unwrap_or(before).chars().next_back();
-            if previous.is_none_or(|c| c.is_whitespace() || "[({;,\"'".contains(c)) {
-                if let Some(after) = after.strip_prefix('{') {
-                    cited = true;
-                    let (key, after) = delimited(after, '{', '}');
-                    add(&mut found, key)?;
-                    rest = after;
-                    continue;
-                }
-                let end = after
-                    .find(|c: char| c.is_whitespace() || ";,[]{}()\"'".contains(c))
-                    .unwrap_or(after.len());
-                let key = after[..end].trim_end_matches(['.', ':', '!', '?']);
-                if !key.is_empty() {
-                    cited = true;
-                    add(&mut found, key)?;
-                    rest = &after[end..];
-                    continue;
-                }
-            }
-        }
-        // Advance on a UTF-8 boundary; each delimiter scan consumes its input.
-        rest = &rest[rest.chars().next()?.len_utf8()..];
+        let end = rest
+            .char_indices()
+            .find_map(|(i, c)| {
+                (c.is_whitespace()
+                    || c == ','
+                    || !comma && c == ';'
+                    || i > 0 && c == '\\' && syntax::read::citation(&rest[i..]).is_some_and(|read| read.explicit))
+                .then_some(i)
+            })
+            .unwrap_or(rest.len());
+        add(
+            &mut found,
+            Entry::Key {
+                value: Cow::Borrowed(&rest[..end]),
+                explicit: false,
+            },
+        )?;
+        rest = &rest[end..];
     }
     if cited {
-        return Some(Entries { entries: found, cited });
+        found.retain(Entry::explicit); // Surrounding prose is never a guessed key.
+    } else if !(separated && found.len() >= 2
+        || !found.is_empty() && found.iter().all(|entry| matches!(entry, Entry::Identifier { .. })))
+    {
+        return None;
     }
-    let separated = query.contains(['\n', '\r', '\t', ',', ';']);
-    let mut found = Vec::new();
-    for word in query.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';')) {
-        add(&mut found, word)?;
-    }
-    (found.len() >= 2 && (separated || found.iter().all(|entry| identifier::parse_query(entry).is_some()))).then_some(
-        Entries {
-            entries: found,
-            cited: false,
-        },
-    )
+    Some(Entries { entries: found })
 }
 
-fn add<'a>(entries: &mut Vec<&'a str>, entry: &'a str) -> Option<()> {
-    let entry = entry.trim();
-    if !entry.is_empty() {
-        if entries.len() == 1000 {
+fn add<'a>(entries: &mut Vec<Entry<'a>>, entry: Entry<'a>) -> Option<()> {
+    if !entry.text().is_empty() {
+        if entries.len() == syntax::MAX_CITATION_ITEMS {
             return None;
         }
         entries.push(entry);
     }
     Some(())
-}
-
-/// Unclosed citation syntax consumes the remaining input, without recursion.
-fn delimited(text: &str, open: char, close: char) -> (&str, &str) {
-    let mut depth = 1;
-    for (index, c) in text.char_indices() {
-        if c == open {
-            depth += 1;
-        } else if c == close {
-            depth -= 1;
-            if depth == 0 {
-                return (&text[..index], &text[index + c.len_utf8()..]);
-            }
-        }
-    }
-    (text, "")
 }

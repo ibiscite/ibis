@@ -25,7 +25,7 @@ test("a pasted list previews and copies every result in order, with a safe missi
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.paste(box, { clipboardData: { getData: () => "b\na\nmissing" } });
-  expect((box as HTMLInputElement).value).toBe("b; a; missing");
+  expect((box as HTMLInputElement).value).toBe("b\ta\tmissing");
   await screen.findByText("Pasted list");
   expect(await screen.findByText("Copy 2 citations")).toBeTruthy();
   expect(await screen.findByText("Not in your library: <script>invented</script>")).toBeTruthy();

@@ -68,12 +68,13 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
           onPaste={(e) => {
             const text = e.clipboardData.getData("text/plain");
             if (!/[\r\n\t]/.test(text)) return;
-            // A single-line input otherwise deletes newlines between keys.
+            // Search inputs strip line breaks but retain tabs. Keep whitespace
+            // inside citation arguments; punctuation would change their keys.
             e.preventDefault();
             const field = e.currentTarget;
             const start = field.selectionStart ?? query.length;
             const end = field.selectionEnd ?? start;
-            const pasted = text.replace(/[\r\n\t]+/g, "; ");
+            const pasted = text.replace(/[\r\n]+/g, "\t");
             const next = query.slice(0, start) + pasted + query.slice(end);
             onQueryChange(next);
             requestAnimationFrame(() => {

@@ -172,11 +172,11 @@ impl SnapshotIndex {
         let mut keys: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut identifiers: BTreeMap<identifier::Identifier, Vec<usize>> = BTreeMap::new();
         for (n, entry) in parsed.entries.iter().enumerate() {
-            keys.entry(entry.chars().flat_map(lower).collect()).or_default().push(n);
-            if !parsed.cited
-                && let Some(id) = identifier::parse_query(entry)
-            {
-                identifiers.entry(id).or_default().push(n);
+            match entry {
+                pasted::Entry::Key { value, .. } => {
+                    keys.entry(value.chars().flat_map(lower).collect()).or_default().push(n)
+                }
+                pasted::Entry::Identifier { value, .. } => identifiers.entry(value.clone()).or_default().push(n),
             }
         }
         let mut matches = vec![Vec::new(); parsed.entries.len()];
@@ -221,17 +221,24 @@ impl SnapshotIndex {
         }
         let mut hits = Vec::new();
         let mut missing = Vec::new();
-        let mut missing_seen = BTreeSet::new();
+        let mut missing_keys = BTreeSet::new();
+        let mut missing_identifiers = BTreeSet::new();
         for (position, (entry, found)) in parsed.entries.iter().zip(matches).enumerate() {
             if stop() {
                 return None;
             }
             if !matched[position] {
-                if !parsed.cited {
+                if !entry.explicit() {
                     return Some(None);
                 }
-                if missing_seen.insert(entry.chars().flat_map(lower).collect::<String>()) {
-                    missing.push((*entry).to_owned());
+                let first = match entry {
+                    pasted::Entry::Key { value, .. } => {
+                        missing_keys.insert(value.chars().flat_map(lower).collect::<String>())
+                    }
+                    pasted::Entry::Identifier { value, .. } => missing_identifiers.insert(value.clone()),
+                };
+                if first {
+                    missing.push(entry.text().to_owned());
                 }
             }
             for (n, field) in found {

@@ -176,6 +176,69 @@ fn exact_lists_win_over_closest_matches_and_trailing_locators() {
 }
 
 #[test]
+fn pasted_syntax_and_identifier_tokens_keep_their_types_through_search() {
+    let case = case();
+    let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let objects = ["a", "b", "日本🌙", "doi"]
+        .into_iter()
+        .map(|key| {
+            let mut record = base.clone();
+            record.id.key = key.into();
+            record.citation_keys[0].value = key.into();
+            record.csl.remove("DOI");
+            record.identifiers = match key {
+                "b" => vec![ibis_core::identifier::Identifier::Doi("10.1000/b".into())],
+                "doi" => vec![ibis_core::identifier::Identifier::Doi("10.1000/x;@b".into())],
+                _ => vec![],
+            };
+            LibraryObject::Record(record)
+        })
+        .collect();
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    for (query, expected, missing) in [
+        ("\\cite{a,\tb}", vec!["a", "b"], vec![]),
+        ("\\autocites{b}[p. 4]{a}", vec!["b", "a"], vec![]),
+        ("@a #cite(label(\"日本🌙\"))", vec!["a", "日本🌙"], vec![]),
+        ("https://doi.org/10.1000/x;@b", vec!["doi"], vec![]),
+        ("@a; 10.1000/b", vec!["a", "b"], vec![]),
+        ("@missing; PMID:999", vec![], vec!["missing", "PMID:999"]),
+    ] {
+        let request = SearchRequest {
+            query: query.into(),
+            limit: 1,
+            libraries: None,
+            interpret_locator: true,
+        };
+        let reply = engine.search(&request, &Cancellation::default()).unwrap();
+        assert_eq!(
+            reply
+                .hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            expected,
+            "{query}"
+        );
+        assert_eq!(reply.list.as_ref().unwrap().missing, missing, "{query}");
+        assert!(reply.hits.iter().all(|hit| !hit.partial && !hit.typo));
+        assert!(reply.locator.is_none());
+        assert_eq!(
+            serde_json::to_value(&reply).unwrap(),
+            engine
+                .dispatch(
+                    Method::Search,
+                    &serde_json::to_value(request).unwrap(),
+                    &Cancellation::default()
+                )
+                .unwrap()
+                .data
+        );
+    }
+}
+
+#[test]
 fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
     let case = case();
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
