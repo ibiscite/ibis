@@ -236,7 +236,7 @@ pub(crate) fn key_fits(escaping: Escaping, key: &str) -> bool {
         Escaping::MultiMarkdown => &['[', ']', '\\', '^'],
         Escaping::AsciiDoc => &['(', ')', '[', ']'],
         Escaping::Liquid => &['%', '"', '\''],
-        Escaping::Org => &[';', '[', ']'],
+        Escaping::Org => &[';', '[', ']', ',', '"', '\\', '='],
         _ => &[],
     };
     !key.contains(forbidden) && !(escaping == Escaping::Liquid && key.starts_with('-'))
@@ -247,7 +247,10 @@ pub(crate) fn locator_fits(escaping: Escaping, locator: &Locator) -> bool {
     match escaping {
         Escaping::Org => org_literal(&normalize_dashes(value, "–")),
         Escaping::MultiMarkdown => mmd_literal(&normalize_dashes(value, "–")),
-        Escaping::AsciiDoc => !value.contains(['(', ')', '[', ']', ',', '{', '}']),
+        // asciidoctor-bibtex treats its locator field exclusively as pages.
+        Escaping::AsciiDoc => {
+            locator.term == crate::contract::LocatorTerm::Page && !value.contains(['(', ')', '[', ']', ',', '{', '}'])
+        }
         Escaping::Liquid => {
             !value.starts_with('-') && !value.contains(|c: char| c.is_whitespace() || "\"'%{}".contains(c))
         }

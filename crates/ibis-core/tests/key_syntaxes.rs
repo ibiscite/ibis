@@ -161,7 +161,15 @@ fn org_and_myst_forms_use_their_own_styles() {
 fn other_locator_types_keep_their_label() {
     let chapter = |r: &mut CitationRequest| r.items[0].locator = locator(LocatorTerm::Chapter, "3");
     assert_eq!(render(KeySyntax::OrgCite, chapter).text, "[cite:@Example2026, chap. 3]");
-    assert_eq!(render(KeySyntax::AsciiDoc, chapter).text, "cite:[Example2026(chap. 3)]");
+    let refused = render(KeySyntax::AsciiDoc, chapter);
+    assert_eq!(
+        refused.outcomes,
+        [ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::InvalidLocator
+        }]
+    );
+    assert!(refused.copy_content(1).is_none());
     assert_eq!(
         render(KeySyntax::JekyllScholar, chapter).text,
         "{% cite Example2026 --label chapter --locator 3 %}"
@@ -173,6 +181,21 @@ fn other_locator_types_keep_their_label() {
         sub_verbo.text,
         r#"[{"citationKey":"Example2026","label":"sub-verbo","locator":"lex"}]"#
     );
+}
+
+#[test]
+fn asciidoc_refuses_every_non_page_locator() {
+    for term in LocatorTerm::ALL.into_iter().filter(|term| *term != LocatorTerm::Page) {
+        let result = render(KeySyntax::AsciiDoc, |r| r.items[0].locator = locator(term, "3"));
+        assert_eq!(
+            result.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::InvalidLocator
+            }]
+        );
+        assert!(result.copy_content(1).is_none());
+    }
 }
 
 #[test]
@@ -283,6 +306,10 @@ fn keys_and_locators_a_syntax_cannot_hold_are_refused() {
         (KeySyntax::JekyllScholar, "-flag"),
         (KeySyntax::JekyllScholar, "50%off"),
         (KeySyntax::OrgCite, "a;b"),
+        (KeySyntax::OrgCite, "a,b"),
+        (KeySyntax::OrgCite, "a\"b"),
+        (KeySyntax::OrgCite, "a\\b"),
+        (KeySyntax::OrgCite, "a=b"),
     ] {
         let snapshot = library(key);
         case.request.output = OutputSpec::Key { syntax, command: None };

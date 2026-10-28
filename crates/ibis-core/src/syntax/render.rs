@@ -589,15 +589,14 @@ fn mmd(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> String {
         .collect()
 }
 
-/// asciidoctor-bibtex: `cite:[key(12), other(chap. 3)]`. Pages are bare.
+/// asciidoctor-bibtex: `cite:[key(12), other(3)]`. Only pages are supported.
 fn asciidoc(picks: &[Pick<'_>]) -> String {
     let items = picks
         .iter()
         .map(|pick| match &pick.item.locator {
-            Some(locator) if locator.term == LocatorTerm::Page => {
+            Some(locator) => {
                 format!("{}({})", pick.key, normalize_dashes(locator.value.trim(), "–"))
             }
-            Some(locator) => format!("{}({})", pick.key, locator_text(locator, "–", " ")),
             None => pick.key.to_string(),
         })
         .collect::<Vec<_>>()
