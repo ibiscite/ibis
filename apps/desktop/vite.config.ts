@@ -18,5 +18,11 @@ export default defineConfig({
       },
     },
   },
-  test: { environment: "jsdom", globals: true },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    // Rendering the picker and resolving CSS tokens are CPU-heavy in jsdom.
+    // A worker per core starves timers and React commits under full-suite load.
+    maxWorkers: 2,
+  },
 });

@@ -131,6 +131,21 @@ fn zotero_without_better_bibtex_is_unavailable_not_an_error() -> Result {
 }
 
 #[test]
+fn an_older_better_bibtex_without_user_groups_is_not_an_absent_one() -> Result {
+    let (port, _) = zotero(vec![
+        (404, "No endpoint found".to_owned()),
+        (
+            200,
+            json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32601, "message": "x"}}).to_string(),
+        ),
+    ])?;
+    let live = LiveBbt::on_port(port);
+    assert_eq!(live.libraries(), Err(BbtError::Unavailable));
+    assert_eq!(live.libraries(), Err(BbtError::Malformed));
+    Ok(())
+}
+
+#[test]
 fn a_closed_zotero_is_unreachable() -> Result {
     assert_eq!(
         LiveBbt::on_port(0).libraries(),
