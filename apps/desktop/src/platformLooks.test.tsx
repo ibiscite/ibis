@@ -709,11 +709,15 @@ function tokenScopes(blocks: TokenBlock[]) {
   return scopes;
 }
 
-test.each(["macos", "windows", "linux"])("every application var resolves on %s in its active mode, without alias cycles", (platform) => {
+// Each mode is independently checked, keeping the exhaustive audit below the
+// per-test CPU budget even while other jsdom workers render the picker.
+test.each(["macos", "windows", "linux"].flatMap((platform) =>
+  ["normal", "more", "forced", "reduced", "transparency"].map((mode) => ({ platform, mode }))))(
+  "every application var resolves on $platform in $mode mode, without alias cycles", ({ platform, mode }) => {
   expect(Object.keys(appSheets).length).toBeGreaterThanOrEqual(8);
   expect(tokenBlocks(appSheets).flatMap((block) => block.values).length).toBeGreaterThan(500);
   const errors: string[] = [];
-  for (const mode of ["normal", "more", "forced", "reduced", "transparency"]) for (const advanced of [true, false]) for (const material of [false, true]) for (const notice of [false, true]) for (const coarse of [false, true]) {
+  for (const advanced of [true, false]) for (const material of [false, true]) for (const notice of [false, true]) for (const coarse of [false, true]) {
     const blocks = tokenBlocks(appSheets, platform, mode, advanced, material, notice, coarse), scopes = tokenScopes(blocks);
     for (const block of blocks) for (const [name, value] of block.values) {
       const definitions = scopes.get(block.scope)!;

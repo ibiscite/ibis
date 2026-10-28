@@ -19,6 +19,7 @@ pub(crate) enum Page {
     General,
     /// General, scrolled to pasting and its permission.
     Paste,
+    Shortcuts,
     Citations,
     About,
 }
@@ -28,6 +29,7 @@ impl Page {
         match self {
             Page::General => "general",
             Page::Paste => "paste",
+            Page::Shortcuts => "shortcuts",
             Page::Citations => "citations",
             Page::About => "about",
         }
@@ -139,6 +141,7 @@ mod tests {
         for (page, name) in [
             (Page::General, "general"),
             (Page::Paste, "paste"),
+            (Page::Shortcuts, "shortcuts"),
             (Page::Citations, "citations"),
             (Page::About, "about"),
         ] {

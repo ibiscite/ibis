@@ -51,13 +51,18 @@ construction and reports `YearSuffixWithheld`; styles declaring
 reference entry with `NeedsDocumentContext` and `ReferenceEntry`. `label` does
 not imply document numbering. The processor's XML tree removes bibliography
 layout `citation-number` text nodes (any affixes) and `second-field-align`,
-preserving citation layouts, macros and sort keys. These changes
+following macro calls through bibliography-only clones to preserve citation
+rendering and sort keys. These changes
 never mutate the vendor files. Node comparisons use the same Ibis-safe style
 configuration. Numeric fallback refuses author-only and year-only forms.
-Cached XML traits also drive the bridge. Year-only requires `issued` rendering
-in the layout or reachable macros, excluding sort keys, bibliography dates and
-conditions. The conservative scan does not prove every branch prints a year;
-macro names must use matching XML encodings. #1306 owns `YearSuffixWithheld`'s
+Cached XML traits also drive the bridge. Year-only remains eligible when `issued`
+is reachable from the citation layout, including conditional macro calls. Each
+year-only item's emitted text must contain its issued year in the style's year
+form, or an emitted blob identified by citeproc as the style's `no date` term
+for an undated item (including its zero-year sentinel). Matching title or locator
+text and another item's year cannot establish coverage. Macro names must use
+matching XML encodings.
+#1306 owns `YearSuffixWithheld`'s
 remaining name check; its general rule is `disambiguate-add-year-suffix="true"`. A transparent
 observer checks each final member's printed blob leaves in every representation,
 ignoring layout affixes. Missing or empty coverage refuses the candidate cluster as `UnsupportedForm` and clears its output; no unchecked member
@@ -78,8 +83,9 @@ to the source adapter, not this crate.
 `cargo test -p ibis-csl --locked` runs normal Rust tests and an offline Node
 oracle (Node must be on PATH; `IBIS_NODE` can select its executable locally).
 Ten five-style citation/bibliography scenarios compare text, HTML and complete
-RTF byte for byte, including multilingual synthetic records. The Node oracle also
-restores the original processor function to prove that observing content leaves
+RTF byte for byte, including multilingual synthetic records. Nine year-only
+scenarios also cover dated, undated and zero-year items in the supported styles.
+The Node oracle restores the original processor function to prove that observing content leaves
 does not change those bytes. Separate fixtures exercise Turkish and Lithuanian
 casing. The normalized synthetic Preview Test
 also matches the immutable expected `(Smith, 2019)` in

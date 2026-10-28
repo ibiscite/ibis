@@ -6,8 +6,13 @@ import type * as api from "../api";
 import type { FilePreview } from "../bindings";
 
 export async function resetApp() {
-  vi.useRealTimers();
   cleanup();
+  // Unmount effects and React Aria's focus restoration must finish on the clock
+  // that created them, before discarding fake timers or the mocked native API.
+  if (vi.isFakeTimers()) {
+    await act(() => vi.runOnlyPendingTimersAsync());
+    vi.useRealTimers();
+  }
   // Event listeners are removed asynchronously after unmount; let that
   // finish before the mocked Tauri internals are cleared.
   await new Promise((resolve) => setTimeout(resolve, 0));
