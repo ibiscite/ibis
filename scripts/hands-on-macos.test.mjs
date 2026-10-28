@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -19,6 +19,90 @@ function fixture(t) {
     encoding: "utf8", timeout: 10_000,
   }) };
 }
+
+test("a live profile lock refuses another run without removing its owner", { skip }, (t) => {
+  const { root, run } = fixture(t);
+  const lock = join(root, "profile.hands-on.lock");
+  const owner = join(lock, `pid-${process.pid}-live`);
+  mkdirSync(lock);
+  writeFileSync(owner, `${process.pid}\n`);
+  const result = run(`settings="$dir/profile"\n${traps}\nacquire_lock`);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Another hands-on check holds this profile lock/);
+  assert.equal(readFileSync(owner, "utf8"), `${process.pid}\n`);
+});
+
+test("a dead PID lock is cleared, claimed and released on exit or signals", { skip }, (t) => {
+  const { root, run } = fixture(t);
+  const dead = run('printf "%s" "$$"').stdout;
+  const lock = join(root, "profile.hands-on.lock");
+  for (const [action, status] of [["exit 0", 0], ["exit 41", 41], ["kill -INT $$", 130], ["kill -TERM $$", 143]]) {
+    mkdirSync(lock);
+    writeFileSync(join(lock, `pid-${dead}-stale`), ""); // Killed before writing contents.
+    const result = run(`settings="$dir/profile"
+      ${traps}
+      acquire_lock
+      IFS= read -r owner < "$lock_record"
+      [ "$owner" = "$$" ]
+      ${action}`);
+    assert.equal(result.status, status, result.stderr);
+    assert.equal(existsSync(lock), false);
+  }
+});
+
+test("stale-lock recovery and failed acquisition preserve a replacement owner", { skip }, (t) => {
+  const { root, run } = fixture(t);
+  const dead = run('printf "%s" "$$"').stdout;
+  const lock = join(root, "profile.hands-on.lock");
+  mkdirSync(lock);
+  writeFileSync(join(lock, `pid-${dead}-stale`), `${dead}\n`);
+  const replacement = join(lock, `pid-${dead}-replacement`);
+  const result = run(`settings="$dir/profile"
+    kill() {
+      command rm -f "$lock/pid-${dead}-stale"
+      printf '%s\\n' ${quote(dead)} > "$lock/pid-${dead}-replacement"
+      return 1
+    }
+    ${traps}
+    acquire_lock`);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Another hands-on check acquired the profile lock/);
+  assert.equal(readFileSync(replacement, "utf8"), `${dead}\n`);
+  assert.equal(existsSync(join(lock, `pid-${dead}-stale`)), false);
+});
+
+test("an empty abandoned lock is reusable and unknown entries are refused", { skip }, (t) => {
+  const { root, run } = fixture(t);
+  const lock = join(root, "profile.hands-on.lock");
+  mkdirSync(lock);
+  const empty = run(`settings="$dir/profile"\n${traps}\nacquire_lock`);
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.equal(existsSync(lock), false);
+  mkdirSync(lock);
+  writeFileSync(join(lock, ".keep"), "leave me untouched");
+  const unknown = run(`settings="$dir/profile"\n${traps}\nacquire_lock`);
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stderr, /Unrecognized profile lock entry/);
+  assert.equal(readFileSync(join(lock, ".keep"), "utf8"), "leave me untouched");
+});
+
+test("the first seed snapshots current preferences after stopping and later seeds keep that snapshot", { skip }, (t) => {
+  const { root, run } = fixture(t);
+  mkdirSync(join(root, "profile"));
+  writeFileSync(join(root, "profile/settings.json"), "preferences changed during downloads");
+  writeFileSync(join(root, "profile/settings.json.bak"), "current backup");
+  const result = run(`settings="$dir/profile"
+    stop_app() { echo STOPPED; }
+    cp() {
+      if [ "$1" = -p ]; then printf 'SNAPSHOT %s\\n' "$(cat "$2")";
+      else printf 'SEED %s\\n' "$*"; fi
+    }
+    seed_settings
+    seed_settings`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^STOPPED\nSNAPSHOT preferences changed during downloads\nSNAPSHOT current backup\nSEED .*\nSEED .*\nSTOPPED\nSEED .*\nSEED .*\n$/);
+  assert.equal(readFileSync(join(root, "profile/settings.json"), "utf8"), "preferences changed during downloads");
+});
 
 test("checksums require exactly one well-formed entry per asset and strict verification", { skip }, (t) => {
   const { root, run } = fixture(t);
@@ -98,7 +182,7 @@ test("exit and signals restore both originals only after stopping; absent origin
   writeFileSync(join(root, "original-settings/settings.json"), "saved primary");
   // All mutating commands are functions that only print: no settings are touched.
   const mocks = `
-    settings="$dir/unused-settings"; isolated=1
+    settings="$dir/unused-settings"; isolated=1; snapshotted=1
     stop_app() { echo STOPPED; }
     cp() { printf 'COPY %s\\n' "$*"; }
     rm() { printf 'REMOVE %s\\n' "$*"; }

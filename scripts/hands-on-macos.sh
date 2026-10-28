@@ -14,7 +14,7 @@ repo=https://github.com/ibiscite/ibis
 raw=https://raw.githubusercontent.com/ibiscite/ibis/main
 app="/Applications/Ibis Nightly.app"
 settings="$HOME/Library/Application Support/com.ibiscite.ibis.nightly"
-dir="" mount="" stage="" isolated=0 swapping=0 had_app=0
+dir="" mount="" stage="" lock="" lock_record="" snapshotted=0 isolated=0 swapping=0 had_app=0
 results=()
 fail() { echo "$*" >&2; return 1; }
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -35,6 +35,43 @@ regular_destination() {
 absent_destination() {
   no_links "$1" || return 1
   [ ! -e "$1" ] || { fail "Refusing an occupied destination."; return 1; }
+}
+acquire_lock() {
+  local record name pid
+  lock="$settings.hands-on.lock"
+  no_links "$lock" || return 1
+  mkdir -p "$lock" || return 1
+  # PID-named records remain reclaimable even if publication is interrupted.
+  for record in "$lock"/* "$lock"/.[!.]* "$lock"/..?*; do
+    [ -e "$record" ] || [ -L "$record" ] || continue
+    regular_destination "$record" || return 1
+    name=${record##*/}
+    if [[ ! "$name" =~ ^pid-([1-9][0-9]*)-.+$ ]]; then
+      fail "Unrecognized profile lock entry; leaving it untouched."
+      return 1
+    fi
+    pid=${BASH_REMATCH[1]}
+    if kill -0 "$pid" 2>/dev/null; then
+      fail "Another hands-on check holds this profile lock (PID $pid). Wait for it to finish."
+      return 1
+    fi
+    rm -f "$record" || return 1
+  done
+  # The workspace token prevents an old reclaimer deleting a reused PID's record.
+  lock_record="$lock/pid-$$-${dir##*/}"
+  regular_destination "$lock_record" || return 1
+  (set -C; printf '%s\n' "$$" > "$lock_record") || return 1
+  # Publish before checking: overlapping contenders cannot both see only themselves.
+  for record in "$lock"/* "$lock"/.[!.]* "$lock"/..?*; do
+    [ -e "$record" ] || [ -L "$record" ] || continue
+    [ "$record" = "$lock_record" ] || { fail "Another hands-on check acquired the profile lock. Retry later."; return 1; }
+  done
+}
+release_lock() {
+  [ -n "$lock_record" ] || return 0
+  no_links "$lock_record" && rm -f "$lock_record" || return 1
+  rmdir "$lock" 2>/dev/null || true # Another contender may still have a record.
+  lock_record=""
 }
 choose_assets() {
   local chip
@@ -113,17 +150,33 @@ cleanup() {
     fi
     if [ "$swapping" = 0 ]; then no_links "$stage" && rm -rf "$stage" || status=1; fi
   fi
+  release_lock || status=1
   exit "$status"
 }
-launch() {
+seed_settings() {
   local name
   stop_app
+  if [ "$snapshotted" = 0 ]; then
+    no_links "$settings"
+    mkdir -p "$settings"
+    no_links "$dir/original-settings"
+    mkdir "$dir/original-settings"
+    for name in settings.json settings.json.bak; do
+      regular_destination "$settings/$name"
+      regular_destination "$dir/original-settings/$name"
+      if [ -f "$settings/$name" ]; then cp -p "$settings/$name" "$dir/original-settings/$name"; fi
+    done
+    snapshotted=1
+  fi
   isolated=1 # Set before the first write, including a partially failed copy.
   for name in settings.json settings.json.bak; do
     regular_destination "$settings/$name"
     cp "$dir/synthetic-settings.json" "$settings/$name"
   done
   if [ "${1:-}" = recovery ]; then printf 'broken\n' > "$settings/settings.json"; fi
+}
+launch() {
+  seed_settings "${1:-}"
   open "$app"
   sleep 3
 }
@@ -166,17 +219,8 @@ no_links "$dir"
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-stop_app
-no_links "$settings"
-mkdir -p "$settings"
-no_links "$dir/original-settings"
 no_links "$dir/bin"
-mkdir "$dir/original-settings" "$dir/bin"
-for name in settings.json settings.json.bak; do
-  regular_destination "$settings/$name"
-  regular_destination "$dir/original-settings/$name"
-  if [ -f "$settings/$name" ]; then cp -p "$settings/$name" "$dir/original-settings/$name"; fi
-done
+mkdir "$dir/bin"
 
 say "1/4 Getting the newest Ibis Nightly and the synthetic test files"
 cd "$dir"
@@ -197,7 +241,8 @@ tar -xOzf "ibis-$system.tar.gz" ibis > bin/ibis
 chmod 700 bin/ibis
 
 say "2/4 Installing Ibis Nightly"
-stop_app
+acquire_lock
+seed_settings
 no_links "$app"
 if [ -e "$app" ]; then
   [ -d "$app" ] || { fail "Expected an app bundle directory."; exit 1; }
