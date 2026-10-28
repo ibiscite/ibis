@@ -26,6 +26,10 @@ const STYLE_XML: [(&str, &str); 5] = [
     ),
 ];
 
+pub(crate) fn style_xml() -> &'static [(&'static str, &'static str)] {
+    &STYLE_XML
+}
+
 pub(crate) struct Session {
     context: Context,
     runtime: Runtime,
