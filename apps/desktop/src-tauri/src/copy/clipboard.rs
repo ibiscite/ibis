@@ -25,6 +25,14 @@ pub(crate) fn flavors<'a>(content: &ClipboardContent<'a>) -> Vec<(Flavor, &'a st
 
 const FAILED: &str = "The clipboard could not be written.";
 
+#[cfg(target_os = "macos")]
+fn macos_html(fragment: &str) -> String {
+    // AppKit's HTML importer otherwise guesses a legacy encoding for UTF-8.
+    format!(
+        r#"<html><head><meta http-equiv="content-type" content="text/html; charset=utf-8"></head><body>{fragment}</body></html>"#
+    )
+}
+
 /// The general pasteboard, cleared once and then given every flavor.
 #[cfg(target_os = "macos")]
 pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(), String> {
@@ -38,7 +46,10 @@ pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> R
                 &NSString::from_str(value),
                 &NSString::from_str("public.utf8-plain-text"),
             ),
-            Flavor::Html => board.setString_forType(&NSString::from_str(value), &NSString::from_str("public.html")),
+            Flavor::Html => board.setString_forType(
+                &NSString::from_str(&macos_html(value)),
+                &NSString::from_str("public.html"),
+            ),
             Flavor::Rtf => board.setData_forType(
                 Some(&NSData::with_bytes(value.as_bytes())),
                 &NSString::from_str("public.rtf"),
@@ -97,6 +108,44 @@ pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn appkit_html_import_preserves_non_latin_text() -> Result<(), Box<dyn std::error::Error>> {
+        use std::process::Command;
+        let directory = tempfile::tempdir()?;
+        let source = directory.path().join("decode.m");
+        let decoder = directory.path().join("decode");
+        // Use AppKit's default encoding detection, as a recipient can. This
+        // tiny native decoder avoids unsafe Rust and never opens the clipboard.
+        std::fs::write(
+            &source,
+            r#"
+#import <AppKit/AppKit.h>
+int main(int argc, const char **argv) { @autoreleasepool {
+    if (argc != 2) return 2;
+    NSData *data = [[NSString stringWithUTF8String:argv[1]] dataUsingEncoding:NSUTF8StringEncoding];
+    NSAttributedString *text = [[NSAttributedString alloc] initWithHTML:data documentAttributes:NULL];
+    if (!text) return 3;
+    fputs([text.string UTF8String], stdout);
+    return 0;
+} }
+"#,
+        )?;
+        let compiled = Command::new("clang")
+            .args(["-fobjc-arc", "-framework", "AppKit", "-framework", "Foundation"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&decoder)
+            .output()?;
+        assert!(compiled.status.success(), "native HTML decoder did not compile");
+        let decoded = Command::new(decoder)
+            .arg(macos_html("<i>Ŝynthetic 山田</i>"))
+            .output()?;
+        assert!(decoded.status.success(), "native HTML decoder failed");
+        assert_eq!(String::from_utf8(decoded.stdout)?, "Ŝynthetic 山田");
+        Ok(())
+    }
 
     #[test]
     fn first_supported_format_preserves_rich_text_and_plain_text_fallback() {
