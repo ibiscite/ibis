@@ -621,9 +621,13 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   never asks "What do you write in?": it picks the output from the app that was
   in front when the shortcut was pressed (Markdown editors and terminals get
   Pandoc keys, LaTeX and Typst editors their syntax, word processors, mail and
-  web apps a formatted citation in APA) and shows that choice in the footer.
-  One key changes it just this once or for that app, and "Automatic" returns
-  to the guess; apps that host several syntaxes (code editors, terminals,
+  web apps a formatted citation in the default style, APA when none is
+  chosen) and shows it in the format pop-up beside search as "APA · Word".
+  The output and the app live in that pop-up, not the footer. A pick there
+  applies just this once, until the picker opens again; its "For Word"
+  section has the check box "Always use for Word", which keeps the pick, and
+  unchecking it returns to Automatic. With no app, or an app Ibis has no output
+  for, a pick changes the default as before; apps that host several syntaxes (code editors, terminals,
   browsers) are guessed only as a starting point. The citation style is asked once, on the
   first formatted copy, with APA chosen. Setup steps finish themselves: when
   Zotero is not sharing, the screen shows where to turn it on and continues on

@@ -6,7 +6,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus, type S
 
 export type { Sources } from "./bindings";
 export type {
-  Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PickerPreferences, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
+  AppOutput, Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PickerDestination, PickerPreferences, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -29,6 +29,9 @@ export const {
   copyFormat,
   pickerPreferences,
   setPickerPreferences,
+  pickerDestination,
+  rememberAppOutput,
+  forgetAppOutputs,
   loginItem,
   setLoginItem,
   findSources,

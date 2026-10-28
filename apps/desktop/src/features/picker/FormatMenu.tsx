@@ -7,13 +7,20 @@ import { ToolbarMenu, type ToolbarMenuCommand, type ToolbarMenuSection } from ".
 import { choiceName, type Choice } from "./choice";
 import { isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./shortcuts";
 
+const ALWAYS = "always-for-app";
+
 export type FormatCommand = "more" | "keys" | "pin" | "preview" | "quit";
 
 /** The copy format menu: key syntaxes and citation styles, each with a real
  * sample. Styles stay listed but unavailable while the engine is not offered.
  * Focus goes back to the search box after a pick, Escape or Tab. */
-export function FormatMenu({ format, styles, onChange, searchRef, onCommand }: {
+export function FormatMenu({ format, app, always, onToggleAlways, styles, onChange, searchRef, onCommand }: {
   format: Choice;
+  /** The app the picker was opened from, named beside the format. */
+  app: string | null;
+  /** Whether this app always uses the chosen format. */
+  always: boolean;
+  onToggleAlways: () => void;
   /** Whether formatted citation styles can be used now. */
   styles: boolean;
   onChange: (choice: Choice) => void;
@@ -21,14 +28,16 @@ export function FormatMenu({ format, styles, onChange, searchRef, onCommand }: {
   onCommand: (command: FormatCommand) => ToolbarMenuCommand;
 }) {
   const sections: ToolbarMenuSection[] = [
+    ...app ? [{ id: "app", label: pickerText.forApp(app), items: [{ id: ALWAYS, label: pickerText.alwaysForApp(app), checked: always }] }] : [],
     { id: "key-formats", label: pickerText.keyFormats, items: COPY_FORMATS.map(({ value }) => ({ id: value, ...copyFormatMenu[value] })) },
     { id: "citation-styles", label: pickerText.formattedStyles, items: FORMATTED_STYLES.map(({ id }) => (
       { id: `style:${id}`, label: STYLE_NAMES[id], sample: STYLE_SAMPLES[id], prose: true, disabled: !styles })) },
   ];
-  return <ToolbarMenu label={pickerText.copyAs} value={choiceName(format)} sections={sections} selectedKey={format}
+  const name = choiceName(format);
+  return <ToolbarMenu label={pickerText.copyAs} value={app ? pickerText.formatForApp(name, app) : name} sections={sections} selectedKey={format}
     filterLabel={pickerText.filterFormats} onKeyCommand={(event) => {
       const command = isMenuShortcut(event) ? "more" : isPinShortcut(event) && !event.repeat ? "pin" : isKeysShortcut(event) ? "keys"
         : isPreviewShortcut(event) && !event.repeat ? "preview" : isQuitShortcut(event) ? "quit" : null;
       return command ? onCommand(command) : undefined;
-    }} onAction={(key) => onChange(key as Choice)} returnFocusRef={searchRef} />;
+    }} onAction={(key) => key === ALWAYS ? onToggleAlways() : onChange(key as Choice)} returnFocusRef={searchRef} />;
 }

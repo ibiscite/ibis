@@ -1,8 +1,8 @@
 import * as nativeApi from "./api";
 import { copiedNoticeText, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
-import { KEY_TABLE, shortcutLabel, type KeyBinding } from "./keys";
+import { KEY_TABLE, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LibrarySetup, WritingSetup } from "./LibrarySetup";
+import { LibrarySetup } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
@@ -25,7 +25,7 @@ import { usePickerPreferences } from "./features/picker/usePickerPreferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
-import { useAskWriting } from "./features/picker/useAskWriting";
+import { useDestination } from "./features/picker/useDestination";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { useUpdateChecks } from "./features/picker/useUpdateChecks";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
@@ -48,7 +48,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
+  Partial<Pick<typeof nativeApi, "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -85,7 +85,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     };
   }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: true, report, perform });
-  const { format, density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
+  const { density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving } = preferences;
+  const destination = useDestination(api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report, perform });
+  const { format } = destination;
   const style = styleOf(format);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -97,9 +99,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const busy = library?.state === "loading" || library?.state === "reloading";
   const blocked = library?.state === "error" && !library.has_snapshot;
   const libraryChoices = library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
-  const [askWriting, setAskWriting] = useAskWriting(library);
-  const showWriting = askWriting && !busy && !query && !libraryChoices && Boolean(library?.has_snapshot);
-  const showCitations = !libraryChoices && !showWriting;
+  const showCitations = !libraryChoices;
   const refreshSnapshot = () => {
     const request = ++statusReads.current;
     void libraryStatus().then((status) => {
@@ -176,7 +176,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const chooseFormat = (choice: Choice) => {
     // A new format choice cancels the earlier copy waiting for its preview.
     setPendingCopy(null);
-    preferences.chooseFormat(choice);
+    destination.choose(choice);
   };
 
   useEffect(() => {
@@ -219,6 +219,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         setRestored((n) => n + 1);
       }
       hiddenAt.current = null;
+      destination.read();
       readLoginItem();
       readShortcut();
       input.current?.focus();
@@ -263,6 +264,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
+    destination.read();
     preferences.loadPreferences(() => mounted);
     return () => {
       acceptInitialStatus = false;
@@ -418,10 +420,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setPendingCopy(null);
       return;
     }
-    if (shown === null) return;
+    if (shown === null || !destination.ready) return;
     setPendingCopy(null);
     void copy();
-  }, [pendingCopy, chosenKey, shown, queryKey]);
+  }, [pendingCopy, chosenKey, shown, queryKey, destination.ready]);
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
@@ -467,7 +469,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
-  const enterAction = showWriting || chosen.length === 0 || shown === "stale" || shown === "failed" ? null
+  const enterAction = chosen.length === 0 || shown === "stale" || shown === "failed" ? null
     : copyLabel(format, chosen.length);
   const highlighted = current[active];
   const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
@@ -492,13 +494,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (highlighted) toggle(highlighted);
     input.current?.focus();
   };
-  const writingStep = showWriting ? (
-    <div className="empty-state">
-      <WritingSetup format={format} shortcut={shortcut?.registered ? shortcutLabel(shortcut.shortcut, isMac) : null}
-        choose={(choice) => { chooseFormat(choice); setAskWriting(false); input.current?.focus(); }} />
-    </div>
-  ) : null;
-  const emptyState = writingStep ?? (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
+  const emptyState = (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); setInterpretLocators(true); input.current?.focus(); }}
@@ -589,6 +585,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         expanded={results.length > 0 && showCitations}
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format}
+        app={destination.app}
+        alwaysForApp={destination.remembered}
+        onToggleAlways={destination.toggleAlways}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles
         onFormatChange={chooseFormat}
@@ -694,6 +693,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               preview: togglePastePreview,
               pin: togglePin,
               keys: openKeys,
+              forgetApps: destination.forgetAll,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />
         } />

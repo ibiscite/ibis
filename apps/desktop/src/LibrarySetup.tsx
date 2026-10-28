@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { Choice as Format } from "./features/picker/choice";
 import type { Sources } from "./bindings";
 import { ChoiceIcon } from "./icons";
 import { setupText } from "./messages";
@@ -16,13 +15,6 @@ type SetupApi = {
 export type EmptyLibraryChoices = { title: ReactNode; zotero: boolean };
 
 type Action = "choose" | "zotero" | "findSources" | "openFound";
-
-/** Where people write, and the copy format that suits each (first run, step 2). */
-const WRITING_PLACES = [
-  { id: "markdown", choice: "pandoc" },
-  { id: "latex", choice: "cite" },
-  { id: "typst", choice: "typst" },
-] as const satisfies readonly { id: keyof typeof setupText.places; choice: Format }[];
 
 /** First run, step 1, and the screen while no library is chosen: Zotero, a
  * .bib file through the system chooser, and, only when asked, libraries found
@@ -94,23 +86,5 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
       {/* Search progress and outcome, announced once; the row shows the same words. */}
       {findSources && search > 0 && <p className="visually-hidden" role="status">{outcome}</p>}
     </div>
-  );
-}
-
-/** First run, step 2: where the person writes picks the copy format. */
-export function WritingSetup({ format, choose, shortcut }: {
-  format: Format;
-  choose: (choice: Format) => void;
-  /** The shortcut that opens Ibis, when it is registered. */
-  shortcut?: string | null;
-}) {
-  const choices: Choice[] = WRITING_PLACES.map((place) => ({
-    id: place.id, title: setupText.places[place.id], help: setupText.placeExamples[place.id],
-    icon: <ChoiceIcon name="write" />, tag: format === place.choice ? setupText.current : undefined,
-  }));
-  return (
-    <ChoiceList title={setupText.writingTitle} line={setupText.writingLine} choices={choices}
-      onChoose={(id) => choose(WRITING_PLACES.find((place) => place.id === id)!.choice)}
-      footnote={shortcut ? setupText.shortcut(shortcut) : undefined} />
   );
 }

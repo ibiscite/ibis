@@ -68,6 +68,12 @@ export const commands = {
 "typst" |
 /**  Bare keys separated by commas. */
 "keys" | null) => __TAURI_INVOKE<null>("set_picker_preferences", { preferences, copyFormat }),
+	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
+	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
+	/**  Always use `output` for the app the picker was opened from; `None` returns it to Automatic. */
+	rememberAppOutput: (output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null) => __TAURI_INVOKE<null>("remember_app_output", { output }),
+	/**  Forget the outputs chosen for every app. */
+	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
@@ -125,6 +131,9 @@ export const commands = {
 };
 
 /* Types */
+/**  One output the picker can copy: a key syntax or a citation style. */
+export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
+
 /**  A bundled citation style the picker can format with (ADR 0020). */
 export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
 
@@ -310,6 +319,18 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 export type NoticeMessage = {
 	delivered: Delivered,
 	text: string,
+};
+
+/**  What the picker needs to know about the app it was opened from. */
+export type PickerDestination = {
+	/**  The app's own name; `None` when no app was captured. */
+	app: string | null,
+	/**  What the app's documents use; `None` follows the person's default. */
+	automatic: AppOutput | null,
+	/**  The output the person chose to always use for this app. */
+	remembered: AppOutput | null,
+	/**  The per-app file could not be read, so defaults apply. */
+	unreadable: boolean,
 };
 
 /**

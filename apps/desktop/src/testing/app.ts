@@ -81,6 +81,10 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     },
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
     set_picker_preferences: () => null,
+    // Opened from no app Ibis knows: the default format applies.
+    picker_destination: () => ({ app: null, automatic: null, remembered: null, unreadable: false }),
+    remember_app_output: () => null,
+    forget_app_outputs: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
     // Builds without an update key have no update controls.

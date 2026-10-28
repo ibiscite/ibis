@@ -94,6 +94,19 @@ says so, and it never silently overwrites a file it could not read. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
 
+## 0029 What Ibis remembers per app
+
+The picker starts with the output for the app it was opened from (the
+destination table in `ibis-core`). When the person checks "Always use for
+<app>", Ibis keeps that choice in `apps.json` beside `settings.json`: only the
+app's ID (a bundle ID or executable name) and the output, for at most 200
+apps, the least recently chosen dropped first. Never a window title, document
+name or citation text. The file is written whole and swapped in atomically.
+A file Ibis cannot read means every app starts with its automatic output, the
+picker says so, and the next choice replaces the file. "Forget formats for
+apps" in More empties it. Recent citations per app (#45) go in the same file
+under the same limits.
+
 ## 0019 Updates
 
 Tauri's updater, run from Rust only. Opt-in, asked once; it sends one HTTPS

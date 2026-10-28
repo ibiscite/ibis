@@ -7,7 +7,8 @@ import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } f
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
-export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean }[] };
+/** An item with `checked` is a toggle beside the single choice, such as "Always use for Word". */
+export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean; checked?: boolean }[] };
 export type ToolbarMenuCommand = { run: () => void; isCurrent: () => boolean };
 type Props = {
   label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
@@ -97,8 +98,9 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       <Header className="toolbar-menu-heading">{section.label}</Header>
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={false}
-        render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={item.disabled || undefined} />}>
-        {({ isSelected }) => <><MenuCheck checked={isSelected} />
+        render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={item.disabled || undefined}
+          {...item.checked !== undefined && { role: "menuitemcheckbox", "aria-checked": item.checked }} />}>
+        {({ isSelected }) => <><MenuCheck checked={item.checked ?? isSelected} />
           <Text slot="label" className="menu-label">{item.label}</Text><Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined}>{item.sample}</Text></>}
       </MenuItem>)}
     </MenuSection>)}
@@ -113,7 +115,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     }}
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
-      <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<PopupIndicator /></Button>
+      <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}><span className="toolbar-menu-value">{value}</span><PopupIndicator /></Button>
       <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>

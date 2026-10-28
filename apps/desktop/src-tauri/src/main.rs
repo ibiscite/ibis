@@ -8,6 +8,7 @@
 
 mod bindings;
 mod copy;
+mod destination;
 mod diagnostics;
 mod feedback;
 mod identity;
@@ -252,6 +253,7 @@ fn main() {
             let settings_path = location.path;
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
+            destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));
             }
