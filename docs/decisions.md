@@ -89,7 +89,10 @@ clipboard: restoring the previous contents could paste them into a slow app, so
 restoring and per-app rules wait until after 1.0. On macOS it refuses while
 system-wide Secure Event Input is on, including when another app enables it;
 this flag does not identify the destination's field or cover every password
-control. Elevated windows and lost targets are also refused. Pasting is on by default (maintainer,
+control. On Windows, elevated targets and UI Automation password fields are
+refused; an unavailable or timed-out field check only copies, without claiming
+password detection. Terminals, remote desktops, VMs and lost targets are
+refused on both platforms. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
 
@@ -119,8 +122,8 @@ providers must not disable ordinary paste (#1280, #1360). Paste requests
 only PostEvent permission, never Accessibility trust; no AX attributes are
 read or providers activated.
 
-Ibis snapshots the pasteboard change count immediately after writing every
-format, checking that ownership did not change during publication. A
+On macOS, Ibis snapshots the pasteboard change count immediately after writing
+every format, checking that ownership did not change during publication. A
 one-use in-memory proof binds that count to Ibis's citation, captured app,
 picker presentation and write time. Reopening the picker retires that proof;
 repeated hide/blur notifications do not. The final foreground, Secure Event Input,
@@ -129,6 +132,37 @@ after layout/event preparation. No clipboard contents are read back. The
 task has at most 250 ms and delivery at most 1,500 ms from the write; expired
 or cancelled queued tasks cannot post later. Cancellation and posting share
 a lock so a completed paste is never reported as merely copied.
+
+Other macOS native calls use objc2's generated AppKit and Core Graphics
+bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
+window, its process, name and integrity level, and `SendInput`), and
+`uiautomation` supplies UI Automation password-field checks. A new binding
+crate needs `cargo deny` and a line here. Only when no safe binding exists
+does one small module get a scoped `#[allow(unsafe_code)]`, with its crate's
+lint relaxed to `deny`, a safety comment on every block and independent
+security-boundary review (2026-10-27, #1133).
+
+A Windows copy freezes its target, HWND and picker generation before writing.
+Its one-use delivery ticket records the final clipboard sequence only after
+closing Ibis's own successful write and proving that no foreign write took
+over, including writes that keep the owner HWND. Neither a notice nor its
+worker adopts a later capture or clipboard baseline, and delivery expires
+1,500 ms after the write receipt. Final checks revalidate that sequence,
+generation, hidden picker, HWND and process after the password query and
+again after the injection lock and any key-release recovery waits. Windows
+never reads clipboard contents to prove ownership.
+
+UI Automation checks only the focused element's process and `IsPassword`.
+An enabled property copies with `secure-field`; unavailable or timed-out
+queries copy without that reason or macOS's `paste-unavailable` notice. The
+caller waits at most 250 ms. A timed-out worker keeps its per-process permit
+until it exits; no requests queue and at most four target processes can have
+queries outstanding. A stuck provider in one app does not prevent another
+app from pasting. Executable display names run on a separate worker, with a
+50 ms wait and executable-name fallback. Partial `SendInput` releases only
+keys left down by its accepted prefix, retries failed key-ups and retains
+unreleased keys for recovery before another paste. Failed recovery copies
+with `key-release-failed`, asking the person to press and release Ctrl and V.
 
 ## 0010 Search
 

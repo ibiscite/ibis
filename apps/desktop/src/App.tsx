@@ -16,6 +16,7 @@ import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
+import { closestMatchWarnings } from "./features/picker/rows";
 import { EmptyState } from "./features/picker/EmptyState";
 import { useFitWindow } from "./features/picker/useFitWindow";
 import { PickerFooter } from "./features/picker/PickerFooter";
@@ -394,6 +395,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         return;
       }
       outcome = await copyFileCitation(shown.fileTicket, shown.fileHash);
+      outcome = { ...outcome, warnings: [...outcome.warnings, ...closestMatchWarnings(chosen)] };
     } catch (error) {
       const stale = nativeApi.isSnapshotChanged(error);
       const shared = nativeApi.sharedCitationKey(error);
@@ -420,7 +422,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         await hidePicker();
         if (request !== copyRequest.current || shownAt !== pickerShows.current || completedContext !== copyContext.current) return;
         // The notice is extra; a failure to show it never undoes the copy.
-        await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
+        await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
       });
     }
   };
@@ -647,7 +649,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>}
       <div className="results-area scroll-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && showCitations && <div className="results-heading" aria-hidden="true">
-          <span>{list ? pickerText.pastedList : query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
+          <span>{list ? pickerText.pastedList : results.some((r) => r.partial) ? pickerText.closestMatches : query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {showCitations ? announcement : ""}

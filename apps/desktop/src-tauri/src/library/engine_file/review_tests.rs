@@ -2,6 +2,31 @@ use super::*;
 use std::sync::{Arc, Barrier};
 
 #[test]
+fn unrelated_json_reports_a_format_error_in_library_status() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::library::state::{begin_open, install};
+    use crate::library::{Library, LoadRequests, Source};
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic.json");
+    std::fs::write(&path, r#"[{"theme":"dark"}]"#)?;
+    let library = Mutex::new(Library::default());
+    let requests = LoadRequests::default();
+    let (request, _, _) = begin_open(&library, &requests, Source::File(path.clone())).ok_or("begin")?;
+    let error = FileLibrary::open(&path).err().ok_or("unrelated JSON opened")?;
+    assert_eq!(error, super::super::LoadError::InvalidData);
+    let status = install(&library, &requests, request, Err(error)).ok_or("status")?;
+    assert!(!status.has_snapshot);
+    assert_eq!(
+        status.error.as_deref(),
+        Some("the library file does not contain valid reference data")
+    );
+    for text in ["", "[]"] {
+        std::fs::write(&path, text)?;
+        assert!(FileLibrary::open(&path).is_ok(), "an empty JSON library must open");
+    }
+    Ok(())
+}
+
+#[test]
 fn an_older_blocking_worker_finishing_last_cannot_retire_the_newer_preview() -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("synthetic.bib");

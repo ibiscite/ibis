@@ -47,7 +47,7 @@ export const commands = {
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
 	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision }),
-	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash }),
+	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**  The preferences the picker starts with. */
@@ -82,7 +82,8 @@ export const commands = {
 	hidePicker: () => __TAURI_INVOKE<void>("hide_picker"),
 	/**
 	 *  Pin or unpin the picker. Staying on top is best effort: Wayland does not
-	 *  allow it, and there pinned means only that the picker stays open.
+	 *  allow it, and there pinned means only that the picker stays open. The
+	 *  Windows picker is always on top while shown.
 	 */
 	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
 	/**
@@ -105,7 +106,7 @@ export const commands = {
 	 *  inside the picker. Failures are reported as fixed diagnostics: the
 	 *  citation is on the clipboard either way.
 	 */
-	showCopiedNotice: (text: string) => __TAURI_INVOKE<void>("show_copied_notice", { text }),
+	showCopiedNotice: (text: string, delivery: number | null) => __TAURI_INVOKE<void>("show_copied_notice", { text, delivery }),
 	/**
 	 *  The notice being shown, for a notice page that has just loaded and missed
 	 *  the event that announced it.
@@ -171,10 +172,22 @@ export type CommandError =
 /**  Anything else, with fixed text for the user. */
 { code: "failed"; message: string };
 
-export type Copied = {
+export type Copied = Copied_Serialize | Copied_Deserialize;
+
+export type Copied_Deserialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
+	/**  Windows receipt for this copy's immutable delivery ticket. */
+	delivery?: number | null,
+};
+
+export type Copied_Serialize = {
+	text: string,
+	/**  What the chosen syntax could not express, and other problems the user should see. */
+	warnings: string[],
+	/**  Windows receipt for this copy's immutable delivery ticket. */
+	delivery?: number | null,
 };
 
 /**  What happened to a copied citation, for the notice to word. */
@@ -459,6 +472,8 @@ export type SearchResult = {
 	authors: string,
 	year: number | null,
 	matched: MatchField[],
+	/**  Only some query words matched; shown under "Closest matches". */
+	partial: boolean,
 	/**
 	 *  Family name of the first author (or the whole name of an
 	 *  organization); empty when the record names no authors.

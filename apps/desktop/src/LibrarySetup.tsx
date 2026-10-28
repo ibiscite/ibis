@@ -16,8 +16,8 @@ export type EmptyLibraryChoices = { title: ReactNode; zotero: boolean };
 
 type Action = "choose" | "zotero" | "findSources" | "openFound";
 
-/** First run, step 1, and the screen while no library is chosen: Zotero, a
- * .bib file through the system chooser, and, only when asked, libraries found
+/** First run, and the screen while no library is chosen: Zotero, a
+ * library file through the system chooser, and, only when asked, libraries found
  * nearby. Only names are shown; nothing is read until one is picked (#998). */
 export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
   api: SetupApi;

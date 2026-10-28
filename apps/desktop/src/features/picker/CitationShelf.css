@@ -4,6 +4,8 @@
 
 /* Preserve the 24 px chip fill; the shared Button owns every painted state. */
 .shelf { --chip-hit-size: var(--control-min-size); }
+/* Keep the existing warning pill readable; fold chips before squeezing it. */
+.shelf .chip[data-partial] { flex: none; }
 .shelf .shelf-chips { height: max(var(--shelf-line), var(--chip-hit-size)); column-gap: max(var(--space-1), calc(var(--chip-hit-size) - var(--chip-height))); }
 /* Three complete target rows, with no neighboring remove areas overlapping. */
 .shelf .shelf-chips[data-expanded] { height: auto; max-height: calc(3 * var(--chip-hit-size)); row-gap: calc(var(--chip-hit-size) - var(--chip-height)); padding-block: calc((var(--chip-hit-size) - var(--chip-height)) / 2); }

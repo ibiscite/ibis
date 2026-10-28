@@ -26,7 +26,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
   return {
     revision, id: { library: "file:synthetic", key }, cite: `synthetic-cite-${revision}-${key}`,
     source: "file:synthetic", key, title: "Synthetic reference", authors: "Example",
-    year: 2026, matched: ["title"], first_author: "Example", author_count: 1,
+    year: 2026, matched: ["title"], partial: false, first_author: "Example", author_count: 1,
     container: null, item_type: "book",
   };
 }

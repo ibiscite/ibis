@@ -70,6 +70,7 @@ fn pasted_lists_precede_locator_interpretation_and_keep_missing_keys() {
         assert!(reply.interpretation.is_none());
         assert!(reply.list.as_ref().is_some_and(|list| list.missing.is_empty()));
         assert!(reply.results.iter().all(|r| r.revision == reply.revision));
+        assert!(reply.results.iter().all(|r| !r.partial));
     }
     let reply = search(&file, "@b @absent", None);
     assert_eq!(reply.list.unwrap_or_else(|| panic!("pasted list")).missing, ["absent"]);
@@ -78,11 +79,19 @@ fn pasted_lists_precede_locator_interpretation_and_keep_missing_keys() {
 }
 
 #[test]
-fn closest_matches_are_left_out_until_the_picker_can_mark_them() {
+fn closest_matches_reach_the_picker_with_their_flag_and_snapshot() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let file = library(directory.path(), "@misc{a,title={Sleep}}");
-    assert_eq!(search(&file, "sleep", None).results.len(), 1);
-    assert!(search(&file, "sleep photon", None).results.is_empty());
+    for (text, partial) in [("sleep", false), ("sleep photon", true)] {
+        let reply = search(&file, text, None);
+        assert_eq!(reply.results.len(), 1);
+        let row = serde_json::to_value(&reply.results[0]).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(row["key"], "a");
+        assert_eq!(row["partial"], partial);
+        assert_eq!(row["revision"], reply.revision);
+        assert!(!row["cite"].as_str().unwrap_or_default().is_empty());
+    }
+    assert!(search(&file, "photon", None).results.is_empty());
 }
 
 #[test]
@@ -205,7 +214,7 @@ fn container_fallback_uses_trimmed_visible_text() {
                 record.csl.insert(field.into(), json!(value));
             }
         }
-        let result = SearchResult::from_engine(&record, "synthetic", Vec::new(), "revision");
+        let result = SearchResult::from_engine(&record, "synthetic", Vec::new(), false, "revision");
         assert_eq!(result.container.as_deref(), expected, "{container:?}, {publisher:?}");
     }
 }

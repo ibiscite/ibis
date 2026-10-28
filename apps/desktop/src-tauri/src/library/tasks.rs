@@ -431,6 +431,9 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     }
 }
 
+// Extensions recognised by ibis-sources (including CSL-JSON's alternate suffix).
+const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "json", "csljson"];
+
 /// Show the system file dialog and open the chosen library. Cancelling
 /// changes nothing.
 pub(crate) fn choose_library_file(app: &AppHandle) {
@@ -446,8 +449,8 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     let mut dialog = app
         .dialog()
         .file()
-        .set_title("Choose a BibTeX or BibLaTeX library")
-        .add_filter("BibTeX and BibLaTeX", &["bib"]);
+        .set_title("Choose a library")
+        .add_filter("BibTeX, BibLaTeX and CSL-JSON", LIBRARY_FILE_EXTENSIONS);
     if let Some(window) = app.get_webview_window("main") {
         dialog = dialog.set_parent(&window);
     }

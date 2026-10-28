@@ -31,6 +31,9 @@ pub struct PastedList<'a> {
 
 struct Entry {
     position: usize,
+    record: Arc<PreparedRecord>,
+}
+struct PreparedRecord {
     id: ItemRef,
     keys: Vec<String>,
     year: Option<i32>,
@@ -40,16 +43,16 @@ impl SearchDocument for Entry {
     type Identity = ItemRef;
     type Source = LibraryId;
     fn identity(&self) -> &ItemRef {
-        &self.id
+        &self.record.id
     }
     fn source(&self) -> &LibraryId {
-        &self.id.library
+        &self.record.id.library
     }
     fn year(&self) -> Option<i32> {
-        self.year
+        self.record.year
     }
     fn exact_key(&self, query: &str) -> bool {
-        self.keys.iter().any(|key| key_eq(key, query))
+        self.record.keys.iter().any(|key| key_eq(key, query))
     }
 }
 
@@ -60,7 +63,20 @@ pub struct SnapshotIndex {
 }
 impl SnapshotIndex {
     pub fn new(snapshot: Arc<Snapshot>) -> Self {
+        Self::build(snapshot, None)
+    }
+
+    /// Reuse keys, identifiers and normalized text when complete content matches.
+    pub fn updated(snapshot: Arc<Snapshot>, previous: &Self) -> Self {
+        Self::build(snapshot, Some(previous))
+    }
+
+    fn build(snapshot: Arc<Snapshot>, previous: Option<&Self>) -> Self {
         let mut texts = Texts::default();
+        let mut old_entries = previous
+            .into_iter()
+            .flat_map(|index| index.entries.iter().enumerate())
+            .peekable();
         let entries = snapshot
             .objects()
             .iter()
@@ -69,6 +85,20 @@ impl SnapshotIndex {
                 let LibraryObject::Record(record) = &item.object else {
                     return None;
                 };
+                while old_entries.peek().is_some_and(|(_, old)| old.record.id < record.id) {
+                    old_entries.next();
+                }
+                if let Some((n, old)) = old_entries.peek()
+                    && old.record.id == record.id
+                    && let Some(previous) = previous
+                    && previous.snapshot.objects()[old.position].fingerprints.full == item.fingerprints.full
+                {
+                    texts.copy_record(&previous.texts, *n);
+                    return Some(Entry {
+                        position,
+                        record: old.record.clone(),
+                    });
+                }
                 let keys: Vec<_> = record
                     .citation_keys
                     .iter()
@@ -125,10 +155,12 @@ impl SnapshotIndex {
                 );
                 Some(Entry {
                     position,
-                    id: record.id.clone(),
-                    year,
-                    keys,
-                    identifiers: identifier::of_record(record),
+                    record: Arc::new(PreparedRecord {
+                        id: record.id.clone(),
+                        year,
+                        keys,
+                        identifiers: identifier::of_record(record),
+                    }),
                 })
             })
             .collect();
@@ -146,11 +178,13 @@ impl SnapshotIndex {
                 .entries
                 .iter()
                 .map(|entry| {
-                    entry.id.key.capacity()
-                        + entry.id.library.as_str().len()
-                        + entry.keys.capacity() * std::mem::size_of::<String>()
-                        + entry.keys.iter().map(String::capacity).sum::<usize>()
-                        + entry.identifiers.capacity() * std::mem::size_of::<identifier::Identifier>()
+                    std::mem::size_of::<PreparedRecord>()
+                        + 2 * std::mem::size_of::<usize>()
+                        + entry.record.id.key.capacity()
+                        + entry.record.id.library.as_str().len()
+                        + entry.record.keys.capacity() * std::mem::size_of::<String>()
+                        + entry.record.keys.iter().map(String::capacity).sum::<usize>()
+                        + entry.record.identifiers.capacity() * std::mem::size_of::<identifier::Identifier>()
                 })
                 .sum::<usize>()
     }
@@ -222,13 +256,13 @@ impl SnapshotIndex {
                     first = Some((entry, field));
                 }
             };
-            for key in &record.keys {
+            for key in &record.record.keys {
                 let key: String = key.chars().flat_map(lower).collect();
                 for &entry in keys.get(&key).into_iter().flatten() {
                     mark(entry, MatchField::Citekey);
                 }
             }
-            for id in &record.identifiers {
+            for id in &record.record.identifiers {
                 for &entry in identifiers.get(id).into_iter().flatten() {
                     mark(
                         entry,
@@ -312,7 +346,9 @@ impl SnapshotIndex {
         stop: &dyn Fn() -> bool,
     ) -> Option<Vec<RecordHit<'_>>> {
         let hits = match by_identifier(
-            self.entries.iter().map(|entry| (entry, entry.identifiers.as_slice())),
+            self.entries
+                .iter()
+                .map(|entry| (entry, entry.record.identifiers.as_slice())),
             query,
             limit,
             scope,

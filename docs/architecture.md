@@ -124,12 +124,106 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 - **Bounds and invalidation:** request JSON is at most 1 MiB and request IDs at most 1,024 UTF-8 bytes. Results share a 16 MiB response budget with 8 KiB reserved for ID/envelope overhead; oversized results return `resource-limit` (exit 5). Requests execute in order on one worker behind an eight-request queue; a long request delays later requests on the same connection. Running and queued requests can be cancelled. Array frames receive a single Invalid Request error (`-32600`, `id: null`). Library notifications are bounded wake-ups; subscribers read current library state after a wake. Refresh failures retain the prior snapshot and report its last successful update time plus a fixed error code.
 - **Golden cases** (a new `cases` folder in `fixtures`: library, request, exact expected result) are replayed through every front end that exposes the method and must match byte for byte.
 
+### Large-library measurement (#1251)
+
+At 100,000 references the release budgets are load/refresh < 3 s, memory <
+400 MB, summon/search p95 ≤ 100 ms and typing p95 ≤ 50 ms. These are targets,
+not assertions tied to CI hardware.
+
+The ignored `ibis-engine` test `refresh_budget` generates its own 21.05 MB
+BibTeX file (two authors, journal, date, pages, DOI, volume and issue per entry).
+It opens the file, changes one record, refreshes while committing a prepared
+citation every millisecond, and measures 50 searches. The prepared citation
+retains the old snapshot throughout refresh. No real library or large fixture
+is needed. Run from the repository root with a worktree-local target directory:
+
+```sh
+CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- --ignored --nocapture
+CARGO_TARGET_DIR="$PWD/target" python3 crates/ibis-engine/tests/refresh_budget.py
+```
+
+The Python standard-library runner builds first, then measures the test process
+alone with `getrusage` on macOS/Linux, excluding compiler memory. It also works
+when a sandbox denies `ps` and macOS `time -l`'s `sysctl` call.
+
+Measured on this arm64 Mac on 2026-10-28, release build; the baseline is
+`28bfce26` (`origin/main` when work began), exported without git metadata and
+built in a separate worktree-local target directory. Both builds use the same
+measurement harness, input and copy cadence. Three alternating runs without
+profiling instrumentation gave these ranges; RSS is the highest peak of the
+three runs, rather than an average:
+
+| Metric | Before | After |
+|---|---:|---:|
+| First open | 3,164–6,874 ms | 2,705–7,293 ms |
+| One-record refresh | 3,521–7,101 ms | 2,511–5,343 ms |
+| Commit during refresh, p99 range / maximum | 16–127 / 6,691 µs | 16–155 / 6,455 µs |
+| Search p95 | 25–27 ms | 25–62 ms |
+| Maximum process peak RSS | 1,140.8 MiB | 749.5 MiB |
+
+All final runs were below the earlier 877 MiB main observation as well as their
+fresh baseline (final RSS range 607.9–749.5 MiB; baseline 1,035.9–1,140.8 MiB).
+The 400 MB memory budget remains unmet. Timing varied substantially with machine
+load, so these runs do not establish a latency improvement or certify the 3 s
+load/refresh budget. Typing and native summon still need the app probes.
+
+Temporary timers on the same release measurement identified CSL conversion as
+the largest source stage. The following are milliseconds for **open / refresh**,
+before and after removing intermediate text-normalization allocations from the
+resumed implementation. These two runs were consecutive, with both binaries
+built beforehand. Refresh also includes the unchanged 250 ms settling wait
+outside these stage totals:
+
+| Stage | Before normalization change | After normalization change |
+|---|---:|---:|
+| Read (both observations on refresh) | 4.5 / 11.4 | 4.6 / 13.6 |
+| Block scan | 45.6 / 44.8 | 43.8 / 43.2 |
+| Raw entry parse, including duplicate-key checks | 170.3 / 175.6 | 169.9 / 167.3 |
+| Macro/crossref resolution, including setup | 539.8 / 564.1 | 521.4 / 566.9 |
+| Upstream BibTeX field parse | 377.1 / 372.8 | 380.1 / 381.6 |
+| CSL conversion | 816.9 / 762.4 | 787.1 / 730.7 |
+| Record deduplication/reuse | 4.2 / 148.9 | 4.0 / 159.1 |
+| Snapshot validation, sorting and fingerprints | 411.5 / 82.1 | 416.4 / 81.5 |
+| Text normalization (included in CSL conversion) | 112.2 / 110.2 | 72.7 / 72.7 |
+
+The focused change removes a token vector and a joined string for every cleaned
+field/name, copying ordinary words directly into the final string. It sizes that
+string from normalized lengths so whitespace-heavy fields retain no discarded
+whitespace. Unicode whitespace and literal-placeholder decoding stay unchanged.
+The helper takes about 35% less time; total source/snapshot open stages fell
+from 2,370 to 2,327 ms in this pair. This is an allocation fix in the largest
+stage, with no parser rewrite or new cache. Profiled whole-process peak RSS was
+748.2 / 751.2 MiB before/after; both remain below main.
+
+Deduplication now compares normalized records against the prior validated model
+before collecting a candidate: refresh fingerprints only its one changed record.
+The extra comparisons avoid accumulating 99,999 duplicate CSL trees. The timers
+were removed after measurement.
+
+Main already shared fingerprinted objects after #1310. This change batches JSON
+writes to SHA-256 without changing their bytes, hashes identical cite/full views
+once, and computes aggregate fingerprints once per combined publication. A sole
+library shares its entire object slice with the source. BibTeX refresh reuses old
+records while parsing; other objects are coalesced by full fingerprint before a
+watcher retains the next model. Its callback acknowledges the installed,
+coalesced source snapshot; rejected publications leave the prior model intact.
+Only explicitly seeded watchers keep a model. This prevents a watcher from
+holding a second, pre-coalescing copy of the library. Index refresh reuses
+prepared keys, identifiers and normalized text. Assembly and index preparation precede the
+brief state swap, so they do not hold the citation commit's publication barrier.
+Raw literals reserve one part instead of four. Header deduplication tables are
+released before conversion, and CSL construction moves normalized strings into
+JSON values instead of serializing and copying them again. Macro/crossref and
+field-parser algorithms are unchanged. The remaining footprint includes the
+normalized library, index, source text and raw-entry working set; reaching 400 MB
+still needs further work.
+
 ## Desktop app
 
 - **Shell:** Tauri 2 with the system web view; React with React Aria Components for every control (decision 0021); tokens in `tokens.css`; shared components in `src/ui/`. The app links the engine in-process and calls the same method functions; the web view never touches the clipboard, files or the network.
 - **State:** one pure reducer with `useSyncExternalStore` and a controller with session tickets; no state library.
 - **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
-- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the app in front is captured (bundle ID, process, name; never window titles) before the picker shows. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks or expired tasks copy with `paste-unavailable`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no AX attributes or clipboard contents and requires only PostEvent permission, independent of AX trust. Terminals, remote desktops and VMs are also refused. Windows: one atomic `SendInput`, refused for elevated targets. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
+- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the app in front is captured (bundle ID, process, name; never window titles) before the picker shows. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks or expired tasks copy with `paste-unavailable`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no AX attributes or clipboard contents and requires only PostEvent permission, independent of AX trust. Terminals, remote desktops and VMs are also refused. Windows: the window in front is captured the same way (executable file name, process, integrity level), the picker shows above always-on-top windows, and the keyboard is handed back to that window. A one-use delivery ticket freezes the target, HWND and picker generation before copying, then records the final clipboard sequence after Ibis's own write. One atomic Ctrl+V `SendInput` goes in only while that window and process are in front, no key is held and that sequence is unchanged; apps with more rights than Ibis and UI Automation password fields copy instead. Password checks have a 250 ms caller deadline, no queue and at most one outstanding query per target process (four total); a stuck provider blocks only its own process. Display names are read off the UI thread with a bounded wait and executable-name fallback. Partial `SendInput` releases every key it left down, retries failed releases and retains them for recovery before any later paste. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
 - **Reader (Later; 0.5 cites from annotations and existing PDFs first):** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
 - **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
 - **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.

@@ -50,12 +50,11 @@ impl FileLibrary {
                 &json!({"action":"open-file","path":path}),
                 &Cancellation::default(),
             )
-            .map_err(|error| {
-                super::LoadError::Source(match error.code {
-                    ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable,
-                    ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge,
-                    _ => ibis_core::source::SourceError::Unreadable,
-                })
+            .map_err(|error| match error.code {
+                ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
+                ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
+                ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
+                _ => ibis_core::source::SourceError::Unreadable.into(),
             })?;
         Ok(Self::from_engine(engine))
     }
@@ -270,13 +269,15 @@ impl FileLibrary {
         let results = reply
             .hits
             .into_iter()
-            // The picker cannot mark closest matches yet, so it leaves them out
-            // rather than show them as full matches.
-            .filter(|hit| !hit.partial)
             .filter_map(|hit| match hit.item.object {
                 LibraryObject::Record(record) => {
-                    let mut result =
-                        SearchResult::from_engine(&record, hit.item.fingerprints.cite.as_str(), hit.matched, &revision);
+                    let mut result = SearchResult::from_engine(
+                        &record,
+                        hit.item.fingerprints.cite.as_str(),
+                        hit.matched,
+                        hit.partial,
+                        &revision,
+                    );
                     if let Some(source) = sources.get(record.id.library.as_str()) {
                         result.source.clone_from(source);
                     }
@@ -405,6 +406,7 @@ impl FileLibrary {
         Ok(crate::copy::Copied {
             text: citation.result().text.clone(),
             warnings: citation_warnings(citation.result()),
+            delivery: None,
         })
     }
 }
