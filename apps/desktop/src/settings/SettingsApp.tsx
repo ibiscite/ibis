@@ -61,11 +61,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const generation = useRef(0);
+  const pending = useRef(0);
   const permission = usePastePermission(api, page === "general");
 
   useEffect(() => {
     const readAll = () => {
-      api.pickerPreferences().then(setPreferences).catch(() => setFailed(true));
+      const started = generation.current;
+      const idle = pending.current === 0;
+      api.pickerPreferences().then((next) => {
+        if (idle && started === generation.current && pending.current === 0) setPreferences(next);
+      }).catch(() => setFailed(true));
       api.loginItem().then(setLogin).catch(() => setLogin(null));
       api.updateChecks().then(setUpdates).catch(() => setUpdates(null));
     };
@@ -75,10 +81,21 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     window.addEventListener("focus", readAll);
     const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus); });
     const automatic = api.onUpdateChecks(setUpdates);
+    const close = api.onCloseRequested(async () => {
+      // Give queued choices time to save; a stuck command must not trap the window.
+      let timer: number | undefined;
+      const drain = async () => { while (pending.current) await saving.current; };
+      await Promise.race([
+        drain().catch(() => undefined),
+        new Promise<void>((resolve) => { timer = window.setTimeout(resolve, 2_000); }),
+      ]);
+      window.clearTimeout(timer);
+    });
     return () => {
       window.removeEventListener("focus", readAll);
       void page.then((stop) => stop()).catch(() => undefined);
       void automatic.then((stop) => stop()).catch(() => undefined);
+      void close.then((stop) => stop()).catch(() => undefined);
     };
   }, [api]);
   useEffect(() => {
@@ -90,12 +107,21 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const change = (next: Partial<PickerPreferences>) => {
     if (!preferences) return;
     const chosen = { ...preferences, ...next };
+    const edited = ++generation.current;
+    pending.current += 1;
     setPreferences(chosen);
     setFailed(false);
     // Saved in the order chosen, so quick changes end as the last one shows.
     saving.current = saving.current.catch(() => undefined)
       .then(() => api.setPickerPreferences(chosen, null))
-      .catch(() => setFailed(true));
+      .finally(() => { pending.current -= 1; })
+      .catch(() => {
+        setFailed(true);
+        if (pending.current !== 0 || edited !== generation.current) return;
+        void api.pickerPreferences().then((saved) => {
+          if (pending.current === 0 && edited === generation.current) setPreferences(saved);
+        }).catch(() => undefined);
+      });
   };
   const name = login?.name ?? "Ibis";
 

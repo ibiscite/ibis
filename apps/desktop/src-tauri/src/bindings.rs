@@ -153,6 +153,7 @@ mod tests {
             "core:event:allow-unlisten",
             "core:app:allow-version",
             "core:window:allow-start-dragging",
+            "core:window:allow-destroy",
         ]
         .map(str::to_owned)
         .to_vec();

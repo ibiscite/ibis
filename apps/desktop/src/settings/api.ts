@@ -1,6 +1,7 @@
 // What the Settings window may call; tests replace it with a fake.
 import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands, type PastePermission } from "../bindings";
 
 export type { PastePermission } from "../bindings";
@@ -20,6 +21,7 @@ export const settingsApi = {
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
   /** The saved automatic update choice, after a change from any menu. */
   onUpdateChecks: (handler: (on: boolean) => void): Promise<UnlistenFn> => listen<boolean>("update:automatic", (event) => handler(event.payload)),
+  onCloseRequested: (handler: () => Promise<void>): Promise<UnlistenFn> => getCurrentWindow().onCloseRequested(handler),
 };
 
 export type SettingsApi = typeof settingsApi;
