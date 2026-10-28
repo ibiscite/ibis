@@ -124,9 +124,10 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
 /// picker (see `copyFeedback.ts`); copies with warnings keep their notice
 /// inside the picker. Failures are reported as fixed diagnostics: the
 /// citation is on the clipboard either way.
+/// Returns the delivery outcome so a permission detour keeps the prepared shelf.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn show_copied_notice(app: AppHandle, text: String) {
+pub(crate) async fn show_copied_notice(app: AppHandle, text: String) -> Delivered {
     // A paste may wait up to a second for the app to come back to the front.
     let delivered = {
         let (app, text) = (app.clone(), text.clone());
@@ -136,10 +137,11 @@ pub(crate) async fn show_copied_notice(app: AppHandle, text: String) {
     show(
         &app,
         NoticeMessage {
-            delivered,
+            delivered: delivered.clone(),
             text: summary(&text),
         },
     );
+    delivered
 }
 
 fn show(app: &AppHandle, text: NoticeMessage) {

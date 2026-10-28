@@ -137,6 +137,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   useEffect(() => setSearchFocused(document.activeElement === input.current), []);
   // When the picker last went away; the search waits a minute, in memory only.
   const hiddenAt = useRef<number | null>(null);
+  // A permission detour owns the prepared shelf, even beyond the usual minute.
+  const permissionDetour = useRef(false);
   // A search Escape cleared comes back on reopening within the same minute.
   const escapedQuery = useRef<{ text: string; interpretLocators: boolean } | null>(null);
   const [restored, setRestored] = useState(0);
@@ -214,7 +216,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       resetPointer();
       copyVisibility.current += 1;
       pickerShows.current += 1;
-      if (hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
+      if (!permissionDetour.current && hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
       else if (hiddenAt.current !== null && escapedQuery.current !== null) {
         const escaped = escapedQuery.current;
         escapedQuery.current = null;
@@ -223,7 +225,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         setRestored((n) => n + 1);
       }
       hiddenAt.current = null;
-      destination.read();
+      destination.read(true, permissionDetour.current);
+      permissionDetour.current = false;
       readLoginItem();
       readShortcut();
       input.current?.focus();
@@ -402,26 +405,32 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       return;
     }
     const ownsFeedback = ownsCompletion();
-    // A successful copy consumes its override even after the user moved to another row.
-    const nextFormat = destination.consumeOnce(outputToken);
-    if (!ownsFeedback) return;
+    if (!ownsFeedback) { destination.consumeOnce(outputToken); return; }
     setCopied(outcome);
-    const clearedSelection = new Map<string, CitationReference>();
-    const completedContext = { ...context, format: nextFormat ?? context.format, selected: clearedSelection, activeChoice: latestHighlight.current };
-    copyContext.current = completedContext;
-    setSelected(clearedSelection);
+    const complete = () => {
+      const nextFormat = destination.consumeOnce(outputToken);
+      const clearedSelection = new Map<string, CitationReference>();
+      copyContext.current = { ...context, format: nextFormat ?? context.format, selected: clearedSelection, activeChoice: latestHighlight.current };
+      setSelected(clearedSelection);
+      permissionDetour.current = false;
+    };
     // After a copy, reopening keeps the current search, not one cleared before it.
     escapedQuery.current = null;
     // Get out of the way so the user can paste, unless there is something to
     // read or the picker is pinned beside the document.
     if (afterCopy(outcome, currentPin.current) === "hide-and-notify") {
+      // Keep the shelf until delivery says whether macOS sent us to its guide.
+      // A return during delivery also keeps it and cancels this completion.
+      permissionDetour.current = true;
       void perform("hide", async () => {
         await hidePicker();
-        if (request !== copyRequest.current || shownAt !== pickerShows.current || completedContext !== copyContext.current) return;
+        const current = () => request === copyRequest.current && shownAt === pickerShows.current && context === copyContext.current;
+        if (!current()) return;
         // The notice is extra; a failure to show it never undoes the copy.
-        await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
+        const delivered = await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
+        if (current() && !(delivered && delivered.outcome === "copied" && delivered.reason === "no-permission")) complete();
       });
-    }
+    } else complete();
   };
   // Enter, Copy or a click on a row copies what is chosen then (the row, or the
   // citation being built), once its preview is ready; anything changing first cancels it.

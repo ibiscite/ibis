@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
-import { backend, resetApp, result } from "./testing/app";
+import { backend, prepared, resetApp, result } from "./testing/app";
+import { emit } from "@tauri-apps/api/event";
 
 // Keep the 2.4-second confirmation alive while assertions run, even when other
 // workers are busy. Use one clock from mount through unmount; switching clocks
@@ -25,6 +26,45 @@ async function toggleKeepOpen() {
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
   });
 }
+
+test("a permission detour keeps the prepared citation past a minute and waits for a fresh Enter", async () => {
+  let granted = false;
+  const copies: unknown[] = [];
+  const calls = await openPicker({
+    search: () => ({ revision: "1", results: [result("a", "First"), result("b", "Second")],
+      interpretation: { search: "Smith", locator: { label: "page", value: "12" }, typed: "p.12" } }),
+    copy_file_citation: (args) => {
+      const citation = prepared(args);
+      copies.push(citation.request);
+      return { text: citation.preview.text, warnings: [] };
+    },
+    show_copied_notice: async () => ({ outcome: granted ? "pasted" : "copied", reason: granted ? null : "no-permission", app: "Writer" }),
+  });
+  const search = screen.getByLabelText("Search references");
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); });
+  await act(async () => { fireEvent.keyDown(search, { key: "ArrowDown" }); });
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); });
+  const shelf = () => document.querySelector(".shelf")?.textContent;
+  const shelfText = shelf();
+  expect(shelfText).toContain("@a; @b");
+  await copy();
+  expect(shelf()).toBe(shelfText);
+  await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); });
+  granted = true;
+  await act(async () => { await emit("picker:shown"); });
+  expect(shelf()).toBe(shelfText);
+  expect(calls.filter((c) => c === "copy_file_citation")).toHaveLength(1);
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter", repeat: true }); });
+  expect(copies).toHaveLength(1);
+  await copy();
+  expect(calls.filter((c) => c === "copy_file_citation")).toHaveLength(2);
+  expect(copies[1]).toEqual(copies[0]);
+  expect(copies[1]).toMatchObject({ items: [
+    { id: { key: "a" }, locator: { label: "page", value: "12" } },
+    { id: { key: "b" }, locator: { label: "page", value: "12" } },
+  ] });
+  expect(shelf()).not.toContain("@a; @b");
+});
 
 test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain until dismissed with %s", async (key) => {
   let warnings: string[] = [];

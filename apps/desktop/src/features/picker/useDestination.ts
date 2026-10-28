@@ -31,11 +31,16 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const openings = useRef(0);
   const capturedId = useRef<string | null | undefined>(undefined);
   const choices = useRef(0);
+  const preparedFormat = useRef<Choice>(fallback);
   const saves = useRef(Promise.resolve());
-  const read = useCallback((reset = true) => {
+  const read = useCallback((reset = true, preserveOutput = false) => {
     if (!pickerDestination) return;
     const request = ++reads.current;
-    if (reset) { openings.current += 1; setOnce(null); setOnceOnly(false); }
+    if (reset) {
+      openings.current += 1;
+      setOnce(preserveOutput ? preparedFormat.current : null);
+      setOnceOnly(preserveOutput);
+    }
     setReady(false);
     // A reopening reads after outstanding saves, so it sees the durable choice.
     void saves.current.then(pickerDestination).then((next) => {
@@ -63,6 +68,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const base = useRef(baseFormat);
   base.current = baseFormat;
   const format = once ?? baseFormat;
+  preparedFormat.current = format;
   const save = (action: () => Promise<unknown>, apply: () => void) => {
     const opening = openings.current;
     const choice = choices.current;

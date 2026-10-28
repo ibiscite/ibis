@@ -83,7 +83,7 @@ export const setupText = {
   lookAgain: "Look again",
   looking: "Looking for Zotero and .bib files…",
   zoteroAccessOff:
-    "Zotero is open, but it does not let other apps read it yet. In Zotero, open Settings, then Advanced, and turn on " +
+    "To read your references, in Zotero › Settings › Advanced turn on " +
     "“Allow other applications on this computer to communicate with Zotero”.",
   cutShort: "Some folders were too large to search fully. Choose the file yourself if it is not listed.",
   nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
@@ -494,7 +494,7 @@ export const settingsText = {
     allowed: (list: string) => `Allowed in Privacy & Security › ${list}`,
     allowedNote: "Ibis presses ⌘V once, only in the app you opened it from.",
     guideTitle: "Allow Ibis to paste for you",
-    guideWhy: "macOS asks you once. Ibis only presses ⌘V, only in the app you came from, and never reads what you type.",
+    guideWhy: "To paste, allow Ibis in macOS; it only presses ⌘V in the app you came from and never reads what you type.",
     steps: (name: string, list: string) => [
       "Click Open System Settings.",
       `In Privacy & Security › ${list}, turn on ${name}.`,
@@ -503,6 +503,7 @@ export const settingsText = {
     open: "Open System Settings",
     waiting: "Waiting for your OK…",
     granted: "Ibis can paste now.",
+    returnFailed: "Couldn't return to your citation. Open Ibis with your shortcut to continue.",
     stale: (name: string) => `Already on, but still waiting? An update gave ${name} a new identity. Open System Settings again: Ibis clears the old switch so you can turn on the new one.`,
     copyInstead: "Just copy",
   },

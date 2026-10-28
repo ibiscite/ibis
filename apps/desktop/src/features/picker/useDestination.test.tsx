@@ -79,3 +79,22 @@ test("an old successful copy cannot consume a newer one-time output choice", asy
   expect(result.current.format).toBe("cite");
   expect(result.current.onceOnly).toBe(true);
 });
+
+test("returning from permission keeps the prepared output once while reading the changed destination", async () => {
+  let destination = browser;
+  const rememberAppOutput = vi.fn();
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput }, options()));
+  await act(async () => result.current.read());
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("typst"));
+  const oldCopy = result.current.copyToken();
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", remembered: { key: "cite" } };
+  await act(async () => result.current.read(true, true));
+  expect(result.current.app).toBe("Example Writer");
+  expect(result.current.format).toBe("typst");
+  expect(result.current.onceOnly).toBe(true);
+  expect(result.current.isCurrentCopy(oldCopy)).toBe(false);
+  expect(rememberAppOutput).not.toHaveBeenCalled();
+  act(() => result.current.consumeOnce(result.current.copyToken()));
+  expect(result.current.format).toBe("cite");
+});
