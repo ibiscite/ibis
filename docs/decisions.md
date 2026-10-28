@@ -99,6 +99,24 @@ says so, and it never silently overwrites a file it could not read. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
 
+## 0031 What Ibis remembers per app
+
+The output chooser remembers a format picked for the captured app unless the
+person selects "Just this once". `apps.json`, beside `settings.json`, keeps
+only the operating system, normalised app ID and output for at most 200 apps;
+the least recently chosen app is dropped first. Never a document title, URL,
+window title, document text or citation. Browser and editor IDs cannot identify
+a project's syntax. Remembered choices beat app-table suggestions, then the
+global fallback; "Automatic" removes only the app override, and a deliberate
+global choice never erases app choices.
+
+The bounded file is written whole, flushed and swapped in atomically. A file
+Ibis cannot read means automatic/default outputs, with a visible warning; the
+next explicit app save replaces the damaged data. "Forget formats for apps"
+clears it. A failed save leaves the previous durable choices intact and says
+so. Preference writes from different windows apply only deliberate field
+patches under the native owner lock, returning the authoritative saved state.
+
 ## 0019 Updates
 
 Tauri's updater, run from Rust only. Opt-in, asked once; it sends one HTTPS
