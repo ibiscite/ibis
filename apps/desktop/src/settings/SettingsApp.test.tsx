@@ -57,6 +57,71 @@ test("pages are opened by name, and the paste guide is General's pasting group",
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
 });
 
+test("Settings opens at the top of General with every built page in a navigable, selected sidebar list", async () => {
+  const { api, state } = fakeApi();
+  render(<SettingsApp api={api} initialPage={null} />);
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
+  const list = within(sidebar).getByRole("list");
+  const items = within(list).getAllByRole("listitem");
+  expect(items.map((item) => within(item).getByRole("button").textContent)).toEqual(["General", "About"]);
+  const selected = () => within(list).getAllByRole("button").filter((button) => button.getAttribute("aria-current") === "page");
+  expect(selected().map((button) => button.textContent)).toEqual(["General"]);
+  const main = screen.getByRole("main", { name: "General" });
+  expect(main.firstElementChild).toBe(within(main).getByRole("heading", { name: "General", level: 1 }));
+  expect(main.scrollTop).toBe(0);
+  // Reopening the current page must reset it too, even though its name did not change.
+  main.scrollTop = 320;
+  act(() => state.pages[0]!("general"));
+  expect(main.scrollTop).toBe(0);
+  main.scrollTop = 180;
+  fireEvent.click(within(list).getByRole("button", { name: "About" }));
+  expect(screen.getByRole("main", { name: "About" }).scrollTop).toBe(0);
+  expect(selected().map((button) => button.textContent)).toEqual(["About"]);
+  fireEvent.click(within(list).getByRole("button", { name: "General" }));
+  expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
+  expect(selected().map((button) => button.textContent)).toEqual(["General"]);
+});
+
+test("the title-bar drag region is outside the page scroller and sidebar list", async () => {
+  const { api } = fakeApi();
+  const { container } = render(<SettingsApp api={api} initialPage={null} />);
+  await screen.findByRole("switch", { name: "Larger text" });
+  const titlebar = container.querySelector("[data-tauri-drag-region]")!;
+  expect(titlebar.parentElement?.className).toBe("settings");
+  expect(screen.getByRole("main").contains(titlebar)).toBe(false);
+  expect(screen.getByRole("navigation").contains(titlebar)).toBe(false);
+  expect(container.querySelectorAll("[data-tauri-drag-region]")).toHaveLength(1);
+});
+
+test("a paste deep link waits for permission data and scrolls only the page", async () => {
+  const { api } = fakeApi();
+  const permission = deferred<PastePermission>();
+  vi.spyOn(api, "pastePermission").mockReturnValue(permission.promise);
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { top: this.id === "paste" ? 180 : 52 } as DOMRect;
+  });
+  // This API can scroll every ancestor, including the document; the shell must never use it.
+  const previous = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+  const scrollAncestors = vi.fn();
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: scrollAncestors });
+  try {
+    render(<SettingsApp api={api} initialPage="paste" />);
+    await screen.findByRole("switch", { name: "Larger text" });
+    const main = screen.getByRole("main");
+    expect(main.scrollTop).toBe(0);
+    await act(async () => { permission.resolve({ pastes: true, needed: true, granted: false, list: "Accessibility" }); });
+    expect(main.scrollTop).toBe(128);
+    expect(scrollAncestors).not.toHaveBeenCalled();
+    expect(document.documentElement.scrollTop).toBe(0);
+    expect(document.body.scrollTop).toBe(0);
+  } finally {
+    rect.mockRestore();
+    if (previous) Object.defineProperty(Element.prototype, "scrollIntoView", previous);
+    else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  }
+});
+
 test("the paste guide names the list, opens it, notices the grant on its own and says so", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { api, state } = fakeApi();

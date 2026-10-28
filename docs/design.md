@@ -3,8 +3,8 @@
 The one current rule book for how Ibis looks and behaves: picker, first run,
 Settings, preview, brand and website. [Decisions](decisions.md) win over it. Values live in
 [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
-tokens by role and gives numbers only where no token exists. The unbuilt
-Settings window's detailed spec waits in #776; scope is
+tokens by role and gives numbers only where no token exists. The Settings
+window's remaining pages wait in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
 each beside its rule.
@@ -100,8 +100,9 @@ a 2 px `CanvasText` ring; scarlet becomes `CanvasText`, so the check says
 or the GNOME interface font), never another platform's. One scale of roles,
 `--type-search-*` (large and frameless on macOS like Spotlight, a framed box
 elsewhere), `--type-title-*` (semibold), `--type-body-*`, `--type-meta-*`
-(menus, descriptions, footer, shelf) and `--type-label-*`, the smallest; dialog
-headings (20/28) and Windows Settings page titles (28/36) have no token yet.
+(menus, descriptions, footer, shelf) and `--type-label-*`, the smallest;
+`--type-page-title-*` (28/36) for Settings page headings. Dialog headings
+(20/28) have no token yet.
 Weights 400, 500 and 600; no uppercase transforms; italics only for "why it
 matched". Monospace (`--font-mono`) only for citation keys and key-format
 output. `tabular-nums` on years, counts and pages.
@@ -697,12 +698,45 @@ validated config file for power users → the command line.
 **Settings…** (⌘, / Ctrl+,) in More and the menu bar or tray. A sidebar of
 pages runs under the window buttons, as in System Settings; each page is a
 stack of titled groups of rows: a label and optional description, then one
-control at the end, at least 48 px (56 with a description), on
+control at the end, at least `--settings-row-height` (48 px) or
+`--settings-described-row-height` (56 px with a description), on
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
 shared `Switch` (38 × 22) and `Segmented` in `ui/`. Changes apply at once and
 reach an open picker; resets offer Undo. Built so far: General (login, pasting,
 picker look) and About (version, updates); Shortcuts, Libraries and Citations
 follow (#776). The picker's More keeps its quick toggles until then.
+
+The shell fills the viewport at every window size: a two-column grid with a
+reserved `--titlebar-height` row above the content. The sidebar background
+runs the full height; its navigation starts below the window buttons. It is
+a semantic list of every built page with exactly one `aria-current="page"`
+selection, drawn with the shared selected fill and paired text. Its width is
+`--settings-sidebar-width`, capped in proportion to the window so the page
+still fits at the minimum 480 × 400 size.
+
+Only the content page scrolls. The document, shell and sidebar stay still;
+the title-bar drag region belongs to the shell, outside the scroller. Neither
+text nor controls may slide behind the transparent title bar or traffic
+lights. Never reserve that space with a sticky spacer or a negative margin.
+Opening Settings normally, selecting a page or requesting General again
+starts that page at the top, with a large `--type-page-title-*` heading and
+`--settings-page-inset` around the content. An explicit Pasting deep link may
+reveal that group, after its data loads, by moving only the page scroller.
+
+`ui/SettingsGroup` owns grouped cards (`--r-card`, `--settings-group-width`)
+and inset rows. Groups and cards keep their natural height; the page must
+never shrink them to squeeze a long form into the window. Row heights are
+minima, include their padding, and grow in rem with text. Labels wrap, controls
+wrap below when necessary, buttons inherit the surrounding type and wrap
+their labels, and switches keep their shape. This holds at the minimum window
+size and with system text scaled up to 2×; no fixed row heights or clipped
+labels to make the form fit.
+
+Permission-guide artwork, numbered instructions and actions form one column
+at every width. Instructions and **Open System Settings** start at the card's
+leading row inset, with only the list-marker indentation; they never occupy a
+trailing control column or align to the trailing edge.
+
 Queued choices finish saving before the window closes, with at most a two-second
 wait. A failed save shows an alert and restores the saved choice; reloading
 choices on return never replaces an edit still being saved.

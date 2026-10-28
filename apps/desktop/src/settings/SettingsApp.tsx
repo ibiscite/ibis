@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Density, LoginItem, PickerPreferences } from "../bindings";
 import { densityNames, loginItemText, settingsText } from "../messages";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { Segmented } from "../ui/Segmented";
+import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { Switch } from "../ui/Switch";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import type { SettingsApi } from "./api";
@@ -24,35 +25,14 @@ function DoneMark() {
   return <svg className="settings-done" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" /><path d="m5.5 10.5 3 3L14.5 7" /></svg>;
 }
 
-/** One row: a label and optional description, then one control at the end. */
-function Row({ id, label, description, children }: { id: string; label: string; description?: string; children?: ReactNode }) {
-  return (
-    <div className="settings-row" data-described={description ? true : undefined}>
-      <div className="settings-row-text">
-        <span id={id} className="settings-label">{label}</span>
-        {description && <span id={`${id}-description`} className="settings-description">{description}</span>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Group({ id, title, children }: { id?: string; title?: string; children: ReactNode }) {
-  return (
-    <section className="settings-group" id={id} aria-labelledby={title ? `${id}-title` : undefined}>
-      {title && <h2 id={`${id}-title`} className="settings-group-title">{title}</h2>}
-      <div className="settings-card">{children}</div>
-    </section>
-  );
-}
-
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
  * rows (docs/design.md, "Settings"). Every change applies at once. */
 export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
   const platform = currentPlatform();
   const start = pageOf(initialPage);
   const [page, setPage] = useState<Page>(start.page);
-  const [focus, setFocus] = useState(start.focus);
+  const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
+  const pageRef = useRef<HTMLElement>(null);
   const [preferences, setPreferences] = useState<PickerPreferences | null>(null);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
@@ -83,7 +63,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     api.version().then(setVersion).catch(() => undefined);
     // Changes made in the picker or the menu bar while Settings was open.
     window.addEventListener("focus", readAll);
-    const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus); });
+    const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks(setUpdates);
     const close = api.onCloseRequested(async () => {
       // Give queued choices time to save; a stuck command must not trap the window.
@@ -103,10 +83,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     };
   }, [api]);
   useEffect(() => {
-    if (focus !== "paste" || !preferences) return;
-    document.getElementById("paste")?.scrollIntoView?.({ block: "start" });
+    const scroller = pageRef.current;
+    if (!focus || !scroller) return;
+    if (focus === "paste") {
+      // Wait for both reads before looking for the group. Move only the page,
+      // never the document containing the sidebar and native title bar.
+      if (!preferences || !permission) return;
+      const paste = document.getElementById("paste");
+      scroller.scrollTop = paste ? scroller.scrollTop + paste.getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
+    } else scroller.scrollTop = 0;
     setFocus(null);
-  }, [focus, preferences]);
+  }, [focus, preferences, permission]);
 
   const change = (next: Partial<PickerPreferences>) => {
     if (!preferences) return;
@@ -152,15 +139,18 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
 
   return (
     <div className="settings">
+      <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={settingsText.pages}>
-        <div className="settings-titlebar" data-tauri-drag-region />
-        {PAGES.map((each) => (
-          <button key={each} type="button" className="settings-nav" aria-current={each === page ? "page" : undefined}
-            onClick={() => setPage(each)}>{settingsText[each]}</button>
-        ))}
+        <ul className="settings-page-list">
+          {PAGES.map((each) => (
+            <li key={each}>
+              <button type="button" className="settings-nav" aria-current={each === page ? "page" : undefined}
+                onClick={() => { setPage(each); setFocus("top"); }}>{settingsText[each]}</button>
+            </li>
+          ))}
+        </ul>
       </nav>
-      <main className="settings-page" aria-labelledby="settings-page-title">
-        <div className="settings-titlebar" data-tauri-drag-region />
+      <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className="settings-page-title">{settingsText[page]}</h1>
         {failed && <p className="settings-problem" role="alert">{settingsText.failed}</p>}
         {page === "general" && (
