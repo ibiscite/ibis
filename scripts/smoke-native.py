@@ -270,6 +270,30 @@ def type_query(native, snapshot, text, select_all):
     raise AssertionError(f"Search field did not hold the typed query after {TYPE_ATTEMPTS} attempts")
 
 
+def verify_reopened_search(native, snapshot, text):
+    """Prove Search owns keys and the previous query is selected on every show.
+
+    AT-SPI may expose aria-activedescendant as focused after a query. Typing
+    once and reading back a different query proves the design's focus/selection
+    contract even then. Never click, select-all or retry to repair app focus.
+    """
+    def values():
+        current = snapshot()
+        if not current["visible"] or not current["foreground"]:
+            return []
+        return [node.get("value") for node in named(current, "Search references")
+                if node.get("role", "").lower().replace(" ", "") in EDITABLE_ROLES]
+
+    wait_for(values, "reopened picker visible, foreground and editable search")
+    native.text(text)
+
+    def replaced():
+        current = values()
+        return bool(current) and all(value == text for value in current)
+
+    wait_for(replaced, "reopened search receives typing and replaces the previous query")
+
+
 def wait_for_query(snapshot, query, expected, report, *, settled=False):
     last = {"nodes": []}
     def matched():
@@ -1214,11 +1238,6 @@ def main():
                 }
                 return current
 
-            def picker_ready():
-                current = snapshot()
-                return current["visible"] and current["foreground"] and search_focused(current)
-
-
             def check(name, action):
                 try:
                     action()
@@ -1277,14 +1296,14 @@ def main():
                 focus_state("before-first-shortcut")
                 native.key(shortcut)
                 focus_state("after-first-shortcut")
-                wait_for(picker_ready, "global shortcut visible, foreground and search focus")
+                verify_reopened_search(native, snapshot, "smoke000001")
                 escape_to_hide(native, snapshot, "Escape hides picker")
                 native.focus_editor()
                 wait_for(native.editor_focused, "previous editor focused")
                 focus_state("before-second-shortcut")
                 native.key(shortcut)
                 focus_state("after-second-shortcut")
-                wait_for(picker_ready, "global shortcut visible, foreground and search focus")
+                verify_reopened_search(native, snapshot, "smoke000000")
             check("global shortcut shows foreground picker with focused search", show)
             if system == "Linux":
                 check("shown picker stays out of the taskbar and window switcher", skips_taskbar)
@@ -1301,7 +1320,7 @@ def main():
                         if second.poll() is None:
                             second.terminate()
                             second.wait(timeout=10)
-                wait_for(picker_ready, "second launch activates existing picker and focuses search")
+                verify_reopened_search(native, snapshot, "smoke000002")
                 assert app.poll() is None, "Primary instance exited during second launch"
             check("second launch exits and activates existing picker", second_instance)
             check("native typing and accessible result count", lambda: query("smoke000001", "1 result"))
@@ -1766,6 +1785,116 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("picker_open", report)  # The 20-open measurement runs later.
         app.terminate.assert_called_once()
         native.close.assert_called_once()
+
+    def shortcut_focus_probe(self, *, loses_focus=False, loses_selection=False, failure_at=2):
+        native = Mock(spec=["snapshot", "focus_editor", "editor_focused", "editor_active",
+                            "editor_has_input_focus", "key", "text", "close", "app", "skips_taskbar"])
+        app, second = Mock(pid=100), Mock(pid=101)
+        app.poll.return_value = None
+        second.wait.return_value = 0
+        second.poll.return_value = 0
+        clock, events = self.CopyClock(), []
+        state = {"visible": True, "foreground": True, "query": "", "saved": "",
+                 "selected": False, "search_owns_keys": True, "opens": 0}
+
+        def show():
+            state.update(visible=True, foreground=True)
+            state["query"] = state["query"] or state["saved"]
+            state["opens"] += 1
+            state["selected"] = not (loses_selection and state["opens"] >= failure_at)
+            state["search_owns_keys"] = not (loses_focus and state["opens"] >= failure_at)
+
+        def launch(command, **_options):
+            if events:
+                events.append(("second-launch",))
+                show()
+                return second
+            events.append(("launch",))
+            return app
+
+        def snapshot():
+            query = state["query"]
+            nodes = [{"role": "combo box", "name": "Search references", "value": query,
+                      "focused": not query},
+                     {"role": "status", "name": "3 references"},
+                     {"role": "list box", "name": "Search results"},
+                     {"role": "list", "name": "Results"}]
+            if query:
+                nodes += [{"role": "status", "name": "1 result"},
+                          {"role": "list item", "name": "Ibis smoke reference " + query.removeprefix("smoke"),
+                           "focused": True}]
+            return {"visible": state["visible"], "foreground": state["foreground"], "nodes": nodes}
+
+        def focus_editor():
+            events.append(("focus-editor",))
+            state["foreground"] = False
+
+        def key(chord):
+            events.append(("key", chord))
+            if chord == "ctrl+shift+y":
+                show()
+            elif chord == "Escape":
+                if state["query"]:
+                    state["saved"], state["query"] = state["query"], ""
+                else:
+                    state["visible"] = False
+            elif chord == "ctrl+a":
+                state["selected"] = True
+
+        def text(value):
+            events.append(("text", value))
+            if state["visible"] and state["foreground"] and state["search_owns_keys"]:
+                state["query"] = value if state["selected"] else state["query"] + value
+                state["selected"] = False
+
+        native.snapshot.side_effect = snapshot
+        native.focus_editor.side_effect = focus_editor
+        native.editor_focused.return_value = True
+        native.editor_active.side_effect = lambda: not state["foreground"]
+        native.editor_has_input_focus.side_effect = lambda: not state["foreground"]
+        native.key.side_effect = key
+        native.text.side_effect = text
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            executable, output = folder / "synthetic-app", folder / "output"
+            executable.touch()
+            with patch("sys.argv", ["smoke", "--app", str(executable), "--output", str(output)]), \
+                 patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux", return_value=native), \
+                 patch("subprocess.Popen", side_effect=launch), patch("builtins.print"), \
+                 patch("time.monotonic", clock.monotonic), \
+                 patch("time.sleep", lambda interval: setattr(clock, "elapsed", clock.elapsed + interval)), \
+                 patch(__name__ + ".menu_escape_focus", side_effect=AssertionError("synthetic stop after second launch")), \
+                 patch(__name__ + ".linux_failure_census", return_value={}):
+                self.assertEqual(main(), 1)
+            report = json.loads((output / "smoke.json").read_text())
+        return report, events
+
+    def test_shortcuts_and_second_launch_prove_search_ownership_with_virtual_result_focus(self):
+        report, events = self.shortcut_focus_probe()
+        self.assertEqual(report["reason"], "synthetic stop after second launch")
+        checks = [check["name"] for check in report["checks"]]
+        self.assertIn("global shortcut shows foreground picker with focused search", checks)
+        self.assertIn("second launch exits and activates existing picker", checks)
+        self.assertFalse(report["last_native_state"]["search_focused"])
+        self.assertEqual(report["last_native_state"]["focused_roles"], ["list item"])
+        second_launch = events.index(("second-launch",))
+        self.assertNotIn(("key", "ctrl+a"), events[:second_launch])
+        self.assertEqual([event for event in events[:second_launch] if event[0] == "text"],
+                         [("text", "smoke000000"), ("text", "smoke000001"), ("text", "smoke000000")])
+        self.assertEqual(events[second_launch + 1], ("text", "smoke000002"))
+
+    def test_reopen_with_real_result_focus_or_unselected_query_still_fails(self):
+        for failure in ("loses_focus", "loses_selection"):
+            for failure_at in (2, 3, 4):  # Visible reactivation, hidden reopen, second launch.
+                with self.subTest(failure=failure, failure_at=failure_at):
+                    report, events = self.shortcut_focus_probe(**{failure: True}, failure_at=failure_at)
+                    self.assertIn("reopened search receives typing and replaces the previous query", report["reason"])
+                    self.assertNotIn("second launch exits and activates existing picker",
+                                     [check["name"] for check in report["checks"]])
+                    self.assertEqual([event for event in events if event[0] == "text"],
+                                     [("text", text) for text in ("smoke000000", "smoke000001", "smoke000000",
+                                                                 "smoke000002")[:failure_at]])
+                    self.assertNotIn(("key", "ctrl+a"), events)
 
     def test_linux_census_errors_keep_the_original_failure_and_teardown(self):
         for error in (RuntimeError("PRIVATE_COLLECTOR_ERROR"), subprocess.TimeoutExpired([], 4)):
