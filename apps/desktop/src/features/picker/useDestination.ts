@@ -29,6 +29,8 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const [saving, setSaving] = useState(false);
   const reads = useRef(0);
   const openings = useRef(0);
+  // Settings refreshes can supersede the return's read within this opening.
+  const preserveOpeningOutput = useRef(false);
   const capturedId = useRef<string | null | undefined>(undefined);
   const choices = useRef(0);
   const preparedFormat = useRef<Choice>(fallback);
@@ -38,6 +40,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
     const request = ++reads.current;
     if (reset) {
       openings.current += 1;
+      preserveOpeningOutput.current = preserveOutput;
       setOnce(preserveOutput ? preparedFormat.current : null);
       setOnceOnly(preserveOutput);
     }
@@ -45,7 +48,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
     // A reopening reads after outstanding saves, so it sees the durable choice.
     void saves.current.then(pickerDestination).then((next) => {
       if (request !== reads.current) return;
-      if (!reset && capturedId.current !== undefined && capturedId.current !== next.app_id) {
+      if (!reset && !preserveOpeningOutput.current && capturedId.current !== undefined && capturedId.current !== next.app_id) {
         openings.current += 1;
         setOnce(null);
         setOnceOnly(false);
@@ -76,7 +79,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
     const pending = saves.current.then(action).then(() => {
       if (opening !== openings.current) return;
       apply();
-      if (choice === choices.current) setOnce(null);
+      if (choice === choices.current) { preserveOpeningOutput.current = false; setOnce(null); }
       report("appChoice", false);
       report("appChoices", false);
     }).catch(() => { if (opening === openings.current) report("appChoice"); });
@@ -99,11 +102,13 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const isCurrentCopy = (token: CopyToken) => token.opening === openings.current && token.choice === choices.current;
   const consumeOnce = (token: CopyToken) => {
     if (!isCurrentCopy(token)) return null;
+    preserveOpeningOutput.current = false;
     setOnce(null); setOnceOnly(false);
     return base.current;
   };
   const restoreAutomatic = () => {
     choices.current += 1;
+    preserveOpeningOutput.current = false;
     setOnceOnly(false);
     if (remembered) remember(null);
     else setOnce(null);

@@ -98,3 +98,33 @@ test("returning from permission keeps the prepared output once while reading the
   act(() => result.current.consumeOnce(result.current.copyToken()));
   expect(result.current.format).toBe("cite");
 });
+
+test("superseding destination reads preserve the permission return's output and copy token until consumed", async () => {
+  const returning = pending<PickerDestination>();
+  let destination = browser;
+  let reads = 0;
+  const { result } = renderHook(() => useDestination({
+    pickerDestination: () => ++reads === 2 ? returning.promise : Promise.resolve(destination),
+    rememberAppOutput: vi.fn(),
+  }, options()));
+  await act(async () => result.current.read());
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("typst"));
+  act(() => result.current.read(true, true));
+  const token = result.current.copyToken();
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", remembered: { key: "cite" } };
+  await act(async () => result.current.read(false));
+  await act(async () => returning.resolve(browser));
+  expect(result.current.app).toBe("Example Writer");
+  expect(result.current.format).toBe("typst");
+  expect(result.current.onceOnly).toBe(true);
+  expect(result.current.isCurrentCopy(token)).toBe(true);
+  act(() => result.current.consumeOnce(token));
+  expect(result.current.format).toBe("cite");
+  expect(result.current.onceOnly).toBe(false);
+  // Consuming the preserved output restores ordinary destination changes.
+  destination = browser;
+  await act(async () => result.current.read(false));
+  expect(result.current.format).toBe("pandoc");
+  expect(result.current.isCurrentCopy(token)).toBe(false);
+});

@@ -226,7 +226,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }
       hiddenAt.current = null;
       destination.read(true, permissionDetour.current);
-      permissionDetour.current = false;
       readLoginItem();
       readShortcut();
       input.current?.focus();
@@ -423,12 +422,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       // A return during delivery also keeps it and cancels this completion.
       permissionDetour.current = true;
       void perform("hide", async () => {
-        await hidePicker();
         const current = () => request === copyRequest.current && shownAt === pickerShows.current && context === copyContext.current;
-        if (!current()) return;
-        // The notice is extra; a failure to show it never undoes the copy.
-        const delivered = await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
-        if (current() && !(delivered && delivered.outcome === "copied" && delivered.reason === "no-permission")) complete();
+        let permissionRefused = false;
+        try {
+          await hidePicker();
+          if (!current()) return;
+          // The notice is extra; a failure to show it never undoes the copy.
+          const delivered = await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
+          permissionRefused = !!delivered && delivered.outcome === "copied" && delivered.reason === "no-permission";
+        } finally {
+          if (current() && !permissionRefused) complete();
+        }
       });
     } else complete();
   };

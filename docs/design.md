@@ -703,6 +703,10 @@ that owns its area in ROADMAP.md.
    grant, the guide closes and the picker captures the destination again;
    it never replays the earlier Enter. Its prepared output applies once, even
    if the destination changed, without changing that app's remembered format.
+   Reopening before the grant keeps the detour active; destination refreshes
+   in the same opening keep its prepared output. A successful copy clears
+   the shelf even if hiding fails; only a confirmed permission refusal keeps
+   the copied selection for another attempt.
 3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
    while results load runs once, never twice. After the window closes a short
    receipt says what happened, and the last outcome stays readable in More.
