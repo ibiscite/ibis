@@ -115,6 +115,10 @@ pub(crate) fn prepare(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
+        // APA's parenthetical names use a symbol conjunction that cannot be
+        // reused as a narrative subject. Refuse multiple names until the
+        // narrative path has its own verified name rendering.
+        let apa_narrative = style == "apa" && form == CitationForm::Narrative;
         // When an item has authors, the in-text layouts of the bundled
         // author-date styles print only these name lists; every other one is
         // a substitute after `author` or appears only in entries.
@@ -164,6 +168,7 @@ pub(crate) fn prepare(
                 names
                     .iter()
                     .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
+                    || apa_narrative && names.len() > 1
             })
         {
             outcomes.push(ItemOutcome::Refused {

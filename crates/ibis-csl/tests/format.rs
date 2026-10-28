@@ -911,3 +911,35 @@ fn narrative_citations_refuse_author_suppression() {
         assert!(result.copy_content(1).is_none());
     }
 }
+
+#[test]
+fn apa_narrative_refuses_name_lists_that_need_a_different_conjunction() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let author = json!([{"family":"Taylor"}]);
+    let multiple = json!([{"family":"Taylor"},{"family":"Dale"}]);
+    for creators in [
+        json!({"author":multiple}),
+        json!({"author":author,"composer":multiple}),
+        json!({"author":[{"family":"Taylor"},{"literal":" "}]}),
+    ] {
+        let mut csl = json!({"type":"book","title":"Synthetic signals","issued":{"date-parts":[[2026]]}});
+        csl.as_object_mut()
+            .unwrap()
+            .extend(creators.as_object().unwrap().clone());
+        let snapshot = library(&[csl]);
+        let mut request = selection(&snapshot, "apa", false);
+        request.form = CitationForm::Narrative;
+        let result = formatter.format(&snapshot, &request).unwrap();
+        assert_eq!(
+            result.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::UnsupportedForm
+            }]
+        );
+        assert!(result.copy_content(1).is_none());
+        request.form = CitationForm::Normal;
+        assert!(formatter.format(&snapshot, &request).unwrap().copy_content(1).is_some());
+    }
+}
