@@ -188,7 +188,6 @@ mod tests {
     #[test]
     fn the_library_line_explains_failures_and_stays_short() {
         let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
-            file_engine: false,
             revision: "synthetic".into(),
             state: LibraryState::Loaded,
             zotero: false,
@@ -242,7 +241,6 @@ mod tests {
             "refs.bib: 12 references (not saved for next time)"
         );
         let kept = LibraryStatus {
-            file_engine: false,
             state: LibraryState::Error,
             name: Some("refs.bib".into()),
             snapshot_name: Some("refs.bib".into()),

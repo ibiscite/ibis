@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // One command for contributors and CI-equivalent local checks:
 //   node scripts/check.mjs
-// For final-commit evidence: node scripts/check.mjs --expect-commit FULL_SHA
 // Runs formatting, lints, tests and the dependency policy. Never edits files.
 // Exit codes: 0 all passed, 1 a check failed, 2 incomplete (a tool is missing).
 import { spawnSync } from "node:child_process";
@@ -11,11 +10,8 @@ const args = process.argv.slice(2);
 const scriptsOnly = args.length === 1 && ["--script-tests", "--platform-script-tests"].includes(args[0]);
 const brandOnly = args.length === 1 && args[0] === "--brand-assets";
 if (args.length > 0 && !scriptsOnly && !brandOnly) {
-  if (args.length !== 2 || args[0] !== "--expect-commit" || args[1].length !== 40 || !/^[a-f0-9]{40}$/i.test(args[1])) {
-    console.error("Usage: node scripts/check.mjs [--expect-commit FULL_SHA | --script-tests | --platform-script-tests | --brand-assets]");
-    process.exit(1);
-  }
-  verifyCommit(args[1].toLowerCase());
+  console.error("Usage: node scripts/check.mjs [--script-tests | --platform-script-tests | --brand-assets]");
+  process.exit(1);
 }
 
 const desktop = { cwd: "apps/desktop" };
@@ -80,38 +76,6 @@ if (skipped.length > 0) {
   process.exit(2);
 }
 console.log("\n✓ All checks passed.");
-
-function verifyCommit(expected) {
-  const refuse = (message) => {
-    console.error(`Verification refused: ${message}`);
-    process.exit(1);
-  };
-  if (["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"].some((name) => process.env[name])) {
-    refuse("Git source overrides are not supported for guarded checks.");
-  }
-  const git = (args) => {
-    // Capture diagnostics: Git errors and porcelain filenames can be private.
-    // Never start a configured monitor: killing Git does not stop its helpers.
-    const result = spawnSync("git", ["-c", "core.fsmonitor=false", ...args], {
-      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: false,
-      timeout: 5_000, killSignal: "SIGKILL",
-    });
-    if (result.status !== 0) refuse("Git could not verify the source checkout.");
-    return result.stdout.trim();
-  };
-  if (git(["rev-parse", "--is-inside-work-tree"]) !== "true" || git(["rev-parse", "--show-prefix"]) !== "") {
-    refuse("run from the repository root.");
-  }
-  const head = git(["rev-parse", "--verify", "HEAD^{commit}"]);
-  if (head !== expected) refuse("expected commit does not match repository HEAD.");
-  if (git(["ls-files", "-v", "-z"]).split("\0").some((entry) => /^[a-zS] /.test(entry))) {
-    refuse("index flags can hide tracked source changes.");
-  }
-  if (git(["status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=none"]) !== "") {
-    refuse("source checkout has uncommitted changes.");
-  }
-  console.log(`Verified source commit ${head} (clean checkout).`);
-}
 
 function hasCommand(cmd, args) {
   const probe = spawnSync(cmd, args, { stdio: "ignore", shell });

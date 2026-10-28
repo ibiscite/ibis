@@ -43,4 +43,6 @@ The CLI integration test starts with each source file, then replays all ten
 cases through the engine, human `cite --style` arguments and framed
 `serve --stdio`. Every representation must match these independent expected
 strings, and the complete canonical result must agree across front ends.
-Database fixtures and app replay remain part of #1258 with #1200.
+The app replays the five cases the picker can ask for (four styles in their
+normal form, IEEE as a reference list) from both files, through search rows,
+preview and copy (`engine_file/parity_tests.rs`).

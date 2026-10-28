@@ -62,22 +62,21 @@ pub fn groups(transport: &mut impl Transport) -> Result<Vec<Group>, ZoteroError>
 
 fn group(entry: &Value) -> Option<Group> {
     let id = entry.get("id")?.as_u64()?;
-    let name: String = entry
-        .pointer("/data/name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
+    let name = clean_name(entry.pointer("/data/name").and_then(Value::as_str).unwrap_or_default());
+    let name = if name.is_empty() { format!("Group {id}") } else { name };
+    Some(Group { id, name })
+}
+
+/// A group name as Ibis shows it: without invisible or control characters,
+/// trimmed and at most [`MAX_NAME`] characters long.
+pub fn clean_name(name: &str) -> String {
+    let name: String = name
         .chars()
         .filter(|&c| !invisible(c))
         .map(|c| if c.is_control() { ' ' } else { c })
         .take(MAX_NAME)
         .collect();
-    let name = name.trim();
-    let name = if name.is_empty() {
-        format!("Group {id}")
-    } else {
-        name.to_string()
-    };
-    Some(Group { id, name })
+    name.trim().to_owned()
 }
 
 /// Direction overrides and isolates and invisible spaces, which could make

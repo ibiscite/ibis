@@ -11,7 +11,7 @@ code signing certificate. The operating system may warn on first install.
 Ibis's updater signatures are separate: the app accepts an update only when
 its signature matches the Ibis update key built into the app and authenticates
 the advertised version within the installed channel
-([ADR 0019](adr/0019-update-checks.md)). An updater signature does not establish
+([decision 0019](decisions.md#0019-updates)). An updater signature does not establish
 a Windows publisher or remove the first-install warning.
 
 ## Roles and review
@@ -22,14 +22,12 @@ Contributors and delegated agents work under the rules below; a delegated merge
 does not authorize signing or publication.
 
 - **Contributors** propose changes through public pull requests and disclose
-  AI assistance in commits and pull requests under
-  [ADR 0011](adr/0011-ai-contributions.md), as amended by
-  [ADR 0015](adr/0015-autonomous-agents.md).
+  AI assistance in commits and pull requests ([AGENTS.md](../AGENTS.md)).
 - **Reviewers** check the exact proposed commit. All required checks must pass,
-  changes in a risky area ([ADR 0027](adr/0027-fast-until-1-0.md)) need an
+  changes in a risky area ([decision 0027](decisions.md#0027-process-until-10-with-0011-0015-and-0017)) need an
   independent review with every P1 and P2 finding fixed, and other changes need
   the author's recorded adversarial check
-  ([contribution guide](../CONTRIBUTING.md#commits-and-pull-requests)). Authorized agents may merge
+  ([contribution guide](../CONTRIBUTING.md#pull-requests)). Authorized agents may merge
   changes under those rules; AI assistance does not bypass them.
 - **The maintainer** has final responsibility for the project and explicitly
   authorizes releases, tags and publication. Agents cannot grant themselves release

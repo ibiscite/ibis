@@ -13,7 +13,7 @@ type Preview = NonNullable<Options["previewFileCitation"]>;
 
 function library(revision = "1"): LibraryStatus {
   return {
-    file_engine: true, revision, state: "loaded", has_snapshot: true,
+    revision, state: "loaded", has_snapshot: true,
     name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1,
     zotero: false, zotero_libraries: [], snapshot_zotero: false,
     source_counts: { "file:synthetic": 1 }, warnings: 0, error: null,
@@ -128,13 +128,4 @@ test.each([
   expect(refreshSnapshot).not.toHaveBeenCalled();
   expect(result.current.shown).toMatchObject({ text: "[@new-choice]" });
   expect(result.current.previewProblem).toBeUndefined();
-});
-
-test("the picker always prepares through the engine, including without the obsolete file flag", async () => {
-  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("[@synthetic]"));
-  const { result } = renderHook(useCitationOutput, {
-    initialProps: options({ library: { ...library(), file_engine: false }, previewFileCitation }),
-  });
-  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@synthetic]", fileTicket: "synthetic-ticket" }));
-  expect(previewFileCitation).toHaveBeenCalledTimes(1);
 });

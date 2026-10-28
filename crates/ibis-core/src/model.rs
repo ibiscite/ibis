@@ -111,7 +111,7 @@ impl Name {
     }
 }
 
-fn is_cjk_char(c: char) -> bool {
+pub(crate) fn is_cjk_char(c: char) -> bool {
     matches!(c,
         '\u{1100}'..='\u{11ff}'   // Hangul Jamo (including canonically decomposed syllables)
         | '\u{3040}'..='\u{30ff}' // Hiragana, Katakana
