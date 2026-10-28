@@ -304,9 +304,10 @@ needs no fade, as a cut row already shows it.
 content and never break a word; a table that does not fit scrolls or drops a
 column, it does not hyphenate.
 
-**Labels and long strings.** Labels on actions, menu items and settings never
-wrap, also at Larger text: the layout widens, or the label truncates with a
-tooltip. Data truncates with a tooltip; file names shorten in the middle and
+**Labels and long strings.** Labels on actions and menu items never wrap,
+also at Larger text: the layout widens, or the label truncates with a tooltip.
+Settings rows and segmented choices follow the wrapping rule in **Settings**.
+Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical
 properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
