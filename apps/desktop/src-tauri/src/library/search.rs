@@ -143,12 +143,20 @@ pub(crate) struct SearchQuery {
 
 /// A search keeps its snapshot identity even when no references match.
 #[derive(Serialize, specta::Type)]
+pub(crate) struct PastedList {
+    pub(super) missing: Vec<String>,
+}
+
+#[derive(Serialize, specta::Type)]
 pub(crate) struct SearchReply {
     pub(super) revision: String,
     pub(super) results: Vec<SearchResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(super) interpretation: Option<LocatorQuery>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) list: Option<PastedList>,
 }
 
 #[cfg(test)]
