@@ -80,8 +80,9 @@ pub struct Target {
     pub system: System,
     /// `None` when capture failed or no app was in front.
     pub app: Option<AppId>,
-    /// The focused field is a password field (macOS secure text or Secure
-    /// Event Input; Windows UI Automation `IsPassword`).
+    /// The focused field is known to be a password field, for example from
+    /// Windows UI Automation `IsPassword`. A system-wide secure-input flag
+    /// cannot establish this and uses a separate copy reason.
     #[serde(default)]
     pub secure_field: bool,
     /// The app runs with more rights than Ibis (Windows integrity level), so
@@ -96,7 +97,7 @@ pub struct Target {
 pub struct PastePermission {
     /// The "paste into the app" switch (on by default).
     pub enabled: bool,
-    /// The system lets Ibis send the paste keystroke (macOS Accessibility).
+    /// The system lets Ibis send the paste keystroke (macOS PostEvent).
     pub granted: bool,
 }
 
@@ -108,6 +109,10 @@ pub enum CopyReason {
     UnsupportedSystem,
     NoTarget,
     SecureField,
+    /// System-wide secure typing is enabled, possibly by another app.
+    SecureInput,
+    /// The final paste check was unavailable or could not finish in time.
+    PasteUnavailable,
     ElevatedApp,
     Terminal,
     RemoteDesktop,

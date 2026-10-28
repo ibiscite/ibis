@@ -35,11 +35,19 @@ fn macos_html(fragment: &str) -> String {
 
 /// The general pasteboard, cleared once and then given every flavor.
 #[cfg(target_os = "macos")]
-pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(), String> {
-    use objc2_app_kit::NSPasteboard;
+pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(), String> {
+    use tauri::Manager;
+    app.state::<crate::paste::LastTarget>().write_copy(content.text, || {
+        publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content)
+    })
+}
+
+/// Return the count immediately after our last format write. A replacement
+/// during publication invalidates the paste proof, even if writing succeeded.
+#[cfg(target_os = "macos")]
+fn publish_macos(board: &objc2_app_kit::NSPasteboard, content: ClipboardContent<'_>) -> Result<Option<isize>, String> {
     use objc2_foundation::{NSData, NSString};
-    let board = NSPasteboard::generalPasteboard();
-    board.clearContents();
+    let owned_count = board.clearContents();
     for (flavor, value) in flavors(&content) {
         let written = match flavor {
             Flavor::Text => board.setString_forType(
@@ -59,7 +67,8 @@ pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> R
             return Err(FAILED.into());
         }
     }
-    Ok(())
+    let written_count = board.changeCount();
+    Ok((owned_count == written_count).then_some(written_count))
 }
 
 /// One clipboard write, retried briefly while another app holds it.
@@ -233,6 +242,27 @@ mod tests {
         );
         // A removed representation cannot pass even with a matching count.
         assert_eq!(written.completed_sequence(Some(7), &[49_152, 13, 1, 7, 16]), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "needs a macOS desktop pasteboard server; uses only a private disposable pasteboard"]
+    fn paste_snapshot_covers_all_formats_and_detects_replacement_without_reading_contents() {
+        // A private disposable board; never touches the person's clipboard.
+        let board = objc2_app_kit::NSPasteboard::pasteboardWithUniqueName();
+        let result = publish_macos(
+            &board,
+            ClipboardContent {
+                text: "[@invented]",
+                html: Some("<i>Invented</i>"),
+                rtf: Some("{\\rtf1 Invented}"),
+            },
+        );
+        let snapshot = board.changeCount();
+        board.clearContents();
+        let replaced = board.changeCount();
+        assert_eq!(result, Ok(Some(snapshot)));
+        assert_ne!(snapshot, replaced);
     }
 
     #[cfg(target_os = "macos")]

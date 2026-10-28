@@ -76,6 +76,18 @@ test("the notice says where the citation was pasted, or why it was only copied",
   for (const reason of [null, "no-target", "unknown-future-code"]) expect(noticeTitle(copied("[@a]", reason))).toBe("Copied");
 });
 
+test.each([
+  ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
+  ["paste-unavailable", "Copied. Press ⌘V to paste."],
+])("%s offers manual paste without claiming the target is a password field", (reason, message) => {
+  const copy = copied("[@synthetic]", reason);
+  expect(noticeTitle(copy)).toBe(message);
+  const root = document.createElement("div");
+  renderNotice(root, "macos")(copy);
+  expect(root.querySelector("strong")?.textContent).toBe(message);
+  expect(root.querySelector(".copied-notice")?.getAttribute("data-outcome")).toBe("copied");
+});
+
 test("the app's timer fades the notice out, and showing it again brings it back", () => {
   const root = document.createElement("div");
   const show = renderNotice(root, "linux");

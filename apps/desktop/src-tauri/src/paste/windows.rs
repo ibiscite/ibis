@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 use winsafe::{self as w, co};
 
 use super::capture::Front;
-use super::{Desk, PasswordQueries, PasteEvent, PasteKeys, QueryWorker, TicketDesk};
+use super::{PasswordQueries, PasteEvent, PasteKeys, QueryWorker, TicketDesk};
 
 static NAME_WORKER: LazyLock<QueryWorker> = LazyLock::new(QueryWorker::default);
 static PASSWORD_QUERIES: LazyLock<PasswordQueries> = LazyLock::new(PasswordQueries::default);
@@ -208,23 +208,6 @@ impl TicketDesk for Win {
     fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool {
         send_paste(|| ready() && key == co::VK::CHAR_V.raw() && !keys_held() && foreground_pid() == Some(pid))
     }
-}
-
-/// One key going down or up.
-fn press(key: co::VK, up: bool) -> w::HwKbMouse {
-    w::HwKbMouse::Kb(w::KEYBDINPUT {
-        wVk: key,
-        wScan: u16::try_from(w::MapVirtualKey(u32::from(key.raw()), co::MAPVK::VK_TO_VSC)).unwrap_or(0),
-        dwFlags: if up {
-            co::KEYEVENTF::KEYUP
-        } else {
-            co::KEYEVENTF::NoValue
-        },
-        ..Default::default()
-    })
-}
-
-impl Desk for Win {
     fn release_keys(&self) -> bool {
         let Ok(mut keys) = KEYS.lock() else {
             warn_key_release();
@@ -254,11 +237,6 @@ impl Desk for Win {
         front(&w::HWND::GetForegroundWindow()?, false)
     }
 
-    /// Windows must go through the shared ticket guard's sequence proof.
-    fn clipboard_matches(&self, _: &str) -> bool {
-        false
-    }
-
     fn secure_field(&self, pid: i32) -> Option<bool> {
         password_focused(pid)
     }
@@ -268,13 +246,23 @@ impl Desk for Win {
         Some(co::VK::CHAR_V.raw())
     }
 
-    fn post(&self, pid: i32, key: u16) -> bool {
-        self.post_if(pid, key, || true)
-    }
-
     fn wait(&self, time: Duration) {
         std::thread::sleep(time);
     }
+}
+
+/// One key going down or up.
+fn press(key: co::VK, up: bool) -> w::HwKbMouse {
+    w::HwKbMouse::Kb(w::KEYBDINPUT {
+        wVk: key,
+        wScan: u16::try_from(w::MapVirtualKey(u32::from(key.raw()), co::MAPVK::VK_TO_VSC)).unwrap_or(0),
+        dwFlags: if up {
+            co::KEYEVENTF::KEYUP
+        } else {
+            co::KEYEVENTF::NoValue
+        },
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]
