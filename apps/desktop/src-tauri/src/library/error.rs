@@ -14,7 +14,6 @@ pub(crate) enum LoadError {
     Source(SourceError),
     Zotero(ZoteroError),
     EngineZotero(ibis_core::contract::ErrorCode),
-    UnsupportedZoteroLibraries,
     /// The file dialog returned something that is not a local file.
     NotLocal,
     /// The background load ended without a result.
@@ -37,7 +36,6 @@ impl LoadError {
                     | SourceError::Changing
             ) | LoadError::Zotero(_)
                 | LoadError::EngineZotero(_)
-                | LoadError::UnsupportedZoteroLibraries
         )
     }
 }
@@ -63,9 +61,11 @@ impl fmt::Display for LoadError {
                 ibis_core::contract::ErrorCode::Cancelled => "reading Zotero was cancelled",
                 ibis_core::contract::ErrorCode::ResourceLimit => "reading Zotero exceeded its work limit",
                 ibis_core::contract::ErrorCode::NewerFormat => "this Zotero database is newer than Ibis can read",
+                ibis_core::contract::ErrorCode::NotFound => {
+                    "a chosen Zotero group library was not found; check that you are still a member"
+                }
                 _ => "Zotero could not be read; allow other applications in Zotero, or close it and try again",
             }),
-            LoadError::UnsupportedZoteroLibraries => f.write_str("Zotero group libraries are not available yet"),
             LoadError::NotLocal => f.write_str("the chosen file is not on this computer"),
             LoadError::Stopped => f.write_str("loading the library stopped unexpectedly"),
         }
