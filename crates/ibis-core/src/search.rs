@@ -14,7 +14,7 @@
 //! When nothing matches every term, the records matching most words are given
 //! instead, marked as partial.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use memchr::memmem::Finder;
 use serde::Serialize;
@@ -909,20 +909,20 @@ fn rank<'r, T: SearchDocument>(
     // every earlier pass runs in full when nothing has been found. Long pasted
     // queries are left out, as for typos.
     let (hinted, words): (Vec<usize>, Vec<usize>) = all.iter().partition(|&&t| query.terms[t].fields != ANY_FIELD);
-    // Each word with how many times it was typed: a word typed twice counts
-    // twice, the same whether or not it is still being typed.
-    let mut times: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
-    for t in words {
-        let term = &query.terms[t];
-        if !term.starts_only && term.text.chars().any(char::is_alphabetic) {
-            let word = times.entry(term.text.as_str()).or_insert((t, 0));
-            word.1 = word.1.saturating_add(term.count as usize);
-        }
-    }
-    let words: Vec<(usize, usize)> = times.into_values().collect();
+    // Each counted word, weighted by how many times it was typed: a word typed
+    // twice counts twice, the same whether or not it is still being typed.
+    let words: Vec<usize> = words
+        .into_iter()
+        .filter(|&t| !query.terms[t].starts_only && query.terms[t].text.chars().any(char::is_alphabetic))
+        .collect();
+    let distinct = words
+        .iter()
+        .map(|&t| query.terms[t].text.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
     // A word longer than any a person types also marks pasted text.
     let typed = raw.len() <= 512 && query.terms.iter().all(|term| term.chars.len() <= MAX_TYPO_TERM);
-    if candidates.is_empty() && short_query && typed && words.len() >= 2 && identifier::parse_query(raw).is_none() {
+    if candidates.is_empty() && short_query && typed && distinct >= 2 && identifier::parse_query(raw).is_none() {
         // Each record's words matched, score and fields; `None` when the hints leave it out.
         let mut partial: Vec<Option<(usize, u32, u8)>> = vec![hinted.is_empty().then_some((0, 0, 0)); docs.len()];
         if !hinted.is_empty() {
@@ -931,15 +931,30 @@ fn rank<'r, T: SearchDocument>(
                 partial[n] = Some((0, score, matched));
             }
         }
-        for &(t, typed) in &words {
+        // Each word's match includes the year's score; count it once per record.
+        let year_score = if query.years.is_some() {
+            MatchField::Year.weight() * WHOLE_WORD
+        } else {
+            0
+        };
+        for &t in &words {
+            let typed = query.terms[t].count as usize;
             for (n, score, matched) in matching(&query, docs, texts, &[t], false, scope, &found, &mut packed, stop)? {
                 if let Some(record) = &mut partial[n] {
-                    *record = (record.0 + typed, weighted_score(record.1, score, 1), record.2 | matched);
+                    let score = score.wrapping_sub(year_score);
+                    *record = (
+                        record.0.saturating_add(typed),
+                        weighted_score(record.1, score, 1),
+                        record.2 | matched,
+                    );
                 }
             }
         }
         // At least half the words typed, repeats included.
-        let needed = words.iter().map(|&(_, typed)| typed).sum::<usize>().div_ceil(2);
+        let needed = words
+            .iter()
+            .fold(0_usize, |sum, &t| sum.saturating_add(query.terms[t].count as usize))
+            .div_ceil(2);
         for (n, record) in partial.iter().enumerate() {
             if let &Some((terms, score, matched)) = record
                 && terms >= needed

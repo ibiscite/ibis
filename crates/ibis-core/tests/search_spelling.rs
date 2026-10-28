@@ -190,6 +190,25 @@ fn when_nothing_matches_every_term_the_closest_matches_are_marked() {
     );
     assert!(keys(&sleep, "sleep quantum quantum ").is_empty());
     assert!(keys(&sleep, "sleep quantum quantum").is_empty());
+    // Repeats score the same either way too: equal matches, newest first.
+    let two = crate::index(&[
+        ("sleep", json!({"title": "Sleep", "issued": {"date-parts": [[2020]]}})),
+        (
+            "quantum",
+            json!({"title": "Quantum", "issued": {"date-parts": [[2026]]}}),
+        ),
+    ]);
+    for query in [
+        "sleep sleep quantum quantum",
+        "sleep sleep quantum quantum ",
+        "sleep sleep quantum quantum y:2020-2026",
+        "y:2020-2026 sleep sleep quantum quantum",
+    ] {
+        let both = [("quantum".to_string(), true), ("sleep".to_string(), true)];
+        assert_eq!(keys(&two, query), both, "{query}");
+        let first = two.search(query, 1, None, &|| false).unwrap();
+        assert_eq!(first[0].item.object.id().key, "quantum", "{query}");
+    }
     assert_eq!(
         keys(&index, "sleep quantum quantum"),
         keys(&index, "sleep quantum quantum ")
