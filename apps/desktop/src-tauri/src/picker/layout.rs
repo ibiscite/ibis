@@ -44,6 +44,7 @@ pub(super) fn translate(shortcut: Shortcut, typed: impl Fn(u16, Modifiers) -> Op
 
 /// The macOS virtual key that types `code`'s letter with Command on the active
 /// layout, for posting ⌘V (#27): V is the period key on Dvorak.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn command_key(code: Code, typed: impl Fn(u16, Modifiers) -> Option<char>) -> Option<u16> {
     let moved = translate(Shortcut::new(Some(Modifiers::SUPER), code), typed)?;
     position(moved.key)
@@ -51,6 +52,29 @@ pub(crate) fn command_key(code: Code, typed: impl Fn(u16, Modifiers) -> Option<c
 
 fn position(code: Code) -> Option<u16> {
     POSITIONS.iter().find(|(c, ..)| *c == code).map(|&(_, key, _)| key)
+}
+
+/// What the registered physical key types, including Shift for punctuation.
+pub(crate) fn character(shortcut: Shortcut, typed: impl Fn(u16, Modifiers) -> Option<char>) -> Option<char> {
+    let modifiers = shortcut.mods.intersection(Modifiers::SUPER | Modifiers::SHIFT);
+    position(shortcut.key).and_then(|key| typed(key, modifiers))
+}
+
+/// The key model used when no native layout lookup is available.
+pub(crate) fn us_character(shortcut: Shortcut) -> Option<char> {
+    let letter = POSITIONS
+        .iter()
+        .find(|(code, ..)| *code == shortcut.key)
+        .map(|&(.., letter)| letter)?;
+    Some(if shortcut.mods.contains(Modifiers::SHIFT) {
+        match letter {
+            '/' => '?',
+            ',' => '<',
+            other => other.to_ascii_uppercase(),
+        }
+    } else {
+        letter
+    })
 }
 
 /// Set a private key event’s Command layer before AppKit translates it.
@@ -64,11 +88,13 @@ pub(crate) fn typing() -> impl Fn(u16, Modifiers) -> Option<char> {
     let source = CGEventSource::new(CGEventSourceStateID::Private);
     move |key, modifiers: Modifiers| {
         let event = CGEvent::new_keyboard_event(source.as_deref(), key, true)?;
-        let flags = if modifiers.contains(Modifiers::SUPER) {
-            CGEventFlags::MaskCommand
-        } else {
-            CGEventFlags::empty()
-        };
+        let mut flags = CGEventFlags::empty();
+        if modifiers.contains(Modifiers::SUPER) {
+            flags |= CGEventFlags::MaskCommand;
+        }
+        if modifiers.contains(Modifiers::SHIFT) {
+            flags |= CGEventFlags::MaskShift;
+        }
         CGEvent::set_flags(Some(&event), flags);
         let text = NSEvent::eventWithCGEvent(&event)?.characters()?.to_string();
         let mut chars = text.chars().flat_map(char::to_lowercase);

@@ -9,6 +9,7 @@ import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
 import recordings from "../testing/shortcut-recordings.json";
+import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 
 afterEach(() => vi.useRealTimers());
 
@@ -451,6 +452,19 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   await waitFor(() => expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT)));
   expect(state.shortcutChoices).toEqual(["Alt+Shift+K", null]);
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+});
+
+test.each(pickerConflicts)("a recorded $name refusal names its command and keeps the working shortcut", async ({ event, shortcut, command, label }) => {
+  const { api } = fakeApi({ granted: true });
+  vi.spyOn(api, "setShortcut").mockRejectedValueOnce({ "picker-shortcut": command });
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  const original = recorder.textContent;
+  fireEvent.click(recorder);
+  fireEvent.keyDown(recorder, event);
+  expect((await screen.findByRole("alert")).textContent).toBe(`That shortcut is used for ${label}. Try another shortcut.`);
+  expect(api.setShortcut).toHaveBeenCalledWith(shortcut);
+  expect(recorder.textContent).toBe(original);
 });
 
 test.each(Object.entries(settingsText.shortcut.refusals))("the %s refusal explains the result and keeps the working shortcut", async (code, message) => {

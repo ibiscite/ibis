@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_global_shortcut::{Code, Modifiers};
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
 use crate::diagnostics::{NativeIssue, report};
 use crate::picker::{
@@ -15,6 +15,33 @@ use crate::preferences::SettingsFile;
 /// Serialize registration, publication and saving, including across window closes.
 #[derive(Default)]
 pub(crate) struct Changing(tauri::async_runtime::Mutex<()>);
+
+/// Command identifiers shared with KEY_TABLE and the refusal's translated name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PickerCommand {
+    Format,
+    Pin,
+    Keys,
+    More,
+    Preview,
+    Settings,
+    Quit,
+}
+
+impl std::fmt::Display for PickerCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Format => "Choose Output Format",
+            Self::Pin => "Keep Window Open",
+            Self::Keys => "Keyboard Shortcuts",
+            Self::More => "More",
+            Self::Preview => "Show What Will Be Pasted",
+            Self::Settings => "Settings",
+            Self::Quit => "Quit Ibis",
+        })
+    }
+}
 
 /// Why a shortcut change failed. Only NotSaved changes the working shortcut.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
@@ -27,7 +54,7 @@ pub(crate) enum ShortcutRefusal {
     /// ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands.
     AppShortcut,
     /// The picker already uses this key combination for a command.
-    PickerShortcut,
+    PickerShortcut(PickerCommand),
     /// Windows uses Ctrl+Alt (also with Shift) to type with AltGr.
     AltGr,
     /// Another app or the system already has it.
@@ -38,19 +65,75 @@ pub(crate) enum ShortcutRefusal {
     NotSaved,
 }
 
+impl std::fmt::Display for ShortcutRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Invalid => "Ibis cannot use that key combination",
+            Self::NeedsModifier => "Include Control, Alt or Command; Shift alone is not enough",
+            Self::AppShortcut => "That shortcut is used for app commands; add another modifier",
+            Self::PickerShortcut(command) => return write!(f, "That shortcut is used for {command}"),
+            Self::AltGr => "Ctrl+Alt with a typing key is used for AltGr on Windows",
+            Self::InUse => "Another app or the system may be using that shortcut",
+            Self::Unavailable => "Global shortcuts are unavailable on this desktop",
+            Self::NotSaved => "The shortcut works now, but Ibis could not save it for next time",
+        })
+    }
+}
+
 /// Whether `text` can open Ibis. It needs Control, Option/Alt or Command, and
 /// not the command key alone or a chord already used by the picker.
 pub(crate) fn check_shortcut(text: &str) -> Result<OpeningShortcut, ShortcutRefusal> {
+    let requested = text.parse().map_err(|_| ShortcutRefusal::Invalid)?;
+    validate_shortcut(requested)
+}
+
+/// Native layout queries run on the main thread, alongside registration.
+pub(crate) fn validate_shortcut(requested: OpeningShortcut) -> Result<OpeningShortcut, ShortcutRefusal> {
     let command = if cfg!(target_os = "macos") {
         Modifiers::SUPER
     } else {
         Modifiers::CONTROL
     };
-    check_shortcut_for(text, command, cfg!(target_os = "windows"))
+    #[cfg(target_os = "macos")]
+    let typed = crate::picker::typing();
+    validate_shortcut_for(requested, command, cfg!(target_os = "windows"), {
+        #[cfg(target_os = "macos")]
+        {
+            Some(&typed)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            None
+        }
+    })
 }
 
-fn check_shortcut_for(text: &str, command: Modifiers, windows: bool) -> Result<OpeningShortcut, ShortcutRefusal> {
+#[cfg(test)]
+pub(crate) fn check_shortcut_for(
+    text: &str,
+    command: Modifiers,
+    windows: bool,
+) -> Result<OpeningShortcut, ShortcutRefusal> {
+    check_shortcut_with_layout(text, command, windows, None)
+}
+
+#[cfg(test)]
+fn check_shortcut_with_layout(
+    text: &str,
+    command: Modifiers,
+    windows: bool,
+    typed: Option<&dyn Fn(u16, Modifiers) -> Option<char>>,
+) -> Result<OpeningShortcut, ShortcutRefusal> {
     let requested: OpeningShortcut = text.parse().map_err(|_| ShortcutRefusal::Invalid)?;
+    validate_shortcut_for(requested, command, windows, typed)
+}
+
+fn validate_shortcut_for(
+    requested: OpeningShortcut,
+    command: Modifiers,
+    windows: bool,
+    typed: Option<&dyn Fn(u16, Modifiers) -> Option<char>>,
+) -> Result<OpeningShortcut, ShortcutRefusal> {
     let shortcut = requested.shortcut;
     if !shortcut
         .mods
@@ -58,13 +141,19 @@ fn check_shortcut_for(text: &str, command: Modifiers, windows: bool) -> Result<O
     {
         return Err(ShortcutRefusal::NeedsModifier);
     }
-    if shortcut.mods == command {
-        return Err(ShortcutRefusal::AppShortcut);
-    }
-    // KEY_TABLE reserves format and pin; isKeysShortcut also handles ⇧⌘/.
-    // Unshifted picker commands are already covered by AppShortcut above.
-    if shortcut.mods == command | Modifiers::SHIFT && matches!(shortcut.key, Code::KeyF | Code::KeyP | Code::Slash) {
-        return Err(ShortcutRefusal::PickerShortcut);
+    if shortcut.mods == command || shortcut.mods == command | Modifiers::SHIFT {
+        // Resolve a logical letter just as registration does; physical recorder
+        // codes stay put. Query the resulting event with Shift to recognize ?.
+        let effective = typed.map_or(shortcut, |typed| crate::picker::on_layout_with(requested, typed).0);
+        let character = typed
+            .and_then(|typed| crate::picker::character(effective, typed))
+            .or_else(|| crate::picker::us_character(effective));
+        if let Some(command) = picker_command(effective, character) {
+            return Err(ShortcutRefusal::PickerShortcut(command));
+        }
+        if shortcut.mods == command {
+            return Err(ShortcutRefusal::AppShortcut);
+        }
     }
     if windows && uses_altgr(requested) {
         return Err(ShortcutRefusal::AltGr);
@@ -72,7 +161,40 @@ fn check_shortcut_for(text: &str, command: Modifiers, windows: bool) -> Result<O
     Ok(requested)
 }
 
-pub(crate) fn uses_altgr(requested: OpeningShortcut) -> bool {
+/// Match KEY_TABLE and picker/shortcuts.ts, including their non-Latin letter
+/// fallback and the shifted punctuation accepted by isKeysShortcut.
+fn picker_command(shortcut: Shortcut, character: Option<char>) -> Option<PickerCommand> {
+    let letter = |letter: char, code: Code| {
+        character.is_some_and(|typed| {
+            typed.eq_ignore_ascii_case(&letter)
+                || (shortcut.key == code && (!typed.is_ascii() || (code == Code::KeyQ && matches!(typed, ';' | '/'))))
+        })
+    };
+    if shortcut.mods.contains(Modifiers::SHIFT) {
+        if letter('f', Code::KeyF) {
+            return Some(PickerCommand::Format);
+        }
+        if letter('p', Code::KeyP) {
+            return Some(PickerCommand::Pin);
+        }
+    } else {
+        if letter('k', Code::KeyK) {
+            return Some(PickerCommand::More);
+        }
+        if letter('q', Code::KeyQ) {
+            return Some(PickerCommand::Quit);
+        }
+        if character.is_some_and(|typed| typed.eq_ignore_ascii_case(&'i')) {
+            return Some(PickerCommand::Preview);
+        }
+        if character == Some(',') {
+            return Some(PickerCommand::Settings);
+        }
+    }
+    matches!(character, Some('/' | '?')).then_some(PickerCommand::Keys)
+}
+
+fn uses_altgr(requested: OpeningShortcut) -> bool {
     requested.shortcut.mods.difference(Modifiers::SHIFT) == Modifiers::CONTROL | Modifiers::ALT
         && printable_key(requested.shortcut.key)
 }
@@ -110,29 +232,31 @@ pub(crate) async fn set_shortcut(
     changing: State<'_, Changing>,
     shortcut: Option<String>,
 ) -> Result<ShortcutStatus, ShortcutRefusal> {
-    let requested = match shortcut.as_deref() {
-        Some(text) => check_shortcut(text)?,
-        None => default_shortcut(),
-    };
     let _changing = changing.0.lock().await;
     let (sender, receiver) = std::sync::mpsc::channel();
     let handle = app.clone();
+    let change = shortcut.clone();
     app.run_on_main_thread(move || {
-        let _ = sender.send(replace_shortcut(&handle, requested));
+        let result = change
+            .as_deref()
+            .map_or_else(|| Ok(default_shortcut()), check_shortcut)
+            .and_then(|requested| {
+                replace_shortcut(&handle, requested).map_err(|error| {
+                    if error == SHORTCUT_BACKEND_UNAVAILABLE {
+                        ShortcutRefusal::Unavailable
+                    } else {
+                        ShortcutRefusal::InUse
+                    }
+                })
+            });
+        let _ = sender.send(result);
     })
     .map_err(|_| ShortcutRefusal::InUse)?;
     let note = tauri::async_runtime::spawn_blocking(move || receiver.recv())
         .await
         .ok()
         .and_then(Result::ok)
-        .ok_or(ShortcutRefusal::InUse)?
-        .map_err(|error| {
-            if error == SHORTCUT_BACKEND_UNAVAILABLE {
-                ShortcutRefusal::Unavailable
-            } else {
-                ShortcutRefusal::InUse
-            }
-        })?;
+        .ok_or(ShortcutRefusal::InUse)??;
 
     let status = ShortcutStatus {
         shortcut: shortcut.clone().unwrap_or_else(|| shortcut_label().to_string()),
@@ -165,6 +289,76 @@ mod tests {
     use super::*;
 
     #[test]
+    fn azerty_help_shortcut_conflicts_use_the_recorded_physical_key() {
+        let azerty = |key, modifiers: Modifiers| match (key, modifiers.contains(Modifiers::SHIFT)) {
+            (46, false) => Some(','),
+            (46, true) => Some('?'),
+            (41, false) => Some('m'),
+            (41, true) => Some('M'),
+            _ => None,
+        };
+        assert_eq!(
+            check_shortcut_with_layout("Shift+Command+KeyM", Modifiers::SUPER, false, Some(&azerty)).err(),
+            Some(ShortcutRefusal::PickerShortcut(PickerCommand::Keys))
+        );
+        let logical = check_shortcut_with_layout("Shift+Command+M", Modifiers::SUPER, false, Some(&azerty))
+            .unwrap_or_else(|error| panic!("logical M should remain available: {error}"));
+        assert_eq!(crate::picker::on_layout_with(logical, azerty).0.key, Code::Semicolon);
+        assert!(check_shortcut_with_layout("Shift+Command+KeyM", Modifiers::SUPER, false, None).is_ok());
+        // A physical F types U on Dvorak, while logical F moves to physical Y.
+        let dvorak = |key, _: Modifiers| match key {
+            3 => Some('u'),
+            16 => Some('f'),
+            _ => None,
+        };
+        assert!(check_shortcut_with_layout("Shift+Command+KeyF", Modifiers::SUPER, false, Some(&dvorak)).is_ok());
+        assert_eq!(
+            check_shortcut_with_layout("Shift+Command+F", Modifiers::SUPER, false, Some(&dvorak)).err(),
+            Some(ShortcutRefusal::PickerShortcut(PickerCommand::Format))
+        );
+    }
+
+    #[test]
+    fn recorded_picker_shortcut_conflicts_name_the_owning_command() {
+        #[derive(serde::Deserialize)]
+        struct Conflict {
+            name: String,
+            shortcut: String,
+            command: String,
+            label: String,
+            typed: std::collections::BTreeMap<u16, [char; 2]>,
+        }
+        let conflicts: Vec<Conflict> =
+            serde_json::from_str(include_str!("../../src/testing/picker-shortcut-conflicts.json"))
+                .unwrap_or_else(|error| panic!("invalid picker conflicts: {error}"));
+        for case in conflicts {
+            let typed = |key, modifiers: Modifiers| {
+                case.typed
+                    .get(&key)
+                    .map(|letters| letters[usize::from(modifiers.contains(Modifiers::SHIFT))])
+            };
+            let validate = |text: &str| check_shortcut_with_layout(text, Modifiers::SUPER, false, Some(&typed));
+            let refusal = validate(&case.shortcut).err();
+            assert_eq!(
+                refusal.and_then(|refusal| serde_json::to_value(refusal).ok()),
+                Some(serde_json::json!({"picker-shortcut": case.command})),
+                "{}",
+                case.name
+            );
+            // Previously saved conflicts take the same path after upgrading.
+            let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
+            let file = SettingsFile::new(directory.path().join("settings.json"));
+            assert_eq!(save_shortcut(&file, Some(case.shortcut)), Ok(()));
+            let saved = ibis_core::settings::load(&file.path);
+            let (shortcut, label, error) =
+                crate::picker::configured_shortcut_with(saved.settings.shortcut.as_deref(), validate);
+            assert_eq!(shortcut, default_shortcut(), "{}", case.name);
+            assert_eq!(label, shortcut_label());
+            assert!(error.is_some_and(|error| error.contains(&case.label)), "{}", case.name);
+        }
+    }
+
+    #[test]
     fn opening_shortcuts_cannot_take_picker_commands_on_any_platform() {
         // keys.test.ts keeps these cases in sync with KEY_TABLE and the
         // shifted keys-help alias accepted by the picker key handler.
@@ -184,7 +378,11 @@ mod tests {
                 let text = format!("Shift+{modifier}+{key}");
                 assert_eq!(
                     check_shortcut_for(&text, command, windows).err(),
-                    Some(ShortcutRefusal::PickerShortcut),
+                    Some(ShortcutRefusal::PickerShortcut(match key {
+                        "F" | "KeyF" => PickerCommand::Format,
+                        "P" | "KeyP" => PickerCommand::Pin,
+                        _ => PickerCommand::Keys,
+                    })),
                     "{text}"
                 );
             }
@@ -209,7 +407,7 @@ mod tests {
         shortcut: String,
         typed: std::collections::BTreeMap<u16, char>,
         registered: String,
-        windows_refusal: Option<String>,
+        windows_refusal: Option<serde_json::Value>,
     }
 
     /// DOM tests send these exact accelerators to Settings. Exercise the same
@@ -227,16 +425,18 @@ mod tests {
             let saved = ibis_core::settings::load(&file.path);
             assert!(saved.problem.is_none());
             let (restarted, label, error) =
-                crate::picker::configured_shortcut_for(saved.settings.shortcut.as_deref(), false);
+                crate::picker::configured_shortcut_with(saved.settings.shortcut.as_deref(), |text| {
+                    check_shortcut_for(text, Modifiers::SUPER, false)
+                });
             assert_eq!(error, None, "{}", case.name);
             assert_eq!(label, case.shortcut);
             assert_eq!(restarted, requested, "{}", case.name);
-            if case.windows_refusal.as_deref() == Some("alt-gr") {
+            if case.windows_refusal.is_some() {
                 let (safe, label, error) =
                     crate::picker::configured_shortcut_for(saved.settings.shortcut.as_deref(), true);
                 assert_eq!(safe, default_shortcut(), "{}", case.name);
                 assert_eq!(label, shortcut_label());
-                assert!(error.is_some_and(|error| error.contains("AltGr")));
+                assert!(error.is_some());
             }
             for binding in [requested, restarted] {
                 let (key, note) = crate::picker::on_layout_with(binding, |key, _| case.typed.get(&key).copied());
@@ -276,12 +476,7 @@ mod tests {
             let refusal = check_shortcut_for(&case.shortcut, Modifiers::CONTROL, true)
                 .err()
                 .map(|error| serde_json::to_value(error).unwrap_or_else(|error| panic!("fixture failed: {error}")));
-            assert_eq!(
-                refusal,
-                case.windows_refusal.map(serde_json::Value::String),
-                "{}",
-                case.name
-            );
+            assert_eq!(refusal, case.windows_refusal, "{}", case.name);
         }
     }
 
@@ -355,19 +550,27 @@ mod tests {
 
     #[test]
     fn a_shortcut_needs_a_real_modifier_and_not_the_command_key_alone() {
-        assert_eq!(check_shortcut("Nonsense+Y").err(), Some(ShortcutRefusal::Invalid));
-        assert_eq!(check_shortcut("Y").err(), Some(ShortcutRefusal::NeedsModifier));
-        assert_eq!(check_shortcut("Shift+Y").err(), Some(ShortcutRefusal::NeedsModifier));
+        let check = |text| {
+            check_shortcut_for(
+                text,
+                if cfg!(target_os = "macos") {
+                    Modifiers::SUPER
+                } else {
+                    Modifiers::CONTROL
+                },
+                cfg!(target_os = "windows"),
+            )
+        };
+        assert_eq!(check("Nonsense+Y").err(), Some(ShortcutRefusal::Invalid));
+        assert_eq!(check("Y").err(), Some(ShortcutRefusal::NeedsModifier));
+        assert_eq!(check("Shift+Y").err(), Some(ShortcutRefusal::NeedsModifier));
+        assert_eq!(check("CommandOrControl+R").err(), Some(ShortcutRefusal::AppShortcut));
         assert_eq!(
-            check_shortcut("CommandOrControl+R").err(),
-            Some(ShortcutRefusal::AppShortcut)
-        );
-        assert_eq!(
-            check_shortcut("CommandOrControl+Space").err(),
+            check("CommandOrControl+Space").err(),
             Some(ShortcutRefusal::AppShortcut)
         );
         for good in ["Control+Command+R", "Alt+Space", "CommandOrControl+Shift+Y"] {
-            assert!(check_shortcut(good).is_ok(), "{good}");
+            assert!(check(good).is_ok(), "{good}");
         }
     }
 
@@ -377,7 +580,6 @@ mod tests {
             (ShortcutRefusal::Invalid, "invalid"),
             (ShortcutRefusal::NeedsModifier, "needs-modifier"),
             (ShortcutRefusal::AppShortcut, "app-shortcut"),
-            (ShortcutRefusal::PickerShortcut, "picker-shortcut"),
             (ShortcutRefusal::AltGr, "alt-gr"),
             (ShortcutRefusal::InUse, "in-use"),
             (ShortcutRefusal::Unavailable, "unavailable"),

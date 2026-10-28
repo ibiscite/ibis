@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { Density, LoginItem, PickerPreferences, ShortcutRefusal, ShortcutStatus } from "../bindings";
+import type { Density, LoginItem, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
-import { densityNames, keyText, loginItemText, settingsText } from "../messages";
+import { densityNames, keyText, loginItemText, settingsText, shortcutRefusalText } from "../messages";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { Segmented } from "../ui/Segmented";
@@ -185,9 +185,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     saving.current = saving.current.catch(() => undefined).then(() => api.setShortcut(next))
       .then((status) => { if (request === shortcutReads.current) setShortcut(status); })
       .catch((refusal: unknown) => {
-        const messages = settingsText.shortcut.refusals;
-        setShortcutProblem(typeof refusal === "string" && Object.hasOwn(messages, refusal)
-          ? messages[refusal as ShortcutRefusal] : settingsText.shortcut.failed);
+        setShortcutProblem(shortcutRefusalText(refusal));
       })
       .finally(() => { pending.current -= 1; shortcutBusy.current = false; setShortcutSaving(false); });
   };

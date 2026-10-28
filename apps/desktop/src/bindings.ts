@@ -356,6 +356,9 @@ export type PastePermission = {
 	list: string,
 };
 
+/**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "preview" | "settings" | "quit";
+
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
 	/**  The app's own name; `None` when no app was captured. */
@@ -482,7 +485,7 @@ export type ShortcutRefusal =
 /**  ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands. */
 "app-shortcut" |
 /**  The picker already uses this key combination for a command. */
-"picker-shortcut" |
+{ "picker-shortcut": PickerCommand } |
 /**  Windows uses Ctrl+Alt (also with Shift) to type with AltGr. */
 "alt-gr" |
 /**  Another app or the system already has it. */
