@@ -13,18 +13,28 @@ node scripts/check.mjs --script-tests      # only when scripts/ changed
 node scripts/pr-lint.mjs --title "fix: explain the change"
 ```
 
-## Working
+## Start here
 
-- Everything needed to resume lives in the repository and on GitHub, never only in a chat, a tool's memory or a local file. Start from the tracking issue; any person or agent, with any tool, must be able to pick up from there after an interruption. When the maintainer approves a plan or answers a question, record it the same day: scope in `ROADMAP.md`, rules in `docs/`, choices in `docs/decisions.md`, work as issues on the milestone, order in the tracking issue.
-- Until 1.0, keep the process light and the code easy to change: the roadmap, the tracking issue and one plain issue per piece of work someone will pick up. Add no labels, automation, templates, boards or process documents unless they save time right away.
-- Check `git status` first and keep work you did not make. Branch from `origin/main`, one branch per pull request, no stacking, never push to `main`. Give each worktree its own Cargo target directory.
-- Claim an issue with a one-line comment on the tracking issue or a draft pull request that says `Closes #N`. One writer per worktree and per set of files.
-- Build what the issue's "Done when" names as the smallest working slice; merge it, then harden. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
+- Everything needed to resume lives in the repository and on GitHub, never only in a chat, a tool's memory or a local file. Start from the tracking issue: **Plan** gives the order, **Now** what is in flight and who owns it. Run `git fetch origin --prune` and `git status`; keep work you did not make.
+- Take the first unclaimed issue in the Plan whose files no open pull request touches. Claim it with a draft pull request that says `Closes #N`, or a one-line comment on the tracking issue.
+- Until 1.0, keep the process light and the code easy to change: the roadmap, the tracking issue and one plain issue per piece of work. Add no labels, automation, templates, boards or process documents unless they save time right away.
+- When the maintainer approves a plan or answers a question, record it the same day: scope in `ROADMAP.md`, rules in `docs/`, choices in `docs/decisions.md`, work as issues, order in the tracking issue.
+
+## Parallel work
+
+- One branch and one worktree per pull request, from `origin/main`; no stacking, never push to `main`. Give each worktree its own Cargo target directory.
+- One writer per set of files. Before starting, check which files open pull requests change; if yours overlap, finish or review that one instead of starting a second.
+- Files everyone touches (`ROADMAP.md`, `docs/design.md`, `docs/decisions.md`, `tokens.css`, `App.tsx`) get small edits that merge quickly.
 - At most two open drafts each; finish them before starting more. Split a draft over about 1,500 changed lines.
-- A check that fails twice for the same reason: fix the cause or shrink the test. After three CI rounds on one blocker, cut scope and write the diagnosis on the issue.
+
+## Building
+
+- Build what the issue's "Done when" names as the smallest working slice; merge it, then harden. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
+- Debugging: reproduce it in a failing test first, then fix the cause. A check that fails twice for the same reason: fix the cause or shrink the test. After three CI rounds on one blocker, cut scope and write the diagnosis on the issue.
 - Every fix gets a regression test. Findings below P2 go into one 1.0 issue per area, not new issues.
+- UI: keep it simple and on the design system. Changes go through `apps/desktop/src/tokens.css`, a shared component in `apps/desktop/src/ui/` or `docs/design.md`, never one screen on its own. When the maintainer says something looks or behaves wrong, fix it and write the rule into `docs/design.md`. Visual fine-tuning waits until close to 1.0.
+- Performance: the budgets in `docs/architecture.md` are limits, not goals. Say on the pull request what a change does to speed and memory when it could affect either; no polling loops.
 - Use invented data only. No real library data, document text, private paths or credentials in source, tests, logs or public text. Never publish `.local/`.
-- UI changes go through `apps/desktop/src/tokens.css`, a shared component in `apps/desktop/src/ui/` or `docs/design.md`, never one screen on its own. When the maintainer says something looks or behaves wrong, fix it and write the rule into `docs/design.md`.
 - Keep licences and notices; dependencies must pass `cargo deny`. Logos and icons come only from `brand/` (`python3 brand/build.py`).
 
 ## Merging
