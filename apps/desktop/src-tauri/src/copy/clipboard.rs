@@ -12,13 +12,14 @@ pub(crate) enum Flavor {
     Rtf,
 }
 
-/// What a write puts on the clipboard: always the text, then HTML and RTF
-/// when the result has them. Every flavor comes from the same result, so they
-/// share its content hash.
+/// Publish richer formats before text: Windows recipients can choose the
+/// first supported format in clipboard order. Every flavor comes from the
+/// same result, so they share its content hash.
 pub(crate) fn flavors<'a>(content: &ClipboardContent<'a>) -> Vec<(Flavor, &'a str)> {
-    let mut flavors = vec![(Flavor::Text, content.text)];
+    let mut flavors = Vec::with_capacity(3);
     flavors.extend(content.html.map(|html| (Flavor::Html, html)));
     flavors.extend(content.rtf.map(|rtf| (Flavor::Rtf, rtf)));
+    flavors.push((Flavor::Text, content.text));
     flavors
 }
 
@@ -53,6 +54,11 @@ pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> R
 /// One opening of the clipboard, retried briefly while another app holds it.
 #[cfg(target_os = "windows")]
 pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(), String> {
+    write_windows(content)
+}
+
+#[cfg(target_os = "windows")]
+fn write_windows(content: ClipboardContent<'_>) -> Result<(), String> {
     use clipboard_win::{Clipboard, formats::Html, options::NoClear, raw};
     // About 100 ms in all: 20 retries, 5 ms apart.
     let _open = Clipboard::new_attempts(20).map_err(|_| FAILED.to_string())?;
@@ -93,7 +99,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_always_comes_first_and_rich_flavors_only_when_present() {
+    fn first_supported_format_preserves_rich_text_and_plain_text_fallback() {
+        let rich = ClipboardContent {
+            text: "Ŝynthetic 山田",
+            html: Some("<i>Ŝynthetic 山田</i>"),
+            rtf: Some("{\\rtf1 {\\i Synthetic}}"),
+        };
+        // Windows enumerates formats in publication order. Rich Edit pastes
+        // the first one it supports, even if richer formats follow it.
+        for (supported, expected) in [
+            (vec![Flavor::Html, Flavor::Rtf, Flavor::Text], Flavor::Html),
+            (vec![Flavor::Rtf, Flavor::Text], Flavor::Rtf),
+            (vec![Flavor::Html, Flavor::Text], Flavor::Html),
+            (vec![Flavor::Text], Flavor::Text),
+        ] {
+            let selected = flavors(&rich)
+                .into_iter()
+                .find(|(flavor, _)| supported.contains(flavor));
+            assert_eq!(selected.map(|(flavor, _)| flavor), Some(expected));
+        }
+    }
+
+    #[test]
+    fn rich_flavors_are_present_only_when_supplied_and_text_is_always_available() {
         let rich = ClipboardContent {
             text: "Invented (2026)",
             html: Some("<i>Invented</i> (2026)"),
@@ -102,9 +130,9 @@ mod tests {
         assert_eq!(
             flavors(&rich),
             [
-                (Flavor::Text, "Invented (2026)"),
                 (Flavor::Html, "<i>Invented</i> (2026)"),
                 (Flavor::Rtf, "{\\rtf1 {\\i Invented} (2026)}"),
+                (Flavor::Text, "Invented (2026)"),
             ]
         );
         let plain = ClipboardContent {
@@ -113,5 +141,70 @@ mod tests {
             rtf: None,
         };
         assert_eq!(flavors(&plain), [(Flavor::Text, "[@Invented2026]")]);
+    }
+
+    // Exercises the native Windows clipboard with invented data in CI.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_clipboard_preserves_format_selection_and_unicode_payloads() -> Result<(), String> {
+        use clipboard_win::{Clipboard, formats::CF_UNICODETEXT, raw};
+        let text = "Ŝynthetic 山田";
+        let html = "<i>Ŝynthetic 山田</i>";
+        let rtf = "{\\rtf1\\ansi\\uc1 {\\i \\u348?ynthetic \\u23665?\\u30000?}}";
+        write_windows(ClipboardContent {
+            text,
+            html: Some(html),
+            rtf: Some(rtf),
+        })?;
+        let html_format = raw::register_format("HTML Format").ok_or("HTML format")?.get();
+        let rtf_format = raw::register_format("Rich Text Format").ok_or("RTF format")?.get();
+        {
+            let _open = Clipboard::new_attempts(20).map_err(|_| "open clipboard")?;
+            let published: Vec<_> = raw::EnumFormats::new().collect();
+            // Check the real publication order, including synthesized formats.
+            for (supported, expected) in [
+                (vec![html_format, rtf_format, CF_UNICODETEXT], html_format),
+                (vec![rtf_format, CF_UNICODETEXT], rtf_format),
+                (vec![CF_UNICODETEXT], CF_UNICODETEXT),
+            ] {
+                assert_eq!(
+                    published.iter().find(|format| supported.contains(format)),
+                    Some(&expected)
+                );
+            }
+            let mut bytes = vec![];
+            raw::get_vec(html_format, &mut bytes).map_err(|_| "HTML bytes")?;
+            let header = std::str::from_utf8(&bytes).map_err(|_| "HTML UTF-8")?;
+            let offset = |name: &str| -> Result<usize, String> {
+                header
+                    .lines()
+                    .find_map(|line| line.strip_prefix(name))
+                    .ok_or_else(|| format!("missing {name}"))?
+                    .parse()
+                    .map_err(|_| format!("invalid {name}"))
+            };
+            let (start, end) = (offset("StartFragment:")?, offset("EndFragment:")?);
+            assert_eq!(bytes.get(start..end), Some(html.as_bytes()));
+            assert!(offset("StartHTML:")? <= start && end <= offset("EndHTML:")?);
+            assert!(offset("EndHTML:")? <= bytes.len());
+            bytes.clear();
+            raw::get_vec(rtf_format, &mut bytes).map_err(|_| "RTF bytes")?;
+            assert!(bytes.starts_with(rtf.as_bytes()));
+            bytes.clear();
+            raw::get_string(&mut bytes).map_err(|_| "Unicode text")?;
+            assert_eq!(bytes, text.as_bytes());
+        }
+        // A later key-only copy must remove stale rich formats.
+        write_windows(ClipboardContent {
+            text: "[@Synthetic2026]",
+            html: None,
+            rtf: None,
+        })?;
+        let _open = Clipboard::new_attempts(20).map_err(|_| "reopen clipboard")?;
+        assert!(!raw::is_format_avail(html_format) && !raw::is_format_avail(rtf_format));
+        let mut bytes = vec![];
+        raw::get_string(&mut bytes).map_err(|_| "plain text")?;
+        assert_eq!(bytes, b"[@Synthetic2026]");
+        Ok(())
     }
 }

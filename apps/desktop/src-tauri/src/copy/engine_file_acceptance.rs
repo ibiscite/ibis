@@ -245,8 +245,8 @@ fn italics_and_non_latin_text_reach_every_clipboard_flavor_from_one_result() -> 
     })
     .map_err(|e| e.to_string())?;
     let kinds: Vec<_> = written.iter().map(|(flavor, _)| *flavor).collect();
-    assert_eq!(kinds, [Flavor::Text, Flavor::Html, Flavor::Rtf]);
-    let [(_, text), (_, html), (_, rtf)] = &written[..] else {
+    assert_eq!(kinds, [Flavor::Html, Flavor::Rtf, Flavor::Text]);
+    let [(_, html), (_, rtf), (_, text)] = &written[..] else {
         return Err("three flavors".into());
     };
     assert_eq!(text, &preview.text);
