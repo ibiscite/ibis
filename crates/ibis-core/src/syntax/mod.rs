@@ -329,17 +329,25 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
         match resolve(snapshot, item, request.form, caps, request.items.len(), &owners) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
             Ok((record, key, form)) => {
+                // A MyST role applies one form to every key it contains.
+                if caps.syntax == KeySyntax::Myst && picks.first().is_some_and(|first: &Pick<'_>| first.form != form) {
+                    outcomes.push(ItemOutcome::Refused {
+                        item: index,
+                        error: CitationError::UnsupportedForm,
+                    });
+                    continue;
+                }
                 key_bytes = key_bytes.saturating_add(key.len());
                 if key_bytes > MAX_CITATION_BYTES {
                     return Err(CitationError::InvalidKey);
                 }
                 let supports = |support| support == Native || support == SingleItem && request.items.len() == 1;
-                let prefix = if escape::carries(caps.escaping, &item.prefix, false, item.locator.is_some()) {
+                let prefix = if escape::carries(caps.escaping, &item.prefix, false) {
                     caps.prefix_support(form)
                 } else {
                     Unsupported
                 };
-                let suffix = if escape::carries(caps.escaping, &item.suffix, true, item.locator.is_some()) {
+                let suffix = if escape::carries(caps.escaping, &item.suffix, true) {
                     caps.suffix
                 } else {
                     Unsupported

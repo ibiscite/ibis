@@ -179,7 +179,7 @@ pub(crate) fn typst_markup_escape(text: &str) -> String {
 /// Whether `runs` can be written literally as an affix. Org mode and
 /// MultiMarkdown have no reliable escape for some text; it is dropped with a
 /// typed loss rather than written as markup or smart typography.
-pub(crate) fn carries(escaping: Escaping, runs: &RichText, suffix: bool, locator: bool) -> bool {
+pub(crate) fn carries(escaping: Escaping, runs: &RichText, suffix: bool) -> bool {
     let text: String = runs.iter().map(|run| run.text.as_str()).collect();
     let text = text.trim();
     if text.is_empty() {
@@ -187,9 +187,9 @@ pub(crate) fn carries(escaping: Escaping, runs: &RichText, suffix: bool, locator
     }
     match escaping {
         Escaping::Org => {
-            // A suffix without a locator must not start like one: Org's CSL,
-            // BibLaTeX and Pandoc processors read it as the locator.
-            if suffix && !locator && starts_like_locator(text) {
+            // A suffix must not start like a locator, even after one: Org's
+            // processors can absorb it as another locator value.
+            if suffix && starts_like_locator(text) {
                 return false;
             }
             org_literal(text)
@@ -203,6 +203,7 @@ fn starts_like_locator(text: &str) -> bool {
     let mut words = text.split_whitespace();
     let first = words.next().unwrap_or_default();
     first.starts_with(|c: char| c.is_ascii_digit())
+        || crate::locator::parse(&format!("page {first}")).is_some()
         || crate::locator::parse(first).is_some()
         || words
             .next()

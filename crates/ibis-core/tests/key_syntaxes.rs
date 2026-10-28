@@ -208,17 +208,48 @@ fn text_a_syntax_would_read_as_markup_is_a_typed_loss_never_markup() {
 }
 
 #[test]
-fn an_org_suffix_that_reads_as_a_locator_is_not_carried_without_one() {
-    for suffix in ["12", "p. 4 below", "chapter 3"] {
-        let result = render(KeySyntax::OrgCite, |r| r.items[0].suffix = plain(suffix));
-        assert_eq!(result.text, "[cite:@Example2026]", "{suffix}");
-        assert_eq!(fields(&result), [LossField::Suffix], "{suffix}");
+fn an_org_suffix_that_reads_as_a_locator_is_not_carried() {
+    for suffix in ["12", "12 more", "iv more", "X more", "p. 4 below", "chapter 3"] {
+        for located in [false, true] {
+            let result = render(KeySyntax::OrgCite, |r| {
+                r.items[0].suffix = plain(suffix);
+                if located {
+                    r.items[0].locator = locator(LocatorTerm::Page, "4");
+                }
+            });
+            let expected = if located {
+                "[cite:@Example2026, p. 4]"
+            } else {
+                "[cite:@Example2026]"
+            };
+            assert_eq!(result.text, expected, "{suffix}");
+            assert_eq!(fields(&result), [LossField::Suffix], "{suffix}");
+        }
     }
-    let with_locator = render(KeySyntax::OrgCite, |r| {
-        r.items[0].locator = locator(LocatorTerm::Page, "4");
-        r.items[0].suffix = plain("12 more");
-    });
-    assert_eq!(with_locator.text, "[cite:@Example2026, p. 4, 12 more]");
+}
+
+#[test]
+fn mixed_myst_forms_never_share_the_first_references_role() {
+    for first in [CitationForm::Normal, CitationForm::Narrative] {
+        let result = render(KeySyntax::Myst, |r| {
+            r.form = first;
+            two(r);
+            r.items[1].form = Some(if first == CitationForm::Normal {
+                CitationForm::Narrative
+            } else {
+                CitationForm::Normal
+            });
+        });
+        assert_eq!(result.outcomes[0], ItemOutcome::Rendered { item: 0 });
+        assert_eq!(
+            result.outcomes[1],
+            ItemOutcome::Refused {
+                item: 1,
+                error: CitationError::UnsupportedForm,
+            }
+        );
+        assert!(result.copy_content(2).is_none());
+    }
 }
 
 #[test]
