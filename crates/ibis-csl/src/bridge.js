@@ -92,14 +92,27 @@
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
   globalThis.__ibisFormat = (request) => {
     let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
-    // A selected bibliography cannot know a document's citation numbers.
-    if (request.style === "ieee") xml = xml.replace('<text variable="citation-number" prefix="[" suffix="]"/>', "").replace(' second-field-align="flush"', "");
     activeItems = new Map(request.items.map((item) => [item.id, item]));
     const key = JSON.stringify([request.style, request.locale, request.keep_order]);
     let engine = engines.get(key);
     if (!engine) {
       // Keep one warm style, rather than eight independent item registries.
       engines.clear();
+      if (request.numeric) {
+        const tree = CSL.parseXml(xml);
+        // A selected bibliography cannot know a document's citation numbers.
+        // Use the processor's XML tree so quoting and affixes do not matter.
+        for (const bibliography of tree.children.filter((node) => node.name === "bibliography")) {
+          delete bibliography.attrs["second-field-align"];
+          const pending = bibliography.children.filter((node) => node.name === "layout");
+          while (pending.length) {
+            const node = pending.pop();
+            node.children = node.children.filter((child) => !(child.name === "text" && child.attrs.variable === "citation-number"));
+            for (const child of node.children) if (child.children) pending.push(child);
+          }
+        }
+        xml = tree;
+      }
       engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id) }, xml, request.locale ?? undefined, request.locale !== null);
       engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];

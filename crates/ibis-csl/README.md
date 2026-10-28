@@ -46,11 +46,19 @@ ignores locale parameters for those operations.
 
 Ibis intentionally differs from document-aware Zotero rendering: it disables
 `disambiguate-add-year-suffix` in the bundled style data before processor
-construction and reports `YearSuffixWithheld`; IEEE produces an unnumbered
-reference entry with `NeedsDocumentContext` and `ReferenceEntry`. These changes
+construction and reports `YearSuffixWithheld`; styles declaring
+`<info><category citation-format="numeric"/></info>` produce an unnumbered
+reference entry with `NeedsDocumentContext` and `ReferenceEntry`. `label` does
+not imply document numbering. The processor's XML tree removes bibliography
+layout `citation-number` text nodes (any affixes) and `second-field-align`,
+preserving citation layouts, macros and sort keys. These changes
 never mutate the vendor files. Node comparisons use the same Ibis-safe style
-configuration. A citation form the fallback cannot represent is refused. MLA has
-no year in its citation layout, so year-only intent is refused. A transparent
+configuration. Numeric fallback refuses author-only and year-only forms.
+Cached XML traits also drive the bridge. Year-only requires `issued` rendering
+in the layout or reachable macros, excluding sort keys, bibliography dates and
+conditions. The conservative scan does not prove every branch prints a year;
+macro names must use matching XML encodings. #1306 owns `YearSuffixWithheld`'s
+remaining name check; its general rule is `disambiguate-add-year-suffix="true"`. A transparent
 observer checks each final member's printed blob leaves in every representation,
 ignoring layout affixes. Missing or empty coverage refuses the candidate cluster as `UnsupportedForm` and clears its output; no unchecked member
 is exposed as rendered. This uses one pass over existing output under the same
