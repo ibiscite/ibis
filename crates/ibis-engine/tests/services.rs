@@ -65,6 +65,53 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
 }
 
 #[test]
+fn pasted_search_is_ordered_unlimited_and_reports_missing_keys() {
+    let case = case();
+    let LibraryObject::Record(base) = case.library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let objects = (0..205)
+        .map(|n| {
+            let mut record = base.clone();
+            record.id.key = format!("key{n}");
+            record.citation_keys[0].value = record.id.key.clone();
+            LibraryObject::Record(record)
+        })
+        .collect();
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    let query = (0..205).rev().map(|n| format!("@key{n}")).collect::<Vec<_>>().join(" ");
+    let request = SearchRequest {
+        query: format!("{query} @absent"),
+        limit: 1,
+        libraries: None,
+    };
+    let cancel = Cancellation::default();
+    let reply = engine.search(&request, &cancel).unwrap();
+    assert_eq!(reply.hits.len(), 205);
+    assert_eq!(reply.hits[0].item.object.id().key, "key204");
+    assert_eq!(reply.hits[204].item.object.id().key, "key0");
+    assert_eq!(reply.list.as_ref().unwrap().missing, ["absent"]);
+    assert_eq!(
+        serde_json::to_value(reply).unwrap(),
+        engine
+            .dispatch(Method::Search, &serde_json::to_value(&request).unwrap(), &cancel)
+            .unwrap()
+            .data
+    );
+    let empty = engine
+        .search(
+            &SearchRequest {
+                libraries: Some(vec![]),
+                ..request
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert!(empty.hits.is_empty());
+    assert_eq!(empty.list.unwrap().missing.len(), 206);
+}
+
+#[test]
 fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
     let case = case();
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));

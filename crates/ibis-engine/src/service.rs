@@ -72,9 +72,15 @@ pub struct SearchHit {
     pub typo: bool,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct PastedList {
+    pub missing: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub list: Option<PastedList>,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
@@ -316,12 +322,22 @@ impl Engine {
         {
             return Err(error(ErrorCode::NotFound));
         }
-        let hits = state
+        let pasted = state
             .index
-            .search(&request.query, request.limit, request.libraries.as_deref(), &|| {
-                cancel.is_cancelled()
-            })
+            .pasted_list(&request.query, request.libraries.as_deref(), &|| cancel.is_cancelled())
             .ok_or_else(|| error(ErrorCode::Cancelled))?;
+        let (hits, list) = match pasted {
+            Some(list) => (list.hits, Some(PastedList { missing: list.missing })),
+            None => (
+                state
+                    .index
+                    .search(&request.query, request.limit, request.libraries.as_deref(), &|| {
+                        cancel.is_cancelled()
+                    })
+                    .ok_or_else(|| error(ErrorCode::Cancelled))?,
+                None,
+            ),
+        };
         #[derive(Serialize)]
         struct HitView<'a> {
             item: &'a SnapshotObject,
@@ -333,9 +349,12 @@ impl Engine {
         struct SearchView<'a> {
             snapshot: &'a Fingerprints,
             hits: Vec<HitView<'a>>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            list: Option<&'a PastedList>,
         }
         let view = SearchView {
             snapshot: state.index.snapshot().fingerprints(),
+            list: list.as_ref(),
             hits: hits
                 .iter()
                 .map(|hit| HitView {
@@ -351,6 +370,7 @@ impl Engine {
         cancel.check()?;
         Ok(SearchResult {
             snapshot: state.index.snapshot().fingerprints().clone(),
+            list,
             hits: hits
                 .into_iter()
                 .map(|hit| SearchHit {
