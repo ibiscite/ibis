@@ -1,7 +1,10 @@
 //! Prepared search data over an immutable contract snapshot; no legacy model conversion.
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use super::{MatchField, SearchDocument, Texts, by_identifier, key_eq, name_text, normalize, rank};
+use super::{
+    MatchField, SearchDocument, Texts, by_identifier, in_scope, key_eq, lower, name_text, normalize, pasted, rank,
+};
 use crate::{
     contract::*,
     identifier,
@@ -14,6 +17,12 @@ pub struct RecordHit<'a> {
     pub matched: Vec<MatchField>,
     /// Some term matched only with one typo.
     pub typo: bool,
+}
+
+/// Exact matches in paste order, with unmatched explicit citation keys.
+pub struct PastedList<'a> {
+    pub hits: Vec<RecordHit<'a>>,
+    pub missing: Vec<String>,
 }
 
 struct Entry {
@@ -136,6 +145,95 @@ impl SnapshotIndex {
     }
     pub fn snapshot(&self) -> &Arc<Snapshot> {
         &self.snapshot
+    }
+    /// `None` means cancellation; `Some(None)` means ordinary search should run.
+    pub fn pasted_list(
+        &self,
+        query: &str,
+        scope: Option<&[LibraryId]>,
+        stop: &dyn Fn() -> bool,
+    ) -> Option<Option<PastedList<'_>>> {
+        if stop() {
+            return None;
+        }
+        let Some(parsed) = pasted::entries(query) else {
+            return Some(None);
+        };
+        let mut keys: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut identifiers: BTreeMap<identifier::Identifier, Vec<usize>> = BTreeMap::new();
+        for (n, entry) in parsed.entries.iter().enumerate() {
+            keys.entry(entry.chars().flat_map(lower).collect()).or_default().push(n);
+            if !parsed.cited
+                && let Some(id) = identifier::parse_query(entry)
+            {
+                identifiers.entry(id).or_default().push(n);
+            }
+        }
+        let mut matches = vec![Vec::new(); parsed.entries.len()];
+        let mut matched = vec![false; parsed.entries.len()];
+        // One snapshot pass, independent of the number of pasted entries.
+        for (n, record) in self.entries.iter().enumerate() {
+            if n % super::STOP_CHECK_INTERVAL == 0 && stop() {
+                return None;
+            }
+            if !in_scope(record, scope) {
+                continue;
+            }
+            let mut first = None;
+            let mut mark = |entry: usize, field| {
+                matched[entry] = true;
+                if first.is_none_or(|(previous, _)| entry < previous) {
+                    first = Some((entry, field));
+                }
+            };
+            for key in &record.keys {
+                let key: String = key.chars().flat_map(lower).collect();
+                for &entry in keys.get(&key).into_iter().flatten() {
+                    mark(entry, MatchField::Citekey);
+                }
+            }
+            for id in &record.identifiers {
+                for &entry in identifiers.get(id).into_iter().flatten() {
+                    mark(
+                        entry,
+                        if matches!(id, identifier::Identifier::Doi(_)) {
+                            MatchField::Doi
+                        } else {
+                            MatchField::Identifier
+                        },
+                    );
+                }
+            }
+            // Retain each record only once, even if every pasted entry names it.
+            if let Some((entry, field)) = first {
+                matches[entry].push((n, field));
+            }
+        }
+        let mut hits = Vec::new();
+        let mut missing = Vec::new();
+        let mut missing_seen = BTreeSet::new();
+        for (position, (entry, found)) in parsed.entries.iter().zip(matches).enumerate() {
+            if stop() {
+                return None;
+            }
+            if !matched[position] {
+                if !parsed.cited {
+                    return Some(None);
+                }
+                if missing_seen.insert(entry.chars().flat_map(lower).collect::<String>()) {
+                    missing.push((*entry).to_owned());
+                }
+            }
+            for (n, field) in found {
+                hits.push(RecordHit {
+                    item: &self.snapshot.objects()[self.entries[n].position],
+                    score: 3000,
+                    matched: vec![field],
+                    typo: false,
+                });
+            }
+        }
+        Some(Some(PastedList { hits, missing }))
     }
     /// Scope and identifiers are applied before limits; cancelled searches return no partial list.
     pub fn search(
