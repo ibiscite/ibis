@@ -233,6 +233,7 @@ export const keyText = {
     add: "Add the highlighted reference to the citation, or remove it",
     move: "Move through the results",
     escape: "Step back: close a menu, clear the search, then hide Ibis",
+    format: "Choose the output format and where to remember it",
     more: "Open or close More",
     pin: "Keep Window Open, or stop keeping it open",
     keys: "Show this list (? works outside the search box)",

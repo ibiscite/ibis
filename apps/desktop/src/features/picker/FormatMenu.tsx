@@ -1,4 +1,6 @@
 import type { RefObject } from "react";
+import { ariaKeys, keysFor } from "../../keys";
+import { isMac } from "../../platform";
 import { COPY_FORMATS } from "../../api";
 import { FORMATTED_STYLES } from "../../format/styles";
 import { STYLE_NAMES, STYLE_SAMPLES } from "../../format/styles";
@@ -16,8 +18,9 @@ export type FormatCommand = "more" | "keys" | "pin" | "preview" | "quit";
 /** The copy format menu: key syntaxes and citation styles, each with a real
  * sample. Styles stay listed but unavailable while the engine is not offered.
  * Focus goes back to the search box after a pick, Escape or Tab. */
-export function FormatMenu({ format, app, onceOnly, onToggleOnce, onAutomatic, onDefault, disabled, styles, onChange, searchRef, onCommand }: {
+export function FormatMenu({ format, buttonRef, app, onceOnly, onToggleOnce, onAutomatic, onDefault, disabled, styles, onChange, searchRef, onCommand }: {
   format: Choice;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, named beside the format. */
   app: string | null;
   onceOnly: boolean;
@@ -42,7 +45,7 @@ export function FormatMenu({ format, app, onceOnly, onToggleOnce, onAutomatic, o
       { id: `style:${id}`, label: STYLE_NAMES[id], sample: STYLE_SAMPLES[id], prose: true, disabled: !styles })) },
   ];
   const name = choiceName(format);
-  return <ToolbarMenu disabled={disabled} label={pickerText.copyAs} value={app ? pickerText.formatForApp(name, app) : name} sections={sections} selectedKey={format}
+  return <ToolbarMenu buttonRef={buttonRef} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={app ? pickerText.formatForApp(name, app) : name} sections={sections} selectedKey={format}
     filterLabel={pickerText.filterFormats} onKeyCommand={(event) => {
       const command = isMenuShortcut(event) ? "more" : isPinShortcut(event) && !event.repeat ? "pin" : isKeysShortcut(event) ? "keys"
         : isPreviewShortcut(event) && !event.repeat ? "preview" : isQuitShortcut(event) ? "quit" : null;

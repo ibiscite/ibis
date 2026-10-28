@@ -11,7 +11,7 @@ import "./ToolbarMenu.css";
 export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean; checked?: boolean; command?: boolean }[] };
 export type ToolbarMenuCommand = { run: () => void; isCurrent: () => boolean };
 type Props = {
-  disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
+  buttonRef?: RefObject<HTMLButtonElement | null>; buttonShortcut?: string; disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
   isOpen?: boolean; onOpenChange?: (open: boolean) => void;
   filterLabel: string; onAction: (key: string) => void; returnFocusRef?: RefObject<HTMLElement | null>;
   /** Close and return focus before running an application command. */
@@ -19,11 +19,12 @@ type Props = {
 };
 
 /** A reference-independent menu. React Aria owns selection, navigation and virtual focus. */
-export function ToolbarMenu({ disabled, label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange, onKeyCommand }: Props) {
+export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange, onKeyCommand }: Props) {
   const [internalOpen, setOpen] = useState(false);
   const [skipExit, setSkipExit] = useState(false);
   const open = isOpen ?? internalOpen;
-  const button = useRef<HTMLButtonElement>(null);
+  const internalButton = useRef<HTMLButtonElement>(null);
+  const button = buttonRef ?? internalButton;
   const boundary = useMenuBoundary(open, returnFocusRef, button);
   const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(open);
   const wholeRows = useWholeRows(list);
@@ -46,7 +47,7 @@ export function ToolbarMenu({ disabled, label, value, sections, selectedKey, fil
     if (!current() || !request.target.isConnected || (active !== document.body && active !== button.current && active !== request.target && !request.closing?.contains(active))) return;
     request.target.focus();
     if (current() && document.activeElement === request.target) request.command?.run();
-  }, []);
+  }, [button]);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
     wholeRows(node);
@@ -116,7 +117,7 @@ export function ToolbarMenu({ disabled, label, value, sections, selectedKey, fil
     }}
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
-      <Button ref={button} isDisabled={disabled} className="toolbar-menu-button" aria-label={`${label} ${value}`}><span className="toolbar-menu-value">{value}</span><PopupIndicator /></Button>
+      <Button ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className="toolbar-menu-button" aria-label={`${label} ${value}`}><span className="toolbar-menu-value">{value}</span><PopupIndicator /></Button>
       <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>

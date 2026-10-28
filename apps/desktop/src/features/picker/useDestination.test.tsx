@@ -66,3 +66,16 @@ test("a stale save completion cannot mark a different app as remembered", async 
   expect(result.current.remembered).toBe(false);
   expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", { key: "cite" });
 });
+
+test("an old successful copy cannot consume a newer one-time output choice", async () => {
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser, rememberAppOutput: vi.fn() }, options()));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("typst"));
+  const old = result.current.copyToken();
+  act(() => result.current.choose("cite"));
+  act(() => result.current.consumeOnce(old));
+  expect(result.current.format).toBe("cite");
+  expect(result.current.onceOnly).toBe(true);
+});

@@ -11,7 +11,7 @@ import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
 import { choiceKey, copyLabel, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
-import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut } from "./features/picker/shortcuts";
+import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
@@ -119,6 +119,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
     useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, previewFileCitation, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
+  const formatButtonRef = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
@@ -529,7 +530,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       onScrollCapture={pointer.resetHover}
       onKeyDown={(e) => {
         if (composing(e)) return;
-        if (isPinShortcut(e)) {
+        if (isFormatShortcut(e)) {
+          e.preventDefault();
+          if (!e.repeat && !menuOpen && !keysOpen) formatButtonRef.current?.click();
+        } else if (isPinShortcut(e)) {
           e.preventDefault();
           if (!e.repeat) togglePin();
         } else if (isPreviewShortcut(e)) {
@@ -597,6 +601,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         expanded={results.length > 0 && showCitations}
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format}
+        formatButtonRef={formatButtonRef}
         app={destination.app}
         onceOnly={destination.onceOnly}
         onToggleOnce={destination.toggleOnce}

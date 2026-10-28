@@ -162,3 +162,17 @@ test("a successful once-only copy consumes its override even after the highlight
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(formats).toEqual(["typst", "cite"]));
 });
+
+test("one format shortcut opens the scope choices without copying or changing any default", async () => {
+  const { calls, remembered } = opened(() => BROWSER);
+  await screen.findByText("First");
+  await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
+  expect(formatButton().getAttribute("aria-keyshortcuts")).toBe("Control+Shift+F");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "F", ctrlKey: true, shiftKey: true });
+  expect(await screen.findByRole("menuitemcheckbox", { name: "Just this once" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Automatic" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Use as global default" })).toBeTruthy();
+  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("set_picker_preferences");
+  expect(remembered).toEqual([]);
+});

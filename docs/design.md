@@ -634,15 +634,24 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   The title and line are announced once; "Use another library" shows the no
   library screen. A failure with references kept stays a notice above them.
 - **First run:** one step at most, and none when a library is found. Ibis
-  never asks "What do you write in?": it picks the output from the app that was
-  in front when the shortcut was pressed (Markdown editors and terminals get
-  Pandoc keys, LaTeX and Typst editors their syntax, word processors, mail and
-  web apps a formatted citation in APA) and shows that choice in the footer.
-  One key changes it just this once or for that app, and "Automatic" returns
-  to the guess; apps that host several syntaxes (code editors, terminals,
-  browsers) are guessed only as a starting point. The citation style is asked once, on the
-  first formatted copy, with APA chosen. Setup steps finish themselves: when
-  Zotero is not sharing, the screen shows where to turn it on and continues on
+  never asks "What do you write in?". The format pop-up beside search names
+  the exact output and the captured app, such as `\cite · Browser` or
+  `APA · Word`; a long value ends with an ellipsis but keeps its full accessible
+  name. ⇧⌘F (Ctrl+Shift+F elsewhere) opens the chooser from search. A format
+  pick is remembered for that app. "Just this once" makes the
+  next pick apply to one successful copy, then restores the app's output;
+  reopening also clears it. "Automatic" removes only that app's remembered
+  choice. Priority is one-time override, remembered app output, app-table
+  suggestion, then the global default (Pandoc until chosen). "Use as global
+  default" deliberately changes the fallback without erasing app choices.
+  Markdown editors suggest Pandoc and known LaTeX editors BibLaTeX; formatted
+  apps suggest the global style, or APA when the global output uses keys.
+  Browsers and code editors cannot identify a document's syntax: Overleaf,
+  web Typst and Google Docs share a browser ID, and several writing syntaxes
+  can share an editor. They follow the global default until an app choice is
+  remembered. Ibis never reads or stores a document title or URL to choose an
+  output. No format question interrupts each citation. Setup steps finish
+  themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
   with several Zotero profiles, Ibis asks which one; with no library at all,
   built-in sample references let people try Ibis, labelled "Sample" on every
@@ -695,6 +704,9 @@ follow (#776). The picker's More keeps its quick toggles until then.
 Queued choices finish saving before the window closes, with at most a two-second
 wait. A failed save shows an alert and restores the saved choice; reloading
 choices on return never replaces an edit still being saved.
+Each window saves only fields deliberately changed, under the native settings
+lock, and uses the returned saved state. Queued view changes never replay an
+already-saved output choice. Out-of-order reads never replace newer choices.
 When a row's text and control do not fit side by side, the control wraps below
 and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.

@@ -45,3 +45,8 @@ export function isPreviewShortcut(e: React.KeyboardEvent, mac = isMac): boolean 
 export function isSettingsShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
   return matchesAccelerator(e, keysFor("settings"), mac);
 }
+
+/** The output chooser has one mnemonic in-picker shortcut. */
+export function isFormatShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
+  return matchesAccelerator(e, keysFor("format"), mac);
+}

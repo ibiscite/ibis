@@ -20,14 +20,21 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
     preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
+    patches: [] as Partial<PickerPreferences>[],
     opened: 0,
     reads: 0,
     pages: [] as ((page: string) => void)[],
     closes: [] as (() => Promise<void>)[],
   };
+  const commit = async (next: Partial<PickerPreferences>) => {
+    state.patches.push(next);
+    state.preferences = { ...state.preferences, ...next };
+    state.saved.push({ ...state.preferences });
+    return { preferences: state.preferences, copy_format: "pandoc" as const };
+  };
   const api: SettingsApi = {
     pickerPreferences: async () => state.preferences,
-    setPickerPreferences: async (next) => { state.saved.push(next); state.preferences = next; return null as never; },
+    setPickerPreferences: commit,
     loginItem: async () => ({ name: "Ibis Nightly", enabled: false, problem: null }),
     setLoginItem: async (enabled) => ({ name: "Ibis Nightly", enabled, problem: null }),
     updateChecks: async () => true,
@@ -40,7 +47,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     onUpdateChecks: async () => () => undefined,
     onCloseRequested: async (handler) => { state.closes.push(handler); return () => undefined; },
   };
-  return { api, state };
+  return { api, state, commit };
 }
 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
@@ -114,9 +121,9 @@ test("picker choices save at once, in order, keeping the others", async () => {
 });
 
 test.each(["success", "failure", "later edit"])("closing drains both queued choices (%s)", async (outcome) => {
-  const { api, state } = fakeApi({ granted: true });
+  const { api, state, commit } = fakeApi({ granted: true });
   const first = deferred<null>(), second = deferred<null>();
-  const save = vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const save = vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await first.promise; return commit(next); }).mockImplementationOnce(async (next) => { await second.promise; return commit(next); });
   const read = vi.spyOn(api, "pickerPreferences");
   render(<SettingsApp api={api} initialPage="general" />);
   fireEvent.click(await screen.findByRole("radio", { name: "Spacious" }));
@@ -128,7 +135,7 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(null); });
-  expect(save).toHaveBeenNthCalledWith(2, expect.objectContaining({ density: "spacious", larger_text: true }), null);
+  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "spacious", larger_text: true } : { larger_text: true }, null);
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { second.resolve(null); await closing; });
@@ -136,9 +143,9 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
 });
 
 test("a stuck save holds closing for at most two seconds", async () => {
-  const { api, state } = fakeApi({ granted: true });
+  const { api, state, commit } = fakeApi({ granted: true });
   const save = deferred<null>();
-  vi.spyOn(api, "setPickerPreferences").mockReturnValue(save.promise);
+  vi.spyOn(api, "setPickerPreferences").mockImplementation(async (next) => { await save.promise; return commit(next); });
   render(<SettingsApp api={api} initialPage="general" />);
   const larger = await screen.findByRole("switch", { name: "Larger text" });
   vi.useFakeTimers();
@@ -153,9 +160,9 @@ test("a stuck save holds closing for at most two seconds", async () => {
 });
 
 test("a failed save reads back the saved switch and keeps the alert", async () => {
-  const { api, state } = fakeApi({ granted: true });
+  const { api, state, commit } = fakeApi({ granted: true });
   const save = deferred<null>(), read = deferred<PickerPreferences>();
-  vi.spyOn(api, "setPickerPreferences").mockReturnValue(save.promise);
+  vi.spyOn(api, "setPickerPreferences").mockImplementation(async (next) => { await save.promise; return commit(next); });
   render(<SettingsApp api={api} initialPage="general" />);
   const paste = await screen.findByRole("switch", { name: "Paste into the app you came from" });
   const reread = vi.spyOn(api, "pickerPreferences").mockReturnValue(read.promise);
@@ -169,9 +176,10 @@ test("a failed save reads back the saved switch and keeps the alert", async () =
 });
 
 test.each(["before", "during", "during, resolved after saving"])("a focus read started %s an edit cannot overwrite a local choice", async (when) => {
-  const { api, state } = fakeApi({ granted: true });
+  const { api, state, commit } = fakeApi({ granted: true });
+  const stale = { ...state.preferences };
   const read = deferred<PickerPreferences>(), save = deferred<null>();
-  vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(save.promise);
+  vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await save.promise; return commit(next); });
   render(<SettingsApp api={api} initialPage="general" />);
   const larger = await screen.findByRole("switch", { name: "Larger text" });
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(read.promise);
@@ -179,7 +187,7 @@ test.each(["before", "during", "during, resolved after saving"])("a focus read s
   fireEvent.click(larger);
   if (when.startsWith("during")) fireEvent.focus(window);
   if (when !== "during") await act(async () => { save.resolve(null); });
-  await act(async () => { read.resolve(state.preferences); });
+  await act(async () => { read.resolve(stale); });
   expect((larger as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
   await act(async () => { save.resolve(null); });
@@ -187,10 +195,10 @@ test.each(["before", "during", "during, resolved after saving"])("a focus read s
 });
 
 test("a failure read cannot overwrite a newer edit", async () => {
-  const { api, state } = fakeApi({ granted: true });
+  const { api, state, commit } = fakeApi({ granted: true });
   const saved = state.preferences;
   const save = deferred<null>(), read = deferred<PickerPreferences>();
-  vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(save.promise);
+  vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await save.promise; return commit(next); });
   render(<SettingsApp api={api} initialPage="general" />);
   const larger = await screen.findByRole("switch", { name: "Larger text" });
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(read.promise);
@@ -213,4 +221,27 @@ test("the sidebar switches pages, a page request from the app moves it, and the 
   expect(await screen.findByRole("switch", { name: "Paste into the app you came from" })).toBeTruthy();
   const found = await axe.run(container);
   expect(found.violations.map((v) => v.id)).toEqual([]);
+});
+
+test("a Settings field patch keeps an output chosen in the other window", async () => {
+  const { api, state } = fakeApi({ granted: true }, { citation_style: "apa" });
+  render(<SettingsApp api={api} initialPage="general" />);
+  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  state.preferences = { ...state.preferences, citation_style: "ieee" };
+  fireEvent.click(larger);
+  await waitFor(() => expect(state.patches).toEqual([{ larger_text: true }]));
+  expect(state.preferences).toMatchObject({ citation_style: "ieee", larger_text: true });
+});
+
+test("the latest focus read wins even when no local edit occurred", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="general" />);
+  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  const old = deferred<PickerPreferences>(), latest = deferred<PickerPreferences>();
+  vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+  fireEvent.focus(window);
+  fireEvent.focus(window);
+  await act(async () => { latest.resolve({ ...state.preferences, larger_text: true }); });
+  await act(async () => { old.resolve(state.preferences); });
+  expect((larger as HTMLInputElement).checked).toBe(true);
 });
