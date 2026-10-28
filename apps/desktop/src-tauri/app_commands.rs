@@ -34,4 +34,5 @@ pub const APP_COMMANDS: &[&str] = &[
     "open_settings",
     "paste_permission",
     "open_paste_permission",
+    "set_shortcut",
 ];

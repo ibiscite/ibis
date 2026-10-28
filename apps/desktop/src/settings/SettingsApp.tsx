@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Density, LoginItem, PickerPreferences } from "../bindings";
-import { densityNames, loginItemText, settingsText } from "../messages";
+import { useEffect, useRef, useState } from "react";
+import type { Density, LoginItem, PickerPreferences, ShortcutRefusal, ShortcutStatus } from "../bindings";
+import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
+import { densityNames, keyText, loginItemText, settingsText } from "../messages";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { Segmented } from "../ui/Segmented";
 import { Switch } from "../ui/Switch";
+import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
+import { ShortcutRecorder } from "../ui/ShortcutRecorder";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import type { SettingsApi } from "./api";
 import "./Settings.css";
 
-type Page = "general" | "about";
-const PAGES: readonly Page[] = ["general", "about"];
+type Page = "general" | "shortcuts" | "about";
+const PAGES: readonly Page[] = ["general", "shortcuts", "about"];
 const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
@@ -22,28 +25,6 @@ export function pageOf(name: string | null): { page: Page; focus: "paste" | null
 /** The done mark: the status colour with a tick, as in the Copied notice. */
 function DoneMark() {
   return <svg className="settings-done" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" /><path d="m5.5 10.5 3 3L14.5 7" /></svg>;
-}
-
-/** One row: a label and optional description, then one control at the end. */
-function Row({ id, label, description, children }: { id: string; label: string; description?: string; children?: ReactNode }) {
-  return (
-    <div className="settings-row" data-described={description ? true : undefined}>
-      <div className="settings-row-text">
-        <span id={id} className="settings-label">{label}</span>
-        {description && <span id={`${id}-description`} className="settings-description">{description}</span>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Group({ id, title, children }: { id?: string; title?: string; children: ReactNode }) {
-  return (
-    <section className="settings-group" id={id} aria-labelledby={title ? `${id}-title` : undefined}>
-      {title && <h2 id={`${id}-title`} className="settings-group-title">{title}</h2>}
-      <div className="settings-card">{children}</div>
-    </section>
-  );
 }
 
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
@@ -58,6 +39,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [updates, setUpdates] = useState<boolean | null>(null);
   const [version, setVersion] = useState("");
   const [failed, setFailed] = useState(false);
+  const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
+  const [shortcutProblem, setShortcutProblem] = useState<string | null>(null);
+  const [shortcutSaving, setShortcutSaving] = useState(false);
+  const shortcutBusy = useRef(false);
+  const shortcutReads = useRef(0);
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
@@ -69,6 +55,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const permission = usePastePermission(api, page === "general");
 
   useEffect(() => {
+    let active = true;
+    const readShortcut = () => {
+      if (shortcutBusy.current) return;
+      const request = ++shortcutReads.current;
+      api.shortcutStatus().then((next) => {
+        if (active && request === shortcutReads.current) {
+          setShortcut(next);
+          setShortcutProblem((problem) => problem === settingsText.shortcut.readFailed ? null : problem);
+        }
+      }).catch(() => {
+        if (active && request === shortcutReads.current) setShortcutProblem(settingsText.shortcut.readFailed);
+      });
+    };
     const readAll = () => {
       const request = ++reads.current;
       const started = generation.current;
@@ -83,6 +82,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     api.version().then(setVersion).catch(() => undefined);
     // Changes made in the picker or the menu bar while Settings was open.
     window.addEventListener("focus", readAll);
+    window.addEventListener("focus", readShortcut);
+    const shortcuts = api.onShortcutStatus((next) => {
+      shortcutReads.current += 1;
+      if (active) setShortcut(next);
+    });
+    void shortcuts.catch(() => { if (active) setShortcutProblem(settingsText.shortcut.readFailed); }).then(() => { if (active) readShortcut(); });
     const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus); });
     const automatic = api.onUpdateChecks(setUpdates);
     const close = api.onCloseRequested(async () => {
@@ -96,7 +101,10 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       window.clearTimeout(timer);
     });
     return () => {
+      active = false;
       window.removeEventListener("focus", readAll);
+      window.removeEventListener("focus", readShortcut);
+      void shortcuts.then((stop) => stop()).catch(() => undefined);
       void page.then((stop) => stop()).catch(() => undefined);
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
@@ -148,7 +156,27 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         }).catch(() => undefined);
       });
   };
+  const changeShortcut = (next: string | null) => {
+    if (shortcutBusy.current) return;
+    shortcutBusy.current = true;
+    const request = ++shortcutReads.current;
+    pending.current += 1;
+    setShortcutSaving(true);
+    setShortcutProblem(null);
+    saving.current = saving.current.catch(() => undefined).then(() => api.setShortcut(next))
+      .then((status) => { if (request === shortcutReads.current) setShortcut(status); })
+      .catch((refusal: unknown) => {
+        const messages = settingsText.shortcut.refusals;
+        setShortcutProblem(typeof refusal === "string" && Object.hasOwn(messages, refusal)
+          ? messages[refusal as ShortcutRefusal] : settingsText.shortcut.failed);
+      })
+      .finally(() => { pending.current -= 1; shortcutBusy.current = false; setShortcutSaving(false); });
+  };
   const name = login?.name ?? "Ibis";
+  const mac = platform === "macos";
+  const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
+  const isDefault = shortcut && /^[a-z]$/i.test(shortcut.shortcut.split("+").at(-1)?.trim() ?? "")
+    && shortcutLabel(shortcut.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
 
   return (
     <div className="settings">
@@ -212,6 +240,30 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 </Group>
               </>
             )}
+          </>
+        )}
+        {page === "shortcuts" && (
+          <>
+            <Group id="open-ibis">
+              <Row id="open-shortcut" label={settingsText.shortcut.open} description={settingsText.shortcut.description}>
+                {shortcut && <ShortcutRecorder shortcut={shortcut.shortcut} label={settingsText.shortcut.open}
+                  prompt={settingsText.shortcut.record} isDisabled={shortcutSaving} onRecord={changeShortcut} />}
+              </Row>
+              {shortcut && !isDefault && (
+                <Row id="default-shortcut" label={defaultLabel}>
+                  <Button isDisabled={shortcutSaving} onPress={() => changeShortcut(null)}>{settingsText.shortcut.useDefault}</Button>
+                </Row>
+              )}
+            </Group>
+            {shortcutProblem && <p className="settings-problem" role="alert">{shortcutProblem}</p>}
+            {shortcut?.error && <p className="settings-problem" role="status">{shortcut.error}</p>}
+            <Group id="picker-shortcuts" title={settingsText.shortcut.inPicker}>
+              {KEY_TABLE.map((binding) => (
+                <Row key={binding.action} id={`key-${binding.action}`} label={keyText.actions[binding.action]} description={keyText.regions[binding.region]}>
+                  <kbd>{binding.keys.map((keys) => keyLabel(keys, mac)).join(` ${keyText.or} `)}</kbd>
+                </Row>
+              ))}
+            </Group>
           </>
         )}
         {page === "about" && (

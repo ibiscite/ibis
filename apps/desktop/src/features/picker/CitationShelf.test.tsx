@@ -192,7 +192,7 @@ test("50 choices fit narrow and 200% text rows, keeping hidden source identities
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(removeButtons()).toHaveLength(6);
   expect(within(list).getByRole("button", { name: "Show all 49 selected references" }).textContent).toBe("+43");
-  removeButtons()[5]!.focus();
+  act(() => removeButtons()[5]!.focus());
   width = 344;
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(removeButtons()).toHaveLength(3);
@@ -202,7 +202,10 @@ test("50 choices fit narrow and 200% text rows, keeping hidden source identities
   fireEvent.click(within(list).getByRole("button", { name: "Show all 49 selected references" }));
   scale = 2; width = 328;
   act(() => { for (const observer of [...observers]) observer.callback(); });
-  for (let remaining = 49; remaining > 6; remaining--) fireEvent.click(removeButtons().at(-1)!);
+  // Retained chips keep their DOM identity. Avoid recomputing accessible names
+  // and visibility for every remaining button after each of 43 removals.
+  const tail = removeButtons().slice(6).reverse();
+  for (const button of tail) fireEvent.click(button);
   expect(list.hasAttribute("data-expanded")).toBe(true);
   fireEvent.click(within(list).getByRole("button", { name: "Show fewer selected references" }));
   expect(removeButtons()).toHaveLength(1);
@@ -210,7 +213,7 @@ test("50 choices fit narrow and 200% text rows, keeping hidden source identities
   scale = 1; width = 1000;
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(within(list).queryByRole("button", { name: "Show all 6 selected references" })).toBeNull();
-  removeButtons()[5]!.focus();
+  act(() => removeButtons()[5]!.focus());
   width = 344;
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(document.activeElement).toBe(within(list).getByRole("button", { name: "Show all 6 selected references" }));

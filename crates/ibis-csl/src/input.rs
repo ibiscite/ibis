@@ -379,6 +379,9 @@ fn prepare_with_traits(
             }
             cite["suppress-author"] = json!(pick.suppress_author || form == CitationForm::YearOnly);
             cite["author-only"] = json!(form == CitationForm::AuthorOnly);
+            if form == CitationForm::YearOnly {
+                cite["year-only"] = json!(true);
+            }
             if form == CitationForm::Narrative {
                 cite["narrative"] = json!(true);
             }
@@ -690,6 +693,9 @@ mod tests {
                 );
                 if !numeric && form == Narrative {
                     assert_eq!(json["cites"][0]["narrative"], true);
+                }
+                if !numeric && form == YearOnly {
+                    assert_eq!(json["cites"][0]["year-only"], true);
                 }
             }
         }
