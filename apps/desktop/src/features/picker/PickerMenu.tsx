@@ -27,7 +27,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   startAtLogin: { item: LoginItem; toggle: () => void } | null;
   /** The tray's update controls, for builds that have updates. */
   updates: { automatic: boolean; toggle: () => void; check: () => void } | null;
-  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null; quit: () => void };
+  actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null;
+    /** Offered when Ibis remembers formats for apps. */
+    forgetApps?: (() => void) | null; quit: () => void };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -61,6 +63,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       <MenuSeparator />
       <MenuSection id="view">
         <MenuItem id="density" label={pickerText.density(densityNames[density])} title={pickerText.densityTitle} onAction={actions.density} />
+        {actions.forgetApps && <MenuItem id="forget-apps" label={pickerText.forgetApps} title={pickerText.forgetAppsTitle} onAction={actions.forgetApps} />}
       </MenuSection>
       <MenuSection id="view-toggles">
         <MenuItem id="pin" label={pinned ? pickerText.stopKeepingOpen : pickerText.keepOpenMenu} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />
