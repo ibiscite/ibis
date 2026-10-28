@@ -164,7 +164,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
         assert_eq!(scoped.results[0].source, row.source);
         assert_ne!(row.id["library"].as_str(), Some(row.source.as_str()));
         // Search narrowing must never bypass collisions in the loaded context.
-        assert!(
+        assert!(matches!(
             bridge
                 .preview(
                     bridge.reserve_preview(),
@@ -175,9 +175,9 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                     }],
                     KeyFormat::Pandoc,
                     None
-                )
-                .is_err()
-        );
+                ),
+            Err(crate::library::CommandError::SharedCitationKey { key }) if key == "Synthetic2026"
+        ));
     }
     assert!(
         bridge

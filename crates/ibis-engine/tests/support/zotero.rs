@@ -15,6 +15,7 @@ pub struct Server {
     pub instance: Arc<AtomicU64>,
     pub pause: Arc<AtomicBool>,
     pub paused: Arc<AtomicBool>,
+    #[allow(dead_code)] // This fixture is also shared by desktop-only membership tests.
     pub empty_group: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
