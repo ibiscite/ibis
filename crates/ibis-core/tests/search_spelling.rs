@@ -143,10 +143,12 @@ fn a_greek_letter_standing_alone_is_found_by_its_name() {
         ),
         ("units", json!({"title": "10 μｍ and 5 μΩ"})),
         ("prose", json!({"title": "Η γη"})),
+        ("lone", json!({"title": "β δοκιμή"})),
     ]);
     assert!(keys(&more, "t:\"mueller beta\"").is_empty());
     assert_eq!(keys(&more, "beta amyloid")[0].0, "mixed");
     assert!(keys(&more, "eta").iter().all(|(key, _)| key != "prose"));
+    assert_eq!(keys(&more, "beta δοκιμη")[0].0, "lone");
     assert!(keys(&more, "mum").is_empty() && keys(&more, "muomega").is_empty());
     assert_eq!(keys(&more, "t:beta sheets")[0].0, "phrase");
     assert_eq!(keys(&more, "j:beta")[0].0, "mixed");
@@ -188,6 +190,7 @@ fn when_nothing_matches_every_term_the_closest_matches_are_marked() {
     assert!(!keys(&index, "sleep quantum quantum").is_empty());
     // Long pasted text gets none even when its words repeat.
     assert!(keys(&index, &"sleep quantum ".repeat(1000)).is_empty());
+    assert!(keys(&index, &format!("sleep memory {}", "z".repeat(10_000))).is_empty());
     // Numbers are not counted, so a missing DOI or page finds nothing.
     assert!(keys(&index, "10.2020/sleep.memory").is_empty());
     assert!(keys(&index, "10.9999/2018").is_empty());

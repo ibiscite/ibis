@@ -309,7 +309,11 @@ fn spelling_aliases(text: &str) -> String {
         .any(|word| only_greek(word) && word.iter().filter(|&&c| greek(c)).count() > 1);
     let mut aliases = String::new();
     for word in words {
-        let symbols = !only_greek(word) || !greek_text && word.iter().filter(|&&c| greek(c)).count() == 1;
+        // A lone Greek letter is a symbol, except the one-letter Greek words
+        // (ο, η, ω) in Greek text.
+        let lone = word.iter().filter(|&&c| greek(c)).collect::<Vec<_>>();
+        let greek_word = |c: &char| matches!(c.to_lowercase().next(), Some('ο' | 'η' | 'ω'));
+        let symbols = !only_greek(word) || lone.len() == 1 && !(greek_text && greek_word(lone[0]));
         let mut alias = String::new();
         let mut changed = false;
         for (i, &c) in word.iter().enumerate() {
@@ -912,7 +916,9 @@ fn rank<'r, T: SearchDocument>(
         .filter(|&t| !query.terms[t].starts_only && query.terms[t].text.chars().any(char::is_alphabetic))
         .filter(|&t| texts_seen.insert(query.terms[t].text.as_str()))
         .collect();
-    if candidates.is_empty() && short_query && words.len() >= 2 && identifier::parse_query(raw).is_none() {
+    // A word longer than any a person types also marks pasted text.
+    let typed = raw.len() <= 512 && query.terms.iter().all(|term| term.chars.len() <= MAX_TYPO_TERM);
+    if candidates.is_empty() && short_query && typed && words.len() >= 2 && identifier::parse_query(raw).is_none() {
         // Each record's words matched, score and fields; `None` when the hints leave it out.
         let mut partial: Vec<Option<(usize, u32, u8)>> = vec![hinted.is_empty().then_some((0, 0, 0)); docs.len()];
         if !hinted.is_empty() {
