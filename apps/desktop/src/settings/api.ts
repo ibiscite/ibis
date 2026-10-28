@@ -2,7 +2,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type KeyFormat, type PastePermission, type PickerPreferences } from "../bindings";
+import { commands, type KeyFormat, type PastePermission, type PickerPreferences, type ShortcutStatus } from "../bindings";
 
 export type { PastePermission } from "../bindings";
 
@@ -16,6 +16,9 @@ export const settingsApi = {
   checkForUpdates: commands.checkForUpdates,
   pastePermission: commands.pastePermission as () => Promise<PastePermission>,
   openPastePermission: commands.openPastePermission,
+  shortcutStatus: commands.shortcutStatus,
+  setShortcut: commands.setShortcut,
+  onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
