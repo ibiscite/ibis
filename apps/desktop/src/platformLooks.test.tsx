@@ -202,7 +202,7 @@ test("the shared macOS notice keeps its nominal shadow within the reserved gutte
   expect(gutter).toBe(16);
   const shadow = rules(tokens, ":root").match(/--shadow-toast:\s*([^;]+);/)![1]!;
   for (const [, offset, blur] of shadow.matchAll(/0 (-?[\d.]+)(?:px)? ([\d.]+)px /g)) expect(Math.abs(Number(offset)) + Number(blur) / 2).toBeLessThanOrEqual(gutter);
-  expect(rules(notices, ':root.notice-window[data-surface="opaque"] .copied-notice')).toMatch(/width:\s*100%;\s*height:\s*100%;\s*margin:\s*0;\s*border-radius:\s*0/);
+  expect(rules(notices, ':root.notice-window[data-surface="opaque"] .copied-notice')).toMatch(/width:\s*100%;\s*max-width:\s*none;\s*height:\s*100%;\s*margin:\s*0;\s*border-radius:\s*0/);
 });
 
 test("menus and dialogs consume their shared elevation and separate shape roles", () => {
@@ -225,7 +225,9 @@ test("scarlet marks only the citation: copied text and the shelf's quote mark", 
   // The shelf's output and chips use text colours (docs/design.md, "Shelf").
   expect(scarlet).not.toMatch(/preview-text|\.chip/);
   // Selection, the pin and the main controls keep the system accent.
-  expect(scarlet).not.toMatch(/button|\.search-bar|::before|\[role="option"\]\[data-active\]\s*(,|$)/);
+  // The Ibis mark in search is the logo, so it is brand scarlet (#1293); no search control is.
+  expect(scarlet).toContain(".search-bar > svg.search-mark");
+  expect(scarlet.replace(".search-bar > svg.search-mark", "")).not.toMatch(/button|\.search-bar|::before|\[role="option"\]\[data-active\]\s*(,|$)/);
   // Contrast and forced colours fall back to CanvasText.
   for (const media of ["@media (prefers-contrast: more)", "@media (forced-colors: active)"]) {
     expect(tokens.slice(tokens.indexOf(media))).toMatch(/--citation:\s*CanvasText/);

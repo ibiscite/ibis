@@ -11,7 +11,7 @@ import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
 import { choiceKey, copyLabel, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
-import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./features/picker/shortcuts";
+import { composing, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
@@ -48,7 +48,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus">>;
+  Partial<Pick<typeof nativeApi, "useZoteroLibraries" | "zoteroGroups" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -57,7 +57,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary,
     hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, checkForUpdates, onShortcutStatus } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, findSources, openFoundLibrary]);
@@ -264,6 +264,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
     readLoginItem();
     preferences.loadPreferences(() => mounted);
+    // Choices made in Settings apply to the picker at once.
+    const unlistenPreferences = onPreferencesChanged?.(() => preferences.loadPreferences(() => mounted))
+      .catch(() => undefined);
     return () => {
       acceptInitialStatus = false;
       mounted = false;
@@ -271,6 +274,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlistenLibrary.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
+      void unlistenPreferences?.then((stop) => stop?.());
     };
   }, [resetPointer]);
 
@@ -540,6 +544,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           e.preventDefault();
           if (menuOpen) closeMenu(true);
           else openMore();
+        } else if (isSettingsShortcut(e) && openSettings) {
+          e.preventDefault();
+          if (!e.repeat) runFromMenu("settings", () => openSettings(null));
         } else if (isQuitShortcut(e)) {
           e.preventDefault();
           void perform("quit", quitAfterSaving);
@@ -694,6 +701,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               preview: togglePastePreview,
               pin: togglePin,
               keys: openKeys,
+              settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />
         } />

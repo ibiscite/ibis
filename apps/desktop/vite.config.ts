@@ -14,6 +14,7 @@ export default defineConfig({
       input: {
         main: "index.html",
         notice: "notice.html",
+        settings: "settings.html",
       },
     },
   },

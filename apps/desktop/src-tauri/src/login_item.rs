@@ -8,8 +8,7 @@
 //! - macOS 13 and later: `SMAppService.mainApp`, listed under Open at Login.
 //! - Windows: a value in the current user's `Run` key, named after the app;
 //!   Task Manager's switch for it counts.
-//! - Linux: a per-channel XDG autostart file; permanent release identities keep
-//!   the matching legacy basename as their compatibility slot.
+//! - Linux: a per-channel XDG autostart file named after the app identifier.
 //!
 //! Ibis and Ibis Nightly have different names and identifiers, so each has
 //! its own entry; debug builds use another one again.

@@ -10,11 +10,8 @@ mod bindings;
 mod copy;
 mod diagnostics;
 mod feedback;
-mod identity;
 mod library;
 mod login_item;
-#[cfg(target_os = "macos")]
-mod macos_reapproval;
 #[cfg(target_os = "macos")]
 mod native_corners;
 mod native_feel;
@@ -28,6 +25,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod row_context;
+mod settings_window;
 mod setup;
 mod sizing;
 mod tray;
@@ -127,9 +125,7 @@ fn main() {
     let initial_panel = panel::prepare_startup(&mut context);
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
-    let builder = builder
-        .manage(initial_panel)
-        .manage(macos_reapproval::Delivery::default());
+    let builder = builder.manage(initial_panel);
     #[cfg(target_os = "windows")]
     let builder = builder.manage(picker::FocusChanges::default());
     let builder = builder
@@ -180,6 +176,12 @@ fn main() {
         .manage(updater::Updates::default())
         .invoke_handler(bindings::commands().invoke_handler())
         .on_window_event(|window, event| {
+            if window.label() == settings_window::LABEL {
+                if let WindowEvent::Destroyed = event {
+                    settings_window::closed(window.app_handle());
+                }
+                return;
+            }
             // Only the picker hides on blur or close; the Copied notice never has focus.
             if window.label() != "main" {
                 return;
@@ -248,8 +250,7 @@ fn main() {
                 #[cfg(not(target_os = "macos"))]
                 report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
             }
-            let location = identity::settings_location(&app.path().app_config_dir()?, &app.config().identifier);
-            let settings_path = location.path;
+            let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
             if let Some(problem) = &loaded.problem {
@@ -257,12 +258,6 @@ fn main() {
             }
             if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
                 library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
-                if location.using_legacy {
-                    library.settings_notice = Some(match library.settings_notice.take() {
-                        Some(problem) => format!("{} {problem}", identity::MIGRATION_NOTICE),
-                        None => identity::MIGRATION_NOTICE.to_string(),
-                    });
-                }
             }
             let (shortcut, label, setting_error) = configured_shortcut(loaded.settings.shortcut.as_deref());
             let wayland = cfg!(target_os = "linux")
@@ -332,8 +327,13 @@ fn main() {
         Ok(app) => app.run(|app, event| {
             // macOS: a repeated OS open request brings back the hidden picker.
             #[cfg(target_os = "macos")]
+            // A Dock click while Settings is open brings Settings forward.
             if let tauri::RunEvent::Reopen { .. } = event {
-                show_picker(app);
+                if settings_window::is_open(app) {
+                    settings_window::open(app, None);
+                } else {
+                    show_picker(app);
+                }
             }
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);

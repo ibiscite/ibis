@@ -19,7 +19,7 @@ fn chicago_source_bibliography_and_warm_preview_meet_release_budgets() {
         .dispatch(Method::Libraries, &json!({"action":"open-file","path":path}), &cancel)
         .unwrap();
     let mut request = KeyCitationRequest {
-        keys: (0..400).map(|index| format!("synthetic{index}")).collect(),
+        keys: (0..400).map(|index| format!("synthetic{index}").into()).collect(),
         output: OutputSpec::Csl {
             style: "chicago-author-date".into(),
         },

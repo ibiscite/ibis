@@ -31,12 +31,44 @@ pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStat
 }
 
 pub(crate) fn refresh_settings_notice<R: tauri::Runtime>(app: &AppHandle<R>, settings_file: &SettingsFile) {
-    if let Some(library) = app.try_state::<Mutex<Library>>()
-        && let Ok(mut library) = library.lock()
-    {
-        settings_file.refresh_notice(&mut library);
-        publish(app, status(&library));
+    if let Some(library) = app.try_state::<Mutex<Library>>() {
+        update_notices(&library, |_| true, |library| settings_file.refresh_notice(library));
+        if let Ok(library) = library.lock() {
+            publish(app, status(&library));
+        }
     }
+}
+
+fn update_notices(
+    library: &Mutex<Library>,
+    current: impl Fn(&Library) -> bool,
+    update: impl FnOnce(&mut Library),
+) -> bool {
+    let mut feedback = {
+        let Ok(library) = library.lock() else { return false };
+        if !current(&library) {
+            return false;
+        }
+        Library {
+            settings_notice: library.settings_notice.clone(),
+            choice_save_warning: library.choice_save_warning.clone(),
+            ..Library::default()
+        }
+    };
+    let previous = (feedback.settings_notice.clone(), feedback.choice_save_warning.clone());
+    // Settings reads and flushes run without the lock used by main-thread commands.
+    update(&mut feedback);
+    let Ok(mut library) = library.lock() else { return false };
+    if !current(&library) {
+        return false;
+    }
+    if library.settings_notice == previous.0 {
+        library.settings_notice = feedback.settings_notice;
+    }
+    if library.choice_save_warning == previous.1 {
+        library.choice_save_warning = feedback.choice_save_warning;
+    }
+    true
 }
 
 pub(super) fn refresh_tray(app: &AppHandle) {
@@ -75,14 +107,9 @@ pub(super) fn publish_current_with(library: &Mutex<Library>, emit: impl FnOnce(L
     refresh();
 }
 
-/// Apply an engine notification for `file`; `updated` when its references
-/// changed, since a refresh that failed or found nothing new also notifies.
+/// Apply an engine notification for `file`, accounting for each snapshot once.
 /// Returns whether `file` is still the open library.
-pub(super) fn engine_changed(
-    library: &mut Library,
-    file: &std::sync::Arc<super::engine_file::FileLibrary>,
-    updated: bool,
-) -> bool {
+pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super::engine_file::FileLibrary>) -> bool {
     if !library
         .file
         .as_ref()
@@ -94,14 +121,12 @@ pub(super) fn engine_changed(
         .engine
         .libraries()
         .is_ok_and(|info| !info.libraries.is_empty() && info.libraries.iter().all(|info| info.refresh_error.is_none()));
-    if healthy && library.requested == library.source {
+    if healthy && library.requested == library.source && library.error != Some(LoadError::NotLocal) {
         library.error = None;
         library.retained_error = None;
     }
     let now = std::time::SystemTime::now();
-    if updated {
-        library.changed_at = Some(now);
-    }
+    let updated = library.observe_revision(now);
     if updated || healthy {
         library.checked_at = Some(now);
     }
@@ -111,27 +136,17 @@ pub(super) fn engine_changed(
 /// Publish each change the engine reports for the open library until
 /// another library replaces it.
 pub(super) fn watch_current(app: &AppHandle) {
-    let Some(file) = app
-        .state::<Mutex<Library>>()
-        .lock()
-        .ok()
-        .and_then(|library| library.file.clone())
-    else {
+    let Some((file, events)) = observe_current(&app.state()) else {
         return;
     };
-    // Read before subscribing, so a change in between still counts as one.
-    let mut revision = file.revision();
-    let Ok(Some(events)) = file.observe_once() else {
-        return;
-    };
+    publish_current(app);
     let handle = app.clone();
     std::thread::spawn(move || {
         loop {
             let changed = events.recv_timeout(std::time::Duration::from_millis(200));
             let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|mut library| {
                 if changed.is_ok() {
-                    let previous = std::mem::replace(&mut revision, file.revision());
-                    engine_changed(&mut library, &file, previous != revision)
+                    engine_changed(&mut library, &file)
                 } else {
                     library
                         .file
@@ -147,6 +162,20 @@ pub(super) fn watch_current(app: &AppHandle) {
             }
         }
     });
+}
+
+fn observe_current(
+    library: &Mutex<Library>,
+) -> Option<(
+    std::sync::Arc<super::engine_file::FileLibrary>,
+    ibis_engine::LibrarySubscription,
+)> {
+    let mut library = library.lock().ok()?;
+    let file = library.file.clone()?;
+    let events = file.observe_once().ok()??;
+    // Subscribe before reconciling: changes before subscription have no queued event.
+    engine_changed(&mut library, &file);
+    Some((file, events))
 }
 
 #[derive(Clone, Copy)]
@@ -221,6 +250,9 @@ impl OpenIntent {
             // unchanged: a remembered choice is saved again afterwards.
             (_, Ok(Loaded::Unchanged)) => {
                 if let Ok(mut library) = library.lock() {
+                    if requests.0.load(Ordering::SeqCst) != request {
+                        return None;
+                    }
                     library.choice_save_warning = None;
                 }
                 install_loaded(library, requests, request, Ok(Loaded::Unchanged))
@@ -347,21 +379,32 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         }
         if installed.is_some() {
             let mut show_note = false;
-            if matches!(intent, OpenIntent::Remember)
-                && let Ok(mut library) = app.state::<Mutex<Library>>().lock()
-            {
+            if matches!(intent, OpenIntent::Remember) {
                 // Saving and the note belong to this request, never a newer choice.
-                if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request && library.error.is_none() {
-                    let saved = app.state::<SettingsFile>().update(|s| s.library = Some(chosen));
-                    if let Err(e) = saved {
-                        library.choice_save_warning =
-                            Some(format!("the library opened but could not be saved for next time: {e}"));
-                        show_note = true;
-                    } else {
-                        library.choice_save_warning = None;
-                        app.state::<SettingsFile>().refresh_notice(&mut library);
-                    }
-                }
+                let accepted = update_notices(
+                    &app.state(),
+                    |library| {
+                        app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request && library.error.is_none()
+                    },
+                    |library| {
+                        // Check again under the settings lock: a newer choice
+                        // then saves after this one, never before it.
+                        let saved = app.state::<SettingsFile>().update(|s| {
+                            if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request {
+                                s.library = Some(chosen);
+                            }
+                        });
+                        if let Err(e) = saved {
+                            library.choice_save_warning =
+                                Some(format!("the library opened but could not be saved for next time: {e}"));
+                            show_note = true;
+                        } else {
+                            library.choice_save_warning = None;
+                            app.state::<SettingsFile>().refresh_notice(library);
+                        }
+                    },
+                );
+                show_note &= accepted;
             }
             if show_note {
                 // The choice may have come from the tray; make sure it is seen.
@@ -415,7 +458,7 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
             Some(Ok(path)) => start_open(&handle, Source::File(path), true),
             Some(Err(_)) => {
                 if let Ok(mut library) = handle.state::<Mutex<Library>>().lock() {
-                    dialog_path_error(&mut library);
+                    dialog_path_error(&mut library, &handle.state());
                 }
                 publish_current(&handle);
             }
