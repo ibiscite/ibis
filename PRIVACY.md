@@ -88,7 +88,9 @@ In the paths below, replace `<id>` with the identifier for the channel you used:
 | Ibis Nightly | `com.ibiscite.ibis.nightly` | `io.github.ibiscite.ibis.nightly` |
 
 Earlier builds used the earlier identifier. Ibis no longer reads or copies
-files stored under it; delete those folders if you no longer need them.
+files stored under it; delete those folders if you no longer need them, and
+any `<id>.migration.lock` file or `<id>.migration-*` folder next to the
+settings folder, which earlier builds left behind.
 Stable and Nightly have separate settings and app-specific browser-data
 folders; system caches may be shared.
 
@@ -146,8 +148,11 @@ Keep any settings you want before deleting folders.
   saved-state files above if present.
 - **Linux:** uninstall the package with your package manager, or delete the
   AppImage and any extracted copy. Remove `<id>.desktop` from
-  `$XDG_CONFIG_HOME/autostart` (default `~/.config/autostart`), then that
-  channel's settings and data folders from the table.
+  `$XDG_CONFIG_HOME/autostart` (default `~/.config/autostart`), and the
+  earlier `io.github.ibiscite.ibis.desktop` or
+  `io.github.ibiscite.ibis.nightly.desktop` that earlier builds wrote there,
+  which Ibis no longer turns off. Then remove that channel's settings and data
+  folders from the table.
 
 After a successful update or uninstall, remove only confirmed Ibis temporary
 files and crash reports if you want those gone too. On macOS, Console can
