@@ -198,6 +198,7 @@ export const pickerText = {
   quitLabel: "Quit Ibis",
   settings: "Settings…",
   checkForUpdates: "Check for updates…",
+  updateAvailable: "Update available…",
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
   densityTitle: "Show less or more of each reference",

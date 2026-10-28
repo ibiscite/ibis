@@ -3,12 +3,12 @@ use crate::{
     LoadedLibrary, SourceWarning, WarningCode,
     zotero::{self, MappingError, MappingWarning, ZoteroCreator, ZoteroItem},
 };
-use ibis_core::contract::{CitationKeySource, LibraryId, LibraryObject, Snapshot};
+use ibis_core::contract::{CitationKeySource, ItemRef, LibraryId, LibraryObject, Snapshot};
 use ibis_core::zotero::api::{Transport, TransportError};
 use ibis_core::zotero::libraries::{self, Group};
 pub use ibis_zotero_local::DEFAULT_PORT;
 use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
-pub use ibis_zotero_local::live::{Library, LiveError};
+pub use ibis_zotero_local::live::{AttachmentKind, Library, LiveError};
 use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
 use ibis_zotero_local::{closed, discovery};
 use std::collections::BTreeMap;
@@ -255,30 +255,42 @@ impl ZoteroSource {
             if cancelled() {
                 return Err(LiveError::Cancelled.into());
             }
-            loaded.push(self.map_items(
+            let mut mapped = self.map_items(
                 library_id(reader.library()),
-                reader.items().into_iter().map(|raw| {
-                    ZoteroItem {
-                        key: raw.key.clone(),
-                        item_type: raw.item_type.clone(),
-                        fields: raw.fields.clone(),
-                        creators: raw
-                            .creators
-                            .iter()
-                            .map(|creator| ZoteroCreator {
-                                creator_type: creator.creator_type.clone(),
-                                first_name: creator.first_name.clone(),
-                                last_name: creator.last_name.clone(),
-                                name: creator.name.clone(),
-                                field_mode: creator.field_mode,
-                            })
-                            .collect(),
-                        better_bibtex_keys: bbt_keys.get(&raw.key).cloned().into_iter().collect(),
-                    }
+                reader.items().into_iter().map(|raw| ZoteroItem {
+                    key: raw.key.clone(),
+                    item_type: raw.item_type.clone(),
+                    fields: raw.fields.clone(),
+                    creators: raw
+                        .creators
+                        .iter()
+                        .map(|creator| ZoteroCreator {
+                            creator_type: creator.creator_type.clone(),
+                            first_name: creator.first_name.clone(),
+                            last_name: creator.last_name.clone(),
+                            name: creator.name.clone(),
+                            field_mode: creator.field_mode,
+                        })
+                        .collect(),
+                    better_bibtex_keys: bbt_keys.get(&raw.key).cloned().into_iter().collect(),
                 }),
                 warnings,
                 cancelled,
-            )?);
+            )?;
+            let best_attachments = reader
+                .items()
+                .into_iter()
+                .filter_map(|raw| {
+                    let kind = raw.best_attachment?;
+                    let id = ItemRef {
+                        library: mapped.library.clone(),
+                        key: raw.key.clone(),
+                    };
+                    mapped.snapshot.get(&id).map(|_| (id, kind))
+                })
+                .collect();
+            Arc::make_mut(&mut mapped).best_attachments = best_attachments;
+            loaded.push(mapped);
         }
         self.readers = readers;
         self.current = loaded.clone();
@@ -412,6 +424,7 @@ impl ZoteroSource {
             snapshot,
             warnings,
             attachment_paths: Default::default(),
+            best_attachments: Default::default(),
         });
         Ok(loaded)
     }

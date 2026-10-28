@@ -41,6 +41,7 @@
     "allow-update-checks",
     "allow-set-update-checks",
     "allow-check-for-updates",
+    "allow-update-available",
     "allow-open-settings"
   ]
 }

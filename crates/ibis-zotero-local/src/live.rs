@@ -25,6 +25,15 @@ pub struct ItemData {
     pub item_type: String,
     pub creators: Vec<CreatorData>,
     pub fields: BTreeMap<String, String>,
+    /// Classification only; no attachment locations or raw link metadata.
+    pub best_attachment: Option<AttachmentKind>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AttachmentKind {
+    Pdf,
+    WebPage,
+    Other,
 }
 impl fmt::Debug for ItemData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -611,7 +620,10 @@ fn entry(row: Value) -> Result<(Option<String>, Entry, Option<u64>), LiveError> 
         (None, None)
     } else {
         match item_data(data, key, kind) {
-            Ok(item) => (Some(item), None),
+            Ok(mut item) => {
+                item.best_attachment = best_attachment_kind(row.get("links"));
+                (Some(item), None)
+            }
             Err(LiveError::Limit) => (None, Some(LiveWarning::ItemTooLarge)),
             Err(error) => return Err(error),
         }
@@ -625,6 +637,24 @@ fn entry(row: Value) -> Result<(Option<String>, Entry, Option<u64>), LiveError> 
         },
         Some(version),
     ))
+}
+
+fn best_attachment_kind(links: Option<&Value>) -> Option<AttachmentKind> {
+    let mime = links?.get("attachment")?.get("attachmentType")?.as_str()?;
+    // Bound the entire untrimmed value, parameters included, in UTF-8 bytes.
+    if mime.len() > 256 {
+        return None;
+    }
+    let mime = mime.split(';').next()?.trim();
+    if mime.is_empty() {
+        None
+    } else if mime.eq_ignore_ascii_case("application/pdf") {
+        Some(AttachmentKind::Pdf)
+    } else if mime.eq_ignore_ascii_case("text/html") || mime.eq_ignore_ascii_case("application/xhtml+xml") {
+        Some(AttachmentKind::WebPage)
+    } else {
+        Some(AttachmentKind::Other)
+    }
 }
 
 fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Result<ItemData, LiveError> {
@@ -691,7 +721,9 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
         }
         let text = match value {
             Value::String(text) => text.clone(),
-            Value::Number(number) if name == "title" => number.to_string(),
+            Value::Number(number) if matches!(name.as_str(), "title" | "publicationTitle" | "volume") => {
+                number.to_string()
+            }
             // Keep the label as an empty marker for schema-aware Field warnings.
             _ => String::new(),
         };
@@ -705,6 +737,7 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
         item_type: kind.into(),
         creators,
         fields,
+        best_attachment: None,
     })
 }
 

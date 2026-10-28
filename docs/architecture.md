@@ -85,9 +85,10 @@ Its capability table drives supported forms and typed field losses; explicit
 unsupported forms are refused. Source order and repeated selections are retained.
 Key output writes instructions for the destination processor, whose style can
 subsequently sort or format the citation. The CLI and picker prepare citations
-through the shared engine; the picker copies only its prepared result. The
-remaining unused desktop commands and old core helpers are removed in #1260,
-after their live discovery, settings and transport callers are replaced.
+through the shared engine; the picker copies only its prepared result. Core no
+longer carries the pre-engine library model, file loaders or citation renderer.
+Shared names, dates, settings choices, discovery and transport rules remain
+where clients still use them.
 
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
@@ -114,7 +115,7 @@ explicitly rather than approximated. The 0.2 release still requires all sources 
 canonical JSON requests and stdio use those same results. RPC cancellation reaches
 the formatter task, and exhaustion remains a typed resource-limit error.
 
-- **Typed engine methods** are the source of truth for the command line, `ibis serve --stdio` (JSON-RPC 2.0, the way Codex's app-server and language servers work), `ibis mcp` for AI agents, and the app. Each front end lists which methods it exposes; the app keeps per-window command permissions (decision 0024), so a generic dispatcher never widens what a window may call.
+- **Typed engine methods** are the source of truth for the command line, `ibis serve --stdio` (JSON-RPC 2.0, as language servers use), `ibis mcp` for AI agents, and the app. Each front end lists which methods it exposes; the app keeps per-window command permissions (decision 0024), so a generic dispatcher never widens what a window may call.
 - **Every `--json` output is a versioned envelope** `{ "ibis": 1, "ok": …, "data" | "error": … }` with stable error codes, including argument errors. `data` carries partial results with per-item outcomes, losses and refusals; an empty search is `ok` with no results. Only the envelope goes to stdout; logs go to stderr.
 - **Exit codes** describe how a command line run ended: 0 ok (including empty results), 1 done with findings (refusals, losses, source warnings or refresh failures), 2 usage, 3 bad input, 4 a named item or library not found, 5 source unavailable or resource limit exceeded, 6 newer format than Ibis knows, 70 internal error, 130 cancelled.
 - **`ibis serve --stdio`** uses JSON-RPC 2.0 with LSP-style `Content-Length` framing, library-change notifications, `$/cancelRequest`, a message size limit and nothing else on stdout. Its errors are JSON-RPC errors whose `data` carries the Ibis error code; exit codes do not apply per request. `ibis mcp` keeps MCP's own envelope over the same methods.
@@ -129,11 +130,19 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 - **State:** one pure reducer with `useSyncExternalStore` and a controller with session tickets; no state library.
 - **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
 - **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the app in front is captured (bundle ID, process, name; never window titles) before the picker shows, and after a clean copy hides the picker one ⌘V, keyboard-layout aware, is posted only to that process once it is back in front and the clipboard still holds the citation; guards for terminals, remote desktops and VMs; the password-field guard decision 0009 requires follows in #1280. Windows: one atomic `SendInput`, refused for elevated targets. Linux copies and says why. Every refusal leaves the citation copied with a reason. macOS ties the Accessibility permission to the signing identity, so builds need a stable signing certificate.
-- **Reader:** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
+- **Reader (Later; 0.5 cites from annotations and existing PDFs first):** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
 - **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
-- **Language:** the engine returns message codes; the app words them. Fluent arrives with the first translation.
-- **Budgets (release builds):** picker interactive p95 ≤ 100 ms after the shortcut, typing p95 ≤ 50 ms at 100,000 references, measured by in-app probes and compared against `main`.
+- **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.
+- **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 100,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search, refresh and picker asset size are deterministic checks that fail pull request CI; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
 
 ## What gets replaced
 
-`model.rs`, `library.rs`, `settings.rs`, the Zotero and search adapters, the CLI and the desktop library, copy and preferences code are rebuilt on the contracts above. The BibTeX lexer and resolver, date parsing, citation escaping, locator parsing, the native shortcut, panel, clipboard and updater modules, the UI components and tokens, and every test fixture are kept. Settings migrations and identity carry-over code are deleted (decision 0027).
+The pre-engine `Reference` model, library selection helpers, owned search index,
+file loaders, watcher, citation renderer and Zotero CSL-export mapping and scan
+have been deleted from `ibis-core`. BibTeX parsing and file watching live in
+`ibis-sources`; Zotero reads use `ibis-zotero-local` and the canonical mapping in
+`ibis-sources`. Search uses contract snapshots and citations use the shared engine.
+Core retains the shared name/date helpers, settings, discovery, transport and
+group-list rules still used by clients. The native shortcut, panel, clipboard and
+updater modules, UI components, tokens and synthetic fixtures remain. Settings
+migrations and identity carry-over code are deleted (decision 0027).

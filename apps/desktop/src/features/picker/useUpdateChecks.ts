@@ -4,16 +4,32 @@ import { useEffect, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { useOperations } from "./useOperations";
 
-export function useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, perform, report }: {
+export function useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, perform, report }: {
   updateChecks?: typeof nativeApi.updateChecks;
   setUpdateChecks?: typeof nativeApi.setUpdateChecks;
   onUpdateChecks?: typeof nativeApi.onUpdateChecks;
+  updateAvailable?: typeof nativeApi.updateAvailable;
+  onUpdateAvailable?: typeof nativeApi.onUpdateAvailable;
   perform: ReturnType<typeof useOperations>["perform"];
   report: ReturnType<typeof useOperations>["report"];
 }) {
   // Only saved choices are shown. A click is queued natively with the tray's
   // clicks, and the saved answer arrives as an event, whichever menu asked.
   const [automatic, setAutomatic] = useState<boolean | null>(null);
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    if (!updateAvailable || !onUpdateAvailable) return;
+    let active = true, heard = false;
+    const stop = onUpdateAvailable((pending) => { if (active) { heard = true; setAvailable(pending); } });
+    stop.then(updateAvailable).then(
+      (pending) => { if (active && !heard) setAvailable(pending); },
+      () => { if (active) report("updateChecks"); },
+    );
+    return () => {
+      active = false;
+      void stop.then((unlisten) => unlisten()).catch(() => undefined);
+    };
+  }, [updateAvailable, onUpdateAvailable, report]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reads once at start; later changes arrive as events.
   useEffect(() => {
     if (!updateChecks || !onUpdateChecks) return;
@@ -37,5 +53,5 @@ export function useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks,
   };
   // The More menu's items, given how "Check for Updates…" runs there.
   return (check: (() => void) | undefined) =>
-    setUpdateChecks && check && automatic !== null ? { automatic, toggle, check } : null;
+    setUpdateChecks && check && automatic !== null ? { automatic, available, toggle, check } : null;
 }
