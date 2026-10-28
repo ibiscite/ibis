@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use ibis_core::cite::KeyFormat;
 use ibis_core::settings::{self, CitationStyle, Density};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::library::Library;
 
@@ -101,18 +101,9 @@ impl SettingsFile {
     }
 
     /// Refresh under the library lock so a reload cannot carry forward a stale
-    /// recovery warning. The separate identity-migration warning still applies.
+    /// recovery warning.
     pub(crate) fn refresh_notice(&self, library: &mut Library) {
-        let migration = library
-            .settings_notice
-            .as_deref()
-            .is_some_and(|notice| notice.starts_with(crate::identity::MIGRATION_NOTICE));
-        let notice = settings_notice(&self.path, &settings::load(&self.path));
-        library.settings_notice = match (migration, notice) {
-            (true, Some(notice)) => Some(format!("{} {notice}", crate::identity::MIGRATION_NOTICE)),
-            (true, None) => Some(crate::identity::MIGRATION_NOTICE.to_string()),
-            (false, notice) => notice,
-        };
+        library.settings_notice = settings_notice(&self.path, &settings::load(&self.path));
     }
 }
 
@@ -127,6 +118,8 @@ pub(crate) struct PickerPreferences {
     pub(crate) show_paste_preview: bool,
     /// The Ibis mark in place of the search glyph; off by default.
     pub(crate) search_mark: bool,
+    /// Enter pastes into the app the picker was opened from; on by default.
+    pub(crate) paste: bool,
 }
 
 impl PickerPreferences {
@@ -137,6 +130,52 @@ impl PickerPreferences {
             larger_text: settings.larger_text.unwrap_or(false),
             show_paste_preview: settings.show_paste_preview.unwrap_or(true),
             search_mark: settings.search_mark.unwrap_or(false),
+            paste: settings.paste.unwrap_or(true),
+        }
+    }
+}
+
+/// The authoritative state after one locked patch and flush.
+#[derive(Debug, Serialize, specta::Type)]
+pub(crate) struct PickerSave {
+    preferences: PickerPreferences,
+    copy_format: KeyFormat,
+}
+
+/// Only fields deliberately changed in one window cross the write boundary.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PickerPreferencesPatch {
+    #[serde(default, deserialize_with = "present_style", skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<CitationStyle>)]
+    pub(crate) citation_style: Option<Option<CitationStyle>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) density: Option<Density>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) larger_text: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) show_paste_preview: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) search_mark: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) paste: Option<bool>,
+}
+
+// An absent style is unchanged; an explicit null deliberately chooses keys.
+fn present_style<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Option<CitationStyle>>, D::Error> {
+    Option::<CitationStyle>::deserialize(deserializer).map(Some)
+}
+
+#[cfg(test)]
+impl From<PickerPreferences> for PickerPreferencesPatch {
+    fn from(value: PickerPreferences) -> Self {
+        Self {
+            citation_style: Some(value.citation_style),
+            density: Some(value.density),
+            larger_text: Some(value.larger_text),
+            show_paste_preview: Some(value.show_paste_preview),
+            search_mark: Some(value.search_mark),
+            paste: Some(value.paste),
         }
     }
 }
@@ -152,17 +191,30 @@ pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Pick
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
-    preferences: PickerPreferences,
+    preferences: PickerPreferencesPatch,
     copy_format: Option<KeyFormat>,
     settings_file: State<'_, SettingsFile>,
     app: AppHandle<R>,
-) -> Result<(), String> {
+    window: tauri::Window<R>,
+) -> Result<PickerSave, String> {
     let settings_file = settings_file.inner().clone();
+    // A change made in Settings reaches the picker; the picker's own are already shown.
+    let from_elsewhere = window.label() != "main";
     // Keep the whole locked read/change/flush off the command and async workers.
     tauri::async_runtime::spawn_blocking(move || {
-        settings_file.save_preferences(preferences, copy_format)?;
+        let saved = settings_file.save_preferences(preferences, copy_format)?;
+        let preferences = PickerPreferences::from_settings(&saved);
         crate::library::refresh_settings_notice(&app, &settings_file);
-        Ok(())
+        if from_elsewhere {
+            crate::diagnostics::report(
+                app.emit_to("main", "preferences:changed", preferences),
+                crate::diagnostics::NativeIssue::PickerEvent,
+            );
+        }
+        Ok(PickerSave {
+            preferences,
+            copy_format: saved.copy_format.unwrap_or(KeyFormat::Pandoc),
+        })
     })
     .await
     .map_err(|_| "picker preferences could not be saved".to_string())?
@@ -171,19 +223,33 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
 impl SettingsFile {
     fn save_preferences(
         &self,
-        preferences: PickerPreferences,
+        preferences: impl Into<PickerPreferencesPatch>,
         copy_format: Option<KeyFormat>,
     ) -> Result<settings::Settings, String> {
+        let preferences = preferences.into();
         self.update(|s| {
             if let Some(format) = copy_format {
                 s.copy_format = Some(format);
             }
-            s.citation_style = preferences.citation_style;
+            if let Some(style) = preferences.citation_style {
+                s.citation_style = style;
+            }
             // Defaults stay unwritten, so the file only names real choices.
-            s.density = Some(preferences.density).filter(|d| *d != Density::Comfortable);
-            s.larger_text = Some(preferences.larger_text).filter(|larger| *larger);
-            s.show_paste_preview = Some(preferences.show_paste_preview).filter(|shown| !shown);
-            s.search_mark = Some(preferences.search_mark).filter(|mark| *mark);
+            if let Some(density) = preferences.density {
+                s.density = Some(density).filter(|d| *d != Density::Comfortable);
+            }
+            if let Some(larger) = preferences.larger_text {
+                s.larger_text = Some(larger).filter(|larger| *larger);
+            }
+            if let Some(shown) = preferences.show_paste_preview {
+                s.show_paste_preview = Some(shown).filter(|shown| !shown);
+            }
+            if let Some(mark) = preferences.search_mark {
+                s.search_mark = Some(mark).filter(|mark| *mark);
+            }
+            if let Some(paste) = preferences.paste {
+                s.paste = Some(paste).filter(|paste| !paste);
+            }
         })
     }
 }
@@ -242,6 +308,7 @@ mod tests {
             larger_text: true,
             show_paste_preview: false,
             search_mark: false,
+            paste: true,
         };
         let (dispatched, dispatch) = mpsc::channel();
         let (responded, response) = mpsc::channel();
@@ -275,7 +342,7 @@ mod tests {
         assert_eq!(
             body.deserialize::<serde_json::Value>()
                 .unwrap_or_else(|e| panic!("invalid reply: {e}")),
-            serde_json::Value::Null
+            serde_json::json!({"preferences": chosen, "copy_format": "typst"})
         );
         thread.join().unwrap_or_else(|_| panic!("dispatch thread panicked"));
         let loaded = settings::load(&path);
@@ -295,21 +362,14 @@ mod tests {
         use std::time::Duration;
         use tauri::Listener;
 
-        for (has_backup, migrating) in [(false, false), (true, false), (true, true)] {
+        for has_backup in [false, true] {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
             let path = directory.path().join("settings.json");
             std::fs::write(&path, "{ damaged").unwrap_or_else(|e| panic!("{e}"));
             if has_backup {
                 std::fs::write(path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
             }
-            let mut startup_notice = settings_notice(&path, &settings::load(&path));
-            if migrating {
-                startup_notice = Some(format!(
-                    "{} {}",
-                    crate::identity::MIGRATION_NOTICE,
-                    startup_notice.unwrap_or_default()
-                ));
-            }
+            let startup_notice = settings_notice(&path, &settings::load(&path));
             let mut library = crate::library::Library::default();
             library.settings_notice = startup_notice.clone();
             let app = tauri::test::mock_builder()
@@ -332,17 +392,15 @@ mod tests {
             let library = app.state::<Mutex<crate::library::Library>>();
             let library = library.lock().unwrap_or_else(|_| panic!("library lock poisoned"));
             if has_backup {
-                let expected = migrating.then_some(crate::identity::MIGRATION_NOTICE);
                 assert_eq!(
-                    library.settings_notice.as_deref(),
-                    expected,
+                    library.settings_notice, None,
                     "successful recovery must clear the damaged-settings warning"
                 );
                 let event = events
                     .recv_timeout(Duration::from_secs(3))
                     .unwrap_or_else(|e| panic!("{e}"));
                 let status: serde_json::Value = serde_json::from_str(&event).unwrap_or_else(|e| panic!("{e}"));
-                assert_eq!(status.get("settings_notice"), Some(&serde_json::json!(expected)));
+                assert_eq!(status.get("settings_notice"), Some(&serde_json::Value::Null));
             } else {
                 assert_eq!(library.settings_notice, startup_notice);
                 assert!(events.try_recv().is_err(), "failed saves must keep the warning");
@@ -662,8 +720,10 @@ mod tests {
             larger_text: true,
             show_paste_preview: false,
             search_mark: false,
+            paste: false,
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.paste, Some(false));
         assert_eq!(saved.copy_format, Some(KeyFormat::Typst));
         assert_eq!(PickerPreferences::from_settings(&saved), chosen);
         let defaults = PickerPreferences {
@@ -672,11 +732,18 @@ mod tests {
             larger_text: false,
             show_paste_preview: true,
             search_mark: false,
+            paste: true,
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(PickerPreferences::from_settings(&saved), defaults);
         let text = std::fs::read_to_string(&file.path).unwrap_or_default();
-        for field in ["citation_style", "density", "larger_text", "show_paste_preview"] {
+        for field in [
+            "citation_style",
+            "density",
+            "larger_text",
+            "show_paste_preview",
+            "paste",
+        ] {
             assert!(!text.contains(field), "{field} is not written for the default");
         }
     }
@@ -730,6 +797,7 @@ mod tests {
             larger_text: true,
             show_paste_preview: false,
             search_mark: false,
+            paste: true,
         };
         for format in [
             KeyFormat::Pandoc,
@@ -769,6 +837,7 @@ mod tests {
             larger_text: false,
             show_paste_preview: false,
             search_mark: false,
+            paste: true,
         };
         for text in [
             r#"{"copy_format":"synthetic-private-value"}"#,
@@ -795,5 +864,77 @@ mod tests {
             "settings.json could not be read"
         );
         assert!(file.path.is_dir());
+    }
+    #[test]
+    fn field_patches_from_two_stale_windows_keep_both_intents_in_either_write_order() {
+        use std::sync::mpsc;
+        for first in [0, 1] {
+            let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+            let file = SettingsFile::new(directory.path().join("settings.json"));
+            file.update(|s| s.citation_style = Some(CitationStyle::Apa))
+                .unwrap_or_else(|e| panic!("{e}"));
+            let baseline = PickerPreferences::from_settings(&settings::load(&file.path).settings);
+            let mut global = baseline;
+            global.citation_style = None;
+            let mut view = baseline;
+            view.density = Density::Spacious;
+            // Each client sends only the field its user changed from the same baseline.
+            let patches = [
+                serde_json::json!({ "citation_style": global.citation_style }),
+                serde_json::json!({ "density": view.density }),
+            ];
+            std::thread::scope(|scope| {
+                let (completed, results) = mpsc::channel();
+                let mut starts = Vec::new();
+                for (index, patch) in patches.into_iter().enumerate() {
+                    let (start, released) = mpsc::channel();
+                    starts.push(start);
+                    let file = &file;
+                    let completed = completed.clone();
+                    scope.spawn(move || {
+                        released.recv().unwrap_or_else(|e| panic!("{e}"));
+                        let patch: PickerPreferencesPatch =
+                            serde_json::from_value(patch).unwrap_or_else(|e| panic!("{e}"));
+                        let saved = file
+                            .save_preferences(patch, (index == 0).then_some(KeyFormat::Cite))
+                            .unwrap_or_else(|e| panic!("{e}"));
+                        completed.send((index, saved)).unwrap_or_else(|e| panic!("{e}"));
+                    });
+                }
+                starts[first].send(()).unwrap_or_else(|e| panic!("{e}"));
+                let (index, _) = results.recv().unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(index, first);
+                starts[1 - first].send(()).unwrap_or_else(|e| panic!("{e}"));
+                let (_, saved) = results.recv().unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(saved.citation_style, None);
+                assert_eq!(saved.copy_format, Some(KeyFormat::Cite));
+                assert_eq!(saved.density, Some(Density::Spacious));
+            });
+        }
+    }
+
+    #[test]
+    fn an_absent_style_patch_keeps_it_and_explicit_null_selects_keys() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        file.update(|s| s.citation_style = Some(CitationStyle::Apa))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let patch: PickerPreferencesPatch =
+            serde_json::from_value(serde_json::json!({"larger_text":true})).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            file.save_preferences(patch, None)
+                .unwrap_or_else(|e| panic!("{e}"))
+                .citation_style,
+            Some(CitationStyle::Apa)
+        );
+        let patch: PickerPreferencesPatch =
+            serde_json::from_value(serde_json::json!({"citation_style":null})).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            file.save_preferences(patch, Some(KeyFormat::Cite))
+                .unwrap_or_else(|e| panic!("{e}"))
+                .citation_style,
+            None
+        );
+        assert!(serde_json::from_value::<PickerPreferencesPatch>(serde_json::json!({"document":"synthetic"})).is_err());
     }
 }

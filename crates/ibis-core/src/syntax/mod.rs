@@ -28,6 +28,15 @@ pub enum Escaping {
     Typst,
     BareKeys,
     Json,
+    /// Org mode has no escape character: text that Org would read as markup is
+    /// not carried, with a typed loss.
+    Org,
+    Myst,
+    MultiMarkdown,
+    AsciiDoc,
+    Html,
+    Liquid,
+    CaywJson,
 }
 
 /// This table drives validation and field losses, rather than merely describing
@@ -59,7 +68,7 @@ impl SyntaxCapabilities {
 use CitationForm::{Narrative, Normal, YearOnly};
 use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
-pub const CAPABILITIES: [SyntaxCapabilities; 9] = [
+pub const CAPABILITIES: [SyntaxCapabilities; 16] = [
     SyntaxCapabilities {
         syntax: KeySyntax::Pandoc,
         command: None,
@@ -162,6 +171,95 @@ pub const CAPABILITIES: [SyntaxCapabilities; 9] = [
         escaping: Escaping::Typst,
     },
     SyntaxCapabilities {
+        syntax: KeySyntax::OrgCite,
+        command: None,
+        forms: &[Normal, Narrative, CitationForm::AuthorOnly, YearOnly],
+        single_item_forms: &[Narrative, CitationForm::AuthorOnly, YearOnly],
+        locator: Native,
+        prefix: &[
+            (Normal, Native),
+            (Narrative, Native),
+            (CitationForm::AuthorOnly, Native),
+            (YearOnly, Native),
+        ],
+        suffix: Native,
+        rich_text: Flattened,
+        author_suppression: SingleItem,
+        escaping: Escaping::Org,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::Myst,
+        command: None,
+        forms: &[Normal, Narrative],
+        single_item_forms: &[],
+        locator: Unsupported,
+        prefix: &[(Normal, Unsupported), (Narrative, Unsupported)],
+        suffix: Unsupported,
+        rich_text: Unsupported,
+        author_suppression: Unsupported,
+        escaping: Escaping::Myst,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::MultiMarkdown,
+        command: None,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: Native,
+        prefix: &[(Normal, Unsupported)],
+        suffix: Native,
+        rich_text: Flattened,
+        author_suppression: Unsupported,
+        escaping: Escaping::MultiMarkdown,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::AsciiDoc,
+        command: None,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: Native,
+        prefix: &[(Normal, Unsupported)],
+        suffix: Unsupported,
+        rich_text: Unsupported,
+        author_suppression: Unsupported,
+        escaping: Escaping::AsciiDoc,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::Jupyter,
+        command: None,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: Unsupported,
+        prefix: &[(Normal, Unsupported)],
+        suffix: Unsupported,
+        rich_text: Unsupported,
+        author_suppression: Unsupported,
+        escaping: Escaping::Html,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::JekyllScholar,
+        command: None,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: SingleItem,
+        prefix: &[(Normal, Unsupported)],
+        suffix: Unsupported,
+        rich_text: Unsupported,
+        author_suppression: Unsupported,
+        escaping: Escaping::Liquid,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::CaywJson,
+        command: None,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: Native,
+        prefix: &[(Normal, Native)],
+        suffix: Native,
+        rich_text: Flattened,
+        author_suppression: Native,
+        escaping: Escaping::CaywJson,
+    },
+    SyntaxCapabilities {
         syntax: KeySyntax::Keys,
         command: None,
         forms: &[Normal],
@@ -231,15 +329,49 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
         match resolve(snapshot, item, request.form, caps, request.items.len(), &owners) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
             Ok((record, key, form)) => {
+                // A MyST role applies one form to every key it contains.
+                if caps.syntax == KeySyntax::Myst && picks.first().is_some_and(|first: &Pick<'_>| first.form != form) {
+                    outcomes.push(ItemOutcome::Refused {
+                        item: index,
+                        error: CitationError::UnsupportedForm,
+                    });
+                    continue;
+                }
                 key_bytes = key_bytes.saturating_add(key.len());
                 if key_bytes > MAX_CITATION_BYTES {
                     return Err(CitationError::InvalidKey);
                 }
                 let supports = |support| support == Native || support == SingleItem && request.items.len() == 1;
+                let prefix = if escape::carries(caps.escaping, &item.prefix, false) {
+                    caps.prefix_support(form)
+                } else {
+                    Unsupported
+                };
+                let suffix = if escape::carries(caps.escaping, &item.suffix, true) {
+                    caps.suffix
+                } else {
+                    Unsupported
+                };
+                if caps.rich_text == Flattened
+                    && [(&item.prefix, prefix), (&item.suffix, suffix)]
+                        .into_iter()
+                        .any(|(runs, support)| {
+                            supports(support)
+                                && runs
+                                    .iter()
+                                    .any(|run| run.italic || run.bold || run.script != Script::Normal)
+                        })
+                {
+                    losses.push(Loss {
+                        item: Some(index),
+                        field: LossField::RichText,
+                        reason: LossReason::Flattened,
+                    });
+                }
                 for (field, present, support) in [
                     (LossField::Locator, item.locator.is_some(), caps.locator),
-                    (LossField::Prefix, !item.prefix.is_empty(), caps.prefix_support(form)),
-                    (LossField::Suffix, !item.suffix.is_empty(), caps.suffix),
+                    (LossField::Prefix, !item.prefix.is_empty(), prefix),
+                    (LossField::Suffix, !item.suffix.is_empty(), suffix),
                     (
                         LossField::AuthorSuppression,
                         item.suppress_author,
@@ -375,14 +507,15 @@ fn resolve<'a>(
             .chars()
             .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | '{' | '}'))
         || caps.escaping == Escaping::Latex && key.contains(['%', '#', '\\', '~', '^', '$', '&'])
+        || !escape::key_fits(caps.escaping, key)
     {
         return Err(CitationError::InvalidKey);
     }
-    if item
-        .locator
-        .as_ref()
-        .is_some_and(|locator| locator.value.trim().is_empty() || locator.value.chars().any(char::is_control))
-    {
+    if item.locator.as_ref().is_some_and(|locator| {
+        locator.value.trim().is_empty()
+            || locator.value.chars().any(char::is_control)
+            || !escape::locator_fits(caps.escaping, locator)
+    }) {
         return Err(CitationError::InvalidLocator);
     }
     if caps.escaping == Escaping::Pandoc

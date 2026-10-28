@@ -1,6 +1,6 @@
 //! Engine-owned library objects and immutable, fingerprinted snapshots.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -94,23 +94,6 @@ pub struct Fingerprints {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub enum SourceFormat {
-    Bibtex,
-    CslJson,
-    Zotero,
-}
-
-/// Engine-only original payload. A Record deliberately never exports it to a
-/// front end, since raw source records can contain local file locations.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RawProvenance {
-    pub format: SourceFormat,
-    pub data: Value,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
 pub enum CitationKeySource {
     Bibtex,
     CslJsonCitationKey,
@@ -141,10 +124,6 @@ pub struct Record {
     /// printed CSL fields. They invalidate display/search, not citation picks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub identifiers: Vec<crate::identifier::Identifier>,
-    /// Kept in the engine, excluded from the public JSON projection and hashes.
-    #[serde(skip)]
-    #[schemars(skip)]
-    pub raw: Option<RawProvenance>,
 }
 
 impl Record {
@@ -312,10 +291,11 @@ pub struct SnapshotObject {
 
 /// No mutable object access is exposed. Refresh constructs a new value while
 /// existing picker sessions retain their original value.
+// Objects are shared, so combining libraries never copies or re-fingerprints them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
-    objects: Vec<SnapshotObject>,
+    objects: Vec<Arc<SnapshotObject>>,
     fingerprints: Fingerprints,
 }
 
@@ -323,13 +303,9 @@ impl Snapshot {
     pub fn new(mut objects: Vec<LibraryObject>) -> Result<Self, ModelError> {
         // Check every recursively shaped payload before any other validation
         // can return and drop it. Values assembled by sources do not have the
-        // JSON reader's recursion limit, including engine-only raw provenance.
+        // JSON reader's recursion limit.
         let safe_depth = objects.iter().all(|object| match object {
-            LibraryObject::Record(record) => record
-                .csl
-                .values()
-                .chain(record.raw.iter().map(|raw| &raw.data))
-                .all(|value| validate_value_depth(value).is_ok()),
+            LibraryObject::Record(record) => record.csl.values().all(|value| validate_value_depth(value).is_ok()),
             _ => true,
         });
         if !safe_depth {
@@ -352,9 +328,39 @@ impl Snapshot {
             .into_iter()
             .map(|object| {
                 let fingerprints = object.fingerprints()?;
-                Ok(SnapshotObject { object, fingerprints })
+                Ok(Arc::new(SnapshotObject { object, fingerprints }))
             })
             .collect::<Result<Vec<_>, ModelError>>()?;
+        Self::from_sorted(objects)
+    }
+
+    /// This snapshot's objects whose library passes `keep`, plus all of
+    /// `other`'s. Both inputs were validated and fingerprinted already.
+    pub fn merged(&self, other: &Snapshot, keep: impl Fn(&LibraryId) -> bool) -> Result<Self, ModelError> {
+        let mut kept = self
+            .objects
+            .iter()
+            .filter(|item| keep(&item.object.id().library))
+            .peekable();
+        let mut added = other.objects.iter().peekable();
+        let mut objects = Vec::with_capacity(self.objects.len() + other.objects.len());
+        loop {
+            let next = match (kept.peek(), added.peek()) {
+                (Some(left), Some(right)) => match left.object.id().cmp(right.object.id()) {
+                    std::cmp::Ordering::Less => kept.next(),
+                    std::cmp::Ordering::Greater => added.next(),
+                    std::cmp::Ordering::Equal => return Err(ModelError::DuplicateItem),
+                },
+                (Some(_), None) => kept.next(),
+                (None, _) => added.next(),
+            };
+            let Some(next) = next else { break };
+            objects.push(next.clone());
+        }
+        Self::from_sorted(objects)
+    }
+
+    fn from_sorted(objects: Vec<Arc<SnapshotObject>>) -> Result<Self, ModelError> {
         let cite: Vec<_> = objects
             .iter()
             .map(|item| (item.object.id(), &item.fingerprints.cite))
@@ -370,7 +376,7 @@ impl Snapshot {
         Ok(Self { objects, fingerprints })
     }
 
-    pub fn objects(&self) -> &[SnapshotObject] {
+    pub fn objects(&self) -> &[Arc<SnapshotObject>] {
         &self.objects
     }
     pub fn fingerprints(&self) -> &Fingerprints {
@@ -380,7 +386,7 @@ impl Snapshot {
         self.objects
             .binary_search_by(|item| item.object.id().cmp(id))
             .ok()
-            .map(|index| &self.objects[index])
+            .map(|index| &*self.objects[index])
     }
 }
 
@@ -415,24 +421,23 @@ impl<'de> Deserialize<'de> for Snapshot {
     }
 }
 
+/// SHA-256 of the value's JSON, streamed without an intermediate copy. The
+/// text is canonical because struct fields serialize in declaration order and
+/// `serde_json::Map` is a `BTreeMap` here (no `preserve_order` feature).
 fn digest_json(value: &impl Serialize) -> Result<Fingerprint, ModelError> {
-    fn canonical(value: Value) -> Value {
-        match value {
-            Value::Object(object) => Value::Object(
-                object
-                    .into_iter()
-                    .map(|(key, value)| (key, canonical(value)))
-                    .collect::<BTreeMap<_, _>>()
-                    .into_iter()
-                    .collect(),
-            ),
-            Value::Array(values) => Value::Array(values.into_iter().map(canonical).collect()),
-            value => value,
+    struct Digest(Sha256);
+    impl std::io::Write for Digest {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.update(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
         }
     }
-    let value = canonical(serde_json::to_value(value).map_err(|_| ModelError::InvalidObject)?);
-    let bytes = serde_json::to_vec(&value).map_err(|_| ModelError::InvalidObject)?;
-    Ok(Fingerprint::of_bytes(&bytes))
+    let mut digest = Digest(Sha256::new());
+    serde_json::to_writer(&mut digest, value).map_err(|_| ModelError::InvalidObject)?;
+    Ok(Fingerprint(format!("{:x}", digest.0.finalize())))
 }
 
 fn validate_value_depth(value: &Value) -> Result<(), ModelError> {
@@ -455,9 +460,6 @@ fn drop_objects_iteratively(mut objects: Vec<LibraryObject>) {
         if let LibraryObject::Record(record) = object {
             for value in std::mem::take(&mut record.csl).into_values() {
                 drop_value_iteratively(value);
-            }
-            if let Some(raw) = record.raw.take() {
-                drop_value_iteratively(raw.data);
             }
         }
     }
@@ -501,6 +503,55 @@ mod tests {
     use serde::de::DeserializeOwned;
     use serde_json::json;
 
+    #[test]
+    fn merging_shares_objects_and_matches_a_fresh_snapshot() {
+        let other = LibraryId::file(b"second invented library");
+        let mut moved = record();
+        moved.id.library = other.clone();
+        let first = Snapshot::new(vec![LibraryObject::Record(record())]).unwrap();
+        let second = Snapshot::new(vec![LibraryObject::Record(moved.clone())]).unwrap();
+        let merged = first.merged(&second, |_| true).unwrap();
+        let fresh = Snapshot::new(vec![LibraryObject::Record(record()), LibraryObject::Record(moved)]).unwrap();
+        assert_eq!(merged, fresh);
+        assert!(
+            merged
+                .objects()
+                .iter()
+                .any(|item| Arc::ptr_eq(item, &first.objects()[0]))
+        );
+        assert!(
+            merged
+                .objects()
+                .iter()
+                .any(|item| Arc::ptr_eq(item, &second.objects()[0]))
+        );
+        // Replacing a library drops its old objects; a clash is refused.
+        let replaced = merged.merged(&second, |library| *library != other).unwrap();
+        assert_eq!(replaced, merged);
+        assert_eq!(merged.merged(&second, |_| true), Err(ModelError::DuplicateItem));
+        let without = merged
+            .merged(&Snapshot::new(vec![]).unwrap(), |library| *library != other)
+            .unwrap();
+        assert_eq!(without, first);
+    }
+
+    #[test]
+    fn fingerprints_hash_canonical_json_with_sorted_keys() {
+        // Map keys come out sorted whatever the insertion order; a dependency
+        // enabling serde_json's `preserve_order` would break every fingerprint.
+        let mut map = serde_json::Map::new();
+        map.insert("zeta".into(), json!(1));
+        map.insert("alpha".into(), json!({"y": 1, "b": [ {"d": 1, "c": 2} ]}));
+        assert_eq!(
+            serde_json::to_string(&map).unwrap(),
+            r#"{"alpha":{"b":[{"c":2,"d":1}],"y":1},"zeta":1}"#
+        );
+        assert_eq!(
+            digest_json(&map).unwrap(),
+            Fingerprint::of_bytes(serde_json::to_string(&map).unwrap().as_bytes())
+        );
+    }
+
     fn round_trip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(value: &T) {
         let wire = serde_json::to_vec(value).unwrap();
         assert_eq!(*value, serde_json::from_slice::<T>(&wire).unwrap());
@@ -523,7 +574,6 @@ mod tests {
             }],
             aliases: vec!["Earlier2026".into()],
             identifiers: vec![],
-            raw: None,
         }
     }
 
@@ -565,13 +615,6 @@ mod tests {
             source: CitationKeySource::BetterBibtex,
         });
         assert_eq!(record.citation_key(), Err(ModelError::ConflictingCitationKeys));
-        record.raw = Some(RawProvenance {
-            format: SourceFormat::Bibtex,
-            data: json!({"invented": "payload"}),
-        });
-        round_trip(record.raw.as_ref().unwrap());
-        let public = serde_json::to_value(&record).unwrap();
-        assert!(public.get("raw").is_none());
     }
 
     #[test]
@@ -709,10 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn provenance_sources_and_fixed_errors_round_trip() {
-        for source in [SourceFormat::Bibtex, SourceFormat::CslJson, SourceFormat::Zotero] {
-            round_trip(&source);
-        }
+    fn key_sources_and_fixed_errors_round_trip() {
         for source in [
             CitationKeySource::Bibtex,
             CitationKeySource::CslJsonCitationKey,

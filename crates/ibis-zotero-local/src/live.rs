@@ -100,6 +100,13 @@ pub enum Refresh {
     Unchanged,
 }
 
+/// Fixed diagnostics only; omitted payloads and private keys are not retained.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveWarning {
+    ItemTooLarge,
+    MalformedItem,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 struct Server {
     major: u8,
@@ -113,9 +120,9 @@ struct Inventory {
 }
 #[derive(Clone, PartialEq, Eq)]
 struct Entry {
-    too_large: bool,
+    warning: Option<LiveWarning>,
     item: Option<ItemData>,
-    modified: String,
+    modified: Option<String>,
 }
 #[derive(Clone)]
 struct State {
@@ -163,14 +170,12 @@ impl LiveReader {
             .filter_map(|entry| entry.item.as_ref())
             .collect()
     }
-    /// Per-item omissions survive incremental cache reuse without retaining
-    /// oversized payloads or exposing private native keys in diagnostics.
-    pub fn omitted_items(&self) -> usize {
+    /// Per-item warnings survive cache reuse without retaining skipped payloads.
+    pub fn warnings(&self) -> impl Iterator<Item = LiveWarning> + '_ {
         self.state
             .iter()
             .flat_map(|state| state.entries.values())
-            .filter(|entry| entry.too_large)
-            .count()
+            .filter_map(|entry| entry.warning)
     }
     /// Charge retained cache payloads, including nonbibliographic IDs and
     /// collection/string allocations. This is independent of refresh I/O: a
@@ -179,7 +184,7 @@ impl LiveReader {
         let Some(state) = &self.state else { return (0, 0) };
         let mut bytes = 1024usize;
         for (key, entry) in &state.entries {
-            bytes = bytes.saturating_add(512 + key.capacity() + entry.modified.capacity());
+            bytes = bytes.saturating_add(512 + key.capacity() + entry.modified.as_ref().map_or(0, String::capacity));
             if let Some(item) = &entry.item {
                 bytes = bytes.saturating_add(item.key.capacity() + item.item_type.capacity());
                 bytes = bytes.saturating_add(
@@ -348,15 +353,37 @@ impl LiveReader {
                 return Err(LiveError::Changing);
             }
             let mut seen = BTreeSet::new();
+            let mut unkeyed = Vec::new();
             for row in rows {
                 let (key, entry, version) = entry(row)?;
+                let Some(key) = key else {
+                    unkeyed.push(version);
+                    continue;
+                };
                 if !keys.contains(&key)
                     || !seen.insert(key.clone())
-                    || before.server.major == 10 && before.versions.get(&key) != Some(&version)
+                    || before.server.major == 10 && version.is_some_and(|version| before.versions[&key] != version)
                 {
                     return Err(LiveError::Changing);
                 }
                 entries.insert(key, Arc::new(entry));
+            }
+            // Anonymous omissions account for exactly the unreturned keys.
+            // Never associate bibliographic data with a guessed identity.
+            let mut missing: Vec<_> = keys.iter().filter(|key| !seen.contains(*key)).collect();
+            if before.server.major == 10 {
+                for version in unkeyed.iter().flatten() {
+                    let Some(index) = missing.iter().position(|key| before.versions[*key] == *version) else {
+                        return Err(LiveError::Changing);
+                    };
+                    missing.swap_remove(index);
+                }
+            }
+            if unkeyed.len() != keys.len() - seen.len() {
+                return Err(LiveError::Changing);
+            }
+            for key in keys.iter().filter(|key| !seen.contains(*key)) {
+                entries.insert(key.clone(), Arc::new(malformed_entry()));
             }
         }
         let after = self.inventory(transport, budget)?;
@@ -511,7 +538,43 @@ fn timestamp(text: &str) -> Option<i64> {
     let days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
     Some(days * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64)
 }
-fn entry(row: Value) -> Result<(String, Entry, u64), LiveError> {
+fn malformed_entry() -> Entry {
+    Entry {
+        warning: Some(LiveWarning::MalformedItem),
+        item: None,
+        modified: None,
+    }
+}
+
+fn entry(row: Value) -> Result<(Option<String>, Entry, Option<u64>), LiveError> {
+    let data = row.get("data").and_then(Value::as_object);
+    let inner_key = data.and_then(|data| data.get("key"));
+    let inner_version = data.and_then(|data| data.get("version"));
+    if row
+        .get("key")
+        .zip(inner_key)
+        .is_some_and(|(outer, inner)| outer != inner)
+        || row
+            .get("version")
+            .zip(inner_version)
+            .is_some_and(|(outer, inner)| outer != inner)
+    {
+        return Err(LiveError::Incomplete);
+    }
+    let key = row
+        .get("key")
+        .or(inner_key)
+        .and_then(Value::as_str)
+        .filter(|key| valid_key(key));
+    if key.is_none()
+        || data.is_none_or(|data| {
+            data.keys()
+                .all(|name| matches!(name.as_str(), "key" | "version" | "itemType"))
+        })
+    {
+        let version = row.get("version").or(inner_version).and_then(Value::as_u64);
+        return Ok((key.map(str::to_owned), malformed_entry(), version));
+    }
     let data = row
         .get("data")
         .and_then(Value::as_object)
@@ -542,25 +605,25 @@ fn entry(row: Value) -> Result<(String, Entry, u64), LiveError> {
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty() && s.len() <= 128)
         .ok_or(LiveError::Incomplete)?;
-    let (item, too_large) = if matches!(kind, "note" | "attachment" | "annotation")
+    let (item, warning) = if matches!(kind, "note" | "attachment" | "annotation")
         || data.get("deleted").is_some_and(|v| v == 1 || v == true)
     {
-        (None, false)
+        (None, None)
     } else {
         match item_data(data, key, kind) {
-            Ok(item) => (Some(item), false),
-            Err(LiveError::Limit) => (None, true),
+            Ok(item) => (Some(item), None),
+            Err(LiveError::Limit) => (None, Some(LiveWarning::ItemTooLarge)),
             Err(error) => return Err(error),
         }
     };
     Ok((
-        key.to_owned(),
+        Some(key.to_owned()),
         Entry {
-            too_large,
+            warning,
             item,
-            modified,
+            modified: Some(modified),
         },
-        version,
+        Some(version),
     ))
 }
 
@@ -623,12 +686,16 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
         ) {
             continue;
         }
-        if let Some(text) = value.as_str() {
-            if text.len() > 256 * 1024 {
-                return Err(LiveError::Limit);
-            }
-            fields.insert(name.clone(), text.to_owned());
+        if value.as_str().is_some_and(|text| text.len() > 256 * 1024) {
+            return Err(LiveError::Limit);
         }
+        let text = match value {
+            Value::String(text) => text.clone(),
+            Value::Number(number) if name == "title" => number.to_string(),
+            // Keep the label as an empty marker for schema-aware Field warnings.
+            _ => String::new(),
+        };
+        fields.insert(name.clone(), text);
     }
     if fields.len() > 256 {
         return Err(LiveError::Limit);
@@ -639,4 +706,31 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
         creators,
         fields,
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn malformed_rows_are_omitted_without_inventing_item_data() {
+        for data in [
+            json!(null),
+            json!({}),
+            json!({"key": "SYNTH001", "version": 1, "itemType": "book"}),
+        ] {
+            let (key, entry, version) = entry(json!({"key": "SYNTH001", "version": 1, "data": data})).unwrap();
+            assert_eq!(key.as_deref(), Some("SYNTH001"));
+            assert_eq!(version, Some(1));
+            assert_eq!(entry.warning, Some(LiveWarning::MalformedItem));
+            assert!(entry.item.is_none());
+            assert!(entry.modified.is_none());
+        }
+        let (key, entry, version) = entry(json!({})).unwrap();
+        assert!(key.is_none());
+        assert!(version.is_none());
+        assert_eq!(entry.warning, Some(LiveWarning::MalformedItem));
+    }
 }

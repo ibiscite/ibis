@@ -6,7 +6,6 @@ use ibis_core::cite::KeyFormat;
 use ibis_core::settings;
 use serde::Serialize;
 use tauri::{AppHandle, State};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::library::{CommandError, Library};
 use crate::preferences::SettingsFile;
@@ -28,6 +27,7 @@ pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
         .unwrap_or(KeyFormat::Pandoc)
 }
 
+mod clipboard;
 #[cfg(test)]
 mod engine_file_acceptance;
 
@@ -66,20 +66,14 @@ pub(crate) fn copy_file_citation(
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
-    let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
-    if library.opening {
-        return Err("The library is loading. Try again after it opens.".into());
-    }
-    library
-        .file
-        .as_ref()
-        .ok_or(CommandError::SnapshotChanged)?
-        .copy(&ticket, &content_hash, |content| {
-            if let Some(html) = content.html {
-                app.clipboard().write_html(html, Some(content.text))
-            } else {
-                app.clipboard().write_text(content.text)
-            }
-            .map_err(|_| "The clipboard could not be written.".to_string())
-        })
+    // The library lock is held only to take the engine; the engine's own
+    // commit barrier guards the write.
+    let file = {
+        let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
+        if library.opening {
+            return Err("The library is loading. Try again after it opens.".into());
+        }
+        library.file.clone().ok_or(CommandError::SnapshotChanged)?
+    };
+    file.copy(&ticket, &content_hash, |content| clipboard::write(&app, content))
 }

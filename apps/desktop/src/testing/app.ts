@@ -65,6 +65,8 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
+  let preferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true } as api.PickerPreferences;
+  let copyFormat: api.CopyFormat = "pandoc";
   receipts.clear();
   const defaults: Record<string, Handler> = {
     "plugin:window|is_visible": () => true,
@@ -81,6 +83,10 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     },
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
     set_picker_preferences: () => null,
+    // Opened from no app Ibis knows: the default format applies.
+    picker_destination: () => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false }),
+    remember_app_output: () => null,
+    forget_app_outputs: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
     // Builds without an update key have no update controls.
@@ -95,6 +101,13 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);
       const value = handler((args ?? {}) as Parameters<Handler>[0]);
+      if (cmd === "picker_preferences") return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
+      if (cmd === "copy_format") return Promise.resolve(value).then((loaded) => { copyFormat = loaded as api.CopyFormat; return loaded; });
+      if (cmd === "set_picker_preferences") return Promise.resolve(value).then(() => {
+        preferences = { ...preferences, ...(args as { preferences: Partial<api.PickerPreferences> }).preferences };
+        copyFormat = (args as { copyFormat: api.CopyFormat | null }).copyFormat ?? copyFormat;
+        return { preferences, copy_format: copyFormat };
+      });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
         const result = preview as FilePreview;
         receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });

@@ -1,9 +1,11 @@
 /* The toolbar menu's button; its popover and rows are the shared menu (Menu.css). */
 .toolbar-menu-control { display: inline-flex; align-items: center; min-height: var(--control-min-size); }
 .toolbar-menu-control .toolbar-menu-button {
-  position: relative; gap: var(--space-1);
+  position: relative; gap: var(--space-1); max-width: 12rem;
   font: var(--metadata-size)/var(--metadata-line-height) var(--font-family);
 }
+/* A long value, such as "APA · Microsoft Word", ends in an ellipsis; the label names it in full. */
+.toolbar-menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-bar .toolbar-menu-control, .search-bar .toolbar-menu-button { min-height: var(--field-h); }
 :root[data-platform="macos"] .toolbar-menu-button {
   min-height: calc(var(--control-min-size) - var(--space-1)); border-radius: var(--r-control);

@@ -1,0 +1,109 @@
+---
+source: crates/ibis-sources/tests/fixtures.rs
+expression: "summary(\"damaged.bib\")"
+---
+{
+  "records": [
+    {
+      "csl": {
+        "author": [
+          {
+            "family": "Fourth",
+            "given": "Dee"
+          }
+        ],
+        "citation-key": "baddate",
+        "id": "baddate",
+        "title": "Date that is not a date",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "baddate"
+    },
+    {
+      "csl": {
+        "author": [
+          {
+            "family": "First",
+            "given": "Ada"
+          }
+        ],
+        "citation-key": "good1",
+        "id": "good1",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "title": "Loads before the damage",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "good1"
+    },
+    {
+      "csl": {
+        "author": [
+          {
+            "family": "Third",
+            "given": "Cy"
+          }
+        ],
+        "citation-key": "good2",
+        "id": "good2",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "title": "Loads after the damage",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "good2"
+    },
+    {
+      "csl": {
+        "citation-key": "undefinedmacro",
+        "id": "undefinedmacro",
+        "issued": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "title": "Uses an undefined string macro",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "undefinedmacro"
+    }
+  ],
+  "warnings": [
+    {
+      "code": "duplicate-key",
+      "line": 9
+    },
+    {
+      "code": "syntax",
+      "line": 21
+    },
+    {
+      "code": "syntax",
+      "line": 25
+    },
+    {
+      "code": "field",
+      "line": 15
+    },
+    {
+      "code": "field",
+      "line": 35
+    }
+  ]
+}

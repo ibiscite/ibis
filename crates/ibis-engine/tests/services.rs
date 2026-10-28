@@ -13,6 +13,7 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
     let cancel = Cancellation::default();
     let search = SearchRequest {
+        interpret_locator: false,
         query: "signals".into(),
         limit: 10,
         libraries: None,
@@ -27,7 +28,7 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
             item: ItemSelector::Key("Example2026".into()),
         })
         .unwrap();
-    assert_eq!(shown, case.library.objects()[0]);
+    assert_eq!(shown, *case.library.objects()[0]);
     assert_eq!(
         engine.cite(&case.request, &cancel).unwrap(),
         *case.expected.data().unwrap()
@@ -52,6 +53,7 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
         engine
             .search(
                 &SearchRequest {
+                    interpret_locator: false,
                     query: "x".into(),
                     limit: 1,
                     libraries: None
@@ -124,11 +126,14 @@ fn library_changes_invalidate_subscribers_without_mutating_previous_snapshots() 
     let case = case();
     let engine = Engine::new().unwrap();
     let events = engine.subscribe().unwrap();
-    let library = case.library.objects()[0].object.id().library.clone();
-    engine.publish_library(library.clone(), Arc::new(case.library)).unwrap();
-    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(event.libraries, [library]);
-    assert_eq!(event.snapshot, engine.snapshot().unwrap().fingerprints().clone());
+    let old = engine.snapshot().unwrap();
+    let snapshot = Arc::new(case.library);
+    let library = snapshot.objects()[0].object.id().library.clone();
+    engine.publish_library(library.clone(), snapshot.clone()).unwrap();
+    events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(engine.libraries().unwrap().libraries[0].id, library);
+    assert_eq!(engine.snapshot().unwrap().fingerprints(), snapshot.fingerprints());
+    assert!(old.objects().is_empty());
     drop(events);
     assert!(engine.subscribe().is_ok());
 }
@@ -137,6 +142,7 @@ fn library_changes_invalidate_subscribers_without_mutating_previous_snapshots() 
 fn a_named_missing_library_is_not_silently_an_empty_search() {
     let engine = Engine::new().unwrap();
     let mut request = SearchRequest {
+        interpret_locator: false,
         query: "synthetic".into(),
         limit: 10,
         libraries: Some(vec![LibraryId::file(b"missing synthetic scope")]),
@@ -156,74 +162,47 @@ fn a_named_missing_library_is_not_silently_an_empty_search() {
 }
 
 #[test]
-fn a_slow_subscriber_gets_latest_state_and_an_explicit_full_resync() {
+fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
     let engine = Engine::new().unwrap();
     let events = engine.subscribe().unwrap();
-    for number in 0..40 {
-        engine
-            .publish_library(
-                LibraryId::file(format!("synthetic-slow-{number}").as_bytes()),
-                Arc::new(Snapshot::new(vec![]).unwrap()),
-            )
-            .unwrap();
-    }
-    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(event.sequence, 40);
-    assert_eq!(serde_json::to_value(&event).unwrap()["resync"], true);
-    assert!(event.libraries.is_empty());
-    assert_eq!(engine.libraries().unwrap().libraries.len(), 40);
-    assert!(events.try_recv().is_err());
-    let library = LibraryId::file(b"synthetic-after-resync");
+    let newest = Arc::new(case().library);
+    let library = newest.objects()[0].object.id().library.clone();
+    let publishing = engine.clone();
+    let latest = newest.clone();
+    let (completed, done) = std::sync::mpsc::channel();
+    let publisher = std::thread::spawn(move || {
+        for _ in 0..40 {
+            publishing
+                .publish_library(library.clone(), Arc::new(Snapshot::new(vec![]).unwrap()))
+                .unwrap();
+        }
+        publishing.publish_library(library, latest).unwrap();
+        completed.send(()).unwrap();
+    });
+    // The publisher must finish while the subscriber leaves its single wake queued.
+    done.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+    publisher.join().unwrap();
+    events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(engine.snapshot().unwrap().fingerprints(), newest.fingerprints());
+    assert!(matches!(events.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
     engine
-        .publish_library(library.clone(), Arc::new(Snapshot::new(vec![]).unwrap()))
+        .publish_library(
+            newest.objects()[0].object.id().library.clone(),
+            Arc::new(Snapshot::new(vec![]).unwrap()),
+        )
         .unwrap();
-    let event = events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(event.sequence, 41);
-    assert_eq!(event.libraries, [library]);
-    assert_eq!(serde_json::to_value(&event).unwrap()["resync"], false);
+    events.try_recv().unwrap();
+    assert!(engine.snapshot().unwrap().objects().is_empty());
 }
 
 #[test]
-fn public_typed_views_do_not_clone_or_return_raw_source_payloads() {
-    let case = case();
-    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
-        panic!("record")
-    };
-    record.raw = Some(RawProvenance {
-        format: SourceFormat::Bibtex,
-        data: json!({"synthetic":"x".repeat(64*1024)}),
-    });
-    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()));
-    let shown = engine
-        .show(&ShowRequest {
-            item: ItemSelector::Key("Example2026".into()),
-        })
-        .unwrap();
-    let LibraryObject::Record(shown) = shown.object else {
-        panic!("record")
-    };
-    assert!(shown.raw.is_none());
-    let hits = engine
-        .search(
-            &SearchRequest {
-                query: "synthetic".into(),
-                limit: 10,
-                libraries: None,
-            },
-            &Cancellation::default(),
-        )
-        .unwrap();
-    for hit in hits.hits {
-        let LibraryObject::Record(record) = hit.item.object else {
-            panic!("record")
-        };
-        assert!(record.raw.is_none());
-    }
-    let snapshot = engine.snapshot().unwrap();
-    let LibraryObject::Record(record) = &snapshot.objects()[0].object else {
-        panic!("record")
-    };
-    assert!(record.raw.is_some());
+fn library_subscriptions_are_limited_and_drop_releases_a_slot() {
+    let engine = Engine::new().unwrap();
+    let mut events: Vec<_> = (0..64).map(|_| engine.subscribe().unwrap()).collect();
+    assert!(matches!(engine.subscribe(), Err(error) if error.code == ErrorCode::ResourceLimit));
+    drop(events.pop());
+    events.push(engine.subscribe().unwrap());
+    assert!(matches!(engine.subscribe(), Err(error) if error.code == ErrorCode::ResourceLimit));
 }
 
 #[test]
@@ -243,6 +222,7 @@ fn typed_search_refuses_oversized_results_before_public_object_cloning() {
         Snapshot::new(vec![LibraryObject::Record(first), LibraryObject::Record(second)]).unwrap(),
     ));
     let mut request = SearchRequest {
+        interpret_locator: false,
         query: "synthetic".into(),
         limit: 2,
         libraries: None,
@@ -279,4 +259,32 @@ fn bundled_styles_are_available_and_unknown_styles_are_explicit_refusals() {
         }]
     );
     assert!(citation.copy_content(1).is_none());
+}
+
+#[test]
+fn search_reads_a_trailing_locator_only_when_asked() {
+    let case = case();
+    let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
+    let cancel = Cancellation::default();
+    let read = engine
+        .dispatch(
+            Method::Search,
+            &json!({"query":"signals chap. 3","interpret_locator":true}),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(
+        read.data["locator"],
+        json!({"search":"signals","locator":{"term":"chapter","value":"3"},"typed":"chap. 3"})
+    );
+    let plain = engine
+        .dispatch(Method::Search, &json!({"query":"signals"}), &cancel)
+        .unwrap();
+    assert_eq!(read.data["hits"], plain.data["hits"]);
+    assert!(!plain.data["hits"].as_array().unwrap().is_empty());
+    // Without the flag the whole query is searched and nothing is read.
+    let literal = engine
+        .dispatch(Method::Search, &json!({"query":"signals chap. 3"}), &cancel)
+        .unwrap();
+    assert!(literal.data.get("locator").is_none());
 }

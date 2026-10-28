@@ -39,6 +39,25 @@ pub(crate) struct Library {
     /// When the source was last found to match the library: a read, or a
     /// check that found nothing changed. Kept when a later attempt fails.
     pub(super) checked_at: Option<SystemTime>,
+    /// Last snapshot accounted for by either a load completion or an engine event.
+    pub(super) observed_revision: Option<String>,
+}
+
+impl Library {
+    pub(super) fn observe_revision(&mut self, now: SystemTime) -> bool {
+        let Some(revision) = self.file.as_ref().map(|file| file.revision()).filter(|s| !s.is_empty()) else {
+            return false;
+        };
+        let changed = self
+            .observed_revision
+            .as_ref()
+            .is_some_and(|previous| previous != &revision);
+        self.observed_revision = Some(revision);
+        if changed {
+            self.changed_at = Some(now);
+        }
+        changed
+    }
 }
 
 /// Counts requests to open a library, so a load that finishes after a newer
@@ -46,8 +65,10 @@ pub(crate) struct Library {
 #[derive(Default)]
 pub(crate) struct LoadRequests(pub(crate) AtomicU64, pub(super) Mutex<super::tasks::OpenQueue>);
 
-pub(super) fn dialog_path_error(library: &mut Library) {
+pub(super) fn dialog_path_error(library: &mut Library, requests: &LoadRequests) {
+    requests.0.fetch_add(1, Ordering::SeqCst);
     library.opening = false;
+    library.checking = false;
     library.error = Some(LoadError::NotLocal);
 }
 
@@ -92,11 +113,11 @@ pub(super) fn install_result(
     match loaded {
         Ok(mut new) => {
             new.settings_notice = library.settings_notice.take();
-            // A reread of the same library that found nothing changed ends as
-            // `Loaded::Unchanged`, so one that arrives here is an update.
             if new.source.is_some() && new.source == library.source {
-                new.changed_at = new.checked_at;
+                new.changed_at = library.changed_at;
+                new.observed_revision = library.observed_revision.clone();
             }
+            new.observe_revision(new.checked_at.unwrap_or_else(SystemTime::now));
             if failed_choice {
                 new.requested = library.requested.take();
                 new.error = library.error.take();
@@ -142,6 +163,7 @@ pub(super) fn install_loaded(
             library.checking = false;
             library.error = None;
             library.checked_at = Some(SystemTime::now());
+            library.observe_revision(SystemTime::now());
             // Keep the note: a "not saved for next time" warning must outlive
             // the check that showing the picker starts right after it.
             library.requested = library.source.clone();
@@ -168,6 +190,7 @@ pub(super) fn record_open(
 ) -> (u64, bool, LibraryStatus) {
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
     let reload = library.source.as_ref() == Some(&source);
+    library.observe_revision(SystemTime::now());
     if let Some(file) = &library.file {
         file.invalidate();
     }
@@ -186,14 +209,16 @@ pub(crate) fn candidate(source: impl Into<Source>, bib: &str) -> Library {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}")).keep();
     let path = directory.join("synthetic.bib");
     std::fs::write(&path, bib).unwrap_or_else(|e| panic!("{e}"));
-    Library {
+    let mut library = Library {
         checked_at: Some(SystemTime::now()),
         source: Some(source.into()),
         file: Some(Arc::new(
             FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}")),
         )),
         ..Library::default()
-    }
+    };
+    library.observe_revision(SystemTime::now());
+    library
 }
 
 #[cfg(test)]
@@ -529,8 +554,10 @@ mod tests {
     fn a_nonlocal_dialog_choice_keeps_the_open_library_and_reports_the_same_tray_error() {
         let mut library = candidate(PathBuf::from("synthetic.bib"), "@misc{k}\n@misc{bad,");
         library.choice_save_warning = Some("the library choice was not saved".to_string());
+        let requests = LoadRequests::default();
+        let (pending, _, _) = record_open(&mut library, &requests, PathBuf::from("synthetic.bib").into());
         let before = status(&library);
-        dialog_path_error(&mut library);
+        dialog_path_error(&mut library, &requests);
         let failed = status(&library);
         assert_eq!(failed.state, LibraryState::Error);
         assert_eq!(failed.name.as_deref(), Some("synthetic.bib"));
@@ -540,6 +567,13 @@ mod tests {
         assert_eq!(failed.error.as_deref(), Some("the chosen file is not on this computer"));
         assert!(
             library_line(&failed).starts_with("Library could not be opened: the chosen file is not on this computer")
+        );
+        let file = library.file.clone().unwrap_or_else(|| panic!("file"));
+        super::super::tasks::engine_changed(&mut library, &file);
+        assert_eq!(library.error, Some(LoadError::NotLocal));
+        assert!(
+            install(&Mutex::new(library), &requests, pending, Ok(Library::default())).is_none(),
+            "the rejected dialog choice supersedes the pending load"
         );
     }
 

@@ -275,6 +275,7 @@ fn search(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     };
     let result = engine.search(
         &SearchRequest {
+            interpret_locator: false,
             query: query.to_owned(),
             limit,
             libraries: None,
@@ -349,7 +350,7 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     let result = if let Some(keys) = selectors
         .iter()
         .map(|selector| match selector {
-            ItemSelector::Key(key) => Some(key.clone()),
+            ItemSelector::Key(key) => Some(key.as_str().into()),
             ItemSelector::Id(_) => None,
         })
         .collect::<Option<Vec<_>>>()

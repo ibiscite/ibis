@@ -69,10 +69,10 @@ test("macOS fills and hairlines are translucent so the native material shows thr
 });
 
 test("only native success shows the material, under a veil; reduced transparency stays opaque", () => {
-  // Webviews without light-dark() fall back to the surface at 55%.
+  // Webviews without light-dark() fall back to the surface at 75%.
   for (const mode of ["vibrancy", "liquid-glass"]) {
     const rule = native.match(new RegExp(String.raw`:root\[data-native-appearance="${mode}"\][^{]*\{([^{}]*)\}`))?.[1];
-    expect(rule).toContain("background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 55%, transparent))");
+    expect(rule).toContain("background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 75%, transparent))");
   }
   expect(native).toMatch(/:root\[data-native-appearance="acrylic"\] \{ background: var\(--acrylic-tint, var\(--surface\)\); \}/);
   // The defensive override comes after, with the same specificity, so it wins.
@@ -109,6 +109,8 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
 test("secondary text keeps 4.5:1 over the veiled material, on the brightest and darkest backdrops", () => {
   const { body } = macBlock();
   const [light, dark] = rgba(body, "--vibrancy-tint");
+  // A thin veil let a busy desktop show through the list (hands-on check, 2026-10-27).
+  for (const veil of [light!, dark!]) expect(veil[3]).toBeGreaterThanOrEqual(.75);
   const muted = hexes(body, "--muted");
   const text = hexes(body, "--text");
   // CI's appearance probe (#232) saw the light Popover material lift a black

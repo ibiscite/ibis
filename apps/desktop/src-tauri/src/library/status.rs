@@ -173,6 +173,13 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
     if let Some(file) = &library.file {
         file.status(&mut result);
     }
+    if result.stale && library.error.is_some() && library.requested.is_some() && library.requested != library.source {
+        let note = "The retained library could not be refreshed; keeping the last loaded references.";
+        result.note = Some(match result.note.take() {
+            Some(previous) => format!("{previous}\n{note}"),
+            None => note.into(),
+        });
+    }
     result
 }
 
@@ -223,6 +230,32 @@ mod tests {
     use crate::library::load::load_library;
     use crate::library::state::{LoadRequests, begin_open, candidate, install};
     use crate::tray::library_line;
+
+    #[test]
+    fn a_failed_choice_does_not_hide_failure_or_recovery_of_the_retained_file() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("retained.bib");
+        std::fs::write(&path, "@misc{retained}")?;
+        let library = Mutex::new(load_library(path.clone(), false).map_err(|e| e.to_string())?);
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, directory.path().join("missing.bib")).ok_or("open")?;
+        let rejected = install(&library, &requests, request, Err(SourceError::Unavailable.into())).ok_or("install")?;
+        let file = library.lock().map_err(|_| "library")?.file.clone().ok_or("file")?;
+        std::fs::remove_file(&path)?;
+        assert!(file.reload().is_err());
+        let failed = status(&*library.lock().map_err(|_| "library")?);
+        assert!(failed.stale, "the references being searched are now stale too");
+        assert_eq!(failed.error, rejected.error, "keep the failed choice visible");
+        assert!(failed.note.is_some(), "also report the retained source's failure");
+        std::fs::write(&path, "@misc{retained}")?;
+        file.reload().map_err(|e| e.to_string())?;
+        let recovered = status(&*library.lock().map_err(|_| "library")?);
+        assert!(!recovered.stale);
+        assert!(recovered.note.is_none());
+        assert_eq!(recovered.error, rejected.error);
+        Ok(())
+    }
 
     #[test]
     fn native_presentation_facts_do_not_change_the_picker_payload() {
