@@ -15,6 +15,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 ## Working
 
+- Everything needed to resume lives in the repository and on GitHub, never only in a chat, a tool's memory or a local file. Start from the tracking issue; any person or agent, with any tool, must be able to pick up from there after an interruption. When the maintainer approves a plan or answers a question, record it the same day: scope in `ROADMAP.md`, rules in `docs/`, choices in `docs/decisions.md`, work as issues on the milestone, order in the tracking issue.
 - Check `git status` first and keep work you did not make. Branch from `origin/main`, one branch per pull request, no stacking, never push to `main`. Give each worktree its own Cargo target directory.
 - Claim an issue with a one-line comment on the tracking issue or a draft pull request that says `Closes #N`. One writer per worktree and per set of files.
 - Build what the issue's "Done when" names as the smallest working slice; merge it, then harden. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
@@ -31,7 +32,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 - Sign off commits (`git commit -s`) with a public project or GitHub noreply identity, and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
 - Changes to these risky areas need one review of the final head by a session that did not write the change, with every P1 and P2 fixed: the updater, release signing and CI permissions; settings and other files Ibis writes; the clipboard, escaping and pasting; window permissions, native input and the shortcut portal; BibTeX and Zotero reading, citation syntaxes and formatting; untrusted input, network access and security boundaries. Anything else needs your own adversarial check.
 - Merge only with a green "CI result" on the exact head, by squash, never bypassing. Auto-merge sometimes does not fire: if a green pull request is still open, squash-merge it yourself. GitHub runs no pull request checks while a pull request has a merge conflict, so a head with no "CI result" usually needs `origin/main` merged in; never merge a head that has no CI run. If `main` turns red, revert the merge that broke it first, then fix.
-- After a merge, update the tracking issue's Now if it changed. Lasting decisions go into `docs/decisions.md`.
+- After a merge, update the tracking issue's Now if it changed, then remove that pull request's worktree and local branch. Lasting decisions go into `docs/decisions.md`.
 
 ## Asking the maintainer
 
