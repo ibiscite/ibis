@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use winsafe::{self as w, co};
+use winsafe::{self as w, co, prelude::*};
 
 use super::Desk;
 use super::capture::Front;
@@ -132,16 +132,33 @@ pub(super) struct Win {
     app: AppHandle,
     /// The picker showing that this copy belongs to; showing it again stops the paste.
     generation: u64,
+    /// The captured window, so a paste never lands in another window of the
+    /// same app; `None` when there is nothing safe to paste into.
+    window: Option<w::HWND>,
+    /// The clipboard's change count after the copy. Another app's clipboard
+    /// is never read: a hung owner of delayed text would block the read.
+    clipboard: u32,
 }
 
 impl Win {
     /// The picker has just hidden. Windows hands the keyboard to whichever
     /// window is next, so Ibis gives it back to the captured window, if that
-    /// window still belongs to the captured process.
+    /// window still belongs to the captured process. A picker that is showing
+    /// again was opened from somewhere new: this copy then only stays copied,
+    /// and focus is left alone.
     pub(super) fn new(app: &AppHandle) -> Self {
-        if let Ok(kept) = WINDOW.lock()
-            && let Some((window, pid)) = kept.as_ref()
-            && window.GetWindowThreadProcessId().1 == *pid
+        let reopened = app
+            .get_webview_window("main")
+            .is_none_or(|picker| picker.is_visible().unwrap_or(true));
+        // Taken, not copied: each showing of the picker captures afresh.
+        let window = WINDOW
+            .lock()
+            .ok()
+            .filter(|_| !reopened)
+            .and_then(|mut kept| kept.take())
+            .filter(|(window, pid)| window.GetWindowThreadProcessId().1 == *pid)
+            .map(|(window, _)| window);
+        if let Some(window) = &window
             && w::HWND::GetForegroundWindow().as_ref() != Some(window)
         {
             window.SetForegroundWindow();
@@ -149,11 +166,18 @@ impl Win {
         Self {
             app: app.clone(),
             generation: app.state::<crate::picker::PickerGeneration>().current(),
+            window,
+            clipboard: w::HCLIPBOARD::NULL.GetClipboardSequenceNumber(),
         }
     }
 
     fn picker_unchanged(&self) -> bool {
         self.app.state::<crate::picker::PickerGeneration>().current() == self.generation
+    }
+
+    /// The captured window itself is in front, not just its app.
+    fn window_in_front(&self) -> bool {
+        self.window.is_some() && w::HWND::GetForegroundWindow() == self.window
     }
 }
 
@@ -179,16 +203,21 @@ impl Desk for Win {
 
     fn ask_to_post(&self) {}
 
-    /// `None` also while a key from the picker is still held, so the paste
-    /// waits for the keyboard to be free as it waits for the app.
+    /// `None` also while another window, even of the same app, is in front,
+    /// and while a key from the picker is still held, so the paste waits for
+    /// the keyboard to be free as it waits for the window.
     fn frontmost(&self) -> Option<Front> {
-        if !self.picker_unchanged() || keys_held() {
+        if !self.picker_unchanged() || !self.window_in_front() || keys_held() {
             return None;
         }
-        front(&w::HWND::GetForegroundWindow()?, false)
+        front(self.window.as_ref()?, false)
     }
 
+    /// The citation Ibis wrote, while nothing has replaced it since.
     fn clipboard(&self) -> Option<String> {
+        if w::HCLIPBOARD::NULL.GetClipboardSequenceNumber() != self.clipboard {
+            return None;
+        }
         self.app.clipboard().read_text().ok()
     }
 
@@ -202,7 +231,12 @@ impl Desk for Win {
     }
 
     fn post(&self, pid: i32, key: u16) -> bool {
-        if !self.picker_unchanged() || key != co::VK::CHAR_V.raw() || keys_held() || foreground_pid() != Some(pid) {
+        if !self.picker_unchanged()
+            || key != co::VK::CHAR_V.raw()
+            || keys_held()
+            || !self.window_in_front()
+            || foreground_pid() != Some(pid)
+        {
             return false;
         }
         send_paste()
@@ -264,8 +298,9 @@ mod tests {
         let pasted = loop {
             let value = uiautomation::UIAutomation::new()
                 .and_then(|automation| automation.get_focused_element())
-                .and_then(|field| field.get_property_value(uiautomation::types::UIProperty::ValueValue))
-                .and_then(|value| value.get_string())
+                .and_then(|field| field.get_pattern::<uiautomation::patterns::UITextPattern>())
+                .and_then(|text| text.get_document_range())
+                .and_then(|document| document.get_text(-1))
                 .unwrap_or_default();
             if value.contains(text) || started.elapsed() > Duration::from_secs(5) {
                 break value;
