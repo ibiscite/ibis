@@ -41,9 +41,21 @@ test("without native inputs only a Linux Desktop placeholder runs", () => {
   assert.match(desktop, /os: \$\{\{ needs\.changes\.outputs\.native == 'true' && fromJSON\('\["ubuntu-24\.04", "macos-15", "windows-2025"\]'\) \|\| fromJSON\('\["ubuntu-24\.04"\]'\) \}\}/);
 });
 
-test("documentation keeps its existing fast path, except synthetic fixtures", () => {
-  assert.deepEqual(pr([row("README.md"), row("docs/design/menu.md"), row("LICENSE"), row(".github/ISSUE_TEMPLATE/bug_report.yml")]), { native: false, web: false });
-  assert.equal(pr([row("fixtures/README.md")]).native, true);
+test("only allowlisted documentation additions, edits and deletions take the fast path", () => {
+  for (const status of ["added", "modified", "removed"]) {
+    for (const filename of ["README.md", "ROADMAP.md", "docs/design/menu.md", "website/README.md", "LICENSE", ".github/ISSUE_TEMPLATE/bug_report.yml"]) {
+      assert.deepEqual(pr([{ filename, status }]), { native: false, web: false }, `${status}: ${filename}`);
+    }
+  }
+});
+
+test("Markdown additions and deletions beside code and vendor assets require Rust checks", () => {
+  for (const status of ["added", "modified", "removed"]) {
+    for (const filename of ["crates/ibis-csl/vendor/README.md", "crates/ibis-csl/README.md", "fixtures/README.md", "apps/desktop/README.md", "vendor/README.md", "docs/vendor/README.md", "scripts/README.md", "unknown/README.md", "LICENSE/README.md"]) {
+      assert.deepEqual(pr([{ filename, status }]), full, `${status}: ${filename}`);
+    }
+    assert.deepEqual(pr([{ filename: "website/vendor/README.md", status }]), { native: false, web: true });
+  }
 });
 
 test("native, tooling and unknown changes stay conservative", () => {
@@ -55,6 +67,8 @@ test("native, tooling and unknown changes stay conservative", () => {
 test("both sides of a rename determine the required checks", () => {
   assert.deepEqual(pr([row("apps/desktop/src/Renamed.tsx", "apps/desktop/src/App.tsx")]), { native: false, web: true });
   assert.equal(pr([row("docs/old.md", "crates/ibis-desktop/src/lib.rs")]).native, true);
+  assert.deepEqual(pr([row("docs/vendor-notes.md", "crates/ibis-csl/vendor/README.md")]), full);
+  assert.deepEqual(pr([row("crates/ibis-csl/vendor/README.md", "docs/vendor-notes.md")]), full);
   assert.deepEqual(pr([{ filename: "README.md", status: "renamed" }]), full);
 });
 
@@ -71,8 +85,19 @@ test("Unicode paths work without interpreting markup or shell syntax", () => {
 });
 
 test("main and merge queue always validate the complete app", () => {
-  for (const event of ["push", "merge_group", "unknown"]) assert.deepEqual(classify(event, 1, [row("README.md")]), { native: true, web: true });
+  for (const event of ["push", "merge_group", "unknown"]) {
+    for (const status of ["added", "modified", "removed"]) {
+      for (const filename of ["README.md", "docs/design.md", "crates/ibis-csl/vendor/README.md"]) {
+        assert.deepEqual(classify(event, 1, [{ filename, status }]), full);
+      }
+    }
+  }
   assert.deepEqual(classify("workflow_dispatch"), full);
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const push = workflow.match(/^  push:\n((?:    .*\n)*)/m)?.[1];
+  assert.ok(push, "CI runs on pushes");
+  assert.match(push, /branches: \[main\]/);
+  assert.doesNotMatch(push, /\bpaths(?:-ignore)?:/, "main pushes must not filter out Markdown or other paths");
 });
 
 test("the CLI emits only fixed decisions for valid, missing and malformed metadata", (t) => {
@@ -140,6 +165,10 @@ test("CI result accepts only deliberate skips and rejects failures, cancellation
     assert.equal(result.status, expected, `${JSON.stringify(overrides)}: ${result.stdout}${result.stderr}`);
   };
   check({}, 0);
+  for (const status of ["added", "removed"]) {
+    const selection = pr([{ filename: "crates/ibis-csl/vendor/README.md", status }]);
+    check({ WEB: String(selection.web), NATIVE: String(selection.native), RUST_RESULTS: "skipped skipped" }, 1);
+  }
   check({ WEB: "false", NATIVE: "false", RUST_RESULTS: "skipped skipped" }, 0);
   check({ NATIVE: "false" }, 0); // Interface/website changes still run Rust.
   check({ EVENT: "push", BASE: "" }, 0);

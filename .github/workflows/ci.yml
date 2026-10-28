@@ -3,10 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    # A merge that changes only Markdown was already checked on its pull
-    # request. Other files under docs/ (for example
-    # synthetic configuration fixtures) feed tests, so they run CI.
-    paths-ignore: ["**.md"]
   pull_request:
   workflow_dispatch:
 
