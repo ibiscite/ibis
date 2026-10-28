@@ -61,11 +61,17 @@ impl Drop for Handle {
     }
 }
 
-struct Descriptor(PSECURITY_DESCRIPTOR);
+// The owner and ACL (including its ACEs) borrow the LocalAlloc allocation.
+// Keep all three together and inspect them only through a borrow of this owner.
+struct Descriptor {
+    raw: PSECURITY_DESCRIPTOR,
+    owner: PSID,
+    acl: *mut ACL,
+}
 impl Drop for Descriptor {
     fn drop(&mut self) {
         // SAFETY: GetSecurityInfo returns a LocalAlloc allocation (or null).
-        unsafe { LocalFree(self.0) };
+        unsafe { LocalFree(self.raw) };
     }
 }
 
@@ -281,88 +287,99 @@ pub(super) fn verify(path: &Path, protected: bool, control: &Control) -> Result<
 }
 
 fn verify_acl(handle: &Handle, user: &User, protected: bool, control: &Control) -> Result<(), ClosedError> {
-    let mut owner = null_mut();
-    let mut acl = null_mut();
-    let mut raw = null_mut();
-    control.check()?;
-    // SAFETY: handle grants READ_CONTROL; all requested outputs are writable.
-    // Owner/DACL pointers borrow the returned, LocalFree-owned descriptor.
-    let status = unsafe {
-        GetSecurityInfo(
-            handle.0,
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-            &mut owner,
-            null_mut(),
-            &mut acl,
-            null_mut(),
-            &mut raw,
-        )
-    };
-    let descriptor = Descriptor(raw);
-    if status != 0 || descriptor.0.is_null() || owner.is_null() || acl.is_null() {
-        return Err(NATIVE);
+    Descriptor::read(handle, control)?.verify(user, protected, control)
+}
+
+impl Descriptor {
+    fn read(handle: &Handle, control: &Control) -> Result<Self, ClosedError> {
+        let mut owner = null_mut();
+        let mut acl = null_mut();
+        let mut raw = null_mut();
+        control.check()?;
+        // SAFETY: handle grants READ_CONTROL; all requested outputs are writable.
+        // Owner/DACL pointers borrow the returned, LocalFree-owned descriptor.
+        let status = unsafe {
+            GetSecurityInfo(
+                handle.0,
+                SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                &mut owner,
+                null_mut(),
+                &mut acl,
+                null_mut(),
+                &mut raw,
+            )
+        };
+        let descriptor = Self { raw, owner, acl };
+        if status != 0 || descriptor.raw.is_null() || owner.is_null() || acl.is_null() {
+            return Err(NATIVE);
+        }
+        Ok(descriptor)
     }
-    control.check()?;
-    // SAFETY: owner points into the live OS-returned security descriptor.
-    succeeded(unsafe { IsValidSid(owner) })?;
-    control.check()?;
-    // SAFETY: both SIDs have been validated and their allocations remain live.
-    succeeded(unsafe { EqualSid(owner, user.sid()) })?;
-    let mut flags = 0;
-    let mut revision = 0;
-    control.check()?;
-    // SAFETY: descriptor is live; flags and revision are writable outputs.
-    succeeded(unsafe { GetSecurityDescriptorControl(descriptor.0, &mut flags, &mut revision) })?;
-    if protected && flags & SE_DACL_PROTECTED == 0 {
-        return Err(NATIVE);
+
+    fn verify(&self, user: &User, protected: bool, control: &Control) -> Result<(), ClosedError> {
+        let Self { raw, owner, acl } = *self;
+        control.check()?;
+        // SAFETY: owner points into the live OS-returned security descriptor.
+        succeeded(unsafe { IsValidSid(owner) })?;
+        control.check()?;
+        // SAFETY: both SIDs have been validated and their allocations remain live.
+        succeeded(unsafe { EqualSid(owner, user.sid()) })?;
+        let mut flags = 0;
+        let mut revision = 0;
+        control.check()?;
+        // SAFETY: descriptor is live; flags and revision are writable outputs.
+        succeeded(unsafe { GetSecurityDescriptorControl(raw, &mut flags, &mut revision) })?;
+        if protected && flags & SE_DACL_PROTECTED == 0 {
+            return Err(NATIVE);
+        }
+        control.check()?;
+        // SAFETY: acl points into the live OS-returned descriptor.
+        succeeded(unsafe { IsValidAcl(acl) })?;
+        // SAFETY: the ACL header was validated and is backed by descriptor.
+        if unsafe { (*acl).AceCount } != 1 {
+            return Err(NATIVE);
+        }
+        let mut raw_ace = null_mut();
+        control.check()?;
+        // SAFETY: the valid ACL contains exactly one ACE and raw_ace is writable.
+        succeeded(unsafe { GetAce(acl, 0, &mut raw_ace) })?;
+        if raw_ace.is_null() {
+            return Err(NATIVE);
+        }
+        // SAFETY: GetAce on a valid ACL returns an aligned, bounded ACE header.
+        let header = unsafe { &*raw_ace.cast::<ACE_HEADER>() };
+        let sid_offset = offset_of!(ACCESS_ALLOWED_ACE, SidStart);
+        // ACCESS_ALLOWED_ACE_TYPE = 0. Include inherited and explicit ACEs alike;
+        // .NET FullControl is exactly FILE_ALL_ACCESS, including SYNCHRONIZE.
+        if header.AceType != 0 || (header.AceSize as usize) < sid_offset + 8 {
+            return Err(NATIVE);
+        }
+        // SAFETY: the allow-ACE type and size above cover ACCESS_ALLOWED_ACE.
+        let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };
+        if ace.Mask != FILE_ALL_ACCESS {
+            return Err(NATIVE);
+        }
+        // SAFETY: the validated ACL bounds this ACE; the check above ensures a
+        // complete SID header. Check subauthority length before calling SID APIs.
+        let sid_bytes = unsafe {
+            std::slice::from_raw_parts(
+                raw_ace.cast::<u8>().add(sid_offset),
+                ace.Header.AceSize as usize - sid_offset,
+            )
+        };
+        if 8 + usize::from(sid_bytes[1]) * 4 > sid_bytes.len() {
+            return Err(NATIVE);
+        }
+        let sid = sid_bytes.as_ptr().cast_mut().cast();
+        control.check()?;
+        // SAFETY: sid's header and subauthorities fit within this live ACE.
+        succeeded(unsafe { IsValidSid(sid) })?;
+        control.check()?;
+        // SAFETY: both SIDs have been validated and their backing memory is live.
+        succeeded(unsafe { EqualSid(sid, user.sid()) })?;
+        control.check()
     }
-    control.check()?;
-    // SAFETY: acl points into the live OS-returned descriptor.
-    succeeded(unsafe { IsValidAcl(acl) })?;
-    // SAFETY: the ACL header was validated and is backed by descriptor.
-    if unsafe { (*acl).AceCount } != 1 {
-        return Err(NATIVE);
-    }
-    let mut raw_ace = null_mut();
-    control.check()?;
-    // SAFETY: the valid ACL contains exactly one ACE and raw_ace is writable.
-    succeeded(unsafe { GetAce(acl, 0, &mut raw_ace) })?;
-    if raw_ace.is_null() {
-        return Err(NATIVE);
-    }
-    // SAFETY: GetAce on a valid ACL returns an aligned, bounded ACE header.
-    let header = unsafe { &*raw_ace.cast::<ACE_HEADER>() };
-    let sid_offset = offset_of!(ACCESS_ALLOWED_ACE, SidStart);
-    // ACCESS_ALLOWED_ACE_TYPE = 0. Include inherited and explicit ACEs alike;
-    // .NET FullControl is exactly FILE_ALL_ACCESS, including SYNCHRONIZE.
-    if header.AceType != 0 || (header.AceSize as usize) < sid_offset + 8 {
-        return Err(NATIVE);
-    }
-    // SAFETY: the allow-ACE type and size above cover ACCESS_ALLOWED_ACE.
-    let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };
-    if ace.Mask != FILE_ALL_ACCESS {
-        return Err(NATIVE);
-    }
-    // SAFETY: the validated ACL bounds this ACE; the check above ensures a
-    // complete SID header. Check subauthority length before calling SID APIs.
-    let sid_bytes = unsafe {
-        std::slice::from_raw_parts(
-            raw_ace.cast::<u8>().add(sid_offset),
-            ace.Header.AceSize as usize - sid_offset,
-        )
-    };
-    if 8 + usize::from(sid_bytes[1]) * 4 > sid_bytes.len() {
-        return Err(NATIVE);
-    }
-    let sid = sid_bytes.as_ptr().cast_mut().cast();
-    control.check()?;
-    // SAFETY: sid's header and subauthorities fit within this live ACE.
-    succeeded(unsafe { IsValidSid(sid) })?;
-    control.check()?;
-    // SAFETY: both SIDs have been validated and their backing memory is live.
-    succeeded(unsafe { EqualSid(sid, user.sid()) })?;
-    control.check()
 }
 
 fn create_directory(path: &Path, user: &User, control: &Control) -> Result<(), ClosedError> {
@@ -700,13 +717,11 @@ mod tests {
         );
     }
 
-    fn replace_acl(path: &Path, mask: u32, count: usize) {
+    fn replace_acl(handle: &Handle, mask: u32, count: usize) {
         use windows_sys::Win32::Security::Authorization::SetSecurityInfo;
         use windows_sys::Win32::Security::PROTECTED_DACL_SECURITY_INFORMATION;
-        use windows_sys::Win32::Storage::FileSystem::WRITE_DAC;
         let control = control();
         let user = user(&control).unwrap_or_else(|_| panic!("synthetic user"));
-        let handle = open(path, WRITE_DAC, &control).unwrap_or_else(|_| panic!("synthetic ACL handle"));
         let mut storage = [0u32; 64];
         let acl = storage.as_mut_ptr().cast::<ACL>();
         // SAFETY: storage is DWORD-aligned and has the advertised capacity.
@@ -722,7 +737,7 @@ mod tests {
                 0
             );
         }
-        // SAFETY: handle grants WRITE_DAC; the initialized ACL is live and
+        // SAFETY: handle grants READ_CONTROL and WRITE_DAC; the ACL is live and
         // owner/group/SACL are unused. Only this invented object's DACL changes.
         assert_eq!(
             unsafe {
@@ -742,17 +757,46 @@ mod tests {
 
     #[test]
     fn empty_extra_and_partial_access_rules_are_refused() {
+        use windows_sys::Win32::Storage::FileSystem::WRITE_DAC;
         let parent = scratch();
         let path = parent.path().join("private");
         assert_eq!(super::super::create_private(&path, &control()), Ok(()));
+        let user = user(&control()).unwrap_or_else(|_| panic!("synthetic user"));
+        // SetSecurityInfo needs READ_CONTROL as well as WRITE_DAC on Windows.
+        // Retain the handle so tightening the ACL cannot prevent restoration.
+        let handle =
+            open(&path, READ_CONTROL | WRITE_DAC, &control()).unwrap_or_else(|_| panic!("synthetic ACL handle"));
         for (mask, count) in [(FILE_ALL_ACCESS, 0), (FILE_ALL_ACCESS, 2), (FILE_ALL_ACCESS & !2, 1)] {
-            replace_acl(&path, mask, count);
+            replace_acl(&handle, mask, count);
+            assert_eq!(verify_acl(&handle, &user, true, &control()), Err(NATIVE));
             assert_eq!(
                 super::super::secure(&path, &control()),
                 Err(ClosedError::PrivateStorage)
             );
         }
-        replace_acl(&path, FILE_ALL_ACCESS, 1);
+        replace_acl(&handle, FILE_ALL_ACCESS, 1);
+        assert_eq!(super::super::secure(&path, &control()), Ok(()));
+    }
+
+    #[test]
+    fn descriptor_snapshot_outlives_its_handle_and_source_acl() {
+        use windows_sys::Win32::Storage::FileSystem::WRITE_DAC;
+        let parent = scratch();
+        let path = parent.path().join("private");
+        assert_eq!(super::super::create_private(&path, &control()), Ok(()));
+        let user = user(&control()).unwrap_or_else(|_| panic!("synthetic user"));
+        let editor =
+            open(&path, READ_CONTROL | WRITE_DAC, &control()).unwrap_or_else(|_| panic!("synthetic ACL handle"));
+        let snapshot = {
+            let reader = open(&path, READ_CONTROL, &control()).unwrap_or_else(|_| panic!("synthetic reader"));
+            Descriptor::read(&reader, &control()).unwrap_or_else(|_| panic!("synthetic descriptor"))
+        }; // Closing reader cannot release GetSecurityInfo's independent copy.
+        replace_acl(&editor, FILE_ALL_ACCESS, 0);
+        // Moving the owner also leaves its interior owner/ACL/ACE pointers valid.
+        let snapshot = Box::new(snapshot);
+        assert_eq!(snapshot.verify(&user, true, &control()), Ok(()));
+        assert_eq!(verify_acl(&editor, &user, true, &control()), Err(NATIVE));
+        replace_acl(&editor, FILE_ALL_ACCESS, 1);
         assert_eq!(super::super::secure(&path, &control()), Ok(()));
     }
 
