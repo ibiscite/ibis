@@ -428,7 +428,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           await hidePicker();
           if (!current()) return;
           // The notice is extra; a failure to show it never undoes the copy.
-          const delivered = await showCopiedNotice?.(outcome.text).catch(() => console.error(copiedNoticeText.noticeFailed));
+          const delivered = await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
           permissionRefused = !!delivered && delivered.outcome === "copied" && delivered.reason === "no-permission";
         } finally {
           if (current() && !permissionRefused) complete();

@@ -72,6 +72,7 @@ test("the notice says where the citation was pasted, or why it was only copied",
   expect(noticeTitle({ delivered: { outcome: "pasted", app: null }, text: "[@a]" })).toBe("Pasted");
   expect(noticeTitle(copied("[@a]", "terminal"))).toBe("Copied. Not pasted into a terminal");
   expect(noticeTitle(copied("[@a]", "no-permission"))).toBe("Copied. Ibis needs your OK to paste");
+  expect(noticeTitle(copied("[@a]", "key-release-failed"))).toBe("Copied. Press and release Ctrl and V");
   for (const reason of [null, "no-target", "unknown-future-code"]) expect(noticeTitle(copied("[@a]", reason))).toBe("Copied");
 });
 

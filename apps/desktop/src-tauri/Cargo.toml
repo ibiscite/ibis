@@ -84,3 +84,9 @@ auto-launch = "0.6.0"
 # (with its byte offsets) and RTF in one clipboard opening (#26).
 clipboard-win = "5.4.3"
 windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement"] }
+# Safe Win32 bindings for pasting (#1133): the window in front, its process,
+# name and rights, and one SendInput. No raw native calls in Ibis (decision 0029).
+winsafe = { version = "0.0.29", features = ["user", "advapi", "version"] }
+# Safe UI Automation: whether the focused field takes a password (#1133).
+# Its core module needs `input`; `pattern` reads Notepad's text in a test.
+uiautomation = { version = "0.25.1", default-features = false, features = ["input", "pattern"] }
