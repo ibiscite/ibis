@@ -77,6 +77,12 @@ clipboard: restoring the previous contents could paste them into a slow app, so
 restoring and per-app rules wait until after 1.0. It refuses secure input,
 elevated windows and lost targets.
 
+When the shortcut opens the picker with short text selected in the target app,
+that text becomes the search and the paste replaces it (macOS and Windows, on
+by default; maintainer, 2026-10-28). The selection is read once, at the
+shortcut, through the same accessibility access paste uses; it is never read
+from secure fields, never stored and never logged.
+
 ## 0010 Search
 
 Proposed, awaiting measurements. Keyword search is instant, ignores accents and case, works in every script and
@@ -117,6 +123,16 @@ tray and context menus are the operating system's own.
 Every Ibis command is declared in Tauri's app manifest and granted per window;
 remote origins get none. A test checks the grants through Tauri's IPC
 dispatcher.
+
+## 0030 Links and launchers
+
+`ibis://` links open the picker with a query, output or library filled in.
+A link is untrusted input: it never copies, pastes, changes settings or reads
+files; only the person's Enter acts. Launchers (Spotlight through Shortcuts,
+Alfred, Stream Deck, notes apps) reach Ibis through these links and the `ibis`
+command, with recipes in the docs. No native App Intents or launcher
+extensions before 1.0: they would add a second language or codebase for what
+the global shortcut already does (maintainer, 2026-10-28).
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 

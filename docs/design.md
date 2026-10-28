@@ -707,7 +707,9 @@ scheduled.
 | Zotero while closed (0.2) | Footer status with words and a dot; detail in the tooltip and More |
 | Output per app, self-finishing setup (0.3) | First run above |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
+| Selected text as the search (0.3) | The picker opens with the selection in the search field, all selected so typing replaces it; Enter pastes over the selection |
 | Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf: each reference shows its page, prefix and suffix in place; the form and style in the format pop-up; Settings › Citations |
+| `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in, like the shortcut; the Zotero actions sit in More and the row's context menu |
 | Settings window (0.4, #776) | **Settings**; General, Shortcuts, Libraries and Citations first |
 | Browse, "Selected in Zotero", reader (0.5) | Collections and tags as search filters; the reader opens beside the picker; "Cite this page ⌘↩" |
 | Bibliography, session bibliography, DOI lookup (0.6) | More and the format pop-up; DOI lookup as a no-results fallback, opt-in |
