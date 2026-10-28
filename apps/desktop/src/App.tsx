@@ -161,8 +161,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
   }, [setupDone, setFailures]);
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
-  const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string } | null>(null);
-  const requestCopy = (choice: string) => setPendingCopy({ choice, queryKey });
+  const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken> } | null>(null);
+  const requestCopy = (choice: string) => setPendingCopy({ choice, queryKey,
+    format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
   const hide = () => {
     copyVisibility.current += 1;
     setPendingCopy(null);
@@ -426,14 +427,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // biome-ignore lint/correctness/useExhaustiveDependencies: copy is rebuilt every render; this runs when the waiting copy, the choice, its preview or the search changes.
   useEffect(() => {
     if (pendingCopy === null) return;
-    if (chosenKey !== pendingCopy.choice || queryKey !== pendingCopy.queryKey) {
+    if (chosenKey !== pendingCopy.choice || queryKey !== pendingCopy.queryKey
+      || pendingCopy.format !== null && format !== pendingCopy.format || !destination.isCurrentCopy(pendingCopy.output)) {
       setPendingCopy(null);
       return;
     }
     if (shown === null || !destination.ready || destination.saving || !preferences.ready) return;
     setPendingCopy(null);
     void copy();
-  }, [pendingCopy, chosenKey, shown, queryKey, destination.ready, destination.saving, preferences.ready]);
+  }, [pendingCopy, chosenKey, shown, queryKey, format, destination.ready, destination.saving, preferences.ready]);
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =

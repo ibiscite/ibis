@@ -202,3 +202,24 @@ test("a failed preference read keeps the native app's authoritative automatic st
   await waitFor(() => expect(previews.at(-1)?.style).toBe("ieee"));
   await copy(previews, copies);
 });
+
+test("Automatic cancels an Enter that was waiting for another output's preview", async () => {
+  let finish!: (value: unknown) => void;
+  const typst = new Promise((done) => { finish = done; });
+  const { copies } = opened(() => ({ ...BROWSER, remembered: { key: "cite" } }), {
+    preview_file_citation: ({ format }) => format === "typst" ? typst : {
+      ticket: `ticket-${format}`, content_hash: `hash-${format}`, text: `synthetic ${format}`, html: null, warnings: [],
+    },
+  });
+  await screen.findByText("First");
+  await pick("Just this once", "menuitemcheckbox");
+  await pick("Typst");
+  const search = screen.getByLabelText("Search references");
+  fireEvent.keyDown(search, { key: "Enter" });
+  await pick("Automatic", "menuitem");
+  await waitFor(() => expect(formatShown()).toBe("Pandoc · Example Browser"));
+  await act(async () => { finish({ ticket: "old-typst", content_hash: "old-typst", text: "old Typst", html: null, warnings: [] }); });
+  expect(copies).toEqual([]);
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(copies).toEqual([{ ticket: "ticket-pandoc", contentHash: "hash-pandoc" }]));
+});
