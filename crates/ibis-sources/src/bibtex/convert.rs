@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use biblatex::{Chunk, ChunksExt, DateValue, EditorType, Entry, PermissiveType, RetrievalError};
 
 use super::resolve::{BACKSLASH, ESCAPE, LEFT_BRACE, RIGHT_BRACE};
-use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, RawProvenance, Record, SourceFormat};
+use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use ibis_core::model::{Issued, Name, OTHERS, PartialDate};
 use serde_json::{Value, json};
 
@@ -16,7 +16,6 @@ use serde_json::{Value, json};
 pub(crate) fn convert(
     source: &LibraryId,
     kind: &str,
-    raw: &str,
     entry: &Entry,
     own_fields: &HashMap<String, String>,
     problems: &mut Vec<String>,
@@ -340,10 +339,6 @@ pub(crate) fn convert(
             .iter()
             .filter_map(|id| ibis_core::identifier::parse_query(id))
             .collect(),
-        raw: Some(RawProvenance {
-            format: SourceFormat::Bibtex,
-            data: json!(raw),
-        }),
     }
 }
 

@@ -26,6 +26,7 @@ fn file_preview_and_native_canonical_copy_equal_ibis_cite() -> Result<(), Box<dy
                 &serde_json::from_value(json!({"text":"research","interpret_locators":false}))?,
                 10,
                 None,
+                &ibis_engine::Cancellation::default(),
             )
             .map_err(|_| "native search")?,
         )?;
@@ -108,6 +109,7 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
             &serde_json::from_value(json!({"text":"synthetic","interpret_locators":false}))?,
             10,
             None,
+            &ibis_engine::Cancellation::default(),
         )
         .map_err(|_| "native search")?,
     )?;
@@ -153,13 +155,9 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
         assert_eq!(preview.text, expected.text);
         assert_eq!(preview.html, expected.html);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
-        let warnings = if style == Some(CitationStyle::Apa) {
-            vec!["Year suffixes require the whole document; Ibis leaves them out."]
-        } else {
-            vec![]
-        };
-        assert_eq!(
-            preview.warnings, warnings,
+        // Different authors need no year letters, so no notice either.
+        assert!(
+            preview.warnings.is_empty(),
             "context notices must not become order-loss warnings"
         );
         let copied = file
@@ -185,6 +183,7 @@ fn malformed_file_selections_are_not_retryable_snapshot_errors() -> Result<(), B
             &serde_json::from_value(json!({"text":"synthetic","interpret_locators":false}))?,
             10,
             None,
+            &ibis_engine::Cancellation::default(),
         )
         .map_err(|_| "search")?,
     )?;
@@ -202,5 +201,57 @@ fn malformed_file_selections_are_not_retryable_snapshot_errors() -> Result<(), B
             "malformed input cannot trigger an automatic status/preview loop"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn italics_and_non_latin_text_reach_every_clipboard_flavor_from_one_result() -> Result<(), Box<dyn std::error::Error>> {
+    use super::clipboard::{Flavor, flavors};
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic.bib");
+    // A book without an author: APA cites it by its title, in italics.
+    std::fs::write(&path, "@book{atlas,title={Ŝynthetic 山田 atlas},year={2026}}\n")?;
+    let file = FileLibrary::open(&path).map_err(|_| "native file open")?;
+    let rows = serde_json::to_value(
+        file.search(
+            &serde_json::from_value(json!({"text":"atlas","interpret_locators":false}))?,
+            10,
+            None,
+            &Cancellation::default(),
+        )
+        .map_err(|_| "native search")?,
+    )?;
+    let row = &rows["results"][0];
+    let selection: FileSelection = serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
+    let preview = file
+        .preview(
+            file.reserve_preview(),
+            vec![selection],
+            KeyFormat::Pandoc,
+            Some(CitationStyle::Apa),
+        )
+        .map_err(|e| e.to_string())?;
+    let mut written = vec![];
+    file.copy(&preview.ticket, &preview.content_hash, |content| {
+        written = flavors(&content)
+            .into_iter()
+            .map(|(flavor, value)| (flavor, value.to_owned()))
+            .collect();
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
+    let kinds: Vec<_> = written.iter().map(|(flavor, _)| *flavor).collect();
+    assert_eq!(kinds, [Flavor::Html, Flavor::Rtf, Flavor::Text]);
+    let [(_, html), (_, rtf), (_, text)] = &written[..] else {
+        return Err("three flavors".into());
+    };
+    assert_eq!(text, &preview.text);
+    assert_eq!(Some(html), preview.html.as_ref());
+    assert!(text.contains("Ŝynthetic 山田 Atlas"), "{text}");
+    assert!(html.contains("<i>Ŝynthetic 山田 Atlas</i>"), "{html}");
+    // RTF is 7-bit: italics as {\i …} and other characters as \uN escapes.
+    assert!(rtf.is_ascii(), "{rtf}");
+    assert!(rtf.contains("\\i"), "{rtf}");
+    assert!(rtf.contains("\\u23665") && rtf.contains("\\u30000"), "{rtf}");
     Ok(())
 }

@@ -15,6 +15,7 @@ fn an_older_blocking_worker_finishing_last_cannot_retire_the_newer_preview() -> 
             &serde_json::from_value(json!({"text":"synthetic","interpret_locators":false}))?,
             10,
             None,
+            &ibis_engine::Cancellation::default(),
         )
         .map_err(|_| "search")?,
     )?;
@@ -191,6 +192,7 @@ fn same_author_year_notice_survives_native_preview_and_copy() -> Result<(), Box<
             &serde_json::from_value(json!({"text":"synthetic","interpret_locators":false}))?,
             10,
             None,
+            &ibis_engine::Cancellation::default(),
         )
         .map_err(|_| "search")?;
     let rows = serde_json::to_value(rows)?;
@@ -279,5 +281,40 @@ fn conflicting_keys_explain_refusal_without_a_copy_receipt() -> Result<(), Box<d
         )
         .is_ok()
     );
+    Ok(())
+}
+
+#[test]
+fn a_key_another_record_also_has_is_named_and_not_copied() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_core::contract::{GoldenCase, Snapshot};
+    let case: GoldenCase = serde_json::from_str(include_str!("../../../../../../fixtures/cases/02-pandoc.json"))?;
+    let first = case.library.objects()[0].object.clone();
+    let mut second = first.clone();
+    let LibraryObject::Record(record) = &mut second else {
+        return Err("record".into());
+    };
+    record.id.key = "work-2".into();
+    let file = FileLibrary::from_engine(Engine::from_snapshot(Arc::new(Snapshot::new(vec![first, second])?)));
+    let snapshot = file.engine.snapshot().map_err(|_| "snapshot")?;
+    let record = &snapshot.objects()[0];
+    let selected = json!({"id":record.object.id(),"cite":record.fingerprints.cite,"locator":null});
+    for format in [KeyFormat::Pandoc, KeyFormat::Cite, KeyFormat::Keys] {
+        let error = file
+            .preview(
+                file.reserve_preview(),
+                vec![serde_json::from_value(selected.clone())?],
+                format,
+                None,
+            )
+            .err()
+            .ok_or("a shared key produced a preview receipt")?;
+        // The picker names the key from the code, never from the message text.
+        assert_eq!(
+            error,
+            CommandError::SharedCitationKey {
+                key: "Example2026".into()
+            }
+        );
+    }
     Ok(())
 }

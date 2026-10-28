@@ -20,15 +20,14 @@
     "allow-zotero-groups",
     "allow-library-status",
     "allow-search",
-    "allow-copy-citation",
     "allow-preview-file-citation",
     "allow-copy-file-citation",
-    "allow-citation-text",
     "allow-copy-format",
-    "allow-csl-items",
-    "allow-copy-formatted",
     "allow-picker-preferences",
     "allow-set-picker-preferences",
+    "allow-picker-destination",
+    "allow-remember-app-output",
+    "allow-forget-app-outputs",
     "allow-login-item",
     "allow-set-login-item",
     "allow-hide-picker",
@@ -41,6 +40,7 @@
     "allow-row-context",
     "allow-update-checks",
     "allow-set-update-checks",
-    "allow-check-for-updates"
+    "allow-check-for-updates",
+    "allow-open-settings"
   ]
 }

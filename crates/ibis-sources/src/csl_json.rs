@@ -1,7 +1,7 @@
 //! CSL-JSON 1.0.2 ingestion; malformed fields warn and locations stay private.
 //! Field vocabulary: citation-style-language/schema v1.0.2, schemas/input/csl-data.json.
 use crate::{ParsedLibrary, SourceError, SourceWarning, WarningCode};
-use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, RawProvenance, Record, SourceFormat};
+use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 
@@ -148,10 +148,6 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             }],
             aliases: vec![],
             identifiers: vec![],
-            raw: Some(RawProvenance {
-                format: SourceFormat::CslJson,
-                data: Value::String(raw.get().into()),
-            }),
         });
     }
     if limited {

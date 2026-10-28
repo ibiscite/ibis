@@ -34,12 +34,6 @@ pub enum FormatError {
     Runtime,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Priority {
-    Interactive,
-    Background,
-}
-
 // The native stack is four times the maximum QuickJS software budget.
 pub(crate) const WORKER_STACK_BYTES: usize = 8 * 1024 * 1024;
 const MAX_JS_STACK_BYTES: usize = WORKER_STACK_BYTES / 4;
@@ -51,10 +45,9 @@ pub struct Limits {
     pub stack_bytes: usize,
     pub input_bytes: usize,
     pub output_bytes: usize,
-    pub interactive_queue: usize,
-    pub background_queue: usize,
-    pub interactive_timeout: Duration,
-    pub background_timeout: Duration,
+    /// Maximum outstanding requests, including the running request.
+    pub queue: usize,
+    pub timeout: Duration,
 }
 impl Default for Limits {
     fn default() -> Self {
@@ -63,10 +56,8 @@ impl Default for Limits {
             stack_bytes: MAX_JS_STACK_BYTES,
             input_bytes: 4 * 1024 * 1024,
             output_bytes: 4 * 1024 * 1024,
-            interactive_queue: 8,
-            background_queue: 2,
-            interactive_timeout: Duration::from_secs(5),
-            background_timeout: Duration::from_secs(30),
+            queue: 8,
+            timeout: Duration::from_secs(30),
         }
     }
 }
@@ -76,12 +67,9 @@ impl Limits {
             && (16 * 1024..=MAX_JS_STACK_BYTES).contains(&self.stack_bytes)
             && (1..=16 * 1024 * 1024).contains(&self.input_bytes)
             && (1..=16 * 1024 * 1024).contains(&self.output_bytes)
-            && (1..=64).contains(&self.interactive_queue)
-            && (1..=64).contains(&self.background_queue)
-            && !self.interactive_timeout.is_zero()
-            && self.interactive_timeout <= Duration::from_secs(60)
-            && !self.background_timeout.is_zero()
-            && self.background_timeout <= Duration::from_secs(60)
+            && (1..=64).contains(&self.queue)
+            && !self.timeout.is_zero()
+            && self.timeout <= Duration::from_secs(60)
     }
 }
 
@@ -110,25 +98,15 @@ impl Formatter {
             service: Arc::new(service::Service::new(limits)?),
         })
     }
-    /// Bibliography-only requests use the background worker; ordinary copies/previews go first.
+    /// Requests share one bounded FIFO worker.
     pub fn format(&self, snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationResult, FormatError> {
-        let priority = if request.form == ibis_core::contract::CitationForm::BibliographyOnly {
-            Priority::Background
-        } else {
-            Priority::Interactive
-        };
         self.service
-            .submit(input::prepare(snapshot, request, self.service.limits())?, priority)?
+            .submit(input::prepare(snapshot, request, self.service.limits())?)?
             .wait()
     }
-    pub fn submit(
-        &self,
-        snapshot: Arc<Snapshot>,
-        request: CitationRequest,
-        priority: Priority,
-    ) -> Result<FormatTask, FormatError> {
+    pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
         self.service
-            .submit(input::prepare(&snapshot, &request, self.service.limits())?, priority)
+            .submit(input::prepare(&snapshot, &request, self.service.limits())?)
     }
 }
 

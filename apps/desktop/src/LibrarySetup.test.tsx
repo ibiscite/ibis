@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axe from "axe-core";
-import { LibrarySetup, WritingSetup } from "./LibrarySetup";
+import { LibrarySetup } from "./LibrarySetup";
 
 afterEach(cleanup);
 const perform = async (_action: string, run: () => Promise<unknown>) => { await run(); };
@@ -120,24 +120,6 @@ test("a superseded discovery cannot replace the current list", async () => {
   expect(screen.queryByRole("option", { name: /研究<literal>\.bib/ })).toBeNull();
   expect(option(/^current\.bib/)).toBeTruthy();
 });
-
-test("the writing step offers three places, marks the current format and reports the choice", () => {
-  const choose = vi.fn();
-  const { rerender } = render(<WritingSetup format="pandoc" choose={choose} shortcut="⌥Space" />);
-  const rows = screen.getAllByRole("option");
-  expect(rows.map((row) => row.querySelector(".result-title")?.textContent)).toEqual(["Markdown (Pandoc)", "LaTeX", "Typst"]);
-  expect(rows[0]!.textContent).toContain("Now");
-  expect(rows[1]!.textContent).toContain("\\cite{smith2020}");
-  expect(screen.getByText("Open Ibis from any app with ⌥Space.")).toBeTruthy();
-  press(rows[0]!);
-  expect(choose).toHaveBeenCalledExactlyOnceWith("pandoc");
-  press(rows[1]!);
-  expect(choose).toHaveBeenLastCalledWith("cite");
-  rerender(<WritingSetup format="typst" choose={choose} />);
-  expect(option(/^Typst/).textContent).toContain("Now");
-  expect(screen.queryByText(/Open Ibis from any app/)).toBeNull();
-});
-
 
 test("empty-library choices show a known Zotero tag without searching or adding source types", () => {
   const findSources = vi.fn();

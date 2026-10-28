@@ -4,11 +4,15 @@ use super::{CommandError, LibraryStatus};
 use ibis_core::{
     cite::{KeyFormat, Locator},
     contract::{CitationError, CitationRequest, CitationResult, ItemOutcome, LibraryObject, Notice},
-    settings::CitationStyle,
+    settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
 };
-use ibis_engine::{Cancellation, Engine, Method, PreparedCitation, request::SearchRequest};
+use ibis_engine::{
+    Cancellation, Engine, Method, PreparedCitation,
+    request::{SearchRequest, ZoteroLibrary as EngineZoteroLibrary},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{
     Mutex,
@@ -64,28 +68,52 @@ impl FileLibrary {
             observing: AtomicBool::new(false),
         }
     }
-    pub(super) fn validate_zotero(chosen: &ibis_core::settings::ZoteroLibraries) -> Result<(), super::LoadError> {
-        if chosen.libraries() != [ibis_core::settings::ZoteroLibrary::User] {
-            return Err(super::LoadError::UnsupportedZoteroLibraries);
-        }
-        Ok(())
-    }
-
-    pub(super) fn open_zotero(cancel: &Cancellation) -> Result<Self, super::LoadError> {
+    pub(super) fn open_zotero(chosen: &ZoteroLibraries, cancel: &Cancellation) -> Result<Self, super::LoadError> {
         let engine = Engine::new().map_err(|e| super::LoadError::EngineZotero(e.code))?;
-        engine
-            .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), cancel)
-            .map_err(|e| super::LoadError::EngineZotero(e.code))?;
-        Ok(Self::from_engine(engine))
+        Self::open_zotero_with(engine, chosen, cancel)
     }
 
-    pub(super) fn refresh_zotero(&self, force: bool, cancel: &Cancellation) -> Result<(), super::LoadError> {
+    fn open_zotero_with(
+        engine: Engine,
+        chosen: &ZoteroLibraries,
+        cancel: &Cancellation,
+    ) -> Result<Self, super::LoadError> {
+        let bridge = Self::from_engine(engine);
+        bridge.refresh_zotero(chosen, false, cancel)?;
+        Ok(bridge)
+    }
+
+    pub(super) fn refresh_zotero(
+        &self,
+        chosen: &ZoteroLibraries,
+        force: bool,
+        cancel: &Cancellation,
+    ) -> Result<bool, super::LoadError> {
+        let libraries: Vec<_> = chosen
+            .libraries()
+            .iter()
+            .map(|library| match library {
+                ZoteroLibrary::User => EngineZoteroLibrary::Personal,
+                ZoteroLibrary::Group(id) => EngineZoteroLibrary::Group(*id),
+            })
+            .collect();
+        let loaded: Vec<_> = self
+            .engine
+            .libraries()
+            .map_err(|e| super::LoadError::EngineZotero(e.code))?
+            .libraries
+            .iter()
+            .filter_map(|library| library.zotero)
+            .collect();
+        // The listing is sorted by opaque ID, not by the user's selection order.
+        let same = loaded.len() == libraries.len() && loaded.iter().all(|library| libraries.contains(library));
+        let request = if force && same {
+            json!({"action":"reload"})
+        } else {
+            json!({"action":"open-zotero","libraries":libraries})
+        };
         self.engine
-            .dispatch(
-                Method::Libraries,
-                &json!({"action": if force { "reload" } else { "open-zotero" }}),
-                cancel,
-            )
+            .dispatch(Method::Libraries, &request, cancel)
             .map_err(|e| super::LoadError::EngineZotero(e.code))?;
         let info = self
             .engine
@@ -94,7 +122,8 @@ impl FileLibrary {
         if let Some(code) = info.libraries.iter().find_map(|info| info.refresh_error) {
             return Err(super::LoadError::EngineZotero(code));
         }
-        Ok(())
+        // Empty libraries change the choice even when the object fingerprint stays equal.
+        Ok(same)
     }
 
     pub(super) fn observe_once(
@@ -148,14 +177,13 @@ impl FileLibrary {
         if let Ok(info) = self.engine.libraries() {
             status.references = info.libraries.iter().map(|i| i.objects).sum();
             status.warnings = info.libraries.iter().map(|i| i.warnings_total).sum();
-            status.source_counts = info
-                .libraries
-                .iter()
-                .map(|i| (i.id.as_str().to_owned(), i.objects))
-                .collect();
-            if status.error.is_none() && info.libraries.iter().any(|i| i.refresh_error.is_some()) {
+            status.source_counts = info.libraries.iter().map(|i| (native_source(i), i.objects)).collect();
+            if info.libraries.iter().any(|i| i.refresh_error.is_some()) {
                 status.stale = true;
-                status.error = Some("The library could not be refreshed; keeping the last loaded references.".into());
+                if status.error.is_none() {
+                    status.error =
+                        Some("The library could not be refreshed; keeping the last loaded references.".into());
+                }
             }
             if status.note.is_none() && info.libraries.iter().any(|i| i.watch_warning.is_some()) {
                 status.note = Some("Live updates are unavailable. Reload the library after editing it.".into());
@@ -167,6 +195,7 @@ impl FileLibrary {
         query: &SearchQuery,
         limit: usize,
         scope: Option<Vec<String>>,
+        cancel: &Cancellation,
     ) -> Result<SearchReply, String> {
         let interpretation = query
             .interpret_locators
@@ -184,33 +213,68 @@ impl FileLibrary {
                 interpretation,
             });
         }
-        let reply = self
+        // The existing native boundary names Zotero sources for the picker;
+        // ItemRef remains the engine's opaque identity for preview and copy.
+        let sources: HashMap<_, _> = self
             .engine
-            .search(
-                &SearchRequest {
-                    query: interpretation
-                        .as_ref()
-                        .map_or_else(|| query.text.clone(), |q| q.search.clone()),
-                    limit: limit.min(200),
-                    libraries: scope
-                        .map(|ids| serde_json::from_value(json!(ids)))
-                        .transpose()
-                        .map_err(|_| "Invalid library scope.".to_string())?,
-                },
-                &Cancellation::default(),
-            )
-            .map_err(|_| "The library could not be searched.".to_string())?;
+            .libraries()
+            .map_err(|_| "The library could not be searched.".to_string())?
+            .libraries
+            .iter()
+            .map(|info| (info.id.as_str().to_owned(), native_source(info)))
+            .collect();
+        let scope = scope.map(|ids| {
+            ids.into_iter()
+                .map(|id| {
+                    sources
+                        .iter()
+                        .find(|(_, name)| **name == id)
+                        .map(|(opaque, _)| opaque.clone())
+                        .unwrap_or(id)
+                })
+                .collect::<Vec<_>>()
+        });
+        let reply = match self.engine.search(
+            &SearchRequest {
+                interpret_locator: false,
+                query: interpretation
+                    .as_ref()
+                    .map_or_else(|| query.text.clone(), |q| q.search.clone()),
+                limit: limit.min(200),
+                libraries: scope
+                    .map(|ids| serde_json::from_value(json!(ids)))
+                    .transpose()
+                    .map_err(|_| "Invalid library scope.".to_string())?,
+            },
+            cancel,
+        ) {
+            Ok(reply) => reply,
+            // A newer search replaced this one; the interface ignores the empty reply.
+            Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => {
+                return Ok(SearchReply {
+                    revision: self.revision(),
+                    results: vec![],
+                    interpretation,
+                });
+            }
+            Err(_) => return Err("The library could not be searched.".to_string()),
+        };
         let revision = reply.snapshot.full.as_str().to_owned();
         let results = reply
             .hits
             .into_iter()
+            // The picker cannot mark closest matches yet, so it leaves them out
+            // rather than show them as full matches.
+            .filter(|hit| !hit.partial)
             .filter_map(|hit| match hit.item.object {
-                LibraryObject::Record(record) => Some(SearchResult::from_engine(
-                    &record,
-                    hit.item.fingerprints.cite.as_str(),
-                    hit.matched,
-                    &revision,
-                )),
+                LibraryObject::Record(record) => {
+                    let mut result =
+                        SearchResult::from_engine(&record, hit.item.fingerprints.cite.as_str(), hit.matched, &revision);
+                    if let Some(source) = sources.get(record.id.library.as_str()) {
+                        result.source.clone_from(source);
+                    }
+                    Some(result)
+                }
                 _ => None,
             })
             .collect();
@@ -258,22 +322,31 @@ impl FileLibrary {
             .map_err(CommandError::from)?;
         let result = citation.result();
         if result.copy_content(request.items.len()).is_none() {
-            let conflict = result.outcomes.iter().any(|outcome| {
-                matches!(
-                    outcome,
-                    ItemOutcome::Refused {
-                        error: CitationError::ConflictingKey,
-                        ..
-                    }
-                )
-            });
-            return Err(if conflict {
+            let refused = |wanted: CitationError| {
+                result.outcomes.iter().find_map(|outcome| match outcome {
+                    ItemOutcome::Refused { item, error } if *error == wanted => Some(*item),
+                    _ => None,
+                })
+            };
+            // A key another record also has is named, so the picker can say what to rename.
+            if let Some(key) = refused(CitationError::AmbiguousKey).and_then(|item| self.citation_key(&request, item)) {
+                return Err(CommandError::SharedCitationKey { key });
+            }
+            return Err(if refused(CitationError::ConflictingKey).is_some() {
                 "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
             } else {
                 "These references cannot be copied in this format."
-            }.into());
+            }
+            .into());
         }
         self.publish_preview(reservation, citation)
+    }
+    fn citation_key(&self, request: &CitationRequest, item: usize) -> Option<String> {
+        let snapshot = self.engine.snapshot().ok()?;
+        let LibraryObject::Record(record) = &snapshot.get(&request.items.get(item)?.item)?.object else {
+            return None;
+        };
+        record.citation_key().ok().flatten().map(str::to_owned)
     }
     fn publish_preview(&self, reservation: u64, citation: PreparedCitation) -> Result<FilePreview, CommandError> {
         let mut slot = self
@@ -323,6 +396,14 @@ impl FileLibrary {
             text: citation.result().text.clone(),
             warnings: citation_warnings(citation.result()),
         })
+    }
+}
+
+fn native_source(info: &ibis_engine::LibraryInfo) -> String {
+    match info.zotero {
+        Some(EngineZoteroLibrary::Personal) => "zotero:user".into(),
+        Some(EngineZoteroLibrary::Group(id)) => format!("zotero:group:{id}"),
+        None => info.id.as_str().to_owned(),
     }
 }
 

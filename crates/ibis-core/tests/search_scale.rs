@@ -82,7 +82,6 @@ fn library(records: usize) -> Vec<LibraryObject> {
                 }],
                 aliases: vec![],
                 identifiers: vec![],
-                raw: None,
             };
             for (field, value) in [
                 ("type", json!("article-journal")),
@@ -157,7 +156,15 @@ fn search_memory_and_typing_latency() {
             }
         }
         report("typing", &mut samples);
-        for probe in ["qqqqqq", "qqqqqq xxxxxx", "zz", "ra", "orlidi"] {
+        for probe in [
+            "qqqqqq",
+            "qqqqqq xxxxxx",
+            "zz",
+            "ra",
+            "orlidi",
+            "orlidi qqqqqq",
+            "ra ta ka qqqqqq",
+        ] {
             let started = Instant::now();
             for _ in 0..5 {
                 std::hint::black_box(index.search(probe, 20, None, &|| false).unwrap());

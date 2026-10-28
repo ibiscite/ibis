@@ -71,6 +71,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     let reload = MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?;
     let problem = MenuItem::with_id(app, "problem", "Report a Problem…", true, None::<&str>)?;
     let idea = MenuItem::with_id(app, "idea", "Suggest an Idea…", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
     // "Ibis" or "Ibis Nightly", so the two apps can be told apart.
     let name = app.package_info().name.clone();
     let quit = MenuItem::with_id(app, "quit", format!("Quit {name}"), true, None::<&str>)?;
@@ -126,7 +127,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     if let Some(at_login) = &at_login {
         items.push(at_login);
     }
-    items.extend([&problem as &dyn IsMenuItem<tauri::Wry>, &idea, &third, &quit]);
+    items.extend([&settings as &dyn IsMenuItem<tauri::Wry>, &problem, &idea, &third, &quit]);
     let menu = Menu::with_items(app, &items)?;
     if let Some((_, off, on)) = update_items {
         app.manage(AutomaticMenuItem::new(menu.clone(), [off, on], automatic_position));
@@ -141,6 +142,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_picker(app),
+            "settings" => crate::settings_window::open(app, None),
             "choose" => choose_library_file(app),
             "zotero" => use_zotero_library(app),
             "reload" => reload_library_file(app),
@@ -186,7 +188,6 @@ mod tests {
     #[test]
     fn the_library_line_explains_failures_and_stays_short() {
         let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
-            file_engine: false,
             revision: "synthetic".into(),
             state: LibraryState::Loaded,
             zotero: false,
@@ -240,7 +241,6 @@ mod tests {
             "refs.bib: 12 references (not saved for next time)"
         );
         let kept = LibraryStatus {
-            file_engine: false,
             state: LibraryState::Error,
             name: Some("refs.bib".into()),
             snapshot_name: Some("refs.bib".into()),

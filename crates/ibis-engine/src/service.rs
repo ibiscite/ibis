@@ -8,7 +8,6 @@ use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
-    cell::Cell,
     collections::BTreeMap,
     sync::{
         Arc, Mutex, RwLock, Weak,
@@ -70,11 +69,17 @@ pub struct SearchHit {
     pub matched: Vec<MatchField>,
     /// Some term matched only with one typo.
     pub typo: bool,
+    /// Some terms did not match: one of the closest matches, given only when
+    /// nothing matches every term.
+    pub partial: bool,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
+    /// The locator read off the end of the query, when one was asked for and found.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locator: Option<ibis_core::locator::TrailingLocator>,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
@@ -119,64 +124,20 @@ impl DispatchResult {
     }
 }
 
+/// A wake-up to read the current library state.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct LibraryChange {
-    pub sequence: u64,
-    pub libraries: Vec<LibraryId>,
-    pub snapshot: Fingerprints,
-    /// Fetch every library when intermediate invalidations were coalesced.
-    pub resync: bool,
-}
+pub struct LibraryChange;
 pub struct LibrarySubscription {
     id: u64,
     owner: Weak<Shared>,
     receiver: mpsc::Receiver<LibraryChange>,
-    last_sequence: Cell<u64>,
 }
 impl LibrarySubscription {
     pub fn recv_timeout(&self, timeout: std::time::Duration) -> Result<LibraryChange, mpsc::RecvTimeoutError> {
-        let began = std::time::Instant::now();
-        let mut remaining = timeout;
-        loop {
-            let event = self.receiver.recv_timeout(remaining)?;
-            if let Some(event) = self.coalesce(event) {
-                return Ok(event);
-            }
-            remaining = timeout.saturating_sub(began.elapsed());
-            if remaining.is_zero() {
-                return Err(mpsc::RecvTimeoutError::Timeout);
-            }
-        }
+        self.receiver.recv_timeout(timeout)
     }
     pub fn try_recv(&self) -> Result<LibraryChange, mpsc::TryRecvError> {
-        loop {
-            let event = self.receiver.try_recv()?;
-            if let Some(event) = self.coalesce(event) {
-                return Ok(event);
-            }
-        }
-    }
-    fn coalesce(&self, mut event: LibraryChange) -> Option<LibraryChange> {
-        while let Ok(next) = self.receiver.try_recv() {
-            event = next;
-        }
-        if let Some(latest) = self
-            .owner
-            .upgrade()
-            .and_then(|owner| owner.latest_change.lock().ok().and_then(|latest| latest.clone()))
-        {
-            event = latest;
-        }
-        let previous = self.last_sequence.get();
-        if event.sequence <= previous {
-            return None;
-        }
-        event.resync = event.sequence != previous.saturating_add(1);
-        if event.resync {
-            event.libraries.clear();
-        }
-        self.last_sequence.set(event.sequence);
-        Some(event)
+        self.receiver.try_recv()
     }
 }
 
@@ -202,8 +163,6 @@ struct Shared {
     publication: Mutex<()>,
     subscribers: Mutex<BTreeMap<u64, mpsc::SyncSender<LibraryChange>>>,
     next_subscription: AtomicU64,
-    publication_sequence: AtomicU64,
-    latest_change: Mutex<Option<LibraryChange>>,
     sources: Mutex<sources::Registry>,
 }
 #[derive(Clone)]
@@ -244,8 +203,6 @@ impl Engine {
                 publication: Mutex::new(()),
                 subscribers: Mutex::new(BTreeMap::new()),
                 next_subscription: AtomicU64::new(0),
-                publication_sequence: AtomicU64::new(0),
-                latest_change: Mutex::new(None),
                 sources: Mutex::new(sources::Registry::default()),
             }),
             resources: Arc::new(sources::Owners::default()),
@@ -276,7 +233,6 @@ impl Engine {
             id,
             owner: Arc::downgrade(&self.shared),
             receiver,
-            last_sequence: Cell::new(self.shared.publication_sequence.load(Ordering::Acquire)),
         })
     }
     pub fn publish_library(&self, library: LibraryId, snapshot: Arc<Snapshot>) -> Result<(), EngineError> {
@@ -316,9 +272,16 @@ impl Engine {
         {
             return Err(error(ErrorCode::NotFound));
         }
+        let locator = request
+            .interpret_locator
+            .then(|| ibis_core::locator::parse_trailing(&request.query))
+            .flatten();
+        let query = locator
+            .as_ref()
+            .map_or(request.query.as_str(), |read| read.search.as_str());
         let hits = state
             .index
-            .search(&request.query, request.limit, request.libraries.as_deref(), &|| {
+            .search(query, request.limit, request.libraries.as_deref(), &|| {
                 cancel.is_cancelled()
             })
             .ok_or_else(|| error(ErrorCode::Cancelled))?;
@@ -328,6 +291,7 @@ impl Engine {
             score: u32,
             matched: &'a [MatchField],
             typo: bool,
+            partial: bool,
         }
         #[derive(Serialize)]
         struct SearchView<'a> {
@@ -343,6 +307,7 @@ impl Engine {
                     score: hit.score,
                     matched: &hit.matched,
                     typo: hit.typo,
+                    partial: hit.partial,
                 })
                 .collect(),
         };
@@ -354,19 +319,21 @@ impl Engine {
             hits: hits
                 .into_iter()
                 .map(|hit| SearchHit {
-                    item: public_object(hit.item),
+                    item: hit.item.clone(),
                     score: hit.score,
                     matched: hit.matched,
                     typo: hit.typo,
+                    partial: hit.partial,
                 })
                 .collect(),
+            locator,
         })
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
         let state = self.state()?;
         let selected = select(state.index.snapshot(), &request.item)?;
         ensure_budget(selected)?;
-        Ok(public_object(selected))
+        Ok(selected.clone())
     }
     pub fn cite_keys(
         &self,
@@ -383,15 +350,15 @@ impl Engine {
             .iter()
             .map(|key| {
                 cancel.check()?;
-                let selected = select(&snapshot, &ItemSelector::Key(key.clone()))?;
+                let selected = select(&snapshot, &ItemSelector::Key(key.key.clone()))?;
                 Ok(CitationItem {
                     item: selected.object.id().clone(),
                     expected_cite: Some(selected.fingerprints.cite.clone()),
                     form: None,
-                    locator: None,
-                    prefix: vec![],
-                    suffix: vec![],
-                    suppress_author: false,
+                    locator: key.locator.clone(),
+                    prefix: key.prefix.clone(),
+                    suffix: key.suffix.clone(),
+                    suppress_author: key.suppress_author,
                     annotation: None,
                     expected_annotation_cite: None,
                 })
@@ -510,17 +477,10 @@ impl Shared {
             .map(|state| state.clone())
             .map_err(|_| error(ErrorCode::Internal))
     }
-    fn notify(&self, libraries: Vec<LibraryId>, snapshot: Fingerprints) -> Result<(), EngineError> {
-        let event = LibraryChange {
-            sequence: self.publication_sequence.fetch_add(1, Ordering::Relaxed) + 1,
-            libraries,
-            snapshot,
-            resync: false,
-        };
-        *self.latest_change.lock().map_err(|_| error(ErrorCode::Internal))? = Some(event.clone());
+    fn notify(&self) -> Result<(), EngineError> {
         let mut subscribers = self.subscribers.lock().map_err(|_| error(ErrorCode::Internal))?;
-        subscribers.retain(|_, sender| match sender.try_send(event.clone()) {
-            // A queued wake pulls latest_change; gaps explicitly require full resync.
+        subscribers.retain(|_, sender| match sender.try_send(LibraryChange) {
+            // A pending wake already tells the subscriber to read current state.
             Ok(()) | Err(mpsc::TrySendError::Full(_)) => true,
             Err(mpsc::TrySendError::Disconnected(_)) => false,
         });
@@ -549,26 +509,19 @@ impl Shared {
         }
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        let mut objects: Vec<_> = old
+        // Unchanged libraries keep their prepared objects; nothing is re-fingerprinted.
+        let empty = Snapshot::new(vec![]).map_err(|_| error(ErrorCode::Internal))?;
+        let mut combined = old
             .index
             .snapshot()
-            .objects()
-            .iter()
-            .filter(|item| !replaced(&item.object.id().library))
-            .map(|item| item.object.clone())
-            .collect();
+            .merged(&empty, |id| !replaced(id))
+            .map_err(|_| error(ErrorCode::BadInput))?;
         for (_, snapshot) in &entries {
-            objects.extend(snapshot.objects().iter().map(|item| item.object.clone()));
+            combined = combined
+                .merged(snapshot, |_| true)
+                .map_err(|_| error(ErrorCode::BadInput))?;
         }
-        let combined = Arc::new(Snapshot::new(objects).map_err(|_| error(ErrorCode::BadInput))?);
-        let mut changed: Vec<LibraryId> = entries.iter().map(|(info, _)| info.id.clone()).collect();
-        changed.extend(
-            old.libraries
-                .keys()
-                .filter(|id| replaced(id) && !changed.contains(id))
-                .cloned()
-                .collect::<Vec<_>>(),
-        );
+        let combined = Arc::new(combined);
         let zotero = entries
             .iter()
             .any(|(info, _)| ibis_sources::zotero_source::is_zotero(&info.id));
@@ -581,9 +534,8 @@ impl Shared {
             index: Arc::new(SnapshotIndex::new(combined)),
             libraries,
         });
-        let fingerprints = next.index.snapshot().fingerprints().clone();
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
-        self.notify(changed, fingerprints)
+        self.notify()
     }
     fn begin_zotero_read(&self) -> Result<(), EngineError> {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
@@ -608,14 +560,13 @@ impl Shared {
             .get_mut(library)
             .ok_or_else(|| error(ErrorCode::NotFound))?
             .refresh_error = Some(code);
-        let fingerprints = old.index.snapshot().fingerprints().clone();
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
             zotero_generation: old.zotero_generation,
             zotero_ready: old.zotero_ready,
             index: old.index.clone(),
             libraries,
         });
-        self.notify(vec![library.clone()], fingerprints)
+        self.notify()
     }
 }
 fn now_ms() -> u64 {
@@ -630,25 +581,6 @@ fn ensure_budget(value: &impl Serialize) -> Result<(), EngineError> {
         .map(|_| ())
         .map_err(|_| error(ErrorCode::ResourceLimit))
 }
-/// Build the public projection directly, leaving engine-only raw provenance in its snapshot.
-fn public_object(item: &SnapshotObject) -> SnapshotObject {
-    let object = match &item.object {
-        LibraryObject::Record(record) => LibraryObject::Record(Record {
-            id: record.id.clone(),
-            csl: record.csl.clone(),
-            citation_keys: record.citation_keys.clone(),
-            aliases: record.aliases.clone(),
-            identifiers: record.identifiers.clone(),
-            raw: None,
-        }),
-        object => object.clone(),
-    };
-    SnapshotObject {
-        object,
-        fingerprints: item.fingerprints.clone(),
-    }
-}
-
 fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {
     match selector {
         ItemSelector::Id(id) => snapshot.get(id).ok_or_else(|| error(ErrorCode::NotFound)),

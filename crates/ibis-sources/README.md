@@ -16,8 +16,8 @@ rename-save and symlink handling, registration-gap recovery, coalescing and
 capped retries. A replacement requires two identical reads separated by a
 quiet interval. Errors leave installation of a replacement to the caller, which
 keeps its last good snapshot. Install a fresh owner and its warnings even when
-public snapshot hashes are unchanged: private locations and raw provenance may
-have changed. `reload_file` uses the same stable-read rule.
+public snapshot hashes are unchanged: private attachment locations may have
+changed. `reload_file` uses the same stable-read rule.
 Initial BibTeX opens tolerate damaged entries; strict reloads reject unfinished
 entries and exhausted work budgets. Stable empty files produce empty snapshots.
 
@@ -33,7 +33,7 @@ and both scanners retain only a bounded prefix of entry metadata.
 CSL-JSON arrays share the same cap. CSL-JSON validates each record and known field independently;
 record property names must be unique; an ambiguous record is skipped with a
 syntax warning. A record above 1 MiB is skipped with a work-limit warning, and a
-limited reload is refused. Unknown/vendor metadata is retained only in raw provenance. Raw
+limited reload is refused. Unknown/vendor metadata is dropped. Raw
 JSON tokens are skipped iteratively, so a deeply nested private `custom` field
 cannot overflow a stack or hide adjacent records. The supported field vocabulary
 follows the CSL 1.0.2 input schema.
