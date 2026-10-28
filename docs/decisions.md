@@ -49,6 +49,11 @@ closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys
 come from Zotero's native field, Extra and Better BibTeX; when they disagree,
 key output for that item is refused until it is fixed in Zotero. Local API requests send
 no browser `Origin`, bypass proxies and check `Zotero-API-Version`.
+On Windows the closed reader's process, drive, attribute and ACL checks call
+Win32 directly through `windows-sys`, never PowerShell (changed 2026-10-28 in
+#1261: PowerShell was slow and fails under AppLocker and Constrained Language
+Mode). That module is the only `unsafe` code in Ibis: `ibis-zotero-local`
+denies it elsewhere and every other crate forbids it.
 
 ## 0007 Formatting (with 0028)
 
