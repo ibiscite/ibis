@@ -13,6 +13,69 @@ import { backend, chooseFromMore, prepared, receipt, resetApp, result, type Synt
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 afterEach(resetApp);
 
+test("a pasted list previews and copies every result in order, with a safe missing-key notice", async () => {
+  const copied = vi.fn((args: unknown) => {
+    const { preview } = prepared(args);
+    return { text: preview.text, warnings: [] };
+  });
+  const calls = backend({
+    search: ({ query }) => query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: ["<script>invented</script>"] } } : [],
+    copy_file_citation: copied,
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.paste(box, { clipboardData: { getData: () => "b\na\nmissing" } });
+  expect((box as HTMLInputElement).value).toBe("b\ta\tmissing");
+  await screen.findByText("Pasted list");
+  expect(await screen.findByText("Copy 2 citations")).toBeTruthy();
+  expect(await screen.findByText("Not in your library: <script>invented</script>")).toBeTruthy();
+  expect(document.querySelector("script")).toBeNull();
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  const request = prepared(copied.mock.calls[0]![0]).request;
+  expect(request.items.map(({ id }) => id.key)).toEqual(["b", "a"]);
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+});
+
+test("an explicit selection overrides the pasted list and a pending query cannot copy it", async () => {
+  const copied = vi.fn((args: unknown) => {
+    const { preview } = prepared(args);
+    return { text: preview.text, warnings: [] };
+  });
+  backend({
+    search: ({ query }) => query.text === "pending" ? new Promise(() => undefined) : query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: ["absent"] } } : [],
+    copy_file_citation: copied,
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "@b @a" } });
+  await screen.findByText("Pasted list");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b"));
+  expect(chipKeys()).toEqual(["b"]);
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  expect(prepared(copied.mock.calls[0]![0]).request.items.map(({ id }) => id.key)).toEqual(["b"]);
+  fireEvent.change(box, { target: { value: "pending" } });
+  expect(screen.queryByText("Not in your library: absent")).toBeNull();
+  fireEvent.keyDown(box, { key: "Enter" });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(copied).toHaveBeenCalledOnce();
+});
+
+test("a pasted list with only missing keys shows its notice and cannot copy", async () => {
+  const calls = backend({ search: () => ({ revision: "1", results: [], list: { missing: ["absent", "日本🌙"] } }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "@absent @日本🌙" } });
+  await screen.findByText("Not in your library: absent, 日本🌙");
+  fireEvent.keyDown(box, { key: "Enter" });
+  expect(calls).not.toContain("preview_file_citation");
+  expect(calls).not.toContain("copy_file_citation");
+});
+
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");

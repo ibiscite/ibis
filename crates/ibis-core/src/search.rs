@@ -24,8 +24,9 @@ use unicode_normalization::char::is_combining_mark;
 use crate::identifier::{self, Identifier};
 use crate::model::{Name, is_cjk_char};
 
+mod pasted;
 mod snapshot;
-pub use snapshot::{RecordHit, SnapshotIndex};
+pub use snapshot::{PastedList, RecordHit, SnapshotIndex};
 
 /// Which part of a record matched a query term.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]

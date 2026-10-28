@@ -64,11 +64,11 @@ fn current() -> PastePermission {
     }
 }
 
-/// Windows and Linux ask nothing before a paste, and for now they only copy.
+/// Windows needs no permission to paste; Linux only copies.
 #[cfg(not(target_os = "macos"))]
 fn current() -> PastePermission {
     PastePermission {
-        pastes: false,
+        pastes: cfg!(target_os = "windows"),
         needed: false,
         granted: true,
         list: String::new(),
@@ -129,8 +129,20 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     fn other_systems_need_no_permission() {
         let permission = paste_permission();
-        assert!(!permission.pastes);
         assert!(!permission.needed);
         assert!(permission.granted);
+        assert!(permission.list.is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_offers_the_paste_switch_without_a_permission_guide() {
+        assert!(paste_permission().pastes);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_only_copies() {
+        assert!(!paste_permission().pastes);
     }
 }

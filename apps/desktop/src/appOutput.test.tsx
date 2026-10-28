@@ -93,6 +93,20 @@ test("Just this once overrides a remembered app output for one copy without savi
   expect(calls).not.toContain("set_picker_preferences");
 });
 
+test("a pasted list consumes a one-time format and hides after copying every result in order", async () => {
+  const { previews, copies, calls, remembered } = opened(() => ({ ...BROWSER, remembered: { key: "cite" } }), {
+    search: () => ({ revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: [] } }),
+  });
+  await screen.findByText("Pasted list");
+  await pick("Just this once", "menuitemcheckbox");
+  await pick("Typst");
+  await waitFor(() => expect(previews.at(-1)).toMatchObject({ format: "typst", items: [{ id: { key: "b" } }, { id: { key: "a" } }] }));
+  await copy(previews, copies);
+  await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+  expect(remembered).toEqual([]);
+});
+
 test("deliberately setting a global default preserves another app's remembered choice", async () => {
   let destination = { ...BROWSER, remembered: { key: "cite" } } as PickerDestination;
   const saved: unknown[] = [];

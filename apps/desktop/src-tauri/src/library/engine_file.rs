@@ -196,20 +196,13 @@ impl FileLibrary {
         scope: Option<Vec<String>>,
         cancel: &Cancellation,
     ) -> Result<SearchReply, String> {
-        let interpretation = query
-            .interpret_locators
-            .then(|| ibis_core::locator_query::split(&query.text))
-            .flatten();
-        if interpretation
-            .as_ref()
-            .map_or(query.text.as_str(), |q| q.search.as_str())
-            .trim()
-            .is_empty()
-        {
+        let mut interpretation = None;
+        if query.text.trim().is_empty() {
             return Ok(SearchReply {
                 revision: self.revision(),
                 results: vec![],
                 interpretation,
+                list: None,
             });
         }
         // The existing native boundary names Zotero sources for the picker;
@@ -233,27 +226,41 @@ impl FileLibrary {
                 })
                 .collect::<Vec<_>>()
         });
-        let reply = match self.engine.search(
-            &SearchRequest {
-                interpret_locator: false,
-                query: interpretation
-                    .as_ref()
-                    .map_or_else(|| query.text.clone(), |q| q.search.clone()),
-                limit: limit.min(200),
-                libraries: scope
-                    .map(|ids| serde_json::from_value(json!(ids)))
-                    .transpose()
-                    .map_err(|_| "Invalid library scope.".to_string())?,
-            },
-            cancel,
-        ) {
+        let libraries: Option<Vec<ibis_core::contract::LibraryId>> = scope
+            .map(|ids| serde_json::from_value(json!(ids)))
+            .transpose()
+            .map_err(|_| "Invalid library scope.".to_string())?;
+        let run = |text: &str| {
+            self.engine.search(
+                &SearchRequest {
+                    interpret_locator: false,
+                    query: text.to_owned(),
+                    limit: limit.min(200),
+                    libraries: libraries.clone(),
+                },
+                cancel,
+            )
+        };
+        // A numeric key in a pasted list must not become a page locator.
+        let outcome: Result<_, ibis_core::contract::EngineError> = (|| {
+            let mut reply = run(&query.text)?;
+            if reply.list.is_none() && query.interpret_locators {
+                interpretation = ibis_core::locator_query::split(&query.text);
+                if let Some(interpreted) = &interpretation {
+                    reply = run(&interpreted.search)?;
+                }
+            }
+            Ok(reply)
+        })();
+        let reply = match outcome {
             Ok(reply) => reply,
             // A newer search replaced this one; the interface ignores the empty reply.
             Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => {
                 return Ok(SearchReply {
                     revision: self.revision(),
                     results: vec![],
-                    interpretation,
+                    interpretation: None,
+                    list: None,
                 });
             }
             Err(_) => return Err("The library could not be searched.".to_string()),
@@ -283,6 +290,9 @@ impl FileLibrary {
             revision,
             results,
             interpretation,
+            list: reply
+                .list
+                .map(|list| super::search::PastedList { missing: list.missing }),
         })
     }
     pub(crate) fn reserve_preview(&self) -> u64 {
@@ -422,6 +432,7 @@ impl FileLibrary {
         Ok(crate::copy::Copied {
             text: citation.result().text.clone(),
             warnings: citation_warnings(citation.result()),
+            delivery: None,
         })
     }
 }

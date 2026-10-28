@@ -171,6 +171,12 @@ pub(crate) struct SearchQuery {
     pub(super) interpret_locators: bool,
 }
 
+/// Missing explicit citation keys in a recognized pasted list.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct PastedList {
+    pub(super) missing: Vec<String>,
+}
+
 /// A search keeps its snapshot identity even when no references match.
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchReply {
@@ -179,6 +185,9 @@ pub(crate) struct SearchReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(super) interpretation: Option<LocatorQuery>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) list: Option<PastedList>,
 }
 
 #[cfg(test)]

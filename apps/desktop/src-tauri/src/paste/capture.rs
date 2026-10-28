@@ -8,11 +8,13 @@ use ibis_core::destination::{AppId, System, Target};
 /// What the system reports about the app in front.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Front {
-    /// macOS bundle ID; `None` for an app without one.
+    /// macOS bundle ID or Windows executable file name; `None` for an app without one.
     pub(crate) id: Option<String>,
     pub(crate) pid: i32,
-    /// The app's own name, as the Dock shows it.
+    /// The app's own name, as the Dock or its file description shows it.
     pub(crate) name: Option<String>,
+    /// The app runs with more rights than Ibis (Windows integrity level).
+    pub(crate) elevated: bool,
 }
 
 /// The app Enter pastes into.
@@ -24,8 +26,8 @@ pub(crate) struct Captured {
 }
 
 impl Captured {
-    /// No app to paste into: what a capture says on Windows until #1133, on
-    /// Linux, and when nothing was in front.
+    /// No app to paste into: what a capture says on Linux and when nothing
+    /// was in front.
     pub(crate) fn unknown(system: System) -> Self {
         Self {
             target: Target {
@@ -44,6 +46,9 @@ impl Captured {
 /// picker shown again, or another Ibis window), so the earlier capture stays.
 /// Secure input is checked at delivery, after the app has regained focus;
 /// its state when the picker opened cannot prove that a later paste is safe.
+/// macOS checks system-wide Secure Event Input; Windows checks the focused
+/// field with UI Automation. The destination table refuses terminals, remote
+/// desktops and VMs on both platforms.
 pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option<Captured> {
     let Some(front) = front else {
         return Some(Captured::unknown(system));
@@ -56,7 +61,7 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
             system,
             app: front.id.map(|id| AppId { system, id }),
             secure_field: false,
-            elevated: false,
+            elevated: front.elevated,
         },
         pid: Some(front.pid),
         name: front.name,
@@ -72,6 +77,7 @@ mod tests {
             id: Some("org.example.Writer".into()),
             pid,
             name: Some("Writer".into()),
+            elevated: false,
         }
     }
 
@@ -98,6 +104,16 @@ mod tests {
             captured(System::Macos, Some(unbundled), 7).and_then(|c| c.target.app),
             None
         );
+    }
+
+    #[test]
+    fn an_app_with_more_rights_than_ibis_is_captured_as_elevated() {
+        let admin = Front {
+            elevated: true,
+            ..front(42)
+        };
+        let captured = captured(System::Windows, Some(admin), 7).unwrap_or_else(|| panic!("captured"));
+        assert!(captured.target.elevated);
     }
 
     #[test]

@@ -76,6 +76,32 @@ fn locator_search_can_be_literal_or_interpreted_and_an_empty_query_finds_nothing
 }
 
 #[test]
+fn pasted_lists_precede_locator_interpretation_and_keep_missing_keys() {
+    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let file = library(
+        directory.path(),
+        "@misc{b,title={Second}}\n@misc{12,title={Numeric key}}\n@misc{close,title={b 12}}",
+    );
+    for text in ["b,12", "[@b; @12, p. 4]", "\\cite{b,12}"] {
+        let reply = file
+            .search(&query(text, true), 1, None, &Cancellation::default())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            reply.results.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(),
+            ["b", "12"]
+        );
+        assert!(reply.interpretation.is_none());
+        assert!(reply.list.as_ref().is_some_and(|list| list.missing.is_empty()));
+        assert!(reply.results.iter().all(|r| r.revision == reply.revision));
+        assert!(reply.results.iter().all(|r| !r.partial));
+    }
+    let reply = search(&file, "@b @absent", None);
+    assert_eq!(reply.list.unwrap_or_else(|| panic!("pasted list")).missing, ["absent"]);
+    let reply = search(&file, "Second", None);
+    assert!(reply.list.is_none());
+}
+
+#[test]
 fn closest_matches_reach_the_picker_with_their_flag_and_snapshot() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let file = library(directory.path(), "@misc{a,title={Sleep}}");
