@@ -16,6 +16,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 ## Working
 
 - Everything needed to resume lives in the repository and on GitHub, never only in a chat, a tool's memory or a local file. Start from the tracking issue; any person or agent, with any tool, must be able to pick up from there after an interruption. When the maintainer approves a plan or answers a question, record it the same day: scope in `ROADMAP.md`, rules in `docs/`, choices in `docs/decisions.md`, work as issues on the milestone, order in the tracking issue.
+- Until 1.0, keep the process light and the code easy to change: the roadmap, the tracking issue and one plain issue per piece of work someone will pick up. Add no labels, automation, templates, boards or process documents unless they save time right away.
 - Check `git status` first and keep work you did not make. Branch from `origin/main`, one branch per pull request, no stacking, never push to `main`. Give each worktree its own Cargo target directory.
 - Claim an issue with a one-line comment on the tracking issue or a draft pull request that says `Closes #N`. One writer per worktree and per set of files.
 - Build what the issue's "Done when" names as the smallest working slice; merge it, then harden. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
