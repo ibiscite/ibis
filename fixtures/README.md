@@ -10,7 +10,7 @@ Rules:
 
 - **Synthetic only.** Never add records from a real library, real people's private data, or copyrighted abstracts. Invent names, titles and identifiers (use `10.0000/...` DOIs and `example.org` URLs).
 - **One quirk per record** where possible, with a comment saying what it exercises.
-- **Snapshots are the expected result.** `crates/ibis-core/tests/fixtures.rs` loads each file and compares against `crates/ibis-core/tests/snapshots/`. Review snapshot changes like code.
+- **Snapshots are the expected result.** `crates/ibis-sources/tests/fixtures.rs` loads each file and compares against `crates/ibis-sources/tests/snapshots/`. Review snapshot changes like code.
 
 | Folder | Contents |
 | --- | --- |
@@ -33,7 +33,7 @@ non-Latin numeric month. Unsafe parts produce field warnings and retain
 a valid year rather than discarding the whole reference.
 
 `bibtex/deep-commands.bib` has 4,000 nested emphasis commands in one synthetic
-title, plus safe sibling fields and a second reference. Core and CLI tests
+title, plus safe sibling fields and a second reference. Source and CLI tests
 check that loading on a 2 MiB stack omits the title with a warning and retains
 the other data; dedicated tests also cover the 256-level accepted boundary.
 
@@ -53,8 +53,8 @@ a PDF with MIME parameters and odd case, and a child attachment item. Each
 `_fixture` field says what the item exercises. `zotero/attachments-hostile.json`
 has malformed `links` values (numbers, arrays, oversized or empty MIME types,
 links as text) and sentinel private values (href, key, title, path, URL,
-size) that must never appear outside `raw`. `crates/ibis-core/tests/zotero_attachments.rs`
-loads both in the object and the local-API text CSL form.
+size) that must never reach public data. `crates/ibis-sources/tests/zotero_rules.rs`
+checks parent records and withheld attachment details on the canonical source path.
 
 `zotero/payloads/` holds the three synthetic mapper regression inputs used by
-`crates/ibis-core/tests/zotero_payload.rs`.
+`crates/ibis-sources/tests/zotero_rules.rs`.
