@@ -1,0 +1,120 @@
+import { expect, test, vi } from "vitest";
+
+// Match the existing CSS-rule tests without adding a Node-types dependency.
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+const read = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
+const shell = read("./Settings.css");
+const groups = read("../ui/SettingsGroup.css");
+const buttons = read("../ui/Button.css");
+const switches = read("../ui/Switch.css");
+const segments = read("../ui/Segmented.css");
+const navigation = read("../ui/SideNavigation.css");
+const tokens = read("../tokens.css");
+
+function rules(source: string): CSSStyleRule[] {
+  const sheet = document.createElement("style");
+  sheet.textContent = source;
+  document.head.append(sheet);
+  try {
+    return [...sheet.sheet!.cssRules].filter((rule) => rule.type === CSSRule.STYLE_RULE) as CSSStyleRule[];
+  } finally { sheet.remove(); }
+}
+
+function style(source: string, selector: string): CSSStyleDeclaration {
+  const rule = rules(source).find((rule) => rule.selectorText === selector);
+  expect(rule, selector).toBeTruthy();
+  return rule!.style;
+}
+
+test("Settings fills the viewport, with bounded page and navigation scrollers below a reserved native title bar", () => {
+  expect(read("../../settings.html")).toMatch(/<html[^>]+class="settings-window"/);
+  const roots = style(shell, ":root.settings-window, :root.settings-window body, #settings");
+  expect(roots.getPropertyValue("height")).toBe("100%");
+  expect(roots.getPropertyValue("overflow")).toBe("hidden");
+  expect(roots.getPropertyValue("margin")).toBe("0px");
+  const frame = style(shell, ".settings");
+  expect(frame.getPropertyValue("height")).toBe("100dvh");
+  expect(frame.getPropertyValue("display")).toBe("grid");
+  expect(frame.getPropertyValue("grid-template-columns")).toBe("var(--settings-sidebar-width) minmax(0, 1fr)");
+  expect(frame.getPropertyValue("grid-template-rows")).toBe("var(--titlebar-height) minmax(0, 1fr)");
+  expect(frame.getPropertyValue("overflow")).toBe("hidden");
+  expect(style(shell, ".settings-sidebar").getPropertyValue("grid-area")).toBe("1 / 1 / -1 / 2");
+  expect(style(shell, ".settings-titlebar").getPropertyValue("grid-area")).toBe("1 / 1 / 2 / -1");
+  const page = style(shell, ".settings-page");
+  expect(page.getPropertyValue("grid-area")).toBe("2 / 2");
+  for (const property of ["min-width", "min-height"]) expect(page.getPropertyValue(property)).toBe("0px");
+  expect(page.getPropertyValue("overflow-x")).toBe("hidden");
+  expect(page.getPropertyValue("overflow-y")).toBe("auto");
+  expect(page.getPropertyValue("grid-auto-rows")).toBe("max-content");
+  expect(page.getPropertyValue("align-content")).toBe("start");
+  const scrollers = rules(shell + groups + navigation).filter((rule) => ["overflow", "overflow-y"].some((property) => /^(auto|scroll)$/.test(rule.style.getPropertyValue(property))));
+  expect(scrollers.map((rule) => rule.selectorText)).toEqual([".settings-page", ".ui-side-navigation"]);
+  for (const selector of [".settings", ".settings-titlebar", ".settings-page", ".settings-page-title"]) {
+    const layout = style(shell, selector);
+    expect(["sticky", "absolute", "fixed"]).not.toContain(layout.getPropertyValue("position"));
+    for (const property of ["margin-top", "margin-bottom", "margin-block"]) expect(layout.getPropertyValue(property)).not.toMatch(/-|calc\(/);
+  }
+});
+
+test("long sidebar labels can scroll within the remaining height without moving the title bar", () => {
+  const sidebar = style(shell, ".settings-sidebar");
+  expect(sidebar.getPropertyValue("display")).toBe("flex");
+  expect(sidebar.getPropertyValue("flex-direction")).toBe("column");
+  expect(sidebar.getPropertyValue("min-height")).toBe("0px");
+  expect(sidebar.getPropertyValue("overflow")).toBe("hidden");
+  expect(sidebar.getPropertyValue("padding-block-start")).toBe("var(--titlebar-height)");
+  const list = style(navigation, ".ui-side-navigation");
+  expect(list.getPropertyValue("flex-grow")).toBe("1");
+  expect(list.getPropertyValue("min-height")).toBe("0px");
+  expect(list.getPropertyValue("overflow-y")).toBe("auto");
+  expect(list.getPropertyValue("box-sizing")).toBe("border-box");
+  expect(list.getPropertyValue("overscroll-behavior")).toBe("contain");
+  const item = style(navigation, ".ui-side-navigation-item");
+  expect(item.getPropertyValue("flex-shrink")).toBe("0");
+  expect(item.getPropertyValue("height")).toBe("");
+  expect(item.getPropertyValue("overflow-wrap")).toBe("anywhere");
+});
+
+test("sidebar navigation and the large page title have shared selection, spacing and type roles", () => {
+  const selected = style(navigation, '.ui-side-navigation-item[aria-current="page"]');
+  expect(selected.getPropertyValue("background")).toBe("var(--selected-background)");
+  expect(selected.getPropertyValue("color")).toBe("var(--selected-text)");
+  const title = style(shell, ".settings-page-title");
+  expect(title.getPropertyValue("font-size")).toBe("var(--type-page-title-size)");
+  expect(title.getPropertyValue("line-height")).toBe("var(--type-page-title-line)");
+  expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("var(--settings-page-inset)");
+  expect(tokens).toMatch(/--type-page-title-size:\s*1\.75rem/);
+  expect(tokens).toMatch(/--settings-sidebar-width:\s*min\(12\.5rem, 35%\)/);
+});
+
+test("grouped rows and shared controls grow and wrap at the minimum window size and larger text", () => {
+  const row = style(groups, ".ui-settings-row");
+  expect(row.getPropertyValue("min-height")).toBe("var(--settings-row-height)");
+  expect(row.getPropertyValue("height")).toBe("");
+  expect(row.getPropertyValue("box-sizing")).toBe("border-box");
+  expect(row.getPropertyValue("flex-wrap")).toBe("wrap");
+  expect(style(groups, ".ui-settings-row[data-described]").getPropertyValue("min-height")).toBe("var(--settings-described-row-height)");
+  for (const selector of [".ui-settings-group", ".ui-settings-card"]) expect(style(groups, selector).getPropertyValue("flex-shrink")).toBe("0");
+  expect(style(groups, ".ui-settings-card").getPropertyValue("border-radius")).toBe("var(--r-card)");
+  expect(tokens).toMatch(/--settings-row-height:\s*3rem/);
+  expect(tokens).toMatch(/--settings-described-row-height:\s*3\.5rem/);
+  const button = style(buttons, ".ui-button[data-variant]");
+  expect(button.getPropertyValue("font")).toBe("inherit");
+  expect(button.getPropertyValue("max-width")).toBe("100%");
+  expect(button.getPropertyValue("overflow-wrap")).toBe("anywhere");
+  expect(button.getPropertyValue("white-space")).toBe("normal");
+  expect(style(switches, ".ui-switch").getPropertyValue("flex-shrink")).toBe("0");
+  expect(style(segments, ".ui-segmented").getPropertyValue("flex-wrap")).toBe("wrap");
+  expect(style(segments, ".ui-segment").getPropertyValue("white-space")).toBe("normal");
+});
+
+test("permission instructions and actions share the card's leading edge at every width", () => {
+  const guide = style(shell, ".paste-guide");
+  expect(guide.getPropertyValue("grid-template-columns")).toBe("minmax(0, 1fr)");
+  expect(guide.getPropertyValue("text-align")).toBe("start");
+  expect(guide.getPropertyValue("padding")).toBe("var(--space-4) var(--row-pad)");
+  expect(style(shell, ".paste-guide-actions").getPropertyValue("justify-content")).toBe("start");
+  expect(style(shell, ".paste-guide-text").getPropertyValue("min-width")).toBe("0px");
+  expect(style(shell, ".paste-guide ol").getPropertyValue("padding-inline-start")).toBe("var(--space-5)");
+});

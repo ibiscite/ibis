@@ -140,6 +140,52 @@ fn results_carry_what_tells_similar_references_apart() {
 }
 
 #[test]
+fn container_fallback_uses_trimmed_visible_text() {
+    use ibis_core::contract::{ItemRef, LibraryId, Record};
+    use serde_json::json;
+
+    // Exercise the mapper itself: source readers may normalize padding first.
+    for (container, publisher, expected) in [
+        (None, None, None),
+        (None, Some(" Fallback Press "), Some("Fallback Press")),
+        (Some(""), Some(" Fallback Press "), Some("Fallback Press")),
+        (Some(" \t "), Some(" Fallback Press "), Some("Fallback Press")),
+        (Some(" <i> </i> "), Some(" Fallback Press "), Some("Fallback Press")),
+        (Some("<i></i>"), Some(" <b>Fallback Press</b> "), Some("Fallback Press")),
+        (
+            Some(" Padded Journal "),
+            Some(" Fallback Press "),
+            Some("Padded Journal"),
+        ),
+        (
+            Some(" <i>Padded Journal</i> "),
+            Some(" Fallback Press "),
+            Some("Padded Journal"),
+        ),
+        (Some(" <i> </i> "), Some(" \t "), None),
+        (Some(""), Some(" <b> </b> "), None),
+    ] {
+        let mut record = Record {
+            id: ItemRef {
+                library: LibraryId::file(b"synthetic"),
+                key: "record:a".into(),
+            },
+            csl: Default::default(),
+            citation_keys: Vec::new(),
+            aliases: Vec::new(),
+            identifiers: Vec::new(),
+        };
+        for (field, value) in [("container-title", container), ("publisher", publisher)] {
+            if let Some(value) = value {
+                record.csl.insert(field.into(), json!(value));
+            }
+        }
+        let result = SearchResult::from_engine(&record, "synthetic", Vec::new(), "revision");
+        assert_eq!(result.container.as_deref(), expected, "{container:?}, {publisher:?}");
+    }
+}
+
+#[test]
 fn the_author_count_comes_from_the_creator_list() {
     // A literal organization name with a comma is one creator, so the
     // count is not read from the comma-joined display string.

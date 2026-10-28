@@ -73,6 +73,111 @@ test("pages are opened by name, and the paste guide is General's pasting group",
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
 });
 
+test("Settings opens at the top of General with every built page in a navigable, selected sidebar list", async () => {
+  const { api, state } = fakeApi();
+  render(<SettingsApp api={api} initialPage={null} />);
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
+  const list = within(sidebar).getByRole("listbox", { name: "Settings pages" });
+  const items = within(list).getAllByRole("option");
+  expect(items.map((item) => item.textContent)).toEqual(["General", "Shortcuts", "About"]);
+  const selected = () => within(list).getAllByRole("option", { selected: true });
+  expect(selected().map((item) => item.textContent)).toEqual(["General"]);
+  expect(selected()[0]!.getAttribute("aria-current")).toBe("page");
+  const main = screen.getByRole("main", { name: "General" });
+  expect(main.firstElementChild).toBe(within(main).getByRole("heading", { name: "General", level: 1 }));
+  expect(main.scrollTop).toBe(0);
+  // Reopening the current page must reset it too, even though its name did not change.
+  main.scrollTop = 320;
+  act(() => state.pages[0]!("general"));
+  expect(main.scrollTop).toBe(0);
+  main.scrollTop = 180;
+  fireEvent.click(within(list).getByRole("option", { name: "About" }));
+  expect(screen.getByRole("main", { name: "About" }).scrollTop).toBe(0);
+  expect(selected().map((item) => item.textContent)).toEqual(["About"]);
+  fireEvent.click(within(list).getByRole("option", { name: "General" }));
+  expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
+  expect(selected().map((item) => item.textContent)).toEqual(["General"]);
+});
+
+test("sidebar arrows and Home/End move focus, select the page and reset its scroll", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="general" />);
+  await screen.findByRole("switch", { name: "Larger text" });
+  const general = screen.getByRole("option", { name: "General" });
+  const shortcuts = screen.getByRole("option", { name: "Shortcuts" });
+  const about = screen.getByRole("option", { name: "About" });
+  act(() => general.focus());
+  for (const [key, target, name] of [
+    ["ArrowDown", shortcuts, "Shortcuts"], ["ArrowDown", about, "About"],
+    ["ArrowUp", shortcuts, "Shortcuts"], ["ArrowUp", general, "General"],
+    ["End", about, "About"], ["Home", general, "General"],
+  ] as const) {
+    screen.getByRole("main").scrollTop = 120;
+    fireEvent.keyDown(document.activeElement!, { key });
+    expect(document.activeElement).toBe(target);
+    expect(target.getAttribute("aria-current")).toBe("page");
+    expect(target.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("main", { name }).scrollTop).toBe(0);
+  }
+});
+
+test("clicking the current sidebar page once resets its scroll to the top", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="general" />);
+  await screen.findByRole("switch", { name: "Larger text" });
+  for (const name of ["General", "Shortcuts", "About"]) {
+    const item = screen.getByRole("option", { name });
+    fireEvent.click(item);
+    const main = screen.getByRole("main", { name });
+    main.scrollTop = 240;
+    fireEvent.pointerDown(item, { button: 0, buttons: 1, pointerType: "mouse", pointerId: 1 });
+    fireEvent.pointerUp(item, { button: 0, buttons: 0, pointerType: "mouse", pointerId: 1 });
+    fireEvent.click(item, { button: 0, detail: 1 });
+    expect(main.scrollTop).toBe(0);
+    expect(item.getAttribute("aria-current")).toBe("page");
+  }
+});
+
+test("the title-bar drag region is outside the page scroller and sidebar list", async () => {
+  const { api } = fakeApi();
+  const { container } = render(<SettingsApp api={api} initialPage={null} />);
+  await screen.findByRole("switch", { name: "Larger text" });
+  const titlebar = container.querySelector("[data-tauri-drag-region]")!;
+  expect(titlebar.parentElement?.className).toBe("settings");
+  expect(screen.getByRole("main").contains(titlebar)).toBe(false);
+  expect(screen.getByRole("navigation").contains(titlebar)).toBe(false);
+  expect(container.querySelectorAll("[data-tauri-drag-region]")).toHaveLength(1);
+});
+
+test("a paste deep link waits for permission data and scrolls only the page", async () => {
+  const { api } = fakeApi();
+  const permission = deferred<PastePermission>();
+  vi.spyOn(api, "pastePermission").mockReturnValue(permission.promise);
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { top: this.id === "paste" ? 180 : 52 } as DOMRect;
+  });
+  // This API can scroll every ancestor, including the document; the shell must never use it.
+  const previous = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+  const scrollAncestors = vi.fn();
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: scrollAncestors });
+  try {
+    render(<SettingsApp api={api} initialPage="paste" />);
+    await screen.findByRole("switch", { name: "Larger text" });
+    const main = screen.getByRole("main");
+    expect(main.scrollTop).toBe(0);
+    await act(async () => { permission.resolve({ pastes: true, needed: true, granted: false, list: "Accessibility" }); });
+    expect(main.scrollTop).toBe(128);
+    expect(scrollAncestors).not.toHaveBeenCalled();
+    expect(document.documentElement.scrollTop).toBe(0);
+    expect(document.body.scrollTop).toBe(0);
+  } finally {
+    rect.mockRestore();
+    if (previous) Object.defineProperty(Element.prototype, "scrollIntoView", previous);
+    else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  }
+});
+
 test("the paste guide names the list, opens it, notices the grant on its own and says so", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { api, state } = fakeApi();
@@ -230,9 +335,9 @@ test("the sidebar switches pages, a page request from the app moves it, and the 
   const { api, state } = fakeApi({ granted: true });
   const { container } = render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("switch", { name: "Larger text" });
-  fireEvent.click(screen.getByRole("button", { name: "About" }));
+  fireEvent.click(screen.getByRole("option", { name: "About" }));
   expect(await screen.findByText("Ibis Nightly 0.3.0")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "About" }).getAttribute("aria-current")).toBe("page");
+  expect(screen.getByRole("option", { name: "About" }).getAttribute("aria-current")).toBe("page");
   act(() => state.pages[0]!("paste"));
   expect(await screen.findByRole("switch", { name: "Paste into the app you came from" })).toBeTruthy();
   const found = await axe.run(container);

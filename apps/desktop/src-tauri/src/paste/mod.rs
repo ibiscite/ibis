@@ -229,7 +229,7 @@ fn key_release_failed() -> Delivered {
 }
 
 /// A Windows copy freezes its destination before writing, then adds the
-/// sequence sampled while that write still has the clipboard open. Neither
+/// final sequence proved after closing the write. Neither
 /// the notice nor its worker may adopt a later capture.
 #[cfg(any(target_os = "windows", test))]
 #[derive(Clone)]

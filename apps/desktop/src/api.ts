@@ -40,6 +40,7 @@ export const {
   updateChecks,
   setUpdateChecks,
   checkForUpdates,
+  updateAvailable,
   openSettings,
 } = commands;
 
@@ -120,4 +121,9 @@ export function onUpdateProgress(handler: (progress: UpdateProgress) => void): P
 /** Whether update checks run on their own, sent after each change is saved. */
 export function onUpdateChecks(handler: (automatic: boolean) => void): Promise<UnlistenFn> {
   return listen<boolean>("update:automatic", (event) => handler(event.payload));
+}
+
+/** Quiet availability only; this event never shows or focuses the picker. */
+export function onUpdateAvailable(handler: (available: boolean) => void): Promise<UnlistenFn> {
+  return listen<boolean>("update:available", (event) => handler(event.payload));
 }

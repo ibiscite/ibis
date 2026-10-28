@@ -1,55 +1,35 @@
 /* The Settings window (docs/design.md, "Settings" [C18]): a sidebar of pages
    beside a page of grouped rows, laid out as System Settings is. */
 :root.settings-window { color-scheme: light dark; }
-:root.settings-window, :root.settings-window body { height: 100%; margin: 0; }
+:root.settings-window, :root.settings-window body, #settings { height: 100%; min-height: 0; margin: 0; overflow: hidden; }
 :root.settings-window body {
   background: var(--surface-grouped); color: var(--text);
   font: var(--type-body-size) / var(--type-body-line) var(--font-family);
   -webkit-user-select: none; user-select: none; cursor: default;
 }
-#settings { height: 100%; }
-
-.settings { display: flex; height: 100%; }
-.settings-titlebar { height: var(--titlebar-height); flex: none; }
+.settings {
+  display: grid; height: 100dvh; min-height: 0; min-width: 0; overflow: hidden;
+  grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
+}
+/* A separate, non-scrolling band reserves the native traffic-light area. */
+.settings-titlebar { grid-area: 1 / 1 / 2 / -1; z-index: var(--z-chrome); }
 .settings-sidebar {
-  width: 12.5rem; flex: none; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--row-spacing);
-  padding: 0 var(--inset) var(--inset); background: var(--surface-sidebar);
+  grid-area: 1 / 1 / -1 / 2; min-width: 0; min-height: 0; box-sizing: border-box;
+  display: flex; flex-direction: column; overflow: hidden;
+  padding-block-start: var(--titlebar-height); background: var(--surface-sidebar);
   border-inline-end: var(--border-width) solid var(--separator);
 }
-.settings-nav {
-  min-height: var(--control-min-size); padding: 0 var(--space-3); border: 0; border-radius: var(--r-row);
-  background: var(--clear); color: var(--text); font: inherit; text-align: start; cursor: default;
-}
-.settings-nav:hover:not([aria-current]) { background: var(--fill-subtle-hover); }
-.settings-nav[aria-current="page"] { background: var(--selected-background); color: var(--selected-text); font-weight: 500; }
-.settings-nav:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
 
 .settings-page {
-  flex: 1; min-width: 0; overflow-y: auto; box-sizing: border-box;
-  display: flex; flex-direction: column; gap: var(--space-5); padding: 0 var(--space-5) var(--space-6);
+  grid-area: 2 / 2; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
+  display: grid; align-content: start; grid-auto-rows: max-content; gap: var(--space-5);
+  padding: var(--settings-page-inset); scroll-padding-block: var(--settings-page-inset); overscroll-behavior: contain;
 }
-.settings-page > .settings-titlebar { position: sticky; top: 0; margin-bottom: calc(-1 * var(--titlebar-height)); }
-/* The page title sits in the title bar band, as in System Settings. */
 .settings-page-title {
-  margin: 0; min-height: var(--titlebar-height); display: flex; align-items: center;
-  font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--type-strong-weight);
-  pointer-events: none;
+  margin: 0; overflow-wrap: anywhere;
+  font-size: var(--type-page-title-size); line-height: var(--type-page-title-line); font-weight: var(--type-strong-weight);
 }
-.settings-group { scroll-margin-top: var(--titlebar-height); display: flex; flex-direction: column; gap: var(--space-2); max-width: 40rem; }
-.settings-group-title { margin: 0; padding-inline: var(--space-1); font-size: var(--type-meta-size); line-height: var(--type-meta-line); font-weight: var(--type-strong-weight); }
-.settings-card {
-  border-radius: var(--r-row); background: var(--surface-grouped-card); box-shadow: var(--shadow-card); overflow: hidden;
-}
-@media (prefers-contrast: more), (forced-colors: active) { .settings-card { border: var(--border-width) solid CanvasText; } }
-
-/* [D17] at least 48 px, 56 with a description; the control at the end. */
-.settings-row {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4);
-  min-height: 3rem; padding: var(--space-2) var(--row-pad); box-sizing: border-box;
-}
-.settings-row[data-described] { min-height: 3.5rem; }
-.settings-row + .settings-row, .settings-row + .paste-guide { box-shadow: inset 0 var(--border-width) 0 var(--separator); }
-.settings-row-text { display: flex; flex-direction: column; flex: 1 1 8rem; min-width: 0; }
 .settings-description { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); margin: 0; }
 .settings-problem { margin: 0; color: var(--status-stop); }
 .settings-done { width: 1.25rem; height: 1.25rem; flex: none; }
@@ -59,17 +39,18 @@
 /* The paste permission guide (#1292): a picture of the switch to turn on,
    the steps, one button and a live answer. */
 .paste-guide {
-  display: grid; grid-template-columns: 11.5rem 1fr; gap: var(--space-5); align-items: start;
-  padding: var(--space-4) var(--row-pad);
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); text-align: start;
+  padding: var(--space-4) var(--row-pad); box-shadow: inset 0 var(--border-width) 0 var(--separator);
 }
-@media (max-width: 40rem) { .paste-guide { grid-template-columns: 1fr; } }
+.paste-guide-text { min-width: 0; overflow-wrap: anywhere; }
 .paste-guide h3 { margin: 0 0 var(--space-1); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--type-strong-weight); }
 .paste-guide ol { margin: var(--space-3) 0; padding-inline-start: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
-.paste-guide-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.paste-guide-actions { display: flex; justify-content: start; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .paste-guide-status { margin: 0; color: var(--muted); font-size: var(--type-meta-size); }
 .paste-guide-status[data-done] { color: var(--status-done); font-weight: var(--type-strong-weight); }
 .paste-guide-art {
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
+  justify-self: start; min-width: 0; width: 100%; max-width: 16rem; box-sizing: border-box;
   border-radius: var(--r-row); background: var(--surface-grouped);
 }
 .paste-guide-pane { color: var(--muted); font-size: var(--type-label-size); line-height: var(--type-label-line); }

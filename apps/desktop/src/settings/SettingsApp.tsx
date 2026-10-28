@@ -5,9 +5,10 @@ import { densityNames, keyText, loginItemText, settingsText } from "../messages"
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { Segmented } from "../ui/Segmented";
-import { Switch } from "../ui/Switch";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { ShortcutRecorder } from "../ui/ShortcutRecorder";
+import { SideNavigation } from "../ui/SideNavigation";
+import { Switch } from "../ui/Switch";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import type { SettingsApi } from "./api";
 import "./Settings.css";
@@ -33,7 +34,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const platform = currentPlatform();
   const start = pageOf(initialPage);
   const [page, setPage] = useState<Page>(start.page);
-  const [focus, setFocus] = useState(start.focus);
+  const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
+  const pageRef = useRef<HTMLElement>(null);
   const [preferences, setPreferences] = useState<PickerPreferences | null>(null);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
@@ -88,7 +90,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (active) setShortcut(next);
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem(settingsText.shortcut.readFailed); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus); });
+    const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks(setUpdates);
     const close = api.onCloseRequested(async () => {
       // Give queued choices time to save; a stuck command must not trap the window.
@@ -111,10 +113,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     };
   }, [api]);
   useEffect(() => {
-    if (focus !== "paste" || !preferences) return;
-    document.getElementById("paste")?.scrollIntoView?.({ block: "start" });
+    const scroller = pageRef.current;
+    if (!focus || !scroller) return;
+    if (focus === "paste") {
+      // Wait for both reads before looking for the group. Move only the page,
+      // never the document containing the sidebar and native title bar.
+      if (!preferences || !permission) return;
+      const paste = document.getElementById("paste");
+      scroller.scrollTop = paste ? scroller.scrollTop + paste.getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
+    } else scroller.scrollTop = 0;
     setFocus(null);
-  }, [focus, preferences]);
+  }, [focus, preferences, permission]);
 
   const change = (next: Partial<PickerPreferences>) => {
     if (!preferences) return;
@@ -180,15 +189,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
 
   return (
     <div className="settings">
+      <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={settingsText.pages}>
-        <div className="settings-titlebar" data-tauri-drag-region />
-        {PAGES.map((each) => (
-          <button key={each} type="button" className="settings-nav" aria-current={each === page ? "page" : undefined}
-            onClick={() => setPage(each)}>{settingsText[each]}</button>
-        ))}
+        <SideNavigation label={settingsText.pages} value={page} options={PAGES.map((value) => ({ value, label: settingsText[value] }))}
+          onChange={(next) => { setPage(next); setFocus("top"); }} />
       </nav>
-      <main className="settings-page" aria-labelledby="settings-page-title">
-        <div className="settings-titlebar" data-tauri-drag-region />
+      <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className="settings-page-title">{settingsText[page]}</h1>
         {failed && <p className="settings-problem" role="alert">{settingsText.failed}</p>}
         {page === "general" && (

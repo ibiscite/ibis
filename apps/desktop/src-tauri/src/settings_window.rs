@@ -36,7 +36,7 @@ impl Page {
     }
 }
 
-/// Open Settings, or bring it forward, on `page` when one is named. Async so
+/// Open Settings, or bring it forward, on `page` (General by default). Async so
 /// the window is built from the event loop: a sync command runs inside the
 /// WebView2 callback, where building a second webview deadlocks on Windows.
 #[tauri::command]
@@ -64,12 +64,7 @@ fn present(app: &AppHandle, page: Option<Page>) {
         report(app.show(), NativeIssue::Show);
     }
     if let Some(window) = app.get_webview_window(LABEL) {
-        if let Some(page) = page {
-            report(window.emit_to(LABEL, "settings:page", page), NativeIssue::Window);
-        }
-        report(window.unminimize(), NativeIssue::Unminimize);
-        report(window.show(), NativeIssue::Show);
-        report(window.set_focus(), NativeIssue::Focus);
+        present_existing(&window, page);
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
@@ -105,6 +100,17 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
 }
 
+/// Reopening through the shortcut or tray also resets the existing page.
+fn present_existing<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
+    report(
+        window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
+        NativeIssue::Window,
+    );
+    report(window.unminimize(), NativeIssue::Unminimize);
+    report(window.show(), NativeIssue::Show);
+    report(window.set_focus(), NativeIssue::Focus);
+}
+
 /// Settings is on screen, so hiding the whole app would hide it too.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn is_open(app: &AppHandle) -> bool {
@@ -135,6 +141,39 @@ pub(crate) fn closed(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presenting_existing_settings_emits_general_without_a_page_and_keeps_explicit_requests() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        use tauri::Listener;
+
+        let app = tauri::test::mock_builder()
+            .build(tauri::generate_context!(test = true))
+            .unwrap_or_else(|e| panic!("cannot build settings fixture: {e}"));
+        let window = WebviewWindowBuilder::new(&app, LABEL, Default::default())
+            .build()
+            .unwrap_or_else(|e| panic!("cannot build settings window: {e}"));
+        let (sent, events) = mpsc::channel();
+        window.listen("settings:page", move |event| {
+            let _ = sent.send(event.payload().to_string());
+        });
+        for (requested, expected) in [
+            (None, "general"),
+            (Some(Page::About), "about"),
+            (None, "general"),
+            (Some(Page::Paste), "paste"),
+            (Some(Page::Shortcuts), "shortcuts"),
+            (Some(Page::Citations), "citations"),
+            (None, "general"),
+        ] {
+            present_existing(&window, requested);
+            let payload = events
+                .recv_timeout(Duration::from_secs(3))
+                .unwrap_or_else(|e| panic!("settings page event missing: {e}"));
+            assert_eq!(payload, serde_json::json!(expected).to_string());
+        }
+    }
 
     #[test]
     fn each_page_has_the_name_the_page_reads() {

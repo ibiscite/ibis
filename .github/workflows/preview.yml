@@ -200,11 +200,11 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
-      - name: Test core in release mode (Linux)
+      - name: Test core and sources in release mode (Linux)
         if: runner.os == 'Linux'
         env:
           RUSTFLAGS: -D warnings
-        run: cargo test -p ibis-core --release --locked
+        run: cargo test -p ibis-core -p ibis-sources --release --locked
 
       - name: Test the declared minimum Rust version (Linux)
         if: runner.os == 'Linux'
