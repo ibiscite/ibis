@@ -37,15 +37,17 @@
     let printed = false;
     const yearOnly = capture.format === "text" && args[1]?.["year-only"];
     const issued = args[0].issued;
-    const text = [];
     let formattedYear = false;
+    let noDate = false;
     while (pending.length) {
       const node = pending.pop();
       const value = typeof node === "string" ? node : typeof node?.blobs === "string" ? node.blobs : null;
       if (value !== null) {
         printed ||= visible(value);
         if (yearOnly) {
-          text.push(value);
+          // CSL.Blob preserves the term token's identity after localization and
+          // text formatting. Unrelated source text cannot supply this metadata.
+          noDate ||= node.strings?.term === "no date" && visible(value);
           // Date-part blobs retain the style's year form (for example, 26).
           if (node.strings?.name === "year") {
             const format = CSL.Util.Dates.year[node.strings.form ?? "long"];
@@ -57,14 +59,10 @@
     }
     if (!printed) throw unverified;
     if (yearOnly) {
-      const emitted = text.join(" ");
-      if (issued?.literal || issued?.year !== undefined) {
+      // citeproc uses zero as its undated year sentinel.
+      if (issued?.literal || (issued?.year !== undefined && Number(issued.year) !== 0)) {
         if (!formattedYear) throw unverified;
-      } else {
-        const words = (value) => ` ${value.toLowerCase().replace(/\./g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
-        const terms = this.locale[this.opt.lang].terms["no date"] ?? {};
-        if (!Object.values(terms).some((term) => typeof term === "string" && term && words(emitted).includes(words(term)))) throw unverified;
-      }
+      } else if (!noDate) throw unverified;
     }
     const id = String(args[0].id);
     capture.seen.set(id, (capture.seen.get(id) ?? 0) + 1);
