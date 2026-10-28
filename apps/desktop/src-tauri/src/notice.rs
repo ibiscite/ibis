@@ -126,11 +126,25 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
 /// citation is on the clipboard either way.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn show_copied_notice(app: AppHandle, text: String) {
+pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: Option<u32>) {
+    #[cfg(target_os = "windows")]
+    let ticket = crate::paste::take_copy(&app, delivery);
+    #[cfg(not(target_os = "windows"))]
+    let _ = delivery;
     // A paste may wait up to a second for the app to come back to the front.
     let delivered = {
         let (app, text) = (app.clone(), text.clone());
-        tauri::async_runtime::spawn_blocking(move || crate::paste::deliver_copy(&app, &text)).await
+        tauri::async_runtime::spawn_blocking(move || {
+            #[cfg(target_os = "windows")]
+            {
+                crate::paste::deliver_copy(&app, &text, ticket)
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                crate::paste::deliver_copy(&app, &text)
+            }
+        })
+        .await
     }
     .unwrap_or(Delivered::Copied { reason: None });
     show(

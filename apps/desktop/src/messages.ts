@@ -457,6 +457,7 @@ export const copiedNoticeText = {
     "secure-input": "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste.",
     "paste-unavailable": "Copied. Press ⌘V to paste.",
     "elevated-app": "Copied. Not pasted into an administrator app",
+    "key-release-failed": "Copied. Press and release Ctrl and V",
   } as Record<string, string>,
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",

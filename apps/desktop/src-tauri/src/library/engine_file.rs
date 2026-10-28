@@ -396,6 +396,7 @@ impl FileLibrary {
         Ok(crate::copy::Copied {
             text: citation.result().text.clone(),
             warnings: citation_warnings(citation.result()),
+            delivery: None,
         })
     }
 }

@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::Code;
 
 use super::capture::Front;
-use super::{Desk, PendingPost, PostDesk, PostRequest, PostResult, checked_post};
+use super::{CopyProof, DeliveryRequest, Desk, PendingPost, PostDesk, PostRequest, PostResult, checked_post};
 
 #[allow(unsafe_code)]
 mod secure_input;
@@ -25,6 +25,7 @@ pub(super) fn frontmost() -> Option<Front> {
         id: app.bundleIdentifier().map(|id| id.to_string()),
         pid: app.processIdentifier(),
         name: app.localizedName().map(|name| name.to_string()),
+        elevated: false,
     })
 }
 
@@ -58,6 +59,8 @@ impl Mac {
 }
 
 impl Desk for Mac {
+    type Proof = CopyProof;
+
     fn may_post(&self) -> bool {
         CGPreflightPostEventAccess()
     }
@@ -72,9 +75,9 @@ impl Desk for Mac {
         self.on_main(frontmost).flatten()
     }
 
-    fn finish(&self, request: PostRequest) -> PostResult {
+    fn finish(&self, request: DeliveryRequest, proof: &CopyProof) -> PostResult {
         // This deadline belongs to the queued task too, not just its caller.
-        let request = request.queued(Instant::now());
+        let request = PostRequest::new(request, proof).queued(Instant::now());
         let limit = request.deadline.saturating_duration_since(Instant::now());
         let pending = Arc::new(PendingPost::default());
         let queued = Arc::clone(&pending);
