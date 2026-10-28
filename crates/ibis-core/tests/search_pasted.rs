@@ -98,6 +98,18 @@ fn json_metadata_is_not_read_as_citation_syntax() {
             ["a", "b"]
         );
     }
+    for query in [r#"@a [{"title": "}][#b]",}] @日本🌙"#, r#"@a ["}][#b]",] @日本🌙"#] {
+        let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
+        assert_eq!(
+            list.hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "日本🌙"],
+            "{query}"
+        );
+        assert!(list.missing.is_empty(), "{query}");
+    }
 }
 
 #[test]
@@ -360,6 +372,9 @@ fn complete_identifiers_win_over_internal_citation_markers() {
         "https://doi.org/10.1000/x;@b",
         "https://doi.org/10.1000/x%3B%40b",
         "doi:10.1000/x;@b",
+        "doi: 10.1000/x;@b",
+        "doi 10.1000/x;@b",
+        "DOI:\t10.1000/x;@b",
         "10.1000/x;@b",
     ] {
         let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
@@ -374,11 +389,25 @@ fn complete_identifiers_win_over_internal_citation_markers() {
         assert!(list.missing.is_empty());
     }
     let list = index
-        .pasted_list("@a https://doi.org/10.1000/absent;@b", None, &|| false)
+        .pasted_list("doi: 10.1000/x;@b @a", None, &|| false)
         .unwrap()
         .unwrap();
-    assert_eq!(list.hits.len(), 1);
-    assert_eq!(list.missing, ["https://doi.org/10.1000/absent;@b"]);
+    assert_eq!(
+        list.hits
+            .iter()
+            .map(|hit| hit.item.object.id().key.as_str())
+            .collect::<Vec<_>>(),
+        ["punctuation", "a"]
+    );
+    assert!(list.missing.is_empty());
+    for token in ["https://doi.org/10.1000/absent;@b", "doi: 10.1000/absent;@b"] {
+        let list = index
+            .pasted_list(&format!("@a {token}"), None, &|| false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(list.hits.len(), 1, "{token}");
+        assert_eq!(list.missing, [token]);
+    }
 }
 
 #[test]
@@ -607,8 +636,72 @@ fn writer_multikey_forms_and_notes_round_trip_without_becoming_keys() {
     }
 }
 
+fn mmd_suffix_round_trip(suffix: &str) {
+    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    let snapshot = index().snapshot().clone();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::MultiMarkdown,
+        command: None,
+    };
+    case.request.items = ["a", "b"]
+        .into_iter()
+        .map(|key| CitationItem {
+            item: ItemRef {
+                key: key.into(),
+                ..case.request.items[0].item.clone()
+            },
+            expected_cite: None,
+            prefix: vec![],
+            suffix: if key == "b" {
+                vec![TextRun {
+                    text: suffix.into(),
+                    ..TextRun::default()
+                }]
+            } else {
+                vec![]
+            },
+            locator: None,
+            ..case.request.items[0].clone()
+        })
+        .collect();
+    let written = syntax::cite(&snapshot, &case.request).unwrap();
+    assert!(written.copy_content(2).is_some(), "{:?}", written.outcomes);
+    assert_eq!(written.text, format!("[#a][][{suffix}][#b]"));
+    let index = SnapshotIndex::new(snapshot);
+    for (query, missing) in [
+        (written.text.clone(), vec![]),
+        (format!("{} @absent", written.text), vec!["absent"]),
+    ] {
+        let read = index.pasted_list(&query, None, &|| false).unwrap().unwrap();
+        assert_eq!(
+            read.hits
+                .iter()
+                .map(|hit| hit.item.object.id().key.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"],
+            "{query}"
+        );
+        assert_eq!(read.missing, missing, "{query}");
+    }
+}
+
+#[test]
+fn multimarkdown_suffix_only_braces_round_trip_before_json_protection() {
+    for suffix in ["{section", "}section", "{section}", "section{", "section}"] {
+        mmd_suffix_round_trip(suffix);
+    }
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 64, failure_persistence: None, ..ProptestConfig::default() })]
+    #[test]
+    fn multimarkdown_suffixes_with_braces_round_trip(
+        head in prop::sample::select(vec!["{", "}"]),
+        pieces in prop::collection::vec(prop::sample::select(vec!["{", "}", "section", "日本🌙", "é", " ", ";", ",", "@absent", ":"]), 0..16)
+    ) {
+        mmd_suffix_round_trip(format!("{head}{}", pieces.concat()).trim_end());
+    }
+
     #[test]
     fn writer_lists_round_trip_generated_keys(
         pieces in prop::collection::vec((prop::sample::select(vec!["k", "[", "@"]), prop::collection::vec(prop::sample::select(vec!["日本🌙", "é", ";", "[", "]", "@", ":", ".", "/", "<", ">", "\\", "\"", "'", "%", "&", "(", ")", "#", "`", "$", "-", "!", "?", "~", "^"]), 0..7)), 1..5),

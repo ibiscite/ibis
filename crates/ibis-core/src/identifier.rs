@@ -87,9 +87,12 @@ pub(crate) fn parse_token<'a>(text: &'a str, work: &mut Work<'_>) -> Option<(&'a
     let spaced_isbn = ["isbn", "isbn-10", "isbn-13", "978", "979"]
         .iter()
         .any(|head| prefix.eq_ignore_ascii_case(head));
+    // A spaced DOI prefix still owns the complete following token, including
+    // punctuation that could otherwise expose an unrelated citation marker.
+    let spaced_doi = prefix.eq_ignore_ascii_case("doi");
     for end in head
         .char_indices()
-        .filter_map(|(i, c)| (c.is_whitespace() || matches!(c, ',' | ';')).then_some(i))
+        .filter_map(|(i, c)| (c.is_whitespace() || !spaced_doi && matches!(c, ',' | ';')).then_some(i))
         .chain([head.len()])
     {
         if end > MAX_QUERY_LEN {

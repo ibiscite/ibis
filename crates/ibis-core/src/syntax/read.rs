@@ -27,6 +27,11 @@ pub(crate) fn citation<'a>(text: &'a str, work: &mut Work<'_>) -> Result<Option<
 }
 
 fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
+    // A literal MultiMarkdown note/key pair can start with an unmatched brace;
+    // recognize that complete shape before treating it as damaged JSON.
+    if let Some(read) = mmd(text, work) {
+        return Some(read);
+    }
     // JSON is a protected span. Its metadata never reaches Markdown readers,
     // including when the JSON is damaged or does not contain citation keys.
     if let Some(read) = json(text, work) {
@@ -50,11 +55,11 @@ fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             KeySyntax::Typst => typst(text, work),
             KeySyntax::OrgCite => org(text, work),
             KeySyntax::Myst => myst(text, work),
-            KeySyntax::MultiMarkdown => mmd(text, work),
             KeySyntax::AsciiDoc => asciidoc(text, work),
             KeySyntax::Jupyter => html(text, work),
             KeySyntax::JekyllScholar => jekyll(text, work),
             KeySyntax::Pandoc
+            | KeySyntax::MultiMarkdown
             | KeySyntax::Keys
             | KeySyntax::ScannableCite
             | KeySyntax::CslJson
@@ -208,10 +213,23 @@ fn myst<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
 }
 
 fn mmd<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
-    let (body, rest) = group(text.strip_prefix('[')?, '[', ']', false, work);
+    // MultiMarkdown notes and keys are flat brackets; braces are literal.
+    let after = text.strip_prefix('[')?;
+    let end = work.find(after, |c| matches!(c, '[' | ']'))?;
+    let body = &after[..end];
+    let rest = after[end..].strip_prefix(']')?;
     let (key, rest) = match body.strip_prefix('#') {
         Some(key) => (key, rest.strip_prefix("[]").unwrap_or(rest)),
-        None => group(rest.strip_prefix("[#")?, '[', ']', false, work),
+        None => {
+            let after = rest.strip_prefix("[#")?;
+            // In particular, JSON strings/objects cannot become notes even if
+            // their metadata contains a closing bracket and citation marker.
+            if !work.spend(body.len()) || !super::escape::mmd_literal(body) {
+                return None;
+            }
+            let end = work.find(after, |c| matches!(c, '[' | ']'))?;
+            (&after[..end], after[end..].strip_prefix(']')?)
+        }
     };
     Some(explicit([Cow::Borrowed(key)], rest))
 }
