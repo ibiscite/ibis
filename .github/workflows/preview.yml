@@ -284,6 +284,9 @@ jobs:
   # certificate never meets the build's dependencies. Without the certificate
   # (forks, before setup) the packages stay ad-hoc signed.
   sign-macos:
+    # A missing repository pin means signing is disabled. Do not even refer to
+    # the environment until configured: GitHub would otherwise create it.
+    if: vars.MACOS_SIGNING_LEAF != ''
     name: Sign (${{ matrix.name }})
     needs: build
     runs-on: macos-15
@@ -347,10 +350,6 @@ jobs:
           MACOS_SIGNING_LEAF: ${{ vars.MACOS_SIGNING_LEAF }}
           PLATFORM: ${{ matrix.platform }}
         run: |
-          if [ -z "$MACOS_SIGNING_P12$MACOS_SIGNING_P12_PASSWORD$MACOS_SIGNING_LEAF" ]; then
-            echo "::notice::No signing certificate; the app stays ad-hoc signed."
-            exit 0
-          fi
           scripts/macos-sign.sh sign dist "$PLATFORM" "$IDENTIFIER"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
@@ -401,6 +400,7 @@ jobs:
   install:
     name: Install and start (${{ matrix.name }})
     needs: [build, sign-macos]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:

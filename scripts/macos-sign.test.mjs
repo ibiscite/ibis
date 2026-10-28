@@ -143,3 +143,14 @@ with tarfile.open(root / 'dist/Ibis-macOS-Apple-silicon.app.tar.gz', 'w:gz') as 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("unconfigured Preview skips the signing environment and retains install gates", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
+  const signing = workflow.split("  sign-macos:\n")[1].split("  install:\n")[0];
+  assert.match(signing, /if: vars\.MACOS_SIGNING_LEAF != ''/);
+  const install = workflow.split("  install:\n")[1].split("  publish:\n")[0];
+  assert.match(install, /needs\.build\.result == 'success'/);
+  assert.match(install, /needs\.sign-macos\.result == 'success' \|\| needs\.sign-macos\.result == 'skipped'/);
+  assert.match(workflow, /publish:[\s\S]*?needs: \[build, install\]/);
+  assert.match(workflow, /nightly:[\s\S]*?needs: \[build, install\]/);
+});

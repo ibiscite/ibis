@@ -21,8 +21,9 @@ package provenance before importing the identity, signs with the pinned
 certificate, checks the signature and designated requirement, then removes its
 temporary keychain. It re-attests the changed packages before installed-package
 checks and updater signing. Ibis and Ibis Nightly retain different identifiers.
-With no signing configuration, packages stay ad-hoc signed. A partial
-configuration fails instead of silently falling back.
+Without the repository pin, signing is disabled: packages stay ad-hoc signed
+and the job does not create or access the signing environment. Once the pin is
+set, missing secrets fail instead of silently falling back.
 
 Ibis's updater signatures are separate: the app accepts an update only when
 its signature matches the Ibis update key built into the app and authenticates
@@ -101,9 +102,12 @@ The exact proposed effects are:
    No bypass, reviewer deletion or update-environment change is needed.
 2. In that environment, set secrets **MACOS_SIGNING_P12** (base64 of the
    prepared `.p12`) and **MACOS_SIGNING_P12_PASSWORD** (the prepared password).
-3. In that environment, set variable **MACOS_SIGNING_LEAF** to `leaf.txt`'s
-   lowercase 40-digit fingerprint. Verify both allowed-ref rules and all three
-   names before the first run. Never print the secret values to confirm them.
+3. Last, set repository variable **MACOS_SIGNING_LEAF** to `leaf.txt`'s
+   lowercase 40-digit fingerprint. This enables the signing job; setting it
+   before the environment and both secrets are ready makes builds fail.
+   Verify both allowed-ref rules and all three names before the first run.
+   Never print the secret values to confirm them. Removing the repository pin
+   disables signing and returns future packages to ad-hoc signatures.
 
 Only these two secrets and this public pin are added; no account, paid service,
 tag or release is created. The environment permits automatic Nightly signing
