@@ -9,7 +9,7 @@ use ibis_core::zotero::libraries::{self, Group};
 pub use ibis_zotero_local::DEFAULT_PORT;
 use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
 pub use ibis_zotero_local::live::{Library, LiveError};
-use ibis_zotero_local::live::{Limits, LiveReader};
+use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
 use ibis_zotero_local::{closed, discovery};
 use std::collections::BTreeMap;
 use std::{
@@ -235,13 +235,16 @@ impl ZoteroSource {
                 .filter(|raw| raw.fields.get("citationKey").is_none_or(|key| key.trim().is_empty()))
                 .map(|raw| raw.key.as_str())
                 .collect();
-            let mut warnings = vec![
-                SourceWarning {
-                    code: WarningCode::WorkLimit,
-                    line: None
-                };
-                reader.omitted_items()
-            ];
+            let mut warnings: Vec<_> = reader
+                .warnings()
+                .map(|warning| SourceWarning {
+                    code: match warning {
+                        LiveWarning::ItemTooLarge => WarningCode::WorkLimit,
+                        LiveWarning::MalformedItem => WarningCode::Field,
+                    },
+                    line: None,
+                })
+                .collect();
             let bbt_keys = keys.find(transport, reader.library(), &keyless).unwrap_or_else(|()| {
                 warnings.push(SourceWarning {
                     code: WarningCode::CitationKeysUnavailable,

@@ -76,15 +76,14 @@ pub(super) fn load_source(
     match source {
         Source::File(path) => load_file(path, reload, previous_file, &cancelled),
         Source::Zotero(chosen) => {
-            super::engine_file::FileLibrary::validate_zotero(&chosen)?;
             let (bridge, unchanged) = if let Some(bridge) = previous_file {
                 let before = bridge.revision();
-                bridge.refresh_zotero(reload, cancel)?;
-                let unchanged = before == bridge.revision();
+                let same_choice = bridge.refresh_zotero(&chosen, reload, cancel)?;
+                let unchanged = same_choice && before == bridge.revision();
                 (bridge, unchanged)
             } else {
                 (
-                    std::sync::Arc::new(super::engine_file::FileLibrary::open_zotero(cancel)?),
+                    std::sync::Arc::new(super::engine_file::FileLibrary::open_zotero(&chosen, cancel)?),
                     false,
                 )
             };

@@ -53,6 +53,14 @@ fn locator_search_can_be_literal_or_interpreted_and_an_empty_query_finds_nothing
 }
 
 #[test]
+fn closest_matches_are_left_out_until_the_picker_can_mark_them() {
+    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let file = library(directory.path(), "@misc{a,title={Sleep}}");
+    assert_eq!(search(&file, "sleep", None).results.len(), 1);
+    assert!(search(&file, "sleep photon", None).results.is_empty());
+}
+
+#[test]
 fn a_stopped_search_answers_with_no_results_for_the_same_snapshot() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let file = library(directory.path(), "@misc{a,title={Sleep}}");

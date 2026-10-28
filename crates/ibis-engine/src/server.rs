@@ -1,4 +1,4 @@
-//! Bounded concurrent JSON-RPC execution. A token belongs to one request lifetime.
+//! Ordered JSON-RPC execution. The reader can cancel running or queued requests.
 use crate::{
     Cancellation, DispatchResult, Engine, LibrarySubscription, Method,
     protocol::{self, FrameError},
@@ -13,18 +13,11 @@ use std::{
     thread,
 };
 
-const MAX_WORKERS: usize = 8;
-const MAX_BATCH: usize = 32;
 type Dispatch = dyn Fn(Method, &Value, &Cancellation) -> Result<DispatchResult, EngineError> + Send + Sync;
 struct Job {
     id: Option<RequestId>,
     method: Method,
     params: Value,
-    cancel: Cancellation,
-    generation: u64,
-}
-struct Active {
-    generation: u64,
     cancel: Cancellation,
 }
 
@@ -72,9 +65,9 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                             Err(_) => None,
                         }
                     };
-                    let Some(event) = event else { break };
+                    let Some(_) = event else { break };
                     if output
-                        .send(json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":event}))
+                        .send(json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":{}}))
                         .is_err()
                     {
                         break;
@@ -85,235 +78,108 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                 }
             })
         });
-        let (completed, finished) = mpsc::channel::<(RequestId, u64)>();
-        let mut workers: Vec<thread::JoinHandle<()>> = vec![];
-        let mut active = HashMap::<RequestId, Active>::new();
-        let mut generation = 0_u64;
-        let mut transport = Ok(());
-        loop {
-            let frame = match protocol::read_frame(&mut reader) {
-                Ok(Some(frame)) => frame,
-                Ok(None) => break,
-                Err(error) => {
-                    if output.send(rpc::parse_error()).is_err() {
-                        transport = Err(FrameError::Io);
+        let (requests, jobs) = mpsc::sync_channel::<Job>(8);
+        let (completed, finished) = mpsc::channel::<RequestId>();
+        let worker_output = output.clone();
+        let working = scope.spawn(move || {
+            for job in jobs {
+                let result = ibis_core::panic_guard::attempt(|| {
+                    job.cancel.check()?;
+                    let result = dispatch(job.method, &job.params, &job.cancel)?;
+                    job.cancel.check()?;
+                    Ok(result)
+                })
+                .unwrap_or(Err(EngineError {
+                    code: ErrorCode::Internal,
+                }));
+                if let Some(id) = job.id {
+                    let mut reply = match result {
+                        Ok(result) => rpc::success(&id, result.data),
+                        Err(error) => rpc::failure(Some(&id), error),
+                    };
+                    if crate::wire::encode(&reply, protocol::MAX_RESPONSE_BYTES).is_err() {
+                        reply = rpc::failure(
+                            Some(&id),
+                            EngineError {
+                                code: ErrorCode::ResourceLimit,
+                            },
+                        );
+                    }
+                    // Retire this token before exposing its reply, so ID reuse is fresh.
+                    let _ = completed.send(id);
+                    if worker_output.send(reply).is_err() {
                         break;
                     }
-                    if error == FrameError::InvalidJson {
-                        continue;
-                    }
-                    transport = Err(error);
-                    break;
                 }
-            };
-            while let Ok((id, generation)) = finished.try_recv() {
-                if active.get(&id).is_some_and(|request| request.generation == generation) {
+            }
+        });
+        let mut active = HashMap::<RequestId, Cancellation>::new();
+        let transport = (|| {
+            loop {
+                let frame = match protocol::read_frame(&mut reader) {
+                    Ok(Some(frame)) => frame,
+                    Ok(None) => return Ok(()),
+                    Err(error) => {
+                        output.send(rpc::parse_error()).map_err(|_| FrameError::Io)?;
+                        if error == FrameError::InvalidJson {
+                            continue;
+                        }
+                        return Err(error);
+                    }
+                };
+                for id in finished.try_iter() {
                     active.remove(&id);
                 }
-            }
-            let mut at = 0;
-            while at < workers.len() {
-                if workers[at].is_finished() {
-                    let _ = workers.swap_remove(at).join();
-                } else {
-                    at += 1;
-                }
-            }
-            let batch = frame.is_array();
-            let messages = match frame {
-                Value::Array(messages) if messages.is_empty() || messages.len() > MAX_BATCH => {
-                    if output.send(rpc::invalid_request(None)).is_err() {
-                        transport = Err(FrameError::Io);
-                        break;
-                    }
-                    continue;
-                }
-                Value::Array(messages) => messages,
-                message => vec![message],
-            };
-            let mut replies = vec![];
-            let mut jobs = vec![];
-            for message in &messages {
-                match rpc::parse_message(message) {
+                let reply = match rpc::parse_message(&frame) {
                     Message::Cancel(id) => {
-                        if let Some(request) = active.get(&id) {
-                            request.cancel.cancel();
+                        if let Some(cancel) = active.get(&id) {
+                            cancel.cancel();
                         }
+                        None
                     }
-                    Message::Ignore => {}
-                    Message::Reply(reply) => replies.push(reply),
+                    Message::Ignore => None,
+                    Message::Reply(reply) => Some(reply),
                     Message::Request(request) => {
                         if request.id.as_ref().is_some_and(|id| active.contains_key(id)) {
-                            replies.push(rpc::invalid_request(None));
-                            continue;
-                        }
-                        if workers.len() >= MAX_WORKERS {
-                            if let Some(id) = request.id {
-                                replies.push(rpc::busy(&id));
+                            Some(rpc::invalid_request(None))
+                        } else {
+                            let cancel = Cancellation::default();
+                            // Never block the reader on a full queue: it must still read cancels.
+                            match requests.try_send(Job {
+                                id: request.id.clone(),
+                                method: request.method,
+                                params: request.params.clone(),
+                                cancel: cancel.clone(),
+                            }) {
+                                Ok(()) => {
+                                    if let Some(id) = request.id {
+                                        active.insert(id, cancel);
+                                    }
+                                    None
+                                }
+                                Err(mpsc::TrySendError::Full(_)) => request.id.as_ref().map(rpc::busy),
+                                Err(mpsc::TrySendError::Disconnected(_)) => return Err(FrameError::Io),
                             }
-                            continue;
                         }
-                        generation = generation.wrapping_add(1);
-                        let cancel = Cancellation::default();
-                        if let Some(id) = &request.id {
-                            active.insert(
-                                id.clone(),
-                                Active {
-                                    generation,
-                                    cancel: cancel.clone(),
-                                },
-                            );
-                        }
-                        jobs.push(Job {
-                            id: request.id,
-                            method: request.method,
-                            params: request.params.clone(),
-                            cancel,
-                            generation,
-                        });
                     }
+                };
+                if let Some(reply) = reply {
+                    output.send(reply).map_err(|_| FrameError::Io)?;
                 }
             }
-            if jobs.is_empty() {
-                if let Some(reply) = response(batch, replies)
-                    && output.send(reply).is_err()
-                {
-                    transport = Err(FrameError::Io);
-                    break;
-                }
-                continue;
-            }
-            let dispatch = dispatch.clone();
-            let output = output.clone();
-            let completed = completed.clone();
-            // At most MAX_WORKERS batches (MAX_BATCH jobs each) can execute.
-            let mut responses = Replies::new(
-                batch,
-                replies.len() + jobs.iter().filter(|job| job.id.is_some()).count(),
-            );
-            for reply in replies {
-                responses.push(reply);
-            }
-            match thread::Builder::new().name("ibis-rpc".into()).spawn(move || {
-                for job in jobs {
-                    if let Some(id) = &job.id {
-                        let _ = output.send(progress(id, job.generation, "begin"));
-                    }
-                    let result = ibis_core::panic_guard::attempt(|| {
-                        job.cancel.check()?;
-                        let result = dispatch(job.method, &job.params, &job.cancel)?;
-                        job.cancel.check()?;
-                        Ok(result)
-                    })
-                    .unwrap_or(Err(EngineError {
-                        code: ErrorCode::Internal,
-                    }));
-                    if let Some(id) = job.id {
-                        let reply = match result {
-                            Ok(result) => rpc::success(&id, result.data),
-                            Err(error) => rpc::failure(Some(&id), error),
-                        };
-                        responses.push(reply);
-                        let _ = output.send(progress(&id, job.generation, "end"));
-                        let _ = completed.send((id, job.generation));
-                    }
-                }
-                if let Some(reply) = responses.finish() {
-                    let _ = output.send(reply);
-                }
-            }) {
-                Ok(worker) => workers.push(worker),
-                Err(_) => {
-                    transport = Err(FrameError::Io);
-                    break;
-                }
-            }
-        }
-        // EOF drains accepted work. A new use of an ID always gets a new token.
-        for worker in workers {
-            let _ = worker.join();
-        }
+        })();
+        // EOF drains accepted work. Only the reader owns the active-token map.
+        drop(requests);
+        let worked = working.join().map_err(|_| FrameError::Io);
         stopping.store(true, std::sync::atomic::Ordering::Release);
         if let Some(forwarding) = forwarding {
             forwarding.join().map_err(|_| FrameError::Io)?;
         }
         drop(output);
         let result = writing.join().map_err(|_| FrameError::Io)?;
-        transport.and(result)
+        transport.and(worked).and(result)
     })
 }
-/// Aggregate actual bytes incrementally, reserving a bounded error for every
-/// remaining response. Notifications consume no response budget.
-struct Replies {
-    batch: bool,
-    remaining: usize,
-    bytes: usize,
-    messages: Vec<Value>,
-}
-impl Replies {
-    fn new(batch: bool, remaining: usize) -> Self {
-        Self {
-            batch,
-            remaining,
-            bytes: if batch { 2 } else { 0 },
-            messages: vec![],
-        }
-    }
-    fn push(&mut self, mut message: Value) {
-        self.remaining -= 1;
-        let separator = usize::from(self.batch && !self.messages.is_empty());
-        let available = protocol::MAX_RESPONSE_BYTES
-            .saturating_sub(self.bytes + separator + self.remaining * protocol::RESPONSE_OVERHEAD);
-        let size = match crate::wire::encode(&message, available) {
-            Ok(bytes) => bytes.len(),
-            Err(_) => {
-                let id = message.get("id").and_then(RequestId::parse);
-                message = rpc::failure(
-                    id.as_ref(),
-                    EngineError {
-                        code: ErrorCode::ResourceLimit,
-                    },
-                );
-                // IDs were bounded on input; this fixed error fits its reserved space.
-                match crate::wire::encode(&message, protocol::RESPONSE_OVERHEAD) {
-                    Ok(bytes) => bytes.len(),
-                    Err(_) => {
-                        message = rpc::failure(
-                            None,
-                            EngineError {
-                                code: ErrorCode::Internal,
-                            },
-                        );
-                        protocol::RESPONSE_OVERHEAD
-                    }
-                }
-            }
-        };
-        self.bytes += separator + size;
-        self.messages.push(message);
-    }
-    fn finish(mut self) -> Option<Value> {
-        if self.messages.is_empty() {
-            None
-        } else if self.batch {
-            Some(Value::Array(self.messages))
-        } else {
-            self.messages.pop()
-        }
-    }
-}
-fn response(batch: bool, messages: Vec<Value>) -> Option<Value> {
-    let mut replies = Replies::new(batch, messages.len());
-    for message in messages {
-        replies.push(message);
-    }
-    replies.finish()
-}
-
-fn progress(id: &RequestId, generation: u64, kind: &str) -> Value {
-    json!({"jsonrpc":"2.0","method":"$/progress","params":{"token":format!("ibis:{generation}"),"value":{"kind":kind,"title":"Processing","request":id.value()}}})
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -361,13 +227,8 @@ mod tests {
         input.send(bytes).unwrap();
     }
     fn reply(output: &mpsc::Receiver<Vec<u8>>) -> Value {
-        loop {
-            let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
-            let message = protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap();
-            if message.get("id").is_some() || message.is_array() {
-                return message;
-            }
-        }
+        let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
+        protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap()
     }
     #[test]
     fn cancelled_ids_are_fresh_on_reuse_and_duplicates_do_not_replace_active_work() {
@@ -432,7 +293,7 @@ mod tests {
     }
     #[test]
     fn replies_use_actual_frame_capacity_and_report_resource_limits() {
-        for (count, size, overflow) in [(1, 600_000, false), (32, 60_000, false), (32, 600_000, true)] {
+        for (size, overflow) in [(600_000, false), (protocol::MAX_RESPONSE_BYTES, true)] {
             let dispatch = Arc::new(move |_: Method, _: &Value, _: &Cancellation| {
                 Ok(DispatchResult {
                     data: json!("x".repeat(size)),
@@ -441,38 +302,19 @@ mod tests {
                     exit_code: ibis_core::contract::ExitCode::Ok,
                 })
             });
-            let requests: Vec<_> = (0..count)
-                .map(|id| json!({"jsonrpc":"2.0","id":id,"method":"show"}))
-                .collect();
-            let message = if count == 1 {
-                requests[0].clone()
-            } else {
-                Value::Array(requests)
-            };
             let mut input = vec![];
-            protocol::write_frame(&mut input, &message).unwrap();
+            protocol::write_frame(&mut input, &json!({"jsonrpc":"2.0","id":0,"method":"show"})).unwrap();
             let mut output = vec![];
             run(dispatch, Cursor::new(input), &mut output).unwrap();
             let mut reader = Cursor::new(output);
-            let mut replies = vec![];
-            while let Some(message) = protocol::read_response_frame(&mut reader).unwrap() {
-                if let Value::Array(batch) = message {
-                    replies.extend(batch);
-                } else if message.get("id").is_some() {
-                    replies.push(message);
-                }
+            let reply = protocol::read_response_frame(&mut reader).unwrap().unwrap();
+            assert_eq!(reply["id"], 0);
+            if overflow {
+                assert_eq!(reply["error"]["data"]["code"], "resource-limit");
+            } else {
+                assert_eq!(reply["result"].as_str().map(str::len), Some(size));
             }
-            assert_eq!(replies.len(), count);
-            let mut limited = 0;
-            for reply in replies {
-                if reply.get("error").is_some() {
-                    limited += 1;
-                    assert_eq!(reply["error"]["data"]["code"], "resource-limit");
-                } else {
-                    assert_eq!(reply["result"].as_str().map(str::len), Some(size));
-                }
-            }
-            assert_eq!(limited > 0, overflow, "count={count} size={size}");
+            assert_eq!(protocol::read_response_frame(&mut reader).unwrap(), None);
         }
     }
     #[test]
@@ -505,24 +347,34 @@ mod tests {
         let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
         let message = protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap();
         assert_eq!(message["method"], "ibis/libraryChanged");
-        assert_eq!(message["params"]["sequence"], 1);
+        assert_eq!(message["params"], json!({}));
+        assert!(message.get("id").is_none());
+        let notification = message.to_string();
+        assert!(!notification.contains("path"));
+        assert!(!notification.contains("synthetic event"));
         drop(input);
         assert!(server.join().unwrap().is_ok());
     }
     #[test]
-    fn in_flight_work_and_batches_are_bounded() {
+    fn queued_requests_are_ordered_bounded_and_cancellable() {
         let (input, chunks) = mpsc::channel();
         let (frames, output) = mpsc::channel();
         let (started, ready) = mpsc::channel();
-        let dispatch = Arc::new(move |_: Method, _: &Value, cancel: &Cancellation| {
-            started.send(()).unwrap();
-            let began = Instant::now();
-            while !cancel.is_cancelled() {
-                assert!(began.elapsed() < Duration::from_secs(5));
-                thread::yield_now();
+        let dispatch = Arc::new(move |_: Method, params: &Value, cancel: &Cancellation| {
+            started.send(params["position"].clone()).unwrap();
+            if params["position"] == 0 {
+                let began = Instant::now();
+                while !cancel.is_cancelled() {
+                    assert!(began.elapsed() < Duration::from_secs(5));
+                    thread::yield_now();
+                }
+                cancel.check()?;
             }
-            Err(EngineError {
-                code: ErrorCode::Cancelled,
+            Ok(DispatchResult {
+                data: params["position"].clone(),
+                exit_code: ibis_core::contract::ExitCode::Ok,
+                text: None,
+                source_findings: false,
             })
         });
         let server = thread::spawn(move || {
@@ -538,40 +390,56 @@ mod tests {
                 },
             )
         });
-        for id in 0..MAX_WORKERS {
-            send(&input, json!({"jsonrpc":"2.0","id":id,"method":"search"}));
-            ready.recv_timeout(Duration::from_secs(5)).unwrap();
-        }
-        send(&input, json!({"jsonrpc":"2.0","id":"busy","method":"libraries"}));
-        assert_eq!(reply(&output)["error"]["message"], "Server busy");
         send(
             &input,
-            Value::Array(vec![
-                json!({"jsonrpc":"2.0","id":0,"method":"libraries"});
-                MAX_BATCH + 1
-            ]),
+            json!({"jsonrpc":"2.0","id":0,"method":"search","params":{"position":0}}),
         );
+        assert_eq!(ready.recv_timeout(Duration::from_secs(5)).unwrap(), 0);
+        for id in 1..=8 {
+            send(
+                &input,
+                json!({"jsonrpc":"2.0","id":id,"method":"search","params":{"position":id}}),
+            );
+        }
+        send(&input, json!({"jsonrpc":"2.0","id":9,"method":"libraries"}));
+        assert_eq!(reply(&output)["error"]["message"], "Server busy");
+        send(&input, json!({"jsonrpc":"2.0","id":1,"method":"libraries"}));
         assert_eq!(reply(&output)["error"]["code"], -32600);
-        for id in 0..MAX_WORKERS {
+        for id in [1, 0] {
             send(
                 &input,
                 json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":id}}),
             );
         }
-        drop(input);
-        for _ in 0..MAX_WORKERS {
-            assert_eq!(reply(&output)["error"]["data"]["code"], "cancelled");
+        for id in 0..=8 {
+            let response = reply(&output);
+            assert_eq!(response["id"], id);
+            if id <= 1 {
+                assert_eq!(response["error"]["data"]["code"], "cancelled");
+            } else {
+                assert_eq!(response["result"], id);
+                assert_eq!(ready.recv_timeout(Duration::from_secs(5)).unwrap(), id);
+            }
         }
+        // A cancelled queued ID and a refused ID can both be reused.
+        for id in [1, 9] {
+            send(
+                &input,
+                json!({"jsonrpc":"2.0","id":id,"method":"search","params":{"position":id}}),
+            );
+            assert_eq!(reply(&output)["result"], id);
+        }
+        drop(input);
         assert!(server.join().unwrap().is_ok());
     }
     #[test]
-    fn worker_panics_are_fixed_errors_and_other_batch_members_complete() {
+    fn worker_panics_are_fixed_errors_and_later_requests_complete() {
         const CHILD: &str = "IBIS_RPC_PANIC_CHILD";
         if std::env::var_os(CHILD).is_none() {
             let mut child = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--exact",
-                    "server::tests::worker_panics_are_fixed_errors_and_other_batch_members_complete",
+                    "server::tests::worker_panics_are_fixed_errors_and_later_requests_complete",
                     "--nocapture",
                 ])
                 .env(CHILD, "1")
@@ -605,26 +473,23 @@ mod tests {
             })
         });
         let mut input = vec![];
-        protocol::write_frame(
-            &mut input,
-            &json!([
-                {"jsonrpc":"2.0","id":1,"method":"search","params":{"panic":true}},
-                {"jsonrpc":"2.0","id":2,"method":"libraries"}
-            ]),
-        )
-        .unwrap();
+        for message in [
+            json!({"jsonrpc":"2.0","id":1,"method":"search","params":{"panic":true}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"libraries"}),
+        ] {
+            protocol::write_frame(&mut input, &message).unwrap();
+        }
         let mut output = vec![];
         run(dispatch, Cursor::new(input), &mut output).unwrap();
         let mut reader = Cursor::new(output);
-        let mut batch = None;
-        while let Some(message) = protocol::read_frame(&mut reader).unwrap() {
-            if message.is_array() {
-                batch = Some(message);
-            }
-        }
-        let batch = batch.unwrap();
-        assert_eq!(batch[0]["error"]["data"]["code"], "internal");
-        assert_eq!(batch[1]["result"], json!([]));
-        assert!(!batch.to_string().contains("synthetic worker failure"));
+        let failed = protocol::read_frame(&mut reader).unwrap().unwrap();
+        assert_eq!(failed["id"], 1);
+        assert_eq!(failed["error"]["code"], -32603);
+        assert_eq!(failed["error"]["data"]["code"], "internal");
+        assert!(!failed.to_string().contains("synthetic worker failure"));
+        let next = protocol::read_frame(&mut reader).unwrap().unwrap();
+        assert_eq!(next["id"], 2);
+        assert_eq!(next["result"], json!([]));
+        assert_eq!(protocol::read_frame(&mut reader).unwrap(), None);
     }
 }

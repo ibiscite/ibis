@@ -1,5 +1,9 @@
 # Test fixtures
 
+`formatted/citation-review.bib` is an invented book used by the CLI citation
+review regressions: mixed MyST forms, ambiguous Org suffixes, literal styled
+dollar sequences and contradictory narrative author suppression.
+
 Synthetic inputs that reproduce real-world problems. Inspired by FFmpeg's FATE suite: every bug fix adds the smallest fixture that reproduces it, so the same problem can never return unnoticed.
 
 Rules:
@@ -14,9 +18,10 @@ Rules:
 | `updates/` | A synthetic package with unversioned, Stable and Nightly signatures from CLI 2.12.3, a forged trusted comment, and an unrelated public key; throwaway private keys were discarded |
 | `zotero/` | Synthetic Zotero local-API item envelopes (`key`, `links`, `data`, `csljson`); database snapshots for Zotero 7–10, including trashed parents and children, are still planned |
 
-`locator-queries.json` is the shared trailing-locator fixture set for the Rust parser
-and interface tests. It covers nine locator types, non-Latin text and
-literal ambiguous/time inputs; production interpretation remains in Rust.
+`locators.json` is the trailing-locator fixture set for `ibis_core::locator`,
+which reads all 29 CSL locator types, non-Latin text and literal ambiguous or
+time inputs. `locator-queries.json` serves the old nine-label parser until
+#1260 removes it.
 
 `bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input
 from #111. The robustness tests also exercise invalid zero months in uncertain

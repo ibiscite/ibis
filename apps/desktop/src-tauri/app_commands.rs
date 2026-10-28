@@ -14,6 +14,9 @@ pub const APP_COMMANDS: &[&str] = &[
     "copy_format",
     "picker_preferences",
     "set_picker_preferences",
+    "picker_destination",
+    "remember_app_output",
+    "forget_app_outputs",
     "login_item",
     "set_login_item",
     "hide_picker",
@@ -28,4 +31,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "update_checks",
     "set_update_checks",
     "check_for_updates",
+    "open_settings",
+    "paste_permission",
+    "open_paste_permission",
 ];

@@ -39,13 +39,14 @@ fn toggle_forwards_one_argument_and_keeps_child_output_out_of_json() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(value, serde_json::json!({"ibis":1,"ok":true,"data":{"toggled":true}}));
     assert!(output.stderr.is_empty());
+    // The fake app creates its marker before writing it, so wait for the whole line.
     let began = Instant::now();
-    while !marker.exists() {
+    while !std::fs::read_to_string(&marker).is_ok_and(|text| text.ends_with('\n')) {
         assert!(began.elapsed() < Duration::from_secs(5));
         std::thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(
-        std::fs::read_to_string(marker).unwrap_or_else(|error| panic!("{error}")),
+        std::fs::read_to_string(&marker).unwrap_or_else(|error| panic!("{error}")),
         "toggle\n"
     );
     std::fs::set_permissions(&desktop, std::fs::Permissions::from_mode(0o600))

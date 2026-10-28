@@ -81,7 +81,6 @@ fn startup_readiness(app: &AppHandle, panel_ready: bool) {
                 } else {
                     panel.order_front_regardless();
                 }
-                crate::macos_reapproval::presented(&handle);
                 #[cfg(debug_assertions)]
                 eprintln!(
                     "ibis: panel initial presented focused={} visible={} key={} first_responder={} outer_responder={}",
@@ -244,7 +243,6 @@ pub(crate) fn show(app: &AppHandle) {
                         report(Err::<(), ()>(()), NativeIssue::Window);
                     }
                     crate::updater::picker_presented(&handle);
-                    crate::macos_reapproval::presented(&handle);
                     // Observe actual AppKit keyboard ownership independently
                     // of the WebView's accessible/DOM focused search field.
                     #[cfg(debug_assertions)]

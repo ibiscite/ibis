@@ -136,7 +136,7 @@ canonical stdout. Styles that need a whole document return a full reference entr
 with that explanation. Unsupported styles remain explicit per-item
 `unsupported-output` refusals.
 `ibis call METHOD --stdin` reads method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
-Content-Length frames, progress/library-change notifications and
+Content-Length frames, library-change notifications and
 `$/cancelRequest`; it writes no terminal text to that stream.
 
 `ibis mcp` serves AI agents over the Model Context Protocol (stdio, revision

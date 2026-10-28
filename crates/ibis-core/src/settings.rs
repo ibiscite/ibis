@@ -150,6 +150,10 @@ pub struct Settings {
     /// The Ibis mark in place of the search glyph. `None` means the magnifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_mark: Option<bool>,
+    /// Whether Enter pastes into the app the picker was opened from. `None`
+    /// means on; `false` only copies.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paste: Option<bool>,
     /// Fields this build does not know, written by another version of Ibis
     /// or by hand. Kept as they are and written back on save.
     #[serde(flatten)]
@@ -169,6 +173,7 @@ impl Default for Settings {
             larger_text: None,
             show_paste_preview: None,
             search_mark: None,
+            paste: None,
             unknown: serde_json::Map::new(),
         }
     }
@@ -786,13 +791,15 @@ mod tests {
             "larger_text",
             "show_paste_preview",
             "search_mark",
+            "paste",
         ] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(
-            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false, "search_mark": true}"#,
+            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false, "search_mark": true, "paste": false}"#,
         )
         .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(settings.paste, Some(false));
         assert_eq!(settings.search_mark, Some(true));
         assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
         assert_eq!(settings.density, Some(Density::Compact));
