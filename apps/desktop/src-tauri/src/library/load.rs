@@ -78,8 +78,8 @@ pub(super) fn load_source(
         Source::Zotero(chosen) => {
             let (bridge, unchanged) = if let Some(bridge) = previous_file {
                 let before = bridge.revision();
-                bridge.refresh_zotero(&chosen, reload, cancel)?;
-                let unchanged = before == bridge.revision();
+                let same_choice = bridge.refresh_zotero(&chosen, reload, cancel)?;
+                let unchanged = same_choice && before == bridge.revision();
                 (bridge, unchanged)
             } else {
                 (

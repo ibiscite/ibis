@@ -15,6 +15,7 @@ pub struct Server {
     pub instance: Arc<AtomicU64>,
     pub pause: Arc<AtomicBool>,
     pub paused: Arc<AtomicBool>,
+    pub empty_group: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -27,6 +28,8 @@ impl Server {
         let pause = Arc::new(AtomicBool::new(false));
         let paused = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
+        let empty_group = Arc::new(AtomicBool::new(false));
+        let empty = empty_group.clone();
         let (id, wait, seen, stopping) = (instance.clone(), pause.clone(), paused.clone(), stop.clone());
         let worker = thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
@@ -48,13 +51,18 @@ impl Server {
                 let inventory = request.contains("format=versions");
                 // Group 99 does not exist.
                 let missing = request.contains("groups/99/");
+                let empty = request.contains("groups/7/") && empty.load(Ordering::Relaxed);
                 if !inventory && wait.load(Ordering::Relaxed) {
                     seen.store(true, Ordering::SeqCst);
                     while wait.load(Ordering::Relaxed) && !stopping.load(Ordering::Relaxed) {
                         thread::sleep(Duration::from_millis(1));
                     }
                 }
-                let body = if inventory {
+                let body = if empty && inventory {
+                    json!({})
+                } else if empty {
+                    json!([])
+                } else if inventory {
                     json!({"SYNTH001":1})
                 } else {
                     json!([{"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book","title":"Invented atlas","date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
@@ -62,9 +70,10 @@ impl Server {
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);
                 let status = if missing { "404 Not Found" } else { "200 OK" };
+                let total = usize::from(!empty);
                 let _ = write!(
                     stream,
-                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\nZotero-API-Version: 3\r\nX-Zotero-Version: 10.0.6\r\nZotero-Server-ID: invented-{id}\r\nLast-Modified-Version: 1\r\nTotal-Results: 1\r\n\r\n",
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\nZotero-API-Version: 3\r\nX-Zotero-Version: 10.0.6\r\nZotero-Server-ID: invented-{id}\r\nLast-Modified-Version: 1\r\nTotal-Results: {total}\r\n\r\n",
                     body.len()
                 );
                 let _ = stream.write_all(&body);
@@ -75,6 +84,7 @@ impl Server {
             instance,
             pause,
             paused,
+            empty_group,
             stop,
             worker: Some(worker),
         }

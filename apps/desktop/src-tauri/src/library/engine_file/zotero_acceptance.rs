@@ -235,11 +235,71 @@ fn full_reload_fetches_payloads_even_when_the_choice_order_differs() -> Result<(
     bridge
         .refresh_zotero(&both, false, &Cancellation::default())
         .map_err(|e| e.to_string())?;
+    // Deliberately choose the opposite of the engine's ID-sorted listing.
+    let reversed = bridge
+        .engine
+        .libraries()
+        .map_err(|_| "listing")?
+        .libraries
+        .iter()
+        .rev()
+        .filter_map(|info| {
+            info.zotero.map(|library| match library {
+                ibis_engine::request::ZoteroLibrary::Personal => ZoteroLibrary::User,
+                ibis_engine::request::ZoteroLibrary::Group(id) => ZoteroLibrary::Group(id),
+            })
+        })
+        .collect();
+    let both = ZoteroLibraries::new(reversed).ok_or("reversed choice")?;
+    bridge
+        .refresh_zotero(&both, false, &Cancellation::default())
+        .map_err(|e| e.to_string())?;
     server.pause.store(true, Ordering::SeqCst);
     let reloading = Arc::clone(&bridge);
     let worker = std::thread::spawn(move || reloading.refresh_zotero(&both, true, &Cancellation::default()));
     server.wait_for_payload();
     server.pause.store(false, Ordering::SeqCst);
     worker.join().map_err(|_| "reload worker")?.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::library::{
+        Source,
+        load::{Loaded, load_source},
+    };
+    use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+    let server = fixture::Server::new();
+    server.empty_group.store(true, Ordering::SeqCst);
+    let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
+    let mut bridge = Arc::new(
+        FileLibrary::open_zotero_with(engine, &ZoteroLibrary::User.into(), &Cancellation::default())
+            .map_err(|e| e.to_string())?,
+    );
+    let revision = bridge.revision();
+    let both = ZoteroLibraries::new(vec![ZoteroLibrary::User, ZoteroLibrary::Group(7)]).ok_or("choice")?;
+    for chosen in [both, ZoteroLibrary::User.into()] {
+        let source = Source::Zotero(chosen.clone());
+        let loaded = load_source(source.clone(), false, Some(bridge), &Cancellation::default(), || false)
+            .map_err(|e| e.to_string())?;
+        let Loaded::New(mut library) = loaded else {
+            return Err("membership must be installed".into());
+        };
+        assert_eq!(library.source, Some(source));
+        assert_eq!(
+            library.source.as_ref().ok_or("source")?.setting(),
+            ibis_core::settings::LibrarySetting::Zotero(chosen.clone())
+        );
+        let status = crate::library::status::status(&library);
+        assert_eq!(status.zotero_libraries, chosen.libraries());
+        assert_eq!(status.references, 1);
+        assert_eq!(
+            status.source_counts.get("zotero:group:7"),
+            chosen.libraries().contains(&ZoteroLibrary::Group(7)).then_some(&0)
+        );
+        bridge = library.file.take().ok_or("bridge")?;
+        assert_eq!(bridge.revision(), revision);
+    }
     Ok(())
 }

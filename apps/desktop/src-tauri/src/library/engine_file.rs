@@ -88,7 +88,7 @@ impl FileLibrary {
         chosen: &ZoteroLibraries,
         force: bool,
         cancel: &Cancellation,
-    ) -> Result<(), super::LoadError> {
+    ) -> Result<bool, super::LoadError> {
         let libraries: Vec<_> = chosen
             .libraries()
             .iter()
@@ -122,7 +122,8 @@ impl FileLibrary {
         if let Some(code) = info.libraries.iter().find_map(|info| info.refresh_error) {
             return Err(super::LoadError::EngineZotero(code));
         }
-        Ok(())
+        // Empty libraries change the choice even when the object fingerprint stays equal.
+        Ok(same)
     }
 
     pub(super) fn observe_once(
