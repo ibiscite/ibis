@@ -1,14 +1,21 @@
 //! The Windows calls behind a paste (#1133), through the safe winsafe and
 //! uiautomation bindings only.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 use winsafe::{self as w, co};
 
 use super::capture::Front;
-use super::{Desk, PasteEvent, TicketDesk};
+use super::{Desk, PasteEvent, PasteKeys, QueryWorker, TicketDesk};
+
+static NAME_WORKER: LazyLock<QueryWorker> = LazyLock::new(QueryWorker::default);
+static PASSWORD_WORKER: LazyLock<QueryWorker> = LazyLock::new(QueryWorker::default);
+static KEYS: Mutex<PasteKeys> = Mutex::new(PasteKeys {
+    control: false,
+    v: false,
+});
 
 /// UI Automation waits on the app in front, which may be busy. A field that
 /// does not answer in time has not proved that it is safe to paste.
@@ -39,7 +46,7 @@ fn front(window: &w::HWND, capture: bool) -> Option<Front> {
         let executable = id.clone().unwrap_or_default();
         // Version resources can live on an unavailable share. Only the
         // worker touches that file; the picker waits at most 50 ms.
-        Some(super::display_name(executable, move || described(&path)))
+        Some(super::display_name(&NAME_WORKER, executable, move || described(&path)))
     } else {
         None
     };
@@ -105,30 +112,41 @@ fn foreground_pid() -> Option<i32> {
 fn password_focused() -> Option<bool> {
     // A thread of its own: UI Automation needs COM set up on the thread that
     // calls it, and a hung app must not hold the paste.
-    super::bounded(ASK_LIMIT, || {
-        uiautomation::UIAutomation::new()
-            .and_then(|automation| automation.get_focused_element())
-            .and_then(|field| field.is_password())
-            .ok()
-    })
-    .flatten()
+    PASSWORD_WORKER
+        .run(ASK_LIMIT, || {
+            uiautomation::UIAutomation::new()
+                .and_then(|automation| automation.get_focused_element())
+                .and_then(|field| field.is_password())
+                .ok()
+        })
+        .flatten()
 }
 
 /// Ctrl+V to whatever has the keyboard, in one call, so no other input lands
 /// between the four events.
-fn send_paste() -> bool {
-    super::send_paste(|events| {
-        let inputs: Vec<_> = events
-            .iter()
-            .map(|event| match event {
-                PasteEvent::ControlDown => press(co::VK::CONTROL, false),
-                PasteEvent::VDown => press(co::VK::CHAR_V, false),
-                PasteEvent::VUp => press(co::VK::CHAR_V, true),
-                PasteEvent::ControlUp => press(co::VK::CONTROL, true),
-            })
-            .collect();
-        w::SendInput(&inputs).unwrap_or(0)
-    })
+fn send_paste(ready: impl Fn() -> bool) -> bool {
+    let Ok(mut keys) = KEYS.lock() else {
+        warn_key_release();
+        return false;
+    };
+    keys.paste(send_inputs, std::thread::sleep, warn_key_release, ready)
+}
+
+fn send_inputs(events: &[PasteEvent]) -> u32 {
+    let inputs: Vec<_> = events
+        .iter()
+        .map(|event| match event {
+            PasteEvent::ControlDown => press(co::VK::CONTROL, false),
+            PasteEvent::VDown => press(co::VK::CHAR_V, false),
+            PasteEvent::VUp => press(co::VK::CHAR_V, true),
+            PasteEvent::ControlUp => press(co::VK::CONTROL, true),
+        })
+        .collect();
+    w::SendInput(&inputs).unwrap_or(0)
+}
+
+fn warn_key_release() {
+    crate::diagnostics::report(Err::<(), ()>(()), crate::diagnostics::NativeIssue::PasteKeyRelease);
 }
 
 pub(super) struct Win {
@@ -179,6 +197,10 @@ impl TicketDesk for Win {
     fn clipboard_sequence(&self) -> Option<u32> {
         clipboard_win::seq_num().map(std::num::NonZeroU32::get)
     }
+
+    fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool {
+        send_paste(|| ready() && key == co::VK::CHAR_V.raw() && !keys_held() && foreground_pid() == Some(pid))
+    }
 }
 
 /// One key going down or up.
@@ -196,6 +218,18 @@ fn press(key: co::VK, up: bool) -> w::HwKbMouse {
 }
 
 impl Desk for Win {
+    fn release_keys(&self) -> bool {
+        let Ok(mut keys) = KEYS.lock() else {
+            warn_key_release();
+            return false;
+        };
+        keys.release(send_inputs, std::thread::sleep, warn_key_release)
+    }
+
+    fn keys_unreleased(&self) -> bool {
+        KEYS.lock().map_or(true, |keys| keys.pending())
+    }
+
     /// Windows asks no permission to send keys; elevated apps are refused by the capture.
     fn may_post(&self) -> bool {
         true
@@ -228,10 +262,7 @@ impl Desk for Win {
     }
 
     fn post(&self, pid: i32, key: u16) -> bool {
-        if key != co::VK::CHAR_V.raw() || keys_held() || foreground_pid() != Some(pid) {
-            return false;
-        }
-        send_paste()
+        self.post_if(pid, key, || true)
     }
 
     fn wait(&self, time: Duration) {
@@ -285,7 +316,7 @@ mod tests {
         assert!(!front.elevated);
         assert_eq!(password_focused(), Some(false));
         assert!(!keys_held());
-        assert!(send_paste());
+        assert!(send_paste(|| true));
         let started = Instant::now();
         let pasted = loop {
             let value = uiautomation::UIAutomation::new()

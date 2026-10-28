@@ -451,6 +451,7 @@ export const copiedNoticeText = {
     "virtual-machine": "Copied. Not pasted into a virtual machine",
     "secure-field": "Copied. Not pasted into a password field",
     "elevated-app": "Copied. Not pasted into an administrator app",
+    "key-release-failed": "Copied. Press and release Ctrl and V",
   } as Record<string, string>,
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",

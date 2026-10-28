@@ -53,6 +53,9 @@ including its 16-point shadow margin; the frame ignores the pointer. The
 notice never clips its words: a citation that would be cut short moves to a
 second line. A green check means pasted; copied without a paste shows the
 same mark in `--muted` with the reason in words.
+If Windows cannot release the keys Ibis injected, the notice says "Copied.
+Press and release Ctrl and V". Ibis retains the unsent releases and retries
+them before any later delivery; it sends no new paste while they remain blocked.
 
 | Role | Tokens | Rule |
 |---|---|---|

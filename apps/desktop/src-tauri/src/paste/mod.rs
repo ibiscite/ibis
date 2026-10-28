@@ -121,6 +121,14 @@ pub(crate) enum Delivered {
 
 /// The system calls a paste needs, so the decision is testable without them.
 pub(crate) trait Desk {
+    /// Finish releasing keys from an earlier partial injection, even if this
+    /// delivery will only copy. Other platforms have no pending releases.
+    fn release_keys(&self) -> bool {
+        true
+    }
+    fn keys_unreleased(&self) -> bool {
+        false
+    }
     /// Ibis may post key events (macOS Accessibility; always on Windows).
     fn may_post(&self) -> bool;
     /// Show where to give that permission; at most once per run.
@@ -140,11 +148,19 @@ pub(crate) trait Desk {
     fn paste_key(&self) -> Option<u16>;
     /// Post ⌘ or Ctrl and `key` down and up to `pid` only; false on failure.
     fn post(&self, pid: i32, key: u16) -> bool;
+    /// Windows rechecks this after its injection lock and recovery waits.
+    /// Other platforms retain their existing post behavior.
+    fn post_before(&self, pid: i32, key: u16, _deadline: Instant) -> bool {
+        self.post(pid, key)
+    }
     fn wait(&self, time: Duration);
 }
 
 /// Paste `text`, just copied, into the captured app, or say why it stays copied.
 pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str, enabled: bool) -> Delivered {
+    if !desk.release_keys() {
+        return key_release_failed();
+    }
     let unknown = Captured::unknown(SYSTEM);
     let captured = captured.unwrap_or(&unknown);
     let permission = PastePermission {
@@ -196,12 +212,19 @@ pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str,
                 return copied(None);
             }
             match key {
-                Some(key) if desk.post(pid, key) => Delivered::Pasted {
+                Some(key) if desk.post_before(pid, key, started + LATE) => Delivered::Pasted {
                     app: captured.name.clone(),
                 },
+                _ if desk.keys_unreleased() => key_release_failed(),
                 _ => copied(None),
             }
         }
+    }
+}
+
+fn key_release_failed() -> Delivered {
+    Delivered::Copied {
+        reason: Some("key-release-failed".into()),
     }
 }
 
@@ -284,6 +307,9 @@ trait TicketDesk: Desk {
     fn restore(&self, window: &Self::Window, pid: i32) -> bool;
     fn window_in_front(&self, window: &Self::Window) -> bool;
     fn clipboard_sequence(&self) -> Option<u32>;
+    /// Check the ticket after any injection lock/recovery wait, immediately
+    /// before sending fresh key-downs. Releasing old keys needs no ticket.
+    fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool;
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -313,6 +339,12 @@ impl<D: TicketDesk> TicketDeskGuard<'_, D> {
 
 #[cfg(any(target_os = "windows", test))]
 impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
+    fn release_keys(&self) -> bool {
+        self.desk.release_keys()
+    }
+    fn keys_unreleased(&self) -> bool {
+        self.desk.keys_unreleased()
+    }
     fn may_post(&self) -> bool {
         self.desk.may_post()
     }
@@ -350,7 +382,12 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
         self.desk.paste_key()
     }
     fn post(&self, pid: i32, key: u16) -> bool {
-        self.current() && self.in_front() && self.desk.post(pid, key)
+        self.desk.post_if(pid, key, || self.current() && self.in_front())
+    }
+    fn post_before(&self, pid: i32, key: u16, deadline: Instant) -> bool {
+        self.desk.post_if(pid, key, || {
+            self.current() && self.in_front() && Instant::now() <= deadline
+        })
     }
     fn wait(&self, time: Duration) {
         self.desk.wait(time);
@@ -369,6 +406,11 @@ fn deliver_ticket<D: TicketDesk>(desk: &D, ticket: &DeliveryTicket<D::Window>, t
 
 #[cfg(target_os = "windows")]
 pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryTicket<windows::Window>>) -> Delivered {
+    let desk = windows::Win::new(app);
+    // Missing/stale receipts must not strand keys from an earlier copy.
+    if !desk.release_keys() {
+        return key_release_failed();
+    }
     let Some(ticket) = ticket else {
         return Delivered::Copied { reason: None };
     };
@@ -376,7 +418,7 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryT
         .settings
         .paste
         .unwrap_or(true);
-    deliver_ticket(&windows::Win::new(app), &ticket, text, enabled)
+    deliver_ticket(&desk, &ticket, text, enabled)
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -388,39 +430,111 @@ enum PasteEvent {
     ControlUp,
 }
 
-/// SendInput can accept a prefix. Release only the keys that prefix left
-/// down, even if focus or the picker changed after the injection.
+/// Keys left down by Ibis's own injection. Windows keeps one process-wide
+/// instance under a mutex, serializing injections and retaining failed key-ups.
 #[cfg(any(target_os = "windows", test))]
-fn send_paste(send: impl Fn(&[PasteEvent]) -> u32) -> bool {
-    use PasteEvent::*;
-    match send(&[ControlDown, VDown, VUp, ControlUp]) {
-        4 => true,
-        count @ 1..=3 => {
-            if count == 2 {
-                send(&[VUp]);
+#[derive(Default)]
+struct PasteKeys {
+    control: bool,
+    v: bool,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl PasteKeys {
+    fn pending(&self) -> bool {
+        self.control || self.v
+    }
+
+    fn release(&mut self, send: impl Fn(&[PasteEvent]) -> u32, wait: impl Fn(Duration), warn: impl Fn()) -> bool {
+        for attempt in 0..3 {
+            if self.v && send(&[PasteEvent::VUp]) == 1 {
+                self.v = false;
             }
-            send(&[ControlUp]);
-            false
+            if self.control && send(&[PasteEvent::ControlUp]) == 1 {
+                self.control = false;
+            }
+            if !self.pending() {
+                return true;
+            }
+            if attempt < 2 {
+                wait(Duration::from_millis(10));
+            }
         }
-        _ => false,
+        warn();
+        false
+    }
+
+    fn paste(
+        &mut self,
+        send: impl Fn(&[PasteEvent]) -> u32,
+        wait: impl Fn(Duration),
+        warn: impl Fn(),
+        ready: impl Fn() -> bool,
+    ) -> bool {
+        if !self.release(&send, &wait, &warn) || !ready() {
+            return false;
+        }
+        use PasteEvent::*;
+        match send(&[ControlDown, VDown, VUp, ControlUp]) {
+            4 => true,
+            count @ 1..=3 => {
+                self.control = true;
+                self.v = count == 2;
+                self.release(send, wait, warn);
+                false
+            }
+            _ => false,
+        }
     }
 }
 
-/// Optional native queries never hold up a picker or paste indefinitely.
+/// One in-flight native query, with no queue. A timed-out worker retains its
+/// permit until it actually exits; busy callers immediately use their fallback.
 #[cfg(any(target_os = "windows", test))]
-fn bounded<T: Send + 'static>(limit: Duration, query: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .spawn(move || {
-            let _ = sender.send(query());
-        })
-        .ok()?;
-    receiver.recv_timeout(limit).ok()
+#[derive(Default)]
+struct QueryWorker(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+#[cfg(any(target_os = "windows", test))]
+struct QueryPermit(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+#[cfg(any(target_os = "windows", test))]
+impl Drop for QueryPermit {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Release);
+    }
 }
 
 #[cfg(any(target_os = "windows", test))]
-fn display_name(executable: String, query: impl FnOnce() -> Option<String> + Send + 'static) -> String {
-    bounded(Duration::from_millis(50), query)
+impl QueryWorker {
+    fn run<T: Send + 'static>(&self, limit: Duration, query: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        self.0
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::Acquire,
+                std::sync::atomic::Ordering::Relaxed,
+            )
+            .ok()?;
+        let permit = QueryPermit(self.0.clone());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .spawn(move || {
+                let _permit = permit;
+                let _ = sender.send(query());
+            })
+            .ok()?;
+        receiver.recv_timeout(limit).ok()
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn display_name(
+    worker: &QueryWorker,
+    executable: String,
+    query: impl FnOnce() -> Option<String> + Send + 'static,
+) -> String {
+    worker
+        .run(Duration::from_millis(50), query)
         .flatten()
         .unwrap_or(executable)
 }
@@ -478,6 +592,7 @@ mod tests {
     use super::*;
     use ibis_core::destination::{AppId, Target};
     use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
 
     struct Fake {
         may_post: bool,
@@ -494,7 +609,13 @@ mod tests {
         window: Cell<usize>,
         sequence: Cell<Option<u32>>,
         restores: RefCell<Vec<(usize, i32)>>,
-        inserted: Option<u32>,
+        input_results: RefCell<VecDeque<u32>>,
+        input_requests: RefCell<Vec<Vec<PasteEvent>>>,
+        keys: RefCell<PasteKeys>,
+        recovery_waits: RefCell<Vec<Duration>>,
+        release_warnings: Cell<u32>,
+        before_post: Option<fn(&Fake)>,
+        after_recovery_wait: Option<fn(&Fake)>,
         events: RefCell<Vec<PasteEvent>>,
         control_down: Cell<bool>,
         v_down: Cell<bool>,
@@ -516,15 +637,75 @@ mod tests {
                 window: Cell::new(100),
                 sequence: Cell::new(Some(17)),
                 restores: RefCell::default(),
-                inserted: None,
+                input_results: RefCell::default(),
+                input_requests: RefCell::default(),
+                keys: RefCell::default(),
+                recovery_waits: RefCell::default(),
+                release_warnings: Cell::new(0),
+                before_post: None,
+                after_recovery_wait: None,
                 events: RefCell::default(),
                 control_down: Cell::new(false),
                 v_down: Cell::new(false),
             }
         }
+
+        fn input(&self, events: &[PasteEvent]) -> u32 {
+            self.input_requests.borrow_mut().push(events.to_vec());
+            let count = self
+                .input_results
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or(events.len() as u32);
+            assert!(count as usize <= events.len());
+            for event in events.iter().take(count as usize) {
+                self.events.borrow_mut().push(*event);
+                match event {
+                    PasteEvent::ControlDown => self.control_down.set(true),
+                    PasteEvent::ControlUp => self.control_down.set(false),
+                    PasteEvent::VDown => self.v_down.set(true),
+                    PasteEvent::VUp => self.v_down.set(false),
+                }
+            }
+            count
+        }
+
+        fn release_warning(&self) {
+            self.release_warnings.set(self.release_warnings.get() + 1);
+        }
+
+        fn recovery_wait(&self, time: Duration) {
+            self.recovery_waits.borrow_mut().push(time);
+            if let Some(change) = self.after_recovery_wait {
+                change(self);
+            }
+        }
+
+        fn post_when_ready(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool {
+            self.posts.borrow_mut().push((pid, key));
+            if let Some(change) = self.before_post {
+                change(self);
+            }
+            self.keys.borrow_mut().paste(
+                |events| self.input(events),
+                |time| self.recovery_wait(time),
+                || self.release_warning(),
+                ready,
+            )
+        }
     }
 
     impl Desk for Fake {
+        fn release_keys(&self) -> bool {
+            self.keys.borrow_mut().release(
+                |events| self.input(events),
+                |time| self.recovery_wait(time),
+                || self.release_warning(),
+            )
+        }
+        fn keys_unreleased(&self) -> bool {
+            self.keys.borrow().pending()
+        }
         fn may_post(&self) -> bool {
             self.may_post
         }
@@ -553,27 +734,7 @@ mod tests {
             Some(0x09)
         }
         fn post(&self, pid: i32, key: u16) -> bool {
-            self.posts.borrow_mut().push((pid, key));
-            let Some(inserted) = self.inserted else {
-                return true;
-            };
-            send_paste(|events| {
-                let count = if events.len() == 4 {
-                    inserted
-                } else {
-                    events.len() as u32
-                };
-                for event in events.iter().take(count as usize) {
-                    self.events.borrow_mut().push(*event);
-                    match event {
-                        PasteEvent::ControlDown => self.control_down.set(true),
-                        PasteEvent::ControlUp => self.control_down.set(false),
-                        PasteEvent::VDown => self.v_down.set(true),
-                        PasteEvent::VUp => self.v_down.set(false),
-                    }
-                }
-                count
-            })
+            self.post_when_ready(pid, key, || true)
         }
         fn wait(&self, _: Duration) {
             let mut fronts = self.fronts.borrow_mut();
@@ -600,6 +761,9 @@ mod tests {
         }
         fn clipboard_sequence(&self) -> Option<u32> {
             self.sequence.get()
+        }
+        fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool {
+            self.post_when_ready(pid, key, ready)
         }
     }
 
@@ -837,10 +1001,8 @@ mod tests {
             (3, vec![ControlDown, VDown, VUp, ControlUp]),
             (4, vec![ControlDown, VDown, VUp, ControlUp]),
         ] {
-            let desk = Fake {
-                inserted: Some(inserted),
-                ..Fake::new("[@synthetic]")
-            };
+            let desk = Fake::new("[@synthetic]");
+            desk.input_results.borrow_mut().push_back(inserted);
             let delivered = deliver_ticket(&desk, &ticket(), "[@synthetic]", true);
             if inserted == 4 {
                 assert!(matches!(delivered, Delivered::Pasted { .. }));
@@ -854,15 +1016,151 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_v_key_up_is_retried_after_control_is_released() {
+        use PasteEvent::*;
+        let desk = Fake::new("[@synthetic]");
+        desk.input_results.replace(VecDeque::from([2, 0, 1]));
+        assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(None));
+        assert_eq!(
+            *desk.input_requests.borrow(),
+            [
+                vec![ControlDown, VDown, VUp, ControlUp],
+                vec![VUp],
+                vec![ControlUp],
+                vec![VUp],
+            ]
+        );
+        assert!(!desk.control_down.get());
+        assert!(!desk.v_down.get());
+        assert!(!desk.keys_unreleased());
+        assert_eq!(desk.release_warnings.get(), 0);
+        assert_eq!(*desk.recovery_waits.borrow(), [Duration::from_millis(10)]);
+    }
+
+    #[test]
+    fn blocked_key_ups_are_retained_warned_and_recovered_before_any_later_paste() {
+        for prefix in [1, 2, 3] {
+            let desk = Fake::new("[@synthetic]");
+            let releases = if prefix == 2 { 2 } else { 1 };
+            desk.input_results.borrow_mut().push_back(prefix);
+            desk.input_results
+                .borrow_mut()
+                .extend(std::iter::repeat_n(0, 3 * releases));
+            assert_eq!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+                copied(Some("key-release-failed"))
+            );
+            assert!(desk.control_down.get());
+            assert_eq!(desk.v_down.get(), prefix == 2);
+            assert!(desk.keys_unreleased());
+            assert_eq!(desk.release_warnings.get(), 1);
+            assert_eq!(desk.recovery_waits.borrow().len(), 2);
+
+            // Another delivery cannot inject new key-downs while cleanup is blocked.
+            let requests = desk.input_requests.borrow().len();
+            desk.input_results
+                .borrow_mut()
+                .extend(std::iter::repeat_n(0, 3 * releases));
+            assert_eq!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+                copied(Some("key-release-failed"))
+            );
+            assert_eq!(desk.posts.borrow().len(), 1);
+            assert_eq!(desk.input_requests.borrow().len() - requests, 3 * releases);
+            assert_eq!(desk.release_warnings.get(), 2);
+
+            // The next copy-only delivery still releases the retained keys.
+            assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", false), copied(None));
+            assert!(!desk.keys_unreleased());
+            assert!(!desk.control_down.get());
+            assert!(!desk.v_down.get());
+            assert_eq!(desk.posts.borrow().len(), 1);
+            assert!(matches!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+                Delivered::Pasted { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn recovery_retains_only_the_key_up_that_windows_has_not_accepted() {
+        use PasteEvent::*;
+        let desk = Fake::new("[@synthetic]");
+        // V-up is blocked on every attempt; Control-up succeeds on the first.
+        desk.input_results.replace(VecDeque::from([2, 0, 1, 0, 0]));
+        assert_eq!(
+            deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+            copied(Some("key-release-failed"))
+        );
+        assert!(desk.v_down.get());
+        assert!(!desk.control_down.get());
+        assert_eq!(desk.release_warnings.get(), 1);
+        let requests = desk.input_requests.borrow().len();
+        assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", false), copied(None));
+        assert_eq!(&desk.input_requests.borrow()[requests..], [vec![VUp]]);
+        assert!(!desk.keys_unreleased());
+        assert!(!desk.v_down.get());
+    }
+
+    #[test]
+    fn recovery_rechecks_the_ticket_after_lock_and_retry_waits_before_new_key_downs() {
+        let changes: [fn(&Fake); 3] = [
+            |desk| desk.generation.set(13),
+            |desk| desk.window.set(200),
+            |desk| desk.sequence.set(Some(18)),
+        ];
+        for change in changes {
+            let desk = Fake {
+                // Model another delivery leaving Control down while this
+                // delivery waits to acquire the injection mutex.
+                before_post: Some(|desk| {
+                    desk.keys.borrow_mut().control = true;
+                    desk.control_down.set(true);
+                }),
+                after_recovery_wait: Some(change),
+                ..Fake::new("[@synthetic]")
+            };
+            desk.input_results.replace(VecDeque::from([0, 1]));
+            assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(None));
+            assert_eq!(
+                *desk.input_requests.borrow(),
+                [vec![PasteEvent::ControlUp], vec![PasteEvent::ControlUp]]
+            );
+            assert!(!desk.keys_unreleased());
+            assert!(!desk.control_down.get());
+            assert_eq!(desk.release_warnings.get(), 0);
+        }
+    }
+
+    #[test]
+    fn an_expired_delivery_can_release_pending_keys_but_cannot_inject_a_new_paste() {
+        let desk = Fake::new("[@synthetic]");
+        desk.keys.borrow_mut().control = true;
+        desk.control_down.set(true);
+        let ticket = ticket();
+        let guarded = TicketDeskGuard {
+            desk: &desk,
+            ticket: &ticket,
+        };
+        assert!(!guarded.post_before(42, 0x09, Instant::now() - Duration::from_millis(1)));
+        assert_eq!(*desk.input_requests.borrow(), [vec![PasteEvent::ControlUp]]);
+        assert!(!desk.keys_unreleased());
+        assert!(!desk.control_down.get());
+    }
+
+    #[test]
     fn password_check_timeout_and_provider_error_copy_without_pasting() {
         let (release, blocked) = std::sync::mpsc::channel::<()>();
-        let timeout = bounded(Duration::ZERO, move || {
-            let _ = blocked.recv_timeout(Duration::from_secs(1));
-            Some(false)
-        })
-        .flatten();
+        let timeout = QueryWorker::default()
+            .run(Duration::ZERO, move || {
+                let _ = blocked.recv_timeout(Duration::from_secs(1));
+                Some(false)
+            })
+            .flatten();
         let _ = release.send(());
-        let provider_error = bounded(Duration::from_secs(1), || None::<bool>).flatten();
+        let provider_error = QueryWorker::default()
+            .run(Duration::from_secs(1), || None::<bool>)
+            .flatten();
         assert_eq!(timeout, None);
         assert_eq!(provider_error, None);
         for password in [timeout, provider_error, Some(true)] {
@@ -902,16 +1200,19 @@ mod tests {
     fn executable_display_names_run_off_thread_and_fall_back_on_failure_or_timeout() {
         let caller = std::thread::current().id();
         assert_eq!(
-            display_name("writer.exe".into(), move || {
+            display_name(&QueryWorker::default(), "writer.exe".into(), move || {
                 assert_ne!(std::thread::current().id(), caller);
                 Some("Synthetic Writer".into())
             }),
             "Synthetic Writer"
         );
-        assert_eq!(display_name("writer.exe".into(), || None), "writer.exe");
+        assert_eq!(
+            display_name(&QueryWorker::default(), "writer.exe".into(), || None),
+            "writer.exe"
+        );
         let (release, blocked) = std::sync::mpsc::channel::<()>();
         let started = Instant::now();
-        let name = display_name("writer.exe".into(), move || {
+        let name = display_name(&QueryWorker::default(), "writer.exe".into(), move || {
             let _ = blocked.recv_timeout(Duration::from_secs(1));
             Some("Late description".into())
         });
@@ -922,6 +1223,100 @@ mod tests {
             elapsed < Duration::from_millis(500),
             "optional name blocked capture for {elapsed:?}"
         );
+    }
+
+    fn wait_for_query_exit(worker: &QueryWorker) {
+        let started = Instant::now();
+        while worker.0.load(std::sync::atomic::Ordering::Acquire) {
+            assert!(started.elapsed() < Duration::from_secs(1), "query did not exit");
+            std::thread::yield_now();
+        }
+    }
+
+    #[test]
+    fn timed_out_query_workers_keep_their_slots_and_never_queue_busy_requests() {
+        let metadata = QueryWorker::default();
+        let password = QueryWorker::default();
+        let (release_name, name_blocked) = std::sync::mpsc::channel::<()>();
+        let (name_started, name_entered) = std::sync::mpsc::channel();
+        assert_eq!(
+            display_name(&metadata, "writer.exe".into(), move || {
+                let _ = name_started.send(());
+                let _ = name_blocked.recv_timeout(Duration::from_secs(5));
+                Some("Late name".into())
+            }),
+            "writer.exe"
+        );
+        name_entered
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap_or_else(|e| panic!("name worker: {e}"));
+        // A hung metadata worker does not consume the password worker's slot.
+        assert_eq!(password.run(Duration::from_secs(1), || Some(false)), Some(Some(false)));
+        wait_for_query_exit(&password);
+        let (release_password, password_blocked) = std::sync::mpsc::channel::<()>();
+        let (password_started, password_entered) = std::sync::mpsc::channel();
+        assert_eq!(
+            password.run(Duration::ZERO, move || {
+                let _ = password_started.send(());
+                let _ = password_blocked.recv_timeout(Duration::from_secs(5));
+                Some(false)
+            }),
+            None
+        );
+        password_entered
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap_or_else(|e| panic!("password worker: {e}"));
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        for _ in 0..100 {
+            let name_ran = ran.clone();
+            assert_eq!(
+                display_name(&metadata, "writer.exe".into(), move || {
+                    name_ran.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    Some("Unexpected name".into())
+                }),
+                "writer.exe"
+            );
+            let password_ran = ran.clone();
+            let checked = password
+                .run(Duration::from_secs(1), move || {
+                    password_ran.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    Some(false)
+                })
+                .flatten();
+            let desk = Fake {
+                password: checked,
+                ..Fake::new("[@synthetic]")
+            };
+            assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(None));
+            assert!(desk.posts.borrow().is_empty());
+        }
+        let _ = release_name.send(());
+        let _ = release_password.send(());
+        wait_for_query_exit(&metadata);
+        wait_for_query_exit(&password);
+        assert_eq!(
+            ran.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "busy requests must never run later"
+        );
+        assert_eq!(
+            display_name(&metadata, "writer.exe".into(), || Some("New name".into())),
+            "New name"
+        );
+        assert_eq!(password.run(Duration::from_secs(1), || Some(false)), Some(Some(false)));
+    }
+
+    #[test]
+    fn a_panicking_query_releases_its_worker_slot() {
+        let worker = QueryWorker::default();
+        assert_eq!(
+            worker.run(Duration::from_secs(1), || -> bool {
+                panic!("synthetic provider failure")
+            }),
+            None
+        );
+        wait_for_query_exit(&worker);
+        assert_eq!(worker.run(Duration::from_secs(1), || true), Some(true));
     }
 
     #[test]
