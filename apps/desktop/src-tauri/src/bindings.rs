@@ -34,6 +34,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::updater::setting::update_checks,
             crate::updater::setting::set_update_checks,
             crate::updater::setting::check_for_updates,
+            crate::updater::update_available,
             crate::settings_window::open_settings,
             crate::paste::permission::paste_permission,
             crate::paste::permission::open_paste_permission

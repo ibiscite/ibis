@@ -734,7 +734,12 @@ without an update key show neither. Both show only the saved choice, and clicks 
 either are saved in the order they were made.
 The tray click carries the absolute choice its item displayed, so a queued save
 repainting the check cannot change an earlier click's intent.
-On every OS, an available update never shows or focuses the picker: its offer waits quietly while the picker is hidden or unfocused, then appears when the person opens the picker.
+On every OS, automatic update offers never show or focus the picker: while it
+is hidden or unfocused, the tray and More quietly say **Update available…**.
+Opening the picker re-checks before offering the latest update; waiting holds
+no check lock or installer metadata. Turning automatic checks off keeps the
+label but leaves further checks to an explicit command. An explicit update
+command checks and presents its result immediately, opening the picker when needed.
 
 ## Brand and mark
 

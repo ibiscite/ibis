@@ -37,11 +37,12 @@ Nothing from your library is sent, and updates install only when you agree.";
 #[derive(Default)]
 pub(crate) struct Updates {
     automatic: AtomicBool,
-    /// One check or installation at a time.
+    /// One check, consent dialog or installation at a time.
     busy: Arc<AtomicBool>,
     /// A version the person chose not to install; automatic checks don't offer it again.
     declined: Mutex<Option<String>>,
-    offer: Mutex<Option<offer::Pending>>,
+    /// Availability only: deferred offers retain neither metadata nor a check lease.
+    offer_available: AtomicBool,
     progress: Mutex<progress::Progress>,
     saver: setting::Saver,
     #[cfg(any(target_os = "macos", test))]
@@ -189,43 +190,30 @@ async fn find_update(client: &Updater, download_timeout: Duration) -> tauri_plug
 }
 
 async fn check(app: &AppHandle, asked: bool) {
-    let updates = app.state::<Updates>();
-    let Some(busy) = updates.begin() else {
-        if asked {
-            tell(
-                app,
-                "Ibis is already checking for updates, or an update is waiting for your answer.",
-            );
+    offer::check(app, asked, async {
+        let found = match updater(app, CHECK_TIMEOUT) {
+            Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
+                .await
+                .map_err(|e| failure_kind(&e)),
+            Err(e) => Err(failure_kind(&e)),
+        };
+        if !asked {
+            application_message(&automatic_outcome(&found));
         }
-        return;
-    };
-    let found = match updater(app, CHECK_TIMEOUT) {
-        Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
-            .await
-            .map_err(|e| failure_kind(&e)),
-        Err(e) => Err(failure_kind(&e)),
-    };
-    if !asked {
-        application_message(&automatic_outcome(&found));
-    }
-    match found {
-        Ok(Some(update)) => {
-            let declined = updates.declined.lock().ok().and_then(|d| d.clone());
-            if asked || declined.as_deref() != Some(update.version.as_str()) {
-                offer::queue(app, update, busy);
-            }
-        }
-        Ok(None) if asked => tell(
-            app,
-            &format!("You have the newest version, {}.", app.package_info().version),
-        ),
-        // Automatic checks stay quiet and try again later.
-        Err(_) if asked => tell(
-            app,
-            "Ibis could not check for updates. Check your internet connection and try again later.",
-        ),
-        _ => {}
-    }
+        found.map(|update| update.map(|update| offer::Candidate::new(app, update)))
+    })
+    .await;
+}
+
+/// The existing tray command changes only its words when an update is pending.
+pub(crate) struct UpdateMenuItem(pub(crate) tauri::menu::MenuItem<tauri::Wry>);
+pub(crate) use offer::menu_label as update_menu_label;
+
+/// Whether an automatic check found an update that has not been presented.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn update_available(app: AppHandle) -> bool {
+    app.state::<Updates>().offer_available.load(Ordering::SeqCst)
 }
 
 /// Why a check failed, from a fixed list: the error text itself can carry
@@ -430,9 +418,9 @@ pub(crate) fn picker_presented(app: &AppHandle) {
 }
 
 /// Windows/Linux may deliver focus after the show hook has already run.
-/// A focus event retries only presentation, never showing or focusing a window.
+/// A focus event re-checks pending availability, never showing or focusing a window.
 pub(crate) fn picker_focused(app: &AppHandle) {
-    offer::present_pending(app);
+    offer::refresh_pending(app);
 }
 
 #[cfg(target_os = "macos")]

@@ -1,19 +1,46 @@
-//! Retain update offers until the person is using the picker.
+//! Quiet availability, fresh checks on return, and immediate explicit offers.
 
 use super::*;
 use crate::picker::{ChooserLease, ChooserOpen};
 
-pub(super) struct Pending {
+/// A fresh check's result, consumed by this presentation attempt. Never retained
+/// in application state: nightly package URLs can change while Ibis is hidden.
+pub(super) struct Candidate {
     version: String,
     text: String,
     install: Box<dyn FnOnce(BusyGuard) + Send>,
-    busy: BusyGuard,
 }
 
-/// Tests replace only native visibility/focus queries and dialog presentation.
+impl Candidate {
+    pub(super) fn new<R: InstallationUi>(app: &AppHandle<R>, update: Update) -> Self {
+        let handle = app.clone();
+        Self {
+            version: update.version.clone(),
+            text: offer_text(&app.package_info().version.to_string(), &update),
+            install: Box::new(move |busy| {
+                tauri::async_runtime::spawn(async move { install_update(&handle, update, busy).await });
+            }),
+        }
+    }
+}
+
+pub(crate) fn menu_label(available: bool) -> &'static str {
+    if available {
+        "Update available…"
+    } else {
+        "Check for Updates…"
+    }
+}
+
+/// Tests replace native window/menu actions and the feed request; check
+/// ownership, result handling and the visibility/focus gate stay shared.
 pub(super) trait OfferUi: tauri::Runtime {
     fn visible(parent: &tauri::WebviewWindow<Self>) -> bool;
     fn focused(parent: &tauri::WebviewWindow<Self>) -> bool;
+    fn show_picker(app: &AppHandle<Self>);
+    fn refresh(app: &AppHandle<Self>);
+    fn availability_changed(app: &AppHandle<Self>, available: bool);
+    fn tell(app: &AppHandle<Self>, text: &str);
     fn present(
         app: &AppHandle<Self>,
         parent: &tauri::WebviewWindow<Self>,
@@ -32,6 +59,25 @@ impl OfferUi for tauri::Wry {
         crate::picker::focused_for_shortcut(parent) == Some(true)
     }
 
+    fn show_picker(app: &AppHandle<Self>) {
+        crate::picker::show_picker(app);
+    }
+
+    fn refresh(app: &AppHandle<Self>) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move { super::check(&app, false).await });
+    }
+
+    fn availability_changed(app: &AppHandle<Self>, available: bool) {
+        if let Some(item) = app.try_state::<UpdateMenuItem>() {
+            report(item.0.set_text(menu_label(available)), NativeIssue::Window);
+        }
+    }
+
+    fn tell(app: &AppHandle<Self>, text: &str) {
+        tell(app, text);
+    }
+
     fn present(
         app: &AppHandle<Self>,
         parent: &tauri::WebviewWindow<Self>,
@@ -43,57 +89,114 @@ impl OfferUi for tauri::Wry {
     }
 }
 
-pub(super) fn queue<R: OfferUi + InstallationUi>(app: &AppHandle<R>, update: Update, busy: BusyGuard) {
-    let handle = app.clone();
-    retain(
-        app,
-        Pending {
-            version: update.version.clone(),
-            text: offer_text(&app.package_info().version.to_string(), &update),
-            install: Box::new(move |busy| {
-                tauri::async_runtime::spawn(async move { install_update(&handle, update, busy).await });
-            }),
-            busy,
-        },
-    );
-}
-
-fn retain<R: OfferUi>(app: &AppHandle<R>, offer: Pending) {
-    if let Ok(mut pending) = app.state::<Updates>().offer.lock() {
-        *pending = Some(offer);
+fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {
+    if app.state::<Updates>().offer_available.swap(available, Ordering::SeqCst) != available {
+        R::availability_changed(app, available);
+        report(
+            app.emit_to("main", "update:available", available),
+            NativeIssue::PickerEvent,
+        );
     }
-    present_pending(app);
 }
 
-pub(super) fn present_pending<R: OfferUi>(app: &AppHandle<R>) {
+pub(super) async fn check<R: OfferUi>(
+    app: &AppHandle<R>,
+    asked: bool,
+    found: impl std::future::Future<Output = Result<Option<Candidate>, &'static str>>,
+) {
+    let updates = app.state::<Updates>();
+    // Re-read after scheduling too: the saved opt-out may have changed since
+    // a focus event or periodic worker requested this automatic check.
+    if !asked && !updates.automatic.load(Ordering::SeqCst) {
+        return;
+    }
+    let Some(busy) = updates.begin() else {
+        if asked {
+            R::tell(
+                app,
+                "Ibis is already checking for updates, or an update is waiting for your answer.",
+            );
+        }
+        return;
+    };
+    match found.await {
+        Ok(Some(candidate)) => {
+            let declined = updates.declined.lock().ok().and_then(|d| d.clone());
+            if asked || declined.as_deref() != Some(candidate.version.as_str()) {
+                present(app, candidate, asked, busy);
+            } else {
+                publish_available(app, false);
+            }
+        }
+        Ok(None) => {
+            publish_available(app, false);
+            if asked {
+                R::tell(
+                    app,
+                    &format!("You have the newest version, {}.", app.package_info().version),
+                );
+            }
+        }
+        Err(_) if asked => R::tell(
+            app,
+            "Ibis could not check for updates. Check your internet connection and try again later.",
+        ),
+        // Keep the availability signal, but never fall back to old metadata.
+        Err(_) => {}
+    }
+}
+
+fn ready<R: OfferUi>(parent: &tauri::WebviewWindow<R>) -> bool {
+    R::visible(parent) && R::focused(parent)
+}
+
+/// Actual show/focus events re-check deferred availability. This never shows a
+/// window or uses an old candidate, even when the fresh request fails.
+pub(super) fn refresh_pending<R: OfferUi>(app: &AppHandle<R>) {
     let handle = app.clone();
     report(
         app.run_on_main_thread(move || {
-            // Recheck on the main thread: the person may have dismissed the
-            // picker while the feed request or this task was in flight.
+            let updates = handle.state::<Updates>();
+            if updates.offer_available.load(Ordering::SeqCst)
+                && updates.automatic.load(Ordering::SeqCst)
+                && !updates.busy.load(Ordering::SeqCst)
+                && handle
+                    .get_webview_window("main")
+                    .is_some_and(|parent| ready::<R>(&parent))
+            {
+                R::refresh(&handle);
+            }
+        }),
+        NativeIssue::Window,
+    );
+}
+
+fn present<R: OfferUi>(app: &AppHandle<R>, candidate: Candidate, asked: bool, busy: BusyGuard) {
+    let handle = app.clone();
+    report(
+        app.run_on_main_thread(move || {
+            publish_available(&handle, true);
             let Some(parent) = handle.get_webview_window("main") else {
                 return;
             };
-            if !R::visible(&parent) || !R::focused(&parent) {
+            // Automatic results never open or focus a window, including when the
+            // person dismissed the picker while the fresh check was in flight.
+            if !asked && (!handle.state::<Updates>().automatic.load(Ordering::SeqCst) || !ready::<R>(&parent)) {
                 return;
             }
             let Some(owner) = handle.state::<ChooserOpen>().begin() else {
                 return;
             };
-            let pending = handle.state::<Updates>().offer.lock().ok().and_then(|mut p| p.take());
-            let Some(Pending {
-                version,
-                text,
-                install,
-                busy,
-            }) = pending
-            else {
-                return;
-            };
+            if asked {
+                // Explicit tray/More commands may open their parent. The check and
+                // dialog leases prevent show/focus callbacks from starting a retry.
+                R::show_picker(&handle);
+            }
+            publish_available(&handle, false);
+            let Candidate { version, text, install } = candidate;
             let callback = handle.clone();
             R::present(&handle, &parent, owner, text, move |accepted| {
                 if accepted {
-                    // The retained action starts only after explicit consent.
                     install(busy);
                 } else if let Ok(mut declined) = callback.state::<Updates>().declined.lock() {
                     *declined = Some(version);
@@ -105,123 +208,4 @@ pub(super) fn present_pending<R: OfferUi>(app: &AppHandle<R>) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    type Answer = Box<dyn FnOnce(bool) + Send>;
-
-    /// Tauri's mock always reports visible and unfocused, even after hide().
-    /// Model those OS queries here; production offer retention and dispatch run
-    /// unchanged, without opening a native window or downloading a package.
-    #[derive(Default)]
-    struct NativePicker {
-        visible: AtomicBool,
-        focused: AtomicBool,
-        answers: Mutex<Vec<Answer>>,
-    }
-
-    impl OfferUi for tauri::test::MockRuntime {
-        fn visible(parent: &tauri::WebviewWindow<Self>) -> bool {
-            parent.state::<NativePicker>().visible.load(Ordering::SeqCst)
-        }
-
-        fn focused(parent: &tauri::WebviewWindow<Self>) -> bool {
-            parent.state::<NativePicker>().focused.load(Ordering::SeqCst)
-        }
-
-        fn present(
-            app: &AppHandle<Self>,
-            parent: &tauri::WebviewWindow<Self>,
-            owner: ChooserLease,
-            text: String,
-            answer: impl FnOnce(bool) + Send + 'static,
-        ) {
-            assert_eq!(parent.label(), "main");
-            assert!(Self::visible(parent));
-            assert!(Self::focused(parent));
-            assert!(text.contains("9.0.0"));
-            app.state::<NativePicker>()
-                .answers
-                .lock()
-                .unwrap_or_else(|e| panic!("{e}"))
-                .push(Box::new(move |yes| {
-                    drop(owner);
-                    answer(yes);
-                }));
-        }
-    }
-
-    #[test]
-    fn update_available_while_picker_is_hidden_waits_without_showing_or_focusing_it()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let app = tauri::test::mock_builder()
-            .manage(Updates::default())
-            .manage(ChooserOpen::default())
-            .manage(NativePicker::default())
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
-        let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .visible(false)
-            .build()?;
-        let picker = app.state::<NativePicker>();
-        let updates = app.state::<Updates>();
-        let dialogs = app.state::<ChooserOpen>();
-        let busy = updates.begin().unwrap_or_else(|| panic!("check"));
-        retain(
-            app.handle(),
-            Pending {
-                version: "9.0.0".into(),
-                text: "Ibis 9.0.0 is available".into(),
-                install: Box::new(|_| panic!("an offer must not install without consent")),
-                busy,
-            },
-        );
-        present_pending(app.handle());
-        assert!(!picker.visible.load(Ordering::SeqCst));
-        assert!(!picker.focused.load(Ordering::SeqCst));
-        assert!(picker.answers.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
-        assert!(updates.offer.lock().unwrap_or_else(|e| panic!("{e}")).is_some());
-        assert!(updates.begin().is_none(), "a retained offer still owns the check");
-        assert!(
-            !dialogs.is_open(),
-            "hidden offers do not acquire native dialog ownership"
-        );
-
-        // A stale focus report must not make a hidden picker eligible either.
-        picker.focused.store(true, Ordering::SeqCst);
-        present_pending(app.handle());
-        assert!(!picker.visible.load(Ordering::SeqCst));
-        assert!(picker.answers.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
-        picker.focused.store(false, Ordering::SeqCst);
-
-        // Focus may arrive after show() on Windows/Linux. A pinned picker can
-        // also stay visible while the person uses another app.
-        picker.visible.store(true, Ordering::SeqCst);
-        present_pending(app.handle());
-        assert!(!picker.focused.load(Ordering::SeqCst));
-        assert!(picker.answers.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
-
-        // The later focus event retries, but a file chooser already owns it.
-        picker.focused.store(true, Ordering::SeqCst);
-        let chooser = dialogs.begin().unwrap_or_else(|| panic!("file chooser"));
-        present_pending(app.handle());
-        assert!(updates.offer.lock().unwrap_or_else(|e| panic!("{e}")).is_some());
-        drop(chooser);
-        present_pending(app.handle());
-        present_pending(app.handle()); // no duplicate sheet on another show
-        assert!(updates.offer.lock().unwrap_or_else(|e| panic!("{e}")).is_none());
-        assert!(dialogs.is_open());
-        let mut answers = picker.answers.lock().unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(answers.len(), 1);
-        let later = answers.pop().unwrap_or_else(|| panic!("offer"));
-        drop(answers);
-        later(false);
-        assert!(!dialogs.is_open());
-        assert!(updates.begin().is_some(), "Later releases the check for retry");
-        assert_eq!(
-            updates.declined.lock().unwrap_or_else(|e| panic!("{e}")).as_deref(),
-            Some("9.0.0")
-        );
-        drop(window);
-        Ok(())
-    }
-}
+mod tests;
