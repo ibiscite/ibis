@@ -247,6 +247,9 @@ each with an ellipsis; Spacious adds the type word; Compact puts the first
 author after the title. "Why it matched" only when the match is hidden; "In 2
 libraries" for duplicates; one 16 px attachment icon in a 24 px chip. Screen
 readers hear title, first author, year, container, type and why it matched.
+The container is the journal, book or proceedings title, falling back to the
+publisher. Strip markup and trim both values before choosing; blank or
+markup-only values do not hide the fallback or leave an empty meta label.
 
 **Menus** [C9]. The operating system's own menus only where the system owns
 them: menu bar, tray and native right-click (decision 0021). In-window menus (format,

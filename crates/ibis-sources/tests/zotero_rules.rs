@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use ibis_core::contract::{LibraryId, LibraryObject, Record, Snapshot};
 use ibis_core::zotero::api::{Response, Transport, TransportError};
 use ibis_sources::zotero::{self, ZoteroItem};
-use ibis_sources::zotero_source::{LiveError, ZoteroError, ZoteroSource};
+use ibis_sources::zotero_source::{AttachmentKind, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, WarningCode};
 use serde_json::{Value, json};
 
@@ -228,6 +228,17 @@ fn parents_load_and_child_attachments_are_not_records() {
         "the child attachment item is still not a reference"
     );
     assert_eq!(find(&loaded, "SYN00001").csl["title"], "Synthetic article with a PDF");
+    for (key, expected) in [
+        ("SYN00001", Some(AttachmentKind::Pdf)),
+        ("SYN00002", Some(AttachmentKind::WebPage)),
+        ("SYN00003", Some(AttachmentKind::WebPage)),
+        ("SYN00004", None),
+        ("SYN00005", Some(AttachmentKind::Other)),
+        ("SYN00006", None),
+        ("SYN00007", Some(AttachmentKind::Pdf)),
+    ] {
+        assert_eq!(loaded.best_attachment_kind(&find(&loaded, key).id), expected, "{key}");
+    }
 }
 
 #[test]
@@ -237,6 +248,58 @@ fn hostile_attachment_links_keep_the_reference() {
     assert_eq!(records(&loaded).len(), 6, "one bad link never drops an item");
     for key in ["SYN00101", "SYN00102", "SYN00103", "SYN00104", "SYN00105", "SYN00106"] {
         assert!(find(&loaded, key).csl.contains_key("title"), "{key}");
+        let expected = (key == "SYN00106").then_some(AttachmentKind::Pdf);
+        assert_eq!(loaded.best_attachment_kind(&find(&loaded, key).id), expected, "{key}");
+    }
+}
+
+#[test]
+fn best_attachment_mime_values_use_ascii_matching_and_a_byte_bound() {
+    let mut cases = vec![
+        (json!("application/PDF; name=日本語"), Some(AttachmentKind::Pdf)),
+        (json!("text/HTML; charset=utf-8"), Some(AttachmentKind::WebPage)),
+        (
+            json!(" APPLICATION/XHTML+XML ; charset=utf-8 "),
+            Some(AttachmentKind::WebPage),
+        ),
+        (json!("application/pdƒ"), Some(AttachmentKind::Other)),
+        (json!("applıcation/pdf"), Some(AttachmentKind::Other)),
+        (json!("application/ｐｄｆ"), Some(AttachmentKind::Other)),
+        (json!("\u{2003}\t ; charset=日本語"), None),
+        (json!(""), None),
+        (json!("😀".repeat(64)), Some(AttachmentKind::Other)),
+        (json!("😀".repeat(65)), None),
+        (
+            json!(format!("application/{}", "é".repeat(122))),
+            Some(AttachmentKind::Other),
+        ),
+        (json!(format!("application/{}", "é".repeat(123))), None),
+        (Value::Null, None),
+        (json!(false), None),
+        (json!(42), None),
+        (json!(["application/pdf"]), None),
+        (json!({"type": "application/pdf"}), None),
+    ];
+    for length in [255usize, 256, 257, 10_000, 1 << 20] {
+        let mime = format!("application/{}", "x".repeat(length - "application/".len()));
+        assert_eq!(mime.len(), length);
+        cases.push((json!(mime), (length <= 256).then_some(AttachmentKind::Other)));
+    }
+    // Padding and parameters count toward the bound, even for recognized MIME types.
+    for length in [256usize, 257] {
+        for prefix in ["application/pdf; name=", "application/pdf"] {
+            let mime = format!("{prefix}{}", " ".repeat(length - prefix.len()));
+            assert_eq!(mime.len(), length);
+            cases.push((json!(mime), (length <= 256).then_some(AttachmentKind::Pdf)));
+        }
+    }
+    for (mime, expected) in cases {
+        let mut item = book(0);
+        item["links"] = json!({"attachment": {"attachmentType": mime}});
+        let loaded = refresh(&mut Api::new(vec![item])).unwrap();
+        assert_eq!(records(&loaded).len(), 1);
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        assert_eq!(loaded.best_attachment_kind(&find(&loaded, &key(0)).id), expected);
     }
 }
 
@@ -349,6 +412,59 @@ fn compound_creator_names_are_refused_at_neutral_and_live_boundaries() {
     );
 }
 
+// Pending field-level salvage requirements from #342. The strict boundary
+// tests above describe today's behavior; these retain the desired behavior.
+#[test]
+#[ignore = "#342"]
+fn malformed_text_fields_warn_and_keep_readable_metadata() {
+    for (field, csl_field) in [
+        ("title", "title"),
+        ("publicationTitle", "container-title"),
+        ("DOI", "DOI"),
+        ("url", "URL"),
+        ("abstractNote", "abstract"),
+        ("language", "language"),
+    ] {
+        let mut data = json!({
+            "itemType": "journalArticle", "title": "Synthetic title",
+            "publisher": "Synthetic publisher",
+            "creators": [{"creatorType": "author", "firstName": "Visible", "lastName": "Synthetic"}]
+        });
+        data[field] = json!({"unexpected": "Synthetic text"});
+        let loaded = refresh(&mut Api::new(vec![row("SYN00001", data)])).unwrap();
+        assert_eq!(records(&loaded).len(), 1);
+        let record = find(&loaded, "SYN00001");
+        assert_eq!(record.csl["publisher"], "Synthetic publisher");
+        assert_eq!(record.csl["author"][0]["given"], "Visible");
+        if field != "title" {
+            assert_eq!(record.csl["title"], "Synthetic title");
+        }
+        assert!(!record.csl.contains_key(csl_field), "{field}");
+        assert!(
+            loaded.warnings.iter().any(|warning| warning.code == WarningCode::Field),
+            "{field}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "#342"]
+fn malformed_family_names_warn_while_given_names_and_titles_survive() {
+    let data = json!({
+        "itemType": "book", "title": "Synthetic title",
+        "creators": [{"creatorType": "author", "lastName": ["Synthetic"], "firstName": "Visible"}]
+    });
+    let loaded = refresh(&mut Api::new(vec![row("SYN00001", data)])).unwrap();
+    assert_eq!(records(&loaded).len(), 1);
+    let record = find(&loaded, "SYN00001");
+    assert_eq!(record.csl["title"], "Synthetic title");
+    let authors = record.csl["author"].as_array().unwrap();
+    assert_eq!(authors.len(), 1);
+    assert_eq!(authors[0]["given"], "Visible");
+    assert!(authors[0].get("family").is_none());
+    assert!(loaded.warnings.iter().any(|warning| warning.code == WarningCode::Field));
+}
+
 // --- canonical normalization -------------------------------------------------------
 
 #[test]
@@ -417,6 +533,22 @@ fn numeric_titles_keep_their_digits() {
     assert_eq!(record.csl["title"], "123");
     assert_eq!(record.csl["container-title"], "Synthetic journal");
     assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+}
+
+#[test]
+fn numeric_publication_titles_and_volumes_keep_their_string_values() {
+    for (value, expected) in [(json!(123), "123"), (json!(0), "0"), (json!(12.5), "12.5")] {
+        let data = json!({
+            "itemType": "journalArticle", "title": "Synthetic title",
+            "publicationTitle": value, "volume": value
+        });
+        let loaded = refresh(&mut Api::new(vec![row("SYN00001", data)])).unwrap();
+        let record = find(&loaded, "SYN00001");
+        assert_eq!(record.csl["title"], "Synthetic title");
+        assert_eq!(record.csl["container-title"], expected);
+        assert_eq!(record.csl["volume"], expected);
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    }
 }
 
 // --- malformed payloads -----------------------------------------------------------------------

@@ -7,7 +7,7 @@
 #[path = "support/bib.rs"]
 mod bib;
 
-use bib::{csl, date, display, keys, load, month, plain, record, text, warned_at, year};
+use bib::{csl, date, display, keys, load, month, name, plain, record, text, warned_at, year};
 use ibis_sources::WarningCode;
 use serde_json::{Value, json};
 use unicode_normalization::UnicodeNormalization;
@@ -156,6 +156,26 @@ fn and_others_marks_a_truncated_list_instead_of_an_author() {
     let authors = csl(&r, "o")["author"].as_array().cloned().unwrap_or_default();
     assert_eq!(authors.len(), 2);
     assert_eq!(authors[1], json!({"literal": "others"}));
+    assert!(name(&authors[1]).is_others());
+    assert_eq!(display(&authors[1]), "et al.");
+}
+
+#[test]
+fn fixture_names_keep_family_first_particles_and_suffixes_in_display() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/real-world.bib");
+    let loaded = ibis_sources::load_file(&path).unwrap_or_else(|e| panic!("{e}"));
+    for (key, expected) in [
+        ("chen2022", vec!["陈伟", "山田太郎"]),
+        (
+            "vanderberg2019",
+            vec!["Jan van der Berg", "John Smith Jr.", "Mary-Kate O'Neil"],
+        ),
+    ] {
+        let authors = csl(&loaded, key)["author"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{key}: no authors"));
+        assert_eq!(authors.iter().map(display).collect::<Vec<_>>(), expected, "{key}");
+    }
 }
 
 #[test]

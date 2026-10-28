@@ -106,6 +106,7 @@ impl SearchResult {
         let container = ["container-title", "publisher"]
             .into_iter()
             .map(text)
+            .map(|text| text.trim().to_owned())
             .find(|text| !text.is_empty())
             .map(|text| capped(text, CONTAINER_LIMIT));
         Self {

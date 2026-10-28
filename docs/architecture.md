@@ -85,9 +85,10 @@ Its capability table drives supported forms and typed field losses; explicit
 unsupported forms are refused. Source order and repeated selections are retained.
 Key output writes instructions for the destination processor, whose style can
 subsequently sort or format the citation. The CLI and picker prepare citations
-through the shared engine; the picker copies only its prepared result. The
-remaining unused desktop commands and old core helpers are removed in #1260,
-after their live discovery, settings and transport callers are replaced.
+through the shared engine; the picker copies only its prepared result. Core no
+longer carries the pre-engine library model, file loaders or citation renderer.
+Shared names, dates, settings choices, discovery and transport rules remain
+where clients still use them.
 
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
@@ -136,4 +137,12 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 
 ## What gets replaced
 
-`model.rs`, `library.rs`, `settings.rs`, the Zotero and search adapters, the CLI and the desktop library, copy and preferences code are rebuilt on the contracts above. The BibTeX lexer and resolver, date parsing, citation escaping, locator parsing, the native shortcut, panel, clipboard and updater modules, the UI components and tokens, and every test fixture are kept. Settings migrations and identity carry-over code are deleted (decision 0027).
+The pre-engine `Reference` model, library selection helpers, owned search index,
+file loaders, watcher, citation renderer and Zotero CSL-export mapping and scan
+have been deleted from `ibis-core`. BibTeX parsing and file watching live in
+`ibis-sources`; Zotero reads use `ibis-zotero-local` and the canonical mapping in
+`ibis-sources`. Search uses contract snapshots and citations use the shared engine.
+Core retains the shared name/date helpers, settings, discovery, transport and
+group-list rules still used by clients. The native shortcut, panel, clipboard and
+updater modules, UI components, tokens and synthetic fixtures remain. Settings
+migrations and identity carry-over code are deleted (decision 0027).

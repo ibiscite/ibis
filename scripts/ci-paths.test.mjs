@@ -199,7 +199,7 @@ test("slow checks run in the existing nightly/release workflow, never on pull re
   assert.match(preview, /^  schedule:\n    - cron:/m);
   const build = preview.split("\n  build:\n")[1].split("\n  sign-macos:\n")[0];
   assert.match(build, /if: github.event_name != 'schedule' && !inputs.update_test/);
-  assert.match(build, /- name: Test core in release mode \(Linux\)\n        if: runner.os == 'Linux'\n        env:\n          RUSTFLAGS: -D warnings\n        run: cargo test -p ibis-core --release --locked/);
+  assert.match(build, /- name: Test core and sources in release mode \(Linux\)\n        if: runner.os == 'Linux'\n        env:\n          RUSTFLAGS: -D warnings\n        run: cargo test -p ibis-core -p ibis-sources --release --locked/);
   assert.match(build, /rustup toolchain install 1\.90\.0 --profile minimal\n          cargo \+1\.90\.0 test --locked/);
   assert.match(build, /- name: Capture the picker \(Linux and macOS\)\n        if: runner.os != 'Windows' && matrix.target != 'x86_64-apple-darwin'/);
   assert.match(build, /--seconds 60/);
