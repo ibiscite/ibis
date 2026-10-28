@@ -481,6 +481,8 @@ export type ShortcutRefusal =
 "needs-modifier" |
 /**  ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands. */
 "app-shortcut" |
+/**  The picker already uses this key combination for a command. */
+"picker-shortcut" |
 /**  Windows uses Ctrl+Alt (also with Shift) to type with AltGr. */
 "alt-gr" |
 /**  Another app or the system already has it. */

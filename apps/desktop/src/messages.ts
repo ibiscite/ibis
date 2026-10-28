@@ -527,6 +527,7 @@ export const settingsText = {
       invalid: "Ibis cannot use that key combination. Try another shortcut.",
       "needs-modifier": "Include Control, Alt or Command. Shift alone is not enough.",
       "app-shortcut": "That shortcut is used for app commands. Add another modifier.",
+      "picker-shortcut": "That shortcut is used in the picker. Try another shortcut.",
       "alt-gr": "Ctrl+Alt with a typing key is used for AltGr on Windows. Try another shortcut.",
       "in-use": "Another app or the system may be using that shortcut. Try another.",
       unavailable: "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.",

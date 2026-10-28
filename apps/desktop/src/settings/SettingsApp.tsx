@@ -46,6 +46,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [shortcutSaving, setShortcutSaving] = useState(false);
   const shortcutBusy = useRef(false);
   const shortcutReads = useRef(0);
+  const updateReads = useRef(0);
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
@@ -78,7 +79,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         if (request === reads.current && idle && started === generation.current && pending.current === 0) setPreferences(next);
       }).catch(() => setFailed(true));
       api.loginItem().then(setLogin).catch(() => setLogin(null));
-      api.updateChecks().then(setUpdates).catch(() => setUpdates(null));
+      const updateRequest = ++updateReads.current;
+      api.updateChecks().then((next) => {
+        if (active && updateRequest === updateReads.current) setUpdates(next);
+      }).catch(() => {
+        if (active && updateRequest === updateReads.current) setUpdates(null);
+      });
     };
     readAll();
     api.version().then(setVersion).catch(() => undefined);
@@ -91,7 +97,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem(settingsText.shortcut.readFailed); }).then(() => { if (active) readShortcut(); });
     const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus ?? "top"); });
-    const automatic = api.onUpdateChecks(setUpdates);
+    const automatic = api.onUpdateChecks((next) => {
+      if (!active) return;
+      updateReads.current += 1;
+      setUpdates(next);
+    });
     const close = api.onCloseRequested(async () => {
       // Give queued choices time to save; a stuck command must not trap the window.
       let timer: number | undefined;

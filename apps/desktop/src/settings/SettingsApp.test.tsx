@@ -32,6 +32,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
     shortcuts: [] as ((status: ShortcutStatus) => void)[],
     shortcutChoices: [] as (string | null)[],
+    automatic: [] as ((on: boolean) => void)[],
   };
   const commit = async (next: Partial<PickerPreferences>) => {
     state.patches.push(next);
@@ -59,7 +60,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     onShortcutStatus: async (handler) => { state.shortcuts.push(handler); return () => { state.shortcuts = state.shortcuts.filter((each) => each !== handler); }; },
     version: async () => "0.3.0",
     onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
-    onUpdateChecks: async () => () => undefined,
+    onUpdateChecks: async (handler) => { state.automatic.push(handler); return () => { state.automatic = state.automatic.filter((each) => each !== handler); }; },
     onCloseRequested: async (handler) => { state.closes.push(handler); return () => undefined; },
   };
   return { api, state, commit };
@@ -71,6 +72,47 @@ test("pages are opened by name, and the paste guide is General's pasting group",
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
+});
+
+test.each([
+  ["initial", "success"], ["initial", "failure"],
+  ["focus", "success"], ["focus", "failure"],
+])("an automatic-update event wins over an older %s read's %s", async (from, outcome) => {
+  const { api, state } = fakeApi({ granted: true });
+  const read = deferred<boolean>();
+  if (from === "initial") vi.spyOn(api, "updateChecks").mockReturnValueOnce(read.promise);
+  const { unmount } = render(<SettingsApp api={api} initialPage="about" />);
+  if (from === "focus") {
+    await screen.findByRole("switch", { name: settingsText.updates.automatic });
+    vi.spyOn(api, "updateChecks").mockReturnValueOnce(read.promise);
+    fireEvent.focus(window);
+  }
+  act(() => state.automatic[0]!(true));
+  const automatic = screen.getByRole("switch", { name: settingsText.updates.automatic }) as HTMLInputElement;
+  expect(automatic.checked).toBe(true);
+  await act(async () => { if (outcome === "success") read.resolve(false); else read.reject(); });
+  expect(screen.getByRole("switch", { name: settingsText.updates.automatic })).toBe(automatic);
+  expect(automatic.checked).toBe(true);
+  // A read started after the event can still observe a later saved choice.
+  vi.spyOn(api, "updateChecks").mockResolvedValueOnce(false);
+  fireEvent.focus(window);
+  await waitFor(() => expect(automatic.checked).toBe(false));
+  unmount();
+  await act(async () => { await Promise.resolve(); });
+  expect(state.automatic).toEqual([]);
+});
+
+test.each(["success", "failure"])("a newer automatic-update read wins over an older read's %s", async (outcome) => {
+  const { api } = fakeApi({ granted: true });
+  const old = deferred<boolean>(), latest = deferred<boolean>();
+  vi.spyOn(api, "updateChecks").mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.focus(window);
+  await act(async () => { latest.resolve(true); });
+  const automatic = screen.getByRole("switch", { name: settingsText.updates.automatic }) as HTMLInputElement;
+  await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
+  expect(screen.getByRole("switch", { name: settingsText.updates.automatic })).toBe(automatic);
+  expect(automatic.checked).toBe(true);
 });
 
 test("Settings opens at the top of General with every built page in a navigable, selected sidebar list", async () => {

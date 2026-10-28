@@ -26,6 +26,8 @@ pub(crate) enum ShortcutRefusal {
     NeedsModifier,
     /// ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands.
     AppShortcut,
+    /// The picker already uses this key combination for a command.
+    PickerShortcut,
     /// Windows uses Ctrl+Alt (also with Shift) to type with AltGr.
     AltGr,
     /// Another app or the system already has it.
@@ -37,7 +39,7 @@ pub(crate) enum ShortcutRefusal {
 }
 
 /// Whether `text` can open Ibis. It needs Control, Option/Alt or Command, and
-/// not the command key alone, which every app uses for its own menu commands.
+/// not the command key alone or a chord already used by the picker.
 pub(crate) fn check_shortcut(text: &str) -> Result<OpeningShortcut, ShortcutRefusal> {
     let command = if cfg!(target_os = "macos") {
         Modifiers::SUPER
@@ -58,6 +60,11 @@ fn check_shortcut_for(text: &str, command: Modifiers, windows: bool) -> Result<O
     }
     if shortcut.mods == command {
         return Err(ShortcutRefusal::AppShortcut);
+    }
+    // KEY_TABLE reserves format and pin; isKeysShortcut also handles ⇧⌘/.
+    // Unshifted picker commands are already covered by AppShortcut above.
+    if shortcut.mods == command | Modifiers::SHIFT && matches!(shortcut.key, Code::KeyF | Code::KeyP | Code::Slash) {
+        return Err(ShortcutRefusal::PickerShortcut);
     }
     if windows && uses_altgr(requested) {
         return Err(ShortcutRefusal::AltGr);
@@ -156,6 +163,45 @@ fn save_shortcut(file: &SettingsFile, shortcut: Option<String>) -> Result<(), Sh
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opening_shortcuts_cannot_take_picker_commands_on_any_platform() {
+        // keys.test.ts keeps these cases in sync with KEY_TABLE and the
+        // shifted keys-help alias accepted by the picker key handler.
+        let commands: Vec<String> =
+            serde_json::from_str(include_str!("../../src/testing/picker-command-shortcuts.json"))
+                .unwrap_or_else(|error| panic!("invalid picker shortcuts: {error}"));
+        for (command, windows, modifier) in [
+            (Modifiers::SUPER, false, "Command"),
+            (Modifiers::CONTROL, true, "Control"),
+            (Modifiers::CONTROL, false, "Control"),
+        ] {
+            for keys in &commands {
+                let text = keys.replace("CmdOrCtrl", modifier);
+                assert!(check_shortcut_for(&text, command, windows).is_err(), "{text}");
+            }
+            for key in ["F", "KeyF", "P", "KeyP", "Slash", "/"] {
+                let text = format!("Shift+{modifier}+{key}");
+                assert_eq!(
+                    check_shortcut_for(&text, command, windows).err(),
+                    Some(ShortcutRefusal::PickerShortcut),
+                    "{text}"
+                );
+            }
+            for key in ["Y", "K", "I", "Q", "Comma"] {
+                let text = format!("{modifier}+Shift+{key}");
+                assert!(check_shortcut_for(&text, command, windows).is_ok(), "{text}");
+            }
+            for keys in [
+                "Alt+Shift+F",
+                "Alt+Shift+P",
+                "Alt+Shift+Slash",
+                "Control+Command+Shift+F",
+            ] {
+                assert!(check_shortcut_for(keys, command, windows).is_ok(), "{keys}");
+            }
+        }
+    }
 
     #[derive(serde::Deserialize)]
     struct Recording {
@@ -331,6 +377,7 @@ mod tests {
             (ShortcutRefusal::Invalid, "invalid"),
             (ShortcutRefusal::NeedsModifier, "needs-modifier"),
             (ShortcutRefusal::AppShortcut, "app-shortcut"),
+            (ShortcutRefusal::PickerShortcut, "picker-shortcut"),
             (ShortcutRefusal::AltGr, "alt-gr"),
             (ShortcutRefusal::InUse, "in-use"),
             (ShortcutRefusal::Unavailable, "unavailable"),
