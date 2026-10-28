@@ -2,7 +2,7 @@
 import { useCallback, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { AppOutput, CopyFormat, PickerDestination } from "../../api";
-import { styleOf, type Choice } from "./choice";
+import { choiceName, styleOf, type Choice } from "./choice";
 type CopyToken = { opening: number; choice: number };
 
 import type { Operation } from "./Notices";
@@ -27,6 +27,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const [onceOnly, setOnceOnly] = useState(false);
   const [ready, setReady] = useState(!pickerDestination);
   const [saving, setSaving] = useState(false);
+  const [picked, setPicked] = useState(false);
   const reads = useRef(0);
   const openings = useRef(0);
   const capturedId = useRef<string | null | undefined>(undefined);
@@ -35,7 +36,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const read = useCallback((reset = true) => {
     if (!pickerDestination) return;
     const request = ++reads.current;
-    if (reset) { openings.current += 1; setOnce(null); setOnceOnly(false); }
+    if (reset) { openings.current += 1; setOnce(null); setOnceOnly(false); setPicked(false); }
     setReady(false);
     // A reopening reads after outstanding saves, so it sees the durable choice.
     void saves.current.then(pickerDestination).then((next) => {
@@ -44,6 +45,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
         openings.current += 1;
         setOnce(null);
         setOnceOnly(false);
+        setPicked(false);
       }
       capturedId.current = next.app_id;
       setDestination(next);
@@ -85,6 +87,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   };
   const choose = (choice: Choice) => {
     choices.current += 1;
+    setPicked(true);
     setOnce(choice);
     if (ready && app && !onceOnly) remember(choice);
     else if (ready && !app && !onceOnly && (!pickerDestination || destination)) { chooseDefault(choice); setOnce(null); }
@@ -93,11 +96,13 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const isCurrentCopy = (token: CopyToken) => token.opening === openings.current && token.choice === choices.current;
   const consumeOnce = (token: CopyToken) => {
     if (!isCurrentCopy(token)) return null;
+    if (once !== null) setPicked(false);
     setOnce(null); setOnceOnly(false);
     return base.current;
   };
   const restoreAutomatic = () => {
     choices.current += 1;
+    setPicked(false);
     setOnceOnly(false);
     if (remembered) remember(null);
     else setOnce(null);
@@ -112,9 +117,14 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const forgetAll = () => {
     if (!forgetAppOutputs) return;
     choices.current += 1;
+    setPicked(false);
     save(forgetAppOutputs, () => { setDestination((old) => old && { ...old, remembered: null }); setOnceOnly(false); });
   };
-  return { app: rememberAppOutput ? app : null, format, ready, saving, remembered: remembered !== null, read, choose,
+  const scope = !picked ? null : once !== null || onceOnly ? `${choiceName(format)} for this citation`
+    : remembered ? `${choiceName(format)} remembered for this ${destination?.output_question ?? "app"}`
+      : !app ? `${choiceName(format)} used as global default` : null;
+  const shouldAsk = Boolean(rememberAppOutput && destination?.app_id && destination.output_question && !remembered && once === null);
+  return { app: rememberAppOutput ? app : null, format, ready, saving, scope, shouldAsk, remembered: remembered !== null, read, choose,
     onceOnly, toggleOnce: () => { choices.current += 1; setOnceOnly((old) => !old); }, copyToken, isCurrentCopy, consumeOnce, restoreAutomatic, useDefault,
     quitAfterSaving, forgetAll: forgetAppOutputs ? forgetAll : null };
 }

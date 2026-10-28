@@ -4,7 +4,7 @@ import { useDestination } from "./useDestination";
 import type { PickerDestination } from "../../api";
 
 afterEach(cleanup);
-const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false };
+const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, output_question: "browser" };
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -78,4 +78,36 @@ test("an old successful copy cannot consume a newer one-time output choice", asy
   act(() => result.current.consumeOnce(old));
   expect(result.current.format).toBe("cite");
   expect(result.current.onceOnly).toBe(true);
+});
+
+test("remembering, Automatic and Forget control the question independently of the global fallback", async () => {
+  const settings = options();
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser,
+    rememberAppOutput: vi.fn(async () => null), forgetAppOutputs: vi.fn(async () => null) }, settings));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  expect(result.current.shouldAsk).toBe(true);
+  await act(async () => result.current.choose("pandoc"));
+  expect(result.current.shouldAsk).toBe(false);
+  expect(result.current.scope).toBe("Pandoc remembered for this browser");
+  await act(async () => result.current.restoreAutomatic());
+  expect(result.current.shouldAsk).toBe(true);
+  expect(result.current.scope).toBeNull();
+  await act(async () => result.current.choose("cite"));
+  await act(async () => result.current.forgetAll?.());
+  expect(result.current.shouldAsk).toBe(true);
+  expect(settings.chooseDefault).not.toHaveBeenCalled();
+});
+
+test("a once-only pick announces its scope and consuming it brings the question back", async () => {
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser, rememberAppOutput: vi.fn() }, options()));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("style:apa"));
+  expect(result.current.scope).toBe("APA for this citation");
+  expect(result.current.shouldAsk).toBe(false);
+  act(() => result.current.consumeOnce(result.current.copyToken()));
+  expect(result.current.shouldAsk).toBe(true);
+  expect(result.current.scope).toBeNull();
 });

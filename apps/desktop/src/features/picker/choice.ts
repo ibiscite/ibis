@@ -1,6 +1,6 @@
 // What the picker copies and which references it acts on. Pure; no React.
 import type { CopyFormat, Locator, SearchResult, ZoteroLibrary } from "../../api";
-import { copyFormatNames, keyText } from "../../messages";
+import { copyFormatMenu, copyFormatNames, keyText } from "../../messages";
 import { copiesEntry, STYLE_NAMES, type StyleId } from "../../format/styles";
 
 /** A citation-key syntax, or a citation style written as `style:<id>`. */
@@ -14,6 +14,13 @@ export function styleOf(choice: Choice): StyleId | null {
 export function choiceName(choice: Choice): string {
   const style = styleOf(choice);
   return style ? STYLE_NAMES[style] : copyFormatNames[choice as CopyFormat];
+}
+
+/** Name the material that lands, without promising a document-aware style. */
+export function outputName(choice: Choice): string {
+  const style = styleOf(choice);
+  if (!style) return copyFormatMenu[choice as CopyFormat].label;
+  return `${STYLE_NAMES[style]} · ${copiesEntry(style) ? "reference entry" : style === "chicago-author-date" ? "author-date text" : "text"}`;
 }
 
 /** A prepared reference freezes its search locator independently of later queries. */

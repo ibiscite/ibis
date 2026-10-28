@@ -89,6 +89,49 @@ fn output_follows_the_app() {
 }
 
 #[test]
+fn browsers_and_code_editors_ask_without_inferring_a_syntax() {
+    let default = OutputSpec::Key {
+        syntax: KeySyntax::Typst,
+        command: None,
+    };
+    for app in APPS.iter().filter(|app| app.output_question.is_some()) {
+        let id = AppId {
+            system: app.system,
+            id: app.id.to_uppercase(),
+        };
+        assert_eq!(lookup(&id).and_then(|app| app.output_question), app.output_question);
+        assert_eq!(app.output, None);
+        assert_eq!(app.safety, PasteSafety::Normal);
+        assert_eq!(output_for(Some(&id), &default, "apa"), default);
+    }
+    for id in [
+        mac("com.apple.Safari"),
+        mac("com.google.Chrome"),
+        windows(r"C:\Apps\FIREFOX.EXE"),
+    ] {
+        assert_eq!(
+            lookup(&id).and_then(|app| app.output_question),
+            Some(OutputQuestion::Browser)
+        );
+    }
+    for id in [mac("com.microsoft.VSCode"), windows("code.exe")] {
+        assert_eq!(
+            lookup(&id).and_then(|app| app.output_question),
+            Some(OutputQuestion::Editor)
+        );
+    }
+    for id in [
+        mac("com.microsoft.Word"),
+        mac("md.obsidian"),
+        mac("TeXShop"),
+        mac("com.apple.Terminal"),
+        mac("example.unknown"),
+    ] {
+        assert_eq!(lookup(&id).and_then(|app| app.output_question), None);
+    }
+}
+
+#[test]
 fn an_ordinary_app_gets_the_paste() {
     assert_eq!(decide(&target(mac("com.microsoft.Word")), ON), Decision::Paste);
     assert_eq!(decide(&target(mac("com.example.unknown")), ON), Decision::Paste);
