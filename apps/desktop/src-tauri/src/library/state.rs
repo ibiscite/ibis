@@ -1,38 +1,29 @@
 //! The open library and the numbered requests that replace it. Nothing here
 //! touches the app or the platform, so every rule is tested directly.
 
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use ibis_core::model::LoadWarning;
-use ibis_core::search::OwnedIndex;
-use ibis_core::source::SourceSnapshot;
-
-use super::error::{CommandError, LoadError};
+use super::engine_file::FileLibrary;
+use super::error::LoadError;
 use super::load::Loaded;
 use super::source::Source;
 use super::status::{LibraryStatus, status};
 
-/// The library currently open in the app, indexed once when it is opened.
+/// The library currently open in the app: the engine that read it and how
+/// the request to open it went.
 #[derive(Default)]
 pub(crate) struct Library {
-    pub(crate) file: Option<Arc<super::engine_file::FileLibrary>>,
+    /// Shared so a search or copy can run without holding the library lock.
+    pub(crate) file: Option<Arc<FileLibrary>>,
     pub(crate) source: Option<Source>,
-    /// The requested source, including before it has produced an index.
+    /// The requested source, including before it has been read.
     pub(crate) requested: Option<Source>,
     pub(crate) opening: bool,
     /// A Zotero change check is running; unlike `opening`, it is not shown.
     pub(super) checking: bool,
-    /// Shared so a search can run without holding the library lock.
-    pub(crate) index: Arc<OwnedIndex>,
-    /// In-memory index revision; transported as an opaque string for JavaScript.
-    pub(super) revision: u64,
-    pub(crate) warnings: Vec<LoadWarning>,
-    /// Exact initial load observation, reused when attaching the watcher.
-    pub(super) snapshot: Option<SourceSnapshot>,
-    /// Neutral failure reason; status derives retention context from the current index.
+    /// Neutral failure reason; status derives retention context from the current library.
     /// Automatic refreshes preserve a different rejected choice until the next request.
     pub(crate) error: Option<LoadError>,
     /// An automatic update problem while a different failed choice is retained.
@@ -45,24 +36,9 @@ pub(crate) struct Library {
     /// during this run; `None` after the first read, so a launch or an
     /// unchanged reload is not reported as an update.
     pub(super) changed_at: Option<SystemTime>,
-    /// When the source was last found to match `index`: a read, or a Zotero
+    /// When the source was last found to match the library: a read, or a
     /// check that found nothing changed. Kept when a later attempt fails.
     pub(super) checked_at: Option<SystemTime>,
-}
-
-impl Library {
-    pub(crate) fn require_revision(&self, expected: &str) -> Result<(), CommandError> {
-        if self.source.is_none()
-            || self
-                .file
-                .as_ref()
-                .map_or_else(|| self.revision.to_string(), |file| file.revision())
-                != expected
-        {
-            return Err(CommandError::SnapshotChanged);
-        }
-        Ok(())
-    }
 }
 
 /// Counts requests to open a library, so a load that finishes after a newer
@@ -70,42 +46,9 @@ impl Library {
 #[derive(Default)]
 pub(crate) struct LoadRequests(pub(crate) AtomicU64, pub(super) Mutex<super::tasks::OpenQueue>);
 
-pub(super) fn candidate(source: impl Into<Source>, loaded: ibis_core::model::LoadResult) -> Library {
-    let now = SystemTime::now();
-    Library {
-        checked_at: Some(now),
-        source: Some(source.into()),
-        index: Arc::new(OwnedIndex::new(loaded.references)),
-        warnings: loaded.warnings,
-        snapshot: None,
-        error: None,
-        choice_save_warning: None,
-        ..Library::default()
-    }
-}
-
 pub(super) fn dialog_path_error(library: &mut Library) {
     library.opening = false;
     library.error = Some(LoadError::NotLocal);
-}
-
-pub(super) fn take_watch_source(
-    library: &mut Library,
-    requests: &LoadRequests,
-    request: u64,
-) -> Option<(PathBuf, Option<SourceSnapshot>)> {
-    // Check while holding the library lock: an older open must not consume
-    // the source observation belonging to a newly installed library.
-    if requests.0.load(Ordering::SeqCst) != request {
-        return None;
-    }
-    if library.file.is_some() {
-        return None;
-    }
-    match library.source.clone()? {
-        Source::File(path) => Some((path, library.snapshot.take())),
-        Source::Zotero(_) => None,
-    }
 }
 
 /// Make a loaded library current, or record why it failed to open. Returns
@@ -135,18 +78,6 @@ pub(super) fn install_result(
     loaded: Result<Library, LoadError>,
     automatic: bool,
 ) -> Option<LibraryStatus> {
-    // Compare references outside the lock, so searches and status reads do
-    // not wait on a large library; the installed index is checked again below.
-    let compared = match &loaded {
-        Ok(new) if new.source.is_some() => {
-            let (source, index) = library
-                .lock()
-                .ok()
-                .map(|current| (current.source.clone(), Arc::clone(&current.index)))?;
-            (new.source == source).then(|| (index.references() == new.index.references(), index))
-        }
-        _ => None,
-    };
     let mut library = library.lock().ok()?;
     if requests.0.load(Ordering::SeqCst) != request {
         return None;
@@ -158,30 +89,13 @@ pub(super) fn install_result(
         && library.source.is_some()
         && library.requested.is_some()
         && library.requested != library.source;
-    // A reread of the same source that brought equal references, compared
-    // against the index still installed, keeps the index and its revision,
-    // so a citation being built stays current.
-    let unchanged = matches!(&loaded, Ok(new) if new.file.is_none() && library.file.is_none() && new.source == library.source)
-        && compared
-            .as_ref()
-            .is_some_and(|(same, index)| *same && Arc::ptr_eq(index, &library.index));
-    // Otherwise never reuse a revision: even an exhausted counter retains the old index.
-    let loaded = loaded.and_then(|mut new| {
-        if unchanged {
-            new.revision = library.revision;
-            new.index = Arc::clone(&library.index);
-        } else {
-            new.revision = library.revision.checked_add(1).ok_or(LoadError::RevisionExhausted)?;
-        }
-        Ok(new)
-    });
     match loaded {
         Ok(mut new) => {
             new.settings_notice = library.settings_notice.take();
-            // Only a reread of the same library that brought different
-            // references is an update worth telling.
-            if compared.is_some() && new.source == library.source {
-                new.changed_at = if unchanged { library.changed_at } else { new.checked_at };
+            // A reread of the same library that found nothing changed ends as
+            // `Loaded::Unchanged`, so one that arrives here is an update.
+            if new.source.is_some() && new.source == library.source {
+                new.changed_at = new.checked_at;
             }
             if failed_choice {
                 new.requested = library.requested.take();
@@ -208,8 +122,8 @@ pub(super) fn install_result(
     Some(status(&library))
 }
 
-/// [`install`], where a Zotero refresh that found no change only ends the
-/// request and keeps everything as it is.
+/// [`install`], where a reread that found no change only ends the request
+/// and keeps everything as it is.
 pub(super) fn install_loaded(
     library: &Mutex<Library>,
     requests: &LoadRequests,
@@ -265,18 +179,33 @@ pub(super) fn record_open(
     (request, reload, status(library))
 }
 
+/// A library read by the engine from `bib`, installed as `source`, for tests.
+/// The file stays on disk so the engine can keep reading it.
+#[cfg(test)]
+pub(crate) fn candidate(source: impl Into<Source>, bib: &str) -> Library {
+    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}")).keep();
+    let path = directory.join("synthetic.bib");
+    std::fs::write(&path, bib).unwrap_or_else(|e| panic!("{e}"));
+    Library {
+        checked_at: Some(SystemTime::now()),
+        source: Some(source.into()),
+        file: Some(Arc::new(
+            FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}")),
+        )),
+        ..Library::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicU32;
+    use std::path::PathBuf;
 
-    use ibis_core::model::RecordId;
     use ibis_core::settings::ZoteroLibrary;
     use ibis_core::source::SourceError;
 
     use crate::library::error::ZOTERO_OFFLINE;
-    use crate::library::load::load_library;
-    use crate::library::search::{SearchQuery, search_snapshot};
+    use crate::library::load::{load_library, load_source};
     use crate::library::status::LibraryState;
     use crate::tray::library_line;
 
@@ -374,7 +303,7 @@ mod tests {
         let query = serde_json::from_value(serde_json::json!({"text":"actual","interpret_locators":false}))
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            file.search(&query, 10, None)
+            file.search(&query, 10, None, &ibis_engine::Cancellation::default())
                 .unwrap_or_else(|e| panic!("{e}"))
                 .results
                 .len(),
@@ -384,10 +313,7 @@ mod tests {
 
     #[test]
     fn a_retained_refresh_failure_does_not_claim_an_unsaved_choice() {
-        let library = Mutex::new(candidate(
-            PathBuf::from("synthetic/retained.bib"),
-            ibis_core::bibtex::load_str("synthetic", ""),
-        ));
+        let library = Mutex::new(candidate(PathBuf::from("synthetic/retained.bib"), ""));
         let requests = LoadRequests::default();
         let (request, _, _) =
             begin_open(&library, &requests, PathBuf::from("other/attempted.bib")).unwrap_or_else(|| panic!("open"));
@@ -407,10 +333,7 @@ mod tests {
         let library = Mutex::new(Library {
             choice_save_warning: Some(original_note.to_string()),
             settings_notice: Some("settings recovered".to_string()),
-            ..candidate(
-                retained.clone(),
-                ibis_core::bibtex::load_str("synthetic", "@misc{first}"),
-            )
+            ..candidate(retained.clone(), "@misc{first}")
         });
         let requests = LoadRequests::default();
         let (request, _, _) =
@@ -429,16 +352,8 @@ mod tests {
         assert!(!note.contains("synthetic/"));
         assert_eq!(unavailable.name.as_deref(), Some("attempted.bib"));
 
-        let empty = install_automatic(
-            &library,
-            &requests,
-            request,
-            Ok(candidate(
-                retained.clone(),
-                ibis_core::bibtex::load_str("synthetic", ""),
-            )),
-        )
-        .unwrap_or_else(|| panic!("empty update"));
+        let empty = install_automatic(&library, &requests, request, Ok(candidate(retained.clone(), "")))
+            .unwrap_or_else(|| panic!("empty update"));
         assert_eq!(empty.references, 0);
         assert!(empty.has_snapshot);
         assert!(empty.choice_not_saved);
@@ -472,21 +387,13 @@ mod tests {
                 &library,
                 &requests,
                 request,
-                Ok(candidate(
-                    retained.clone(),
-                    ibis_core::bibtex::load_str("synthetic", "@misc{stale}")
-                ))
+                Ok(candidate(retained.clone(), "@misc{stale}"))
             )
             .is_none()
         );
         assert!(install_automatic(&library, &requests, request, Err(SourceError::Unavailable.into())).is_none());
-        let loaded = install(
-            &library,
-            &requests,
-            new_request,
-            Ok(candidate(retained, ibis_core::bibtex::load_str("synthetic", ""))),
-        )
-        .unwrap_or_else(|| panic!("reload completion"));
+        let loaded = install(&library, &requests, new_request, Ok(candidate(retained, "")))
+            .unwrap_or_else(|| panic!("reload completion"));
         assert_eq!(loaded.state, LibraryState::Loaded);
         assert_eq!(loaded.references, 0);
         assert!(loaded.error.is_none());
@@ -498,24 +405,13 @@ mod tests {
     #[test]
     fn automatic_recovery_clears_a_failure_of_the_selected_source_itself() {
         let path = PathBuf::from("synthetic/selected.bib");
-        let library = Mutex::new(candidate(
-            path.clone(),
-            ibis_core::bibtex::load_str("synthetic", "@misc{first}"),
-        ));
+        let library = Mutex::new(candidate(path.clone(), "@misc{first}"));
         let requests = LoadRequests::default();
         let (request, reload, _) = begin_open(&library, &requests, path.clone()).unwrap_or_else(|| panic!("open"));
         assert!(reload);
         install(&library, &requests, request, Err(SourceError::Unavailable.into()));
-        let recovered = install_automatic(
-            &library,
-            &requests,
-            request,
-            Ok(candidate(
-                path,
-                ibis_core::bibtex::load_str("synthetic", "@misc{first}"),
-            )),
-        )
-        .unwrap_or_else(|| panic!("recovery"));
+        let recovered = install_automatic(&library, &requests, request, Ok(candidate(path, "@misc{first}")))
+            .unwrap_or_else(|| panic!("recovery"));
         assert_eq!(recovered.state, LibraryState::Loaded);
         assert_eq!(recovered.name.as_deref(), Some("selected.bib"));
         assert!(recovered.error.is_none());
@@ -532,15 +428,12 @@ mod tests {
             let library = Mutex::new(Library::default());
             let requests = LoadRequests::default();
             let (request, _, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("open"));
-            let first = candidate(source.clone(), ibis_core::bibtex::load_str("synthetic", "@misc{first}"));
+            let first = candidate(source.clone(), "@misc{first}");
             install(&library, &requests, request, Ok(first)).unwrap_or_else(|| panic!("opened"));
             if let Ok(mut library) = library.lock() {
                 library.choice_save_warning = Some(saved.to_string());
             }
-            let changed = candidate(
-                source.clone(),
-                ibis_core::bibtex::load_str("synthetic", "@misc{first}\n@misc{second}"),
-            );
+            let changed = candidate(source.clone(), "@misc{first}\n@misc{second}");
             let refreshed = install_automatic(&library, &requests, request, Ok(changed))
                 .unwrap_or_else(|| panic!("the refresh is current"));
             assert_eq!(refreshed.references, 2);
@@ -557,7 +450,7 @@ mod tests {
     fn a_failed_switch_distinguishes_the_attempted_file_from_retained_search_results() {
         let library = Mutex::new(candidate(
             PathBuf::from("synthetic-parent/active.bib"),
-            ibis_core::bibtex::load_str("synthetic", "@misc{active, title={Retained snapshot}}"),
+            "@misc{active, title={Retained snapshot}}",
         ));
         let requests = LoadRequests::default();
         let (request, _, opening) = begin_open(&library, &requests, PathBuf::from("other-parent/attempted.bib"))
@@ -569,15 +462,18 @@ mod tests {
         assert_eq!(failed.name.as_deref(), Some("attempted.bib"));
         assert_eq!(failed.snapshot_name.as_deref(), Some("active.bib"));
         assert_eq!(failed.references, 1);
-        assert_eq!(
-            library
-                .lock()
-                .unwrap_or_else(|e| panic!("{e}"))
-                .index
-                .search("retained", 10)
-                .len(),
-            1
-        );
+        let file = library
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .file
+            .clone()
+            .unwrap_or_else(|| panic!("engine file"));
+        let query = serde_json::from_value(serde_json::json!({"text":"retained","interpret_locators":false}))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let found = file
+            .search(&query, 10, None, &ibis_engine::Cancellation::default())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(found.results.len(), 1);
         assert!(
             !failed
                 .snapshot_name
@@ -620,10 +516,7 @@ mod tests {
             &library,
             &requests,
             request,
-            Ok(candidate(
-                PathBuf::from("synthetic.bib"),
-                ibis_core::bibtex::load_str("synthetic", "@misc{k}"),
-            )),
+            Ok(candidate(PathBuf::from("synthetic.bib"), "@misc{k}")),
         )
         .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(loaded.settings_notice, opening.settings_notice);
@@ -634,10 +527,7 @@ mod tests {
 
     #[test]
     fn a_nonlocal_dialog_choice_keeps_the_open_library_and_reports_the_same_tray_error() {
-        let mut library = candidate(
-            PathBuf::from("synthetic.bib"),
-            ibis_core::bibtex::load_str("synthetic", "@misc{k}\n@misc{bad,"),
-        );
+        let mut library = candidate(PathBuf::from("synthetic.bib"), "@misc{k}\n@misc{bad,");
         library.choice_save_warning = Some("the library choice was not saved".to_string());
         let before = status(&library);
         dialog_path_error(&mut library);
@@ -654,40 +544,37 @@ mod tests {
     }
 
     #[test]
-    fn a_legacy_watch_attachment_cannot_consume_an_engine_file() {
-        let file = std::env::temp_dir().join(format!("ibis-watch-generation-{}.bib", std::process::id()));
-        std::fs::write(&file, "@misc{good}\n@misc{unfinished,").unwrap_or_else(|e| panic!("{e}"));
-        let mut library = load_library(file, false).unwrap_or_else(|e| panic!("{e}"));
-        let requests = LoadRequests::default();
-        requests.0.store(2, Ordering::SeqCst);
-        assert!(take_watch_source(&mut library, &requests, 1).is_none());
-        assert!(library.file.is_some());
-        assert!(take_watch_source(&mut library, &requests, 2).is_none());
-        assert!(library.file.is_some());
-    }
-
-    #[test]
-    fn failed_reloads_preserve_the_index_but_valid_empty_reloads_replace_it() {
-        let file = std::env::temp_dir().join(format!("ibis-reload-{}.bib", std::process::id()));
+    fn failed_rereads_keep_the_references_but_valid_empty_rereads_replace_them() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = directory.path().join("reload.bib");
         std::fs::write(&file, "@misc{good, title={Retained}}").unwrap_or_else(|e| panic!("{e}"));
-        let initial = load_library(file.clone(), false).unwrap_or_else(|e| panic!("{e}"));
-        let library = Mutex::new(initial);
+        let library = Mutex::new(load_library(file.clone(), false).unwrap_or_else(|e| panic!("{e}")));
         let requests = LoadRequests::default();
+        let reread = || {
+            let previous = library.lock().unwrap_or_else(|e| panic!("{e}")).file.clone();
+            let loaded = load_source(
+                Source::File(file.clone()),
+                true,
+                previous,
+                &ibis_engine::Cancellation::default(),
+                || false,
+            );
+            install_loaded(&library, &requests, 0, loaded).unwrap_or_else(|| panic!("current"))
+        };
         for contents in ["@misc{partial,", "@string{incomplete = {Value}"] {
             std::fs::write(&file, contents).unwrap_or_else(|e| panic!("{e}"));
-            let status = install(&library, &requests, 0, load_library(file.clone(), true));
-            assert_eq!(status.as_ref().map(|s| s.references), Some(1));
-            assert!(status.and_then(|s| s.error).is_some());
+            let status = reread();
+            assert_eq!(status.references, 1);
+            assert!(status.error.is_some());
         }
         std::fs::remove_file(&file).unwrap_or_else(|e| panic!("{e}"));
-        let unavailable = install(&library, &requests, 0, load_library(file.clone(), true));
-        assert_eq!(unavailable.as_ref().map(|s| s.references), Some(1));
-        assert!(unavailable.and_then(|s| s.error).is_some());
+        let unavailable = reread();
+        assert_eq!(unavailable.references, 1);
+        assert!(unavailable.error.is_some());
         std::fs::write(&file, "").unwrap_or_else(|e| panic!("{e}"));
-        let empty = install(&library, &requests, 0, load_library(file.clone(), true));
-        assert_eq!(empty.as_ref().map(|s| s.references), Some(0));
-        assert!(empty.and_then(|s| s.error).is_none());
-        let _ = std::fs::remove_file(file);
+        let empty = reread();
+        assert_eq!(empty.references, 0);
+        assert!(empty.error.is_none());
     }
 
     #[test]
@@ -713,30 +600,32 @@ mod tests {
     #[test]
     fn only_a_reread_that_changes_the_references_is_an_update() {
         let file = PathBuf::from("synthetic.bib");
-        let read = |text: &str| candidate(file.clone(), ibis_core::bibtex::load_str("synthetic", text));
         let library = Mutex::new(Library::default());
         let requests = LoadRequests::default();
-        let install_now = |new: Library| {
+        let install_now = |new: Result<Loaded, LoadError>| {
             let (request, _, _) = begin_open(&library, &requests, file.clone()).unwrap_or_else(|| panic!("opens"));
-            install(&library, &requests, request, Ok(new)).unwrap_or_else(|| panic!("current"))
+            install_loaded(&library, &requests, request, new).unwrap_or_else(|| panic!("current"))
         };
-        let first = install_now(read("@misc{a, title={A}}"));
+        let first = install_now(Ok(Loaded::New(Box::new(candidate(
+            file.clone(),
+            "@misc{a, title={A}}",
+        )))));
         assert_eq!(first.updated_at, None, "opening is not an update");
-        let same = install_now(read("@misc{a, title={A}}"));
+        let same = install_now(Ok(Loaded::Unchanged));
         assert_eq!(same.updated_at, None, "rereading the same references is not an update");
-        let changed = install_now(read("@misc{a, title={A}}\n@misc{b, title={B}}"));
+        let changed = install_now(Ok(Loaded::New(Box::new(candidate(
+            file.clone(),
+            "@misc{a, title={A}}\n@misc{b, title={B}}",
+        )))));
         assert!(changed.updated_at.is_some(), "new references are an update");
-        assert_eq!(
-            install_now(read("@misc{a, title={A}}\n@misc{b, title={B}}")).updated_at,
-            changed.updated_at
-        );
+        assert_eq!(install_now(Ok(Loaded::Unchanged)).updated_at, changed.updated_at);
     }
 
     #[test]
     fn a_zotero_library_is_named_without_paths_and_keeps_its_references_when_unchanged_or_unreachable() {
         let library = Mutex::new(candidate(
             Source::Zotero(ZoteroLibrary::Group(7).into()),
-            ibis_core::bibtex::load_str("synthetic", "@misc{kept, title={Kept}}"),
+            "@misc{kept, title={Kept}}",
         ));
         let requests = LoadRequests::default();
         assert_eq!(status(&Library::default()).updated_at, None, "nothing read, no time");
@@ -792,185 +681,39 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_revisions_bind_search_and_all_copy_paths_to_the_installed_index() {
-        let source = Source::Zotero(ZoteroLibrary::User.into());
-        let make = |key: &str, title: &str| {
-            let mut loaded = ibis_core::bibtex::load_str("synthetic", &format!("@misc{{{key}, title={{{title}}}}}"));
-            loaded.references[0].id = RecordId {
-                source: "zotero:user".into(),
-                native_key: "ITEM0001".into(),
-            };
-            candidate(source.clone(), loaded)
-        };
+    fn the_status_revision_is_the_engine_snapshot_and_survives_a_failed_reread() {
+        let source = Source::File(PathBuf::from("synthetic.bib"));
         let library = Mutex::new(Library::default());
         let requests = LoadRequests::default();
-        let (request, _, _) =
-            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
-        let first = install(&library, &requests, request, Ok(make("oldkey", "Sleep old")))
-            .unwrap_or_else(|| panic!("synthetic request is current"));
-        let (old_index, old_revision) = {
-            let locked = library.lock().unwrap_or_else(|e| panic!("{e}"));
-            (Arc::clone(&locked.index), first.revision.clone())
-        };
-        let (request, _, loading) =
-            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
-        assert_eq!(loading.revision, old_revision);
-        let unchanged = install_loaded(&library, &requests, request, Ok(Loaded::Unchanged))
-            .unwrap_or_else(|| panic!("synthetic request is current"));
-        assert_eq!(unchanged.revision, old_revision);
-        // A full reread that brings equal references keeps the revision and the index.
-        let (request, _, _) =
-            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
-        let reread = install(&library, &requests, request, Ok(make("oldkey", "Sleep old")))
-            .unwrap_or_else(|| panic!("synthetic request is current"));
-        assert_eq!(reread.revision, old_revision);
-        assert!(Arc::ptr_eq(
-            &old_index,
-            &library.lock().unwrap_or_else(|e| panic!("{e}")).index
-        ));
-        let (request, _, _) =
-            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
-        let failed = install(&library, &requests, request, Err(ZOTERO_OFFLINE))
-            .unwrap_or_else(|| panic!("synthetic request is current"));
-        assert_eq!(failed.revision, old_revision);
-        let (request, _, _) =
-            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
-        let replaced = install(&library, &requests, request, Ok(make("newkey", "Sleep new")))
-            .unwrap_or_else(|| panic!("synthetic request is current"));
-        assert_ne!(replaced.revision, old_revision);
-        // The index has changed, but no event has been published to JavaScript.
-        let late_reply = search_snapshot(
-            &old_index,
-            old_revision.clone(),
-            &SearchQuery {
-                text: "sleep".into(),
-                interpret_locators: true,
-            },
-            20,
-            1,
-            &AtomicU32::default(),
-            None,
-        );
-        assert_eq!(late_reply.revision, old_revision);
-        let empty = search_snapshot(
-            &old_index,
-            old_revision.clone(),
-            &SearchQuery {
-                text: "no-match".into(),
-                interpret_locators: true,
-            },
-            20,
-            2,
-            &AtomicU32::default(),
-            None,
-        );
-        assert!(empty.results.is_empty());
-        assert_eq!(empty.revision, old_revision);
-        let late = late_reply.results;
-        assert_eq!(late[0].key, "oldkey");
-        assert_eq!(late[0].revision, old_revision);
-        let ids: Vec<RecordId> =
-            vec![serde_json::from_value(late[0].id.clone()).unwrap_or_else(|e| panic!("synthetic legacy ID: {e}"))];
-        let selections = ids
-            .iter()
-            .map(|id| ibis_core::library::CitationSelection {
-                id: id.clone(),
-                locator: None,
-            })
-            .collect::<Vec<_>>();
-        let looked_up = std::cell::Cell::new(false);
-        let retired = crate::copy::prepare_snapshot(&library, &old_revision, |locked| {
-            looked_up.set(true);
-            crate::copy::render_citation(
-                locked.index.references(),
-                &selections,
-                ibis_core::cite::KeyFormat::Pandoc,
-            )
-        });
-        assert!(retired.is_err());
-        assert!(!looked_up.get());
-        assert!(
-            crate::copy::prepare_snapshot(&library, &old_revision, |locked| crate::copy::csl_json(
-                locked.index.references(),
-                &ids
-            ))
-            .is_err()
-        );
-        let wrote = std::cell::Cell::new(false);
-        assert!(
-            crate::copy::write_formatted(
-                &library,
-                &old_revision,
-                "old preview".into(),
-                "old preview".into(),
-                |_, _| {
-                    wrote.set(true);
-                    Ok(())
-                }
-            )
-            .is_err()
-        );
-        assert!(!wrote.get());
-        let current = crate::copy::prepare_snapshot(&library, &replaced.revision, |locked| {
-            crate::copy::render_citation(
-                locked.index.references(),
-                &selections,
-                ibis_core::cite::KeyFormat::Pandoc,
-            )
-        })
-        .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(current.text, "[@newkey]");
-        let json = crate::copy::prepare_snapshot(&library, &replaced.revision, |locked| {
-            crate::copy::csl_json(locked.index.references(), &ids)
-        })
-        .unwrap_or_else(|e| panic!("{e}"));
-        assert!(json.contains("Sleep new"));
-        crate::copy::write_formatted(
-            &library,
-            &replaced.revision,
-            "new preview".into(),
-            "new preview".into(),
-            |text, html| {
-                assert!(
-                    library.try_lock().is_ok(),
-                    "clipboard I/O does not hold the library mutex"
-                );
-                assert_eq!(text, "new preview");
-                assert_eq!(html, "new preview");
-                wrote.set(true);
-                Ok(())
-            },
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
-        assert!(wrote.get());
-        let (request, _, _) =
-            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("synthetic request is current"));
-        let empty = install(
+        let (request, _, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("current"));
+        let opened = install(
             &library,
             &requests,
             request,
-            Ok(candidate(source, ibis_core::bibtex::load_str("synthetic", ""))),
+            Ok(candidate(source.clone(), "@misc{a, title={Sleep}}")),
         )
-        .unwrap_or_else(|| panic!("synthetic request is current"));
-        assert!(empty.has_snapshot);
-        assert_eq!(empty.references, 0);
-        assert_ne!(empty.revision, replaced.revision);
-        let locked = library.lock().unwrap_or_else(|e| panic!("{e}"));
-        assert!(locked.require_revision(&replaced.revision).is_err());
-        assert!(locked.require_revision(&empty.revision).is_ok());
-        let reply = search_snapshot(
-            &locked.index,
-            empty.revision.clone(),
-            &SearchQuery {
-                text: "".into(),
-                interpret_locators: true,
-            },
-            20,
-            3,
-            &AtomicU32::default(),
-            None,
-        );
-        assert!(reply.results.is_empty());
-        assert_eq!(reply.revision, empty.revision);
+        .unwrap_or_else(|| panic!("current"));
+        let file = library
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .file
+            .clone()
+            .unwrap_or_else(|| panic!("engine file"));
+        assert!(!opened.revision.is_empty());
+        assert_eq!(opened.revision, file.revision());
+        let query = serde_json::from_value(serde_json::json!({"text":"sleep","interpret_locators":false}))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let reply = file
+            .search(&query, 20, None, &ibis_engine::Cancellation::default())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(reply.revision, opened.revision);
+        assert!(reply.results.iter().all(|row| row.revision == opened.revision));
+        let (request, _, loading) =
+            begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("current"));
+        assert_eq!(loading.revision, opened.revision);
+        let failed = install(&library, &requests, request, Err(SourceError::Unavailable.into()))
+            .unwrap_or_else(|| panic!("current"));
+        assert_eq!(failed.revision, opened.revision);
+        assert_eq!(failed.references, 1);
     }
 }

@@ -82,7 +82,6 @@ fn library(records: usize) -> Vec<LibraryObject> {
                 }],
                 aliases: vec![],
                 identifiers: vec![],
-                raw: None,
             };
             for (field, value) in [
                 ("type", json!("article-journal")),

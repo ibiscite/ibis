@@ -359,7 +359,7 @@ impl Engine {
             hits: hits
                 .into_iter()
                 .map(|hit| SearchHit {
-                    item: public_object(hit.item),
+                    item: hit.item.clone(),
                     score: hit.score,
                     matched: hit.matched,
                     typo: hit.typo,
@@ -372,7 +372,7 @@ impl Engine {
         let state = self.state()?;
         let selected = select(state.index.snapshot(), &request.item)?;
         ensure_budget(selected)?;
-        Ok(public_object(selected))
+        Ok(selected.clone())
     }
     pub fn cite_keys(
         &self,
@@ -555,18 +555,19 @@ impl Shared {
         }
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        let mut objects: Vec<_> = old
+        // Unchanged libraries keep their prepared objects; nothing is re-fingerprinted.
+        let empty = Snapshot::new(vec![]).map_err(|_| error(ErrorCode::Internal))?;
+        let mut combined = old
             .index
             .snapshot()
-            .objects()
-            .iter()
-            .filter(|item| !replaced(&item.object.id().library))
-            .map(|item| item.object.clone())
-            .collect();
+            .merged(&empty, |id| !replaced(id))
+            .map_err(|_| error(ErrorCode::BadInput))?;
         for (_, snapshot) in &entries {
-            objects.extend(snapshot.objects().iter().map(|item| item.object.clone()));
+            combined = combined
+                .merged(snapshot, |_| true)
+                .map_err(|_| error(ErrorCode::BadInput))?;
         }
-        let combined = Arc::new(Snapshot::new(objects).map_err(|_| error(ErrorCode::BadInput))?);
+        let combined = Arc::new(combined);
         let mut changed: Vec<LibraryId> = entries.iter().map(|(info, _)| info.id.clone()).collect();
         changed.extend(
             old.libraries
@@ -636,25 +637,6 @@ fn ensure_budget(value: &impl Serialize) -> Result<(), EngineError> {
         .map(|_| ())
         .map_err(|_| error(ErrorCode::ResourceLimit))
 }
-/// Build the public projection directly, leaving engine-only raw provenance in its snapshot.
-fn public_object(item: &SnapshotObject) -> SnapshotObject {
-    let object = match &item.object {
-        LibraryObject::Record(record) => LibraryObject::Record(Record {
-            id: record.id.clone(),
-            csl: record.csl.clone(),
-            citation_keys: record.citation_keys.clone(),
-            aliases: record.aliases.clone(),
-            identifiers: record.identifiers.clone(),
-            raw: None,
-        }),
-        object => object.clone(),
-    };
-    SnapshotObject {
-        object,
-        fingerprints: item.fingerprints.clone(),
-    }
-}
-
 fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {
     match selector {
         ItemSelector::Id(id) => snapshot.get(id).ok_or_else(|| error(ErrorCode::NotFound)),

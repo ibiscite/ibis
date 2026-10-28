@@ -19,8 +19,6 @@ pub(crate) enum LoadError {
     NotLocal,
     /// The background load ended without a result.
     Stopped,
-    /// The revision counter is used up; a new index could never be told apart.
-    RevisionExhausted,
 }
 
 impl LoadError {
@@ -70,7 +68,6 @@ impl fmt::Display for LoadError {
             LoadError::UnsupportedZoteroLibraries => f.write_str("Zotero group libraries are not available yet"),
             LoadError::NotLocal => f.write_str("the chosen file is not on this computer"),
             LoadError::Stopped => f.write_str("loading the library stopped unexpectedly"),
-            LoadError::RevisionExhausted => f.write_str("the library could not be updated; restart Ibis"),
         }
     }
 }
@@ -170,7 +167,7 @@ mod tests {
             assert!(!LoadError::from(not_kept).keeps_references(), "{not_kept}");
         }
         assert!(LoadError::from(ZoteroError::GroupNotFound).keeps_references());
-        for own in [LoadError::NotLocal, LoadError::Stopped, LoadError::RevisionExhausted] {
+        for own in [LoadError::NotLocal, LoadError::Stopped] {
             assert!(!own.keeps_references(), "{own}");
         }
     }

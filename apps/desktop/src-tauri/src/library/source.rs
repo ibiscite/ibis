@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
-use ibis_core::zotero;
 
 /// Where references come from: a BibTeX or BibLaTeX file, or Zotero
 /// libraries read through Zotero's local API while Zotero runs.
@@ -49,13 +48,6 @@ impl Source {
     }
 }
 
-pub(super) fn zotero_library(library: ZoteroLibrary) -> zotero::Library {
-    match library {
-        ZoteroLibrary::User => zotero::Library::User,
-        ZoteroLibrary::Group(id) => zotero::Library::Group(id),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,7 +71,7 @@ mod tests {
             begin_open(&library, &requests, source).unwrap_or_else(|| panic!("the choice should start"));
         assert!(opening.zotero);
         assert_eq!(opening.zotero_libraries, [ZoteroLibrary::Group(7), ZoteroLibrary::User]);
-        let file = candidate(PathBuf::from("refs.bib"), ibis_core::bibtex::load_str("synthetic", ""));
+        let file = candidate(PathBuf::from("refs.bib"), "");
         assert!(status(&file).zotero_libraries.is_empty());
     }
 }
