@@ -474,7 +474,8 @@ index is built once per library change; a keystroke only scans it.
   å; `muller` finds it anyway, accents being folded), and a Greek letter
   standing alone is found by its name: `beta amyloid` finds β-amyloid,
   `nf kappab` finds NF-κB. Greek text keeps its letters, and μ before a
-  letter is a unit (μm), not mu.
+  letter is a unit (μm), not mu. Other spellings never join with nearby words
+  into a quoted phrase the text does not have.
 - Hints limit the word after them to one field: `a:` any person (authors,
   editors, translators…), `t:` title (and short title), `j:` journal (and its
   abbreviation), `k:` citation key, `#` tag or keyword (a whole word once typed

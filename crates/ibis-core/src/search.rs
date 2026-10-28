@@ -159,16 +159,19 @@ struct Bounds {
 
 impl Texts {
     /// Add a record's fields in [`MatchField::ALL`] order. Each of `extras`
-    /// (a field's index and text, such as a short title, a journal
-    /// abbreviation or [`spelling_aliases`]) is added to that field unless it
-    /// is already part of it; the title proper ends before them. Text past
-    /// 4 GiB in either buffer is left out, which no real library comes near.
+    /// (a field's index and its raw text, such as the title itself, a short
+    /// title or a journal abbreviation) adds its [`spelling_aliases`] to that
+    /// field, and its own words too unless they are already there; the title
+    /// proper ends before them. Two spaces set each addition apart, so a
+    /// quoted phrase never runs from one into the next. Text past 4 GiB in
+    /// either buffer is left out, which no real library comes near.
     fn push(&mut self, mut fields: [String; 8], extras: &[(usize, &str)]) {
         let title_len = fields[1].len();
         for &(field, extra) in extras {
-            let extra = normalize(extra);
-            if !extra.is_empty() && !format!(" {} ", fields[field]).contains(&format!(" {extra} ")) {
-                push_words(&mut fields[field], &extra);
+            for extra in [normalize(extra), spelling_aliases(extra)] {
+                if !extra.is_empty() && !format!(" {} ", fields[field]).contains(&format!(" {extra} ")) {
+                    push_apart(&mut fields[field], &extra);
+                }
             }
         }
         // A space before every field makes word starts and ends checkable
@@ -239,6 +242,14 @@ impl Texts {
     }
 }
 
+/// Add `words` to `text` two spaces apart, so no phrase spans the two.
+fn push_apart(text: &mut String, words: &str) {
+    if !words.is_empty() {
+        text.push_str("  ");
+        text.push_str(words);
+    }
+}
+
 fn push_words(text: &mut String, words: &str) {
     if words.is_empty() {
         return;
@@ -258,7 +269,7 @@ fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
         let raw = name.display();
         let display = normalize(&raw);
         push_words(&mut text, &display);
-        push_words(&mut text, &normalize(&spelling_aliases(&raw)));
+        push_apart(&mut text, &spelling_aliases(&raw));
         // "山田 太郎" is also written without the space.
         if display.contains(' ') && display.chars().any(is_cjk_char) {
             push_words(&mut text, &display.replace(' ', ""));
@@ -272,35 +283,46 @@ fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
     text
 }
 
-/// The words of `text` that are also spelt another way, spelt that way:
-/// German and Nordic letters as written without them (Müller as Mueller,
-/// Ångström as Aangstroem) and a Greek letter standing alone as its name
-/// (β-amyloid as beta-amyloid, NF-κB as NF-kappaB). Accents are already
-/// folded by [`normalize`], so "muller" finds Müller without this. Text with
-/// Greek words (three Greek letters in a row) is left Greek, and μ before a
-/// Latin letter is a unit (μm), not mu. Empty for most text.
+/// The words of `text` that are also spelt another way, spelt that way and
+/// normalised, two spaces apart: German and Nordic letters as written
+/// without them (Müller as mueller, Ångström as aangstroem) and Greek letters
+/// used as symbols by their names (β-amyloid as beta amyloid, NF-κB as nf
+/// kappab, "α and β" as alpha and beta). Accents are already folded by
+/// [`normalize`], so "muller" finds Müller without this. Greek words are left
+/// Greek, and μ before another letter is a unit (μm), not mu. Empty for most
+/// text.
 fn spelling_aliases(text: &str) -> String {
     if text.is_ascii() {
         return String::new();
     }
     let greek = |c: char| matches!(c, '\u{0370}'..='\u{03FF}' | '\u{1F00}'..='\u{1FFF}' | 'µ');
     let chars: Vec<char> = text.nfc().collect();
-    // Three Greek letters in a row make a Greek word, not a symbol (αβ T cells).
-    let greek_text = chars.windows(3).any(|run| run.iter().all(|&c| greek(c)));
+    let words: Vec<&[char]> = chars
+        .split(|c| c.is_whitespace())
+        .filter(|word| !word.is_empty())
+        .collect();
+    let only_greek = |word: &[char]| word.iter().filter(|c| c.is_alphanumeric()).all(|&c| greek(c));
+    // A word of two or more Greek letters and nothing else makes the text Greek,
+    // so its one-letter words are Greek words too (Η γη), not symbols.
+    let greek_text = words
+        .iter()
+        .any(|word| only_greek(word) && word.iter().filter(|&&c| greek(c)).count() > 1);
     let mut aliases = String::new();
-    for word in chars.split(|c| c.is_whitespace()) {
+    for word in words {
+        let symbols = !only_greek(word) || !greek_text && word.iter().filter(|&&c| greek(c)).count() == 1;
         let mut alias = String::new();
         let mut changed = false;
         for (i, &c) in word.iter().enumerate() {
             let next = word.get(i + 1).copied();
-            let unit = matches!(c, 'μ' | 'µ') && next.is_some_and(|next| next.is_ascii_alphabetic());
-            let alone = !greek_text && !unit;
+            let beside_greek = i > 0 && greek(word[i - 1]) || next.is_some_and(greek);
+            let unit = matches!(c, 'μ' | 'µ') && next.is_some_and(char::is_alphabetic);
+            let symbol = symbols && !beside_greek && !unit;
             let spelt = match c.to_lowercase().next().unwrap_or(c) {
                 'ä' => "ae",
                 'ö' | 'ø' => "oe",
                 'ü' => "ue",
                 'å' => "aa",
-                c if !alone => {
+                c if !symbol => {
                     alias.push(c);
                     continue;
                 }
@@ -337,10 +359,10 @@ fn spelling_aliases(text: &str) -> String {
             changed = true;
         }
         if changed {
-            push_words(&mut aliases, &alias);
+            push_apart(&mut aliases, &normalize(&alias));
         }
     }
-    aliases
+    aliases.trim_start().to_owned()
 }
 
 /// Search index that owns its references, for front ends that keep a library
@@ -444,11 +466,11 @@ fn prepare(r: &Reference, texts: &mut Texts) {
             normalize(r.abstract_text.as_deref().unwrap_or("")),
         ],
         &[
+            (1, &title),
             (1, &variable("title-short")),
-            (1, &spelling_aliases(&title)),
-            (5, &spelling_aliases(&keywords)),
+            (5, &keywords),
+            (6, &container),
             (6, &variable("container-title-short")),
-            (6, &spelling_aliases(&container)),
         ],
     );
 }
@@ -835,7 +857,14 @@ fn rank<'r, T: SearchDocument>(
     // Long pasted queries are not typed by hand and get no typo allowance,
     // which also bounds this pass to a few scans.
     let mut word = Vec::new();
-    let typos = candidates.len() < limit && query.terms.len() <= MAX_TYPO_QUERY_TERMS;
+    // Repeated words count each time, so a long pasted text of a few words
+    // repeated is still long.
+    let typed_words = query
+        .terms
+        .iter()
+        .fold(0_usize, |sum, term| sum.saturating_add(term.count as usize));
+    let short_query = typed_words <= MAX_TYPO_QUERY_TERMS;
+    let typos = candidates.len() < limit && short_query;
     for (t, term) in query.terms.iter().enumerate() {
         if !typos || term.typo == Typo::Never {
             continue;
@@ -876,15 +905,14 @@ fn rank<'r, T: SearchDocument>(
     // every earlier pass runs in full when nothing has been found. Long pasted
     // queries are left out, as for typos.
     let (hinted, words): (Vec<usize>, Vec<usize>) = all.iter().partition(|&&t| query.terms[t].fields != ANY_FIELD);
+    // A word typed twice, or once more while still being typed, counts once.
+    let mut texts_seen = std::collections::BTreeSet::new();
     let words: Vec<usize> = words
         .into_iter()
         .filter(|&t| !query.terms[t].starts_only && query.terms[t].text.chars().any(char::is_alphabetic))
+        .filter(|&t| texts_seen.insert(query.terms[t].text.as_str()))
         .collect();
-    if candidates.is_empty()
-        && query.terms.len() <= MAX_TYPO_QUERY_TERMS
-        && words.len() >= 2
-        && identifier::parse_query(raw).is_none()
-    {
+    if candidates.is_empty() && short_query && words.len() >= 2 && identifier::parse_query(raw).is_none() {
         // Each record's words matched, score and fields; `None` when the hints leave it out.
         let mut partial: Vec<Option<(usize, u32, u8)>> = vec![hinted.is_empty().then_some((0, 0, 0)); docs.len()];
         if !hinted.is_empty() {

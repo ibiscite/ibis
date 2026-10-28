@@ -130,6 +130,26 @@ fn a_greek_letter_standing_alone_is_found_by_its_name() {
             "{query}"
         );
     }
+    // Second review: aliases never form phrases the text lacks; Greek prose
+    // elsewhere keeps symbols; units in any width; short titles get aliases.
+    let more = crate::index(&[
+        (
+            "phrase",
+            json!({"title": "Müller studies β", "title-short": "β-sheets"}),
+        ),
+        (
+            "mixed",
+            json!({"title": "β-amyloid: Η γη", "container-title-short": "J β Res"}),
+        ),
+        ("units", json!({"title": "10 μｍ and 5 μΩ"})),
+        ("prose", json!({"title": "Η γη"})),
+    ]);
+    assert!(keys(&more, "t:\"mueller beta\"").is_empty());
+    assert_eq!(keys(&more, "beta amyloid")[0].0, "mixed");
+    assert!(keys(&more, "eta").iter().all(|(key, _)| key != "prose"));
+    assert!(keys(&more, "mum").is_empty() && keys(&more, "muomega").is_empty());
+    assert_eq!(keys(&more, "t:beta sheets")[0].0, "phrase");
+    assert_eq!(keys(&more, "j:beta")[0].0, "mixed");
     // μ before a Latin letter is a unit; standing alone it is mu.
     assert!(keys(&index, "mum").is_empty());
     assert_eq!(keys(&index, "mu opioid"), [("units".to_string(), false)]);
@@ -160,6 +180,14 @@ fn when_nothing_matches_every_term_the_closest_matches_are_marked() {
     // One- and two-letter words are not counted.
     assert!(keys(&index, "of in quantum memory").iter().all(|(_, partial)| *partial));
     assert!(keys(&index, "of in quantum").is_empty());
+    // A repeated word counts once, typed out or still being typed.
+    assert_eq!(
+        keys(&index, "sleep quantum quantum"),
+        keys(&index, "sleep quantum quantum ")
+    );
+    assert!(!keys(&index, "sleep quantum quantum").is_empty());
+    // Long pasted text gets none even when its words repeat.
+    assert!(keys(&index, &"sleep quantum ".repeat(1000)).is_empty());
     // Numbers are not counted, so a missing DOI or page finds nothing.
     assert!(keys(&index, "10.2020/sleep.memory").is_empty());
     assert!(keys(&index, "10.9999/2018").is_empty());

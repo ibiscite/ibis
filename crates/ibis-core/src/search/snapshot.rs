@@ -1,7 +1,7 @@
 //! Prepared search data over an immutable contract snapshot; no legacy model conversion.
 use std::sync::Arc;
 
-use super::{MatchField, SearchDocument, Texts, by_identifier, key_eq, name_text, normalize, rank, spelling_aliases};
+use super::{MatchField, SearchDocument, Texts, by_identifier, key_eq, name_text, normalize, rank};
 use crate::{
     contract::*,
     identifier,
@@ -106,11 +106,11 @@ impl SnapshotIndex {
                         normalize(text("abstract")),
                     ],
                     &[
+                        (1, &title),
                         (1, &strip_markup(text("title-short"))),
-                        (1, &spelling_aliases(&title)),
-                        (5, &spelling_aliases(text("keyword"))),
+                        (5, text("keyword")),
+                        (6, &container),
                         (6, &strip_markup(text("container-title-short"))),
-                        (6, &spelling_aliases(&container)),
                     ],
                 );
                 Some(Entry {
