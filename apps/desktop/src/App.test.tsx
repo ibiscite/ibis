@@ -345,8 +345,7 @@ test("opening the first library searches the untouched empty query", async () =>
   await screen.findByRole("option", { name: FILE_ROW });
   expect(calls).not.toContain("search");
   await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null });
-  // The first library asks where you write once, then shows what it found.
-  pressRow(await screen.findByRole("option", { name: /^LaTeX/ }));
+  // The first library shows what it found straight away: no question about where you write.
   expect(await screen.findByText("First reference")).toBeTruthy();
   expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
 });
@@ -820,7 +819,7 @@ test("opening the first library searches the query typed before choosing it", as
   await screen.findByRole("option", { name: FILE_ROW });
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
-  // A typed search goes straight to results; the writing question waits for an empty box.
+  // A typed search goes straight to results.
   await screen.findByText("Matching reference");
   expect(queries).toEqual(["sleep"]);
 });
@@ -1374,7 +1373,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Rows: Comfortable", "Settings…Ctrl+,", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Rows: Comfortable", "Forget formats for apps", "Settings…Ctrl+,", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Larger text" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
@@ -1848,12 +1847,13 @@ test("format, density and text size choices are saved without losing each other"
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   chooseFormat("pandoc");
   await waitFor(() => expect(saved).toHaveLength(4));
-  expect(saved).toEqual([
-    { citation_style: "ieee", density: "comfortable", larger_text: false, show_paste_preview: true },
-    { citation_style: "ieee", density: "spacious", larger_text: false, show_paste_preview: true },
-    { citation_style: "ieee", density: "spacious", larger_text: true, show_paste_preview: true },
-    { citation_style: null, density: "spacious", larger_text: true, show_paste_preview: true },
+  expect(saved).toMatchObject([
+    { citation_style: "ieee" },
+    { density: "spacious" },
+    { larger_text: true },
+    { citation_style: null },
   ]);
+  expect(Object.assign({}, ...saved)).toEqual({ citation_style: null, density: "spacious", larger_text: true });
   expect(document.documentElement.dataset.density).toBe("spacious");
 });
 
@@ -1871,7 +1871,7 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
   await waitFor(() => formatButton());
   chooseFormat("cite");
   await act(async () => { finish(); await loaded; });
-  await waitFor(() => expect(saved).toEqual([{ citation_style: null, density: "compact", larger_text: false, show_paste_preview: true }]));
+  await waitFor(() => expect(saved).toEqual([{ citation_style: null }]));
   expect(formatValue()).toBe("cite");
   expect(keys).toEqual(["cite"]);
 });
@@ -2200,42 +2200,6 @@ test("when Zotero refuses other apps and no files are found, setup explains Zote
   expect(screen.queryByText(/No Zotero or .bib files found/)).toBeNull();
 });
 
-const FIRST_LIBRARY = { ...NO_LIBRARY, revision: "1", state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
-
-test("the first library asks where you write, sets Copy as to match, then shows results", async () => {
-  backend({ library_status: () => NO_LIBRARY, search: () => [result("first", "First reference")] });
-  render(<App />);
-  await screen.findByRole("option", { name: FILE_ROW });
-  expect(screen.queryByRole("listbox", { name: "What do you write in?" })).toBeNull();
-  await act(async () => { await emit("library:changed", FIRST_LIBRARY); });
-  const places = await screen.findByRole("listbox", { name: "What do you write in?" });
-  // Nothing behind the question can be copied or announced as a result.
-  expect(screen.queryByText("First reference")).toBeNull();
-  expect(document.querySelector(".results-heading")).toBeNull();
-  expect(screen.getByLabelText("Search references").getAttribute("aria-expanded")).toBe("false");
-  await act(async () => { await new Promise((done) => setTimeout(done, 350)); });
-  expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe("");
-  fireEvent.keyDown(window, { key: "Alt", altKey: true });
-  expect(screen.queryByRole("button", { name: /Add to citation/ })).toBeNull();
-  fireEvent.keyUp(window, { key: "Alt" });
-  expect(within(places).getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent))
-    .toEqual(["Markdown (Pandoc)", "LaTeX", "Typst"]);
-  expect(screen.getByText(/^Open Ibis from any app with /)).toBeTruthy();
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowDown" });
-  expect(document.activeElement).toBe(within(places).getAllByRole("option")[0]);
-  pressRow(within(places).getByRole("option", { name: /^LaTeX/ }));
-  await waitFor(() => expect(formatValue()).toBe("cite"));
-  expect(await screen.findByText("First reference")).toBeTruthy();
-  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
-  expect(screen.queryByRole("listbox", { name: "What do you write in?" })).toBeNull();
-});
-
-test("a library that was already open never asks where you write", async () => {
-  backend({ library_status: () => FIRST_LIBRARY, search: () => [result("first", "First reference")] });
-  render(<App />);
-  await screen.findByText("First reference");
-  expect(screen.queryByRole("listbox", { name: "What do you write in?" })).toBeNull();
-});
 
 test("shortcuts read as people type them on each system", async () => {
   const { shortcutLabel } = await import("./keys");
@@ -2245,27 +2209,6 @@ test("shortcuts read as people type them on each system", async () => {
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
   expect(shortcutLabel("control+command+r", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Alt+Space", false)).toBe("Alt+Space");
-});
-
-test("the writing choice saves the copy format once and copies nothing", async () => {
-  const saved: unknown[] = [];
-  const calls = backend({
-    library_status: () => NO_LIBRARY,
-    search: () => [result("first", "First reference")],
-    set_picker_preferences: ({ preferences, copyFormat }) => {
-      saved.push({ style: (preferences as { citation_style: unknown }).citation_style, key: copyFormat });
-      return null;
-    },
-  });
-  render(<App />);
-  await screen.findByRole("option", { name: FILE_ROW });
-  await act(async () => { await emit("library:changed", FIRST_LIBRARY); });
-  const places = await screen.findByRole("listbox", { name: "What do you write in?" });
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  pressRow(within(places).getByRole("option", { name: /^Typst/ }));
-  await waitFor(() => expect(saved).toEqual([{ style: null, key: "typst" }]));
-  await screen.findByText("First reference");
-  expect(calls).not.toContain("copy_file_citation");
 });
 
 test("a clean copy hides the picker, then says Copied with the copied text", async () => {
@@ -3613,7 +3556,9 @@ test("preview choices made during a delayed read and rapid queued saves drain in
   expect(calls).not.toContain("quit");
   await act(async () => { saved(); await writing; });
   await waitFor(() => expect(choices.map((choice) => choice.show_paste_preview)).toEqual([false, true, false]));
-  expect(choices.every((choice) => choice.density === "compact" && choice.larger_text && choice.citation_style === null)).toBe(true);
+  expect(choices.every((choice) => Object.keys(choice).join() === "show_paste_preview")).toBe(true);
+  expect(document.documentElement.dataset.density).toBe("compact");
+  expect(document.documentElement.dataset.textSize).toBe("larger");
   await waitFor(() => expect(calls).toContain("quit"));
 });
 

@@ -29,6 +29,8 @@ export const operationFailures = {
   updateChecksChange: "Ibis could not change its update setting. Try again.",
   checkForUpdates: "Ibis could not check for updates. Try again.",
   settings: "Settings could not open. Try again.",
+  appChoices: "Ibis could not read the formats it remembers for apps, so each app starts with its automatic format.",
+  appChoice: "Ibis could not save the format for this app. Try again.",
 } as const;
 
 /** Where people turn login items on and off on each system. */
@@ -87,12 +89,6 @@ export const setupText = {
   nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
   found: (files: number, zotero: boolean) =>
     [zotero ? "Zotero is open." : "", files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
-  writingTitle: "What do you write in?",
-  writingLine: "Citations copy in the format that suits it. The menu beside search changes it any time.",
-  places: { markdown: "Markdown (Pandoc)", latex: "LaTeX", typst: "Typst" },
-  placeExamples: { markdown: "[@smith2020]", latex: "\\cite{smith2020}", typst: "@smith2020" },
-  current: "Now",
-  shortcut: (keys: string) => `Open Ibis from any app with ${keys}.`,
   missingTitle: (name: string) => `Can't find ${name}`,
   missingLine: "It may have moved, or its drive is disconnected.",
   find: (name: string) => `Find ${name}`,
@@ -136,6 +132,14 @@ export const pickerText = {
   keyFormats: "Key formats",
   formattedStyles: "Citation styles",
   filterFormats: "Filter formats",
+  /** The closed format control when the picker knows the app: "APA · Word". */
+  formatForApp: (format: string, app: string) => `${format} · ${app}`,
+  forApp: (app: string) => `For ${app}`,
+  justOnce: "Just this once",
+  automatic: "Automatic",
+  globalDefault: "Use as global default",
+  forgetApps: "Forget formats for apps",
+  forgetAppsTitle: "Every app goes back to its automatic format",
   preview: "Preview",
   previewPending: "Formatting…",
   previewNotReady: "Nothing was copied yet: the citation is still being formatted. Press Enter again in a moment.",
@@ -229,6 +233,7 @@ export const keyText = {
     add: "Add the highlighted reference to the citation, or remove it",
     move: "Move through the results",
     escape: "Step back: close a menu, clear the search, then hide Ibis",
+    format: "Choose the output format and where to remember it",
     more: "Open or close More",
     pin: "Keep Window Open, or stop keeping it open",
     keys: "Show this list (? works outside the search box)",

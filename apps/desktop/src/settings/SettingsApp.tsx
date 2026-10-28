@@ -62,15 +62,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [guided, setGuided] = useState(false);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
   const generation = useRef(0);
+  const reads = useRef(0);
+  const unsaved = useRef<Partial<PickerPreferences>>({});
+  const unsavedRevision = useRef<Partial<Record<keyof PickerPreferences, number>>>({});
   const pending = useRef(0);
   const permission = usePastePermission(api, page === "general");
 
   useEffect(() => {
     const readAll = () => {
+      const request = ++reads.current;
       const started = generation.current;
       const idle = pending.current === 0;
       api.pickerPreferences().then((next) => {
-        if (idle && started === generation.current && pending.current === 0) setPreferences(next);
+        if (request === reads.current && idle && started === generation.current && pending.current === 0) setPreferences(next);
       }).catch(() => setFailed(true));
       api.loginItem().then(setLogin).catch(() => setLogin(null));
       api.updateChecks().then(setUpdates).catch(() => setUpdates(null));
@@ -108,18 +112,39 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (!preferences) return;
     const chosen = { ...preferences, ...next };
     const edited = ++generation.current;
+    unsaved.current = { ...unsaved.current, ...next };
+    for (const key of Object.keys(next) as (keyof PickerPreferences)[]) unsavedRevision.current[key] = edited;
+    const queued = { ...unsaved.current };
+    const queuedRevision = { ...unsavedRevision.current };
+    const deliberate = new Set(Object.keys(next));
     pending.current += 1;
     setPreferences(chosen);
     setFailed(false);
     // Saved in the order chosen, so quick changes end as the last one shows.
     saving.current = saving.current.catch(() => undefined)
-      .then(() => api.setPickerPreferences(chosen, null))
+      .then(async () => {
+        const patch = Object.fromEntries(Object.entries(queued).filter(([key]) =>
+          deliberate.has(key) || unsavedRevision.current[key as keyof PickerPreferences] === queuedRevision[key as keyof PickerPreferences]));
+        const saved = await api.setPickerPreferences(patch, null);
+        for (const key of Object.keys(patch) as (keyof PickerPreferences)[]) {
+          if (unsavedRevision.current[key] === queuedRevision[key]) {
+            delete unsaved.current[key];
+            delete unsavedRevision.current[key];
+          }
+        }
+        if (edited === generation.current) setPreferences(saved.preferences);
+      })
       .finally(() => { pending.current -= 1; })
       .catch(() => {
         setFailed(true);
         if (pending.current !== 0 || edited !== generation.current) return;
+        const request = ++reads.current;
         void api.pickerPreferences().then((saved) => {
-          if (pending.current === 0 && edited === generation.current) setPreferences(saved);
+          if (request === reads.current && pending.current === 0 && edited === generation.current) {
+            unsaved.current = {};
+            unsavedRevision.current = {};
+            setPreferences(saved);
+          }
         }).catch(() => undefined);
       });
   };

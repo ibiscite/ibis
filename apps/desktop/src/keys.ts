@@ -15,6 +15,7 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "search", action: "add", keys: ["Shift+Enter"] },
   { region: "search", action: "move", keys: ["ArrowDown", "ArrowUp"] },
   { region: "picker", action: "escape", keys: ["Escape"] },
+  { region: "picker", action: "format", keys: ["CmdOrCtrl+Shift+F"] },
   { region: "picker", action: "more", keys: ["CmdOrCtrl+K"] },
   { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
   { region: "picker", action: "preview", keys: ["CmdOrCtrl+I"] },
