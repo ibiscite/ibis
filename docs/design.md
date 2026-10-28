@@ -304,9 +304,10 @@ needs no fade, as a cut row already shows it.
 content and never break a word; a table that does not fit scrolls or drops a
 column, it does not hyphenate.
 
-**Labels and long strings.** Labels on actions, menu items and settings never
-wrap, also at Larger text: the layout widens, or the label truncates with a
-tooltip. Data truncates with a tooltip; file names shorten in the middle and
+**Labels and long strings.** Labels on actions and menu items never wrap,
+also at Larger text: the layout widens, or the label truncates with a tooltip.
+Settings rows and segmented choices follow the wrapping rule in **Settings**.
+Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical
 properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
@@ -691,6 +692,12 @@ shared `Switch` (38 × 22) and `Segmented` in `ui/`. Changes apply at once and
 reach an open picker; resets offer Undo. Built so far: General (login, pasting,
 picker look) and About (version, updates); Shortcuts, Libraries and Citations
 follow (#776). The picker's More keeps its quick toggles until then.
+Queued choices finish saving before the window closes, with at most a two-second
+wait. A failed save shows an alert and restores the saved choice; reloading
+choices on return never replaces an edit still being saved.
+When a row's text and control do not fit side by side, the control wraps below
+and its choices or labels wrap within the card, including at the minimum
+window width and larger system text sizes.
 
 **Permissions.** Ibis asks for a system permission only through a guide that
 says why in one sentence, names the exact list in the system's current words

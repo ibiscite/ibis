@@ -8,6 +8,13 @@ import type { PastePermission, SettingsApi } from "./api";
 
 afterEach(() => vi.useRealTimers());
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: () => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
   const state = {
     permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
@@ -16,6 +23,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     opened: 0,
     reads: 0,
     pages: [] as ((page: string) => void)[],
+    closes: [] as (() => Promise<void>)[],
   };
   const api: SettingsApi = {
     pickerPreferences: async () => state.preferences,
@@ -30,6 +38,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     version: async () => "0.3.0",
     onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
     onUpdateChecks: async () => () => undefined,
+    onCloseRequested: async (handler) => { state.closes.push(handler); return () => undefined; },
   };
   return { api, state };
 }
@@ -102,6 +111,95 @@ test("picker choices save at once, in order, keeping the others", async () => {
   await waitFor(() => expect(state.saved).toHaveLength(2));
   expect(state.saved[0]).toMatchObject({ density: "spacious", larger_text: false, paste: true });
   expect(state.saved[1]).toMatchObject({ density: "spacious", larger_text: true, paste: true });
+});
+
+test.each(["success", "failure", "later edit"])("closing drains both queued choices (%s)", async (outcome) => {
+  const { api, state } = fakeApi({ granted: true });
+  const first = deferred<null>(), second = deferred<null>();
+  const save = vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const read = vi.spyOn(api, "pickerPreferences");
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.click(await screen.findByRole("radio", { name: "Spacious" }));
+  if (outcome !== "later edit") fireEvent.click(screen.getByRole("switch", { name: "Larger text" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const closed = vi.fn();
+  const closing = state.closes[0]!().then(closed);
+  if (outcome === "later edit") fireEvent.click(screen.getByRole("switch", { name: "Larger text" }));
+  await act(async () => { await Promise.resolve(); });
+  expect(closed).not.toHaveBeenCalled();
+  await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(null); });
+  expect(save).toHaveBeenNthCalledWith(2, expect.objectContaining({ density: "spacious", larger_text: true }), null);
+  expect(read).toHaveBeenCalledOnce();
+  expect(closed).not.toHaveBeenCalled();
+  await act(async () => { second.resolve(null); await closing; });
+  expect(closed).toHaveBeenCalledOnce();
+});
+
+test("a stuck save holds closing for at most two seconds", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const save = deferred<null>();
+  vi.spyOn(api, "setPickerPreferences").mockReturnValue(save.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  vi.useFakeTimers();
+  fireEvent.click(larger);
+  const closed = vi.fn();
+  const closing = state.closes[0]!().then(closed);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_999); });
+  expect(closed).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); await closing; });
+  expect(closed).toHaveBeenCalledOnce();
+  await act(async () => { save.resolve(null); });
+});
+
+test("a failed save reads back the saved switch and keeps the alert", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const save = deferred<null>(), read = deferred<PickerPreferences>();
+  vi.spyOn(api, "setPickerPreferences").mockReturnValue(save.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  const paste = await screen.findByRole("switch", { name: "Paste into the app you came from" });
+  const reread = vi.spyOn(api, "pickerPreferences").mockReturnValue(read.promise);
+  fireEvent.click(paste);
+  expect((paste as HTMLInputElement).checked).toBe(false);
+  await act(async () => { save.reject(); });
+  expect(reread).toHaveBeenCalledOnce();
+  await act(async () => { read.resolve(state.preferences); });
+  expect((paste as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByRole("alert")).toBeTruthy();
+});
+
+test.each(["before", "during", "during, resolved after saving"])("a focus read started %s an edit cannot overwrite a local choice", async (when) => {
+  const { api, state } = fakeApi({ granted: true });
+  const read = deferred<PickerPreferences>(), save = deferred<null>();
+  vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(save.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(read.promise);
+  if (when === "before") fireEvent.focus(window);
+  fireEvent.click(larger);
+  if (when.startsWith("during")) fireEvent.focus(window);
+  if (when !== "during") await act(async () => { save.resolve(null); });
+  await act(async () => { read.resolve(state.preferences); });
+  expect((larger as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  await act(async () => { save.resolve(null); });
+  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "spacious", larger_text: true }));
+});
+
+test("a failure read cannot overwrite a newer edit", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const saved = state.preferences;
+  const save = deferred<null>(), read = deferred<PickerPreferences>();
+  vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(save.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(read.promise);
+  fireEvent.click(larger);
+  await act(async () => { save.reject(); });
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "spacious", larger_text: true }));
+  await act(async () => { read.resolve(saved); });
+  expect((larger as HTMLInputElement).checked).toBe(true);
 });
 
 test("the sidebar switches pages, a page request from the app moves it, and the window has no axe violations", async () => {
