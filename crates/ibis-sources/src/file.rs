@@ -157,13 +157,9 @@ fn parse_with_budget(
     let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
     let text = text.trim_start_matches('\u{feff}');
     let extension = source.extension();
-    let json = if extension.is_some_and(|extension| extension.eq_ignore_ascii_case("bib")) {
-        false
-    } else {
-        extension.is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson")
-        }) || text.trim_start().starts_with('[')
-    };
+    // Select by suffix: BibTeX comments may start with a JSON-looking bracket.
+    let json = extension
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson"));
     let (parsed, limited) = if json {
         let parsed = csl_json::load_str(&library, text)?;
         let limited = parsed
