@@ -80,7 +80,7 @@ impl Desk for Mac {
         self.app.clipboard().read_text().ok().as_deref() == Some(text)
     }
 
-    fn secure_field(&self) -> Option<bool> {
+    fn secure_field(&self, _: i32) -> Option<bool> {
         Some(false)
     }
 

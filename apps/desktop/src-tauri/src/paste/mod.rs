@@ -143,7 +143,7 @@ pub(crate) trait Desk {
     /// The focused field of the app in front takes a password (Windows UI
     /// Automation). macOS does not check yet.
     /// `None` means the check failed or timed out: it has not proved a safe field.
-    fn secure_field(&self) -> Option<bool>;
+    fn secure_field(&self, pid: i32) -> Option<bool>;
     /// The key that types V with Command on the current layout; Windows' V key.
     fn paste_key(&self) -> Option<u16>;
     /// Post ⌘ or Ctrl and `key` down and up to `pid` only; false on failure.
@@ -200,7 +200,7 @@ pub(crate) fn deliver(desk: &impl Desk, captured: Option<&Captured>, text: &str,
                 checks += 1;
             }
             desk.wait(SETTLE);
-            match desk.secure_field() {
+            match desk.secure_field(pid) {
                 Some(false) => {}
                 Some(true) => return copied(Some(CopyReason::SecureField)),
                 None => return copied(None),
@@ -371,11 +371,11 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
         // check could race with a foreign delayed-rendering owner.
         self.current()
     }
-    fn secure_field(&self) -> Option<bool> {
+    fn secure_field(&self, pid: i32) -> Option<bool> {
         if !self.current() || !self.in_front() {
             return None;
         }
-        let secure = self.desk.secure_field();
+        let secure = self.desk.secure_field(pid);
         (self.current() && self.in_front()).then_some(secure).flatten()
     }
     fn paste_key(&self) -> Option<u16> {
@@ -515,16 +515,73 @@ impl QueryWorker {
                 std::sync::atomic::Ordering::Relaxed,
             )
             .ok()?;
-        let permit = QueryPermit(self.0.clone());
-        let (sender, receiver) = std::sync::mpsc::channel();
-        std::thread::Builder::new()
-            .spawn(move || {
-                let _permit = permit;
-                let _ = sender.send(query());
-            })
-            .ok()?;
-        receiver.recv_timeout(limit).ok()
+        run_query(QueryPermit(self.0.clone()), limit, query)
     }
+}
+
+/// A stuck provider blocks only its target process. No queue or idle entries;
+/// at most four native queries may remain outstanding across all processes.
+#[cfg(any(target_os = "windows", test))]
+#[derive(Default)]
+struct PasswordQueries(std::sync::Arc<Mutex<Vec<i32>>>);
+
+#[cfg(any(target_os = "windows", test))]
+const PASSWORD_QUERY_LIMIT: usize = 4;
+
+#[cfg(any(target_os = "windows", test))]
+struct PasswordPermit {
+    active: std::sync::Arc<Mutex<Vec<i32>>>,
+    pid: i32,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl Drop for PasswordPermit {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.active.lock() {
+            active.retain(|pid| *pid != self.pid);
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl PasswordQueries {
+    fn run<T: Send + 'static>(
+        &self,
+        pid: i32,
+        limit: Duration,
+        query: impl FnOnce() -> T + Send + 'static,
+    ) -> Option<T> {
+        let mut active = self.0.lock().ok()?;
+        if active.len() >= PASSWORD_QUERY_LIMIT || active.contains(&pid) {
+            return None;
+        }
+        active.push(pid);
+        drop(active);
+        run_query(
+            PasswordPermit {
+                active: self.0.clone(),
+                pid,
+            },
+            limit,
+            query,
+        )
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn run_query<T: Send + 'static>(
+    permit: impl Send + 'static,
+    limit: Duration,
+    query: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .spawn(move || {
+            let _permit = permit;
+            let _ = sender.send(query());
+        })
+        .ok()?;
+    receiver.recv_timeout(limit).ok()
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -575,7 +632,7 @@ impl Desk for CopyOnly {
     fn clipboard_matches(&self, _: &str) -> bool {
         false
     }
-    fn secure_field(&self) -> Option<bool> {
+    fn secure_field(&self, _: i32) -> Option<bool> {
         Some(false)
     }
     fn paste_key(&self) -> Option<u16> {
@@ -599,9 +656,11 @@ mod tests {
         asked: Cell<u32>,
         /// Front-most process after each wait.
         fronts: RefCell<Vec<i32>>,
+        front_id: &'static str,
         clipboard: String,
         clipboard_reads: Cell<u32>,
         password: Option<bool>,
+        password_queries: Option<std::sync::Arc<PasswordQueries>>,
         after_password: Option<fn(&Fake)>,
         posts: RefCell<Vec<(i32, u16)>>,
         generation: Cell<u64>,
@@ -627,9 +686,11 @@ mod tests {
                 may_post: true,
                 asked: Cell::new(0),
                 fronts: RefCell::new(vec![42]),
+                front_id: "org.example.writer",
                 clipboard: clipboard.into(),
                 clipboard_reads: Cell::new(0),
                 password: Some(false),
+                password_queries: None,
                 after_password: None,
                 posts: RefCell::default(),
                 generation: Cell::new(11),
@@ -714,7 +775,7 @@ mod tests {
         }
         fn frontmost(&self) -> Option<Front> {
             self.fronts.borrow().first().map(|&pid| Front {
-                id: Some("org.example.writer".into()),
+                id: Some(self.front_id.into()),
                 pid,
                 name: None,
                 elevated: false,
@@ -724,11 +785,15 @@ mod tests {
             self.clipboard_reads.set(self.clipboard_reads.get() + 1);
             self.clipboard == text
         }
-        fn secure_field(&self) -> Option<bool> {
+        fn secure_field(&self, pid: i32) -> Option<bool> {
             if let Some(change) = self.after_password {
                 change(self);
             }
-            self.password
+            let password = self.password;
+            match &self.password_queries {
+                Some(queries) => queries.run(pid, Duration::from_secs(1), move || password).flatten(),
+                None => password,
+            }
         }
         fn paste_key(&self) -> Option<u16> {
             Some(0x09)
@@ -1151,15 +1216,15 @@ mod tests {
     #[test]
     fn password_check_timeout_and_provider_error_copy_without_pasting() {
         let (release, blocked) = std::sync::mpsc::channel::<()>();
-        let timeout = QueryWorker::default()
-            .run(Duration::ZERO, move || {
+        let timeout = PasswordQueries::default()
+            .run(42, Duration::ZERO, move || {
                 let _ = blocked.recv_timeout(Duration::from_secs(1));
                 Some(false)
             })
             .flatten();
         let _ = release.send(());
-        let provider_error = QueryWorker::default()
-            .run(Duration::from_secs(1), || None::<bool>)
+        let provider_error = PasswordQueries::default()
+            .run(42, Duration::from_secs(1), || None::<bool>)
             .flatten();
         assert_eq!(timeout, None);
         assert_eq!(provider_error, None);
@@ -1236,7 +1301,7 @@ mod tests {
     #[test]
     fn timed_out_query_workers_keep_their_slots_and_never_queue_busy_requests() {
         let metadata = QueryWorker::default();
-        let password = QueryWorker::default();
+        let password = PasswordQueries::default();
         let (release_name, name_blocked) = std::sync::mpsc::channel::<()>();
         let (name_started, name_entered) = std::sync::mpsc::channel();
         assert_eq!(
@@ -1251,12 +1316,15 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .unwrap_or_else(|e| panic!("name worker: {e}"));
         // A hung metadata worker does not consume the password worker's slot.
-        assert_eq!(password.run(Duration::from_secs(1), || Some(false)), Some(Some(false)));
-        wait_for_query_exit(&password);
+        assert_eq!(
+            password.run(42, Duration::from_secs(1), || Some(false)),
+            Some(Some(false))
+        );
+        wait_for_password_queries(&password);
         let (release_password, password_blocked) = std::sync::mpsc::channel::<()>();
         let (password_started, password_entered) = std::sync::mpsc::channel();
         assert_eq!(
-            password.run(Duration::ZERO, move || {
+            password.run(42, Duration::ZERO, move || {
                 let _ = password_started.send(());
                 let _ = password_blocked.recv_timeout(Duration::from_secs(5));
                 Some(false)
@@ -1278,7 +1346,7 @@ mod tests {
             );
             let password_ran = ran.clone();
             let checked = password
-                .run(Duration::from_secs(1), move || {
+                .run(42, Duration::from_secs(1), move || {
                     password_ran.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     Some(false)
                 })
@@ -1293,7 +1361,7 @@ mod tests {
         let _ = release_name.send(());
         let _ = release_password.send(());
         wait_for_query_exit(&metadata);
-        wait_for_query_exit(&password);
+        wait_for_password_queries(&password);
         assert_eq!(
             ran.load(std::sync::atomic::Ordering::Relaxed),
             0,
@@ -1303,7 +1371,10 @@ mod tests {
             display_name(&metadata, "writer.exe".into(), || Some("New name".into())),
             "New name"
         );
-        assert_eq!(password.run(Duration::from_secs(1), || Some(false)), Some(Some(false)));
+        assert_eq!(
+            password.run(42, Duration::from_secs(1), || Some(false)),
+            Some(Some(false))
+        );
     }
 
     #[test]
@@ -1317,6 +1388,137 @@ mod tests {
         );
         wait_for_query_exit(&worker);
         assert_eq!(worker.run(Duration::from_secs(1), || true), Some(true));
+    }
+
+    fn wait_for_password_queries(queries: &PasswordQueries) {
+        let started = Instant::now();
+        while !queries.0.lock().is_ok_and(|active| active.is_empty()) {
+            assert!(
+                started.elapsed() < Duration::from_secs(1),
+                "password queries did not exit"
+            );
+            std::thread::yield_now();
+        }
+    }
+
+    #[test]
+    fn a_stuck_password_provider_in_app_a_does_not_stop_app_b_from_pasting() {
+        let queries = std::sync::Arc::new(PasswordQueries::default());
+        let (release_a, stuck_a) = std::sync::mpsc::channel::<()>();
+        let (started, entered) = std::sync::mpsc::channel();
+        assert_eq!(
+            queries.run(42, Duration::ZERO, move || {
+                let _ = started.send(());
+                // No provider deadline: A remains stuck throughout B's delivery.
+                let _ = stuck_a.recv();
+                Some(false)
+            }),
+            None
+        );
+        entered
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap_or_else(|e| panic!("app A provider: {e}"));
+        let a = Fake {
+            password_queries: Some(queries.clone()),
+            ..Fake::new("[@synthetic]")
+        };
+        assert_eq!(deliver_ticket(&a, &ticket(), "[@synthetic]", true), copied(None));
+        assert!(a.posts.borrow().is_empty());
+
+        let b = Fake {
+            password_queries: Some(queries.clone()),
+            front_id: "org.example.other",
+            ..Fake::new("[@synthetic]")
+        };
+        b.fronts.replace(vec![84]);
+        b.window.set(200);
+        let mut b_ticket = ticket();
+        b_ticket.target.window = Some(200);
+        let captured = b_ticket.target.captured.as_mut().unwrap_or_else(|| panic!("B capture"));
+        captured.pid = Some(84);
+        captured.target.app = Some(AppId {
+            system: System::Windows,
+            id: "org.example.other".into(),
+        });
+        captured.name = Some("Other Writer".into());
+        assert_eq!(
+            deliver_ticket(&b, &b_ticket, "[@synthetic]", true),
+            Delivered::Pasted {
+                app: Some("Other Writer".into())
+            }
+        );
+        assert_eq!(*b.posts.borrow(), [(84, 0x09)]);
+        assert!(queries.0.lock().is_ok_and(|active| active.contains(&42)));
+        assert_eq!(deliver_ticket(&a, &ticket(), "[@synthetic]", true), copied(None));
+        assert!(a.posts.borrow().is_empty());
+        // Release only for test cleanup, after proving B pasted while A was stuck.
+        let _ = release_a.send(());
+        wait_for_password_queries(&queries);
+    }
+
+    #[test]
+    fn password_queries_cap_outstanding_processes_without_queueing_or_retaining_idle_entries() {
+        let queries = PasswordQueries::default();
+        let mut releases = Vec::new();
+        for pid in [42, 84, 126, 168] {
+            let (release, blocked) = std::sync::mpsc::channel::<()>();
+            let (started, entered) = std::sync::mpsc::channel();
+            assert_eq!(
+                queries.run(pid, Duration::ZERO, move || {
+                    let _ = started.send(());
+                    let _ = blocked.recv();
+                    Some(false)
+                }),
+                None
+            );
+            entered
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap_or_else(|e| panic!("provider started: {e}"));
+            releases.push(release);
+        }
+        let refused_runs = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        for _ in 0..100 {
+            for pid in [42, 210] {
+                let ran = refused_runs.clone();
+                assert_eq!(
+                    queries.run(pid, Duration::from_secs(1), move || {
+                        ran.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        Some(false)
+                    }),
+                    None
+                );
+            }
+        }
+        drop(releases);
+        wait_for_password_queries(&queries);
+        assert_eq!(refused_runs.load(std::sync::atomic::Ordering::Relaxed), 0);
+        // The cap counts only in-flight work, not the number of apps ever checked.
+        for pid in [210, 252, 294, 336, 378] {
+            assert_eq!(
+                queries.run(pid, Duration::from_secs(1), || Some(false)),
+                Some(Some(false))
+            );
+            wait_for_password_queries(&queries);
+        }
+    }
+
+    #[test]
+    fn password_process_permits_are_released_after_provider_failure_or_panic() {
+        let queries = PasswordQueries::default();
+        assert_eq!(queries.run(42, Duration::from_secs(1), || None::<bool>), Some(None));
+        wait_for_password_queries(&queries);
+        assert_eq!(
+            queries.run(42, Duration::from_secs(1), || -> bool {
+                panic!("synthetic provider failure")
+            }),
+            None
+        );
+        wait_for_password_queries(&queries);
+        assert_eq!(
+            queries.run(42, Duration::from_secs(1), || Some(false)),
+            Some(Some(false))
+        );
+        wait_for_password_queries(&queries);
     }
 
     #[test]

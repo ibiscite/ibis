@@ -8,10 +8,10 @@ use tauri::{AppHandle, Manager};
 use winsafe::{self as w, co};
 
 use super::capture::Front;
-use super::{Desk, PasteEvent, PasteKeys, QueryWorker, TicketDesk};
+use super::{Desk, PasswordQueries, PasteEvent, PasteKeys, QueryWorker, TicketDesk};
 
 static NAME_WORKER: LazyLock<QueryWorker> = LazyLock::new(QueryWorker::default);
-static PASSWORD_WORKER: LazyLock<QueryWorker> = LazyLock::new(QueryWorker::default);
+static PASSWORD_QUERIES: LazyLock<PasswordQueries> = LazyLock::new(PasswordQueries::default);
 static KEYS: Mutex<PasteKeys> = Mutex::new(PasteKeys {
     control: false,
     v: false,
@@ -109,15 +109,22 @@ fn foreground_pid() -> Option<i32> {
 }
 
 /// The focused field of the app in front takes a password.
-fn password_focused() -> Option<bool> {
+fn password_focused(pid: i32) -> Option<bool> {
+    let native_pid = u32::try_from(pid).ok()?;
     // A thread of its own: UI Automation needs COM set up on the thread that
     // calls it, and a hung app must not hold the paste.
-    PASSWORD_WORKER
-        .run(ASK_LIMIT, || {
-            uiautomation::UIAutomation::new()
-                .and_then(|automation| automation.get_focused_element())
-                .and_then(|field| field.is_password())
-                .ok()
+    // uiautomation 0.25.1 exposes neither CUIAutomation8 nor connection or
+    // transaction timeout setters. Keep the caller deadline and PID permits.
+    PASSWORD_QUERIES
+        .run(pid, ASK_LIMIT, move || {
+            if foreground_pid() != Some(pid) {
+                return None;
+            }
+            let field = uiautomation::UIAutomation::new().ok()?.get_focused_element().ok()?;
+            if field.get_process_id().ok()? != native_pid {
+                return None;
+            }
+            field.is_password().ok()
         })
         .flatten()
 }
@@ -252,8 +259,8 @@ impl Desk for Win {
         false
     }
 
-    fn secure_field(&self) -> Option<bool> {
-        password_focused()
+    fn secure_field(&self, pid: i32) -> Option<bool> {
+        password_focused(pid)
     }
 
     /// Windows' shortcuts follow the V key's virtual key on every layout.
@@ -314,7 +321,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         };
         assert!(!front.elevated);
-        assert_eq!(password_focused(), Some(false));
+        assert_eq!(password_focused(front.pid), Some(false));
         assert!(!keys_held());
         assert!(send_paste(|| true));
         let started = Instant::now();
