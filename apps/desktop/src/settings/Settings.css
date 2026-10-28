@@ -16,18 +16,10 @@
 .settings-titlebar { grid-area: 1 / 1 / 2 / -1; z-index: var(--z-chrome); }
 .settings-sidebar {
   grid-area: 1 / 1 / -1 / 2; min-width: 0; min-height: 0; box-sizing: border-box;
-  padding: calc(var(--titlebar-height) + var(--inset)) var(--inset) var(--inset); background: var(--surface-sidebar);
+  display: flex; flex-direction: column; overflow: hidden;
+  padding-block-start: var(--titlebar-height); background: var(--surface-sidebar);
   border-inline-end: var(--border-width) solid var(--separator);
 }
-.settings-page-list { display: grid; gap: var(--row-spacing); list-style: none; margin: 0; padding: 0; }
-.settings-nav {
-  width: 100%; box-sizing: border-box; min-height: var(--control-min-size); padding: var(--space-1) var(--space-2);
-  border: 0; border-radius: var(--r-row); overflow-wrap: anywhere;
-  background: var(--clear); color: var(--text); font: inherit; text-align: start; cursor: default;
-}
-.settings-nav:hover:not([aria-current]) { background: var(--fill-subtle-hover); }
-.settings-nav[aria-current="page"] { background: var(--selected-background); color: var(--selected-text); font-weight: 500; }
-.settings-nav:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
 
 .settings-page {
   grid-area: 2 / 2; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;

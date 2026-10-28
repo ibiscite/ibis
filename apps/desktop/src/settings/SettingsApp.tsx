@@ -5,6 +5,7 @@ import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { Segmented } from "../ui/Segmented";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
+import { SideNavigation } from "../ui/SideNavigation";
 import { Switch } from "../ui/Switch";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import type { SettingsApi } from "./api";
@@ -141,14 +142,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     <div className="settings">
       <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={settingsText.pages}>
-        <ul className="settings-page-list">
-          {PAGES.map((each) => (
-            <li key={each}>
-              <button type="button" className="settings-nav" aria-current={each === page ? "page" : undefined}
-                onClick={() => { setPage(each); setFocus("top"); }}>{settingsText[each]}</button>
-            </li>
-          ))}
-        </ul>
+        <SideNavigation label={settingsText.pages} value={page} options={PAGES.map((value) => ({ value, label: settingsText[value] }))}
+          onChange={(next) => { setPage(next); setFocus("top"); }} />
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className="settings-page-title">{settingsText[page]}</h1>

@@ -62,11 +62,12 @@ test("Settings opens at the top of General with every built page in a navigable,
   render(<SettingsApp api={api} initialPage={null} />);
   await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
   const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
-  const list = within(sidebar).getByRole("list");
-  const items = within(list).getAllByRole("listitem");
-  expect(items.map((item) => within(item).getByRole("button").textContent)).toEqual(["General", "About"]);
-  const selected = () => within(list).getAllByRole("button").filter((button) => button.getAttribute("aria-current") === "page");
-  expect(selected().map((button) => button.textContent)).toEqual(["General"]);
+  const list = within(sidebar).getByRole("listbox", { name: "Settings pages" });
+  const items = within(list).getAllByRole("option");
+  expect(items.map((item) => item.textContent)).toEqual(["General", "About"]);
+  const selected = () => within(list).getAllByRole("option", { selected: true });
+  expect(selected().map((item) => item.textContent)).toEqual(["General"]);
+  expect(selected()[0]!.getAttribute("aria-current")).toBe("page");
   const main = screen.getByRole("main", { name: "General" });
   expect(main.firstElementChild).toBe(within(main).getByRole("heading", { name: "General", level: 1 }));
   expect(main.scrollTop).toBe(0);
@@ -75,12 +76,32 @@ test("Settings opens at the top of General with every built page in a navigable,
   act(() => state.pages[0]!("general"));
   expect(main.scrollTop).toBe(0);
   main.scrollTop = 180;
-  fireEvent.click(within(list).getByRole("button", { name: "About" }));
+  fireEvent.click(within(list).getByRole("option", { name: "About" }));
   expect(screen.getByRole("main", { name: "About" }).scrollTop).toBe(0);
-  expect(selected().map((button) => button.textContent)).toEqual(["About"]);
-  fireEvent.click(within(list).getByRole("button", { name: "General" }));
+  expect(selected().map((item) => item.textContent)).toEqual(["About"]);
+  fireEvent.click(within(list).getByRole("option", { name: "General" }));
   expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
-  expect(selected().map((button) => button.textContent)).toEqual(["General"]);
+  expect(selected().map((item) => item.textContent)).toEqual(["General"]);
+});
+
+test("sidebar arrows and Home/End move focus, select the page and reset its scroll", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="general" />);
+  await screen.findByRole("switch", { name: "Larger text" });
+  const general = screen.getByRole("option", { name: "General" });
+  const about = screen.getByRole("option", { name: "About" });
+  act(() => general.focus());
+  for (const [key, target, name] of [
+    ["ArrowDown", about, "About"], ["ArrowUp", general, "General"],
+    ["End", about, "About"], ["Home", general, "General"],
+  ] as const) {
+    screen.getByRole("main").scrollTop = 120;
+    fireEvent.keyDown(document.activeElement!, { key });
+    expect(document.activeElement).toBe(target);
+    expect(target.getAttribute("aria-current")).toBe("page");
+    expect(target.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("main", { name }).scrollTop).toBe(0);
+  }
 });
 
 test("the title-bar drag region is outside the page scroller and sidebar list", async () => {
@@ -279,9 +300,9 @@ test("the sidebar switches pages, a page request from the app moves it, and the 
   const { api, state } = fakeApi({ granted: true });
   const { container } = render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("switch", { name: "Larger text" });
-  fireEvent.click(screen.getByRole("button", { name: "About" }));
+  fireEvent.click(screen.getByRole("option", { name: "About" }));
   expect(await screen.findByText("Ibis Nightly 0.3.0")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "About" }).getAttribute("aria-current")).toBe("page");
+  expect(screen.getByRole("option", { name: "About" }).getAttribute("aria-current")).toBe("page");
   act(() => state.pages[0]!("paste"));
   expect(await screen.findByRole("switch", { name: "Paste into the app you came from" })).toBeTruthy();
   const found = await axe.run(container);

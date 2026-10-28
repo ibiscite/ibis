@@ -708,20 +708,29 @@ follow (#776). The picker's More keeps its quick toggles until then.
 
 The shell fills the viewport at every window size: a two-column grid with a
 reserved `--titlebar-height` row above the content. The sidebar background
-runs the full height; its navigation starts below the window buttons. It is
-a semantic list of every built page with exactly one `aria-current="page"`
-selection, drawn with the shared selected fill and paired text. Its width is
+runs the full height; its navigation starts below the window buttons.
+`ui/SideNavigation` uses React Aria's single-selection listbox: every built
+page is an option, with exactly one selected option and `aria-current="page"`,
+drawn with the shared selected fill and paired text. One Tab stop enters the
+list; arrows and Home/End move focus and select the page. Typeahead moves
+focus to a matching page; Enter chooses it. Its width is
 `--settings-sidebar-width`, capped in proportion to the window so the page
 still fits at the minimum 480 × 400 size.
 
-Only the content page scrolls. The document, shell and sidebar stay still;
-the title-bar drag region belongs to the shell, outside the scroller. Neither
-text nor controls may slide behind the transparent title bar or traffic
-lights. Never reserve that space with a sticky spacer or a negative margin.
+The content page and bounded navigation list scroll independently. The
+document, shell, sidebar background and reserved window-button area stay
+still. The list fills the height left below the title bar and may scroll when
+long labels wrap at large text sizes; rows keep their natural height and
+remain reachable by scrolling. The title-bar drag region belongs to the shell, outside both
+scrollers. Neither text nor controls may slide behind the transparent title
+bar or traffic lights. Never reserve that space with a sticky spacer or a
+negative margin.
 Opening Settings normally, selecting a page or requesting General again
 starts that page at the top, with a large `--type-page-title-*` heading and
 `--settings-page-inset` around the content. An explicit Pasting deep link may
 reveal that group, after its data loads, by moving only the page scroller.
+Presenting an existing Settings window without a page (shortcut or tray)
+emits the General page event too, selecting General and resetting its scroll.
 
 `ui/SettingsGroup` owns grouped cards (`--r-card`, `--settings-group-width`)
 and inset rows. Groups and cards keep their natural height; the page must

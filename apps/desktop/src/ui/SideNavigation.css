@@ -1,0 +1,16 @@
+/* The navigation list alone scrolls; its shell reserves the native title bar. */
+.ui-side-navigation {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: var(--row-spacing);
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-block: var(--inset);
+  padding: var(--inset); box-sizing: border-box; outline: none;
+}
+.ui-side-navigation-item {
+  flex: none; width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--control-min-size);
+  padding: var(--space-1) var(--space-2); border-radius: var(--r-row); overflow-wrap: anywhere;
+  background: var(--clear); color: var(--text); font: inherit; text-align: start; cursor: default; outline: none;
+}
+@media (hover: hover) {
+  .ui-side-navigation-item[data-hovered]:not([aria-current]) { background: var(--fill-subtle-hover); }
+}
+.ui-side-navigation-item[aria-current="page"] { background: var(--selected-background); color: var(--selected-text); font-weight: 500; }
+.ui-side-navigation-item[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }

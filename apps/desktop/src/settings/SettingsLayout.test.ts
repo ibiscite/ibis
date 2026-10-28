@@ -9,6 +9,7 @@ const groups = read("../ui/SettingsGroup.css");
 const buttons = read("../ui/Button.css");
 const switches = read("../ui/Switch.css");
 const segments = read("../ui/Segmented.css");
+const navigation = read("../ui/SideNavigation.css");
 const tokens = read("../tokens.css");
 
 function rules(source: string): CSSStyleRule[] {
@@ -26,7 +27,7 @@ function style(source: string, selector: string): CSSStyleDeclaration {
   return rule!.style;
 }
 
-test("Settings fills the viewport, with one bounded page scroller below a reserved native title bar", () => {
+test("Settings fills the viewport, with bounded page and navigation scrollers below a reserved native title bar", () => {
   expect(read("../../settings.html")).toMatch(/<html[^>]+class="settings-window"/);
   const roots = style(shell, ":root.settings-window, :root.settings-window body, #settings");
   expect(roots.getPropertyValue("height")).toBe("100%");
@@ -47,8 +48,8 @@ test("Settings fills the viewport, with one bounded page scroller below a reserv
   expect(page.getPropertyValue("overflow-y")).toBe("auto");
   expect(page.getPropertyValue("grid-auto-rows")).toBe("max-content");
   expect(page.getPropertyValue("align-content")).toBe("start");
-  const scrollers = rules(shell + groups).filter((rule) => ["overflow", "overflow-y"].some((property) => /^(auto|scroll)$/.test(rule.style.getPropertyValue(property))));
-  expect(scrollers.map((rule) => rule.selectorText)).toEqual([".settings-page"]);
+  const scrollers = rules(shell + groups + navigation).filter((rule) => ["overflow", "overflow-y"].some((property) => /^(auto|scroll)$/.test(rule.style.getPropertyValue(property))));
+  expect(scrollers.map((rule) => rule.selectorText)).toEqual([".settings-page", ".ui-side-navigation"]);
   for (const selector of [".settings", ".settings-titlebar", ".settings-page", ".settings-page-title"]) {
     const layout = style(shell, selector);
     expect(["sticky", "absolute", "fixed"]).not.toContain(layout.getPropertyValue("position"));
@@ -56,8 +57,27 @@ test("Settings fills the viewport, with one bounded page scroller below a reserv
   }
 });
 
+test("long sidebar labels can scroll within the remaining height without moving the title bar", () => {
+  const sidebar = style(shell, ".settings-sidebar");
+  expect(sidebar.getPropertyValue("display")).toBe("flex");
+  expect(sidebar.getPropertyValue("flex-direction")).toBe("column");
+  expect(sidebar.getPropertyValue("min-height")).toBe("0px");
+  expect(sidebar.getPropertyValue("overflow")).toBe("hidden");
+  expect(sidebar.getPropertyValue("padding-block-start")).toBe("var(--titlebar-height)");
+  const list = style(navigation, ".ui-side-navigation");
+  expect(list.getPropertyValue("flex-grow")).toBe("1");
+  expect(list.getPropertyValue("min-height")).toBe("0px");
+  expect(list.getPropertyValue("overflow-y")).toBe("auto");
+  expect(list.getPropertyValue("box-sizing")).toBe("border-box");
+  expect(list.getPropertyValue("overscroll-behavior")).toBe("contain");
+  const item = style(navigation, ".ui-side-navigation-item");
+  expect(item.getPropertyValue("flex-shrink")).toBe("0");
+  expect(item.getPropertyValue("height")).toBe("");
+  expect(item.getPropertyValue("overflow-wrap")).toBe("anywhere");
+});
+
 test("sidebar navigation and the large page title have shared selection, spacing and type roles", () => {
-  const selected = style(shell, '.settings-nav[aria-current="page"]');
+  const selected = style(navigation, '.ui-side-navigation-item[aria-current="page"]');
   expect(selected.getPropertyValue("background")).toBe("var(--selected-background)");
   expect(selected.getPropertyValue("color")).toBe("var(--selected-text)");
   const title = style(shell, ".settings-page-title");
