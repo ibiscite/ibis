@@ -57,6 +57,21 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
           autoFocus
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text/plain");
+            if (!/[\r\n\t]/.test(text)) return;
+            // A single-line input otherwise deletes newlines between keys.
+            e.preventDefault();
+            const field = e.currentTarget;
+            const start = field.selectionStart ?? query.length;
+            const end = field.selectionEnd ?? start;
+            const pasted = text.replace(/[\r\n\t]+/g, "; ");
+            const next = query.slice(0, start) + pasted + query.slice(end);
+            onQueryChange(next);
+            requestAnimationFrame(() => {
+              if (field.value === next) field.setSelectionRange(start + pasted.length, start + pasted.length);
+            });
+          }}
           onKeyDown={onSearchKeyDown}
         />
         {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}

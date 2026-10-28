@@ -109,12 +109,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       report("status", false);
     }).catch(() => { if (statusReads.current === request) report("status"); });
   };
-  const { queryKey, results, current, interpretation, announcement, resultsQuery, error } =
+  const { queryKey, results, current, interpretation, list, announcement, resultsQuery, error } =
     useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot });
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
   // The selection, or the highlighted result when nothing is selected.
-  const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+  const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : list ? current : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
   const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
     useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, previewFileCitation, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
@@ -143,8 +143,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const highlightedChoice = choiceKey(results.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator })));
   const latestHighlight = useRef(highlightedChoice);
   latestHighlight.current = highlightedChoice;
+  const defaultChoice = list ? choiceKey(current) : highlightedChoice;
+  const latestDefaultChoice = useRef(defaultChoice);
+  latestDefaultChoice.current = defaultChoice;
   // A selected citation owns its references independently of result highlighting.
-  const activeChoice = selected.size === 0 ? highlightedChoice : null;
+  const activeChoice = selected.size === 0 ? defaultChoice : null;
   const copyContext = useRef({ selected, queryKey, format, snapshotRevision, activeChoice });
   const before = copyContext.current;
   if (before.selected !== selected || before.queryKey !== queryKey || before.format !== format || before.snapshotRevision !== snapshotRevision || before.activeChoice !== activeChoice) {
@@ -396,7 +399,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (!ownsCompletion()) return;
     setCopied(outcome);
     const clearedSelection = new Map<string, CitationReference>();
-    const completedContext = { ...context, selected: clearedSelection, activeChoice: latestHighlight.current };
+    const completedContext = { ...context, selected: clearedSelection, activeChoice: latestDefaultChoice.current };
     copyContext.current = completedContext;
     setSelected(clearedSelection);
     // After a copy, reopening keeps the current search, not one cleared before it.
@@ -472,7 +475,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = showWriting || chosen.length === 0 || shown === "stale" || shown === "failed" ? null
-    : copyLabel(format, chosen.length);
+    : list && selected.size === 0 ? pickerText.copyCitations(chosen.length) : copyLabel(format, chosen.length);
   const highlighted = current[active];
   const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
@@ -615,7 +618,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       />
       <div className="picker-content">
       <Notices updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
-        error={error} copyError={copyError} copied={copied}
+        error={error} copyError={copyError} copied={copied} missing={list?.missing}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => setCopied(null)} />
       {usingLocator && <div className="notices">
@@ -630,7 +633,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>}
       <div className="results-area scroll-area" ref={resultArea}>
         {library?.has_snapshot && results.length > 0 && !busy && showCitations && <div className="results-heading" aria-hidden="true">
-          <span>{query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
+          <span>{list ? pickerText.pastedList : query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
           {showCitations ? announcement : ""}
@@ -644,7 +647,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             if (current !== results) return;
             pointer.choose(i);
             if (action === "toggle") toggle(r);
-            else if (action === "copy") requestCopy(selected.size > 0 ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
+            else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
             input.current?.focus();
           }}
           onContext={(i, r) => {
@@ -657,7 +660,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               if (!owns()) return;
               report("rowContext", false);
               if (action === "toggle") toggle(r);
-              else if (action === "copy") requestCopy(selected.size > 0 ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
+              else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
               if (action !== null || document.hasFocus()) input.current?.focus({ preventScroll: true });
             }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) input.current?.focus({ preventScroll: true }); } });
           }}

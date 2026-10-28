@@ -109,3 +109,31 @@ fn lists_keep_scope_cancellation_and_work_limits() {
             .is_none()
     );
 }
+
+#[test]
+fn hostile_syntax_and_duplicate_aliases_remain_bounded() {
+    let index = index();
+    let list = index.pasted_list("a,OLD-A,a", None, &|| false).unwrap().unwrap();
+    assert_eq!(list.hits.len(), 1);
+    let list = index
+        .pasted_list(&"@a ".repeat(1000), None, &|| false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(list.hits.len(), 1);
+    for query in [
+        "\\cite[".repeat(8000),
+        "👩🏽‍💻 @a \\cite{日本🌙".into(),
+        "\\cite".repeat(10_000),
+    ] {
+        let _ = index.pasted_list(&query, None, &|| false).unwrap();
+    }
+    let checks = std::cell::Cell::new(0);
+    assert!(
+        index
+            .pasted_list("@a @b", None, &|| {
+                checks.set(checks.get() + 1);
+                checks.get() > 1
+            })
+            .is_none()
+    );
+}

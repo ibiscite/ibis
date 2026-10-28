@@ -46,6 +46,9 @@ pub(super) fn entries(query: &str) -> Option<Entries<'_>> {
                     rest = after;
                     continue;
                 }
+                // Even an unclosed optional argument is consumed once.
+                rest = args;
+                continue;
             }
         }
         if let Some(after) = rest.strip_prefix('@') {
