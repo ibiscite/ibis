@@ -378,6 +378,11 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
+- **Year-only citations.** Keep supported style forms available through conditional
+  layouts. Each selected item's output must show its issued year, or the style's
+  own no-date term for an undated or zero-year item; otherwise refuse the citation.
+  A matching phrase in a title or locator, or another item's year, does not
+  establish a year-only result.
 - **Beak mark** (#888). The supplied two-head SVG in `currentColor` from
   `--citation`, 20 px tall (`--space-5`), scaled with text, `aria-hidden`,
   mirrored in RTL, 45 % while pending, `CanvasText` in contrast modes [C16].
@@ -701,10 +706,11 @@ stack of titled groups of rows: a label and optional description, then one
 control at the end, at least `--settings-row-height` (48 px) or
 `--settings-described-row-height` (56 px with a description), on
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
-shared `Switch` (38 × 22) and `Segmented` in `ui/`. Changes apply at once and
-reach an open picker; resets offer Undo. Built so far: General (login, pasting,
-picker look) and About (version, updates); Shortcuts, Libraries and Citations
-follow (#776). The picker's More keeps its quick toggles until then.
+shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
+apply at once and reach an open picker; preference resets offer Undo. Built so
+far: General (login, pasting, picker look), Shortcuts (open Ibis and the picker's
+key list) and About (version, updates); Libraries and Citations follow (#776).
+The picker's More keeps its quick toggles until then.
 
 The shell fills the viewport at every window size: a two-column grid with a
 reserved `--titlebar-height` row above the content. The sidebar background
@@ -756,6 +762,23 @@ already-saved output choice. Out-of-order reads never replace newer choices.
 When a row's text and control do not fit side by side, the control wraps below
 and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.
+
+**Shortcuts.** The recorder button shows the current shortcut in the system's
+own notation (⇧⌘Y on macOS). Clicking it says **Type a shortcut…**; Esc or
+moving focus cancels. Tab and Shift+Tab cancel and move focus normally.
+ASCII letters are saved as logical letters and follow the typed letter on macOS;
+all other keys are saved as physical codes and stay at that position, including
+after a restart or layout change. Recorded modifiers are Control, Alt, Shift, Command, in that
+order. A shortcut needs Control, Alt/Option or Command; **⌘ + one key is
+refused** (Ctrl + one key elsewhere) because apps use it for their own commands.
+On Windows, Ctrl+Alt with a printable key (also with Shift) is refused because
+it can consume AltGr typing; a Windows-key combination or a non-typing key is available instead.
+An unsafe saved shortcut falls back to the default at startup with an explanation.
+Refusals explain how to choose another and keep the working shortcut.
+The new shortcut is registered before the old one is released. A failed save
+keeps it working for this run and says it was not saved for next time.
+**Use Default** appears only for a different shortcut and restores ⇧⌘Y
+(Ctrl+Shift+Y elsewhere). **In the picker** is a read-only list from `KEY_TABLE`.
 
 **Permissions.** Ibis asks for a system permission only through a guide that
 says why in one sentence, names the exact list in the system's current words

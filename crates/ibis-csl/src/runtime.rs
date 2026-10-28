@@ -229,6 +229,121 @@ mod tests {
     }
 
     #[test]
+    fn bibliography_strips_numbers_through_shared_macros_without_changing_citations() {
+        on_worker_stack(|| {
+            let session = Session::new(&Limits::default(), &control()).unwrap();
+            session.context.with(|ctx| {
+                ctx.eval::<(), _>(r#"
+                    __ibisStyles.push(["synthetic-macro-number", `<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><info><category citation-format="numeric"/></info>
+                      <macro name="n"><text variable="citation-number" prefix="[" suffix="]"/></macro>
+                      <macro name="entry"><text macro="n"/><text variable="title"/></macro>
+                      <citation><layout><text macro="n"/></layout></citation>
+                      <bibliography><layout><text macro="entry"/><text macro="n"/></layout></bibliography></style>`]);
+                "#).unwrap();
+                // Rebuild the adapter's style map with the synthetic fixture.
+                ctx.eval::<(), _>(include_str!("bridge.js")).unwrap();
+            });
+            for bibliography in [true, false, true] {
+                let request = serde_json::json!({"style":"synthetic-macro-number","numeric":true,"items":[{"id":"ibis-0","type":"book","title":"Synthetic signals"}],"cites":[{"id":"ibis-0"}],"bibliography":bibliography,"keep_order":false,"locale":null});
+                let output: serde_json::Value =
+                    serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+                assert_eq!(output["status"], "rendered");
+                let expected = if bibliography { "Synthetic signals" } else { "[1]" };
+                assert_eq!(output["text"], expected);
+                assert_eq!(output["html"].as_str().unwrap().contains("[1]"), !bibliography);
+                assert_eq!(output["rtf"].as_str().unwrap().contains("[1]"), !bibliography);
+            }
+        });
+    }
+
+    #[test]
+    fn year_only_checks_each_items_rendered_year_and_refuses_locator_only_branches() {
+        on_worker_stack(|| {
+            let limits = Limits::default();
+            let control = control();
+            let mut session = Session::new(&limits, &control).unwrap();
+            session.context.with(|ctx| {
+                ctx.eval::<(), _>(r#"
+                    __ibisStyles.push(["synthetic-conditional-year", `<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><citation><layout delimiter="; "><choose>
+                      <if type="book"><date variable="issued"><date-part name="year"/></date></if>
+                      <else><label variable="locator" form="short" suffix=" "/><text variable="locator"/></else>
+                    </choose></layout></citation></style>`]);
+                "#).unwrap();
+                ctx.eval::<(), _>(include_str!("bridge.js")).unwrap();
+            });
+            let mut prepared = synthetic(1, false);
+            let mut request: serde_json::Value = serde_json::from_str(&prepared.json).unwrap();
+            request["style"] = serde_json::json!("synthetic-conditional-year");
+            request["cites"][0]["suppress-author"] = serde_json::json!(true);
+            request["cites"][0]["year-only"] = serde_json::json!(true);
+            request["cites"][0]["locator"] = serde_json::json!("42");
+            // A matching branch still prints the actual year.
+            let output: serde_json::Value =
+                serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+            assert_eq!(output["text"], "2026");
+            request["items"][0]["type"] = serde_json::json!("article-journal");
+            for locator in ["42", "2026"] {
+                request["cites"][0]["locator"] = serde_json::json!(locator);
+                prepared.json = request.to_string();
+                let result = session.run(&prepared, &limits, &control).unwrap();
+                assert!(result.text.is_empty());
+                assert_eq!(
+                    result.outcomes,
+                    vec![ibis_core::contract::ItemOutcome::Refused {
+                        item: 0,
+                        error: ibis_core::contract::CitationError::UnsupportedForm,
+                    }]
+                );
+            }
+            // A neighbouring item's year must not cover the missing year.
+            request["items"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({"id":"ibis-1","type":"book","issued":{"date-parts":[[2026]]}}));
+            request["cites"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({"id":"ibis-1","suppress-author":true,"year-only":true}));
+            let output: serde_json::Value =
+                serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+            assert_eq!(output["status"], "refused");
+        });
+    }
+
+    #[test]
+    fn year_only_accepts_the_styles_short_year_and_no_date_term() {
+        on_worker_stack(|| {
+            let session = Session::new(&Limits::default(), &control()).unwrap();
+            session.context.with(|ctx| {
+                ctx.eval::<(), _>(r#"
+                    __ibisStyles.push(["synthetic-short-year", `<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text">
+                      <locale xml:lang="en-US"><terms><term name="no date" form="short">u.d.</term></terms></locale>
+                      <citation><layout><choose>
+                        <if variable="issued"><date variable="issued"><date-part name="year" form="short"/></date></if>
+                        <else><text term="no date" form="short" strip-periods="true" text-case="uppercase"/></else>
+                      </choose></layout></citation></style>`]);
+                "#).unwrap();
+                ctx.eval::<(), _>(include_str!("bridge.js")).unwrap();
+            });
+            let mut request: serde_json::Value = serde_json::from_str(&synthetic(1, false).json).unwrap();
+            request["style"] = serde_json::json!("synthetic-short-year");
+            request["cites"][0]["suppress-author"] = serde_json::json!(true);
+            request["cites"][0]["year-only"] = serde_json::json!(true);
+            for dated in [true, false, true] {
+                if dated {
+                    request["items"][0]["issued"] = serde_json::json!({"date-parts":[[2026]]});
+                } else {
+                    request["items"][0].as_object_mut().unwrap().remove("issued");
+                }
+                let output: serde_json::Value =
+                    serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+                assert_eq!(output["status"], "rendered");
+                assert_eq!(output["text"], if dated { "26" } else { "UD" });
+            }
+        });
+    }
+
+    #[test]
     fn interrupts_unbounded_script_and_fresh_runtime_recovers() {
         on_worker_stack(|| {
             let limits = Limits::default();
