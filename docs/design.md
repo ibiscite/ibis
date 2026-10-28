@@ -362,8 +362,9 @@ above rows.
 
 **Shelf** [C7]. What Enter pastes, one 40 px line above the footer's Copy
 action: the beak mark hangs at the tile column's end and the citation starts on
-the title column. Shown while there are results; hidden on empty, error and
-choice screens. Results never move when a reference is added. With several
+the title column. Shown while there are results or a citation is being built,
+including through empty searches and refresh failures; hidden on choice
+screens. Results never move when a reference is added. With several
 references the citation itself holds them as segments (no chips line): each
 reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6)
 with a 16 px round remove button inside its end over a 6 px fade, so nothing
@@ -392,7 +393,9 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   full-bleed between dividers on GNOME. Without room it scrolls in its own area,
   keeping 24 px of results reachable.
 
-**Preview** [C17]. At 960 px or wider the list keeps 400 px and the pane takes
+**Preview** [C17]. Until the reader arrives (Later), the preview is Peek: the
+reference's full details and the full citation text, without the page area.
+At 960 px or wider the list keeps 400 px and the pane takes
 the rest; below that the preview replaces the list. Pane toolbar and bottom row
 are 48 px with S padding; the page area keeps S from the divider and the edge;
 the content ends S above the shelf. The pane shows the focused reference, the
@@ -424,7 +427,7 @@ an explicitly stored custom shortcut is never replaced.
 | Input | Does |
 |---|---|
 | Click a row | Selects it; the shelf shows its citation [C5] |
-| Double-click, Enter, or the footer Copy | Copies (or inserts) what the shelf shows; only copying closes the window |
+| Double-click, Enter, or the footer action | Pastes or copies what the shelf shows, as the footer says; success hides an unpinned window |
 | ⌘-click / Ctrl-click, the + on a hovered tile, Shift+Enter | Adds to the citation, in order (no Shift-click ranges) |
 | Right-click a row | Opens More for that row |
 | Esc | Steps back one layer: menu or dialog, preview, search and filters, then hide |
@@ -654,15 +657,19 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   Browsers and code editors cannot identify a document's syntax: Overleaf,
   web Typst and Google Docs share a browser ID, and several writing syntaxes
   can share an editor. The first paste in each of them opens the chooser
-  once, and the pick is remembered for that app. Ibis never reads or stores a document title or URL to choose an
+  once, and the pick becomes that app's default; it never identifies the
+  document (Overleaf and Google Docs share it). Closing the chooser uses the
+  global default for that paste and asks again next time; "Automatic" or
+  "Forget formats for apps" brings the question back. Ibis never reads or stores a document title or URL to choose an
   output. No format question interrupts each citation. Setup steps finish
   themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
   with several Zotero profiles, Ibis asks which one; with no library at all,
   built-in sample references let people try Ibis, labelled "Sample" on every
   row and in the footer. The
-  first three copies say "Copied. Press ⌘V to paste." (the right key per
-  system), then just "Copied". The footer shows the library, Shortcuts and More.
+  footer, receipt and announcement describe the action actually taken:
+  "Paste into Word", "Copied. Press ⌘V to paste." (the right key per system)
+  when pasting is off or unavailable, or "Copied" with the reason. The footer shows the library, Shortcuts and More.
 
 ### Everyday details (rebuild, 2026-10-26)
 
@@ -705,8 +712,9 @@ that owns its area in ROADMAP.md.
     Zotero, Open PDF. More adds "Copy as plain text" and "Copy reference as
     Markdown".
 17. Text size with ⌘+ and ⌘− (Ctrl elsewhere) inside the picker.
-18. Adding a reference already on the shelf focuses it and says "Already in
-    citation".
+18. Adding the identical reference again focuses it and says "Already in
+    citation"; the same reference with another page or affix is added as a
+    new segment.
 19. Drag the citation from the shelf into any app; reorder with Alt+← → or by
     dragging. A `.bib` or CSL-JSON file dropped on the window becomes a
     library; a PDF dropped there finds its reference (0.5).

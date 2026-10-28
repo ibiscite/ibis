@@ -174,11 +174,14 @@ the global shortcut already does (maintainer, 2026-10-28).
 ## 0032 Release gates
 
 From 0.3 a release ships only when the whole citation (search, choose, page,
-paste, back in the document) works with VoiceOver and NVDA and with Chinese,
+paste or copy as that platform supports, back in the document) works with
+VoiceOver and NVDA and with Chinese,
 Japanese and Korean input methods; Orca joins for 1.0. Interface text goes
 through the translation layer from 0.3, with German and one right-to-left
 language in 0.4. The speed and resource budgets in
-[architecture](architecture.md#desktop-app) fail CI instead of being reported.
+[architecture](architecture.md#desktop-app) are limits: engine and bundle
+checks fail pull request CI, and native latency and idle use are measured on
+the release machines before each release.
 0.5 cites from Zotero's annotations and the PDFs people already open before
 any reader inside Ibis (maintainer, 2026-10-28).
 
