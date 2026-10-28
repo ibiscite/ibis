@@ -1,5 +1,9 @@
 # Test fixtures
 
+`formatted/citation-review.bib` is an invented book used by the CLI citation
+review regressions: mixed MyST forms, ambiguous Org suffixes, literal styled
+dollar sequences and contradictory narrative author suppression.
+
 Synthetic inputs that reproduce real-world problems. Inspired by FFmpeg's FATE suite: every bug fix adds the smallest fixture that reproduces it, so the same problem can never return unnoticed.
 
 Rules:
