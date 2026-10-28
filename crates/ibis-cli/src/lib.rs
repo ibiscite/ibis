@@ -92,6 +92,14 @@ fn command() -> Command {
                     "typst",
                     "keys",
                     "csl-json",
+                    "natbib",
+                    "org-cite",
+                    "myst",
+                    "multi-markdown",
+                    "ascii-doc",
+                    "jupyter",
+                    "jekyll-scholar",
+                    "cayw-json",
                 ]))
                 .arg(Arg::new("style").long("style").value_name("STYLE_ID"))
                 .arg(
@@ -308,9 +316,10 @@ fn execute<R: BufRead, W: Write + Send>(
                     "textcite" => (KeySyntax::Biblatex, Some("textcite")),
                     "cite" => (KeySyntax::Latex, Some("cite")),
                     "typst" => (KeySyntax::Typst, None),
-                    "keys" => (KeySyntax::Keys, None),
-                    "csl-json" => (KeySyntax::CslJson, None),
-                    _ => (KeySyntax::Pandoc, None),
+                    other => (
+                        serde_json::from_value(json!(other)).map_err(|_| EngineError { code: ErrorCode::Usage })?,
+                        None,
+                    ),
                 };
                 OutputSpec::Key {
                     syntax,
