@@ -1,7 +1,7 @@
 //! Invented API responses; never connects to Zotero or discovers a profile.
 #![allow(clippy::unwrap_used)]
 use ibis_core::zotero::api::{Response, Transport, TransportError};
-use ibis_zotero_local::live::{Library, Limits, LiveError, LiveReader, Refresh};
+use ibis_zotero_local::live::{Library, Limits, LiveError, LiveReader, LiveWarning, Refresh};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 struct Fake {
@@ -9,6 +9,7 @@ struct Fake {
     version: u64,
     instance: &'static str,
     rows: Vec<Value>,
+    response_rows: Option<Vec<Value>>,
     paths: Vec<String>,
     fail: bool,
 }
@@ -19,6 +20,7 @@ impl Fake {
             version: 1,
             instance: "synthetic-a",
             rows: vec![row(1, "Invented atlas")],
+            response_rows: None,
             paths: vec![],
             fail: false,
         }
@@ -45,7 +47,7 @@ impl Transport for Fake {
         } else {
             assert!(path.contains("include=data"));
             assert!(!path.contains("csljson"));
-            json!(self.rows)
+            json!(self.response_rows.as_ref().unwrap_or(&self.rows))
         };
         Ok(Response {
             status: 200,
@@ -230,8 +232,93 @@ fn per_item_limits_omit_only_the_oversized_item_and_keep_its_warning_across_refr
         let mut reader = LiveReader::new(Library::User);
         reader.refresh(&mut fake, false, &|| false).unwrap();
         assert_eq!(reader.items().len(), 1);
-        assert_eq!(reader.omitted_items(), 1);
+        assert_eq!(reader.warnings().collect::<Vec<_>>(), [LiveWarning::ItemTooLarge]);
         reader.refresh(&mut fake, false, &|| false).unwrap();
-        assert_eq!(reader.omitted_items(), 1);
+        assert_eq!(reader.warnings().collect::<Vec<_>>(), [LiveWarning::ItemTooLarge]);
+    }
+}
+
+#[test]
+fn malformed_rows_with_or_without_keys_keep_neighbors_and_cached_warnings() {
+    for data in [
+        json!(null),
+        json!({}),
+        json!({"key": "SYNTH002", "version": 1, "itemType": "book"}),
+    ] {
+        for keyed in [true, false] {
+            let mut fake = Fake::new(10);
+            fake.rows.push(json!({"key": "SYNTH002", "version": 1, "data": data}));
+            let mut rows = fake.rows.clone();
+            if !keyed {
+                rows[1].as_object_mut().unwrap().remove("key");
+                if let Some(data) = rows[1]["data"].as_object_mut() {
+                    data.remove("key");
+                }
+            }
+            fake.response_rows = Some(rows);
+            let mut reader = LiveReader::new(Library::User);
+            for requests in [3, 2] {
+                fake.paths.clear();
+                reader.refresh(&mut fake, false, &|| false).unwrap();
+                assert_eq!(reader.items().len(), 1);
+                assert_eq!(reader.items()[0].key, "SYNTH001");
+                assert_eq!(reader.warnings().collect::<Vec<_>>(), [LiveWarning::MalformedItem]);
+                assert_eq!(reader.retained_size().0, 2);
+                assert_eq!(fake.paths.len(), requests);
+            }
+            let mut repaired = row(2, "Invented repaired item");
+            repaired["key"] = json!("SYNTH002");
+            repaired["data"]["key"] = json!("SYNTH002");
+            fake.rows = vec![repaired];
+            fake.response_rows = None;
+            fake.version = 2;
+            reader.refresh(&mut fake, false, &|| false).unwrap();
+            assert_eq!(reader.items()[0].fields["title"], "Invented repaired item");
+            assert!(reader.warnings().next().is_none());
+            // A newly malformed anonymous row must evict the cached record.
+            fake.rows = vec![json!({"key": "SYNTH002", "version": 3, "data": null})];
+            fake.response_rows = Some(vec![json!({})]);
+            fake.version = 3;
+            reader.refresh(&mut fake, false, &|| false).unwrap();
+            assert!(reader.items().is_empty());
+            assert_eq!(reader.retained_size().0, 1);
+            assert_eq!(reader.warnings().collect::<Vec<_>>(), [LiveWarning::MalformedItem]);
+        }
+    }
+}
+
+#[test]
+fn anonymous_rows_match_remaining_inventory_versions_without_assuming_order() {
+    for versions in [[Some(2), Some(1)], [None, None], [Some(2), Some(2)]] {
+        let mut fake = Fake::new(10);
+        let mut second = row(2, "Invented second item");
+        second["key"] = json!("SYNTH002");
+        second["data"]["key"] = json!("SYNTH002");
+        fake.rows.push(second);
+        fake.version = 2;
+        fake.response_rows = Some(versions.iter().map(|version| json!({"version": version})).collect());
+        let mut reader = LiveReader::new(Library::User);
+        let result = reader.refresh(&mut fake, false, &|| false);
+        if versions == [Some(2), Some(2)] {
+            assert_eq!(result, Err(LiveError::Changing));
+            assert!(reader.warnings().next().is_none());
+        } else {
+            assert_eq!(result, Ok(Refresh::Changed));
+            assert_eq!(reader.retained_size().0, 2);
+            assert_eq!(reader.warnings().count(), 2);
+        }
+        assert!(reader.items().is_empty());
+    }
+}
+
+#[test]
+fn anonymous_rows_cannot_hide_wrong_versions_or_incomplete_or_duplicate_pages() {
+    for rows in [vec![], vec![json!({"version": 2})], vec![row(1, "Invented atlas"); 2]] {
+        let mut fake = Fake::new(10);
+        fake.response_rows = Some(rows);
+        let mut reader = LiveReader::new(Library::User);
+        assert_eq!(reader.refresh(&mut fake, false, &|| false), Err(LiveError::Changing));
+        assert!(reader.items().is_empty());
+        assert!(fake.paths.len() <= 6);
     }
 }

@@ -54,10 +54,8 @@ fn private_urls_in_file_fields_and_note_overrides_never_reach_formatted_output()
                     record.csl
                 );
                 assert!(!loaded.warnings.is_empty());
-                assert!(
-                    serde_json::to_string(record.raw.as_ref().ok_or("private provenance missing")?)?
-                        .contains("private.pdf")
-                );
+                // Nothing the engine keeps holds the location, not even privately.
+                assert!(!format!("{:?}", loaded.snapshot).contains("private.pdf"));
                 case.request.items[0].item = record.id.clone();
                 engine
                     .publish_library(loaded.library.clone(), Arc::new(loaded.snapshot))

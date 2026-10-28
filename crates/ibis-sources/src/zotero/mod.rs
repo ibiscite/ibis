@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, RawProvenance, Record, SourceFormat};
+use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -12,6 +12,7 @@ use thiserror::Error;
 mod creators;
 mod dates;
 mod extra;
+mod rich_text;
 
 /// Access adapters construct this same neutral shape. Metadata such as API
 /// versions, database IDs, and locations do not masquerade as citation fields.
@@ -175,7 +176,11 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
             fields
         };
         for field in fields {
-            let Some(value) = field_value(item, kind, field).filter(|value| !value.is_empty()) else {
+            let title = matches!(variable.as_str(), "title" | "container-title");
+            let Some(value) = field_value(item, kind, field)
+                .map(|value| if title { value.trim() } else { value })
+                .filter(|value| !value.is_empty())
+            else {
                 continue;
             };
             let mut value = if field == "ISBN" {
@@ -188,6 +193,9 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
             // Zotero strips a single enclosing pair, not arbitrary inner quotes.
             if value.starts_with('"') && value.len() > 1 && value[1..].find('"') == Some(value.len() - 2) {
                 value = value[1..value.len() - 1].to_owned();
+            }
+            if title {
+                value = rich_text::normalize(&value);
             }
             csl.insert(variable.clone(), json!(value));
             break;
@@ -243,7 +251,6 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
     let (citation_keys, aliases) = keys(item, &mut warnings)?;
     // csl citation-key is presentation data only; key output always resolves the
     // full provenance list and existing cross-library ambiguity/refusal rules.
-    let raw = serde_json::to_value(item).map_err(|_| MappingError::InputLimit)?;
     Ok(MappedItem {
         record: Record {
             id: ItemRef {
@@ -254,10 +261,6 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
             citation_keys,
             aliases,
             identifiers,
-            raw: Some(RawProvenance {
-                format: SourceFormat::Zotero,
-                data: raw,
-            }),
         },
         warnings,
     })

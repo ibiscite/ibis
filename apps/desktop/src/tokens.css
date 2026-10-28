@@ -68,6 +68,9 @@
   --shadow-overlay: 0 12px 32px rgb(0 0 0 / 16%);
   --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
+  /* The white knob of a switch and the raised segment of a segmented control. */
+  --control-thumb: #fff;
+  --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
 
   /* Motion: feedback, panels, layout. No bounce. */
   --motion-feedback: 120ms;
@@ -286,7 +289,7 @@
 }
 
 @media (prefers-contrast: more), (forced-colors: active) {
-  :root, :root[data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --scrim: Canvas; }
+  :root, :root[data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --scrim: Canvas; }
 }
 
 @media (prefers-contrast: more) {
@@ -318,6 +321,23 @@
   --overlay-margin: var(--space-2);
   --r-key: var(--hint-radius);
   --r-card: var(--r-win); --r-full: 999px;
+  /* Settings [C18]: a grouped form, a step back from its cards in light mode
+     and a step forward in dark mode, as native grouped forms are, beside a
+     sidebar; the title bar band leaves room for the window buttons. */
+  --surface-grouped: color-mix(in srgb, var(--text) 4%, var(--surface));
+  --surface-grouped-card: var(--surface-raised);
+  --surface-sidebar: color-mix(in srgb, var(--text) 6%, var(--surface));
+  --titlebar-height: 3.25rem;
+}
+@supports (color: light-dark(white, black)) {
+  :root {
+    --surface-grouped: light-dark(color-mix(in srgb, var(--text) 4%, var(--surface)), var(--surface));
+    --surface-grouped-card: light-dark(var(--surface-raised), color-mix(in srgb, var(--text) 6%, var(--surface)));
+    --surface-sidebar: light-dark(color-mix(in srgb, var(--text) 7%, var(--surface)), color-mix(in srgb, var(--text) 3%, var(--surface)));
+  }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root { --surface-grouped: Canvas; --surface-grouped-card: Canvas; --surface-sidebar: Canvas; }
 }
 @media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
 

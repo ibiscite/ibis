@@ -449,13 +449,7 @@ fn private_location_changes_publish_a_new_owner_even_if_public_hashes_match() {
     std::fs::write(&path, "@book{one,file={two.pdf}}").unwrap_or_else(|error| panic!("{error}"));
     let changed = next(&rx).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(initial.snapshot.fingerprints(), changed.snapshot.fingerprints());
-    assert!(
-        records(&changed)[0]
-            .raw
-            .as_ref()
-            .and_then(|raw| raw.data.as_str())
-            .is_some_and(|raw| raw.contains("two.pdf"))
-    );
+    assert_eq!(changed.local_attachment_count(), 1);
 }
 
 #[test]

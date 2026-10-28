@@ -153,9 +153,12 @@ impl FileLibrary {
                 .iter()
                 .map(|i| (i.id.as_str().to_owned(), i.objects))
                 .collect();
-            if status.error.is_none() && info.libraries.iter().any(|i| i.refresh_error.is_some()) {
+            if info.libraries.iter().any(|i| i.refresh_error.is_some()) {
                 status.stale = true;
-                status.error = Some("The library could not be refreshed; keeping the last loaded references.".into());
+                if status.error.is_none() {
+                    status.error =
+                        Some("The library could not be refreshed; keeping the last loaded references.".into());
+                }
             }
             if status.note.is_none() && info.libraries.iter().any(|i| i.watch_warning.is_some()) {
                 status.note = Some("Live updates are unavailable. Reload the library after editing it.".into());
@@ -213,6 +216,9 @@ impl FileLibrary {
         let results = reply
             .hits
             .into_iter()
+            // The picker cannot mark closest matches yet, so it leaves them out
+            // rather than show them as full matches.
+            .filter(|hit| !hit.partial)
             .filter_map(|hit| match hit.item.object {
                 LibraryObject::Record(record) => Some(SearchResult::from_engine(
                     &record,

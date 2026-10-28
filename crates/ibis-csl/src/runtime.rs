@@ -1,9 +1,4 @@
-use crate::{
-    FormatError, Limits,
-    input::Prepared,
-    output,
-    service::{Control, WorkError},
-};
+use crate::{FormatError, Limits, input::Prepared, output, service::Control};
 use rquickjs::{Context, Module, Runtime};
 use std::collections::BTreeMap;
 
@@ -37,7 +32,7 @@ impl Session {
         prepared: &Prepared,
         limits: &Limits,
         control: &Control,
-    ) -> Result<ibis_core::contract::CitationResult, WorkError> {
+    ) -> Result<ibis_core::contract::CitationResult, FormatError> {
         let reused = session.is_some();
         if session.is_none() {
             *session = Some(Self::new(limits, control)?);
@@ -46,7 +41,7 @@ impl Session {
             .as_mut()
             .ok_or(FormatError::Runtime)?
             .run(prepared, limits, control);
-        if reused && matches!(result, Err(WorkError::Public(FormatError::ResourceLimit))) && control.error().is_none() {
+        if reused && matches!(result, Err(FormatError::ResourceLimit)) && control.error().is_none() {
             // A warm session may have less headroom than a fresh one. Retry once
             // within the original cancellation/deadline and the same hard limits.
             *session = None;
@@ -59,7 +54,7 @@ impl Session {
         result
     }
 
-    pub(crate) fn new(limits: &Limits, control: &Control) -> Result<Self, WorkError> {
+    pub(crate) fn new(limits: &Limits, control: &Control) -> Result<Self, FormatError> {
         let runtime = Runtime::new().map_err(|_| FormatError::ResourceLimit)?;
         runtime.set_memory_limit(limits.memory_bytes);
         runtime.set_max_stack_size(limits.stack_bytes);
@@ -85,7 +80,7 @@ impl Session {
                 })();
                 initialized.map_err(|error| failure(&ctx, "bootstrap", &error))
             })
-            .map_err(|error| control.error().unwrap_or(WorkError::Public(error.public())))?;
+            .map_err(|error| control.error().unwrap_or(error.public()))?;
         Ok(Self {
             context,
             runtime,
@@ -97,26 +92,24 @@ impl Session {
         prepared: &Prepared,
         limits: &Limits,
         control: &Control,
-    ) -> Result<ibis_core::contract::CitationResult, WorkError> {
+    ) -> Result<ibis_core::contract::CitationResult, FormatError> {
         if prepared.empty {
             return Ok(output::refused(prepared));
         }
         install_interrupt(&self.runtime, control);
         let json = self
             .render(&prepared.json)
-            .map_err(|error| control.error().unwrap_or(WorkError::Public(error.public())))?;
+            .map_err(|error| control.error().unwrap_or(error.public()))?;
         if let Some(error) = control.error() {
             return Err(error);
         }
         if json.len() > limits.output_bytes {
-            return Err(FormatError::ResourceLimit.into());
+            return Err(FormatError::ResourceLimit);
         }
-        output::result(&json, prepared, &self.superscripts)
-            .inspect_err(|_| {
-                #[cfg(test)]
-                eprintln!("CSL failure phase=output class=validation");
-            })
-            .map_err(Into::into)
+        output::result(&json, prepared, &self.superscripts).inspect_err(|_| {
+            #[cfg(test)]
+            eprintln!("CSL failure phase=output class=validation");
+        })
     }
     fn render(&self, json: &str) -> Result<String, JsFailure> {
         self.context.with(|ctx| {
@@ -211,9 +204,7 @@ mod tests {
         Control {
             cancel: Arc::new(AtomicBool::new(false)),
             stopping: Arc::new(AtomicBool::new(false)),
-            interactive: Arc::new(AtomicBool::new(false)),
             deadline: Instant::now() + Duration::from_secs(5),
-            background: false,
         }
     }
     fn synthetic(count: usize, bibliography: bool) -> Prepared {
@@ -246,10 +237,7 @@ mod tests {
                 failure(&ctx, "interrupt-test", &error)
             });
             assert_eq!(interrupted, JsFailure::Interrupted);
-            assert!(matches!(
-                control.error(),
-                Some(WorkError::Public(FormatError::TimedOut))
-            ));
+            assert!(matches!(control.error(), Some(FormatError::TimedOut)));
             drop(session);
             let fresh = Session::new(&limits, &super::tests::control()).unwrap();
             assert_eq!(fresh.context.with(|ctx| ctx.eval::<i32, _>("1+1")).unwrap(), 2);
@@ -281,7 +269,7 @@ mod tests {
             };
             assert!(matches!(
                 Session::format(&mut session, &synthetic(1, false), &tiny, &control),
-                Err(WorkError::Public(FormatError::ResourceLimit))
+                Err(FormatError::ResourceLimit)
             ));
         });
     }
@@ -436,7 +424,7 @@ mod tests {
                 };
                 assert!(matches!(
                     session.run(&prepared, &limits, &control),
-                    Err(WorkError::Public(FormatError::ResourceLimit))
+                    Err(FormatError::ResourceLimit)
                 ));
             }
         });

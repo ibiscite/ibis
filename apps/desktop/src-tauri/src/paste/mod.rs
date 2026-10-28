@@ -16,6 +16,7 @@ use tauri::{AppHandle, Manager};
 mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
+pub(crate) mod permission;
 
 use capture::{Captured, Front};
 
@@ -73,7 +74,7 @@ pub(crate) enum Delivered {
 pub(crate) trait Desk {
     /// Ibis may post key events (macOS Accessibility).
     fn may_post(&self) -> bool;
-    /// Ask for that permission; the system prompts only the first time.
+    /// Show where to give that permission; at most once per run.
     fn ask_to_post(&self);
     /// The app in front, or `None` once the picker has been shown again.
     fn frontmost(&self) -> Option<Front>;
@@ -146,7 +147,11 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str) -> Delivered {
     let desk = macos::Mac::new(app);
     #[cfg(not(target_os = "macos"))]
     let desk = CopyOnly;
-    deliver(&desk, captured.as_ref(), text, true)
+    let enabled = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path)
+        .settings
+        .paste
+        .unwrap_or(true);
+    deliver(&desk, captured.as_ref(), text, enabled)
 }
 
 /// Windows (until #1133) and Linux capture no target, so they only copy.

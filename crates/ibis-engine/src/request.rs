@@ -1,7 +1,7 @@
 //! Method parameters. File locations are headless/native input only and never
 //! appear in method results or diagnostics; the app exposes a narrower surface.
 use crate::Method;
-use ibis_core::contract::{CitationForm, CitationRequest, ItemRef, LibraryId, OutputSpec};
+use ibis_core::contract::{CitationForm, CitationRequest, ItemRef, LibraryId, Locator, OutputSpec, RichText};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -83,7 +83,7 @@ pub struct ShowRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct KeyCitationRequest {
-    pub keys: Vec<String>,
+    pub keys: Vec<KeyItem>,
     pub output: OutputSpec,
     #[serde(default)]
     pub form: CitationForm,
@@ -122,4 +122,29 @@ pub fn request_schema(method: Method) -> Value {
         Method::Call => schema_for!(CallRequest),
     }
     .into()
+}
+
+/// One citation key with the options typed after it, as the picker would add them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct KeyItem {
+    pub key: String,
+    #[serde(default)]
+    pub locator: Option<Locator>,
+    #[serde(default)]
+    pub prefix: RichText,
+    #[serde(default)]
+    pub suffix: RichText,
+    #[serde(default)]
+    pub suppress_author: bool,
+}
+impl From<String> for KeyItem {
+    fn from(key: String) -> Self {
+        Self { key, ..Self::default() }
+    }
+}
+impl From<&str> for KeyItem {
+    fn from(key: &str) -> Self {
+        key.to_owned().into()
+    }
 }
