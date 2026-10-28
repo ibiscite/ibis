@@ -1,8 +1,29 @@
 import { invoke } from "@tauri-apps/api/core";
 import { expect, it, vi } from "vitest";
-import { isSnapshotChanged, newerUpdate, search } from "./api";
+import { isSnapshotChanged, newerUpdate, previewFileCitation, search } from "./api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
+
+it("aborts only the numbered preview and removes abort listeners after completion", async () => {
+  const pending: Array<() => void> = [];
+  vi.mocked(invoke).mockClear().mockImplementation(() => new Promise((resolve) => pending.push(() => resolve([]))));
+  const old = new AbortController();
+  const current = new AbortController();
+  const first = previewFileCitation([], "pandoc", null, "synthetic", old.signal);
+  const second = previewFileCitation([], "pandoc", null, "synthetic", current.signal);
+  const calls = vi.mocked(invoke).mock.calls;
+  const firstIntent = (calls[0]![1] as { intent: object }).intent;
+  const secondIntent = (calls[1]![1] as { intent: { request: number } }).intent;
+  old.abort();
+  expect(calls[2]).toEqual(["preview_file_citation", expect.objectContaining({ intent: { ...firstIntent, cancel: true } })]);
+  expect(secondIntent.request).toBe((firstIntent as { request: number }).request + 1);
+  pending.forEach((resolve) => resolve());
+  await Promise.all([first, second]);
+  const count = calls.length;
+  current.abort();
+  expect(calls).toHaveLength(count);
+  vi.mocked(invoke).mockResolvedValue([]);
+});
 
 it("sends scope changes as fresh requests on the same interface page", async () => {
   // The interface page and counter live for the module's lifetime, across

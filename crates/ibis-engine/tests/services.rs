@@ -288,3 +288,43 @@ fn search_reads_a_trailing_locator_only_when_asked() {
         .unwrap();
     assert!(literal.data.get("locator").is_none());
 }
+#[test]
+fn closing_an_idle_subscription_wakes_its_worker_and_preserves_other_subscribers() {
+    let engine = ibis_engine::Engine::new().unwrap();
+    let events = engine.subscribe().unwrap();
+    let other = engine.subscribe().unwrap();
+    let close = events.close_handle();
+    let (done, finished) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || done.send(events.recv().is_err()).unwrap());
+    assert!(finished.try_recv().is_err());
+    drop(close);
+    assert!(finished.recv_timeout(std::time::Duration::from_secs(2)).unwrap());
+    worker.join().unwrap();
+    engine
+        .publish_library(
+            ibis_core::contract::LibraryId::file(b"synthetic subscription"),
+            std::sync::Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
+        )
+        .unwrap();
+    other.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+    // Unsubscribing reclaims the bounded subscriber slot.
+    for _ in 0..100 {
+        drop(engine.subscribe().unwrap());
+    }
+}
+
+#[test]
+fn closing_a_subscription_drains_its_pending_notification_before_disconnect() {
+    let engine = ibis_engine::Engine::new().unwrap();
+    let events = engine.subscribe().unwrap();
+    let close = events.close_handle();
+    engine
+        .publish_library(
+            ibis_core::contract::LibraryId::file(b"synthetic pending"),
+            std::sync::Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
+        )
+        .unwrap();
+    drop(close);
+    assert!(events.recv().is_ok());
+    assert!(events.recv().is_err());
+}

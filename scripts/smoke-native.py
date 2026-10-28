@@ -485,7 +485,7 @@ def summarize_performance(samples):
     measured = [sample for sample in samples if not sample.get("warmup")]
     if not measured:
         raise ValueError("No measured 100k launches")
-    return {"status": "measured-without-budget", "references": 100000,
+    return {"status": "diagnostic-only", "release_evidence": False, "references": 100000,
             "sample_count": len(measured), "warmup_count": len(samples) - len(measured), "samples": samples,
             "summary": "timings: median of fresh measured launches after one discarded warm-up; memory: maximum of all launches; "
                        "OS file caches persist",
@@ -1346,7 +1346,8 @@ def main():
             else:
                 library.write_text(fixture(100000), encoding="utf-8")
                 samples = []
-                # Launch 0 is a warm-up held only to the hard ceiling; the gate uses the median of the rest (#464).
+                # Debug launches and accessibility probes diagnose startup; release
+                # shortcut/idle limits use named-machine evidence (#1369).
                 for sample in range(1 + MEASURED_LAUNCHES):
                     native.focus_editor()
                     phases = {}
@@ -2515,6 +2516,12 @@ class ContractTests(unittest.TestCase):
     def test_performance_summary_requires_a_measured_launch(self):
         with self.assertRaises(ValueError):
             summarize_performance(self.perf_samples(50))
+
+    def test_debug_launch_timings_do_not_claim_release_budget_evidence(self):
+        report = summarize_performance(self.perf_samples(100, 200, 300, 400))
+        self.assertEqual(report["status"], "diagnostic-only")
+        self.assertFalse(report["release_evidence"])
+        self.assertEqual(report["sample_count"], 3)
 
     def test_phase_facts_reject_private_extra_fields_and_nonfinite_or_negative_numbers(self):
         valid = dict.fromkeys(PROBE_PHASE_KEYS, 1)

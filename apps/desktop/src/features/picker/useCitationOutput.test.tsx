@@ -46,6 +46,26 @@ function options(overrides: Partial<Options>): Options {
 
 const conflictMessage = "These references have conflicting citation keys. Resolve them in your library or choose a formatted style.";
 
+test("replacing, clearing and unmounting a selection aborts obsolete engine previews", () => {
+  const signals: AbortSignal[] = [];
+  const previewFileCitation = vi.fn<Preview>((_items, _format, _style, _revision, signal) => {
+    if (signal) signals.push(signal);
+    return new Promise(() => {});
+  });
+  const initial = options({ previewFileCitation });
+  const { rerender, unmount } = renderHook(useCitationOutput, { initialProps: initial });
+  expect(signals).toHaveLength(1);
+  rerender({ ...initial, chosen: [reference("1", "replacement")] });
+  expect(signals[0]?.aborted).toBe(true);
+  expect(signals[1]?.aborted).toBe(false);
+  rerender({ ...initial, chosen: [] });
+  expect(signals[1]?.aborted).toBe(true);
+  rerender(initial);
+  expect(signals[2]?.aborted).toBe(false);
+  unmount();
+  expect(signals[2]?.aborted).toBe(true);
+});
+
 test("a failed native preview keeps its actionable explanation without refreshing the snapshot", async () => {
   const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "failed", message: conflictMessage });
   const refreshSnapshot = vi.fn();

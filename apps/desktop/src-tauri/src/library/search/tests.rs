@@ -3,6 +3,29 @@ use std::path::Path;
 
 use crate::library::engine_file::FileLibrary;
 
+#[test]
+fn preview_aborts_stop_only_the_named_engine_request_in_any_delivery_order() {
+    let requests = PreviewRequests::default();
+    let intent = |request, cancel| PreviewIntent {
+        page: 1,
+        request,
+        cancel,
+    };
+    let first = requests.start(intent(1, false)).unwrap_or_else(|| panic!("first"));
+    let second = requests.start(intent(2, false)).unwrap_or_else(|| panic!("second"));
+    assert!(first.is_cancelled());
+    assert!(requests.start(intent(1, true)).is_none());
+    assert!(!second.is_cancelled(), "late abort cannot cancel a replacement");
+    assert!(requests.start(intent(3, true)).is_none());
+    assert!(second.is_cancelled());
+    let aborted = requests
+        .start(intent(3, false))
+        .unwrap_or_else(|| panic!("aborted start"));
+    assert!(aborted.is_cancelled(), "abort before start still stops engine work");
+    let current = requests.start(intent(4, false)).unwrap_or_else(|| panic!("current"));
+    assert!(!current.is_cancelled());
+}
+
 fn library(directory: &Path, bib: &str) -> FileLibrary {
     let path = directory.join("synthetic.bib");
     std::fs::write(&path, bib).unwrap_or_else(|e| panic!("{e}"));

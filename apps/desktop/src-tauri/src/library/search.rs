@@ -33,6 +33,31 @@ impl SearchRequests {
     }
 }
 
+/// Preview requests have their own counter; late aborts name the exact request.
+#[derive(Default)]
+pub(crate) struct PreviewRequests(SearchRequests);
+
+#[derive(Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreviewIntent {
+    pub(crate) page: u32,
+    pub(crate) request: u32,
+    pub(crate) cancel: bool,
+}
+
+impl PreviewRequests {
+    pub(crate) fn start(&self, intent: PreviewIntent) -> Option<Cancellation> {
+        let token = self.0.start(intent.page, intent.request)?;
+        if intent.cancel {
+            // Also remembers an abort received before the worker's start message.
+            token.cancel();
+            None
+        } else {
+            Some(token)
+        }
+    }
+}
+
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchResult {
     /// Revision captured with the index used for this result.

@@ -116,7 +116,11 @@ trait SearchDocument {
 }
 
 fn key_eq(key: &str, query: &str) -> bool {
-    key.chars().flat_map(lower).eq(query.chars())
+    if key.is_ascii() {
+        key.len() == query.len() && key.bytes().map(|byte| byte.to_ascii_lowercase()).eq(query.bytes())
+    } else {
+        key.chars().flat_map(lower).eq(query.chars())
+    }
 }
 fn lower(c: char) -> impl Iterator<Item = char> {
     c.to_lowercase().map(|c| if c == 'ς' { 'σ' } else { c })
@@ -713,6 +717,51 @@ enum Pass {
 /// A record's match so far: its number, score and matched field bits.
 type Partial = (usize, u32, u8);
 
+/// One query's metadata scans, reused by its typo/closest-match passes. Keep
+/// at most eight u16 arrays (1.6 MB at 100k); long pasted queries stay bounded.
+struct ScanCache {
+    meta: Vec<Option<(Vec<u16>, usize)>>,
+    scratch: Vec<u16>,
+}
+impl ScanCache {
+    fn new(terms: usize) -> Self {
+        Self {
+            meta: (0..terms.min(MAX_TYPO_QUERY_TERMS)).map(|_| None).collect(),
+            scratch: Vec::new(),
+        }
+    }
+    fn count(&self, term: usize) -> usize {
+        self.meta
+            .get(term)
+            .and_then(Option::as_ref)
+            .map_or(usize::MAX, |(_, count)| *count)
+    }
+    fn scores<'a>(
+        &'a mut self,
+        query: &Query,
+        term: usize,
+        texts: &Texts,
+        abstracts: bool,
+        stop: &dyn Fn() -> bool,
+    ) -> Option<&'a [u16]> {
+        if stop() {
+            return None;
+        }
+        if !abstracts && term < self.meta.len() {
+            if self.meta[term].is_none() {
+                let mut scores = Vec::new();
+                scan(&query.terms[term], texts, false, &mut scores, stop)?;
+                let count = scores.iter().filter(|&&score| score != 0).count();
+                self.meta[term] = Some((scores, count));
+            }
+            self.meta[term].as_ref().map(|(scores, _)| scores.as_slice())
+        } else {
+            scan(&query.terms[term], texts, abstracts, &mut self.scratch, stop)?;
+            Some(&self.scratch)
+        }
+    }
+}
+
 /// Rank `docs`, whose text is `texts`, with the passes of [`Pass`].
 fn rank<'r, T: SearchDocument>(
     docs: &'r [T],
@@ -729,7 +778,7 @@ fn rank<'r, T: SearchDocument>(
     }
     let mut found = vec![false; docs.len()];
     let mut candidates: Vec<Candidate<'r, T>> = Vec::new();
-    let mut packed = Vec::new();
+    let mut packed = ScanCache::new(query.terms.len());
     let all: Vec<usize> = (0..query.terms.len()).collect();
     // A query of only unfinished or invalid hints searches nothing but keys.
     let searches = !query.terms.is_empty() || query.years.is_some();
@@ -801,7 +850,9 @@ fn rank<'r, T: SearchDocument>(
         }
     }
 
-    if candidates.len() < limit && !query.terms.is_empty() {
+    // Exact matching already exhausted metadata. Without abstract text this
+    // pass cannot add a hit, including when an earlier pass found fewer than limit.
+    if candidates.len() < limit && !query.terms.is_empty() && texts.abstracts.bytes().any(|byte| byte != b' ') {
         for (n, score, matched) in matching(&query, docs, texts, &all, true, scope, &found, &mut packed, stop)? {
             candidates.push(candidate(&query, &docs[n], texts, n, Pass::Abstract, score, matched));
         }
@@ -948,7 +999,7 @@ fn matching<T: SearchDocument>(
     abstracts: bool,
     scope: Option<&[T::Source]>,
     found: &[bool],
-    packed: &mut Vec<u16>,
+    packed: &mut ScanCache,
     stop: &dyn Fn() -> bool,
 ) -> Option<Vec<Partial>> {
     let (year_score, year_bit) = match &query.years {
@@ -961,7 +1012,14 @@ fn matching<T: SearchDocument>(
             && query.years.as_ref().is_none_or(|years| years.contains(docs[n].year()))
     };
     let mut records: Vec<Partial> = Vec::new();
-    let Some((&first, rest)) = terms.split_first() else {
+    // On a fallback pass, start from the rarest scan we already have rather
+    // than rebuilding a full-library candidate list before intersecting it.
+    let first = if abstracts {
+        terms.first().copied()
+    } else {
+        terms.iter().copied().min_by_key(|&t| packed.count(t))
+    };
+    let Some(first) = first else {
         for n in 0..docs.len() {
             if n % STOP_CHECK_INTERVAL == 0 && stop() {
                 return None;
@@ -972,8 +1030,7 @@ fn matching<T: SearchDocument>(
         }
         return Some(records);
     };
-    scan(&query.terms[first], texts, abstracts, packed, stop)?;
-    for (n, &best) in packed.iter().enumerate() {
+    for (n, &best) in packed.scores(query, first, texts, abstracts, stop)?.iter().enumerate() {
         if best != 0 && usable(n) {
             let (weight, bit) = unpack(best);
             records.push((
@@ -983,7 +1040,7 @@ fn matching<T: SearchDocument>(
             ));
         }
     }
-    for &t in rest {
+    for &t in terms.iter().filter(|&&t| t != first) {
         if records.is_empty() {
             break;
         }
@@ -992,17 +1049,19 @@ fn matching<T: SearchDocument>(
         }
         let term = &query.terms[t];
         let global = records.len() * 8 > docs.len();
-        if global {
-            scan(term, texts, abstracts, packed, stop)?;
-        }
+        let scores = if global {
+            Some(packed.scores(query, t, texts, abstracts, stop)?)
+        } else {
+            None
+        };
         let mut kept = 0;
         for i in 0..records.len() {
             if i % STOP_CHECK_INTERVAL == 0 && stop() {
                 return None;
             }
             let (n, score, matched) = records[i];
-            let best = if global {
-                packed[n]
+            let best = if let Some(scores) = scores {
+                scores[n]
             } else {
                 best_in(term, texts, n, abstracts, stop)?
             };
@@ -1308,6 +1367,32 @@ mod tests {
     use crate::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, LibraryObject, Record, Snapshot};
     use serde_json::json;
     use std::sync::Arc;
+
+    #[test]
+    fn ascii_key_comparison_preserves_the_unicode_reference() {
+        for key in [
+            "",
+            "Synthetic42",
+            "KEY_WITH-Punct:17",
+            "İstanbul42",
+            "Σigma",
+            "ς",
+            "Straße",
+            "Key",
+        ] {
+            let folded: String = key.chars().flat_map(lower).collect();
+            for query in [
+                folded.clone(),
+                key.into(),
+                folded.to_uppercase(),
+                format!("{folded}x"),
+                format!("{folded}山"),
+            ] {
+                let before = key.chars().flat_map(lower).eq(query.chars());
+                assert_eq!(key_eq(key, &query), before, "{key:?} {query:?}");
+            }
+        }
+    }
 
     fn library_id(name: &str) -> LibraryId {
         LibraryId::file(name.as_bytes())

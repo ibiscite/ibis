@@ -132,7 +132,31 @@ pub struct LibrarySubscription {
     owner: Weak<Shared>,
     receiver: mpsc::Receiver<LibraryChange>,
 }
+/// Dropping the owner's handle disconnects a blocked subscriber, even if a
+/// worker still retains the engine. Pending notifications can drain first.
+pub struct LibrarySubscriptionClose {
+    id: u64,
+    owner: Weak<Shared>,
+}
+impl Drop for LibrarySubscriptionClose {
+    fn drop(&mut self) {
+        if let Some(owner) = self.owner.upgrade()
+            && let Ok(mut subscribers) = owner.subscribers.lock()
+        {
+            subscribers.remove(&self.id);
+        }
+    }
+}
 impl LibrarySubscription {
+    pub fn recv(&self) -> Result<LibraryChange, mpsc::RecvError> {
+        self.receiver.recv()
+    }
+    pub fn close_handle(&self) -> LibrarySubscriptionClose {
+        LibrarySubscriptionClose {
+            id: self.id,
+            owner: self.owner.clone(),
+        }
+    }
     pub fn recv_timeout(&self, timeout: std::time::Duration) -> Result<LibraryChange, mpsc::RecvTimeoutError> {
         self.receiver.recv_timeout(timeout)
     }
