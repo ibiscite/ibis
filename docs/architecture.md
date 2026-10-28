@@ -92,8 +92,12 @@ where clients still use them.
 
 The picker's small per-reference editor (#1366) sends its captured page and
 Normal, Narrative or Omit author intent through the native preview request.
-The native adapter uses `ibis_core::locator::parse` to remove an optional page
-label from a whole Page value before constructing the request; the editor keeps
+The native adapter uses `ibis_core::locator::page_value` to remove an optional
+page label before constructing the request. Recognised labels with missing or
+invalid values are refused before preparation; they never fall back to literal
+text. The shared numeric grammar accepts Unicode numeric characters, counts
+characters for numeric bounds and keeps four-digit years ambiguous in unlabelled
+searches. Its input length limit still bounds Page validation. The editor keeps
 the raw input. Narrative maps to an item form; Omit author maps to author
 suppression. A single BibLaTeX narrative pick selects `textcite` from the output
 family. Other form support and field losses come from the engine; unsupported

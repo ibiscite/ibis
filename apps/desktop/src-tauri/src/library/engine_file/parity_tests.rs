@@ -326,6 +326,12 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
             ("pp. 12–15", "12–15"),
             (" PP.  iv–vi ", "iv–vi"),
             ("pp. \"١٢–١٥\"", "١٢–١٥"),
+            ("pp. ١٢–١٥", "١٢–١٥"),
+            ("pp. ۱۲–۱۵", "۱۲–۱۵"),
+            ("pp. १२–१५", "१२–१५"),
+            ("pp. １２–１５", "１２–１５"),
+            ("pp. ๑๒–๑๕", "๑๒–๑๕"),
+            ("pp. 𝟙𝟚–𝟙𝟝", "𝟙𝟚–𝟙𝟝"),
         ] {
             let expected = file
                 .preview(file.reserve_preview(), vec![selection("page", value)?], format, style)
@@ -347,7 +353,7 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
     }
     // Parsing is whole-value and page-only: other locator types and literal
     // labels such as p53 keep their existing meaning.
-    for (label, value) in [("chapter", "pp. 12–15"), ("page", "p53"), ("page", "pp. 12 appendix")] {
+    for (label, value) in [("chapter", "pp. 12–15"), ("page", "p53")] {
         let mut request = case.request.clone();
         request.items[0].locator = Some(serde_json::from_value(json!({"term":label,"value":value}))?);
         let expected = file
@@ -364,6 +370,55 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
             .map_err(|e| e.to_string())?;
         assert_eq!(preview.text, expected.text);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
+    }
+    Ok(())
+}
+
+#[test]
+fn label_only_pages_refuse_preview_and_copy_with_an_actionable_message() -> Result<(), Box<dyn std::error::Error>> {
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let file = FileLibrary::from_engine(engine_for(&case)?);
+    let pick = &case.library.objects()[0];
+    for (format, style) in [
+        (KeyFormat::Pandoc, None),
+        (KeyFormat::Typst, None),
+        (KeyFormat::Autocite, None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Apa)),
+        (KeyFormat::Pandoc, Some(CitationStyle::Ieee)),
+    ] {
+        for value in [
+            "pp.",
+            " p. ",
+            "PP",
+            "page",
+            "pages",
+            "pg.",
+            "S.",
+            "pp. \"\"",
+            "pp. 12 appendix",
+        ] {
+            let selection = serde_json::from_value(json!({"id":pick.object.id(), "cite":pick.fingerprints.cite,
+                "locator":{"label":"page","value":value}}))?;
+            let mut writes = 0;
+            let outcome = file
+                .preview(file.reserve_preview(), vec![selection], format, style)
+                .and_then(|preview| {
+                    file.copy(&preview.ticket, &preview.content_hash, |_| {
+                        writes += 1;
+                        Ok(())
+                    })
+                });
+            assert_eq!(writes, 0, "invalid Page {value:?} must never write clipboard content");
+            let message = outcome.err().ok_or("invalid Page was copied")?.to_string();
+            assert!(message.contains("Reference 1: Page"), "{message}");
+            assert!(
+                message.contains("page or range") && message.contains("clear Page"),
+                "{message}"
+            );
+        }
     }
     Ok(())
 }

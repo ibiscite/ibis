@@ -395,8 +395,12 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   that result to the shelf; subsequent searches cannot change its page or form.
   Editing keeps focus in the control, clears a queued copy and prepares a new preview.
   Clearing Page removes only that reference's page. Optional page labels such
-  as `p. 12` or `pp. 12–15` use the shared locator parser before formatting;
-  the field keeps the typed text. Controls and actionable formatting refusals
+  as `p. 12` or unquoted `pp. ١٢–١٥` use the shared locator parser before
+  formatting; Unicode numbers keep their written digits. A recognised page
+  label must have a valid value: `pp.` is refused with a request to enter a
+  page or range, or clear Page. It never becomes literal page text. Page values
+  keep the shared parser's length limit. The field keeps the typed text.
+  Controls and actionable formatting refusals
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.

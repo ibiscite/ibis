@@ -332,22 +332,33 @@ impl FileLibrary {
         };
         let items: Vec<_> = items
             .into_iter()
-            .map(|item| {
-                let locator = item.locator.map(|mut locator| {
-                    if locator.label == ibis_core::cite::LocatorLabel::Page
-                        && let Some(page) = ibis_core::locator::parse(&locator.value)
-                            .filter(|parsed| parsed.term == ibis_core::contract::LocatorTerm::Page)
-                    {
-                        locator.value = page.value;
-                    }
-                    json!({"term":locator.label,"value":locator.value})
-                });
-                json!({"item":item.id,"expected_cite":item.cite,
+            .enumerate()
+            .map(|(index, item)| {
+                let locator = item
+                    .locator
+                    .map(|mut locator| -> Result<Value, CommandError> {
+                        if locator.label == ibis_core::cite::LocatorLabel::Page {
+                            locator.value = ibis_core::locator::page_value(&locator.value).map_err(|error| {
+                                let hint = match error {
+                                    ibis_core::locator::PageValueError::MissingValue => {
+                                        "Page needs a page or range. Enter one after the label, or clear Page."
+                                    }
+                                    ibis_core::locator::PageValueError::InvalidValue => {
+                                        "Page needs a valid page or range after its label. Correct it, or clear Page."
+                                    }
+                                };
+                                CommandError::from(format!("Reference {}: {hint}", index + 1))
+                            })?;
+                        }
+                        Ok(json!({"term":locator.label,"value":locator.value}))
+                    })
+                    .transpose()?;
+                Ok(json!({"item":item.id,"expected_cite":item.cite,
                 "form":(item.form == Some(ReferenceForm::Narrative)).then_some("narrative"),
                 "suppress_author":item.form == Some(ReferenceForm::AuthorOmitted),
-                "locator":locator})
+                "locator":locator}))
             })
-            .collect();
+            .collect::<Result<_, CommandError>>()?;
         let request: CitationRequest = serde_json::from_value(json!({"items":items,"output":output,"form":if style == Some(CitationStyle::Ieee) { "bibliography-only" } else { "normal" },"keep_order":style.is_none()}))
             .map_err(|_| CommandError::from("The selected references could not be read. Search again."))?;
         let citation = self

@@ -5,6 +5,33 @@ import { backend, prepared, receipt, resetApp, result, type PreviewRequest } fro
 
 afterEach(resetApp);
 
+test.each([false, true])("a label-only Page refuses copy until corrected (preview hidden: %s)", async (hidden) => {
+  const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
+  const copied: string[] = [];
+  const calls = backend({ search: () => [result("a", "Synthetic work")],
+    preview_file_citation: ({ items }) => {
+      if (items[0]?.locator?.value === "pp.") throw { code: "failed", message };
+      return receipt(items[0]?.locator ? "Synthetic normalized output" : "Original output");
+    },
+    copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; },
+  });
+  render(<App />);
+  const page = await screen.findByRole("textbox", { name: "Page" });
+  await screen.findByText("Original output");
+  const search = screen.getByLabelText("Search references");
+  if (hidden) fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
+  fireEvent.change(page, { target: { value: "pp." } });
+  expect((await screen.findByRole("alert")).textContent).toBe(message);
+  fireEvent.keyDown(search, { key: "Enter" });
+  await act(async () => { await Promise.resolve(); });
+  expect(calls).not.toContain("copy_file_citation");
+  expect(copied).toEqual([]);
+  fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(copied).toEqual(["Synthetic normalized output"]));
+});
+
 test.each(["pointer", "Enter", " "])("Edit activated with %s focuses Page and edits the chosen reference", async (activation) => {
   const previews: PreviewRequest[] = [];
   const calls = backend({ search: () => [result("a", "First work"), result("b", "Second work")],
