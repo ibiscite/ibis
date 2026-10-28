@@ -473,7 +473,8 @@ index is built once per library change; a keystroke only scans it.
 - Other spellings: `mueller` finds Müller (also `oe`, `ue`, `aa` for ö, ø, ü,
   å; `muller` finds it anyway, accents being folded), and a Greek letter
   standing alone is found by its name: `beta amyloid` finds β-amyloid,
-  `nf kappab` finds NF-κB. Greek words are not spelt out.
+  `nf kappab` finds NF-κB. Greek text keeps its letters, and μ before a
+  letter is a unit (μm), not mu.
 - Hints limit the word after them to one field: `a:` any person (authors,
   editors, translators…), `t:` title (and short title), `j:` journal (and its
   abbreviation), `k:` citation key, `#` tag or keyword (a whole word once typed
@@ -492,7 +493,8 @@ index is built once per library change; a keystroke only scans it.
 - A typo match is marked (`typo`) so the list can say "Close match".
 - When nothing matches every word, the closest matches show instead, marked
   (`partial`) so the list can say so: records matching at least half the words
-  (numbers not counted), most words first, then by the rules above. One-word
+  (numbers and one- or two-letter words not counted, abstracts not searched)
+  and every hinted word, most words first, then by the rules above. One-word
   searches, pasted identifiers and long pasted text get none.
 
 **Learning and parity** (#788). First minute: type, Enter, paste; first week:

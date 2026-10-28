@@ -61,6 +61,14 @@ fn library() -> SnapshotIndex {
                    "issued": {"date-parts": [[2019]]}}),
         ),
         (
+            "units",
+            json!({"title": "Particles of 10 μm in μ-opioid receptors", "issued": {"date-parts": [[2017]]}}),
+        ),
+        (
+            "accented",
+            json!({"title": "Μία μελέτη για τον θεός", "issued": {"date-parts": [[2016]]}}),
+        ),
+        (
             "plain",
             json!({"title": "Memory consolidation during sleep", "author": [{"family": "Smith", "given": "Jane"}],
                    "issued": {"date-parts": [[2018]]}}),
@@ -113,6 +121,18 @@ fn a_greek_letter_standing_alone_is_found_by_its_name() {
     assert!(keys(&index, "etaomicron").is_empty());
     assert!(keys(&index, "mu").iter().all(|(key, _)| key != "greek"));
     assert_eq!(keys(&index, "μνημη")[0].0, "greek");
+    // Greek text keeps its letters, accented or not, one-letter words included.
+    for query in ["eta", "alpha", "sigma", "iota"] {
+        assert!(
+            keys(&index, query)
+                .iter()
+                .all(|(key, _)| key != "greek" && key != "accented"),
+            "{query}"
+        );
+    }
+    // μ before a Latin letter is a unit; standing alone it is mu.
+    assert!(keys(&index, "mum").is_empty());
+    assert_eq!(keys(&index, "mu opioid"), [("units".to_string(), false)]);
 }
 
 #[test]
@@ -134,6 +154,12 @@ fn when_nothing_matches_every_term_the_closest_matches_are_marked() {
     // One word, or a long pasted text, gets no closest matches.
     assert!(keys(&index, "quantum").is_empty());
     assert!(keys(&index, "sleep a b c d e f g h quantum").is_empty());
+    // Hinted words must still match; only the others may be missing.
+    assert_eq!(keys(&index, "a:smith memory quantum"), [("plain".to_string(), true)]);
+    assert!(keys(&index, "a:nobody memory quantum").is_empty());
+    // One- and two-letter words are not counted.
+    assert!(keys(&index, "of in quantum memory").iter().all(|(_, partial)| *partial));
+    assert!(keys(&index, "of in quantum").is_empty());
     // Numbers are not counted, so a missing DOI or page finds nothing.
     assert!(keys(&index, "10.2020/sleep.memory").is_empty());
     assert!(keys(&index, "10.9999/2018").is_empty());

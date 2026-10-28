@@ -276,20 +276,25 @@ fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
 /// German and Nordic letters as written without them (Müller as Mueller,
 /// Ångström as Aangstroem) and a Greek letter standing alone as its name
 /// (β-amyloid as beta-amyloid, NF-κB as NF-kappaB). Accents are already
-/// folded by [`normalize`], so "muller" finds Müller without this. Words of
-/// Greek text are left alone. Empty for most text.
+/// folded by [`normalize`], so "muller" finds Müller without this. Text with
+/// Greek words (three Greek letters in a row) is left Greek, and μ before a
+/// Latin letter is a unit (μm), not mu. Empty for most text.
 fn spelling_aliases(text: &str) -> String {
     if text.is_ascii() {
         return String::new();
     }
-    let greek = |c: char| ('\u{0391}'..='\u{03A9}').contains(&c) || ('\u{03B1}'..='\u{03C9}').contains(&c);
+    let greek = |c: char| matches!(c, '\u{0370}'..='\u{03FF}' | '\u{1F00}'..='\u{1FFF}' | 'µ');
+    let chars: Vec<char> = text.nfc().collect();
+    // Three Greek letters in a row make a Greek word, not a symbol (αβ T cells).
+    let greek_text = chars.windows(3).any(|run| run.iter().all(|&c| greek(c)));
     let mut aliases = String::new();
-    for word in text.split_whitespace() {
-        let chars: Vec<char> = word.nfc().collect();
+    for word in chars.split(|c| c.is_whitespace()) {
         let mut alias = String::new();
         let mut changed = false;
-        for (i, &c) in chars.iter().enumerate() {
-            let alone = !(i > 0 && greek(chars[i - 1])) && !chars.get(i + 1).is_some_and(|&next| greek(next));
+        for (i, &c) in word.iter().enumerate() {
+            let next = word.get(i + 1).copied();
+            let unit = matches!(c, 'μ' | 'µ') && next.is_some_and(|next| next.is_ascii_alphabetic());
+            let alone = !greek_text && !unit;
             let spelt = match c.to_lowercase().next().unwrap_or(c) {
                 'ä' => "ae",
                 'ö' | 'ø' => "oe",
@@ -864,31 +869,42 @@ fn rank<'r, T: SearchDocument>(
     }
 
     // Nothing matched every term: the records matching the most of its
-    // words. Numbers are not counted, so a missing page is not matched by its
-    // digits, and a DOI or other identifier nobody carries gets no closest
-    // matches. Whether this pass runs does not depend on the
-    // limit, since every earlier pass runs in full when nothing has been
-    // found. Long pasted queries are left out, as for typos.
-    let words: Vec<usize> = all
-        .iter()
-        .copied()
-        .filter(|&t| query.terms[t].text.chars().any(char::is_alphabetic))
+    // words. Hinted terms (`a:`, `#tag`…) must still match. Numbers and one-
+    // or two-letter words are not counted, so a missing page is not matched by
+    // its digits, and a DOI or other identifier nobody carries gets no closest
+    // matches. Whether this pass runs does not depend on the limit, since
+    // every earlier pass runs in full when nothing has been found. Long pasted
+    // queries are left out, as for typos.
+    let (hinted, words): (Vec<usize>, Vec<usize>) = all.iter().partition(|&&t| query.terms[t].fields != ANY_FIELD);
+    let words: Vec<usize> = words
+        .into_iter()
+        .filter(|&t| !query.terms[t].starts_only && query.terms[t].text.chars().any(char::is_alphabetic))
         .collect();
     if candidates.is_empty()
         && query.terms.len() <= MAX_TYPO_QUERY_TERMS
         && words.len() >= 2
         && identifier::parse_query(raw).is_none()
     {
-        let mut partial: Vec<(usize, u32, u8)> = vec![(0, 0, 0); docs.len()];
+        // Each record's words matched, score and fields; `None` when the hints leave it out.
+        let mut partial: Vec<Option<(usize, u32, u8)>> = vec![hinted.is_empty().then_some((0, 0, 0)); docs.len()];
+        if !hinted.is_empty() {
+            for (n, score, matched) in matching(&query, docs, texts, &hinted, false, scope, &found, &mut packed, stop)?
+            {
+                partial[n] = Some((0, score, matched));
+            }
+        }
         for &t in &words {
             for (n, score, matched) in matching(&query, docs, texts, &[t], false, scope, &found, &mut packed, stop)? {
-                let record = &mut partial[n];
-                *record = (record.0 + 1, weighted_score(record.1, score, 1), record.2 | matched);
+                if let Some(record) = &mut partial[n] {
+                    *record = (record.0 + 1, weighted_score(record.1, score, 1), record.2 | matched);
+                }
             }
         }
         let needed = words.len().div_ceil(2);
-        for (n, &(terms, score, matched)) in partial.iter().enumerate() {
-            if terms >= needed {
+        for (n, record) in partial.iter().enumerate() {
+            if let &Some((terms, score, matched)) = record
+                && terms >= needed
+            {
                 let mut closest = candidate(&query, &docs[n], texts, n, Pass::Closest, score, matched);
                 closest.terms = terms;
                 candidates.push(closest);
