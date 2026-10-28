@@ -452,6 +452,8 @@ export type SearchResult = {
 	authors: string,
 	year: number | null,
 	matched: MatchField[],
+	/**  Only some query words matched; shown under "Closest matches". */
+	partial: boolean,
 	/**
 	 *  Family name of the first author (or the whole name of an
 	 *  organization); empty when the record names no authors.

@@ -78,7 +78,8 @@ impl From<LoadError> for LibraryProblem {
         use ibis_core::zotero::api::{TransportError, ZoteroError};
         match error {
             LoadError::Source(SourceError::Unavailable) => LibraryProblem::Missing,
-            LoadError::Source(
+            LoadError::InvalidData
+            | LoadError::Source(
                 SourceError::NotRegular | SourceError::TooLarge | SourceError::Unreadable | SourceError::Incomplete,
             ) => LibraryProblem::Unreadable,
             LoadError::Zotero(ZoteroError::Transport(TransportError::Unreachable | TransportError::TimedOut)) => {

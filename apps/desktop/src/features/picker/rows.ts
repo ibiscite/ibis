@@ -1,5 +1,11 @@
 // What a result row shows. Pure; no React.
 import type { SearchResult } from "../../api";
+import { pickerText } from "../../messages";
+
+/** Search provenance stays with selected references, independently of later queries. */
+export function closestMatchWarnings(records: readonly SearchResult[]): string[] {
+  return records.filter((r) => r.partial).map((r) => pickerText.closestMatchWarning(r.title || r.key));
+}
 
 // Fields a row already shows; a match anywhere else is named under the row.
 const VISIBLE_FIELDS = new Set(["title", "author", "citekey", "year"]);

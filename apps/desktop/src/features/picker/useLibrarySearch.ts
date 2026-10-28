@@ -54,7 +54,8 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
           if (!sameResults) setActive(0);
           setError(null);
           announcementTimer = window.setTimeout(() => {
-            setAnnouncement(pickerText.resultCount(found.length));
+            const count = pickerText.resultCount(found.length);
+            setAnnouncement(found.some((r) => r.partial) ? `${pickerText.closestMatches} · ${count}` : count);
           }, 300);
         }
       })

@@ -136,7 +136,7 @@ test.each(["🧑🏽‍🔬", "e\u0301"])("a long empty-library name keeps its e
   expect([...new Intl.Segmenter().segment(visual.textContent!)].length).toBeLessThanOrEqual(57);
   expect(visual.textContent?.replace("No references in دراسة-研究-", "").replace("-library.bib", "").replace("…", "").replaceAll(unit, "")).toBe("");
   expect(title.querySelector(".visually-hidden")?.textContent).toBe(`No references in ${name}`);
-  expect(screen.getByRole("option", { name: /^BibTeX or BibLaTeX file/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON file/ })).toBeTruthy();
 });
 
 test.each([null, ""])("a missing empty-library snapshot name keeps a meaningful title (%s)", (snapshot_name) => {
@@ -164,7 +164,7 @@ test("a webview without Segmenter can import and render the complete name", asyn
     const { container } = render(<LegacyEmptyState library={{ ...loaded, references: 0, snapshot_name: name }} query="" narrowed={false}
       onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
     expect(container.querySelector(".choice-title")?.textContent).toBe(`No references in ${name}`);
-    expect(screen.getByRole("option", { name: /^BibTeX or BibLaTeX file/ })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON file/ })).toBeTruthy();
   } finally {
     vi.unstubAllGlobals();
   }
@@ -178,7 +178,7 @@ test.each([false, true])("C12 zero-reference choices offer Zotero and a file, ne
     setup={(focus, empty) => <LibrarySetup api={{ chooseLibrary: choose, useZotero }}
       perform={async (_action, run) => { await run(); }} autoFocus={focus} empty={empty} />} />);
   expect(screen.getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent))
-    .toEqual(["Zotero", "BibTeX or BibLaTeX file"]);
+    .toEqual(["Zotero", "BibTeX, BibLaTeX or CSL-JSON file"]);
   expect(screen.getByText("You can drop a file here too.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
 });

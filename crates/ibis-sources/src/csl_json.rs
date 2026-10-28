@@ -40,6 +40,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             }
         })?;
     let limited = items.len() > crate::MAX_LIBRARY_RECORDS;
+    let nonempty = !items.is_empty();
     let spans = item_spans(text);
     let mut result = ParsedLibrary::default();
     let mut seen = HashSet::new();
@@ -149,6 +150,9 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             aliases: vec![],
             identifiers: vec![],
         });
+    }
+    if nonempty && result.records.is_empty() {
+        return Err(SourceError::InvalidData);
     }
     if limited {
         result.warnings.push(SourceWarning {

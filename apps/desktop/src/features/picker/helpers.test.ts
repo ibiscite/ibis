@@ -7,7 +7,7 @@ import { isKeysShortcut, isMenuShortcut, isPreviewShortcut, isQuitShortcut } fro
 
 const record = (more: Partial<SearchResult> = {}): SearchResult => ({
   revision: "1", id: { source: "refs.bib", native_key: "a" }, key: "a", title: "T", authors: "García", year: 2021,
-  matched: [], first_author: "García", author_count: 1, container: null, item_type: "article-journal", ...more,
+  matched: [], partial: false, first_author: "García", author_count: 1, container: null, item_type: "article-journal", ...more,
 });
 
 test("a choice names a key format or a citation style", () => {

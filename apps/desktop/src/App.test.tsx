@@ -18,6 +18,69 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 
+test("selected closest-match warnings survive exact searches and copying a mixed citation", async () => {
+  const copied: unknown[] = [];
+  const calls = backend({
+    search: ({ query: { text } }) => text === "sleep photon"
+      ? [{ ...result("near", "Synthetic closest reference"), partial: true }]
+      : [result("exact", "Synthetic exact reference")],
+    copy_file_citation: (args) => {
+      copied.push(prepared(args).request);
+      return { text: "[@exact; @near]", warnings: [] };
+    },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  await screen.findByText("Synthetic exact reference");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.change(box, { target: { value: "sleep photon" } });
+  await screen.findByText("Synthetic closest reference");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.change(box, { target: { value: "exact" } });
+  await screen.findByText("Best matches");
+  expect(screen.queryByText("Closest matches")).toBeNull();
+  const chip = screen.getByRole("button", { name: "Remove near from the selection" }).closest("li")!;
+  expect(within(chip).getByText("Closest match")).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toContain("only some search words matched");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveLength(1));
+  expect(copied[0]).toMatchObject({ items: selections([{ library: "refs.bib", key: "exact" }, { library: "refs.bib", key: "near" }]) });
+  const warnings = await screen.findByRole("list", { name: "Copy warnings" });
+  expect(warnings.textContent).toContain("Synthetic closest reference");
+  expect(warnings.textContent).toContain("only some search words matched");
+  expect(calls).not.toContain("hide_picker");
+});
+
+test("partial results say Closest matches visibly and aloud and remain usable", async () => {
+  const calls = backend({
+    search: ({ query: { text } }) => text === "sleep photon"
+      ? [{ ...result("sleep", "Sleep research"), partial: true }]
+      : text === "sleep" ? [result("sleep", "Sleep research")] : [],
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "sleep photon" } });
+  await screen.findByText("Closest matches");
+  expect(document.querySelector(".results-heading")?.textContent).toBe("Closest matches1 result");
+  expect(screen.queryByText("Best matches")).toBeNull();
+  const status = screen.getByRole("status", { name: "Search results" });
+  await waitFor(() => expect(status.textContent).toBe("Closest matches · 1 result"));
+  expect(screen.getByRole("option", { selected: true }).textContent).toContain("Sleep research");
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@sleep"));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+
+  fireEvent.change(box, { target: { value: "sleep" } });
+  await screen.findByText("Best matches");
+  expect(screen.queryByText("Closest matches")).toBeNull();
+  await waitFor(() => expect(status.textContent).toBe("1 result"));
+
+  fireEvent.change(box, { target: { value: "photon" } });
+  await screen.findByText("No matching references");
+  expect(document.querySelector(".results-heading")).toBeNull();
+  await waitFor(() => expect(status.textContent).toBe("0 results"));
+});
+
 
 test("the shelf shows what Enter pastes in a key syntax, without copying, and leaves out a failed key preview", async () => {
   let fail = false;
@@ -95,7 +158,7 @@ function pressRow(row: HTMLElement) {
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
 }
-const FILE_ROW = /^BibTeX or BibLaTeX file/;
+const FILE_ROW = /^BibTeX, BibLaTeX or CSL-JSON file/;
 const formatButton = (name: string | RegExp = /^Copy as /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });
 
 /** Picks a format in the header's format menu, as a click would. */
@@ -1093,7 +1156,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   expect(screen.getByText("Choose a library with references.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
-  expect(screen.getByRole("option", { name: /^BibTeX or BibLaTeX file/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON file/ })).toBeTruthy();
 });
 
 
