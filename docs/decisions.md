@@ -52,8 +52,9 @@ no browser `Origin`, bypass proxies and check `Zotero-API-Version`.
 On Windows the closed reader's process, drive, attribute and ACL checks call
 Win32 directly through `windows-sys`, never PowerShell (changed 2026-10-28 in
 #1261: PowerShell was slow and fails under AppLocker and Constrained Language
-Mode). That module is the only `unsafe` code in Ibis: `ibis-zotero-local`
-denies it elsewhere and every other crate forbids it.
+Mode). That module and the macOS secure-input boundary are the scoped
+`unsafe` exceptions described in decision 0029; their crates deny it
+elsewhere and the workspace forbids it.
 
 ## 0007 Formatting (with 0028)
 
@@ -85,16 +86,49 @@ Every insertion ends in exactly one visible state: pasted, or copied with a
 reason. Ibis captures the target app, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
-restoring and per-app rules wait until after 1.0. It refuses secure input,
-elevated windows and lost targets. Pasting is on by default (maintainer,
+restoring and per-app rules wait until after 1.0. On macOS it refuses while
+system-wide Secure Event Input is on, including when another app enables it;
+this flag does not identify the destination's field or cover every password
+control. Elevated windows and lost targets are also refused. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
 by default; maintainer, 2026-10-28). The selection is read once, at the
-shortcut, through the same accessibility access paste uses; it is never read
+shortcut, through accessibility access separate from paste's PostEvent permission; it is never read
 from secure fields, never stored and never logged.
+
+## 0029 Native calls
+
+The workspace keeps `unsafe_code = "forbid"`. Native calls use maintained
+safe bindings where available. Decision 0006's Windows closed-reader module
+and `paste/macos/secure_input.rs` are scoped exceptions: their crates use
+`deny`, with an allow only on the native module and a safety comment on each
+block. Changes there need independent security-boundary review.
+
+On macOS the boundary is just `IsSecureEventInputEnabled`, whose SDK result
+is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
+flag is system-wide and can be enabled by another app; it does not establish
+that the destination is a password field. An enabled flag copies with the
+`secure-input` reason: "Copied. Secure typing is on, possibly in another app.
+Press ⌘V to paste." An unavailable or timed-out check uses `paste-unavailable`:
+"Copied. Press ⌘V to paste." Neither outcome claims password-field detection.
+The AX guard is removed: optional subroles, denied AX trust and dormant
+providers must not disable ordinary paste (#1280, #1360). Paste requests
+only PostEvent permission, never Accessibility trust; no AX attributes are
+read or providers activated.
+
+Ibis snapshots the pasteboard change count immediately after writing every
+format, checking that ownership did not change during publication. A
+one-use in-memory proof binds that count to Ibis's citation, captured app,
+picker presentation and write time. Reopening the picker retires that proof;
+repeated hide/blur notifications do not. The final foreground, Secure Event Input,
+change-count and deadline checks run with posting in one main-thread task,
+after layout/event preparation. No clipboard contents are read back. The
+task has at most 250 ms and delivery at most 1,500 ms from the write; expired
+or cancelled queued tasks cannot post later. Cancellation and posting share
+a lock so a completed paste is never reported as merely copied.
 
 ## 0010 Search
 
