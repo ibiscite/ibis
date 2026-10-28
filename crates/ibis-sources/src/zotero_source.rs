@@ -442,6 +442,8 @@ impl BbtKeys {
         let local = match library {
             Library::User => None,
             Library::Group(id) => {
+                // An older Better BibTeX without `user.groups` is `Malformed`:
+                // it holds group keys this refresh cannot place.
                 let known = match self.libraries.get_or_insert_with(|| bbt.libraries()) {
                     Ok(known) => known,
                     Err(BbtError::Unavailable) => return Ok(BTreeMap::new()),
@@ -785,6 +787,10 @@ mod tests {
     /// local library 2; `bbt_libraries` is what `user.groups` answers.
     /// Group 99 does not exist. Returns the port and the JSON-RPC requests.
     fn serve_groups(bbt_libraries: Value) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+        serve_groups_with_answer(answer(200, bbt_libraries))
+    }
+
+    fn serve_groups_with_answer(bbt_libraries: Answer) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
         use std::io::{BufRead, BufReader, Read, Write};
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -811,11 +817,11 @@ mod tests {
                 let (status, answer) = if head.starts_with("POST /better-bibtex/json-rpc ") {
                     let request: Value = serde_json::from_slice(&body).unwrap();
                     seen.lock().unwrap().push(request.to_string());
-                    let result = if request["method"] == "user.groups" {
-                        bbt_libraries.clone()
+                    if request["method"] == "user.groups" {
+                        bbt_libraries.lock().unwrap().clone()
                     } else {
                         let names = request["params"][0].as_array().unwrap();
-                        names
+                        let result: Value = names
                             .iter()
                             .map(|name| {
                                 let name = name.as_str().unwrap();
@@ -827,9 +833,9 @@ mod tests {
                                 (name.to_owned(), key)
                             })
                             .collect::<serde_json::Map<_, _>>()
-                            .into()
-                    };
-                    (200, json!({"jsonrpc":"2.0","id":1,"result":result}))
+                            .into();
+                        (200, json!({"jsonrpc":"2.0","id":1,"result":result}))
+                    }
                 } else if head.contains("groups/99/") {
                     (404, json!({}))
                 } else if head.contains("users/0/groups") {
@@ -899,6 +905,60 @@ mod tests {
                 .any(|request| request.contains(r#"["2:SYNTH001"]"#))
         );
         assert_eq!(source.current().len(), 2);
+    }
+
+    #[test]
+    fn unreadable_better_bibtex_libraries_warn_only_for_the_chosen_group() {
+        for (status, reply) in [
+            (500, json!({})),
+            (200, json!({"jsonrpc":"2.0","id":1,"error":{"code":-32601}})),
+            (200, json!({"jsonrpc":"2.0","id":1,"error":{"code":-32603}})),
+            (200, json!({"jsonrpc":"2.0","id":1,"result":null})),
+        ] {
+            let (port, asked) = serve_groups_with_answer(Arc::new(std::sync::Mutex::new((status, reply))));
+            for chosen in [[Library::User, Library::Group(7)], [Library::Group(7), Library::User]] {
+                let loaded = ZoteroSource::new(&chosen)
+                    .unwrap()
+                    .refresh_local(port, false, &|| false)
+                    .unwrap();
+                for (library, loaded) in chosen.into_iter().zip(loaded) {
+                    assert_eq!(loaded.snapshot.objects().len(), 1);
+                    assert_eq!(unavailable(&loaded), library == Library::Group(7), "{status}");
+                    assert_eq!(
+                        keys(&loaded),
+                        if library == Library::User {
+                            vec![("Personal2026".into(), CitationKeySource::BetterBibtex)]
+                        } else {
+                            vec![]
+                        }
+                    );
+                }
+            }
+            let asked = asked.lock().unwrap();
+            assert_eq!(
+                asked.iter().filter(|request| request.contains("user.groups")).count(),
+                2
+            );
+            assert_eq!(
+                asked
+                    .iter()
+                    .filter(|request| request.contains("item.citationkey"))
+                    .count(),
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn zotero_without_better_bibtex_gives_a_group_no_keys_and_no_warning() {
+        // Zotero answers 404 for Better BibTeX's endpoint when it is absent.
+        let (port, _) = serve_groups_with_answer(answer(404, json!({})));
+        let loaded = ZoteroSource::new(&[Library::Group(7)])
+            .unwrap()
+            .refresh_local(port, false, &|| false)
+            .unwrap();
+        assert!(keys(&loaded[0]).is_empty());
+        assert!(!unavailable(&loaded[0]));
     }
 
     #[test]

@@ -187,7 +187,15 @@ impl LiveBbt {
 
     /// Every library Better BibTeX knows (`user.groups`).
     pub fn libraries(&self) -> Result<Vec<BbtLibrary>, BbtError> {
-        let result = self.call("user.groups", json!([false]))?;
+        // Zotero answers 404 without Better BibTeX: no library has its keys.
+        // An older Better BibTeX without this method holds group keys that
+        // cannot be placed, so that is not "no keys".
+        let result = self.call_until(
+            "user.groups",
+            json!([false]),
+            Instant::now() + DEADLINE,
+            BbtError::Malformed,
+        )?;
         let list = result.as_array().ok_or(BbtError::Malformed)?;
         list.iter()
             .map(|library| {
@@ -226,7 +234,7 @@ impl LiveBbt {
                     None => (*key).to_owned(),
                 })
                 .collect();
-            let result = self.call_until("item.citationkey", json!([names]), until)?;
+            let result = self.call_until("item.citationkey", json!([names]), until, BbtError::Unavailable)?;
             let map = result.as_object().ok_or(BbtError::Malformed)?;
             for (name, key) in batch.iter().zip(&names) {
                 match map.get(key) {
@@ -246,11 +254,8 @@ impl LiveBbt {
         Ok(found)
     }
 
-    fn call(&self, method: &str, params: Value) -> Result<Value, BbtError> {
-        self.call_until(method, params, Instant::now() + DEADLINE)
-    }
-
-    fn call_until(&self, method: &str, params: Value, until: Instant) -> Result<Value, BbtError> {
+    /// `missing` is the error for a Better BibTeX that lacks `method`.
+    fn call_until(&self, method: &str, params: Value, until: Instant, missing: BbtError) -> Result<Value, BbtError> {
         let body = json!({"jsonrpc": "2.0", "method": method, "params": params, "id": 1}).to_string();
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
         let mut stream =
@@ -285,7 +290,7 @@ impl LiveBbt {
         if let Some(error) = answer.get("error") {
             // An older Better BibTeX without this method.
             return Err(if error.get("code").and_then(Value::as_i64) == Some(-32601) {
-                BbtError::Unavailable
+                missing
             } else {
                 BbtError::Malformed
             });

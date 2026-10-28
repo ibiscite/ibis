@@ -7,6 +7,52 @@ fn ibis(args: &[&str]) -> std::process::Output {
         .unwrap_or_else(|error| panic!("{error}"))
 }
 #[test]
+fn file_flags_accumulate_across_positions_and_ignore_duplicates() -> Result<(), Box<dyn std::error::Error>> {
+    for duplicates in [false, true] {
+        let mut args = vec![
+            "--file",
+            "../../fixtures/bibtex/empty.bib",
+            "libraries",
+            "--file",
+            "../../fixtures/bibtex/fidelity.bib",
+        ];
+        if duplicates {
+            args.extend(["--file", "../../fixtures/bibtex/empty.bib"]);
+        }
+        let human = ibis(&args);
+        assert!(human.status.success());
+        let text = std::str::from_utf8(&human.stdout)?;
+        assert!(text.starts_with("2 libraries\n"), "{text}");
+        assert!(text.contains("../../fixtures/bibtex/empty.bib\t"), "{text}");
+        assert!(text.contains("../../fixtures/bibtex/fidelity.bib\t"), "{text}");
+        assert_eq!(text.lines().count(), 3, "{text}");
+        args.push("--json");
+        let output = ibis(&args);
+        assert!(output.status.success());
+        let value: Value = serde_json::from_slice(&output.stdout)?;
+        assert_eq!(value["data"]["libraries"].as_array().map(Vec::len), Some(2));
+    }
+    Ok(())
+}
+
+#[test]
+fn file_flags_after_the_subcommand_keep_readable_errors() {
+    let output = ibis(&[
+        "--file",
+        "../../fixtures/bibtex/empty.bib",
+        "libraries",
+        "--file",
+        "/invented/missing.bib",
+    ]);
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        output.stderr,
+        b"ibis: cannot open /invented/missing.bib: there is no file at that path; check the spelling or give the full path.\n"
+    );
+}
+
+#[test]
 fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
     for method in ibis_engine::Method::ALL {
         let help = ibis(&[method.as_str(), "--help"]);
