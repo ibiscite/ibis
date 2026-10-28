@@ -24,5 +24,9 @@ citeproc reads `de` as a non-dropping particle: `de Vries, A.` in APA.
 `crates/ibis-cli/tests/zotero_formatted_goldens.rs` maps the items with Ibis's
 Zotero mapper and replays all ten cases through the engine, the human
 `cite --style` command and framed `serve --stdio`; every result must equal
-these bytes. The same items read from a closed Zotero database and through the
-live API follow once those readers publish through the engine (#1221).
+these bytes. It replays them again on an engine that reads the same items from
+a fake Zotero local API with `open-zotero`. A test in
+`crates/ibis-sources/src/zotero_source.rs` writes the items into a synthetic
+Zotero 10 database and checks that the closed reader publishes exactly the
+records the local API gives; it runs only in disposable macOS CI, like the
+other actual closed-reader test.

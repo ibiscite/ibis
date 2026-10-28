@@ -25,7 +25,11 @@ fn opened(server: &fixture::Server) -> Result<FileLibrary, Box<dyn std::error::E
 
 fn selection(bridge: &FileLibrary) -> Result<FileSelection, Box<dyn std::error::Error>> {
     let query = serde_json::from_value(json!({"text":"atlas","interpret_locators":false}))?;
-    let found = serde_json::to_value(bridge.search(&query, 10, None).map_err(|_| "native search")?)?;
+    let found = serde_json::to_value(
+        bridge
+            .search(&query, 10, None, &ibis_engine::Cancellation::default())
+            .map_err(|_| "native search")?,
+    )?;
     assert_eq!(found["results"].as_array().ok_or("results")?.len(), 1);
     let row = &found["results"][0];
     Ok(serde_json::from_value(

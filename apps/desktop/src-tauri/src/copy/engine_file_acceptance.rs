@@ -26,6 +26,7 @@ fn file_preview_and_native_canonical_copy_equal_ibis_cite() -> Result<(), Box<dy
                 &serde_json::from_value(json!({"text":"research","interpret_locators":false}))?,
                 10,
                 None,
+                &ibis_engine::Cancellation::default(),
             )
             .map_err(|_| "native search")?,
         )?;
@@ -108,6 +109,7 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
             &serde_json::from_value(json!({"text":"synthetic","interpret_locators":false}))?,
             10,
             None,
+            &ibis_engine::Cancellation::default(),
         )
         .map_err(|_| "native search")?,
     )?;
@@ -181,6 +183,7 @@ fn malformed_file_selections_are_not_retryable_snapshot_errors() -> Result<(), B
             &serde_json::from_value(json!({"text":"synthetic","interpret_locators":false}))?,
             10,
             None,
+            &ibis_engine::Cancellation::default(),
         )
         .map_err(|_| "search")?,
     )?;

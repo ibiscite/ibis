@@ -222,6 +222,7 @@ fn picker_rows_list_the_engines_search_hits_in_order() -> Result<(), Box<dyn std
                     &serde_json::from_value(json!({"text":word,"interpret_locators":false}))?,
                     50,
                     None,
+                    &Cancellation::default(),
                 )
                 .map_err(|_| "picker search")?
                 .results
@@ -253,6 +254,7 @@ fn source_file_goldens_preview_and_copy_as_pinned_zotero_formats_them() -> Resul
                     &serde_json::from_value(json!({"text":key,"interpret_locators":false}))?,
                     50,
                     None,
+                    &Cancellation::default(),
                 )?
                 .results;
             let row = rows.into_iter().find(|row| row.key == key).ok_or(key.to_owned())?;
