@@ -78,7 +78,9 @@ reason. Ibis captures the target app, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
 restoring and per-app rules wait until after 1.0. It refuses secure input,
-elevated windows and lost targets.
+elevated windows and lost targets. Pasting is on by default (maintainer,
+2026-10-25, #27); Settings › General › Pasting turns it off, saved as
+`paste: false` (absent means on), and Enter then only copies.
 
 ## 0010 Search
 

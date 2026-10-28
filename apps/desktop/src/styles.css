@@ -20,6 +20,8 @@ main {
 
 .search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar > svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
+/* The Ibis mark is the logo, so it keeps brand scarlet; contrast modes make it CanvasText (#1293). */
+.search-bar > svg.search-mark { color: var(--citation); }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Two columns"). */
 .pin-button { flex: none; }

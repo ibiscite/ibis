@@ -55,7 +55,7 @@ export function testProvider(state: typeof testStates[number]): { api: PickerApi
         return { text: receipt.text, warnings: [] };
       },
       copyFormat: async () => "pandoc",
-      pickerPreferences: async () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false }),
+      pickerPreferences: async () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true }),
       setPickerPreferences: async () => null,
       shortcutStatus: async () => ({ shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null }),
       chooseLibrary: async () => undefined,

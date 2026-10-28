@@ -28,4 +28,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "update_checks",
     "set_update_checks",
     "check_for_updates",
+    "open_settings",
+    "paste_permission",
+    "open_paste_permission",
 ];
