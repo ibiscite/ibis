@@ -205,6 +205,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     let mounted = true;
     let visibilityEvents = 0;
     let focusAfterActivation = false;
+    let searchAtShow = "";
     const subscriptionFailure = (operation: Operation) => {
       if (mounted) report(operation);
       else console.error(FAILURE_MESSAGES[operation]);
@@ -217,7 +218,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const activated = (event: FocusEvent) => {
       if (event.target !== event.currentTarget || !focusAfterActivation) return;
       focusAfterActivation = false;
-      selectSearch();
+      const search = input.current;
+      if (!search) return;
+      search.focus();
+      if (search.value === searchAtShow) search.select();
+      else search.setSelectionRange(search.value.length, search.value.length);
     };
     window.addEventListener("focus", activated);
     const focusSearch = () => {
@@ -240,6 +245,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       // previous control then, so finish Search focus once activation arrives.
       focusAfterActivation = !document.hasFocus();
       selectSearch();
+      searchAtShow = input.current?.value ?? "";
     };
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.

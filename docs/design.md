@@ -584,7 +584,9 @@ without hover.
 - **Opening.** On the focused window's display, at the last position there,
   with a 120 ms fade and focus in search. A search from under a minute ago
   returns selected (memory only). Reopening from a focused result or another
-  control still starts typing in search. The at-cursor form opens under the caret.
+  control still starts typing in search. If typing changes the query before
+  native activation, activation focuses search with the caret at the end;
+  only the untouched previous query is selected. The at-cursor form opens under the caret.
 - **Moving.** Drag the empty header, never the list; snap to the centre line and
   upper third within 18 px (Alt places freely); remembered per display.
 - **Clicking outside** hides Ibis and the click reaches its target, unless

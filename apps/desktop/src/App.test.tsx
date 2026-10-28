@@ -1682,6 +1682,30 @@ test.each(["before", "after"])("reopening from a result replaces the query when 
   }
 });
 
+test("typing before native activation keeps the new query and appends the next key", async () => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    const row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
+    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+    fireEvent.input(box, { target: { value: "ab" } });
+    act(() => row.focus());
+    focused.mockReturnValue(true);
+    fireEvent.focus(window);
+
+    expect(document.activeElement).toBe(box);
+    const text = box.value.slice(0, box.selectionStart!) + "c" + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe("abc");
+  } finally {
+    focused.mockRestore();
+  }
+});
+
 test("hiding cancels a pending Search focus handoff", async () => {
   backend({ search: () => [result("a", "First")] });
   const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
