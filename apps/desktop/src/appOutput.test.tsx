@@ -176,3 +176,29 @@ test("one format shortcut opens the scope choices without copying or changing an
   expect(calls).not.toContain("set_picker_preferences");
   expect(remembered).toEqual([]);
 });
+
+test("an unrelated Settings refresh does not extend a one-time copy override", async () => {
+  let finish!: (value: unknown) => void;
+  const copying = new Promise((done) => { finish = done; });
+  const { calls } = opened(() => ({ ...BROWSER, remembered: { key: "cite" } }), { copy_file_citation: () => copying });
+  await screen.findByText("First");
+  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await pick("Just this once", "menuitemcheckbox");
+  await pick("Typst");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+  await act(async () => { await emit("preferences:changed"); });
+  await waitFor(() => expect(calls.filter((call) => call === "picker_destination")).toHaveLength(2));
+  await act(async () => { finish({ text: "synthetic typst copy", warnings: [] }); });
+  await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
+});
+
+test("a failed preference read keeps the native app's authoritative automatic style", async () => {
+  const { previews, copies } = opened(() => ({ ...WORD, automatic: { style: "ieee" } }), {
+    picker_preferences: () => { throw new Error("synthetic preference read failure"); },
+  });
+  await screen.findByText("First");
+  await waitFor(() => expect(formatShown()).toBe("IEEE · Example Word"));
+  await waitFor(() => expect(previews.at(-1)?.style).toBe("ieee"));
+  await copy(previews, copies);
+});

@@ -28,16 +28,24 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const [ready, setReady] = useState(!pickerDestination);
   const [saving, setSaving] = useState(false);
   const reads = useRef(0);
+  const openings = useRef(0);
+  const capturedId = useRef<string | null | undefined>(undefined);
   const choices = useRef(0);
   const saves = useRef(Promise.resolve());
   const read = useCallback((reset = true) => {
     if (!pickerDestination) return;
     const request = ++reads.current;
-    if (reset) { setOnce(null); setOnceOnly(false); }
+    if (reset) { openings.current += 1; setOnce(null); setOnceOnly(false); }
     setReady(false);
     // A reopening reads after outstanding saves, so it sees the durable choice.
     void saves.current.then(pickerDestination).then((next) => {
       if (request !== reads.current) return;
+      if (!reset && capturedId.current !== undefined && capturedId.current !== next.app_id) {
+        openings.current += 1;
+        setOnce(null);
+        setOnceOnly(false);
+      }
+      capturedId.current = next.app_id;
       setDestination(next);
       report("appChoices", next.unreadable);
     }).catch(() => {
@@ -51,18 +59,21 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const appOutput = destination?.automatic;
   const automatic = appOutput && "style" in appOutput && fallbackReady
     ? `style:${styleOf(fallback) ?? "apa"}` as Choice : choiceOf(appOutput ?? null);
-  const format = once ?? remembered ?? automatic ?? fallback;
+  const baseFormat = remembered ?? automatic ?? fallback;
+  const base = useRef(baseFormat);
+  base.current = baseFormat;
+  const format = once ?? baseFormat;
   const save = (action: () => Promise<unknown>, apply: () => void) => {
-    const opening = reads.current;
+    const opening = openings.current;
     const choice = choices.current;
     setSaving(true);
     const pending = saves.current.then(action).then(() => {
-      if (opening !== reads.current) return;
+      if (opening !== openings.current) return;
       apply();
       if (choice === choices.current) setOnce(null);
       report("appChoice", false);
       report("appChoices", false);
-    }).catch(() => { if (opening === reads.current) report("appChoice"); });
+    }).catch(() => { if (opening === openings.current) report("appChoice"); });
     saves.current = pending;
     void pending.finally(() => { if (saves.current === pending) setSaving(false); });
   };
@@ -78,9 +89,13 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
     if (ready && app && !onceOnly) remember(choice);
     else if (ready && !app && !onceOnly && (!pickerDestination || destination)) { chooseDefault(choice); setOnce(null); }
   };
-  const copyToken = (): CopyToken => ({ opening: reads.current, choice: choices.current });
-  const isCurrentCopy = (token: CopyToken) => token.opening === reads.current && token.choice === choices.current;
-  const consumeOnce = (token: CopyToken) => { if (isCurrentCopy(token)) { setOnce(null); setOnceOnly(false); } };
+  const copyToken = (): CopyToken => ({ opening: openings.current, choice: choices.current });
+  const isCurrentCopy = (token: CopyToken) => token.opening === openings.current && token.choice === choices.current;
+  const consumeOnce = (token: CopyToken) => {
+    if (!isCurrentCopy(token)) return null;
+    setOnce(null); setOnceOnly(false);
+    return base.current;
+  };
   const restoreAutomatic = () => {
     choices.current += 1;
     setOnceOnly(false);
@@ -101,5 +116,5 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   };
   return { app: rememberAppOutput ? app : null, format, ready, saving, remembered: remembered !== null, read, choose,
     onceOnly, toggleOnce: () => { choices.current += 1; setOnceOnly((old) => !old); }, copyToken, isCurrentCopy, consumeOnce, restoreAutomatic, useDefault,
-    baseFormat: remembered ?? automatic ?? fallback, quitAfterSaving, forgetAll: forgetAppOutputs ? forgetAll : null };
+    quitAfterSaving, forgetAll: forgetAppOutputs ? forgetAll : null };
 }

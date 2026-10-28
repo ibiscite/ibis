@@ -2,13 +2,13 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type PastePermission } from "../bindings";
+import { commands, type KeyFormat, type PastePermission, type PickerPreferences } from "../bindings";
 
 export type { PastePermission } from "../bindings";
 
 export const settingsApi = {
   pickerPreferences: commands.pickerPreferences,
-  setPickerPreferences: commands.setPickerPreferences,
+  setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null) => commands.setPickerPreferences(preferences, copyFormat),
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
   updateChecks: commands.updateChecks,

@@ -53,7 +53,7 @@ export const commands = {
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**  Remember the picker preferences; other settings in the file are kept. */
-	setPickerPreferences: (preferences: PickerPreferencesPatch, copyFormat:
+	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
 /**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
 "pandoc" |
 /**  BibLaTeX `\autocite` / `\autocites`. */
@@ -367,10 +367,6 @@ export type PickerDestination = {
  *  How the picker looks and what it formats with, remembered across restarts
  *  (ADR 0020). A new key format is saved with the same preference change.
  */
-export type PickerSave = { preferences: PickerPreferences; copy_format: KeyFormat };
-
-export type PickerPreferencesPatch = Partial<PickerPreferences>;
-
 export type PickerPreferences = {
 	/**  A style chosen in the format menu, or `null` to copy citation keys. */
 	citation_style: CitationStyle | null,
@@ -381,6 +377,35 @@ export type PickerPreferences = {
 	search_mark: boolean,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
+};
+
+/**  Only fields deliberately changed in one window cross the write boundary. */
+export type PickerPreferencesPatch = PickerPreferencesPatch_Serialize | PickerPreferencesPatch_Deserialize;
+
+/**  Only fields deliberately changed in one window cross the write boundary. */
+export type PickerPreferencesPatch_Deserialize = {
+	citation_style?: CitationStyle | null,
+	density?: Density | null,
+	larger_text?: boolean | null,
+	show_paste_preview?: boolean | null,
+	search_mark?: boolean | null,
+	paste?: boolean | null,
+};
+
+/**  Only fields deliberately changed in one window cross the write boundary. */
+export type PickerPreferencesPatch_Serialize = {
+	citation_style?: CitationStyle | null,
+	density?: Density | null,
+	larger_text?: boolean | null,
+	show_paste_preview?: boolean | null,
+	search_mark?: boolean | null,
+	paste?: boolean | null,
+};
+
+/**  The authoritative state after one locked patch and flush. */
+export type PickerSave = {
+	preferences: PickerPreferences,
+	copy_format: KeyFormat,
 };
 
 export type RowAction = "copy" | "toggle";

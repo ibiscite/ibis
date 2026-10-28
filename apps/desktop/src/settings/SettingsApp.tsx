@@ -64,6 +64,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const generation = useRef(0);
   const reads = useRef(0);
   const unsaved = useRef<Partial<PickerPreferences>>({});
+  const unsavedRevision = useRef<Partial<Record<keyof PickerPreferences, number>>>({});
   const pending = useRef(0);
   const permission = usePastePermission(api, page === "general");
 
@@ -112,7 +113,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const chosen = { ...preferences, ...next };
     const edited = ++generation.current;
     unsaved.current = { ...unsaved.current, ...next };
+    for (const key of Object.keys(next) as (keyof PickerPreferences)[]) unsavedRevision.current[key] = edited;
     const queued = { ...unsaved.current };
+    const queuedRevision = { ...unsavedRevision.current };
     const deliberate = new Set(Object.keys(next));
     pending.current += 1;
     setPreferences(chosen);
@@ -120,11 +123,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     // Saved in the order chosen, so quick changes end as the last one shows.
     saving.current = saving.current.catch(() => undefined)
       .then(async () => {
-        const patch = Object.fromEntries(Object.entries(queued).filter(([key, value]) =>
-          deliberate.has(key) || unsaved.current[key as keyof PickerPreferences] === value));
+        const patch = Object.fromEntries(Object.entries(queued).filter(([key]) =>
+          deliberate.has(key) || unsavedRevision.current[key as keyof PickerPreferences] === queuedRevision[key as keyof PickerPreferences]));
         const saved = await api.setPickerPreferences(patch, null);
         for (const key of Object.keys(patch) as (keyof PickerPreferences)[]) {
-          if (unsaved.current[key] === patch[key]) delete unsaved.current[key];
+          if (unsavedRevision.current[key] === queuedRevision[key]) {
+            delete unsaved.current[key];
+            delete unsavedRevision.current[key];
+          }
         }
         if (edited === generation.current) setPreferences(saved.preferences);
       })
@@ -136,6 +142,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         void api.pickerPreferences().then((saved) => {
           if (request === reads.current && pending.current === 0 && edited === generation.current) {
             unsaved.current = {};
+            unsavedRevision.current = {};
             setPreferences(saved);
           }
         }).catch(() => undefined);

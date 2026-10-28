@@ -20,6 +20,7 @@ export function usePickerPreferences(
   },
 ) {
   const [ready, setReady] = useState(false);
+  const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<Choice>("pandoc");
   // Saved preferences, once read; choices made before that wait in `pending`
   // so a slow read never overwrites them and a failed read never resets the
@@ -31,6 +32,7 @@ export function usePickerPreferences(
   const previewVisibility = useRef(true);
   const savedPreferences = useRef<PickerPreferences | null>(null);
   const pending = useRef<Partial<PickerPreferences>>({});
+  const pendingRevision = useRef<Partial<Record<keyof PickerPreferences, number>>>({});
   const pendingKeyFormat = useRef<{ format: CopyFormat; saved: boolean } | null>(null);
   const preferenceReads = useRef(0);
   const preferenceChanges = useRef(0);
@@ -48,27 +50,33 @@ export function usePickerPreferences(
     const reading = preferenceReads.current;
     if (keyFormat !== null) pendingKeyFormat.current = { format: keyFormat, saved: false };
     pending.current = { ...pending.current, ...change };
+    for (const key of Object.keys(change) as (keyof PickerPreferences)[]) pendingRevision.current[key] = revision;
     if (!savedPreferences.current) return;
     // Send only explicit changes; a stale window never rewrites unrelated choices.
     const queued = { ...pending.current };
+    const queuedRevision = { ...pendingRevision.current };
     const deliberate = new Set(Object.keys(change));
     const chosenKey = pendingKeyFormat.current;
     const save = preferenceSave.current.catch(() => undefined)
       .then(async () => {
         // Earlier writes may have acknowledged fields while this operation waited.
-        const patch = Object.fromEntries(Object.entries(queued).filter(([key, value]) =>
-          deliberate.has(key) || pending.current[key as keyof PickerPreferences] === value));
+        const patch = Object.fromEntries(Object.entries(queued).filter(([key]) =>
+          deliberate.has(key) || pendingRevision.current[key as keyof PickerPreferences] === queuedRevision[key as keyof PickerPreferences]));
         const saved = await setPickerPreferences(patch, chosenKey && !chosenKey.saved ? chosenKey.format : null);
         return { saved, patch };
       })
       .then(({ saved, patch }) => {
         for (const key of Object.keys(patch) as (keyof PickerPreferences)[]) {
-          if (pending.current[key] === patch[key]) delete pending.current[key];
+          if (pendingRevision.current[key] === queuedRevision[key]) {
+            delete pending.current[key];
+            delete pendingRevision.current[key];
+          }
         }
         if (chosenKey) chosenKey.saved = true;
         if (pendingKeyFormat.current === chosenKey) pendingKeyFormat.current = null;
         if (revision !== preferenceChanges.current || reading !== preferenceReads.current) return;
         savedPreferences.current = saved.preferences;
+        setAvailable(true);
         applyView(saved.preferences);
         setFormat(saved.preferences.citation_style ? `style:${saved.preferences.citation_style}` : saved.copy_format);
       });
@@ -131,10 +139,12 @@ export function usePickerPreferences(
       setReady(true);
       if (key.status === "rejected") report("format");
       if (saved.status === "rejected") {
+        setAvailable(false);
         report("preferences");
         if (pending.current.citation_style === undefined && key.status === "fulfilled") setFormat(key.value);
         return;
       }
+      setAvailable(true);
       const loaded = { ...saved.value, ...pending.current } as PickerPreferences;
       savedPreferences.current = saved.value;
       applyView(loaded);
@@ -147,5 +157,5 @@ export function usePickerPreferences(
     });
   };
 
-  return { ready, format, density, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
+  return { ready, available, format, density, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
 }

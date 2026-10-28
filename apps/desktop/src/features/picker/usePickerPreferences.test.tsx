@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { usePickerPreferences } from "./usePickerPreferences";
-import type { PickerPreferences } from "../../api";
+import type { CopyFormat, PickerPreferences } from "../../api";
 
 afterEach(cleanup);
 const preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true };
@@ -10,7 +10,7 @@ const deferred = <T,>() => {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 };
-const context = { styles: true, report: vi.fn(), perform: async (_operation: unknown, action: () => Promise<unknown>) => { await action(); } };
+const context = { styles: true, report: vi.fn(), perform: async (_operation: unknown, action: () => Promise<unknown>) => { try { await action(); } catch {} } };
 
 test("an older Settings notification read cannot restore the wrong global output", async () => {
   const first = deferred<PickerPreferences>();
@@ -63,4 +63,31 @@ test("a queued view save never replays an output acknowledged before it reaches 
   await act(async () => { output.resolve({ preferences, copy_format: "cite" }); });
   expect(setPickerPreferences.mock.calls[1]).toEqual([{ larger_text: true }, null]);
   expect(result.current.format).toBe("style:ieee");
+});
+
+test("a failed later equal-valued output intent remains retryable after older writes acknowledge", async () => {
+  const first = deferred<void>();
+  let state = { ...preferences, citation_style: "apa" } as PickerPreferences;
+  let key: CopyFormat = "pandoc";
+  let writes = 0;
+  const setPickerPreferences = vi.fn(async (patch: Partial<PickerPreferences>, format: CopyFormat | null) => {
+    const request = ++writes;
+    if (request === 1) await first.promise;
+    if (request === 3) throw new Error("synthetic third-save failure");
+    state = { ...state, ...patch };
+    key = format ?? key;
+    return { preferences: state, copy_format: key };
+  });
+  const { result } = renderHook(() => usePickerPreferences({ copyFormat: async () => "pandoc", pickerPreferences: async () => state,
+    setPickerPreferences, quit: async () => undefined }, context));
+  await act(async () => { result.current.loadPreferences(() => true); });
+  act(() => result.current.chooseFormat("cite"));
+  act(() => result.current.chooseFormat("style:ieee"));
+  act(() => result.current.chooseFormat("typst"));
+  await act(async () => { first.resolve(); });
+  expect(writes).toBe(3);
+  expect(state.citation_style).toBe("ieee");
+  await act(async () => { result.current.toggleLargerText(); });
+  expect(state.citation_style).toBe(null);
+  expect(result.current.format).toBe("typst");
 });

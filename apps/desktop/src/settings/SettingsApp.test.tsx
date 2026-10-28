@@ -245,3 +245,26 @@ test("the latest focus read wins even when no local edit occurred", async () => 
   await act(async () => { old.resolve(state.preferences); });
   expect((larger as HTMLInputElement).checked).toBe(true);
 });
+
+test("a later equal-valued switch intent is retried when its own save fails", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  const first = deferred<void>();
+  let writes = 0;
+  vi.spyOn(api, "setPickerPreferences").mockImplementation(async (patch) => {
+    const request = ++writes;
+    if (request === 1) await first.promise;
+    if (request === 3) throw new Error("synthetic third-save failure");
+    return commit(patch);
+  });
+  render(<SettingsApp api={api} initialPage="general" />);
+  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  fireEvent.click(larger);
+  fireEvent.click(larger);
+  fireEvent.click(larger);
+  // Queue another field before the third write fails; it must carry the still-unsaved intent.
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  await act(async () => { first.resolve(); });
+  await waitFor(() => expect(writes).toBe(4));
+  expect(state.preferences).toMatchObject({ larger_text: true, density: "spacious" });
+  expect((larger as HTMLInputElement).checked).toBe(true);
+});

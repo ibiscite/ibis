@@ -147,6 +147,7 @@ pub(crate) struct PickerSave {
 #[serde(deny_unknown_fields)]
 pub(crate) struct PickerPreferencesPatch {
     #[serde(default, deserialize_with = "present_style", skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<CitationStyle>)]
     pub(crate) citation_style: Option<Option<CitationStyle>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) density: Option<Density>,

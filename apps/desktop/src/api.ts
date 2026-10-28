@@ -2,7 +2,7 @@
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type CommandError, type KeyFormat, type LibraryStatus, type ShortcutStatus } from "./bindings";
+import { commands, type CommandError, type KeyFormat, type LibraryStatus, type PickerPreferences, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
@@ -28,7 +28,6 @@ export const {
   copyFileCitation,
   copyFormat,
   pickerPreferences,
-  setPickerPreferences,
   pickerDestination,
   rememberAppOutput,
   forgetAppOutputs,
@@ -43,6 +42,11 @@ export const {
   checkForUpdates,
   openSettings,
 } = commands;
+
+/** UI edits omit unchanged fields; null is meaningful only for citation_style. */
+export function setPickerPreferences(preferences: Partial<PickerPreferences>, copyFormat: CopyFormat | null) {
+  return commands.setPickerPreferences(preferences, copyFormat);
+}
 
 // The limit default, page and request number are not part of the UI's API:
 // each search is numbered so the app can stop searches for outdated queries,

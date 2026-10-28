@@ -86,7 +86,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: true, report, perform });
   const { density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving: quitPreferences } = preferences;
-  const destination = useDestination(api, { fallback: preferences.format, fallbackReady: preferences.ready, chooseDefault: preferences.chooseFormat, report });
+  const destination = useDestination(api, { fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const style = styleOf(format);
@@ -400,11 +400,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     }
     const ownsFeedback = ownsCompletion();
     // A successful copy consumes its override even after the user moved to another row.
-    destination.consumeOnce(outputToken);
+    const nextFormat = destination.consumeOnce(outputToken);
     if (!ownsFeedback) return;
     setCopied(outcome);
     const clearedSelection = new Map<string, CitationReference>();
-    const completedContext = { ...context, format: destination.baseFormat, selected: clearedSelection, activeChoice: latestHighlight.current };
+    const completedContext = { ...context, format: nextFormat ?? context.format, selected: clearedSelection, activeChoice: latestHighlight.current };
     copyContext.current = completedContext;
     setSelected(clearedSelection);
     // After a copy, reopening keeps the current search, not one cleared before it.
