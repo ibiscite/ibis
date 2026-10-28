@@ -194,6 +194,7 @@ fn prepare_with_traits(
     let mut outcomes = Vec::new();
     let mut losses = Vec::new();
     let mut notices = Vec::new();
+    let mut affixes = Vec::new();
     if traits.numeric {
         notices.extend([Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
     }
@@ -201,7 +202,8 @@ fn prepare_with_traits(
     for (index, pick) in request.items.iter().enumerate() {
         let form = pick.form.unwrap_or(request.form);
         let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
-            || form == CitationForm::Narrative
+            // A narrative citation is one sentence's subject: one reference.
+            || (form == CitationForm::Narrative && (pick.suppress_author || bibliography || request.items.len() > 1))
             || (traits.numeric && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
             // A nonempty locator cannot stand in for an absent publication year.
             || (!traits.citation_has_issued && !bibliography && form == CitationForm::YearOnly)
@@ -242,6 +244,10 @@ fn prepare_with_traits(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
+        // APA's parenthetical names use a symbol conjunction that cannot be
+        // reused as a narrative subject. Refuse multiple names until the
+        // narrative path has its own verified name rendering.
+        let apa_narrative = style == "apa" && form == CitationForm::Narrative;
         // When an item has authors, the in-text layouts of the bundled
         // author-date styles print only these name lists; every other one is
         // a substitute after `author` or appears only in entries.
@@ -291,6 +297,7 @@ fn prepare_with_traits(
                 names
                     .iter()
                     .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
+                    || apa_narrative && names.len() > 1
             })
         {
             outcomes.push(ItemOutcome::Refused {
@@ -299,7 +306,7 @@ fn prepare_with_traits(
             });
             continue;
         }
-        if form == CitationForm::AuthorOnly && !has_authors {
+        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative) && !has_authors {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
@@ -319,8 +326,8 @@ fn prepare_with_traits(
         };
         let mut cite = json!({"id":id});
         for (present, field) in [
-            (!pick.prefix.is_empty(), LossField::Prefix),
-            (!pick.suffix.is_empty(), LossField::Suffix),
+            (bibliography && !pick.prefix.is_empty(), LossField::Prefix),
+            (bibliography && !pick.suffix.is_empty(), LossField::Suffix),
         ] {
             if present {
                 losses.push(Loss {
@@ -360,15 +367,26 @@ fn prepare_with_traits(
             }
             // Rich affixes belong to the 0.4 builder. Omitting them is explicit,
             // never citeproc markup that could reinterpret literal input.
-            cite["prefix"] = json!("");
-            cite["suffix"] = json!("");
+            // citeproc-js would read affix text as markup and curl its quotes, so
+            // it sees inert placeholders and the bridge writes each affix in
+            // every output format afterwards, with citeproc's own escaping.
+            for (key, runs) in [("prefix", &pick.prefix), ("suffix", &pick.suffix)] {
+                if runs.iter().any(|run| !run.text.is_empty()) {
+                    let placeholder = placeholder(affixes.len(), key, runs);
+                    cite[key] = json!(placeholder);
+                    affixes.push(json!({"placeholder": placeholder, "kind": key, "runs": runs}));
+                }
+            }
             cite["suppress-author"] = json!(pick.suppress_author || form == CitationForm::YearOnly);
             cite["author-only"] = json!(form == CitationForm::AuthorOnly);
+            if form == CitationForm::Narrative {
+                cite["narrative"] = json!(true);
+            }
         }
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
     }
-    if style != "ieee" && style != "modern-language-association" {
+    if style != "ieee" && style != "modern-language-association" && shares_author_and_year(&items) {
         notices.push(Notice::YearSuffixWithheld);
     }
     if bibliography && request.keep_order {
@@ -378,13 +396,89 @@ fn prepare_with_traits(
             reason: LossReason::Unsupported,
         });
     }
-    let json=String::from_utf8(bounded_json(&json!({"style":style,"numeric":traits.numeric,"items":items,"cites":cites,"bibliography":bibliography,"keep_order":request.keep_order,"locale":request.output_locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    let json=String::from_utf8(bounded_json(&json!({"style":style,"numeric":traits.numeric,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":request.output_locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    // Each placeholder (in its cite and in the affix list) must be the only
+    // place its sentinel occurs, or the bridge could write an affix into a
+    // record's own text.
+    if json.matches(PLACEHOLDER_OPEN).count() != 2 * affixes.len()
+        || json.matches(PLACEHOLDER_CLOSE).count() != 2 * affixes.len()
+    {
+        return Err(FormatError::InvalidRequest);
+    }
     Ok(Prepared {
         json,
         outcomes,
         losses,
         notices,
         empty: cites.is_empty(),
+    })
+}
+
+/// Year letters (2026a, 2026b) depend on the document's whole reference list,
+/// so the notice appears only when this request already holds two works that
+/// may print the same names and year. It errs towards the notice: every name
+/// variable counts whatever its role, names compare by particle and family
+/// only, and two works without a year count as sharing one.
+fn shares_author_and_year(items: &[Value]) -> bool {
+    let mut seen = std::collections::BTreeSet::new();
+    items.iter().any(|item| {
+        let year = year(item.get("issued"));
+        let mut signatures: Vec<Vec<String>> = item
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(_, value)| value.as_array())
+            .filter(|names| {
+                !names.is_empty()
+                    && names
+                        .iter()
+                        .all(|name| name.get("family").or_else(|| name.get("literal")).is_some())
+            })
+            .map(|names| names.iter().map(name).collect())
+            .collect();
+        if signatures.is_empty() {
+            signatures.push(vec![text(item.get("title"))]);
+        }
+        signatures.sort();
+        signatures.dedup();
+        signatures.into_iter().any(|names| !seen.insert((names, year.clone())))
+    })
+}
+
+fn name(name: &Value) -> String {
+    let literal = text(name.get("literal"));
+    if !literal.is_empty() {
+        return literal;
+    }
+    [text(name.get("non-dropping-particle")), text(name.get("family"))]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn text(value: Option<&Value>) -> String {
+    let value = match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    };
+    value.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// The year as printed, from date parts, a literal or a raw date.
+fn year(issued: Option<&Value>) -> Option<String> {
+    let issued = issued?;
+    let parts = text(issued.pointer("/date-parts/0/0"));
+    if !parts.is_empty() {
+        return Some(parts);
+    }
+    ["literal", "raw"].into_iter().find_map(|field| {
+        let date = text(issued.get(field));
+        let digits: String = date.chars().filter(char::is_ascii_digit).collect();
+        (digits.len() == 4)
+            .then_some(digits)
+            .or_else(|| (!date.is_empty()).then_some(date))
     })
 }
 
@@ -527,11 +621,39 @@ fn named(names: Option<&Value>) -> bool {
     })
 }
 
+/// Sentinels for affix placeholders. Requests whose text contains them are
+/// refused, so a placeholder can only ever match itself.
+pub(crate) const PLACEHOLDER_OPEN: char = '\u{E000}';
+pub(crate) const PLACEHOLDER_CLOSE: char = '\u{E001}';
+
+/// An inert stand-in for one affix. citeproc-js decides delimiter spacing from
+/// a suffix's last and a prefix's first character when it is `;`, `.` or `,`,
+/// so that character stays visible to it and is part of what gets replaced.
+fn placeholder(index: usize, kind: &str, runs: &[TextRun]) -> String {
+    let digits: String = index
+        .to_string()
+        .chars()
+        .map(|d| char::from_u32(0xE010 + d.to_digit(10).unwrap_or(0)).unwrap_or(PLACEHOLDER_CLOSE))
+        .collect();
+    let token = format!("{PLACEHOLDER_OPEN}{digits}{PLACEHOLDER_CLOSE}");
+    let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+    let edge = if kind == "prefix" {
+        text.chars().next()
+    } else {
+        text.chars().next_back()
+    };
+    match edge.filter(|c| matches!(c, ';' | '.' | ',')) {
+        Some(c) if kind == "prefix" => format!("{c}{token}"),
+        Some(c) => format!("{token}{c}"),
+        None => token,
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use CitationForm::{AuthorOnly, Full, Normal, YearOnly};
+    use CitationForm::{AuthorOnly, Full, Narrative, Normal, YearOnly};
 
     #[test]
     fn xml_traits_drive_fallback_and_form_refusals_independently_of_style_name() {
@@ -554,7 +676,7 @@ mod tests {
             let traits = style_traits(&xml);
             let mut request: CitationRequest =
                 serde_json::from_value(json!({"items":[{"item":id}],"output":{"kind":"csl","style":name}})).unwrap();
-            for form in [Normal, Full, AuthorOnly, YearOnly] {
+            for form in [Normal, Full, AuthorOnly, YearOnly, Narrative] {
                 request.form = form;
                 let prepared = prepare_with_traits(&snapshot, &request, &Limits::default(), traits).unwrap();
                 let json: Value = serde_json::from_str(&prepared.json).unwrap();
@@ -562,7 +684,13 @@ mod tests {
                 assert_eq!(json["bibliography"], numeric || form == Full);
                 assert_eq!(prepared.notices.contains(&Notice::NeedsDocumentContext), numeric);
                 assert_eq!(prepared.notices.contains(&Notice::ReferenceEntry), numeric);
-                assert_eq!(prepared.empty, numeric && matches!(form, AuthorOnly | YearOnly));
+                assert_eq!(
+                    prepared.empty,
+                    numeric && matches!(form, AuthorOnly | YearOnly | Narrative)
+                );
+                if !numeric && form == Narrative {
+                    assert_eq!(json["cites"][0]["narrative"], true);
+                }
             }
         }
         let traits = style_traits(

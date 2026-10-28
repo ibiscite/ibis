@@ -55,15 +55,29 @@
 }
 .copied-notice-source { display: none; }
 
-/* The existing macOS pill on every system. */
+/* The macOS pill on every system. It keeps 16 points of the window for its
+   shadow on every side, and never clips its words: when the citation would
+   be cut short it moves to a second line (copyFeedback.ts). */
 .copied-notice {
   width: max-content;
-  height: 2.75rem;
+  max-width: calc(100% - 2rem);
+  min-height: 2.75rem;
   margin: 1rem auto;
   padding: 0 1.125rem 0 .5rem;
   border-radius: 1.375rem;
   --notice-from: -.5rem;
 }
+.copied-notice[data-stacked] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: .5rem;
+  padding: .5rem 1rem .5rem .5rem;
+  border-radius: 1.125rem;
+}
+.copied-notice[data-stacked] .copied-notice-mark { grid-row: 1 / span 2; align-self: start; margin-top: .125rem; }
+.copied-notice[data-stacked] code { grid-column: 2; }
+/* Copied without a paste: the same mark, quieter, so "pasted" stands out. */
+.copied-notice[data-outcome="copied"] { --notice-done: var(--muted); }
 
 /* 2.8 s in view, as in the prototype: a 120 ms fade in when shown, then a
    200 ms fade out when the app's timer marks it as leaving (notice.rs). */
@@ -107,7 +121,7 @@
 /* Linux without a compositor: an opaque window, so the toast fills it with square corners. */
 :root.notice-window[data-surface="opaque"],
 :root.notice-window[data-surface="opaque"] body { background: var(--surface); }
-:root.notice-window[data-surface="opaque"] .copied-notice { width: 100%; height: 100%; margin: 0; border-radius: 0; }
+:root.notice-window[data-surface="opaque"] .copied-notice { width: 100%; max-width: none; height: 100%; margin: 0; border-radius: 0; }
 @media (prefers-contrast: more), (forced-colors: active), (prefers-reduced-transparency: reduce) {
   :root.notice-window[data-surface="opaque"],
   :root.notice-window[data-surface="opaque"] body { background: Canvas; }

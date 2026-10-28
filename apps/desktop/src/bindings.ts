@@ -53,7 +53,7 @@ export const commands = {
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**  Remember the picker preferences; other settings in the file are kept. */
-	setPickerPreferences: (preferences: PickerPreferences, copyFormat:
+	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
 /**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
 "pandoc" |
 /**  BibLaTeX `\autocite` / `\autocites`. */
@@ -67,7 +67,13 @@ export const commands = {
 /**  Typst `@key[p. 12]`. */
 "typst" |
 /**  Bare keys separated by commas. */
-"keys" | null) => __TAURI_INVOKE<null>("set_picker_preferences", { preferences, copyFormat }),
+"keys" | null) => __TAURI_INVOKE<PickerSave>("set_picker_preferences", { preferences, copyFormat }),
+	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
+	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
+	/**  Always use `output` for the app the picker was opened from; `None` returns it to Automatic. */
+	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output }),
+	/**  Forget the outputs chosen for every app. */
+	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
@@ -122,9 +128,24 @@ export const commands = {
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**  "Check for Updates…": the same check the tray starts. */
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	/**
+	 *  Open Settings, or bring it forward, on `page` when one is named. Async so
+	 *  the window is built from the event loop: a sync command runs inside the
+	 *  WebView2 callback, where building a second webview deadlocks on Windows.
+	 */
+	openSettings: (page: "general" |
+/**  General, scrolled to pasting and its permission. */
+"paste" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
+	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
+	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */
+	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
 };
 
 /* Types */
+/**  One output the picker can copy: a key syntax or a citation style. */
+export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
+
 /**  A bundled citation style the picker can format with (ADR 0020). */
 export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
 
@@ -312,6 +333,36 @@ export type NoticeMessage = {
 	text: string,
 };
 
+/**  Where Settings opens. */
+export type Page = "general" |
+/**  General, scrolled to pasting and its permission. */
+"paste" | "citations" | "about";
+
+/**  Whether Ibis may paste, and where the person turns that on. */
+export type PastePermission = {
+	/**  Ibis pastes on this system; where it only copies, Settings offers no pasting choices. */
+	pastes: boolean,
+	/**  This system asks the person before an app may paste for them. */
+	needed: boolean,
+	granted: boolean,
+	/**  The list in System Settings that holds the switch, in the system's words. */
+	list: string,
+};
+
+/**  What the picker needs to know about the app it was opened from. */
+export type PickerDestination = {
+	/**  The app's own name; `None` when no app was captured. */
+	app: string | null,
+	/**  The captured OS app identifier, used to refuse a save after the target changes. */
+	app_id: string | null,
+	/**  The app suggestion; `None` follows the saved global default. */
+	automatic: AppOutput | null,
+	/**  The output the person chose to always use for this app. */
+	remembered: AppOutput | null,
+	/**  The per-app file could not be read, so defaults apply. */
+	unreadable: boolean,
+};
+
 /**
  *  How the picker looks and what it formats with, remembered across restarts
  *  (ADR 0020). A new key format is saved with the same preference change.
@@ -324,6 +375,37 @@ export type PickerPreferences = {
 	show_paste_preview: boolean,
 	/**  The Ibis mark in place of the search glyph; off by default. */
 	search_mark: boolean,
+	/**  Enter pastes into the app the picker was opened from; on by default. */
+	paste: boolean,
+};
+
+/**  Only fields deliberately changed in one window cross the write boundary. */
+export type PickerPreferencesPatch = PickerPreferencesPatch_Serialize | PickerPreferencesPatch_Deserialize;
+
+/**  Only fields deliberately changed in one window cross the write boundary. */
+export type PickerPreferencesPatch_Deserialize = {
+	citation_style?: CitationStyle | null,
+	density?: Density | null,
+	larger_text?: boolean | null,
+	show_paste_preview?: boolean | null,
+	search_mark?: boolean | null,
+	paste?: boolean | null,
+};
+
+/**  Only fields deliberately changed in one window cross the write boundary. */
+export type PickerPreferencesPatch_Serialize = {
+	citation_style?: CitationStyle | null,
+	density?: Density | null,
+	larger_text?: boolean | null,
+	show_paste_preview?: boolean | null,
+	search_mark?: boolean | null,
+	paste?: boolean | null,
+};
+
+/**  The authoritative state after one locked patch and flush. */
+export type PickerSave = {
+	preferences: PickerPreferences,
+	copy_format: KeyFormat,
 };
 
 export type RowAction = "copy" | "toggle";

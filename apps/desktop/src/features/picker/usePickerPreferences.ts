@@ -19,6 +19,8 @@ export function usePickerPreferences(
     perform: (operation: Operation, action: () => Promise<unknown>) => Promise<void>;
   },
 ) {
+  const [ready, setReady] = useState(false);
+  const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<Choice>("pandoc");
   // Saved preferences, once read; choices made before that wait in `pending`
   // so a slow read never overwrites them and a failed read never resets the
@@ -30,24 +32,53 @@ export function usePickerPreferences(
   const previewVisibility = useRef(true);
   const savedPreferences = useRef<PickerPreferences | null>(null);
   const pending = useRef<Partial<PickerPreferences>>({});
+  const pendingRevision = useRef<Partial<Record<keyof PickerPreferences, number>>>({});
   const pendingKeyFormat = useRef<{ format: CopyFormat; saved: boolean } | null>(null);
+  const preferenceReads = useRef(0);
+  const preferenceChanges = useRef(0);
   const preferenceSave = useRef<Promise<unknown>>(Promise.resolve());
   const preferenceLoad = useRef<Promise<void>>(Promise.resolve());
+  const applyView = (value: PickerPreferences) => {
+    setDensity(value.density);
+    setLargerText(value.larger_text);
+    setSearchMark(value.search_mark ?? false);
+    previewVisibility.current = value.show_paste_preview;
+    setShowPastePreview(value.show_paste_preview);
+  };
   const savePreferences = (change: Partial<PickerPreferences>, keyFormat: CopyFormat | null = null) => {
+    const revision = ++preferenceChanges.current;
+    const reading = preferenceReads.current;
     if (keyFormat !== null) pendingKeyFormat.current = { format: keyFormat, saved: false };
     pending.current = { ...pending.current, ...change };
+    for (const key of Object.keys(change) as (keyof PickerPreferences)[]) pendingRevision.current[key] = revision;
     if (!savedPreferences.current) return;
-    const next = { ...savedPreferences.current, ...pending.current } as PickerPreferences;
+    // Send only explicit changes; a stale window never rewrites unrelated choices.
+    const queued = { ...pending.current };
+    const queuedRevision = { ...pendingRevision.current };
+    const deliberate = new Set(Object.keys(change));
     const chosenKey = pendingKeyFormat.current;
-    pending.current = {};
-    savedPreferences.current = next;
-    // Preserve choice order and retry an unsaved key. Queued density/style
-    // changes do not rewrite a key whose earlier save already succeeded.
     const save = preferenceSave.current.catch(() => undefined)
-      .then(() => setPickerPreferences(next, chosenKey && !chosenKey.saved ? chosenKey.format : null))
-      .then(() => {
+      .then(async () => {
+        // Earlier writes may have acknowledged fields while this operation waited.
+        const patch = Object.fromEntries(Object.entries(queued).filter(([key]) =>
+          deliberate.has(key) || pendingRevision.current[key as keyof PickerPreferences] === queuedRevision[key as keyof PickerPreferences]));
+        const saved = await setPickerPreferences(patch, chosenKey && !chosenKey.saved ? chosenKey.format : null);
+        return { saved, patch };
+      })
+      .then(({ saved, patch }) => {
+        for (const key of Object.keys(patch) as (keyof PickerPreferences)[]) {
+          if (pendingRevision.current[key] === queuedRevision[key]) {
+            delete pending.current[key];
+            delete pendingRevision.current[key];
+          }
+        }
         if (chosenKey) chosenKey.saved = true;
         if (pendingKeyFormat.current === chosenKey) pendingKeyFormat.current = null;
+        if (revision !== preferenceChanges.current || reading !== preferenceReads.current) return;
+        savedPreferences.current = saved.preferences;
+        setAvailable(true);
+        applyView(saved.preferences);
+        setFormat(saved.preferences.citation_style ? `style:${saved.preferences.citation_style}` : saved.copy_format);
       });
     preferenceSave.current = save;
     void perform("preferences", () => save);
@@ -98,24 +129,25 @@ export function usePickerPreferences(
   /** Reads the saved key format and preferences. The picker calls this from its
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => {
-    // The saved style wins over the saved key format; a choice made while
-    // these load wins over both.
-    preferenceLoad.current = Promise.allSettled([copyFormat(), pickerPreferences()]).then(([key, saved]) => {
-      if (!mounted()) return;
+    const request = ++preferenceReads.current;
+    const revision = preferenceChanges.current;
+    const loadedBefore = savedPreferences.current !== null;
+    // A notification cannot read behind this window's own outstanding writes.
+    preferenceLoad.current = preferenceSave.current.catch(() => undefined)
+      .then(() => Promise.allSettled([copyFormat(), pickerPreferences()])).then(([key, saved]) => {
+      if (!mounted() || request !== preferenceReads.current || loadedBefore && revision !== preferenceChanges.current) return;
+      setReady(true);
       if (key.status === "rejected") report("format");
       if (saved.status === "rejected") {
-        // Without saved preferences the saved key format still applies.
+        setAvailable(false);
         report("preferences");
         if (pending.current.citation_style === undefined && key.status === "fulfilled") setFormat(key.value);
         return;
       }
+      setAvailable(true);
       const loaded = { ...saved.value, ...pending.current } as PickerPreferences;
       savedPreferences.current = saved.value;
-      setDensity(loaded.density);
-      setLargerText(loaded.larger_text);
-      setSearchMark(loaded.search_mark ?? false);
-      previewVisibility.current = loaded.show_paste_preview;
-      setShowPastePreview(loaded.show_paste_preview);
+      applyView(loaded);
       const chosen = pending.current.citation_style !== undefined;
       if (Object.keys(pending.current).length > 0) savePreferences({});
       if (chosen) return;
@@ -124,5 +156,6 @@ export function usePickerPreferences(
       else if (key.status === "fulfilled") setFormat(key.value);
     });
   };
-  return { format, density, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
+
+  return { ready, available, format, density, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
 }

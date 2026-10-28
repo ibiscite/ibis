@@ -1,7 +1,7 @@
 //! Formatting and cancellation stay behind the same typed engine boundary.
 use super::{Engine, StyleInfo, StylesResult, error};
 use ibis_core::contract::*;
-use ibis_csl::{CancellationToken, FormatError, Priority};
+use ibis_csl::{CancellationToken, FormatError};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -130,19 +130,14 @@ impl Engine {
             if let Some(formatter) = current.as_ref() {
                 formatter.clone()
             } else {
-                // Construction only spawns workers. A transient OS resource failure
+                // Construction only spawns the worker. A transient OS resource failure
                 // must not permanently disable formatting for this engine.
                 let formatter = ibis_csl::Formatter::new().map_err(|_| error(ErrorCode::ResourceLimit))?;
                 *current = Some(formatter.clone());
                 formatter
             }
         };
-        let priority = if matches!(request.form, CitationForm::BibliographyOnly | CitationForm::Full) {
-            Priority::Background
-        } else {
-            Priority::Interactive
-        };
-        let task = match formatter.submit(snapshot.clone(), request.clone(), priority) {
+        let task = match formatter.submit(snapshot.clone(), request.clone()) {
             Ok(task) => task,
             Err(FormatError::UnsupportedStyle) => return Ok(refusal(request, CitationError::UnsupportedOutput)),
             Err(FormatError::InvalidLocale) => return Ok(refusal(request, CitationError::InvalidLocale)),

@@ -49,6 +49,11 @@ closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys
 come from Zotero's native field, Extra and Better BibTeX; when they disagree,
 key output for that item is refused until it is fixed in Zotero. Local API requests send
 no browser `Origin`, bypass proxies and check `Zotero-API-Version`.
+On Windows the closed reader's process, drive, attribute and ACL checks call
+Win32 directly through `windows-sys`, never PowerShell (changed 2026-10-28 in
+#1261: PowerShell was slow and fails under AppLocker and Constrained Language
+Mode). That module is the only `unsafe` code in Ibis: `ibis-zotero-local`
+denies it elsewhere and every other crate forbids it.
 
 ## 0007 Formatting (with 0028)
 
@@ -70,6 +75,9 @@ A new network use needs an entry here and the maintainer's yes. Requests to
 Zotero on `127.0.0.1` are local reads, not network use: Zotero's local API and,
 read-only, Better BibTeX's `user.groups` and `item.citationkey` on the same
 port, with no proxy and no redirect (maintainer, 2026-10-27).
+Ibis may serve Better BibTeX-compatible Cite as You Write to editor plugins:
+`127.0.0.1` only, on its own port, refusing any request with a browser
+`Origin`, and off until switched on in Settings (maintainer, 2026-10-27).
 
 ## 0009 Insertion
 
@@ -78,7 +86,15 @@ reason. Ibis captures the target app, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
 restoring and per-app rules wait until after 1.0. It refuses secure input,
-elevated windows and lost targets.
+elevated windows and lost targets. Pasting is on by default (maintainer,
+2026-10-25, #27); Settings › General › Pasting turns it off, saved as
+`paste: false` (absent means on), and Enter then only copies.
+
+When the shortcut opens the picker with short text selected in the target app,
+that text becomes the search and the paste replaces it (macOS and Windows, on
+by default; maintainer, 2026-10-28). The selection is read once, at the
+shortcut, through the same accessibility access paste uses; it is never read
+from secure fields, never stored and never logged.
 
 ## 0010 Search
 
@@ -96,6 +112,24 @@ settings Ibis cannot read are kept as a copy, Ibis starts from defaults and
 says so, and it never silently overwrites a file it could not read. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
+
+## 0031 What Ibis remembers per app
+
+The output chooser remembers a format picked for the captured app unless the
+person selects "Just this once". `apps.json`, beside `settings.json`, keeps
+only the operating system, normalised app ID and output for at most 200 apps;
+the least recently chosen app is dropped first. Never a document title, URL,
+window title, document text or citation. Browser and editor IDs cannot identify
+a project's syntax. Remembered choices beat app-table suggestions, then the
+global fallback; "Automatic" removes only the app override, and a deliberate
+global choice never erases app choices.
+
+The bounded file is written whole, flushed and swapped in atomically. A file
+Ibis cannot read means automatic/default outputs, with a visible warning; the
+next explicit app save replaces the damaged data. "Forget formats for apps"
+clears it. A failed save leaves the previous durable choices intact and says
+so. Preference writes from different windows apply only deliberate field
+patches under the native owner lock, returning the authoritative saved state.
 
 ## 0019 Updates
 
@@ -120,6 +154,16 @@ tray and context menus are the operating system's own.
 Every Ibis command is declared in Tauri's app manifest and granted per window;
 remote origins get none. A test checks the grants through Tauri's IPC
 dispatcher.
+
+## 0030 Links and launchers
+
+`ibis://` links open the picker with a query, output or library filled in.
+A link is untrusted input: it never copies, pastes, changes settings or reads
+files; only the person's Enter acts. Launchers (Spotlight through Shortcuts,
+Alfred, Stream Deck, notes apps) reach Ibis through these links and the `ibis`
+command, with recipes in the docs. No native App Intents or launcher
+extensions before 1.0: they would add a second language or codebase for what
+the global shortcut already does (maintainer, 2026-10-28).
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 

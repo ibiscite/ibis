@@ -1,7 +1,7 @@
 # Shared CSL formatting
 
 `Formatter::format(&snapshot, &request)` returns the same canonical
-`CitationResult` for every client. `submit(Arc<Snapshot>, request, priority)`
+`CitationResult` for every client. `submit(Arc<Snapshot>, request)`
 returns a cancellable task; dropping a task cancels it. Callers use the result's
 `copy_content(request.items.len())` gate before copying. Diagnostics are fixed
 codes, with no reference text or JavaScript exception messages.
@@ -20,16 +20,14 @@ rejects embedded NUL in text, HTML or RTF. JavaScript stack and heap exhaustion,
 including the processor's exact native-error forwarding forms, return the fixed
 `ResourceLimit` code; arbitrary exception text never crosses the boundary.
 
-Two worker threads own separate QuickJS runtimes. Interactive work takes
-priority; a running background operation is interrupted and restarted after
-interactive work finishes, keeping its original deadline. Queued cancellation
-releases its slot immediately, and queued deadlines expire even while
-interactive work continues. Every interrupted or failing runtime is discarded
-before the next operation.
+One worker thread owns a QuickJS runtime and a bounded FIFO queue. Queued
+cancellation releases its slot immediately; running work is cancelled through
+QuickJS's interrupt handler. Deadlines include time in the queue. Every
+interrupted or failing runtime is discarded before the next operation. Shutdown
+cancels pending work and joins the worker; worker failure refuses further work.
 
-Defaults are 8 interactive and 2 background slots, counting running work;
-5-second interactive and 30-second background deadlines; 128 MiB of JavaScript
-memory per runtime; a 2 MiB JavaScript stack on an 8 MiB worker stack; 4 MiB
+Defaults are 8 slots, counting running work; a 30-second request deadline;
+128 MiB of JavaScript memory; a 2 MiB JavaScript stack on an 8 MiB worker stack; 4 MiB
 input/output boundaries and at most 1,000 requested items. The software-stack
 maximum is also 2 MiB; the native stack is four times that cap. Windows measurements
 found 1 MiB necessary for a synthetic APA citation; the default doubles that

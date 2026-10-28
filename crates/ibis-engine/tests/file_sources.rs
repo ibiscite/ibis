@@ -22,6 +22,7 @@ fn file_to_search_to_citation_uses_one_private_source_owner() {
     let hits = engine
         .search(
             &SearchRequest {
+                interpret_locator: false,
                 query: "research".into(),
                 limit: 10,
                 libraries: None,
@@ -140,6 +141,7 @@ fn watcher_refreshes_search_and_notifies_without_mutating_prior_snapshots() {
     let result = engine
         .search(
             &SearchRequest {
+                interpret_locator: false,
                 query: "تجربة".into(),
                 limit: 10,
                 libraries: None,
@@ -153,8 +155,8 @@ fn watcher_refreshes_search_and_notifies_without_mutating_prior_snapshots() {
             .unwrap()
             .contains("Original synthetic")
     );
-    let event = subscription.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
-    assert_eq!(&event.snapshot, engine.snapshot().unwrap().fingerprints());
+    subscription.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+    assert_eq!(&result.snapshot, engine.snapshot().unwrap().fingerprints());
     assert_eq!(engine.libraries().unwrap().libraries[0].refresh_error, None);
 }
 #[cfg(unix)]
