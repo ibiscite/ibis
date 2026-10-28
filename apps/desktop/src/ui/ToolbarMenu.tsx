@@ -7,10 +7,11 @@ import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } f
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
-export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean }[] };
+/** An item with `checked` is a toggle beside the single choice, such as "Just this once". */
+export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean; checked?: boolean; command?: boolean }[] };
 export type ToolbarMenuCommand = { run: () => void; isCurrent: () => boolean };
 type Props = {
-  label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
+  buttonRef?: RefObject<HTMLButtonElement | null>; buttonShortcut?: string; disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
   isOpen?: boolean; onOpenChange?: (open: boolean) => void;
   filterLabel: string; onAction: (key: string) => void; returnFocusRef?: RefObject<HTMLElement | null>;
   /** Close and return focus before running an application command. */
@@ -18,11 +19,12 @@ type Props = {
 };
 
 /** A reference-independent menu. React Aria owns selection, navigation and virtual focus. */
-export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange, onKeyCommand }: Props) {
+export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value, sections, selectedKey, filterLabel, onAction, returnFocusRef, isOpen, onOpenChange, onKeyCommand }: Props) {
   const [internalOpen, setOpen] = useState(false);
   const [skipExit, setSkipExit] = useState(false);
   const open = isOpen ?? internalOpen;
-  const button = useRef<HTMLButtonElement>(null);
+  const internalButton = useRef<HTMLButtonElement>(null);
+  const button = buttonRef ?? internalButton;
   const boundary = useMenuBoundary(open, returnFocusRef, button);
   const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(open);
   const wholeRows = useWholeRows(list);
@@ -45,7 +47,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     if (!current() || !request.target.isConnected || (active !== document.body && active !== button.current && active !== request.target && !request.closing?.contains(active))) return;
     request.target.focus();
     if (current() && document.activeElement === request.target) request.command?.run();
-  }, []);
+  }, [button]);
   const popoverRef = useCallback((node: HTMLElement | null) => {
     popover.current = node;
     wholeRows(node);
@@ -90,6 +92,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
   // Controlled selection and the action guard prevent picking them.
   const menu = <Menu key={opening} ref={listRef} className="toolbar-menu scroll-area" aria-label={label} selectionMode="single" selectedKeys={[selectedKey]}
     onAction={(key) => {
+      if (disabled) return;
       if (sections.flatMap((section) => section.items).find((item) => item.id === key)?.disabled) return;
       changeOpen(false, undefined, true);
       onAction(String(key));
@@ -97,8 +100,9 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       <Header className="toolbar-menu-heading">{section.label}</Header>
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={false}
-        render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={item.disabled || undefined} />}>
-        {({ isSelected }) => <><MenuCheck checked={isSelected} />
+        render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
+          {...item.checked !== undefined ? { role: "menuitemcheckbox", "aria-checked": item.checked } : item.command ? { role: "menuitem", "aria-checked": undefined } : {}} />}>
+        {({ isSelected }) => <><MenuCheck checked={item.command ? false : item.checked ?? isSelected} />
           <Text slot="label" className="menu-label">{item.label}</Text><Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined}>{item.sample}</Text></>}
       </MenuItem>)}
     </MenuSection>)}
@@ -113,7 +117,7 @@ export function ToolbarMenu({ label, value, sections, selectedKey, filterLabel, 
     }}
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
-      <Button ref={button} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}<PopupIndicator /></Button>
+      <Button ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className="toolbar-menu-button" aria-label={`${label} ${value}`}><span className="toolbar-menu-value">{value}</span><PopupIndicator /></Button>
       <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>

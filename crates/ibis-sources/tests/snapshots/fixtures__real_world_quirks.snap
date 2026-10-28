@@ -1,0 +1,320 @@
+---
+source: crates/ibis-sources/tests/fixtures.rs
+expression: "summary(\"real-world.bib\")"
+---
+{
+  "records": [
+    {
+      "csl": {
+        "author": [
+          {
+            "family": "陈",
+            "given": "伟"
+          },
+          {
+            "family": "山田",
+            "given": "太郎"
+          }
+        ],
+        "citation-key": "chen2022",
+        "collection-title": "Lecture Notes in Computer Science",
+        "container-title": "Proceedings of the Synthetic Conference",
+        "id": "chen2022",
+        "issued": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "page": "1-9",
+        "title": "睡眠与记忆的跨语言研究",
+        "type": "paper-conference"
+      },
+      "identifiers": [],
+      "key": "chen2022"
+    },
+    {
+      "csl": {
+        "DOI": "10.0000/complete.2024.003",
+        "ISSN": "0000-0000",
+        "author": [
+          {
+            "family": "Lindqvist",
+            "given": "Sara"
+          },
+          {
+            "family": "Ndlovu",
+            "given": "Thabo"
+          }
+        ],
+        "citation-key": "complete2024",
+        "container-title": "Journal of Complete Metadata",
+        "id": "complete2024",
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024,
+              7,
+              15
+            ]
+          ]
+        },
+        "page": "101–125",
+        "publisher": "Synthetic Society",
+        "title": "Every field a citation needs",
+        "type": "article-journal",
+        "volume": "12"
+      },
+      "identifiers": [],
+      "key": "complete2024"
+    },
+    {
+      "csl": {
+        "citation-key": "conf2022",
+        "collection-title": "Lecture Notes in Computer Science",
+        "id": "conf2022",
+        "issued": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "title": "Proceedings of the synthetic conference",
+        "type": "book"
+      },
+      "identifiers": [],
+      "key": "conf2022"
+    },
+    {
+      "csl": {
+        "ISBN": "978-0-00-000000-0",
+        "author": [
+          {
+            "family": "Moreau",
+            "given": "Élise"
+          }
+        ],
+        "citation-key": "edition2017",
+        "collection-title": "Synthetic Monographs",
+        "edition": "2",
+        "id": "edition2017",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "publisher": "Example Press",
+        "publisher-place": "Lyon",
+        "title": "A book with every detail",
+        "type": "book"
+      },
+      "identifiers": [],
+      "key": "edition2017"
+    },
+    {
+      "csl": {
+        "author": [
+          {
+            "family": "Παπαδόπουλος",
+            "given": "Νίκος"
+          }
+        ],
+        "citation-key": "greek2020",
+        "container-title": "Synthetic Greek Review",
+        "id": "greek2020",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "title": "Η ΓΝΩΣΙΣ και η μνήμη",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "greek2020"
+    },
+    {
+      "csl": {
+        "author": [
+          {
+            "family": "Haddad",
+            "given": "Layla"
+          }
+        ],
+        "citation-key": "haddad2023",
+        "container-title": "Synthetic Arabic Review",
+        "id": "haddad2023",
+        "issued": {
+          "date-parts": [
+            [
+              2023
+            ]
+          ]
+        },
+        "keyword": "sleep, memory, Arabic",
+        "language": "ar",
+        "title": "النوم والذاكرة: دراسة اصطناعية",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "haddad2023"
+    },
+    {
+      "csl": {
+        "citation-key": "lonelykey",
+        "id": "lonelykey",
+        "type": "document"
+      },
+      "identifiers": [],
+      "key": "lonelykey"
+    },
+    {
+      "csl": {
+        "DOI": "10.0000/example.2021.001",
+        "author": [
+          {
+            "family": "Müller",
+            "given": "Jörg"
+          },
+          {
+            "family": "García",
+            "given": "Ana"
+          }
+        ],
+        "citation-key": "mueller2021",
+        "container-title": "Journal of Memory Studies",
+        "id": "mueller2021",
+        "issued": {
+          "date-parts": [
+            [
+              2021,
+              3
+            ]
+          ]
+        },
+        "page": "12–34",
+        "title": "Sleep and <span class=\"nocase\">REM</span> memory consolidation in <span class=\"nocase\">NASA</span> crews",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "mueller2021"
+    },
+    {
+      "csl": {
+        "author": [
+          {
+            "family": "Okafor",
+            "given": "Chidi"
+          }
+        ],
+        "citation-key": "nested2018",
+        "genre": "PhD thesis",
+        "id": "nested2018",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "publisher": "Synthetic University",
+        "title": "A <span class=\"nocase\">Study of Nested Braces</span> in titles",
+        "type": "thesis"
+      },
+      "identifiers": [],
+      "key": "nested2018"
+    },
+    {
+      "csl": {
+        "URL": "https://example.org/papers/100%25-synthetic",
+        "author": [
+          {
+            "family": "Anonymous"
+          }
+        ],
+        "citation-key": "nodate",
+        "id": "nodate",
+        "title": "An undated synthetic preprint",
+        "type": "document"
+      },
+      "identifiers": [],
+      "key": "nodate"
+    },
+    {
+      "csl": {
+        "URL": "https://example.org/no-title",
+        "citation-key": "onlyurl",
+        "id": "onlyurl",
+        "type": "webpage"
+      },
+      "identifiers": [],
+      "key": "onlyurl"
+    },
+    {
+      "csl": {
+        "author": [
+          {
+            "dropping-particle": "van der",
+            "family": "Berg",
+            "given": "Jan"
+          },
+          {
+            "family": "Smith",
+            "given": "John",
+            "suffix": "Jr."
+          },
+          {
+            "family": "O'Neil",
+            "given": "Mary-Kate"
+          }
+        ],
+        "citation-key": "vanderberg2019",
+        "container-title": "Names Quarterly",
+        "id": "vanderberg2019",
+        "issued": {
+          "date-parts": [
+            [
+              2019,
+              5
+            ]
+          ]
+        },
+        "title": "Particles, suffixes and apostrophes in names",
+        "type": "article-journal"
+      },
+      "identifiers": [],
+      "key": "vanderberg2019"
+    },
+    {
+      "csl": {
+        "author": [
+          {
+            "literal": "World Health Organization"
+          }
+        ],
+        "citation-key": "who2020",
+        "id": "who2020",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "publisher": "WHO Press",
+        "title": "Synthetic report on global sleep",
+        "type": "book"
+      },
+      "identifiers": [],
+      "key": "who2020"
+    }
+  ],
+  "warnings": []
+}

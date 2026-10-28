@@ -182,3 +182,86 @@ fn status_emission_is_serialized_but_native_menu_work_holds_no_library_lock() {
         || assert!(library.try_lock().is_ok()),
     );
 }
+
+#[test]
+fn obsolete_unchanged_reload_keeps_the_newer_choices_save_warning() {
+    let warning = "the library opened but could not be saved for next time";
+    let library = Mutex::new(Library {
+        choice_save_warning: Some(warning.into()),
+        ..Library::default()
+    });
+    let requests = LoadRequests::default();
+    requests.0.store(2, Ordering::SeqCst); // The newer choice has completed, with a failed save.
+    assert!(
+        OpenIntent::Read
+            .install(&library, &requests, 1, Ok(Loaded::Unchanged))
+            .is_none()
+    );
+    let current = library.lock().unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(current.choice_save_warning.as_deref(), Some(warning));
+}
+
+#[test]
+fn settings_io_releases_the_library_and_discards_obsolete_feedback() {
+    let library = Mutex::new(Library::default());
+    let requests = LoadRequests::default();
+    assert!(!update_notices(
+        &library,
+        |_| requests.0.load(Ordering::SeqCst) == 0,
+        |feedback| {
+            assert!(
+                library.try_lock().is_ok(),
+                "settings reads and flushes must not block library commands"
+            );
+            feedback.choice_save_warning = Some("obsolete save failure".into());
+            requests.0.store(1, Ordering::SeqCst);
+        }
+    ));
+    let current = library.lock().unwrap_or_else(|e| panic!("{e}"));
+    assert!(current.choice_save_warning.is_none());
+}
+
+#[test]
+fn reload_and_engine_event_record_one_update_in_either_completion_order() -> Result<(), Box<dyn std::error::Error>> {
+    for event_first in [false, true] {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("synthetic.bib");
+        std::fs::write(&path, "@misc{first}")?;
+        let library = Mutex::new(super::super::load::load_library(path.clone(), false).map_err(|e| e.to_string())?);
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, path.clone()).ok_or("reload")?;
+        let file = library.lock().map_err(|_| "library")?.file.clone().ok_or("file")?;
+        std::fs::write(&path, "@misc{first}\n@misc{second}")?;
+        let loaded = load_source(
+            Source::File(path),
+            true,
+            Some(file.clone()),
+            &ibis_engine::Cancellation::default(),
+            || false,
+        )
+        .map_err(|e| e.to_string())?;
+        let observed = std::time::UNIX_EPOCH + std::time::Duration::from_secs(42);
+        let record_event = || {
+            let _subscription = observe_current(&library).unwrap_or_else(|| panic!("subscribe"));
+            assert!(
+                library.lock().unwrap_or_else(|e| panic!("{e}")).changed_at.is_some(),
+                "subscription must reconcile the missed update"
+            );
+        };
+        if event_first {
+            record_event();
+            library.lock().map_err(|_| "library")?.changed_at = Some(observed);
+        }
+        install_loaded(&library, &requests, request, Ok(loaded)).ok_or("install")?;
+        if !event_first {
+            library.lock().map_err(|_| "library")?.changed_at = Some(observed);
+            record_event();
+        }
+        assert_eq!(
+            library.lock().map_err(|_| "library")?.changed_at,
+            Some(observed),
+            "the same snapshot must not be stamped twice (event first: {event_first})"
+        );
+    }
+    Ok(())
+}

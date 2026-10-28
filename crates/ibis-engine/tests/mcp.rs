@@ -134,8 +134,8 @@ fn cite_formats_by_key_or_by_id() {
     assert_eq!(pandoc["structuredContent"]["text"], "[@demo2026]");
     let apa = tool(&engine, "cite", json!({"items":[{"key":"demo2026"}]}));
     assert_eq!(apa["structuredContent"]["text"], "(Researcher & Writer, 2026)");
-    // What the text cannot say travels with it, as `ibis cite --json` reports.
-    assert_eq!(apa["structuredContent"]["notices"], json!(["year-suffix-withheld"]));
+    // Notices travel with the text, as `ibis cite --json` reports; one work needs no year letters.
+    assert_eq!(apa["structuredContent"]["notices"], json!([]));
 
     let hits = tool(&engine, "search", json!({"query":"second"}));
     let id = hits["structuredContent"]["hits"][0]["id"].clone();

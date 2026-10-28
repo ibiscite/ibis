@@ -143,26 +143,21 @@ fn native_stdio_framing_cancellation_and_transport_errors_use_the_engine() -> Re
         child.wait_with_output().unwrap_or_else(|error| panic!("{error}"))
     };
     let mut input = vec![];
-    ibis_engine::protocol::write_frame(
-        &mut input,
-        &json!([
-            {"jsonrpc":"2.0","id":1,"method":"search","params":{"query":"synthetic"}},
-            {"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}
-        ]),
-    )?;
+    // A cancellation notification has no reply and does not cancel a future use of its ID.
+    for message in [
+        json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}),
+        json!({"jsonrpc":"2.0","id":1,"method":"search","params":{"query":"synthetic"}}),
+    ] {
+        ibis_engine::protocol::write_frame(&mut input, &message)?;
+    }
     let output = run(&input);
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let mut frames = Cursor::new(output.stdout);
-    let mut response = None;
-    while let Some(message) = ibis_engine::protocol::read_frame(&mut frames)? {
-        if message.is_array() {
-            response = Some(message);
-        }
-    }
-    let response = response.ok_or("batch response")?;
-    assert_eq!(response[0]["id"], 1);
-    assert_eq!(response[0]["error"]["data"]["code"], "cancelled");
+    let response = ibis_engine::protocol::read_frame(&mut frames)?.ok_or("request response")?;
+    assert_eq!(response["id"], 1);
+    assert_eq!(response["result"]["hits"], json!([]));
+    assert_eq!(ibis_engine::protocol::read_frame(&mut frames)?, None);
     let output = run(format!(
         "Content-Length: {}\r\n\r\n",
         ibis_engine::protocol::MAX_REQUEST_BYTES + 1

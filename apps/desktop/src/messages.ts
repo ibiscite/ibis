@@ -28,6 +28,9 @@ export const operationFailures = {
   updateChecks: "Ibis could not read its update setting. Try again.",
   updateChecksChange: "Ibis could not change its update setting. Try again.",
   checkForUpdates: "Ibis could not check for updates. Try again.",
+  settings: "Settings could not open. Try again.",
+  appChoices: "Ibis could not read the formats it remembers for apps, so each app starts with its automatic format.",
+  appChoice: "Ibis could not save the format for this app. Try again.",
 } as const;
 
 /** Where people turn login items on and off on each system. */
@@ -86,12 +89,6 @@ export const setupText = {
   nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
   found: (files: number, zotero: boolean) =>
     [zotero ? "Zotero is open." : "", files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
-  writingTitle: "What do you write in?",
-  writingLine: "Citations copy in the format that suits it. The menu beside search changes it any time.",
-  places: { markdown: "Markdown (Pandoc)", latex: "LaTeX", typst: "Typst" },
-  placeExamples: { markdown: "[@smith2020]", latex: "\\cite{smith2020}", typst: "@smith2020" },
-  current: "Now",
-  shortcut: (keys: string) => `Open Ibis from any app with ${keys}.`,
   missingTitle: (name: string) => `Can't find ${name}`,
   missingLine: "It may have moved, or its drive is disconnected.",
   find: (name: string) => `Find ${name}`,
@@ -135,6 +132,14 @@ export const pickerText = {
   keyFormats: "Key formats",
   formattedStyles: "Citation styles",
   filterFormats: "Filter formats",
+  /** The closed format control when the picker knows the app: "APA · Word". */
+  formatForApp: (format: string, app: string) => `${format} · ${app}`,
+  forApp: (app: string) => `For ${app}`,
+  justOnce: "Just this once",
+  automatic: "Automatic",
+  globalDefault: "Use as global default",
+  forgetApps: "Forget formats for apps",
+  forgetAppsTitle: "Every app goes back to its automatic format",
   preview: "Preview",
   previewPending: "Formatting…",
   previewNotReady: "Nothing was copied yet: the citation is still being formatted. Press Enter again in a moment.",
@@ -188,6 +193,7 @@ export const pickerText = {
   reloadTitle: "Reload library",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
+  settings: "Settings…",
   checkForUpdates: "Check for updates…",
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
@@ -227,9 +233,11 @@ export const keyText = {
     add: "Add the highlighted reference to the citation, or remove it",
     move: "Move through the results",
     escape: "Step back: close a menu, clear the search, then hide Ibis",
+    format: "Choose the output format and where to remember it",
     more: "Open or close More",
     pin: "Keep Window Open, or stop keeping it open",
     keys: "Show this list (? works outside the search box)",
+    settings: "Open Settings",
     quit: "Quit Ibis",
     menuMove: "Move through the menu",
     menuEnds: "Go to the first or last item",
@@ -437,7 +445,7 @@ export const copiedNoticeText = {
   pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
   /** Keyed by the destination's copy reason codes; any other reason says "Copied". */
   reasons: {
-    "no-permission": "Copied. Allow Ibis in Accessibility to paste",
+    "no-permission": "Copied. Ibis needs your OK to paste",
     "terminal": "Copied. Not pasted into a terminal",
     "remote-desktop": "Copied. Not pasted into a remote desktop",
     "virtual-machine": "Copied. Not pasted into a virtual machine",
@@ -465,3 +473,47 @@ export const updateText = {
   installing: "Checking and installing the update…",
   failed: "The update could not be installed. Use Check for updates in More to try again later.",
 };
+
+// The Settings window (#776, docs/design.md "Settings").
+export const settingsText = {
+  windowTitle: "Ibis Settings",
+  pages: "Settings pages",
+  general: "General",
+  about: "About",
+  groups: { paste: "Pasting", picker: "Picker", updates: "Updates" },
+  paste: {
+    label: "Paste into the app you came from",
+    description: "Enter pastes the citation where you were typing. Off, Enter only copies it.",
+    allowed: (list: string) => `Allowed in Privacy & Security › ${list}`,
+    allowedNote: "Ibis presses ⌘V once, only in the app you opened it from.",
+    guideTitle: "Allow Ibis to paste for you",
+    guideWhy: "macOS asks you once. Ibis only presses ⌘V, only in the app you came from, and never reads what you type.",
+    steps: (name: string, list: string) => [
+      "Click Open System Settings.",
+      `In Privacy & Security › ${list}, turn on ${name}.`,
+      "Come back. Ibis notices on its own.",
+    ],
+    open: "Open System Settings",
+    waiting: "Waiting for your OK…",
+    granted: "Ibis can paste now.",
+    stale: (name: string) => `Already on, but still waiting? An update gave ${name} a new identity. Open System Settings again: Ibis clears the old switch so you can turn on the new one.`,
+    copyInstead: "Just copy",
+  },
+  picker: {
+    rows: "Rows",
+    largerText: "Larger text",
+    searchMark: "Ibis mark in search",
+    searchMarkDescription: "In place of the magnifier",
+    preview: "Show what will be pasted",
+    previewDescription: "The line above the footer",
+  },
+  login: { description: "Keeps the shortcut ready after you restart" },
+  updates: {
+    automatic: "Check for updates automatically",
+    automaticDescription: "Reads a small update file from GitHub a few times a day",
+    check: "Check now",
+    version: (name: string, version: string) => `${name} ${version}`,
+    unavailable: "This build does not update itself.",
+  },
+  failed: "Ibis could not save that. Try again.",
+} as const;

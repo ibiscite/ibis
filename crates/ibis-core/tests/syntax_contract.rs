@@ -460,7 +460,16 @@ fn prefix_support_matches_every_supported_output_and_form() {
                 (KeySyntax::Pandoc, CitationForm::Narrative) | (KeySyntax::Latex | KeySyntax::Typst, _) => Flattened,
                 (KeySyntax::Natbib, CitationForm::Narrative | CitationForm::AuthorOnly) => Flattened,
                 (KeySyntax::Natbib, _) => SingleItem,
-                (KeySyntax::Keys | KeySyntax::CslJson, _) => Unsupported,
+                (
+                    KeySyntax::Keys
+                    | KeySyntax::CslJson
+                    | KeySyntax::Myst
+                    | KeySyntax::MultiMarkdown
+                    | KeySyntax::AsciiDoc
+                    | KeySyntax::Jupyter
+                    | KeySyntax::JekyllScholar,
+                    _,
+                ) => Unsupported,
                 _ => Native,
             };
             assert_eq!(caps.prefix_support(form), expected, "{caps:?} {form:?}");
@@ -479,15 +488,15 @@ fn prefix_support_matches_every_supported_output_and_form() {
                 }]
             };
             assert_eq!(result.losses, expected_losses, "{caps:?} {form:?}");
-            if consumer_available && expected != Unsupported {
-                let ast = consumer_ast(
-                    match caps.escaping {
-                        Escaping::Pandoc => "markdown",
-                        Escaping::Latex => "latex",
-                        _ => "typst",
-                    },
-                    &result.text,
-                );
+            let consumer = match caps.escaping {
+                Escaping::Pandoc => Some("markdown"),
+                Escaping::Latex => Some("latex"),
+                Escaping::Typst => Some("typst"),
+                Escaping::Org => Some("org"),
+                _ => None,
+            };
+            if let Some(consumer) = consumer.filter(|_| consumer_available && expected != Unsupported) {
+                let ast = consumer_ast(consumer, &result.text);
                 let citation = first_citation(&ast).unwrap();
                 let native = inline_text(&citation["citationPrefix"]);
                 let outside = ast["blocks"][0]["c"]
@@ -1259,9 +1268,9 @@ proptest! {
                     prop_assert_eq!(records[0]["id"].as_str(), Some(key.as_str()));
                     prop_assert_eq!(records[0]["title"].as_str(), Some("Synthetic signals"));
                 },
-                _ if available => {
+                Escaping::Pandoc | Escaping::Latex | Escaping::Typst | Escaping::Org if available => {
                     use std::io::Write;
-                    let format = match caps.escaping { Escaping::Pandoc => "markdown", Escaping::Latex => "latex", _ => "typst" };
+                    let format = match caps.escaping { Escaping::Pandoc => "markdown", Escaping::Latex => "latex", Escaping::Org => "org", _ => "typst" };
                     let mut child = std::process::Command::new("pandoc").args(["-f", format, "-t", "json"]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
                     child.stdin.take().unwrap().write_all(result.text.as_bytes()).unwrap();
                     let parsed = child.wait_with_output().unwrap();

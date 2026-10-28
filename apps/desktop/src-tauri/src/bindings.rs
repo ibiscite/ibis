@@ -17,6 +17,9 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::copy_format,
             crate::preferences::picker_preferences,
             crate::preferences::set_picker_preferences::<tauri::Wry>,
+            crate::destination::picker_destination,
+            crate::destination::remember_app_output,
+            crate::destination::forget_app_outputs,
             crate::login_item::login_item,
             crate::login_item::set_login_item,
             crate::picker::hide_picker,
@@ -30,7 +33,10 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::row_context::row_context,
             crate::updater::setting::update_checks,
             crate::updater::setting::set_update_checks,
-            crate::updater::setting::check_for_updates
+            crate::updater::setting::check_for_updates,
+            crate::settings_window::open_settings,
+            crate::paste::permission::paste_permission,
+            crate::paste::permission::open_paste_permission
         ])
         // Match Tauri's existing Promise rejection behavior.
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
@@ -45,6 +51,22 @@ mod tests {
     use std::path::PathBuf;
 
     include!("../app_commands.rs");
+
+    /// What the Settings window may call: saved choices, never the library or copies.
+    const SETTINGS_COMMANDS: &[&str] = &[
+        "picker_preferences",
+        "set_picker_preferences",
+        "login_item",
+        "set_login_item",
+        "update_checks",
+        "set_update_checks",
+        "check_for_updates",
+        "paste_permission",
+        "open_paste_permission",
+    ];
+
+    /// Only Settings asks about the paste permission; the picker never does.
+    const SETTINGS_ONLY: &[&str] = &["paste_permission", "open_paste_permission"];
 
     fn destination() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")
@@ -110,7 +132,9 @@ mod tests {
             .unwrap_or_else(|e| panic!("invalid picker capability: {e}"));
         let notice: serde_json::Value = serde_json::from_str(include_str!("../capabilities/notice.json"))
             .unwrap_or_else(|e| panic!("invalid notice capability: {e}"));
-        for (capability, label) in [(&picker, "main"), (&notice, "notice")] {
+        let settings: serde_json::Value = serde_json::from_str(include_str!("../capabilities/settings.json"))
+            .unwrap_or_else(|e| panic!("invalid settings capability: {e}"));
+        for (capability, label) in [(&picker, "main"), (&notice, "notice"), (&settings, "settings")] {
             assert_eq!(capability["windows"], serde_json::json!([label]));
             assert!(capability.get("webviews").is_none());
             assert!(capability.get("remote").is_none());
@@ -124,6 +148,21 @@ mod tests {
                 "allow-copied-notice"
             ])
         );
+        let mut settings_expected = [
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
+            "core:app:allow-version",
+            "core:window:allow-start-dragging",
+            "core:window:allow-destroy",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        settings_expected.extend(
+            SETTINGS_COMMANDS
+                .iter()
+                .map(|command| format!("allow-{}", command.replace('_', "-"))),
+        );
+        assert_eq!(settings["permissions"], serde_json::json!(settings_expected));
         let mut expected = [
             "core:event:allow-listen",
             "core:event:allow-unlisten",
@@ -136,7 +175,7 @@ mod tests {
         expected.extend(
             APP_COMMANDS
                 .iter()
-                .filter(|command| **command != "copied_notice")
+                .filter(|command| **command != "copied_notice" && !SETTINGS_ONLY.contains(command))
                 .map(|command| format!("allow-{}", command.replace('_', "-"))),
         );
         assert_eq!(picker["permissions"], serde_json::json!(expected));
@@ -162,7 +201,15 @@ mod tests {
         } else {
             "tauri://localhost"
         };
-        for label in ["notice", "main", "unlisted", "notice-extra", "main-extra"] {
+        for label in [
+            "notice",
+            "main",
+            "settings",
+            "unlisted",
+            "notice-extra",
+            "main-extra",
+            "settings-extra",
+        ] {
             let window = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
                 .build()
                 .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
@@ -192,8 +239,9 @@ mod tests {
                     let allowed = origin == local
                         && APP_COMMANDS.contains(&command)
                         && match label {
-                            "main" => command != "copied_notice",
+                            "main" => command != "copied_notice" && !SETTINGS_ONLY.contains(&command),
                             "notice" => command == "copied_notice",
+                            "settings" => SETTINGS_COMMANDS.contains(&command),
                             _ => false,
                         };
                     assert_eq!(response.is_ok(), allowed, "{label}: {command} from {origin}");

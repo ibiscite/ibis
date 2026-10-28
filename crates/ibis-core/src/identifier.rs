@@ -125,7 +125,7 @@ fn with_equivalents(mut ids: Vec<Identifier>) -> Vec<Identifier> {
 }
 
 /// Normalised CSL fields and source-neutral search-only identifiers, without
-/// parsing raw provenance or requiring knowledge of a particular source.
+/// requiring knowledge of a particular source.
 pub fn of_record(record: &crate::contract::Record) -> Vec<Identifier> {
     let mut ids = record
         .identifiers
@@ -160,12 +160,23 @@ pub fn of_record(record: &crate::contract::Record) -> Vec<Identifier> {
                 }
             }
             "PMID" => ids.extend(digits(value.trim()).map(Identifier::Pmid)),
-            "number" | "archive_location" | "note" => ids.extend(
+            "number" | "archive_location" => ids.extend(
                 value
                     .lines()
                     .filter_map(|line| arxiv_prefixed(line.trim()))
                     .map(Identifier::Arxiv),
             ),
+            // Zotero keeps PMIDs in Extra, which reaches CSL as `note` lines.
+            "note" => {
+                for line in value.lines().map(str::trim) {
+                    ids.extend(arxiv_prefixed(line).map(Identifier::Arxiv));
+                    ids.extend(
+                        strip_prefix_ci(line, "PMID:")
+                            .and_then(|rest| digits(rest.trim()))
+                            .map(Identifier::Pmid),
+                    );
+                }
+            }
             _ => {}
         }
     }

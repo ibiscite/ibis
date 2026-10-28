@@ -5,9 +5,9 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 ```
                 ┌─ ibis (command line): every capability, for people, scripts and AI agents
                 │    --json on every command · ibis serve --stdio (JSON-RPC) · ibis mcp
- ENGINE ────────┼─ Desktop app: Tauri 2 shell + React/React Aria picker; links the engine in-process
+ ENGINE ────────┼─ Desktop app: Tauri 2 shell + React/React Aria picker; links the engine in-process; opens ibis:// links
  (Rust crates)  ├─ Editor endpoint compatible with Better BibTeX Cite as you Write
-                └─ Later: language server, launcher integrations
+                └─ Later: language server, launcher extensions
    │
    ├─ ibis-core     pure rules: model, citation request/result, key syntaxes, rich text, locators, search
    ├─ ibis-sources  Zotero (local API, private copy of the database), BibTeX/BibLaTeX, CSL-JSON, snapshots
@@ -21,7 +21,7 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 - **The engine is the product; front ends are clients.** Every capability lives in the Rust engine as typed methods. The command line exposes all of it; the app, `ibis serve` and `ibis mcp` each expose an explicit subset suited to them (the picker does not administer the engine; headless clients do not open windows). A test fails when two front ends give different results for the same request. No front end formats, resolves or decides anything itself.
 - **One citation request, one result.** Preview, copy, paste, export, the command line and the editor endpoint all call `cite(snapshot, request) -> result`. What you see is exactly what is pasted.
 - **Only what Ibis can get right.** A field a format cannot carry is reported as a typed loss; a citation form it cannot carry is refused. Where correctness needs the whole document (numbering, ibid., 2020a/b), Ibis gives what is correct on its own and says why.
-- **Read-only sources.** Never write to Zotero, `.bib` files or any library. Raw records are kept next to normalised data.
+- **Read-only sources.** Never write to Zotero, `.bib` files or any library. Ibis keeps only the normalised data it uses; the source stays the original.
 - **Stable identity.** An item is `library + native key`, never a citation key or a file path.
 - **Never fail silently or guess data.** Skipped data becomes a warning; a failed paste leaves the citation copied with a reason; keys are never invented.
 - **Offline by default.** No telemetry. Network access needs a recorded decision and is opt-in (DOI lookup is planned this way for 0.6).
@@ -29,11 +29,12 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 - **Escape every output** for its target: LaTeX, Pandoc, Typst, org, HTML, RTF.
 - **Keep private data private.** Paths never reach the webview; fixtures are synthetic; diagnostics use fixed codes, never raw text or payloads.
 - **Local endpoints** bind to `127.0.0.1`, require a token and reject browser `Origin` headers.
+- **Links** (`ibis://`) are untrusted input: they only fill in the picker and never copy, paste, change settings or read files ([decision 0030](decisions.md#0030-links-and-launchers)).
 - **Long-lived foundations.** Standards and widely used open source first (CSL 1.0.2, CSL-JSON, BibTeX, SQLite, Zotero's APIs, PDF.js). Each dependency that could fade sits behind one Ibis module so it can be replaced: Tauri, React Aria, PDF.js, citeproc-js, the BibTeX parser.
 
 ## Data model (ibis-core)
 
-- **Objects:** `Record` (a citable work: CSL-normalised fields plus raw provenance and citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
+- **Objects:** `Record` (a citable work: CSL-normalised fields plus citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
 - **Availability** of an attachment is computed by Ibis the same way in every mode: `OnDisk`, `CloudPlaceholder`, `NotDownloaded`, `Online`, `BrokenLink`, `Unreadable`, `Unknown`. Standalone notes and files are shown without inventing a parent.
 - **Library IDs are opaque** (`file:<hash>`, `zotero:<library>`). File locations stay in the engine and never serialise.
 - **Snapshots are immutable.** A refresh builds a new snapshot and reuses unchanged libraries. Each object has two fingerprints: `cite` (what a citation depends on) and `full` (everything shown). A picker session keeps the snapshot it started from. At copy time, in one step against the newest snapshot, each pick is checked by `ItemRef` and `cite` fingerprint and, for key outputs, its key is checked to still name exactly that one item across all loaded libraries; a pick that was deleted, changed what it cites or lost a required key to another item is refused with the reason. Formatted citations do not require a citation key. The picker shows the snapshot's age when it is old and says when a refresh failed.
@@ -41,8 +42,8 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 
 The initial shared vocabulary is in `ibis_core::contract`; its generated schema is
 `fixtures/engine-contract.schema.json`. Source adapters, formatters and front ends
-adopt it in the ordered rebuild issues. Raw provenance stays engine-only and is
-excluded from the public projection and both fingerprints. Non-item objects use
+adopt it in the ordered rebuild issues. Snapshots share their objects, so
+combining libraries never copies or re-fingerprints them. Non-item objects use
 source-namespaced native keys so tags and collections cannot collide with item
 keys. Rich text is a fixed-depth tree of styled text runs; strings remain
 untrusted data and are never injected as markup.
@@ -70,7 +71,7 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 - **Request:** ordered items (the same reference may appear twice); a citation form (normal, narrative, author only, year only, full, bibliography only) and "keep my order"; per item a typed locator (one of the 29 CSL 1.0.2 locator terms), rich-text prefix and suffix (italic, bold, sub, superscript), author suppression, and the annotation it came from if any; an output spec or named preset; an input language for parsing typed locators and an output locale.
 - **Result:** text, HTML, RTF and a display tree; one outcome per item; typed losses; notices such as "needs the whole document"; a content hash that copy and paste must match.
 - **Key syntaxes** are pure Rust, each with a capability table (which fields and forms it carries, its escaping, a fixture checked against its own tool): Pandoc, BibLaTeX (any command, multicite), natbib, LaTeX `\cite`, Typst, org-cite, MyST, MultiMarkdown, AsciiDoc, Jupyter, Jekyll Scholar, Scannable Cite, bare keys, CSL-JSON, Better BibTeX's CAYW JSON.
-- **Formatted output:** Zotero's citeproc-js runs in embedded QuickJS (`rquickjs`) with collation from ICU4X, so the command line and the app give byte-identical output on every system. Two formatter runtimes on their own threads: one for interactive previews and copies, which always goes first, and one for bibliographies and batches. Each has a bounded queue, cancellation through QuickJS's interrupt handler, memory and time limits, and is restarted after an interruption. Any official style and locale. Before formatting, Ibis applies Zotero's own data conversions (Extra fields, creators, dates, URL stripping for printed articles with pages); differential fixtures compare the result with pinned Zotero output. The formatter and AI agents then get only `ibis_core::citable` fields: note field overrides become fields, and notes, annotations and private links are dropped.
+- **Formatted output:** Zotero's citeproc-js runs in embedded QuickJS (`rquickjs`) with collation from ICU4X, so the command line and the app give byte-identical output on every system. One formatter runtime runs on its own thread with a bounded FIFO queue, queued cancellation and running cancellation through QuickJS's interrupt handler. Memory and time limits bound each request, including its queue wait; the runtime is restarted after an interruption. Any official style and locale. Before formatting, Ibis applies Zotero's own data conversions (Extra fields, creators, dates, URL stripping for printed articles with pages); differential fixtures compare the result with pinned Zotero output. The formatter and AI agents then get only `ibis_core::citable` fields: note field overrides become fields, and notes, annotations and private links are dropped.
 - **What a citation cannot know:** selected items (or even the whole library) cannot establish a document's numbering, year suffixes or ibid. Numeric styles give the reference entry with a notice (today's fallback), note styles give the full first note, and 2020a/2020b suffixes are withheld with a notice. Byte-identical output across front ends is necessary, not sufficient: correctness is checked against Zotero.
 
 A result may report partial outcomes for inspection, but clipboard clients must
@@ -116,10 +117,10 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 - **Typed engine methods** are the source of truth for the command line, `ibis serve --stdio` (JSON-RPC 2.0, the way Codex's app-server and language servers work), `ibis mcp` for AI agents, and the app. Each front end lists which methods it exposes; the app keeps per-window command permissions (decision 0024), so a generic dispatcher never widens what a window may call.
 - **Every `--json` output is a versioned envelope** `{ "ibis": 1, "ok": …, "data" | "error": … }` with stable error codes, including argument errors. `data` carries partial results with per-item outcomes, losses and refusals; an empty search is `ok` with no results. Only the envelope goes to stdout; logs go to stderr.
 - **Exit codes** describe how a command line run ended: 0 ok (including empty results), 1 done with findings (refusals, losses, source warnings or refresh failures), 2 usage, 3 bad input, 4 a named item or library not found, 5 source unavailable or resource limit exceeded, 6 newer format than Ibis knows, 70 internal error, 130 cancelled.
-- **`ibis serve --stdio`** uses JSON-RPC 2.0 with LSP-style `Content-Length` framing, notifications for progress and library changes, `$/cancelRequest`, a message size limit and nothing else on stdout. Its errors are JSON-RPC errors whose `data` carries the Ibis error code; exit codes do not apply per request. `ibis mcp` keeps MCP's own envelope over the same methods.
+- **`ibis serve --stdio`** uses JSON-RPC 2.0 with LSP-style `Content-Length` framing, library-change notifications, `$/cancelRequest`, a message size limit and nothing else on stdout. Its errors are JSON-RPC errors whose `data` carries the Ibis error code; exit codes do not apply per request. `ibis mcp` keeps MCP's own envelope over the same methods.
 - **The command line ships on its own:** every nightly and release publishes `ibis` for each system as an archive (`ibis-<system>.tar.gz`, `ibis-Windows.zip`) with the licence and third-party notices, checksums and the same build provenance as the app, and the release workflow runs each archive on its system before publishing (the Intel macOS archive is cross-built and not run). The app does not install it on PATH.
 - **`ibis schema`** prints the JSON Schema of every method (generated with `schemars`); TypeScript types for the app are generated from it. `ibis call <method>` reaches any method from a shell.
-- **Bounds and invalidation:** request JSON is at most 1 MiB and request IDs at most 1,024 UTF-8 bytes. Results share a 16 MiB response budget with 8 KiB reserved for ID/envelope overhead; oversized results return `resource-limit` (exit 5). Batches aggregate actual serialized bytes. Library notifications are bounded and coalesced; a sequence gap produces `resync: true` with the newest snapshot, requiring a full library refresh. Refresh failures retain the prior snapshot and report its last successful update time plus a fixed error code.
+- **Bounds and invalidation:** request JSON is at most 1 MiB and request IDs at most 1,024 UTF-8 bytes. Results share a 16 MiB response budget with 8 KiB reserved for ID/envelope overhead; oversized results return `resource-limit` (exit 5). Requests execute in order on one worker behind an eight-request queue; a long request delays later requests on the same connection. Running and queued requests can be cancelled. Array frames receive a single Invalid Request error (`-32600`, `id: null`). Library notifications are bounded wake-ups; subscribers read current library state after a wake. Refresh failures retain the prior snapshot and report its last successful update time plus a fixed error code.
 - **Golden cases** (a new `cases` folder in `fixtures`: library, request, exact expected result) are replayed through every front end that exposes the method and must match byte for byte.
 
 ## Desktop app

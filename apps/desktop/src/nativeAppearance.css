@@ -1,11 +1,11 @@
 /* The existing opaque surface remains the default. Native success alone opts in.
-   On macOS a light veil (--vibrancy-tint, tokens.css; the surface at 55% in
+   On macOS a light veil (--vibrancy-tint, tokens.css; the surface at 75% in
    webviews without light-dark()) keeps text legible over the material. Webviews
    with neither light-dark() nor color-mix() show the material bare, as before.
    Windows Acrylic has a guarded veil and text roles over any backdrop. */
 :root[data-native-appearance="acrylic"] { background: var(--acrylic-tint, var(--surface)); }
 :root[data-native-appearance="vibrancy"],
-:root[data-native-appearance="liquid-glass"] { background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 55%, transparent)); }
+:root[data-native-appearance="liquid-glass"] { background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 75%, transparent)); }
 
 @supports (color: light-dark(white, black)) {
   @media (forced-colors: none) and (prefers-contrast: no-preference) {

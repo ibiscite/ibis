@@ -71,7 +71,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::spawn(|| {
             use ibis_core::contract::*;
             use std::collections::BTreeMap;
-            for mode in 0..4 {
+            for mode in [0, 2, 3] {
                 let mut value = serde_json::Value::Null;
                 for _ in 0..20_000 {
                     value = serde_json::Value::Array(vec![value]);
@@ -85,16 +85,8 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                     citation_keys: vec![],
                     aliases: vec![],
                     identifiers: vec![],
-                    raw: None,
                 };
-                if mode == 1 {
-                    record.raw = Some(RawProvenance {
-                        format: SourceFormat::CslJson,
-                        data: value,
-                    });
-                } else {
-                    record.csl.insert("title".into(), value);
-                }
+                record.csl.insert("title".into(), value);
                 let mut objects = vec![LibraryObject::Record(record)];
                 if mode == 2 {
                     objects.push(LibraryObject::Record(Record {
@@ -106,7 +98,6 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                         citation_keys: vec![],
                         aliases: vec![],
                         identifiers: vec![],
-                        raw: None,
                     }));
                 }
                 assert!(Snapshot::new(objects).is_err());

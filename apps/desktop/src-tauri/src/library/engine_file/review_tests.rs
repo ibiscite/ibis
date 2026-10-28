@@ -113,14 +113,14 @@ fn a_coherent_engine_update_clears_only_its_own_failed_reload() -> Result<(), Bo
     std::fs::write(&path, "@book{a}\n@book{b}")?;
     file.reload().map_err(|_| "valid reload")?;
     let mut state = library.lock().map_err(|_| "state")?;
-    assert!(crate::library::tasks::engine_changed(&mut state, &file, true));
+    assert!(crate::library::tasks::engine_changed(&mut state, &file));
     assert!(
         state.error.is_none(),
         "successful publication must clear the current source's reload error"
     );
     state.requested = Some(Source::File(directory.path().join("other-missing.bib")));
     state.error = Some(ibis_core::source::SourceError::Unavailable.into());
-    assert!(crate::library::tasks::engine_changed(&mut state, &file, true));
+    assert!(crate::library::tasks::engine_changed(&mut state, &file));
     assert!(
         state.error.is_some(),
         "a coherent retained source cannot clear another failed choice"

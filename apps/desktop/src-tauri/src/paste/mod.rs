@@ -9,13 +9,14 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use ibis_core::destination::{CopyReason, Decision, PastePermission, System, decide};
+use ibis_core::destination::{AppId, CopyReason, Decision, PastePermission, System, decide, lookup};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
+pub(crate) mod permission;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -58,6 +59,18 @@ pub(crate) fn capture(app: &AppHandle) {
     }
 }
 
+/// The app the picker was last opened from, with the name the picker shows
+/// for it: the app's own, else the destination table's, else its ID.
+pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String)> {
+    let captured = app.state::<LastTarget>().0.lock().ok()?.clone()?;
+    let id = captured.target.app?;
+    let name = captured
+        .name
+        .or_else(|| lookup(&id).map(|known| known.name.to_owned()))
+        .unwrap_or_else(|| id.id.clone());
+    Some((id, name))
+}
+
 /// What happened to a copied citation, for the notice to word.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
@@ -77,7 +90,7 @@ pub(crate) enum Delivered {
 pub(crate) trait Desk {
     /// Ibis may post key events (macOS Accessibility; always on Windows).
     fn may_post(&self) -> bool;
-    /// Ask for that permission; the system prompts only the first time.
+    /// Show where to give that permission; at most once per run.
     fn ask_to_post(&self);
     /// The app in front, or `None` once the picker has been shown again.
     fn frontmost(&self) -> Option<Front>;
@@ -158,7 +171,11 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str) -> Delivered {
     let desk = windows::Win::new(app);
     #[cfg(target_os = "linux")]
     let desk = CopyOnly;
-    deliver(&desk, captured.as_ref(), text, true)
+    let enabled = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path)
+        .settings
+        .paste
+        .unwrap_or(true);
+    deliver(&desk, captured.as_ref(), text, enabled)
 }
 
 /// Linux captures no target, so it only copies.

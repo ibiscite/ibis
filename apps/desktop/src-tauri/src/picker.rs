@@ -205,7 +205,8 @@ pub(crate) fn hide_picker(app: AppHandle) {
 }
 
 /// A window hide alone leaves Ibis active on macOS, swallowing the next paste.
-/// Every dismissal path must also release application focus.
+/// Every dismissal path must also release application focus, unless Settings
+/// is open.
 pub(crate) fn dismiss_picker(app: &AppHandle) {
     app.state::<PickerGeneration>().advance();
     #[cfg(target_os = "macos")]
@@ -216,9 +217,14 @@ pub(crate) fn dismiss_picker(app: &AppHandle) {
         dismiss_with(
             || window.hide(),
             || {
+                // Hiding the app would hide an open Settings window too. The
+                // non-activating picker rarely took focus from the app in
+                // front; when it did (Choose library…), Settings, the user's
+                // other open Ibis window, keeps it.
                 #[cfg(target_os = "macos")]
-                return app.hide();
-                #[cfg(not(target_os = "macos"))]
+                if !crate::settings_window::is_open(app) {
+                    return app.hide();
+                }
                 Ok::<(), tauri::Error>(())
             },
         );
