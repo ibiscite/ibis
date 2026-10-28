@@ -3,8 +3,8 @@
 The one current rule book for how Ibis looks and behaves: picker, first run,
 Settings, preview, brand and website. [Decisions](decisions.md) win over it. Values live in
 [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
-tokens by role and gives numbers only where no token exists. The unbuilt
-Settings window's detailed spec waits in #776; scope is
+tokens by role and gives numbers only where no token exists. Settings has
+General and About; the remaining pages follow in #776. Scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
 each beside its rule.
@@ -502,6 +502,7 @@ index is built once per library change; a keystroke only scans it.
   (numbers and one- or two-letter words not counted, abstracts not searched)
   and every hinted word, most words first, then by the rules above. One-word
   searches, pasted identifiers and long pasted text get none.
+- Partial results use the existing results heading, labelled "Closest matches" instead of "Best matches"; the screen-reader result count includes that label.
 
 **Learning and parity** (#788). First minute: type, Enter, paste; first week:
 one footer tip at a time, retired once done (local "seen" flags only); power:
@@ -606,7 +607,7 @@ fills as the active result row; one suggested row at most gets an accent tile.
 A choice screen hides the result heading, the shelf and the Copy hint.
 
 - **No library:** "Where do your references live?": Zotero ("Found on this
-  Mac/PC/computer" once looked for), BibTeX or BibLaTeX file, then "Look for
+  Mac/PC/computer" once looked for), BibTeX, BibLaTeX or CSL-JSON file, then "Look for
   libraries on this computer". Nothing is searched until that row is chosen;
   found .bib files join as rows above it (folder as the tag), and the row
   becomes "Look again" with the outcome as its help line. Zotero refusing other
@@ -614,7 +615,7 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   joins when that source ships (0.2).
 - **Empty library:** only after a successful load reports zero references: "No
   references in thesis.bib", then "Choose a library with references." Zotero
-  and BibTeX or BibLaTeX file are the two rows; a detected Zotero library gets
+  and BibTeX, BibLaTeX or CSL-JSON file are the two rows; a detected Zotero library gets
   "Found on this Mac/PC/computer". Below: "You can drop a file here too."
   A search with no matches keeps its search actions; a failed refresh keeps
   its searchable snapshot and failure notice. No shelf or Copy is shown on

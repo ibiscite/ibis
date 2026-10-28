@@ -53,11 +53,19 @@ fn locator_search_can_be_literal_or_interpreted_and_an_empty_query_finds_nothing
 }
 
 #[test]
-fn closest_matches_are_left_out_until_the_picker_can_mark_them() {
+fn closest_matches_reach_the_picker_with_their_flag_and_snapshot() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let file = library(directory.path(), "@misc{a,title={Sleep}}");
-    assert_eq!(search(&file, "sleep", None).results.len(), 1);
-    assert!(search(&file, "sleep photon", None).results.is_empty());
+    for (text, partial) in [("sleep", false), ("sleep photon", true)] {
+        let reply = search(&file, text, None);
+        assert_eq!(reply.results.len(), 1);
+        let row = serde_json::to_value(&reply.results[0]).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(row["key"], "a");
+        assert_eq!(row["partial"], partial);
+        assert_eq!(row["revision"], reply.revision);
+        assert!(!row["cite"].as_str().unwrap_or_default().is_empty());
+    }
+    assert!(search(&file, "photon", None).results.is_empty());
 }
 
 #[test]

@@ -12,7 +12,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function record(key: string, first_author = "García", year: number | null = 2021): SearchResult {
   return {
     revision: "1", id: { source: "refs.bib", native_key: key }, key, title: `Title ${key}`, authors: first_author,
-    year, matched: ["title"], first_author, author_count: 1, container: null, item_type: "book",
+    year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book",
   };
 }
 

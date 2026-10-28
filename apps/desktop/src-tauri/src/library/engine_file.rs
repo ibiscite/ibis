@@ -263,13 +263,15 @@ impl FileLibrary {
         let results = reply
             .hits
             .into_iter()
-            // The picker cannot mark closest matches yet, so it leaves them out
-            // rather than show them as full matches.
-            .filter(|hit| !hit.partial)
             .filter_map(|hit| match hit.item.object {
                 LibraryObject::Record(record) => {
-                    let mut result =
-                        SearchResult::from_engine(&record, hit.item.fingerprints.cite.as_str(), hit.matched, &revision);
+                    let mut result = SearchResult::from_engine(
+                        &record,
+                        hit.item.fingerprints.cite.as_str(),
+                        hit.matched,
+                        hit.partial,
+                        &revision,
+                    );
                     if let Some(source) = sources.get(record.id.library.as_str()) {
                         result.source.clone_from(source);
                     }

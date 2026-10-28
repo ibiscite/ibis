@@ -17,7 +17,7 @@ function hoursAgo(hours: number) {
 function reference(key: string, title: string, authors = "Example Author", container: string | null = null, itemType = "article-journal"): SearchResult {
   const names = authors.split(", ");
   return { revision: "synthetic", id: { library: "synthetic-test", key }, cite: `synthetic-cite-${key}`, source: "synthetic-test", key, title, authors, year: 2026, matched: ["title"],
-    first_author: names[0] ?? "", author_count: names.length, container, item_type: itemType };
+    partial: false, first_author: names[0] ?? "", author_count: names.length, container, item_type: itemType };
 }
 
 // Every type icon appears in the longer lists.
