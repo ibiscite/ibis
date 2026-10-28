@@ -188,7 +188,7 @@ fn container_fallback_uses_trimmed_visible_text() {
                 record.csl.insert(field.into(), json!(value));
             }
         }
-        let result = SearchResult::from_engine(&record, "synthetic", Vec::new(), "revision");
+        let result = SearchResult::from_engine(&record, "synthetic", Vec::new(), false, "revision");
         assert_eq!(result.container.as_deref(), expected, "{container:?}, {publisher:?}");
     }
 }
