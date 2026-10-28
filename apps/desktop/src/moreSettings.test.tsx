@@ -108,6 +108,46 @@ test("a saved change heard before the first read answers is kept", async () => {
   expect(box.getAttribute("aria-checked")).toBe("true");
 });
 
+test("pending availability quietly changes More's existing action and an explicit click checks now", async () => {
+  const calls = backend({
+    "plugin:window|is_visible": () => false,
+    update_checks: () => false,
+    set_update_checks: () => null,
+    check_for_updates: () => null,
+  });
+  await act(async () => { render(<App />); });
+  expect(document.documentElement.dataset.pickerHidden).toBe("");
+  await act(async () => { await emit("update:available", true); });
+  expect(document.documentElement.dataset.pickerHidden).toBe("");
+  expect(calls).not.toContain("check_for_updates");
+  expect(calls).not.toContain("plugin:window|show");
+  expect(calls).not.toContain("plugin:window|set_focus");
+  await chooseFromMore("Update available…");
+  await waitFor(() => expect(calls.filter((call) => call === "check_for_updates")).toHaveLength(1));
+  expect(screen.queryByRole("menu")).toBeNull();
+  await act(async () => { await emit("update:available", false); });
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(await screen.findByRole("menuitem", { name: "Check for updates…" })).toBeTruthy();
+  expect(screen.queryByRole("menuitem", { name: "Update available…" })).toBeNull();
+});
+
+test("More reads availability retained before its listener mounted", async () => {
+  backend({ update_checks: () => false, update_available: () => true, set_update_checks: () => null, check_for_updates: () => null });
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(await screen.findByRole("menuitem", { name: "Update available…" })).toBeTruthy();
+});
+
+test("an availability event wins over an older initial read", async () => {
+  let answer!: (pending: boolean) => void;
+  backend({ update_checks: () => false, update_available: () => new Promise((resolve) => { answer = resolve; }), set_update_checks: () => null, check_for_updates: () => null });
+  render(<App />);
+  await waitFor(() => expect(answer).toBeDefined());
+  await act(async () => { await emit("update:available", true); answer(false); });
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(await screen.findByRole("menuitem", { name: "Update available…" })).toBeTruthy();
+});
+
 test("builds without updates, and pickers without the commands, offer no update controls", async () => {
   backend();
   render(<App />);

@@ -128,8 +128,10 @@ export const commands = {
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**  "Check for Updates…": the same check the tray starts. */
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	/**  Whether an automatic check found an update that has not been presented. */
+	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
 	/**
-	 *  Open Settings, or bring it forward, on `page` when one is named. Async so
+	 *  Open Settings, or bring it forward, on `page` (General by default). Async so
 	 *  the window is built from the event loop: a sync command runs inside the
 	 *  WebView2 callback, where building a second webview deadlocks on Windows.
 	 */

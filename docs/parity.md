@@ -45,9 +45,9 @@ documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
 | The same reference twice | done | — | `fixtures/cases/03-duplicate-order.json` |
 | Locator type and value per reference, all 29 CSL types | done in the contract | #24 | `citation.rs::all_29_csl_locator_terms_roundtrip`; picker editor in #24 |
 | Ranges and literal locators (no type) | planned | #24 | to add |
-| Empty locator refused rather than dropped | done | — | `cite_outputs.rs::empty_locators_are_refused_before_any_syntax_can_drop_them` |
+| Empty locator refused rather than dropped | done | — | `syntax_rules.rs::empty_locators_are_refused_before_any_syntax_can_drop_them` |
 | Prefix and suffix per reference, with italic, bold, sub- and superscript, kept as literal text in every CSL style and output | done in the engine; picker editor in #947; ambiguous Org suffixes are typed losses | #947 | `format.rs::affixes_keep_their_text_and_styling_in_every_representation`, `format.rs::styled_dollar_sequences_stay_literal_in_prefixes_and_suffixes`, `key_syntaxes.rs::an_org_suffix_that_reads_as_a_locator_is_not_carried` |
-| Omit author (suppress author) | done | — | `cite_outputs.rs::biblatex_suppressed_author_uses_star_form_for_one_reference` |
+| Omit author (suppress author) | done | — | `syntax_rules.rs::biblatex_suppressed_author_uses_star_form_for_one_reference` |
 | Narrative citation, Smith (2020); Zotero lacks it | done for key syntaxes and for one reference in CSL author-date and MLA styles; numeric styles, several references, contradictory author suppression and APA creator lists with multiple entries refused | #1315 | `format.rs::narrative_citations_name_the_author_then_cite_the_rest`, `format.rs::narrative_citations_refuse_author_suppression`, `format.rs::apa_narrative_refuses_name_lists_that_need_a_different_conjunction` |
 | Author only, year only and full citation | done for key syntaxes and CSL styles, refused where a style can't say it (IEEE, year-only MLA) | #1315 | `format.rs` form tests, `syntax_contract.rs` |
 | Mixed forms in one citation | done where the syntax can say it, refused otherwise; MyST uses one role per citation | #1207 | `mixed_pandoc_forms_are_explicitly_refused_in_one_request`, `key_syntaxes.rs::mixed_myst_forms_never_share_the_first_references_role` |
@@ -71,10 +71,10 @@ exactly what the picker would copy.
 | --- | --- | --- | --- |
 | `probe` answers `ready` without opening the picker | planned | #42 | to add |
 | Opens the picker and returns the citation | planned | #42 | to add |
-| `format=biblatex` with `command` (default `autocite`) | done as a syntax | #42 | `cite_outputs.rs::biblatex_multicite_keeps_one_locator_per_reference` |
+| `format=biblatex` with `command` (default `autocite`) | done as a syntax | #42 | `syntax_rules.rs::biblatex_multicite_keeps_one_locator_per_reference` |
 | `format=natbib` with `command`; aliases `latex`, `cite`, `citep`, `citet` | done as a syntax | #42 | `natbib_sources.rs` |
 | `format=pandoc` with `brackets` | done as a syntax | #42 | `syntax_contract.rs` |
-| `format=typst` | done as a syntax | #42 | `citation_typst_prefix.rs` |
+| `format=typst` | done as a syntax | #42 | `syntax_rules.rs::typst_prefix_escapes_heading_and_list_markers`, `syntax_rules.rs::typst_prefix_escapes_hyphen_list_markers` |
 | `format=mmd`, `asciidoctor-bibtex`, `jupyter` | done as syntaxes (`multi-markdown`, `ascii-doc`, `jupyter`); AsciiDoc locators support pages only | #1207 | `key_syntaxes.rs` |
 | `format=scannable-cite` | planned | #1207 | to add |
 | `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the chosen style) | planned | #42 | to add |

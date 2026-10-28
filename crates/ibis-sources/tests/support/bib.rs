@@ -126,8 +126,8 @@ pub fn strip_markup(rich: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// The reading-order display that snapshot search builds from a CSL name.
-pub fn display(name: &Value) -> String {
+/// The shared name model built from a source's CSL name.
+pub fn name(name: &Value) -> ibis_core::model::Name {
     let field = |key: &str| name.get(key).and_then(Value::as_str).map(str::to_owned);
     ibis_core::model::Name {
         family: field("family"),
@@ -137,5 +137,9 @@ pub fn display(name: &Value) -> String {
         non_dropping_particle: field("non-dropping-particle"),
         suffix: field("suffix"),
     }
-    .display()
+}
+
+/// The reading-order display that snapshot search builds from a CSL name.
+pub fn display(value: &Value) -> String {
+    name(value).display()
 }

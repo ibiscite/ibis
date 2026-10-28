@@ -7,7 +7,6 @@ mod bib;
 
 use bib::{all_field, csl, date, date_parts, keys, load, month, plain, records, text, warned_at, year};
 use ibis_sources::WarningCode;
-use proptest::prelude::*;
 use serde_json::json;
 
 const PREFIXES: [(&str, &str); 4] = [
@@ -183,25 +182,8 @@ fn field_text_containing_parser_error_is_not_a_caught_panic() {
     assert!(loaded.warnings.iter().all(|w| w.code != WarningCode::Syntax));
 }
 
-proptest! {
-    #![proptest_config(ProptestConfig::with_cases(512))]
-
-    #[test]
-    fn arbitrary_text_never_panics(text in any::<String>()) {
-        let _ = load(&text);
-    }
-
-    #[test]
-    fn mutated_entries_never_panic(
-        prefix in "\\PC{0,40}",
-        field in prop::sample::select(vec!["title", "crossref", "xdata", "author", "editor", "date", "year", "month", "journal", "pages", "langid"]),
-        value in "\\PC{0,40}",
-        closer in prop::sample::select(vec!["}", ")", "", "}}", "{"]),
-    ) {
-        let text = format!("{prefix}@article{{k, {field} = {{{value}}}{closer}\n@book(b, title={{{value}}})");
-        let _ = load(&text);
-    }
-}
+// Generated parser guards run as unit tests in `bibtex::tests`, where they
+// also assert the private count of caught parser panics stays zero.
 
 // --- value structure -------------------------------------------------------------
 

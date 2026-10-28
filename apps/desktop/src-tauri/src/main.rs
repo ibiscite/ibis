@@ -209,6 +209,7 @@ fn main() {
                 WindowEvent::Focused(true) => {
                     #[cfg(target_os = "windows")]
                     window.state::<picker::FocusChanges>().record();
+                    updater::picker_focused(window.app_handle());
                     library::retry_zotero_on_focus(window.app_handle());
                 }
                 // Like other launchers, the picker hides when it loses focus, but

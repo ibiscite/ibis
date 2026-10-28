@@ -154,7 +154,9 @@ person selects "Just this once". `apps.json`, beside `settings.json`, keeps
 only the operating system, normalised app ID and output for at most 200 apps;
 the least recently chosen app is dropped first. Never a document title, URL,
 window title, document text or citation. Browser and editor IDs cannot identify
-a project's syntax. Remembered choices beat app-table suggestions, then the
+a project's syntax, so the first paste in each browser or code editor opens
+the output chooser once and remembers the pick (maintainer, 2026-10-28).
+Remembered choices beat app-table suggestions, then the
 global fallback; "Automatic" removes only the app override, and a deliberate
 global choice never erases app choices.
 
@@ -172,8 +174,12 @@ request to GitHub for a small feed file, and installs only after the person
 agrees. Packages are signed with the Ibis update key, built into the app.
 Nightly and stable keys are separate; the stable key is usable only in a
 protected environment the maintainer approves. Ibis and Ibis Nightly are two
-apps with their own identifier, settings, shortcut and feed. Update failures
-never interrupt work.
+apps with their own identifier, settings, shortcut and feed. Update checks,
+offers and failures never interrupt work: an available update never shows or
+focuses the picker; it waits in More, the tray and Settings with one sentence
+on what changed. An opt-in "Download quietly, install when I quit" downloads
+and verifies in the background and installs only on an explicit quit; asking
+first stays the default (maintainer, 2026-10-28).
 
 ## 0021 Interface foundation
 
@@ -199,9 +205,26 @@ command, with recipes in the docs. No native App Intents or launcher
 extensions before 1.0: they would add a second language or codebase for what
 the global shortcut already does (maintainer, 2026-10-28).
 
+## 0032 Release gates
+
+From 0.3 a release ships only when the whole citation (search, choose, page,
+paste or copy as that platform supports, back in the document) works with
+VoiceOver and NVDA and with Chinese,
+Japanese and Korean input methods; Orca joins for 1.0. Interface text goes
+through the translation layer from 0.3, with German and one right-to-left
+language in 0.4. The speed and resource budgets in
+[architecture](architecture.md#desktop-app) are limits: engine and bundle
+checks fail pull request CI, and native latency and idle use are measured on
+the release machines before each release.
+0.5 cites from Zotero's annotations and the PDFs people already open before
+any reader inside Ibis (maintainer, 2026-10-28).
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 
 Agents have standing engineering and merge authority and work by
 [AGENTS.md](../AGENTS.md): no compatibility code, one independent review only
 for risky areas, required "CI result" before every merge. Stable releases wait
-for the maintainer's one-click approval.
+for the maintainer's one-click approval. A plan or answer the maintainer
+approves is recorded the same day in these files, the issues and the tracking
+issue; nothing lives only in a chat, a tool's memory or a local file
+(maintainer, 2026-10-28).
