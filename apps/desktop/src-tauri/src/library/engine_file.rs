@@ -216,6 +216,9 @@ impl FileLibrary {
         let results = reply
             .hits
             .into_iter()
+            // The picker cannot mark closest matches yet, so it leaves them out
+            // rather than show them as full matches.
+            .filter(|hit| !hit.partial)
             .filter_map(|hit| match hit.item.object {
                 LibraryObject::Record(record) => Some(SearchResult::from_engine(
                     &record,

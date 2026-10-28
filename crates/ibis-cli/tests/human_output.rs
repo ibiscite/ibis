@@ -69,6 +69,13 @@ fn human_result_rows_cannot_inject_extra_lines_or_terminal_controls() -> Result<
 fn empty_large_and_keyless_searches_remain_explicit() -> Result<(), Box<dyn std::error::Error>> {
     let (_, text, _) = run(engine()?, &["ibis", "search", "absent"])?;
     assert_eq!(text, "No references found.\n");
+    // Closest matches are introduced as such.
+    let (_, full, _) = run(engine()?, &["ibis", "search", "signals"])?;
+    let (_, closest, _) = run(engine()?, &["ibis", "search", "signals absentword"])?;
+    assert_eq!(
+        closest,
+        format!("No reference matches every word. Closest matches:\n{full}")
+    );
     let empty = Engine::from_snapshot(Arc::new(Snapshot::new(vec![])?));
     let (_, text, _) = run(empty, &["ibis", "libraries"])?;
     assert!(text.contains("No libraries loaded"));

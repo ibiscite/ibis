@@ -69,6 +69,9 @@ pub struct SearchHit {
     pub matched: Vec<MatchField>,
     /// Some term matched only with one typo.
     pub typo: bool,
+    /// Some terms did not match: one of the closest matches, given only when
+    /// nothing matches every term.
+    pub partial: bool,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SearchResult {
@@ -278,6 +281,7 @@ impl Engine {
             score: u32,
             matched: &'a [MatchField],
             typo: bool,
+            partial: bool,
         }
         #[derive(Serialize)]
         struct SearchView<'a> {
@@ -293,6 +297,7 @@ impl Engine {
                     score: hit.score,
                     matched: &hit.matched,
                     typo: hit.typo,
+                    partial: hit.partial,
                 })
                 .collect(),
         };
@@ -308,6 +313,7 @@ impl Engine {
                     score: hit.score,
                     matched: hit.matched,
                     typo: hit.typo,
+                    partial: hit.partial,
                 })
                 .collect(),
         })
