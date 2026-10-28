@@ -5,7 +5,12 @@ const maxFiles = 3000; // GitHub's pull-request files endpoint stops here.
 const full = { native: true, web: true };
 const validPath = (path) => typeof path === "string" && path.length > 0 && !/[\x00-\x1f\x7f\\]/.test(path)
   && path.split("/").every((part) => part && part !== "." && part !== "..");
-const documentation = (path) => !path.startsWith("fixtures/") && (path.endsWith(".md") || path.startsWith("LICENSE") || path.startsWith(".github/ISSUE_TEMPLATE/"));
+// Markdown beside code or vendored assets can be pinned by Rust tests.
+// Only known documentation locations may bypass them.
+const documentation = (path) => !path.split("/").includes("vendor") && (
+  (path.endsWith(".md") && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md"))
+  || path === "LICENSE" || path.startsWith(".github/ISSUE_TEMPLATE/")
+);
 const interfaceFile = (path) => /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path)
   || path === "apps/desktop/index.html";
 // The website is plain files checked by the script tests in the Web job.
