@@ -239,7 +239,7 @@ pub(crate) fn prepare(
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
     }
-    if style != "ieee" && style != "modern-language-association" {
+    if style != "ieee" && style != "modern-language-association" && shares_author_and_year(&items) {
         notices.push(Notice::YearSuffixWithheld);
     }
     if bibliography && request.keep_order {
@@ -256,6 +256,74 @@ pub(crate) fn prepare(
         losses,
         notices,
         empty: cites.is_empty(),
+    })
+}
+
+/// Year letters (2026a, 2026b) depend on the document's whole reference list,
+/// so the notice appears only when this request already holds two works that
+/// may print the same names and year. It errs towards the notice: every name
+/// variable counts whatever its role, names compare by particle and family
+/// only, and two works without a year count as sharing one.
+fn shares_author_and_year(items: &[Value]) -> bool {
+    let mut seen = std::collections::BTreeSet::new();
+    items.iter().any(|item| {
+        let year = year(item.get("issued"));
+        let mut signatures: Vec<Vec<String>> = item
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(_, value)| value.as_array())
+            .filter(|names| {
+                !names.is_empty()
+                    && names
+                        .iter()
+                        .all(|name| name.get("family").or_else(|| name.get("literal")).is_some())
+            })
+            .map(|names| names.iter().map(name).collect())
+            .collect();
+        if signatures.is_empty() {
+            signatures.push(vec![text(item.get("title"))]);
+        }
+        signatures.sort();
+        signatures.dedup();
+        signatures.into_iter().any(|names| !seen.insert((names, year.clone())))
+    })
+}
+
+fn name(name: &Value) -> String {
+    let literal = text(name.get("literal"));
+    if !literal.is_empty() {
+        return literal;
+    }
+    [text(name.get("non-dropping-particle")), text(name.get("family"))]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn text(value: Option<&Value>) -> String {
+    let value = match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    };
+    value.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// The year as printed, from date parts, a literal or a raw date.
+fn year(issued: Option<&Value>) -> Option<String> {
+    let issued = issued?;
+    let parts = text(issued.pointer("/date-parts/0/0"));
+    if !parts.is_empty() {
+        return Some(parts);
+    }
+    ["literal", "raw"].into_iter().find_map(|field| {
+        let date = text(issued.get(field));
+        let digits: String = date.chars().filter(char::is_ascii_digit).collect();
+        (digits.len() == 4)
+            .then_some(digits)
+            .or_else(|| (!date.is_empty()).then_some(date))
     })
 }
 
