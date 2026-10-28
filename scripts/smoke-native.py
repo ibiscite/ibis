@@ -495,6 +495,62 @@ def summarize_performance(samples):
             "memory_kind": "summed current process-tree RSS/working set; shared pages may be counted more than once"}
 
 
+MEASURED_OPENS = 20
+OPEN_TARGET_MS = 100
+
+
+def measure_picker_open(native, snapshot, shortcut, text=None):
+    """Shortcut to visible, foreground, focused Search on the retained snapshot.
+
+    Text goes straight after the shortcut, before any readiness probe. Never
+    retry typing or select-all: either would conceal dropped opening keys.
+    Native injection and accessibility probe costs remain inside the timer.
+    """
+    started = time.monotonic()
+    native.key(shortcut)
+    if text is not None:
+        native.text(text)
+
+    def interactive():
+        current = snapshot()
+        # AT-SPI can expose aria-activedescendant as focused instead of the
+        # combobox. Warm/cold native typing below proves keyboard ownership.
+        editable = any(node.get("role", "").lower().replace(" ", "") in EDITABLE_ROLES
+                       for node in named(current, "Search references"))
+        focused = search_focused(current) or any(node.get("focused") and
+            node.get("role", "").lower().replace(" ", "") in ("option", "listitem", "controltype.listitem")
+            for node in current["nodes"])
+        return current["visible"] and current["foreground"] and editable and focused
+
+    wait_for(interactive, "shortcut opens interactive picker", interval=.005)
+    elapsed = (time.monotonic() - started) * 1000
+    if text is not None:
+        def retained():
+            current = snapshot()
+            values = [node.get("value") for node in named(current, "Search references")
+                      if node.get("role", "").lower().replace(" ", "") in EDITABLE_ROLES]
+            return current["visible"] and current["foreground"] and bool(values) and all(value == text for value in values)
+        wait_for(retained, "opening keystrokes retained exactly")
+    return elapsed
+
+
+def summarize_picker_opens(samples):
+    if len(samples) < MEASURED_OPENS:
+        raise ValueError("At least 20 picker opens are required for p95")
+    if any(type(value) not in (int, float) or not math.isfinite(value) or value < 0 for value in samples):
+        raise ValueError("Picker open times must be finite nonnegative numbers")
+    p95 = sorted(samples)[math.ceil(.95 * len(samples)) - 1]
+    return {"status": "report-only", "platform": "Linux", "gate_enforced": False,
+            "sample_count": len(samples), "samples_ms": samples,
+            "median_ms": statistics.median(samples), "p95_ms": p95, "target_p95_ms": OPEN_TARGET_MS,
+            "summary": "Timing is reported on Linux only. The 100 ms p95 gate is enforced nowhere yet; "
+                       "macOS/Windows open time is judged in maintainer hand test #79.",
+            "percentile": "nearest rank; no discarded opens",
+            "measurement": "shortcut injection through visible, foreground picker with Search/active-descendant focus; includes native probe overhead",
+            "reason": "Linux uses Xvfb/Openbox, full AT-SPI tree traversal and xdotool subprocesses; "
+                      "runner and probe latency cannot reliably resolve a 100 ms app budget"}
+
+
 def require_tree(snapshot):
     for name in ("Search references", "Search results", "Results"):
         assert named(snapshot, name), f"Accessibility tree omits named {name!r}"
@@ -898,12 +954,12 @@ class Linux:
         self.wm.terminate()
 
 
-def wait_for(predicate, description, timeout=20):
+def wait_for(predicate, description, timeout=20, *, interval=.1):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
             return
-        time.sleep(0.1)
+        time.sleep(interval)
     raise AssertionError(f"Timed out: {description}")
 
 
@@ -1183,8 +1239,19 @@ def main():
                 wait_for_query(snapshot, text, expected, report)
 
             shortcut = args.shortcut or ("ctrl+shift+y")
+            # Map the picker before observing its footer: an unmapped WebKitGTK
+            # window exposes only the AT-SPI application root, not its contents.
             launch("small")
             check("startup", lambda: wait_for(lambda: shows_count(snapshot(), "3 references"), "synthetic library startup"))
+            def first_shortcut_open():
+                # This is the first shortcut after a normal visible startup,
+                # not a never-mapped login window's first presentation.
+                prepare_initial_picker_show(native, snapshot)
+                native.focus_editor()
+                wait_for(native.editor_focused, "editor focused before first picker open")
+                measure_picker_open(native, snapshot, shortcut, "smoke000000")
+                wait_for_query(snapshot, "smoke000000", "Ibis smoke reference 000000", report, settled=True)
+            check("first shortcut after startup keeps immediate keystrokes", first_shortcut_open)
             check("accessibility named search/count/list", lambda: require_tree(snapshot()))
 
             def skips_taskbar():
@@ -1284,21 +1351,25 @@ def main():
             check("Enter copies, hides, restores editor focus and preserves live settings edits", live_settings_copy)
 
             def reopen():
-                native.key(shortcut)
-                def shown():
-                    current = snapshot()
-                    return current["visible"] and current["foreground"] and named(current, "Search references")
-                wait_for(shown, "shortcut shows foreground picker with named search")
-                # AT-SPI can expose aria-activedescendant as the focused result
-                # option while the combobox receives keyboard input. Prove real
-                # focus and selection by typing, then inspect the exact value.
-                native.text("smoke000002")  # Reopening must select the old query.
-                def replaced():
-                    current = snapshot()
-                    return (any(node.get("value") == "smoke000002" for node in named(current, "Search references"))
-                            and "Ibis smoke reference 000002" in strings(current) and "1 result" in strings(current))
-                wait_for(replaced, "typing replaces selected prior query")
+                measure_picker_open(native, snapshot, shortcut, "smoke000002")
+                wait_for_query(snapshot, "smoke000002", "Ibis smoke reference 000002", report, settled=True)
             check("reopened picker selects previous search", reopen)
+
+            # Keep the existing performance JSON line intact. Opening is a
+            # separate metric and also runs for installed --skip-performance
+            # builds, where only the costly 100k startup experiment is skipped.
+            def picker_opens():
+                samples = []
+                report["picker_open"] = {"status": "measuring", "samples_ms": samples}
+                for _ in range(MEASURED_OPENS):
+                    escape_to_hide(native, snapshot, "picker hidden before timed open")
+                    native.focus_editor()
+                    wait_for(native.editor_focused, "editor focused before timed open")
+                    samples.append(measure_picker_open(native, snapshot, shortcut))
+                summary = summarize_picker_opens(samples)
+                report["picker_open"] = summary
+                print("NATIVE PICKER OPEN " + json.dumps(summary), flush=True)
+            check("picker shortcut-to-interactive timing reported (Linux only; 100 ms p95 gate not enforced)", picker_opens)
 
             def reload():
                 library.write_text(fixture(4), encoding="utf-8")
@@ -1346,7 +1417,8 @@ def main():
             else:
                 library.write_text(fixture(100000), encoding="utf-8")
                 samples = []
-                # Launch 0 is a warm-up held only to the hard ceiling; the gate uses the median of the rest (#464).
+                # Startup medians remain separate from shortcut-to-interactive reporting.
+                # Launch 0 warms the OS file cache and is discarded from those medians.
                 for sample in range(1 + MEASURED_LAUNCHES):
                     native.focus_editor()
                     phases = {}
@@ -1634,6 +1706,66 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(result["worker_timed_out"] and result["facts_valid"])
         self.assertTrue(result["facts"]["atspi_available"])
         self.assertFalse(result["facts"]["atspi_desktop_succeeded"])
+
+    def test_startup_maps_the_picker_before_waiting_for_its_accessible_count(self):
+        # WebKitGTK exposes only the application root until the native window
+        # is mapped. An --at-login launch cannot satisfy the footer count wait.
+        native = Mock(spec=["snapshot", "focus_editor", "editor_focused", "key", "text", "close", "app"])
+        app = Mock(pid=100)
+        app.poll.return_value = None
+        visible, query, clock, events = [False], [""], [0.0], []
+
+        def launch(command, **_options):
+            visible[0] = "--at-login" not in command
+            events.append(("launch", visible[0]))
+            return app
+
+        def snapshot():
+            events.append(("snapshot", visible[0]))
+            nodes = [{"role": "application"}]
+            if visible[0]:
+                nodes += [{"role": "combo box", "name": "Search references", "value": query[0], "focused": True},
+                          {"role": "status", "name": "3 references"}]
+                if query[0]:
+                    nodes += [{"role": "status", "name": "1 result"},
+                              {"role": "list item", "name": "Ibis smoke reference 000000"}]
+            return {"visible": visible[0], "foreground": visible[0], "nodes": nodes}
+
+        def key(chord):
+            events.append(("key", chord))
+            visible[0] = chord != "Escape"
+
+        def text(value):
+            events.append(("text", value))
+            query[0] = value
+
+        native.snapshot.side_effect = snapshot
+        native.key.side_effect = key
+        native.text.side_effect = text
+        native.editor_focused.return_value = True
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            executable, output = folder / "synthetic-app", folder / "output"
+            executable.touch()
+            with patch("sys.argv", ["smoke", "--app", str(executable), "--output", str(output)]), \
+                 patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux", return_value=native), \
+                 patch("subprocess.Popen", side_effect=launch), patch("builtins.print"), \
+                 patch("time.monotonic", side_effect=lambda: clock[0]), \
+                 patch("time.sleep", side_effect=lambda interval: clock.__setitem__(0, clock[0] + interval)), \
+                 patch(__name__ + ".require_tree", side_effect=AssertionError("synthetic stop after first shortcut")), \
+                 patch(__name__ + ".linux_failure_census", return_value={}):
+                self.assertEqual(main(), 1)
+            report = json.loads((output / "smoke.json").read_text())
+        self.assertEqual(report["reason"], "synthetic stop after first shortcut")
+        self.assertEqual([check["name"] for check in report["checks"]],
+                         ["startup", "first shortcut after startup keeps immediate keystrokes"])
+        self.assertEqual(events[:2], [("launch", True), ("snapshot", True)])
+        shortcut = events.index(("key", "ctrl+shift+y"))
+        self.assertIn(("key", "Escape"), events[:shortcut])
+        self.assertEqual(events[shortcut + 1], ("text", "smoke000000"))
+        self.assertNotIn("picker_open", report)  # The 20-open measurement runs later.
+        app.terminate.assert_called_once()
+        native.close.assert_called_once()
 
     def test_linux_census_errors_keep_the_original_failure_and_teardown(self):
         for error in (RuntimeError("PRIVATE_COLLECTOR_ERROR"), subprocess.TimeoutExpired([], 4)):
@@ -2505,6 +2637,87 @@ class ContractTests(unittest.TestCase):
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 
+
+    def test_picker_open_p95_is_nearest_rank_over_all_twenty_opens(self):
+        samples = list(range(20, 0, -1))
+        summary = summarize_picker_opens(samples)
+        self.assertEqual(summary["sample_count"], 20)
+        self.assertEqual(summary["median_ms"], 10.5)
+        self.assertEqual(summary["p95_ms"], 19)
+        self.assertEqual(summary["samples_ms"], samples)
+        for invalid in ([], [1] * 19, [1] * 19 + [float("nan")], [1] * 19 + [float("inf")],
+                        [1] * 19 + [-1], [1] * 19 + [True]):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                summarize_picker_opens(invalid)
+
+    def test_picker_open_timing_is_linux_only_and_never_enforces_the_target(self):
+        for p95 in (99, 100, 100.001, 200):
+            with self.subTest(p95=p95):
+                summary = summarize_picker_opens([1] * 18 + [p95, 999])
+                self.assertEqual(summary["status"], "report-only")
+                self.assertEqual(summary["platform"], "Linux")
+                self.assertFalse(summary["gate_enforced"])
+                self.assertEqual(summary["target_p95_ms"], 100)
+                self.assertEqual(summary["p95_ms"], p95)
+                self.assertIn("Timing is reported on Linux only", summary["summary"])
+                self.assertIn("100 ms p95 gate is enforced nowhere yet", summary["summary"])
+                self.assertIn("maintainer hand test #79", summary["summary"])
+                self.assertIn("AT-SPI", summary["reason"])
+
+    def picker_open_probe(self, *, value="smoke", typed="smoke", readiness=None, focus_role=None):
+        clock, events = self.CopyClock(), []
+        native = Mock()
+        native.key.side_effect = lambda chord: (events.append(("key", chord)), setattr(clock, "elapsed", clock.elapsed + .002))
+        native.text.side_effect = lambda text: (events.append(("text", text)), setattr(clock, "elapsed", clock.elapsed + .003))
+        states = iter(readiness or [(True, True, True)])
+        def snapshot():
+            events.append(("snapshot",))
+            clock.elapsed += .007
+            visible, foreground, focused = next(states, (True, True, True))
+            nodes = [{"name": "Search references", "role": "combo box", "value": value,
+                      "focused": focused and focus_role is None}]
+            if focus_role is not None:
+                nodes.append({"role": focus_role, "focused": focused})
+            return {"visible": visible, "foreground": foreground, "nodes": nodes}
+        with patch("time.monotonic", clock.monotonic), \
+             patch("time.sleep", lambda interval: setattr(clock, "elapsed", clock.elapsed + interval)):
+            elapsed = measure_picker_open(native, snapshot, "ctrl+shift+y", typed)
+        return elapsed, events
+
+    def test_opening_text_is_injected_once_before_any_native_probe(self):
+        elapsed, events = self.picker_open_probe()
+        self.assertEqual(events, [("key", "ctrl+shift+y"), ("text", "smoke"), ("snapshot",), ("snapshot",)])
+        # Injection and the readiness probe count; the later text readback does not.
+        self.assertAlmostEqual(elapsed, 12)
+
+    def test_picker_open_timer_requires_visibility_foreground_and_search_focus(self):
+        elapsed, events = self.picker_open_probe(typed=None, readiness=[
+            (False, True, True), (True, False, True), (True, True, False), (True, True, True)])
+        self.assertEqual(events, [("key", "ctrl+shift+y")] + [("snapshot",)] * 4)
+        self.assertAlmostEqual(elapsed, 45)  # 2 ms injection + 4*7 ms probes + 3*5 ms polls.
+
+    def test_picker_open_accepts_virtual_result_focus_but_not_a_focused_button(self):
+        for role in ("option", "list item", "ControlType.ListItem"):
+            with self.subTest(role=role):
+                elapsed, _ = self.picker_open_probe(focus_role=role)
+                self.assertAlmostEqual(elapsed, 12)
+        with self.assertRaisesRegex(AssertionError, "shortcut opens interactive picker"):
+            self.picker_open_probe(focus_role="button")
+
+    def test_opening_typing_rejects_dropped_extra_and_unreplaced_text_without_retry(self):
+        for value in ("", "moke", "smok", "ssmoke", "previoussmoke"):
+            with self.subTest(value=value), self.assertRaisesRegex(AssertionError, "opening keystrokes retained exactly"):
+                self.picker_open_probe(value=value)
+
+    def test_existing_performance_json_line_keeps_its_summary_fields(self):
+        # This checkout has no external smoke log parser; retain the existing
+        # unprefixed performance JSON schema when adding the separate open line.
+        summary = json.loads(json.dumps(summarize_performance(self.perf_samples(50, 20, 40, 30))))
+        self.assertEqual(summary["status"], "measured-without-budget")
+        self.assertEqual(summary["startup_ms"], 30)
+        self.assertEqual(summary["first_result_ms"], 5)
+        self.assertEqual(summary["sample_count"], 3)
+        self.assertIsInstance(summary["summary"], str)
 
     @staticmethod
     def perf_samples(warmup, *startups, first=5, memory=1000):
