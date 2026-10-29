@@ -84,7 +84,7 @@ test.each([0, 2])("a permission detour keeps the citation past a minute through 
 
 test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
   let granted = false;
-  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false };
+  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false };
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
   const copies: unknown[] = [];

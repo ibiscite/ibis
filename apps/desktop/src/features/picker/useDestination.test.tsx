@@ -4,7 +4,7 @@ import { useDestination } from "./useDestination";
 import type { PickerDestination } from "../../api";
 
 afterEach(cleanup);
-const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false };
+const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false };
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });

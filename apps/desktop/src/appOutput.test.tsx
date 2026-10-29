@@ -8,8 +8,8 @@ import { backend, chooseFromMore, prepared, resetApp, result, type PreviewReques
 afterEach(resetApp);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false };
-const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false };
+const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false, can_paste: false };
+const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false };
 const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
 const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
 const openFormats = () => { if (formatButton().getAttribute("aria-expanded") !== "true") fireEvent.click(formatButton()); };
@@ -134,7 +134,7 @@ test("an unreadable per-app file says defaults apply, and More forgets every app
 });
 
 test("without a captured app no app name or Automatic action is offered", async () => {
-  opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false }));
+  opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false }));
   await screen.findByText("First");
   expect(formatShown()).toBe("Pandoc");
   await pick("Just this once", "menuitemcheckbox");
@@ -144,7 +144,7 @@ test("without a captured app no app name or Automatic action is offered", async 
 
 test("without a destination app format picks change the global default, as both README claims explain", async () => {
   const saved: unknown[] = [];
-  const { remembered } = opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false }), {
+  const { remembered } = opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false }), {
     set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; },
   });
   await screen.findByText("First");

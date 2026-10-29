@@ -96,6 +96,16 @@ refused on both platforms. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
 
+The footer names the intended action and output together, from that same
+native policy. Enter during search or preview loading waits for its current
+query and citation; repeated activation of that unchanged citation is guarded
+through hiding and delivery, so it cannot paste twice (#1363). A deliberately
+changed citation can supersede an outstanding reply without accepting its
+obsolete feedback. The nonactivating receipt
+reports actual delivery, including why pasting was off or unavailable. More
+keeps that outcome in memory for this run, without citation text or a new
+file. A prepared shelf remains actionable through empty searches.
+
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
 by default; maintainer, 2026-10-28). The selection is read once, at the

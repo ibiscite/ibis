@@ -6,11 +6,13 @@ import { LibrarySetup } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
-import { afterCopy } from "./copyFeedback";
+import { afterCopy, noticeTitle } from "./copyFeedback";
 import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
-import { choiceKey, copyLabel, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
+import { choiceKey, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
+import { enterLabel } from "./features/picker/enterLabel";
+import { useDeliveryTarget } from "./features/picker/useDeliveryTarget";
 import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, type Operation } from "./features/picker/Notices";
@@ -87,12 +89,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: true, report, perform });
   const { density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving: quitPreferences } = preferences;
-  const destination = useDestination(api, { fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report });
+  const deliveryTarget = useDeliveryTarget(api);
+  const destination = useDestination(deliveryTarget.api, { fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const style = styleOf(format);
   const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  // Only the outcome, never citation or document text; kept until the next copy.
+  const [lastOutcome, setLastOutcome] = useState<string | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
   const [libraryVersion, setLibraryVersion] = useState(0);
   const statusReads = useRef(0);
@@ -111,7 +116,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       report("status", false);
     }).catch(() => { if (statusReads.current === request) report("status"); });
   };
-  const { queryKey, results, current, interpretation, list, announcement, resultsQuery, error } =
+  const { queryKey, results, current, interpretation, list, announcement, resultsQuery, error, pending: searchPending } =
     useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot });
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
@@ -159,17 +164,24 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     copyContext.current = { selected, queryKey, format, snapshotRevision, activeChoice };
   }
   const copyRequest = useRef(0);
+  const copyInFlight = useRef<{ context: typeof copyContext.current; visibility: number; output: ReturnType<typeof destination.copyToken> } | null>(null);
   const copyVisibility = useRef(0);
   const pickerShows = useRef(0);
+  const copyingCurrent = () => {
+    const flight = copyInFlight.current;
+    return flight !== null && flight.context === copyContext.current && flight.visibility === copyVisibility.current && destination.isCurrentCopy(flight.output);
+  };
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
   }, [setupDone, setFailures]);
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
-  const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken> } | null>(null);
-  const requestCopy = (choice: string) => setPendingCopy({ choice, queryKey,
-    format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
+  const [pendingCopy, setPendingCopy] = useState<{ choice: string | null; selection: typeof selected; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken> } | null>(null);
+  const requestCopy = (choice: string | null) => {
+    if (!copyingCurrent() && hiddenAt.current === null) setPendingCopy({ choice, selection: selected, queryKey,
+      format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
+  };
   const hide = () => {
     copyVisibility.current += 1;
     setPendingCopy(null);
@@ -387,7 +399,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const contextRequest = useRef(0);
 
   // Copy the chosen references in the chosen format.
-  const copy = async () => {
+  const executeCopy = async () => {
     if (chosen.length === 0) return;
     const request = ++copyRequest.current;
     const context = copyContext.current;
@@ -423,6 +435,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const ownsFeedback = ownsCompletion();
     if (!ownsFeedback) { destination.consumeOnce(outputToken); return; }
     setCopied(outcome);
+    setLastOutcome(copiedNoticeText.title);
     const complete = () => {
       const nextFormat = destination.consumeOnce(outputToken);
       const clearedSelection = new Map<string, CitationReference>();
@@ -438,7 +451,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       // Keep the shelf until delivery says whether macOS sent us to its guide.
       // A return during delivery also keeps it and cancels this completion.
       permissionDetour.current = true;
-      void perform("hide", async () => {
+      await perform("hide", async () => {
         const current = () => request === copyRequest.current && shownAt === pickerShows.current && context === copyContext.current;
         let permissionRefused = false;
         try {
@@ -446,6 +459,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           if (!current()) return;
           // The notice is extra; a failure to show it never undoes the copy.
           const delivered = await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
+          if (delivered && request === copyRequest.current) setLastOutcome(noticeTitle({ delivered, text: "" }));
           permissionRefused = !!delivered && delivered.outcome === "copied" && delivered.reason === "no-permission";
         } finally {
           if (current() && !permissionRefused) complete();
@@ -453,21 +467,36 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       });
     } else complete();
   };
+  const copy = async () => {
+    if (copyingCurrent()) return;
+    const flight = { context: copyContext.current, visibility: copyVisibility.current, output: destination.copyToken() };
+    copyInFlight.current = flight;
+    try { await executeCopy(); }
+    finally { if (copyInFlight.current === flight) copyInFlight.current = null; }
+  };
   // Enter, Copy or a click on a row copies what is chosen then (the row, or the
   // citation being built), once its preview is ready; anything changing first cancels it.
-  const copyChosen = () => { if (chosen.length > 0) requestCopy(chosenKey); };
+  const copyChosen = () => {
+    if (chosen.length > 0) requestCopy(chosenKey);
+    else if (showCitations && searchPending) requestCopy(null);
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: copy is rebuilt every render; this runs when the waiting copy, the choice, its preview or the search changes.
   useEffect(() => {
     if (pendingCopy === null) return;
-    if (chosenKey !== pendingCopy.choice || queryKey !== pendingCopy.queryKey
+    if (pendingCopy.choice !== null && chosenKey !== pendingCopy.choice || selected !== pendingCopy.selection || queryKey !== pendingCopy.queryKey
       || pendingCopy.format !== null && format !== pendingCopy.format || !destination.isCurrentCopy(pendingCopy.output)) {
       setPendingCopy(null);
+      return;
+    }
+    if (pendingCopy.choice === null) {
+      if (searchPending) return;
+      setPendingCopy(chosen.length > 0 ? { ...pendingCopy, choice: chosenKey } : null);
       return;
     }
     if (shown === null || !destination.ready || destination.saving || !preferences.ready) return;
     setPendingCopy(null);
     void copy();
-  }, [pendingCopy, chosenKey, shown, queryKey, format, destination.ready, destination.saving, preferences.ready]);
+  }, [pendingCopy, chosenKey, selected, shown, queryKey, searchPending, format, destination.ready, destination.saving, preferences.ready]);
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
@@ -514,7 +543,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = chosen.length === 0 || shown === "stale" || shown === "failed" ? null
-    : list && selected.size === 0 ? pickerText.copyCitations(chosen.length) : copyLabel(format, chosen.length);
+    : enterLabel(format, chosen.length, destination.app, deliveryTarget.canPaste,
+      pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(chosen).length)), Boolean(list && selected.size === 0));
   const highlighted = current[active];
   const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
@@ -621,6 +651,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             e.preventDefault();
           } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
+            setPendingCopy(null);
             followKeyboard.current = true; pointer.forgetClick();
             const step = e.key === "ArrowDown" ? 1 : -1;
             setActive((i) => Math.min(Math.max(i + step, 0), Math.max(results.length - 1, 0)));
@@ -729,6 +760,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         more={
           <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMenu(false))}
             buttonRef={moreButton} searchRef={input} library={library} libraryDetail={libraryDetail}
+            lastOutcome={lastOutcome}
             zotero={library?.zotero && chooseZoteroLibraries ? {
               offered: ["user" as const, ...offeredGroups.map((id) => ({ group: id }))],
               isChosen, chosenCount: chosenLibraries.length,

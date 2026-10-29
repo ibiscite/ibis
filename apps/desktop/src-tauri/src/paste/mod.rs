@@ -163,6 +163,28 @@ pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String)> {
     Some((id, name))
 }
 
+/// The footer's intended action, from the same policy as delivery. This only
+/// reads the captured target and permission; secure input is checked at delivery.
+pub(crate) fn intends_paste(app: &AppHandle, enabled: bool) -> bool {
+    let state = app.state::<LastTarget>();
+    let Ok(last) = state.0.lock() else { return false };
+    #[cfg(not(target_os = "windows"))]
+    let captured = last.captured.as_ref();
+    #[cfg(target_os = "windows")]
+    let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
+    intended_paste(
+        captured,
+        PastePermission {
+            enabled,
+            granted: enabled && permission::paste_permission().granted,
+        },
+    )
+}
+
+fn intended_paste(captured: Option<&Captured>, permission: PastePermission) -> bool {
+    captured.is_some_and(|captured| decide(&captured.target, permission) == Decision::Paste)
+}
+
 /// What happened to a copied citation, for the notice to word.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
@@ -355,8 +377,6 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
             desk.ask_to_post();
             copied(Some(CopyReason::NoPermission))
         }
-        // Nothing the person chose or would expect a paste for.
-        Decision::Copy(CopyReason::PasteOff | CopyReason::UnsupportedSystem | CopyReason::NoTarget) => copied(None),
         Decision::Copy(reason) => copied(Some(reason)),
         Decision::Paste => {
             if !desk.prepare() {
@@ -990,6 +1010,51 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_footer_uses_delivery_policy_without_asking_for_permission_or_posting() {
+        let permission = PastePermission {
+            enabled: true,
+            granted: true,
+        };
+        let writer = writer("org.example.writer");
+        assert_eq!(intended_paste(Some(&writer), permission), SYSTEM != System::Linux);
+        assert!(!intended_paste(None, permission));
+        assert!(!intended_paste(
+            Some(&writer),
+            PastePermission {
+                enabled: false,
+                ..permission
+            }
+        ));
+        assert!(!intended_paste(
+            Some(&writer),
+            PastePermission {
+                granted: false,
+                ..permission
+            }
+        ));
+        for system in [System::Macos, System::Windows, System::Linux] {
+            let mut target = writer.clone();
+            target.target.system = system;
+            target.target.app = Some(AppId {
+                system,
+                id: "org.example.writer".into(),
+            });
+            assert_eq!(intended_paste(Some(&target), permission), system != System::Linux);
+            target.target.elevated = true;
+            assert!(!intended_paste(Some(&target), permission));
+            target.target.elevated = false;
+            target.target.secure_field = true;
+            assert!(!intended_paste(Some(&target), permission));
+        }
+        for (system, id) in [(System::Macos, "com.apple.Terminal"), (System::Windows, "mstsc.exe")] {
+            let mut target = writer.clone();
+            target.target.system = system;
+            target.target.app = Some(AppId { system, id: id.into() });
+            assert!(!intended_paste(Some(&target), permission));
+        }
+    }
+
     fn proof() -> CopyProof {
         CopyProof {
             captured: Some(writer("org.example.writer")),
@@ -1175,14 +1240,19 @@ mod tests {
 
     #[test]
     fn unsafe_unproven_and_disabled_targets_only_copy() {
-        for (captured, enabled) in [
-            (Some(writer("org.example.other")), true),
-            (Some(writer("org.example.writer")), false),
-            (None, true),
+        for (captured, enabled, reason) in [
+            (Some(writer("org.example.other")), true, None),
+            (Some(writer("org.example.writer")), false, Some("paste-off")),
+            (None, true, Some("no-target")),
         ] {
             let desk = Fake::new();
             let ticket = CopyProof { captured, ..proof() };
-            assert_eq!(deliver(&desk, Some(&ticket), enabled), copied(None));
+            let reason = if enabled && SYSTEM == System::Linux {
+                Some("unsupported-system")
+            } else {
+                reason
+            };
+            assert_eq!(deliver(&desk, Some(&ticket), enabled), copied(reason));
             assert!(desk.posts.borrow().is_empty());
         }
     }
@@ -1473,7 +1543,7 @@ mod windows_tests {
                 Fake::new("[@synthetic]"),
                 writer("org.example.writer"),
                 false,
-                copied(None),
+                copied(Some("paste-off")),
             ),
             // The captured app never came back.
             (
@@ -1486,9 +1556,19 @@ mod windows_tests {
                 copied(None),
             ),
             // Nothing was in front.
-            (Fake::new("[@synthetic]"), Captured::unknown(SYSTEM), true, copied(None)),
+            (
+                Fake::new("[@synthetic]"),
+                Captured::unknown(SYSTEM),
+                true,
+                copied(Some("no-target")),
+            ),
         ];
         for (desk, captured, enabled, expected) in cases {
+            let expected = if enabled && SYSTEM == System::Linux {
+                copied(Some("unsupported-system"))
+            } else {
+                expected
+            };
             assert_eq!(deliver(&desk, Some(&captured), "[@synthetic]", enabled), expected);
             assert!(desk.posts.borrow().is_empty());
         }
@@ -1699,7 +1779,10 @@ mod windows_tests {
             assert_eq!(desk.release_warnings.get(), 2);
 
             // The next copy-only delivery still releases the retained keys.
-            assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", false), copied(None));
+            assert_eq!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", false),
+                copied(Some("paste-off"))
+            );
             assert!(!desk.keys_unreleased());
             assert!(!desk.control_down.get());
             assert!(!desk.v_down.get());
@@ -1725,7 +1808,10 @@ mod windows_tests {
         assert!(!desk.control_down.get());
         assert_eq!(desk.release_warnings.get(), 1);
         let requests = desk.input_requests.borrow().len();
-        assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", false), copied(None));
+        assert_eq!(
+            deliver_ticket(&desk, &ticket(), "[@synthetic]", false),
+            copied(Some("paste-off"))
+        );
         assert_eq!(&desk.input_requests.borrow()[requests..], [vec![VUp]]);
         assert!(!desk.keys_unreleased());
         assert!(!desk.v_down.get());

@@ -48,6 +48,8 @@ pub(crate) struct PickerDestination {
     pub(crate) remembered: Option<AppOutput>,
     /// The per-app file could not be read, so defaults apply.
     pub(crate) unreadable: bool,
+    /// The current paste policy permits an attempt; final delivery checks still apply.
+    pub(crate) can_paste: bool,
 }
 
 /// The output an app's documents use, from the destination table through
@@ -245,9 +247,12 @@ pub(crate) fn picker_destination(
             automatic: None,
             remembered: None,
             unreadable: memory.unreadable(),
+            can_paste: false,
         };
     };
-    let style = settings::load(&settings_file.path).settings.citation_style;
+    let settings = settings::load(&settings_file.path).settings;
+    let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
+    let style = settings.citation_style;
     let (remembered, unreadable) = memory.get(&id);
     PickerDestination {
         app: Some(name),
@@ -255,6 +260,7 @@ pub(crate) fn picker_destination(
         automatic: automatic(&id, style),
         remembered,
         unreadable,
+        can_paste,
     }
 }
 

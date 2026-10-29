@@ -132,6 +132,14 @@ export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { i
 
 const ActionFocusContext = createContext<(() => void) | null>(null);
 
+/** A wrapping, read-only menu header, also spoken through its section label. */
+export function MenuDetail({ title, detail }: { title: string; detail?: string | null }) {
+  return <p className="menu-detail" aria-hidden="true">
+    <span className="menu-detail-title">{title}</span>
+    {detail && <span>{detail}</span>}
+  </p>;
+}
+
 type ItemProps = {
   id: string; label: string; title?: string; keys?: string;
   /** A toggle: shows a check and is a menuitemcheckbox. */

@@ -186,6 +186,9 @@ export const pickerText = {
   bestMatches: "Best matches",
   pastedList: "Pasted list",
   copyCitations: (count: number) => `Copy ${count} ${count === 1 ? "citation" : "citations"}`,
+  pasteInto: (app: string, output: string) => `Paste into ${app} · ${output}`,
+  entryOutput: (style: string, count: number) => count === 1 ? `${style} entry` : `${count} ${style} entries`,
+  lastOutcome: (outcome: string) => `Last outcome. ${outcome}`,
   missingCitations: (keys: string[]) => `Not in your library: ${keys.join(", ")}`,
   closestMatches: "Closest matches",
   closestMatch: "Closest match",
@@ -466,6 +469,9 @@ export const copiedNoticeText = {
   pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
   /** Keyed by the destination's copy reason codes; any other reason says "Copied". */
   reasons: {
+    "paste-off": "Copied. Pasting is off",
+    "unsupported-system": "Copied. Paste it into your document",
+    "no-target": "Copied. No app to paste into",
     "no-permission": "Copied. Ibis needs your OK to paste",
     "terminal": "Copied. Not pasted into a terminal",
     "remote-desktop": "Copied. Not pasted into a remote desktop",

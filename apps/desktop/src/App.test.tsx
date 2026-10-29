@@ -27,7 +27,7 @@ test("a pasted list previews and copies every result in order, with a safe missi
   fireEvent.paste(box, { clipboardData: { getData: () => "b\na\nmissing" } });
   expect((box as HTMLInputElement).value).toBe("b\ta\tmissing");
   await screen.findByText("Pasted list");
-  expect(await screen.findByText("Copy 2 citations")).toBeTruthy();
+  expect(await screen.findByText("Copy 2 citations · Pandoc")).toBeTruthy();
   expect(await screen.findByText("Not in your library: <script>invented</script>")).toBeTruthy();
   expect(document.querySelector("script")).toBeNull();
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
@@ -1277,6 +1277,7 @@ test("Enter before the engine preview is ready copies the new receipt once it is
   await within(preview).findByText("(Alpha, 2021)");
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "ArrowDown" });
+  fireEvent.keyDown(box, { key: "Enter" });
   fireEvent.keyDown(box, { key: "Enter" });
   expect(copies).toEqual([]);
   await act(async () => { finish(receipt("(Beta, 2021)")); });
@@ -2861,7 +2862,9 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
   expect(calls).not.toContain("hide_picker");
   await act(async () => { release([fresh]); });
-  fireEvent.click(await screen.findByText("Replacement title and key"), { detail: 2 });
+  const replacementRow = await screen.findByText("Replacement title and key");
+  // Enter waits for the replacement; stale pointer/Shift+Enter actions do not.
+  if (action !== "Enter") fireEvent.click(replacementRow, { detail: 2 });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(copied[0]).toMatchObject({ expectedRevision: "snapshot-2" });
 });
@@ -3089,7 +3092,7 @@ test.each(["selection ABA", "query ABA", "hide and reopen"])("copy completion ig
   expect(calls).not.toContain("show_copied_notice");
 });
 
-test.each(["success", "failure"])("an older copy cannot overwrite a newer copy's warning (%s)", async (oldOutcome) => {
+test.each(["success", "failure"])("double Enter while pinned starts one copy and permits a fresh attempt after %s", async (oldOutcome) => {
   const resolve: ((value: unknown) => void)[] = [];
   const reject: ((reason: unknown) => void)[] = [];
   backend({
@@ -3103,13 +3106,18 @@ test.each(["success", "failure"])("an older copy cannot overwrite a newer copy's
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(resolve).toHaveLength(1));
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(resolve).toHaveLength(2));
-  await act(async () => { resolve[1]!({ text: "new copy", warnings: ["New warning"] }); });
-  await screen.findByText("New warning");
+  await act(async () => { await Promise.resolve(); });
+  expect(resolve).toHaveLength(1);
   await act(async () => {
     if (oldOutcome === "success") resolve[0]!({ text: "old copy", warnings: ["Old warning"] });
     else reject[0]!("old failure");
   });
+  if (oldOutcome === "success") await screen.findByText("Old warning");
+  else await screen.findByText("Nothing was copied. Try again, or use Reload.");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(resolve).toHaveLength(2));
+  await act(async () => { resolve[1]!({ text: "new copy", warnings: ["New warning"] }); });
+  await screen.findByText("New warning");
   expect(screen.queryByText("New warning")).not.toBeNull();
   expect(screen.queryByText("Old warning")).toBeNull();
   expect(screen.queryByText("Nothing was copied. Try again, or use Reload.")).toBeNull();
@@ -3184,6 +3192,9 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
   await waitFor(() => expect(attempts).toHaveLength(1));
   if (change === "selection") fireEvent.click(screen.getByText("Second revision 1"), { shiftKey: true });
   else {
+    // A different prepared citation may supersede an outstanding reply;
+    // repeated Enter on the unchanged citation is guarded separately.
+    fireEvent.click(screen.getByText("Second revision 1"), { shiftKey: true });
     fireEvent.keyDown(box, { key: "Enter" });
     await screen.findByText("Keep the newer warning");
   }
