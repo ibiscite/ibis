@@ -389,6 +389,27 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
+- **Page and form** (#1366). The focused shelf reference has a labelled Page
+  field (a page or range, including Roman numerals) and the shared Normal,
+  Narrative and Omit author choices. Focusing a reference's label shows its
+  details; activating Edit moves focus directly into that reference's Page
+  field, past other chips. The first reference is shown initially. With no built
+  selection, these controls edit the highlighted result. The first edit adds
+  that result to the shelf; subsequent searches cannot change its page or form.
+  Editing keeps focus in the control, clears a queued copy and prepares a new preview.
+  Clearing Page removes only that reference's page. Optional page labels such
+  as `p. 12` or unquoted `pp. ١٢–١٥` use the shared locator parser before
+  formatting; Unicode numbers keep their written digits. A recognised page
+  label must have a valid value: `pp.` is refused with a request to enter a
+  page or range, or clear Page. It never becomes literal page text. Page values
+  keep the shared parser's length limit. The field keeps the typed text.
+  Controls and actionable formatting refusals
+  remain visible with the paste preview hidden. Engine losses name the reference
+  and field beside the preview; an unsupported form explains the refusal there
+  and blocks copying until corrected. Enter leaves that explanation visible.
+  Mixed narrative clusters, other locator controls, prefixes and suffixes
+  remain in #24/#1315. Controls wrap at narrow widths and keep the shared
+  keyboard focus and touch targets.
 - **Year-only citations.** Keep supported style forms available through conditional
   layouts. Each selected item's output must show its issued year, or the style's
   own no-date term for an undated or zero-year item; otherwise refuse the citation.
@@ -405,7 +426,9 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Show what will be pasted.** On by default (`show_paste_preview`, decision 0020),
   ⌘I / Ctrl+I, in More until Settings exists. Off hides only the line and
   closes the wide pane; the chosen references and copy readiness stay. If the
-  output had focus, Search receives it first. Copied while the window is kept
+  output had focus, Search receives it first. Formatting refusals stay visible
+  until corrected, including refusals received while the output is hidden.
+  Copied while the window is kept
   open says "Copied" without repeating text only when the visible output is
   exactly the copied string.
 - **Per OS** [C13]. A tint on the macOS glass, a stroked card on Windows,
@@ -748,7 +771,8 @@ that owns its area in ROADMAP.md.
 9. Change the last citation: an explicit action in More (with its key)
    reopens that shelf, pages included. Ibis replaces text only when the old
    citation is selected; otherwise it copies the new one and says so.
-10. A page example in the empty state and a "Page…" control on the focused row.
+10. A page example in the empty state and a Page field for the focused shelf
+    reference (#1366, above); a row shortcut to it remains planned.
 11. Empty results name the obstacle and its one fix: a filter, a library
     scope, or "Not in your libraries".
 12. Peek: the focused reference's full title, edition, year, identifiers and

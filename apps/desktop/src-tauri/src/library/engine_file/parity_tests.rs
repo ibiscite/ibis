@@ -6,8 +6,8 @@ use super::*;
 use ibis_core::contract::{GoldenCase, Snapshot};
 use std::sync::Arc;
 
-/// The picker's choice for a request, or `None` when the picker cannot ask
-/// for it: other key syntaxes, affixes, omitted authors or another form.
+/// The original normal-form golden subset. Page/form combinations have their
+/// own matrix below; other syntaxes and affixes remain outside the picker.
 fn picker_choice(request: &CitationRequest) -> Option<(Vec<FileSelection>, KeyFormat, Option<CitationStyle>)> {
     let (format, style) = match serde_json::to_value(&request.output).ok()? {
         output if output["kind"] == "csl" => (
@@ -49,6 +49,7 @@ fn picker_choice(request: &CitationRequest) -> Option<(Vec<FileSelection>, KeyFo
             Some(FileSelection {
                 id: serde_json::to_value(&item.item).ok()?,
                 cite: item.expected_cite.as_ref()?.as_str().to_owned(),
+                form: None,
                 locator: match &item.locator {
                     Some(locator) => {
                         let locator = serde_json::to_value(locator).ok()?;
@@ -183,6 +184,303 @@ fn every_bundled_style_previews_and_copies_what_the_engine_formats() -> Result<(
         }
     }
     assert!(copied >= 25, "every style through several cases ({copied})");
+    Ok(())
+}
+
+#[test]
+fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_core::contract::{CitationForm, Locator as EngineLocator, LocatorTerm};
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let engine = engine_for(&case)?;
+    let file = FileLibrary::from_engine(engine.clone());
+    let outputs = [
+        (KeyFormat::Pandoc, None, "pandoc", None),
+        (KeyFormat::Autocite, None, "biblatex", Some("autocite")),
+        (KeyFormat::Parencite, None, "biblatex", Some("parencite")),
+        (KeyFormat::Textcite, None, "biblatex", Some("textcite")),
+        (KeyFormat::Typst, None, "typst", None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Apa), "", None),
+        (KeyFormat::Pandoc, Some(CitationStyle::ChicagoAuthorDate), "", None),
+        (KeyFormat::Pandoc, Some(CitationStyle::HarvardCiteThemRight), "", None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Ieee), "", None),
+        (
+            KeyFormat::Pandoc,
+            Some(CitationStyle::ModernLanguageAssociation),
+            "",
+            None,
+        ),
+    ];
+    for (format, style, syntax, command) in outputs {
+        for form in ["normal", "narrative", "author-omitted"] {
+            for page in ["12", "12–15"] {
+                let mut request = case.request.clone();
+                let pick = &mut request.items[0];
+                pick.expected_cite = Some(case.library.objects()[0].fingerprints.cite.clone());
+                pick.form = (form == "narrative").then_some(CitationForm::Narrative);
+                pick.suppress_author = form == "author-omitted";
+                pick.locator = Some(EngineLocator {
+                    term: LocatorTerm::Page,
+                    value: page.into(),
+                });
+                let selection = serde_json::from_value(json!({"id":pick.item,"cite":pick.expected_cite,
+                    "locator":{"label":"page","value":page},"form":form}))?;
+                let command = if syntax == "biblatex" && form == "narrative" {
+                    Some("textcite")
+                } else {
+                    command
+                };
+                request.output = serde_json::from_value(if let Some(style) = style {
+                    json!({"kind":"csl","style":style})
+                } else {
+                    json!({"kind":"key","syntax":syntax,"command":command})
+                })?;
+                request.form = if style == Some(CitationStyle::Ieee) {
+                    CitationForm::BibliographyOnly
+                } else {
+                    CitationForm::Normal
+                };
+                request.keep_order = style.is_none();
+                let expected = engine.cite(&request, &Cancellation::default()).map_err(|_| "cite")?;
+                let preview = file.preview(file.reserve_preview(), vec![selection], format, style);
+                if style == Some(CitationStyle::Ieee) && form == "narrative" {
+                    assert!(
+                        preview
+                            .err()
+                            .ok_or("numeric narrative accepted")?
+                            .to_string()
+                            .contains("cannot be expressed")
+                    );
+                    continue;
+                }
+                let preview = preview.map_err(|e| e.to_string())?;
+                assert_eq!(preview.text, expected.text, "{format:?} {style:?} {form} {page}");
+                assert_eq!(preview.html, expected.html);
+                assert_eq!(preview.content_hash, expected.content_hash.as_str());
+                assert_eq!(preview.warnings, citation_warnings(&expected));
+                file.copy(&preview.ticket, &preview.content_hash, |content| {
+                    assert_eq!(content.text, expected.text);
+                    assert_eq!(content.html, expected.html.as_deref());
+                    assert_eq!(content.rtf, expected.rtf.as_deref());
+                    Ok(())
+                })
+                .map_err(|e| e.to_string())?;
+                if style == Some(CitationStyle::Ieee) {
+                    assert!(preview.warnings.iter().any(|warning| warning.contains("Page")));
+                } else {
+                    assert!(preview.text.contains("12"));
+                    if page.contains('–') {
+                        assert!(preview.text.contains("15"));
+                    }
+                    if style.is_some() {
+                        assert_eq!(preview.text.contains("Taylor"), form != "author-omitted");
+                    }
+                }
+                if form == "author-omitted" && (format == KeyFormat::Textcite || style == Some(CitationStyle::Ieee)) {
+                    assert!(
+                        preview
+                            .warnings
+                            .iter()
+                            .any(|warning| warning.contains("Reference 1: Omit author"))
+                    );
+                }
+                if syntax == "biblatex" && form == "narrative" {
+                    assert!(preview.text.starts_with("\\textcite["));
+                }
+                if syntax == "pandoc" && form == "narrative" {
+                    assert!(preview.text.starts_with("@Example2026 ["));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> Result<(), Box<dyn std::error::Error>> {
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let file = FileLibrary::from_engine(engine_for(&case)?);
+    let pick = &case.library.objects()[0];
+    let selection = |label: &str, value: &str| {
+        serde_json::from_value::<FileSelection>(json!({
+            "id":pick.object.id(), "cite":pick.fingerprints.cite, "locator":{"label":label,"value":value}
+        }))
+    };
+    for (format, style) in [
+        (KeyFormat::Pandoc, None),
+        (KeyFormat::Typst, None),
+        (KeyFormat::Autocite, None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Apa)),
+        (KeyFormat::Pandoc, Some(CitationStyle::ChicagoAuthorDate)),
+        (KeyFormat::Pandoc, Some(CitationStyle::HarvardCiteThemRight)),
+        (KeyFormat::Pandoc, Some(CitationStyle::Ieee)),
+        (KeyFormat::Pandoc, Some(CitationStyle::ModernLanguageAssociation)),
+    ] {
+        for (typed, value) in [
+            ("p. 12", "12"),
+            ("pp. 12–15", "12–15"),
+            (" PP.  iv–vi ", "iv–vi"),
+            ("pp. \"١٢–١٥\"", "١٢–١٥"),
+            ("pp. ١٢–١٥", "١٢–١٥"),
+            ("pp. ۱۲–۱۵", "۱۲–۱۵"),
+            ("pp. १२–१५", "१२–१५"),
+            ("pp. １２–１５", "１２–１５"),
+            ("pp. ๑๒–๑๕", "๑๒–๑๕"),
+            ("pp. 𝟙𝟚–𝟙𝟝", "𝟙𝟚–𝟙𝟝"),
+        ] {
+            let expected = file
+                .preview(file.reserve_preview(), vec![selection("page", value)?], format, style)
+                .map_err(|e| e.to_string())?;
+            let actual = file
+                .preview(file.reserve_preview(), vec![selection("page", typed)?], format, style)
+                .map_err(|e| e.to_string())?;
+            assert_eq!(actual.text, expected.text, "{format:?} {style:?}: {typed}");
+            assert_eq!(actual.html, expected.html);
+            assert_eq!(actual.content_hash, expected.content_hash);
+            assert_eq!(actual.warnings, expected.warnings);
+            file.copy(&actual.ticket, &actual.content_hash, |content| {
+                assert_eq!(content.text, expected.text);
+                assert_eq!(content.html, expected.html.as_deref());
+                Ok(())
+            })
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    // Parsing is whole-value and page-only: other locator types and literal
+    // labels such as p53 keep their existing meaning.
+    for (label, value) in [("chapter", "pp. 12–15"), ("page", "p53")] {
+        let mut request = case.request.clone();
+        request.items[0].locator = Some(serde_json::from_value(json!({"term":label,"value":value}))?);
+        let expected = file
+            .engine
+            .cite(&request, &Cancellation::default())
+            .map_err(|_| "cite")?;
+        let preview = file
+            .preview(
+                file.reserve_preview(),
+                vec![selection(label, value)?],
+                KeyFormat::Pandoc,
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+        assert_eq!(preview.text, expected.text);
+        assert_eq!(preview.content_hash, expected.content_hash.as_str());
+    }
+    Ok(())
+}
+
+#[test]
+fn label_only_pages_refuse_preview_and_copy_with_an_actionable_message() -> Result<(), Box<dyn std::error::Error>> {
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let file = FileLibrary::from_engine(engine_for(&case)?);
+    let pick = &case.library.objects()[0];
+    for (format, style) in [
+        (KeyFormat::Pandoc, None),
+        (KeyFormat::Typst, None),
+        (KeyFormat::Autocite, None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Apa)),
+        (KeyFormat::Pandoc, Some(CitationStyle::Ieee)),
+    ] {
+        for value in [
+            "pp.",
+            " p. ",
+            "PP",
+            "page",
+            "pages",
+            "pg.",
+            "S.",
+            "pp. \"\"",
+            "pp. 12 appendix",
+        ] {
+            let selection = serde_json::from_value(json!({"id":pick.object.id(), "cite":pick.fingerprints.cite,
+                "locator":{"label":"page","value":value}}))?;
+            let mut writes = 0;
+            let outcome = file
+                .preview(file.reserve_preview(), vec![selection], format, style)
+                .and_then(|preview| {
+                    file.copy(&preview.ticket, &preview.content_hash, |_| {
+                        writes += 1;
+                        Ok(())
+                    })
+                });
+            assert_eq!(writes, 0, "invalid Page {value:?} must never write clipboard content");
+            let message = outcome.err().ok_or("invalid Page was copied")?.to_string();
+            assert!(message.contains("Reference 1: Page"), "{message}");
+            assert!(
+                message.contains("page or range") && message.contains("clear Page"),
+                "{message}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Result<(), Box<dyn std::error::Error>> {
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let file = FileLibrary::from_engine(engine_for(&case)?);
+    let pick = &case.library.objects()[0];
+    let selection = |form: &str| {
+        serde_json::from_value::<FileSelection>(json!({"id":pick.object.id(),
+        "cite":pick.fingerprints.cite,"locator":{"label":"page","value":"12"},"form":form}))
+    };
+    for (format, style) in [
+        (KeyFormat::Pandoc, None),
+        (KeyFormat::Autocite, None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Apa)),
+    ] {
+        let error = file
+            .preview(
+                file.reserve_preview(),
+                vec![selection("normal")?, selection("narrative")?],
+                format,
+                style,
+            )
+            .err()
+            .ok_or("mixed narrative accepted")?;
+        assert!(error.to_string().contains("Reference 2:"));
+    }
+    let preview = file
+        .preview(
+            file.reserve_preview(),
+            vec![selection("normal")?, selection("author-omitted")?],
+            KeyFormat::Autocite,
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Reference 2: Omit author"))
+    );
+    let preview = file
+        .preview(
+            file.reserve_preview(),
+            vec![selection("author-omitted")?],
+            KeyFormat::Keys,
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+    assert!(preview.warnings.iter().any(|warning| warning.contains("Page")));
+    assert!(preview.warnings.iter().any(|warning| warning.contains("Omit author")));
+    assert!(
+        serde_json::from_value::<FileSelection>(
+            json!({"id":pick.object.id(),"cite":pick.fingerprints.cite,"form":"invented"})
+        )
+        .is_err()
+    );
     Ok(())
 }
 

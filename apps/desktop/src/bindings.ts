@@ -215,6 +215,7 @@ export type FileSelection = {
 	id: unknown,
 	cite: string,
 	locator: Locator | null,
+	form?: ReferenceForm | null,
 };
 
 /**  A `.bib` file found on this computer. */
@@ -432,6 +433,8 @@ export type PickerSave = {
 	preferences: PickerPreferences,
 	copy_format: KeyFormat,
 };
+
+export type ReferenceForm = "normal" | "narrative" | "author-omitted";
 
 export type RowAction = "copy" | "toggle";
 

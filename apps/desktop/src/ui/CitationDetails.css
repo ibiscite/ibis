@@ -1,0 +1,16 @@
+.citation-details {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3); color: var(--text);
+  font: var(--type-meta-size) / var(--type-meta-line) var(--font-family);
+}
+.citation-page { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-inline-size: 0; }
+.citation-page input {
+  min-inline-size: 0; inline-size: 8em; max-inline-size: 100%; box-sizing: border-box;
+  min-block-size: var(--control-min-size); padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-control);
+  background: var(--surface-field); color: var(--text); font: inherit; font-variant-numeric: tabular-nums;
+}
+.citation-page input::placeholder { color: var(--muted); opacity: 1; }
+.citation-page input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+.citation-page [slot="description"] { color: var(--muted); }
+@media (pointer: coarse) { .citation-page input { min-block-size: 2.75rem; } }

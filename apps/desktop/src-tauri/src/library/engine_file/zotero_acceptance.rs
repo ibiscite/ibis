@@ -172,6 +172,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                         id: row.id.clone(),
                         cite: row.cite.clone(),
                         locator: None,
+                        form: None,
                     }],
                     KeyFormat::Pandoc,
                     None
