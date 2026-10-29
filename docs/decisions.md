@@ -205,6 +205,10 @@ next explicit app save replaces the damaged data. "Forget formats for apps"
 clears it. A failed save leaves the previous durable choices intact and says
 so. Preference writes from different windows apply only deliberate field
 patches under the native owner lock, returning the authoritative saved state.
+Settings and the picker share one frontend patch queue for ordering, field
+acknowledgments, stale reads and recovery. Settings restores the saved choice
+after a failed save; the picker retains explicit choices for retry. Each window
+keeps its own queue; the native lock coordinates windows (2026-10-28).
 
 ## 0019 Updates
 
