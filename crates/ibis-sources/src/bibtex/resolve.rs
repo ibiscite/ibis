@@ -11,6 +11,7 @@
 //! a link it could follow. Indexed field positions and merged names avoid
 //! quadratic name searches while preserving field order and precedence.
 
+use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -93,7 +94,10 @@ pub(crate) const ESCAPE: char = '\u{E002}';
 
 /// Encode escaped braces and escape placeholder characters already present.
 /// Decoded by `convert::clean`.
-fn encode_literals(text: &str) -> String {
+fn encode_literals(text: &str) -> Cow<'_, str> {
+    if !text.contains(['\\', LEFT_BRACE, RIGHT_BRACE, BACKSLASH, ESCAPE]) {
+        return Cow::Borrowed(text);
+    }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -117,14 +121,17 @@ fn encode_literals(text: &str) -> String {
             _ => out.push(c),
         }
     }
-    out
+    Cow::Owned(out)
 }
 
 /// `biblatex` decodes this symbol before our TeX conversion; protect it until
 /// final cleaning. Apply only to parser input, retaining resolved source text
 /// for the unchanged fallback used when a field has an unknown command.
-fn protect_backslashes(text: &str) -> String {
+fn protect_backslashes(text: &str) -> Cow<'_, str> {
     const BACKSLASH_COMMAND: &str = "textbackslash";
+    if !text.as_bytes().contains(&b'\\') {
+        return Cow::Borrowed(text);
+    }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -163,7 +170,7 @@ fn protect_backslashes(text: &str) -> String {
             _ => out.push(c),
         }
     }
-    out
+    Cow::Owned(out)
 }
 
 pub(super) const MONTHS: [(&str, &str); 12] = [
@@ -276,8 +283,11 @@ impl<'a> Resolver<'a> {
         };
         let fields = self.effective(i, MAX_DEPTH, &mut walk);
         let mut problems = walk.problems;
-        let fields: Vec<_> = fields
-            .iter()
+        // The completed root belongs to this walk. Release its memo before
+        // taking the fields; cached parent snapshots keep their own ownership.
+        drop(walk.memo);
+        let fields: Vec<_> = Rc::unwrap_or_clone(fields)
+            .into_iter()
             .take_while(|(name, value)| {
                 self.budget.charge(
                     name.len()
@@ -302,14 +312,30 @@ impl<'a> Resolver<'a> {
         {
             return Resolved::default();
         }
-        let rendered: Vec<String> = fields.iter().map(|(name, value)| render_field(name, value)).collect();
-        let source = format!("@{}{{{},\n{}}}\n", entry.kind, entry.key, rendered.join(",\n"));
+        let capacity = fields
+            .iter()
+            .fold(entry.kind.len() + entry.key.len() + 6, |n, (name, value)| {
+                n + name.len() + value.len() + 9
+            });
+        let mut source = String::with_capacity(capacity);
+        source.push('@');
+        source.push_str(&entry.kind);
+        source.push('{');
+        source.push_str(&entry.key);
+        source.push_str(",\n");
+        for (i, (name, value)) in fields.iter().enumerate() {
+            if i != 0 {
+                source.push_str(",\n");
+            }
+            render_field(&mut source, name, value);
+        }
+        source.push_str("}\n");
         // The same problem can be found many times; report each one once.
         let mut unique = HashSet::new();
         problems.retain(|p| self.budget.charge(p.len().saturating_mul(4)) && unique.insert(p.clone()));
         Resolved {
             source,
-            fields: fields.into_iter().cloned().collect(),
+            fields: fields.into_iter().collect(),
             problems,
         }
     }
@@ -613,10 +639,17 @@ impl<'a> Resolver<'a> {
             return String::new();
         }
         let mut out = x.out;
-        if DATE_FIELDS.contains(&field) {
+        if DATE_FIELDS.contains(&field) && !out.is_ascii() {
             out = ascii_digits(&out);
         }
-        encode_literals(&dotless_to_plain(&out))
+        let out = match dotless_to_plain(&out) {
+            Cow::Borrowed(_) => out,
+            Cow::Owned(plain) => plain,
+        };
+        match encode_literals(&out) {
+            Cow::Borrowed(_) => out,
+            Cow::Owned(encoded) => encoded,
+        }
     }
 
     fn expand_macro(
@@ -859,24 +892,31 @@ fn crossref_targets<'n>(parent: &str, child: &str, field: &'n str) -> Vec<&'n st
 
 /// Render one field canonically. A month written as a three-letter
 /// abbreviation stays bare so the parser reads it as a month.
-fn render_field(name: &str, value: &str) -> String {
+fn render_field(out: &mut String, name: &str, value: &str) {
     let bare_month = name == "month" && MONTHS.iter().any(|(abbr, _)| *abbr == value);
+    out.push_str("  ");
+    out.push_str(name);
+    out.push_str(" = ");
     if bare_month {
-        format!("  {name} = {value}")
+        out.push_str(value);
     } else {
+        out.push('{');
         // URLs are verbatim: command-looking path text remains literal.
-        let value = if name == "url" {
-            value.to_string()
+        if name == "url" {
+            out.push_str(value);
         } else {
-            protect_backslashes(value)
-        };
-        format!("  {name} = {{{value}}}")
+            out.push_str(&protect_backslashes(value));
+        }
+        out.push('}');
     }
 }
 
 /// Replace the dotless `\\i` and `\\j` commands with plain letters so accents
 /// apply: `{\\'\\i}` becomes `{\\'i}`, which the parser reads as "í".
-fn dotless_to_plain(text: &str) -> String {
+fn dotless_to_plain(text: &str) -> Cow<'_, str> {
+    if !text.as_bytes().contains(&b'\\') {
+        return Cow::Borrowed(text);
+    }
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(pos) = rest.find(['\\']) {
@@ -897,7 +937,7 @@ fn dotless_to_plain(text: &str) -> String {
         }
     }
     out.push_str(rest);
-    out
+    Cow::Owned(out)
 }
 
 /// Convert decimal digits from common scripts (Arabic-Indic, Persian,
@@ -940,6 +980,113 @@ mod tests {
             .position(|e| e.key == key)
             .unwrap_or_else(|| panic!("no {key}"));
         Resolver::new(macros, &entries, &Budget::new(usize::MAX)).resolve(i)
+    }
+
+    #[test]
+    fn canonical_fields_records_fingerprints_and_budget_cuts_stay_identical() {
+        use ibis_core::contract::{Fingerprint, LibraryId, LibraryObject, Snapshot};
+        use serde_json::json;
+        use std::collections::BTreeMap;
+
+        // Golden transcripts include exact canonical bytes, diagnostics, remaining
+        // work credits and the final records/fingerprints published to consumers.
+        // Pin them before changing allocation ownership; hashes keep the many
+        // partial-budget outcomes small without keeping a second resolver.
+        let cases = [
+            (
+                "plain",
+                "@article{plain,title={Synthetic Signals},author={Avery Researcher and Ann Morgan},year=2024,\
+                 journal={Invented Letters},pages={1--20},doi={10.1234/synthetic}}",
+                "b8be92d43a8d538588daa3c9980d7d864ae15c7414c6c4ce77c9373833b982cc",
+            ),
+            (
+                "escaped",
+                concat!(
+                    r"@book{escaped,title={Garc{\'\i}a \{literal\} \textbackslash{} ",
+                    "\u{E000}\u{E001}\u{E002}\u{E003}",
+                    r"},note={\i nt \item \j and \\{group\\}}}",
+                ),
+                "f1d5987d1850b8b056cf93e986b6040d4e0d7aeed6e2aeee365fcea9cc985011",
+            ),
+            (
+                "unicode-and-verbatim-url",
+                r"@book{unicode,title={২০২০ পর্যবেক্ষণ},year={۲۰۲۴},month=mar,day={৫},
+                  url={https://example.invalid/\textbackslash/a\{kept\}},urldate={２０２５-０２-０３}}",
+                "b072b65627381cb78ff0bc5fa3017ed76bd72f2b15283389f388dde25087af17",
+            ),
+            (
+                "epochs-and-shared-inheritance",
+                "@string{label=\"Early\"}\n@proceedings{parent,title=label,year=2024}\n\
+                 @xdata{shared,publisher={Invented Press},note={Shared}}\n\
+                 @string{label=\"Late\"}\n\
+                 @inproceedings{first,title=label,month=mar,xdata={shared},crossref={parent}}\n\
+                 @inproceedings{second,title={Other},xdata={shared},crossref={parent}}",
+                "5f3eddd89f3cb8202edec217f0f5ad62c6700d111448f8787170bae22bb753ff",
+            ),
+            (
+                "malformed-and-refused-fields",
+                "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
+                 @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
+                 @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
+                "7bfbfce8c7ad8464116da90674c220707281fc0a672009b471115194137fd317",
+            ),
+        ];
+        let mut mismatches = Vec::new();
+        for (name, text, expected) in cases {
+            let mut macros = Vec::new();
+            let mut entries = Vec::new();
+            for block in split_blocks(text).0 {
+                if block.kind == "string" {
+                    macros.extend(parse_string(&block));
+                } else if block.complete
+                    && let Ok(mut entry) = parse_entry(&block)
+                {
+                    entry.macro_epoch = macros.len();
+                    entries.push(entry);
+                }
+            }
+            let mut transcript = Vec::new();
+            for credits in (0..=65_536).step_by(257).chain([usize::MAX]) {
+                let budget = Budget::new(credits);
+                let resolver = Resolver::new(macros.clone(), &entries, &budget);
+                let resolved: Vec<_> = entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| entry.kind != "xdata")
+                    .map(|(i, _)| {
+                        let result = resolver.resolve(i);
+                        json!({
+                            "source": result.source,
+                            "fields": result.fields.into_iter().collect::<BTreeMap<_, _>>(),
+                            "problems": result.problems,
+                            "remaining": budget.0.get(),
+                        })
+                    })
+                    .collect();
+                let (loaded, limited) = super::super::load_with_budget(
+                    &LibraryId::file(b"synthetic-resolver-regression.bib"),
+                    text,
+                    Budget::new(credits),
+                    None,
+                );
+                let records = serde_json::to_value(&loaded.records).unwrap_or_else(|e| panic!("{e}"));
+                let snapshot = Snapshot::new(loaded.records.into_iter().map(LibraryObject::Record).collect())
+                    .unwrap_or_else(|e| panic!("{e}"));
+                transcript.push(json!({
+                    "credits": credits,
+                    "resolved": resolved,
+                    "records": records,
+                    "fingerprints": snapshot.fingerprints(),
+                    "warnings": loaded.warnings,
+                    "limited": limited,
+                }));
+            }
+            let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap_or_else(|e| panic!("{e}")));
+            if actual.as_str() != expected {
+                mismatches.push(format!("{name}: {}", actual.as_str()));
+            }
+        }
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
     }
 
     #[test]
