@@ -1978,7 +1978,7 @@ dependencies = [
 
 [[package]]
 name = "ibis"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "ibis-core",
@@ -1989,7 +1989,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "memchr",
  "proptest",
@@ -2005,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-csl"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibis-core",
  "icu_casemap",
@@ -2020,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-desktop"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "auto-launch",
  "clipboard-win",
@@ -2059,7 +2059,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-engine"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibis-core",
  "ibis-csl",
@@ -2073,7 +2073,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-sources"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "biblatex",
  "ibis-core",
@@ -2096,7 +2096,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-zotero-local"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibis-core",
  "nix",

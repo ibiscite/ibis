@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.2.1](https://github.com/ibiscite/ibis/compare/v0.2.0...v0.2.1) (2026-10-29)
+
+
+### Features
+
+* **desktop:** add pages and narrative or author-omitted forms ([#1394](https://github.com/ibiscite/ibis/issues/1394)) ([160775d](https://github.com/ibiscite/ibis/commit/160775da9d7b2c0363e614ab7a46552749a4e5ca))
+* **desktop:** drag Ibis into the macOS permission list ([#1400](https://github.com/ibiscite/ibis/issues/1400)) ([92a071e](https://github.com/ibiscite/ibis/commit/92a071e55e9362301c509b5ce75be1e1df2de78e))
+* **desktop:** Enter does what the footer says ([#1401](https://github.com/ibiscite/ibis/issues/1401)) ([cc3a1dc](https://github.com/ibiscite/ibis/commit/cc3a1dcff7f9bf718be1eb666b08ca83f15c9e00))
+* **desktop:** keep the prepared citation through the permission detour ([#1392](https://github.com/ibiscite/ibis/issues/1392)) ([267e97b](https://github.com/ibiscite/ibis/commit/267e97bc522faf45e0be0214883b459aba2a9c77))
+* **desktop:** open Ibis on Wayland through the GlobalShortcuts portal ([#1402](https://github.com/ibiscite/ibis/issues/1402)) ([dcabc60](https://github.com/ibiscite/ibis/commit/dcabc60358f57c97fc6e883b43cd04409098c978))
+* **desktop:** the first paste in a browser asks for the output once ([#1393](https://github.com/ibiscite/ibis/issues/1393)) ([1502411](https://github.com/ibiscite/ibis/commit/1502411ef0f498cc492dfea74090fc4dcbd5c553))
+* **desktop:** try Ibis with sample references ([#1405](https://github.com/ibiscite/ibis/issues/1405)) ([799a248](https://github.com/ibiscite/ibis/commit/799a248ddd7b8ff5ac24d4e8eca356999c8b820c))
+
+
+### Bug Fixes
+
+* **desktop:** a stale paste notice can no longer consume a newer copy ([#1403](https://github.com/ibiscite/ibis/issues/1403)) ([d60c832](https://github.com/ibiscite/ibis/commit/d60c83288db72db8fc696cd90e3b029a9230c33f))
+* **desktop:** keep keys typed right after the shortcut on Linux ([#1358](https://github.com/ibiscite/ibis/issues/1358)) ([1b7975c](https://github.com/ibiscite/ibis/commit/1b7975ca422b7ba11c110b10fcaca0b2c6290706))
+* **desktop:** read pages in picker search the way the engine does ([#1404](https://github.com/ibiscite/ibis/issues/1404)) ([114a833](https://github.com/ibiscite/ibis/commit/114a83399be49a71c940cc53138fba5f1d1706de))
+* **desktop:** refuse picker chords as the opening shortcut ([#1396](https://github.com/ibiscite/ibis/issues/1396)) ([728ef29](https://github.com/ibiscite/ibis/commit/728ef2934efea23b03f1f1b2282682e9087b70ae))
+* **desktop:** restore canonical locators with current consumers ([#1424](https://github.com/ibiscite/ibis/issues/1424)) ([2242696](https://github.com/ibiscite/ibis/commit/2242696687d697495c46e048b91acf785b62801b))
+
+
+### Performance
+
+* enforce speed and size budgets and cancel superseded previews ([#1397](https://github.com/ibiscite/ibis/issues/1397)) ([dfc3901](https://github.com/ibiscite/ibis/commit/dfc3901d02f3d36d418cba02f0c3514cf35c503c))
+
+
+### Documentation
+
+* plan human-like testing across apps, settings and people ([#1408](https://github.com/ibiscite/ibis/issues/1408)) ([b9073d3](https://github.com/ibiscite/ibis/commit/b9073d3fdec456c86b5cf5a19fa6e46a1b53ddbd))
+* work by state ownership and write scenarios before code ([#1416](https://github.com/ibiscite/ibis/issues/1416)) ([b17e8ed](https://github.com/ibiscite/ibis/commit/b17e8ed87e109cc721bdcc4d8a0259bb0670002c))
+
 ## [0.2.0](https://github.com/ibiscite/ibis/compare/v0.1.1...v0.2.0) (2026-10-28)
 
 
