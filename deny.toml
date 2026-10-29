@@ -50,6 +50,13 @@ allow = [
     "Zlib",
 ]
 
+# Test-only fuzz runtime; maintainer approval (2026-10-29):
+# [0002 Licence](docs/decisions.md#0002-licence)
+[[licenses.exceptions]]
+name = "libfuzzer-sys"
+version = "=0.4.13"
+allow = ["NCSA"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
