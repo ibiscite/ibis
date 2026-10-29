@@ -27,6 +27,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::sizing::fit_picker,
             crate::picker::quit,
             crate::picker::shortcut_status,
+            crate::picker::wayland::configure_shortcuts,
             crate::notice::show_copied_notice,
             crate::notice::copied_notice,
             crate::native_feel::native_appearance,
@@ -71,6 +72,7 @@ mod tests {
         "finish_paste_guide",
         "shortcut_status",
         "set_shortcut",
+        "configure_shortcuts",
     ];
 
     /// Only Settings asks about paste permission or changes the global shortcut.
@@ -80,6 +82,7 @@ mod tests {
         "drag_paste_app",
         "finish_paste_guide",
         "set_shortcut",
+        "configure_shortcuts",
     ];
 
     fn destination() -> PathBuf {

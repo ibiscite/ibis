@@ -97,7 +97,9 @@ export const commands = {
 	 */
 	quit: () => __TAURI_INVOKE<void>("quit"),
 	/**  Current state of the global shortcut. */
-	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus>("shortcut_status"),
+	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus_Serialize>("shortcut_status"),
+	/**  Only Settings may request the desktop's configuration UI. It never saves. */
+	configureShortcuts: () => __TAURI_INVOKE<null>("configure_shortcuts"),
 	/**
 	 *  After the picker has hidden: paste into the app it was opened from when
 	 *  that is safe (#27), then say "Pasted into …" or "Copied" and why. The
@@ -152,7 +154,7 @@ export const commands = {
 	 *  Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
 	 *  Every window and the menu bar item show the change at once.
 	 */
-	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus>("set_shortcut", { shortcut }),
+	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus_Serialize>("set_shortcut", { shortcut }),
 };
 
 /* Types */
@@ -207,6 +209,11 @@ reason: string | null };
 
 /**  How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable" | "spacious";
+
+export type DesktopShortcut = {
+	configurable: boolean,
+	guidance: string,
+};
 
 export type FilePreview = {
 	ticket: string,
@@ -535,10 +542,24 @@ export type ShortcutRefusal =
 "not-saved";
 
 /**  Whether the global shortcut is working, shown in the interface. */
-export type ShortcutStatus = {
+export type ShortcutStatus = ShortcutStatus_Serialize | ShortcutStatus_Deserialize;
+
+/**  Whether the global shortcut is working, shown in the interface. */
+export type ShortcutStatus_Deserialize = {
 	shortcut: string,
 	registered: boolean,
 	error: string | null,
+	/**  Present on Wayland, including when the portal is unavailable. */
+	desktop?: DesktopShortcut | null,
+};
+
+/**  Whether the global shortcut is working, shown in the interface. */
+export type ShortcutStatus_Serialize = {
+	shortcut: string,
+	registered: boolean,
+	error: string | null,
+	/**  Present on Wayland, including when the portal is unavailable. */
+	desktop?: DesktopShortcut | null,
 };
 
 /**  What first-run setup can offer. */

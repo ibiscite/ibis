@@ -552,7 +552,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   };
   // The keys overlay lists the global shortcut too, when it works.
   const bindings: readonly KeyBinding[] = shortcut?.registered
-    ? [...KEY_TABLE, { region: "system", action: "open", keys: [shortcut.shortcut] }]
+    ? [...KEY_TABLE, { region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined }]
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
@@ -638,6 +638,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       {shortcut?.error && (
         <p role="status">
           {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
+          {shortcut.desktop && ` ${shortcut.desktop.guidance}`}
         </p>
       )}
       <PickerHeader

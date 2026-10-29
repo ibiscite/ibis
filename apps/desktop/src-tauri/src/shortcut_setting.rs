@@ -232,6 +232,9 @@ pub(crate) async fn set_shortcut(
     changing: State<'_, Changing>,
     shortcut: Option<String>,
 ) -> Result<ShortcutStatus, ShortcutRefusal> {
+    if crate::picker::desktop_owned() {
+        return Err(ShortcutRefusal::Unavailable);
+    }
     let _changing = changing.0.lock().await;
     let (sender, receiver) = std::sync::mpsc::channel();
     let handle = app.clone();
@@ -262,6 +265,7 @@ pub(crate) async fn set_shortcut(
         shortcut: shortcut.clone().unwrap_or_else(|| shortcut_label().to_string()),
         registered: true,
         error: note.map(str::to_string),
+        desktop: None,
     };
     if let Ok(mut current) = app.state::<Mutex<ShortcutStatus>>().lock() {
         *current = status.clone();

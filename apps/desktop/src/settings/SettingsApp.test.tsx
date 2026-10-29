@@ -34,6 +34,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
     shortcuts: [] as ((status: ShortcutStatus) => void)[],
     shortcutChoices: [] as (string | null)[],
+    configured: 0,
     automatic: [] as ((on: boolean) => void)[],
   };
   const commit = async (next: Partial<PickerPreferences>) => {
@@ -55,6 +56,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     dragPasteApp: vi.fn(async () => undefined),
     finishPasteGuide: async () => { state.finished += 1; return true; },
     shortcutStatus: async () => state.shortcut,
+    configureShortcuts: async () => { state.configured += 1; return null; },
     setShortcut: async (shortcut) => {
       state.shortcutChoices.push(shortcut);
       state.shortcut = { shortcut: shortcut ?? DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
@@ -76,6 +78,82 @@ test("pages are opened by name, and the paste guide is General's pasting group",
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
+});
+
+test.each([1, 2])("Wayland portal v%s shows the desktop trigger, never a recorder or reset", async (version) => {
+  const { api, state } = fakeApi();
+  state.shortcut = { shortcut: "Strg + Umschalt + Y", registered: true, error: null,
+    desktop: { configurable: version >= 2, guidance: version >= 2 ? "Your desktop manages this shortcut." : "Change this shortcut in System Settings > Keyboard > Shortcuts > Ibis." } };
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  expect(await screen.findByText("Strg + Umschalt + Y")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open Ibis" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+  if (version >= 2) {
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    await waitFor(() => expect(state.configured).toBe(1));
+  } else {
+    expect(screen.queryByRole("button", { name: "Change…" })).toBeNull();
+    expect(screen.getByText(/System Settings > Keyboard > Shortcuts > Ibis/)).toBeTruthy();
+  }
+  await act(async () => {
+    state.shortcut = { ...state.shortcut, shortcut: "Alt + F9" };
+    for (const handler of state.shortcuts) handler(state.shortcut);
+  });
+  expect(screen.getByText("Alt + F9")).toBeTruthy();
+  expect(state.shortcutChoices).toEqual([]);
+  expect(state.saved).toEqual([]);
+  const result = await axe.run(document.body);
+  expect(result.violations).toEqual([]);
+});
+
+test("portal configuration prevents repeated requests, reports failure and allows retry", async () => {
+  const { api, state } = fakeApi();
+  state.shortcut = { shortcut: "Ctrl+Shift+Y", registered: true, error: null, desktop: { configurable: true, guidance: "Desktop settings" } };
+  const pending = deferred<null>();
+  const configure = vi.spyOn(api, "configureShortcuts").mockReturnValueOnce(pending.promise);
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  const change = await screen.findByRole("button", { name: "Change…" });
+  fireEvent.click(change);
+  fireEvent.click(change);
+  expect(configure).toHaveBeenCalledTimes(1);
+  expect(change.hasAttribute("disabled")).toBe(true);
+  await act(async () => pending.reject());
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", settingsText.shortcut.configureFailed);
+  fireEvent.click(change);
+  await waitFor(() => expect(state.configured).toBe(1));
+  expect(state.shortcutChoices).toEqual([]);
+});
+
+test.each([false, true])("a successful session without a trigger shows Hyprland bindings and keeps configuration capability (%s)", async (configurable) => {
+  const { api, state } = fakeApi();
+  const guidance = 'Hyprland: add `hl.bind("CTRL + SHIFT + Y", hl.dsp.exec_cmd("ibis toggle"))`. For hyprland.conf: `bind = CTRL SHIFT, Y, exec, ibis toggle`.';
+  state.shortcut = { shortcut: "", registered: false, error: "Your desktop did not report a shortcut.", desktop: { configurable, guidance } };
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  expect(await screen.findByText(guidance)).toBeTruthy();
+  expect(screen.getByText("Not assigned")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open Ibis" })).toBeNull();
+  if (configurable) {
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    await waitFor(() => expect(state.configured).toBe(1));
+  } else expect(screen.queryByRole("button", { name: "Change…" })).toBeNull();
+  expect(state.shortcutChoices).toEqual([]);
+});
+
+test("portal loss removes the stale trigger and Change, showing the exact fallback binding", async () => {
+  const { api, state } = fakeApi();
+  state.shortcut = { shortcut: "Ctrl+Shift+Y", registered: true, error: null, desktop: { configurable: true, guidance: "Desktop settings" } };
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  await screen.findByRole("button", { name: "Change…" });
+  const guidance = "Sway: add `bindsym --no-repeat Ctrl+Shift+y exec ibis toggle` to ~/.config/sway/config, then run `swaymsg reload`.";
+  await act(async () => {
+    state.shortcut = { shortcut: "", registered: false, error: "The desktop shortcut is unavailable.", desktop: { configurable: false, guidance } };
+    for (const handler of state.shortcuts) handler(state.shortcut);
+  });
+  expect(screen.getByText("Not assigned")).toBeTruthy();
+  expect(screen.getByText(guidance)).toBeTruthy();
+  expect(screen.queryByText("Ctrl+Shift+Y")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Change…" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Open Ibis" })).toBeNull();
 });
 
 test.each([

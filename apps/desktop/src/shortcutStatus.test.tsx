@@ -1,5 +1,5 @@
 import { expect, test, vi, afterEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { StrictMode } from "react";
 import { App } from "./App";
@@ -7,6 +7,35 @@ import * as api from "./api";
 import { backend, resetApp } from "./testing/app";
 
 afterEach(resetApp);
+
+test("the keys list preserves the desktop's trigger text without inventing an accelerator", async () => {
+  const label = "Strg + Umschalt + Y";
+  backend({ shortcut_status: () => ({ shortcut: label, registered: true, error: null, desktop: { configurable: true, guidance: "Desktop settings" } }) });
+  render(<App />);
+  const input = await screen.findByLabelText("Search references");
+  await act(async () => { await emit("shortcut:status", { shortcut: label, registered: true, error: null, desktop: { configurable: true, guidance: "Desktop settings" } }); });
+  fireEvent.keyDown(input, { key: "/", code: "Slash", ctrlKey: true });
+  const trigger = await screen.findByText(label);
+  expect(trigger.tagName).toBe("KBD");
+  expect(trigger.hasAttribute("aria-keyshortcuts")).toBe(false);
+});
+
+test("the picker shows the exact compositor binding when the portal is unavailable", async () => {
+  const guidance = "Sway: add bindsym --no-repeat Ctrl+Shift+y exec ibis toggle to ~/.config/sway/config.";
+  backend({ shortcut_status: () => ({ shortcut: "", registered: false, error: "The desktop shortcut is unavailable.", desktop: { configurable: false, guidance } }) });
+  render(<App />);
+  expect((await screen.findByText(/Sway: add bindsym/)).textContent).toContain(guidance);
+});
+
+test("the picker shows bindings for a successful session without a reported trigger and clears them when assigned", async () => {
+  const guidance = "Hyprland: add bind = CTRL SHIFT, Y, exec, ibis toggle to hyprland.conf.";
+  backend({ shortcut_status: () => ({ shortcut: "", registered: false, error: "Your desktop did not report a shortcut.", desktop: { configurable: true, guidance } }) });
+  render(<App />);
+  expect((await screen.findByText(/Hyprland: add bind/)).textContent).toContain(guidance);
+  expect(screen.queryByText(/Restart Ibis/)).toBeNull();
+  await act(async () => { await emit("shortcut:status", { shortcut: "Alt+Y", registered: true, error: null, desktop: { configurable: true, guidance: "Your desktop manages this shortcut." } }); });
+  await waitFor(() => expect(screen.queryByText(/Hyprland: add bind/)).toBeNull());
+});
 
 test("a shortcut that could not be registered is explained", async () => {
   backend({
