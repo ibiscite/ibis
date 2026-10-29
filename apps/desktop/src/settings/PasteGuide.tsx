@@ -12,19 +12,30 @@ export const STALE_HINT_MS = 15_000;
 
 /** Whether Ibis may paste, read live while the guide waits (#1292). Coming
  * back to the window reads it at once, so the answer is never stale. */
-export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, active: boolean) {
+export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, active: boolean, poll = true) {
   const [permission, setPermission] = useState<PastePermission | null>(null);
-  // Poll only while waiting for the switch; focus covers later changes.
-  const waiting = permission?.needed === true && !permission.granted;
+  const [visible, setVisible] = useState(!document.hidden);
   useEffect(() => {
-    if (!active) return;
+    const changed = () => setVisible(!document.hidden);
+    document.addEventListener("visibilitychange", changed);
+    return () => document.removeEventListener("visibilitychange", changed);
+  }, []);
+  // Poll only while waiting for the switch; focus covers later changes.
+  const waiting = poll && permission?.needed === true && !permission.granted;
+  useEffect(() => {
+    if (!active || !visible) return;
     let live = true;
-    const read = () => api.pastePermission().then((next) => { if (live) setPermission(next); }).catch(() => undefined);
+    let request = 0;
+    const read = () => {
+      if (document.hidden) return;
+      const current = ++request;
+      void api.pastePermission().then((next) => { if (live && current === request) setPermission(next); }).catch(() => undefined);
+    };
     void read();
     const timer = waiting ? window.setInterval(read, RECHECK_MS) : undefined;
     window.addEventListener("focus", read);
     return () => { live = false; window.clearInterval(timer); window.removeEventListener("focus", read); };
-  }, [api, active, waiting]);
+  }, [api, active, visible, waiting]);
   return permission;
 }
 

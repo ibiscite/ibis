@@ -50,7 +50,7 @@ test.each(["available", "absent", "access_off"] as const)("Zotero %s is told in 
   press(option(/^Look for libraries on this computer/));
   await waitFor(() => expect(option(/^Look again/).textContent).not.toContain("Looking"));
   expect(option(/^Zotero/).textContent?.includes("Found on this")).toBe(zotero === "available");
-  expect(screen.queryByText(/does not let other apps read it/) !== null).toBe(zotero === "access_off");
+  expect(screen.queryByText(/To read your references, in Zotero/) !== null).toBe(zotero === "access_off");
   expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
 });
 

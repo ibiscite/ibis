@@ -652,7 +652,7 @@ test.each([
     for (let i = 1; i < count; i++) fireEvent.keyDown(box, { key: "ArrowUp" });
     const active = box.getAttribute("aria-activedescendant");
     const tray = screen.getByRole("list", { name: "Selected references" });
-    const remove = within(tray).getAllByRole("button")[index]!;
+    const remove = within(tray).getAllByRole("button", { name: /^Remove .* from the selection$/ })[index]!;
     act(() => remove.focus());
     if (activation === "pointer") {
       fireEvent.pointerDown(remove, { button: 0 });
@@ -2289,7 +2289,7 @@ test("when Zotero refuses other apps and no files are found, setup explains Zote
   backend({ library_status: () => NO_LIBRARY, find_sources: () => ({ zotero: "access_off", list: 1, files: [], cut_short: false }) });
   render(<App />);
   pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
-  expect(await screen.findByText(/does not let other apps read it yet/)).toBeTruthy();
+  expect(await screen.findByText(/To read your references, in Zotero/)).toBeTruthy();
   expect(screen.queryByText(/No Zotero or .bib files found/)).toBeNull();
 });
 

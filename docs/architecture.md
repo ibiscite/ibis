@@ -90,6 +90,24 @@ longer carries the pre-engine library model, file loaders or citation renderer.
 Shared names, dates, settings choices, discovery and transport rules remain
 where clients still use them.
 
+The picker's small per-reference editor (#1366) sends its captured page and
+Normal, Narrative or Omit author intent through the native preview request.
+The native adapter uses `ibis_core::locator::page_value` to remove an optional
+page label before constructing the request. Recognised labels with missing or
+invalid values are refused before preparation; they never fall back to literal
+text. The shared numeric grammar accepts Unicode numeric characters, counts
+characters for numeric bounds and keeps four-digit years ambiguous in unlabelled
+searches. Its input length limit still bounds Page validation. The editor keeps
+the raw input. Narrative maps to an item form; Omit author maps to author
+suppression. A single BibLaTeX narrative pick selects `textcite` from the output
+family. Other form support and field losses come from the engine; unsupported
+mixed narrative groups are refused, never split into invented clusters. Indexed loss messages
+identify the reference and field. Page/form edits invalidate pending copy and
+preview identity, then prepare a fresh canonical receipt; copy still consumes
+only that receipt. Hiding citation text retains formatting refusals and their
+actionable explanations. This adds no polling or formatter runtime and retains
+only one page string and form per selected reference.
+
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
 report a typed prefix/flattened loss, since a footnote-style citation cannot
@@ -227,6 +245,14 @@ still needs further work.
 - **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the app in front is captured (bundle ID, process, name; never window titles) before the picker shows. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks or expired tasks copy with `paste-unavailable`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no AX attributes or clipboard contents and requires only PostEvent permission, independent of AX trust. Terminals, remote desktops and VMs are also refused. Windows: the window in front is captured the same way (executable file name, process, integrity level), the picker shows above always-on-top windows, and the keyboard is handed back to that window. A one-use delivery ticket freezes the target, HWND and picker generation before copying, then records the final clipboard sequence after Ibis's own write. One atomic Ctrl+V `SendInput` goes in only while that window and process are in front, no key is held and that sequence is unchanged; apps with more rights than Ibis and UI Automation password fields copy instead. Password checks have a 250 ms caller deadline, no queue and at most one outstanding query per target process (four total); a stuck provider blocks only its own process. Display names are read off the UI thread with a bounded wait and executable-name fallback. Partial `SendInput` releases every key it left down, retries failed releases and retains them for recovery before any later paste. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
 - **Reader (Later; 0.5 cites from annotations and existing PDFs first):** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
 - **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
+- **Paste permission detour:** delivery returns its typed outcome to the picker.
+  A `no-permission` result keeps the prepared shelf and output in memory rather
+  than consuming them. Settings rechecks permission every second while its
+  General page is visible and pasting is on, and immediately on return; older
+  reads cannot replace newer ones. Only a refused-paste deep link resumes the
+  picker, after another native permission and focus check and queued settings
+  saves. Normal picker presentation captures the current destination and
+  retires the old clipboard proof. No paste is attempted until a fresh Enter.
 - **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.
 - **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 100,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search, refresh and picker asset size are deterministic checks that fail pull request CI; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
 

@@ -32,6 +32,15 @@ pub(crate) struct FileSelection {
     pub(crate) id: Value,
     pub(crate) cite: String,
     pub(crate) locator: Option<Locator>,
+    #[specta(optional)]
+    pub(crate) form: Option<ReferenceForm>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ReferenceForm {
+    Normal,
+    Narrative,
+    AuthorOmitted,
 }
 #[derive(Serialize, specta::Type)]
 pub(crate) struct FilePreview {
@@ -307,6 +316,16 @@ impl FileLibrary {
         format: KeyFormat,
         style: Option<CitationStyle>,
     ) -> Result<FilePreview, CommandError> {
+        // Narrative is the textcite member of the BibLaTeX output family.
+        // Mixed command clusters remain outside the picker's small editor.
+        let format = if items.len() == 1
+            && items[0].form == Some(ReferenceForm::Narrative)
+            && matches!(format, KeyFormat::Autocite | KeyFormat::Parencite)
+        {
+            KeyFormat::Textcite
+        } else {
+            format
+        };
         let output = if let Some(style) = style {
             json!({"kind":"csl","style":style})
         } else {
@@ -323,8 +342,33 @@ impl FileLibrary {
         };
         let items: Vec<_> = items
             .into_iter()
-            .map(|item| json!({"item":item.id,"expected_cite":item.cite,"locator":item.locator.map(|locator| json!({"term":locator.label,"value":locator.value}))}))
-            .collect();
+            .enumerate()
+            .map(|(index, item)| {
+                let locator = item
+                    .locator
+                    .map(|mut locator| -> Result<Value, CommandError> {
+                        if locator.label == ibis_core::cite::LocatorLabel::Page {
+                            locator.value = ibis_core::locator::page_value(&locator.value).map_err(|error| {
+                                let hint = match error {
+                                    ibis_core::locator::PageValueError::MissingValue => {
+                                        "Page needs a page or range. Enter one after the label, or clear Page."
+                                    }
+                                    ibis_core::locator::PageValueError::InvalidValue => {
+                                        "Page needs a valid page or range after its label. Correct it, or clear Page."
+                                    }
+                                };
+                                CommandError::from(format!("Reference {}: {hint}", index + 1))
+                            })?;
+                        }
+                        Ok(json!({"term":locator.label,"value":locator.value}))
+                    })
+                    .transpose()?;
+                Ok(json!({"item":item.id,"expected_cite":item.cite,
+                "form":(item.form == Some(ReferenceForm::Narrative)).then_some("narrative"),
+                "suppress_author":item.form == Some(ReferenceForm::AuthorOmitted),
+                "locator":locator}))
+            })
+            .collect::<Result<_, CommandError>>()?;
         let request: CitationRequest = serde_json::from_value(json!({"items":items,"output":output,"form":if style == Some(CitationStyle::Ieee) { "bibliography-only" } else { "normal" },"keep_order":style.is_none()}))
             .map_err(|_| CommandError::from("The selected references could not be read. Search again."))?;
         let citation = self
@@ -342,6 +386,14 @@ impl FileLibrary {
             // A key another record also has is named, so the picker can say what to rename.
             if let Some(key) = refused(CitationError::AmbiguousKey).and_then(|item| self.citation_key(&request, item)) {
                 return Err(CommandError::SharedCitationKey { key });
+            }
+            if let Some(item) = refused(CitationError::UnsupportedForm) {
+                let form = if request.items[item].form == Some(ibis_core::contract::CitationForm::Narrative) {
+                    "Narrative"
+                } else {
+                    "This citation form"
+                };
+                return Err(format!("Reference {}: {form} cannot be expressed in this output or group. Choose Normal, cite it alone, or choose another output.", item + 1).into());
             }
             return Err(if refused(CitationError::ConflictingKey).is_some() {
                 "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
@@ -424,8 +476,17 @@ fn citation_warnings(result: &CitationResult) -> Vec<String> {
     if result.notices.contains(&Notice::YearSuffixWithheld) {
         warnings.push("Year suffixes require the whole document; Ibis leaves them out.".into());
     }
-    if !result.losses.is_empty() {
-        warnings.push("This format cannot express part of the citation.".into());
+    for loss in &result.losses {
+        use ibis_core::contract::LossField;
+        let detail = match loss.field {
+            LossField::Locator => "Page or location",
+            LossField::AuthorSuppression => "Omit author",
+            _ => "Part of the citation",
+        };
+        let owner = loss
+            .item
+            .map_or_else(String::new, |item| format!("Reference {}: ", item + 1));
+        warnings.push(format!("{owner}{detail} cannot be fully expressed in this output."));
     }
     warnings
 }

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
-import { backend, resetApp, result } from "./testing/app";
+import { backend, prepared, resetApp, result } from "./testing/app";
+import { emit } from "@tauri-apps/api/event";
+import type { PickerDestination } from "./api";
 
 // Keep the 2.4-second confirmation alive while assertions run, even when other
 // workers are busy. Use one clock from mount through unmount; switching clocks
@@ -20,11 +22,105 @@ async function copy() {
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
 }
 
+async function selectPair() {
+  const search = screen.getByLabelText("Search references");
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); });
+  await act(async () => { fireEvent.keyDown(search, { key: "ArrowDown" }); });
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); });
+}
+
 async function toggleKeepOpen() {
   await act(async () => {
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
   });
 }
+
+test.each([0, 2])("a permission detour keeps the citation past a minute through %i returns before the grant, waiting for a fresh Enter", async (returnsBeforeGrant) => {
+  let granted = false;
+  const copies: unknown[] = [];
+  const calls = await openPicker({
+    search: () => ({ revision: "1", results: [result("a", "First"), result("b", "Second")],
+      interpretation: { search: "Smith", locator: { label: "page", value: "12" }, typed: "p.12" } }),
+    copy_file_citation: (args) => {
+      const citation = prepared(args);
+      copies.push(citation.request);
+      return { text: citation.preview.text, warnings: [] };
+    },
+    show_copied_notice: async () => ({ outcome: granted ? "pasted" : "copied", reason: granted ? null : "no-permission", app: "Writer" }),
+  });
+  const search = screen.getByLabelText("Search references") as HTMLInputElement;
+  await act(async () => { fireEvent.change(search, { target: { value: "Smith p.12" } }); });
+  await selectPair();
+  const shelf = () => document.querySelector(".shelf")?.textContent;
+  const shelfText = shelf();
+  expect(shelfText).toContain("@a; @b");
+  await copy();
+  expect(shelf()).toBe(shelfText);
+  await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); });
+  for (let opening = 0; opening < returnsBeforeGrant; opening += 1) {
+    await act(async () => { await emit("picker:shown"); });
+    expect(shelf()).toBe(shelfText);
+    expect(search.value).toBe("Smith p.12");
+    await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); });
+  }
+  granted = true;
+  await act(async () => { await emit("picker:shown"); });
+  expect(shelf()).toBe(shelfText);
+  expect(search.value).toBe("Smith p.12");
+  expect(calls.filter((c) => c === "copy_file_citation")).toHaveLength(1);
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter", repeat: true }); });
+  expect(copies).toHaveLength(1);
+  await copy();
+  expect(calls.filter((c) => c === "copy_file_citation")).toHaveLength(2);
+  expect(copies[1]).toEqual(copies[0]);
+  expect(copies[1]).toMatchObject({ items: [
+    { id: { key: "a" }, locator: { label: "page", value: "12" } },
+    { id: { key: "b" }, locator: { label: "page", value: "12" } },
+  ] });
+  expect(shelf()).not.toContain("@a; @b");
+  await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(61_000); await emit("picker:shown"); });
+  expect(search.value).toBe("");
+});
+
+test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
+  let granted = false;
+  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, output_question: null };
+  let delayReturn = false;
+  let finishReturn!: (value: PickerDestination) => void;
+  const copies: unknown[] = [];
+  const calls = await openPicker({
+    picker_destination: () => {
+      if (!delayReturn) return destination;
+      delayReturn = false;
+      return new Promise<PickerDestination>((resolve) => { finishReturn = resolve; });
+    },
+    copy_file_citation: (args) => {
+      const citation = prepared(args);
+      copies.push(citation.request);
+      return { text: citation.preview.text, warnings: [] };
+    },
+    show_copied_notice: () => ({ outcome: granted ? "pasted" : "copied", reason: granted ? null : "no-permission", app: "Example Editor" }),
+  });
+  await copy();
+  await act(async () => { await emit("picker:hidden"); });
+  destination = { ...destination, app: "Example Writer", app_id: "example.writer", remembered: { key: "cite" } };
+  delayReturn = true;
+  granted = true;
+  await act(async () => { await emit("picker:shown"); });
+  expect(calls.filter((call) => call === "picker_destination")).toHaveLength(2);
+  await act(async () => { await emit("preferences:changed"); });
+  expect(calls.filter((call) => call === "picker_destination")).toHaveLength(3);
+  await act(async () => { finishReturn({ ...destination, app: "Stale Editor", app_id: "example.stale" }); });
+  expect(screen.getByRole("button", { name: "Copy as Typst key · Example Writer" })).toBeTruthy();
+  expect(copies).toHaveLength(1);
+  await copy();
+  expect(copies).toHaveLength(2);
+  expect(copies[1]).toEqual(copies[0]);
+  expect(copies[1]).toMatchObject({ format: "typst" });
+  expect(screen.getByRole("button", { name: "Copy as \\cite · Example Writer" })).toBeTruthy();
+  expect(calls).not.toContain("remember_app_output");
+  expect(calls).not.toContain("set_picker_preferences");
+});
 
 test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain until dismissed with %s", async (key) => {
   let warnings: string[] = [];
@@ -53,13 +149,46 @@ test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain u
 });
 
 test("copy remains confirmed when hiding after a successful copy fails", async () => {
-  await openPicker({ copy_file_citation: () => ({ text: "@a", warnings: [] }),
+  const copies: unknown[] = [];
+  const calls = await openPicker({
+    search: ({ query }) => query.text === "third" ? [result("c", "Third")] : [result("a", "First"), result("b", "Second")],
+    copy_file_citation: (args) => { const citation = prepared(args); copies.push(citation.request); return { text: citation.preview.text, warnings: [] }; },
     hide_picker: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
+  await selectPair();
   await copy();
   expect(screen.getByText("Ibis could not hide this window. Try again.")).toBeTruthy();
   expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
   expect(document.body.textContent).not.toContain("Nothing was copied");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+  expect(copies[0]).toMatchObject({ items: [{ id: { key: "a" } }, { id: { key: "b" } }] });
+  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  await act(async () => { fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "third" } }); });
+  expect(screen.getByText("Third")).toBeTruthy();
+  await copy();
+  expect(copies).toHaveLength(2);
+  expect(copies[1]).toMatchObject({ items: [{ id: { key: "c" } }] });
+  expect(calls).not.toContain("show_copied_notice");
+});
+
+test.each(["selection", "search", "reopening"])("a delayed hide failure cannot complete a citation after a newer %s", async (change) => {
+  let rejectHide!: (error: Error) => void;
+  const calls = await openPicker({
+    search: () => [result("a", "First"), result("b", "Second")],
+    hide_picker: () => new Promise((_, reject) => { rejectHide = reject; }),
+  });
+  const search = screen.getByLabelText("Search references");
+  await act(async () => { fireEvent.keyDown(search, { key: "Enter", shiftKey: true }); });
+  await copy();
+  await act(async () => {
+    if (change === "selection") fireEvent.click(screen.getByText("Second"), { ctrlKey: true });
+    else if (change === "search") fireEvent.change(search, { target: { value: "new search" } });
+    else await emit("picker:shown");
+  });
+  const shelfText = document.querySelector(".shelf")?.textContent;
+  await act(async () => { rejectHide(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
+  expect(document.querySelector(".shelf")?.textContent).toBe(shelfText);
+  expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+  expect(calls).not.toContain("show_copied_notice");
 });
 
 test("a clean copy hides the picker, then says Copied with the copied text", async () => {
