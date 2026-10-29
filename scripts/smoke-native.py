@@ -1024,11 +1024,12 @@ def first_run_preferences_main(args):
         wait_for(lambda: visible_text("3 references"), "synthetic references after relaunch")
         wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
         # The writing question needs a library chosen in the app; Copy as sets the same preference.
-        # With no match the footer offers no "Copy as Pandoc", so the name is the header's alone.
+        # The header has no stable native identifier; keep its action in the accessible name.
+        # With no match there is no footer copy action to invoke accidentally.
         type_query(native, snapshot, NO_MATCH, "ctrl+a")
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
-        native.click("Copy as Pandoc")
-        wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
+        native.click("Copy as Pandoc key")
+        wait_for(lambda: bool(named(snapshot(), "Typst key")), "Copy as lists Typst key")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
@@ -1724,10 +1725,11 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == "Copy as Pandoc":
-                # The footer's Copy action shares this name while a result is highlighted.
-                self.assertEqual(native.query, NO_MATCH, "Copy as Pandoc was ambiguous")
+            elif name == "Copy as Pandoc key":
+                self.assertEqual(native.query, NO_MATCH, "Format selection needs no highlighted result")
                 native.format_filter = ""
+            else:
+                raise AssertionError(f"No invokable accessibility control {name!r}")
 
         def key(chord):
             if chord == "Return" and native.format_filter is not None:
@@ -1756,7 +1758,9 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += ["Copy as Pandoc", "Typst", "3 references"]
+                names += ["Copy as Pandoc key", "3 references"]
+                if native.format_filter is not None:
+                    names += ["Typst key"]
                 names += ["No matching references"] if native.query == NO_MATCH else [
                     "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
             result_focus = failure == "active-result-reopen" and native.reopened
@@ -1830,7 +1834,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc key", "Typst")], [("Copy as Pandoc key", 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])

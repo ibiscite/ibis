@@ -7,11 +7,11 @@ import { ariaKeys, keysFor } from "../../keys";
 import { currentPlatform } from "../../platform";
 import type { Choice } from "./choice";
 import { FormatMenu, type FormatCommand } from "./FormatMenu";
-import type { ToolbarMenuCommand } from "../../ui/ToolbarMenu";
+import type { MenuCloseReason, ToolbarMenuCommand } from "../../ui/ToolbarMenu";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
+export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
   inputRef: React.RefObject<HTMLInputElement | null>;
   pinned: boolean;
   /** The Ibis mark in place of the magnifier, a person's choice in More. */
@@ -28,6 +28,8 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
   formatButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, when Ibis knows it. */
   app?: string | null;
+  formatScope?: string | null;
+  onFormatOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
   onceOnly?: boolean;
   onToggleOnce?: () => void;
   onAutomatic?: () => void;
@@ -86,7 +88,7 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
         {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}
           onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
       </div>
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} scope={formatScope} onOpenChange={onFormatOpenChange} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
       <ToggleButton variant="icon" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
         isSelected={pinned} onChange={onTogglePin}>
         <svg aria-hidden="true" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor">

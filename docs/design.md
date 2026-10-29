@@ -732,7 +732,17 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   once, and the pick becomes that app's default; it never identifies the
   document (Overleaf and Google Docs share it). Closing the chooser uses the
   global default for that paste and asks again next time; "Automatic" or
-  "Forget formats for apps" brings the question back. Ibis never reads or stores a document title or URL to choose an
+  "Forget formats for apps" brings the question back. Enter, the footer action
+  and a result's copy action all ask through the same chooser before copying.
+  Picking a format resumes that citation once, after the save finishes and its
+  exact preview is ready; a failed save uses the pick for this citation and
+  asks again next time. "Just this once" keeps the question open for a pick.
+  Changing the search or citation, hiding or reopening the picker, or switching
+  to another menu or dialog cancels the held action, including after dismissal
+  or a format pick while its preview or save is still pending. The question uses known app IDs;
+  unknown apps keep the global fallback. App capture currently works on macOS;
+  Windows and Linux keep their existing global output until capture is built.
+  Ibis never reads or stores a document title or URL to choose an
   output. No format question interrupts each citation. Setup steps finish
   themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
@@ -777,7 +787,11 @@ that owns its area in ROADMAP.md.
    built never vanishes.
 7. A format pick says its scope: "Pandoc remembered for this browser" or "APA
    for this citation". Output names say what lands: "Chicago · full note
-   text", "APA · text", "Pandoc key".
+   text", "APA · text", "Pandoc key". The chosen scope is visible in the
+   format button and announced; remembering is claimed only after a successful
+   save. Names describe the actual bundled output: today's Chicago author-date
+   style says "Chicago · author-date text", and IEEE says "IEEE · reference
+   entry". A full-note label waits for a full-note output.
 8. "Cited here recently": up to three rows at an empty query, per app, local
    only and forgettable. Choosing one picks the reference afresh; it never
    brings back an old page.

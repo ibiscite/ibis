@@ -357,6 +357,9 @@ export type NoticeMessage = {
 	text: string,
 };
 
+/**  An app ID that cannot tell Ibis which output its document needs. */
+export type OutputQuestion = "browser" | "editor";
+
 /**  Where Settings opens. */
 export type Page = "general" |
 /**  General, scrolled to pasting and its permission. */
@@ -393,6 +396,8 @@ export type PickerDestination = {
 	remembered: AppOutput | null,
 	/**  The per-app file could not be read, so defaults apply. */
 	unreadable: boolean,
+	/**  The app cannot identify document syntax; ask until an output is remembered. */
+	output_question: OutputQuestion | null,
 };
 
 /**

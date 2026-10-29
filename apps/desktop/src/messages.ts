@@ -483,12 +483,12 @@ export const copiedNoticeText = {
 
 // The format menu: each key format's name and what it pastes.
 export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }> = {
-  pandoc: { label: "Pandoc", sample: "[@key]" },
+  pandoc: { label: "Pandoc key", sample: "[@key]" },
   autocite: { label: "\\autocite", sample: "\\autocite{key}" },
   parencite: { label: "\\parencite", sample: "\\parencite{key}" },
   textcite: { label: "\\textcite", sample: "\\textcite{key}" },
   cite: { label: "\\cite", sample: "\\cite{key}" },
-  typst: { label: "Typst", sample: "@key" },
+  typst: { label: "Typst key", sample: "@key" },
   keys: { label: "Keys only", sample: "key" },
 };
 
