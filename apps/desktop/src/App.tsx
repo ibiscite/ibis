@@ -164,12 +164,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     copyContext.current = { selected, queryKey, format, snapshotRevision, activeChoice };
   }
   const copyRequest = useRef(0);
-  const copyInFlight = useRef<{ context: typeof copyContext.current; visibility: number; output: ReturnType<typeof destination.copyToken> } | null>(null);
+  const lastSuccessfulCopy = useRef(0);
+  // Query and chooser scope do not change a citation already being delivered.
+  const copiesInFlight = useRef(new Set<{ choice: string; format: Choice; visibility: number; opening: number }>());
   const copyVisibility = useRef(0);
   const pickerShows = useRef(0);
-  const copyingCurrent = () => {
-    const flight = copyInFlight.current;
-    return flight !== null && flight.context === copyContext.current && flight.visibility === copyVisibility.current && destination.isCurrentCopy(flight.output);
+  const copyingCurrent = (choice = chosenKey) => {
+    const opening = destination.copyToken().opening;
+    for (const flight of copiesInFlight.current) {
+      if (flight.choice === choice && flight.format === format && flight.visibility === copyVisibility.current && flight.opening === opening) return true;
+    }
+    return false;
   };
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
@@ -179,7 +184,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
   const [pendingCopy, setPendingCopy] = useState<{ choice: string | null; selection: typeof selected; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken> } | null>(null);
   const requestCopy = (choice: string | null) => {
-    if (!copyingCurrent() && hiddenAt.current === null) setPendingCopy({ choice, selection: selected, queryKey,
+    if (!copyingCurrent(choice ?? chosenKey) && hiddenAt.current === null) setPendingCopy({ choice, selection: selected, queryKey,
       format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
   };
   const hide = () => {
@@ -361,7 +366,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return () => window.clearTimeout(timer);
   }, [copied, preview]);
 
-  const toggle = (result: SearchResult) => {
+  const toggle = (result?: SearchResult) => {
+    setPendingCopy(null);
+    if (!result) return;
     setSelectionChanged(true);
     setSelected((previous) => {
       const next = new Map(previous);
@@ -432,10 +439,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       if (stale) refreshSnapshot();
       return;
     }
+    // Failed or unfinished newer attempts do not retire this copy's receipt.
+    if (request > lastSuccessfulCopy.current) {
+      lastSuccessfulCopy.current = request;
+      setLastOutcome(copiedNoticeText.title);
+    }
     const ownsFeedback = ownsCompletion();
     if (!ownsFeedback) { destination.consumeOnce(outputToken); return; }
     setCopied(outcome);
-    setLastOutcome(copiedNoticeText.title);
     const complete = () => {
       const nextFormat = destination.consumeOnce(outputToken);
       const clearedSelection = new Map<string, CitationReference>();
@@ -459,7 +470,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           if (!current()) return;
           // The notice is extra; a failure to show it never undoes the copy.
           const delivered = await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
-          if (delivered && request === copyRequest.current) setLastOutcome(noticeTitle({ delivered, text: "" }));
+          if (delivered && request === lastSuccessfulCopy.current) setLastOutcome(noticeTitle({ delivered, text: "" }));
           permissionRefused = !!delivered && delivered.outcome === "copied" && delivered.reason === "no-permission";
         } finally {
           if (current() && !permissionRefused) complete();
@@ -469,10 +480,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   };
   const copy = async () => {
     if (copyingCurrent()) return;
-    const flight = { context: copyContext.current, visibility: copyVisibility.current, output: destination.copyToken() };
-    copyInFlight.current = flight;
+    const flight = { choice: chosenKey, format, visibility: copyVisibility.current, opening: destination.copyToken().opening };
+    copiesInFlight.current.add(flight);
     try { await executeCopy(); }
-    finally { if (copyInFlight.current === flight) copyInFlight.current = null; }
+    finally { copiesInFlight.current.delete(flight); }
   };
   // Enter, Copy or a click on a row copies what is chosen then (the row, or the
   // citation being built), once its preview is ready; anything changing first cancels it.
@@ -565,7 +576,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     } else hide();
   };
   const toggleHighlighted = () => {
-    if (highlighted) toggle(highlighted);
+    toggle(highlighted);
     input.current?.focus();
   };
   const emptyState = (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
@@ -718,6 +729,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           onChoose={(i, r, action) => {
             // Rows of an earlier query, still shown while a newer search
             // is pending, are not acted on by a click or Shift+click (#507).
+            if (action === "toggle") setPendingCopy(null);
             if (current !== results) return;
             pointer.choose(i);
             if (action === "toggle") toggle(r);
@@ -739,6 +751,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) input.current?.focus({ preventScroll: true }); } });
           }}
           onToggle={(i, r) => {
+            setPendingCopy(null);
             if (current !== results) return;
             pointer.choose(i);
             toggle(r);

@@ -105,6 +105,11 @@ obsolete feedback. The nonactivating receipt
 reports actual delivery, including why pasting was off or unavailable. More
 keeps that outcome in memory for this run, without citation text or a new
 file. A prepared shelf remains actionable through empty searches.
+Queued Enter also waits for result/status revision reconciliation, and every
+add/remove activation cancels it, even with no highlighted result. Outstanding
+copies are guarded by citation, output and picker opening independently of the
+search query. More follows the newest successful copy; a later failed or
+unfinished attempt cannot discard its delivery receipt (#1401 review).
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on

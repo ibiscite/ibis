@@ -764,19 +764,25 @@ that owns its area in ROADMAP.md.
    the copied selection for another attempt.
 3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
    while results or the citation preview load waits for the current search and
-   output, then runs once. Repeated Enter, row and footer activations on the
+   output, including reconciliation when results arrive before library status,
+   then runs once. Repeated Enter, row and footer activations on the
    unchanged citation during copying, hiding or delivery cannot start another
-   copy. Deliberately choosing a different citation permits a fresh copy;
-   an earlier reply cannot replace its shelf or feedback. A changed query,
+   copy, even when only the search or chooser scope changes. Returning to a
+   citation whose copy is still outstanding cannot repeat it. Deliberately
+   choosing a different citation permits a fresh copy; an earlier reply cannot
+   replace its shelf or current copy feedback. A changed query,
    reference, page, form or output, arrow navigation, Escape or hiding cancels
-   a waiting Enter. A prepared shelf can copy while the next search loads or
-   finds nothing. The footer uses the captured app and native paste policy;
+   a waiting Enter. Every add/remove activation cancels it, including Shift+Enter
+   with no highlighted result. A prepared shelf can copy while the next search
+   loads or finds nothing. The footer uses the captured app and native paste policy;
    kept-open citations and citations with warnings say Copy. Final delivery
    still checks the target and may copy with a reason instead. After the
    window closes the existing brief, pointer-ignoring receipt says what
    happened without taking focus. More keeps the actual last outcome and its
    reason, in memory for this run, after the brief confirmation expires; it
-   does not retain citation text there.
+   does not retain citation text there. A failed or unfinished later copy
+   attempt does not discard a successful copy's delivery receipt; a newer
+   successful copy does.
 4. Open in under 100 ms with the last snapshot; keys typed before the window
    appears are kept.
 5. Forgiving search: accents and transliteration folded, any word order, one

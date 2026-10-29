@@ -87,7 +87,10 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
   // pending, the rows still on screen are not acted on or offered by any key,
   // click or footer hint; only these current results are.
   const current = resultsQuery === queryKey && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
+  // A reply ahead of status is not actionable yet, even though its request
+  // finished. Keep Enter waiting through the status read and refreshed search.
+  const reconciling = !error && Boolean(library?.has_snapshot) && resultsQuery === queryKey && resultsRevision !== library?.revision;
   const pending = library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
-    || settled.library !== library || settled.version !== libraryVersion;
+    || settled.library !== library || settled.version !== libraryVersion || reconciling;
   return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error, pending };
 }
