@@ -643,8 +643,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -1976,7 +1978,7 @@ dependencies = [
 
 [[package]]
 name = "ibis"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "clap",
  "ibis-core",
@@ -1987,7 +1989,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "memchr",
  "proptest",
@@ -2003,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-csl"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ibis-core",
  "icu_casemap",
@@ -2018,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-desktop"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "auto-launch",
  "clipboard-win",
@@ -2046,15 +2048,17 @@ dependencies = [
  "tauri-specta",
  "tempfile",
  "tokio",
+ "uiautomation",
  "window-vibrancy",
  "windows",
+ "winsafe",
  "x11rb 0.14.0",
  "zbus",
 ]
 
 [[package]]
 name = "ibis-engine"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ibis-core",
  "ibis-csl",
@@ -2068,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-sources"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "biblatex",
  "ibis-core",
@@ -2091,7 +2095,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-zotero-local"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ibis-core",
  "nix",
@@ -5561,6 +5565,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "uiautomation"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa2eacf9390a8491bc949b04230f40c12520c6423a2962a6087eea1ef14373af"
+dependencies = [
+ "chrono",
+ "uiautomation_derive",
+ "windows",
+ "windows-core",
+]
+
+[[package]]
+name = "uiautomation_derive"
+version = "0.7.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c893ec96e05c3c81ba46f838f3190549ec185ef377d582ab3d44202b2dfacbd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6434,6 +6461,12 @@ dependencies = [
  "cfg-if",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ef0ffc427f045c0cc9ebffd6f4f91153dcd2a1547b5c3c29ee3f541e16e95c6"
 
 [[package]]
 name = "wit-bindgen"

@@ -38,6 +38,7 @@ fn incremental_index_matches_a_rebuild_after_insert_edit_and_delete() {
     let mut edited = make("f");
     edited.csl.insert("title".into(), json!("Edited synthetic signals"));
     edited.identifiers.push(Identifier::Arxiv("2601.00001".into()));
+    edited.aliases.push("older-f".into());
     let snapshot = Arc::new(
         Snapshot::new(vec![
             LibraryObject::Record(make("a")),
@@ -73,6 +74,26 @@ fn incremental_index_matches_a_rebuild_after_insert_edit_and_delete() {
         assert_eq!(read(&updated), read(&rebuilt), "{query}");
     }
     assert!(updated.search("widgets", 10, None, &|| true).is_none());
+    for (query, expected, missing) in [
+        ("@d @a @f @h", vec!["d", "a", "f"], vec!["h"]),
+        ("arxiv:2601.00001 @z", vec!["f", "z"], vec![]),
+        ("@older-f @d", vec!["f", "d"], vec![]),
+        ("@b @h", vec![], vec!["b", "h"]),
+    ] {
+        for index in [&updated, &rebuilt] {
+            let list = index.pasted_list(query, None, &|| false).unwrap().unwrap();
+            assert_eq!(
+                list.hits
+                    .iter()
+                    .map(|hit| hit.item.object.id().key.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{query}"
+            );
+            assert_eq!(list.missing, missing, "{query}");
+            assert!(list.hits.iter().all(|hit| !hit.partial));
+        }
+    }
 }
 
 #[test]

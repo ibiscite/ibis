@@ -218,6 +218,7 @@ jobs:
       # busy" while creating the disk image; a second attempt reuses the
       # compiled app and normally succeeds. Other failures are not retried.
       - name: Build the packages
+        id: native_build
         working-directory: apps/desktop
         env:
           TARGET: ${{ matrix.target }}
@@ -320,6 +321,10 @@ jobs:
               } finally { $graphics.Dispose(); $bitmap.Dispose() }
             } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
+
+      - name: Paste into Notepad (Windows)
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
+        run: cargo test -p ibis-desktop --release --locked --target "${{ matrix.target }}" one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
       # Uploads still run after a job timeout (which counts as cancelled) so
       # a hang leaves its logs.

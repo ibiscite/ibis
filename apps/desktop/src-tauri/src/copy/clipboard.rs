@@ -71,33 +71,112 @@ fn publish_macos(board: &objc2_app_kit::NSPasteboard, content: ClipboardContent<
     Ok((owned_count == written_count).then_some(written_count))
 }
 
-/// One opening of the clipboard, retried briefly while another app holds it.
+/// One clipboard write, retried briefly while another app holds it.
 #[cfg(target_os = "windows")]
-pub(crate) fn write(_app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(), String> {
-    write_windows(content)
+pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
+    use tauri::Manager;
+    let owner = app
+        .get_webview_window("main")
+        .and_then(|window| window.hwnd().ok())
+        .ok_or_else(|| FAILED.to_string())?;
+    write_windows(owner.0, content)
 }
 
 #[cfg(target_os = "windows")]
-fn write_windows(content: ClipboardContent<'_>) -> Result<(), String> {
-    use clipboard_win::{Clipboard, formats::Html, options::NoClear, raw};
+fn write_windows(owner: clipboard_win::types::HWND, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
+    use clipboard_win::{
+        Clipboard,
+        formats::{CF_UNICODETEXT, Html},
+        options::NoClear,
+        raw,
+    };
+    // Keep another Ibis copy from taking the same HWND's ownership between
+    // closing the write and proving its final sequence.
+    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _writing = WRITING.lock().map_err(|_| FAILED.to_string())?;
     // About 100 ms in all: 20 retries, 5 ms apart.
-    let _open = Clipboard::new_attempts(20).map_err(|_| FAILED.to_string())?;
+    let open = Clipboard::new_attempts_for(owner, 20).map_err(|_| FAILED.to_string())?;
     raw::empty().map_err(|_| FAILED.to_string())?;
+    let mut formats = Vec::with_capacity(3);
     for (flavor, value) in flavors(&content) {
-        match flavor {
-            Flavor::Text => raw::set_string_with(value, NoClear),
+        let (format, written) = match flavor {
+            Flavor::Text => (CF_UNICODETEXT, raw::set_string_with(value, NoClear)),
             Flavor::Html => {
                 let html = Html::new().ok_or_else(|| FAILED.to_string())?;
-                raw::set_html(html.code(), value)
+                (html.code(), raw::set_html(html.code(), value))
             }
             Flavor::Rtf => {
                 let rtf = raw::register_format("Rich Text Format").ok_or_else(|| FAILED.to_string())?;
-                raw::set_without_clear(rtf.get(), value.as_bytes())
+                (rtf.get(), raw::set_without_clear(rtf.get(), value.as_bytes()))
             }
-        }
-        .map_err(|_| FAILED.to_string())?;
+        };
+        written.map_err(|_| FAILED.to_string())?;
+        formats.push(format);
     }
-    Ok(())
+    // Each SetClipboardData advances the sequence; CloseClipboard can advance
+    // it again when Windows adds synthesized text formats. Only the final
+    // sequence identifies the copy seen by a recipient.
+    let written = WindowsWrite {
+        formats,
+        sequence: clipboard_win::seq_num().map(std::num::NonZeroU32::get),
+    };
+    drop(open);
+    Ok(windows_sequence(owner, &written))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_sequence(owner: clipboard_win::types::HWND, written: &WindowsWrite) -> Option<u32> {
+    let owner = std::ptr::NonNull::new(owner)?;
+    // Reopening without emptying leaves ownership intact and prevents a
+    // foreign write during this proof. If another app wins the close/reopen
+    // race, copy succeeds but automatic paste has no receipt. Never read data
+    // (including a potentially blocked foreign delayed-rendering format).
+    let _open = clipboard_win::Clipboard::new().ok()?;
+    if clipboard_win::get_owner() != Some(owner) {
+        return None;
+    }
+    let completed = WindowsWrite::capture();
+    written.completed_sequence(completed.sequence, &completed.formats)
+}
+
+#[cfg(any(target_os = "windows", test))]
+struct WindowsWrite {
+    sequence: Option<u32>,
+    formats: Vec<u32>,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl WindowsWrite {
+    #[cfg(target_os = "windows")]
+    fn capture() -> Self {
+        Self {
+            formats: clipboard_win::EnumFormats::new().collect(),
+            sequence: clipboard_win::seq_num().map(std::num::NonZeroU32::get),
+        }
+    }
+
+    fn completed_sequence(&self, sequence: Option<u32>, formats: &[u32]) -> Option<u32> {
+        // Closing a Unicode-text write can add CF_TEXT (1), CF_OEMTEXT (7)
+        // and CF_LOCALE (16), each advancing the sequence. Account only for
+        // these native additions, never a fixed increment per copy.
+        if self.formats.iter().any(|format| !formats.contains(format)) {
+            return None;
+        }
+        let mut synthesized = 0;
+        for format in formats.iter().filter(|format| !self.formats.contains(format)) {
+            if !matches!(format, 1 | 7 | 16) {
+                return None;
+            }
+            synthesized += 1;
+        }
+        let expected = self.sequence?.wrapping_add(synthesized);
+        // Ownership alone is insufficient: SetClipboardData without Empty
+        // can overwrite a format while keeping our HWND as owner. Such a
+        // write advances the sequence without adding a synthesized format.
+        // Unknown Windows close behavior also refuses paste, without reading
+        // any potentially foreign clipboard data.
+        (expected != 0 && sequence == Some(expected)).then_some(expected)
+    }
 }
 
 /// Text and HTML; Linux apps read HTML for formatting and rarely RTF.
@@ -117,6 +196,53 @@ pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_clipboard_receipt_accounts_for_format_writes_and_synthesis_on_close() {
+        for (formats, sequence) in [(vec![13], 19_u32), (vec![49_152, 49_153, 13], 21)] {
+            // EmptyClipboard, then one SetClipboardData per representation.
+            let written = WindowsWrite {
+                sequence: Some(sequence),
+                formats: formats.clone(),
+            };
+            for (synthesized, increments) in [(vec![], 0), (vec![1], 1), (vec![1, 7, 16], 3)] {
+                let completed: Vec<_> = formats.iter().chain(&synthesized).copied().collect();
+                let final_sequence = sequence + increments;
+                assert_eq!(
+                    written.completed_sequence(Some(final_sequence), &completed),
+                    Some(final_sequence)
+                );
+            }
+        }
+        let wrapping = WindowsWrite {
+            sequence: Some(u32::MAX - 1),
+            formats: vec![13],
+        };
+        assert_eq!(wrapping.completed_sequence(Some(1), &[13, 1, 7, 16]), Some(1));
+        assert_eq!(wrapping.completed_sequence(None, &[13, 1]), None);
+    }
+
+    #[test]
+    fn windows_clipboard_receipt_rejects_foreign_changes_even_when_the_owner_stays() {
+        let written = WindowsWrite {
+            sequence: Some(4),
+            formats: vec![49_152, 49_153, 13],
+        };
+        let completed = [49_152, 49_153, 13, 1, 7, 16];
+        assert_eq!(written.completed_sequence(Some(7), &completed), Some(7));
+        // A NoClear overwrite of Unicode or synthesized ANSI text advances
+        // the sequence without changing the set of formats or the owner.
+        assert_eq!(written.completed_sequence(Some(8), &completed), None);
+        assert_eq!(written.completed_sequence(Some(4), &completed), None);
+        assert_eq!(written.completed_sequence(None, &completed), None);
+        // A bonus foreign format must not be counted as Windows synthesis.
+        assert_eq!(
+            written.completed_sequence(Some(8), &[49_152, 49_153, 13, 1, 7, 16, 49_154]),
+            None
+        );
+        // A removed representation cannot pass even with a matching count.
+        assert_eq!(written.completed_sequence(Some(7), &[49_152, 13, 1, 7, 16]), None);
+    }
 
     #[cfg(target_os = "macos")]
     #[test]
@@ -226,15 +352,29 @@ int main(int argc, const char **argv) { @autoreleasepool {
     #[cfg(target_os = "windows")]
     #[test]
     fn windows_clipboard_preserves_format_selection_and_unicode_payloads() -> Result<(), String> {
-        use clipboard_win::{Clipboard, formats::CF_UNICODETEXT, raw};
+        use clipboard_win::{
+            Clipboard,
+            formats::{CF_TEXT, CF_UNICODETEXT},
+            raw,
+        };
+        // A stable native HWND for this clipboard-only test; no UI is shown.
+        let owner = winsafe::HWND::GetDesktopWindow();
         let text = "Ŝynthetic 山田";
         let html = "<i>Ŝynthetic 山田</i>";
         let rtf = "{\\rtf1\\ansi\\uc1 {\\i \\u348?ynthetic \\u23665?\\u30000?}}";
-        write_windows(ClipboardContent {
-            text,
-            html: Some(html),
-            rtf: Some(rtf),
-        })?;
+        let sequence = write_windows(
+            owner.ptr(),
+            ClipboardContent {
+                text,
+                html: Some(html),
+                rtf: Some(rtf),
+            },
+        )?
+        .ok_or("clipboard sequence")?;
+        // The receipt must match the completed write, including any sequence
+        // increments from synthesized formats on close. Do not assume a fixed
+        // increment per copy or a fixed count of synthesized formats.
+        assert_eq!(clipboard_win::seq_num().map(std::num::NonZeroU32::get), Some(sequence));
         let html_format = raw::register_format("HTML Format").ok_or("HTML format")?.get();
         let rtf_format = raw::register_format("Rich Text Format").ok_or("RTF format")?.get();
         {
@@ -273,17 +413,62 @@ int main(int argc, const char **argv) { @autoreleasepool {
             raw::get_string(&mut bytes).map_err(|_| "Unicode text")?;
             assert_eq!(bytes, text.as_bytes());
         }
+        assert_eq!(clipboard_win::seq_num().map(std::num::NonZeroU32::get), Some(sequence));
+        // Other apps may overwrite data without EmptyClipboard, keeping our
+        // owner HWND. Neither Unicode nor synthesized ANSI replacements may
+        // become an automatic-paste baseline.
+        let foreign_unicode: Vec<_> = "Foreign citation"
+            .encode_utf16()
+            .chain([0])
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        for (format, bytes) in [
+            (CF_UNICODETEXT, foreign_unicode.as_slice()),
+            (CF_TEXT, b"Foreign citation\0".as_slice()),
+        ] {
+            let written = {
+                let _open = Clipboard::new_attempts(20).map_err(|_| "snapshot clipboard")?;
+                WindowsWrite::capture()
+            };
+            {
+                let _open = Clipboard::new_attempts(20).map_err(|_| "overwrite clipboard")?;
+                raw::set_without_clear(format, bytes).map_err(|_| "foreign overwrite")?;
+            }
+            assert_eq!(
+                clipboard_win::get_owner().map(std::ptr::NonNull::as_ptr),
+                Some(owner.ptr())
+            );
+            assert_eq!(windows_sequence(owner.ptr(), &written), None);
+        }
         // A later key-only copy must remove stale rich formats.
-        write_windows(ClipboardContent {
-            text: "[@Synthetic2026]",
-            html: None,
-            rtf: None,
-        })?;
-        let _open = Clipboard::new_attempts(20).map_err(|_| "reopen clipboard")?;
+        let next_sequence = write_windows(
+            owner.ptr(),
+            ClipboardContent {
+                text: "[@Synthetic2026]",
+                html: None,
+                rtf: None,
+            },
+        )?
+        .ok_or("next clipboard sequence")?;
+        assert_ne!(next_sequence, sequence);
+        assert_eq!(
+            clipboard_win::seq_num().map(std::num::NonZeroU32::get),
+            Some(next_sequence)
+        );
+        let open = Clipboard::new_attempts(20).map_err(|_| "reopen clipboard")?;
         assert!(!raw::is_format_avail(html_format) && !raw::is_format_avail(rtf_format));
         let mut bytes = vec![];
         raw::get_string(&mut bytes).map_err(|_| "plain text")?;
         assert_eq!(bytes, b"[@Synthetic2026]");
+        let written = WindowsWrite::capture();
+        // Simulate another app winning the close/reopen race. Its sequence
+        // must never become this copy's delivery baseline, even if its text
+        // happens to match; an unavailable/NULL owner is not proof either.
+        raw::empty().map_err(|_| "replace clipboard")?;
+        raw::set_string("[@Synthetic2026]").map_err(|_| "foreign text")?;
+        drop(open);
+        assert_eq!(windows_sequence(owner.ptr(), &written), None);
+        assert_eq!(windows_sequence(std::ptr::null_mut(), &written), None);
         Ok(())
     }
 }

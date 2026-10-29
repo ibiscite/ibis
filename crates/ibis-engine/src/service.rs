@@ -74,9 +74,15 @@ pub struct SearchHit {
     pub partial: bool,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct PastedList {
+    pub missing: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub list: Option<PastedList>,
     /// The locator read off the end of the query, when one was asked for and found.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locator: Option<ibis_core::locator::TrailingLocator>,
@@ -272,19 +278,29 @@ impl Engine {
         {
             return Err(error(ErrorCode::NotFound));
         }
-        let locator = request
-            .interpret_locator
+        let pasted = state
+            .index
+            .pasted_list(&request.query, request.libraries.as_deref(), &|| cancel.is_cancelled())
+            .ok_or_else(|| error(ErrorCode::Cancelled))?;
+        // Exact lists win before locator parsing or closest-match search.
+        let locator = (request.interpret_locator && pasted.is_none())
             .then(|| ibis_core::locator::parse_trailing(&request.query))
             .flatten();
         let query = locator
             .as_ref()
             .map_or(request.query.as_str(), |read| read.search.as_str());
-        let hits = state
-            .index
-            .search(query, request.limit, request.libraries.as_deref(), &|| {
-                cancel.is_cancelled()
-            })
-            .ok_or_else(|| error(ErrorCode::Cancelled))?;
+        let (hits, list) = match pasted {
+            Some(list) => (list.hits, Some(PastedList { missing: list.missing })),
+            None => (
+                state
+                    .index
+                    .search(query, request.limit, request.libraries.as_deref(), &|| {
+                        cancel.is_cancelled()
+                    })
+                    .ok_or_else(|| error(ErrorCode::Cancelled))?,
+                None,
+            ),
+        };
         #[derive(Serialize)]
         struct HitView<'a> {
             item: &'a SnapshotObject,
@@ -297,9 +313,15 @@ impl Engine {
         struct SearchView<'a> {
             snapshot: &'a Fingerprints,
             hits: Vec<HitView<'a>>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            list: Option<&'a PastedList>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            locator: Option<&'a ibis_core::locator::TrailingLocator>,
         }
         let view = SearchView {
             snapshot: state.index.snapshot().fingerprints(),
+            list: list.as_ref(),
+            locator: locator.as_ref(),
             hits: hits
                 .iter()
                 .map(|hit| HitView {
@@ -316,6 +338,7 @@ impl Engine {
         cancel.check()?;
         Ok(SearchResult {
             snapshot: state.index.snapshot().fingerprints().clone(),
+            list,
             hits: hits
                 .into_iter()
                 .map(|hit| SearchHit {

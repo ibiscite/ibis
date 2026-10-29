@@ -34,6 +34,8 @@ pub(crate) enum NativeIssue {
     AutomaticMenuUpdate,
     LibraryEvent,
     Notice,
+    #[cfg(any(target_os = "windows", test))]
+    PasteKeyRelease,
 }
 
 impl NativeIssue {
@@ -69,6 +71,8 @@ impl NativeIssue {
             Self::AutomaticMenuUpdate => "the automatic update menu check could not be updated",
             Self::LibraryEvent => "the library-changed event could not be sent",
             Self::Notice => "the Copied notice could not be shown",
+            #[cfg(any(target_os = "windows", test))]
+            Self::PasteKeyRelease => "paste keys could not be released; press and release Ctrl and V",
         }
     }
 }
@@ -169,6 +173,7 @@ mod tests {
             NativeIssue::Pointer,
             NativeIssue::TrayLibrary,
             NativeIssue::LibraryEvent,
+            NativeIssue::PasteKeyRelease,
         ] {
             let mut messages = Vec::new();
             let value = checked_with(Err::<(), _>(PrivateError), issue, |message| messages.push(message));
