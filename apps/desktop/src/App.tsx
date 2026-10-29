@@ -1,12 +1,11 @@
 import * as nativeApi from "./api";
-import { copiedNoticeText, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
+import { keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { KEY_TABLE, type KeyBinding } from "./keys";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LibrarySetup, SampleLibraryExit } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
-import { afterCopy, noticeTitle } from "./copyFeedback";
 import { Button } from "./ui/Button";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
@@ -33,15 +32,14 @@ import { useLoginItem } from "./features/picker/useLoginItem";
 import { useUpdateChecks } from "./features/picker/useUpdateChecks";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
+import { initialSession } from "./features/picker/session";
+import { createSessionController } from "./features/picker/sessionController";
 import {
   type Copied,
   type LibraryStatus,
   type Locator,
   type SearchResult,
 } from "./api";
-
-// A search comes back if the picker returns within a minute, as in Raycast.
-const KEEP_SEARCH_MS = 60_000;
 
 const noLibrary = () => null;
 const noSelection = new Map<string, CitationReference>();
@@ -64,13 +62,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
-  const [query, setQuery] = useState(preview?.query ?? "");
-  const [interpretLocators, setInterpretLocators] = useState(true);
-  const [active, setActive] = useState(0);
+  const [session] = useState(() => createSessionController(initialSession(preview?.query, preview?.copied)));
+  const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const { query, interpretLocators, active, selected, selectionChanged, pendingCopy, copied, copyError, lastOutcome, restored } = state;
+  const send = session.dispatch;
+  const setQuery = (value: string) => send({ type: "query", value });
+  const setActive = (index: number) => send({ type: "highlight", index });
+  const cancelCopy = () => send({ type: "cancel" });
+  const isCurrentSession = (id: number) => session.getSnapshot().session === id;
   const pointer = usePointerSelection(active, setActive);
   const { resetPointer } = pointer;
-  const [selected, setSelected] = useState<Map<string, CitationReference>>(new Map());
-  const [selectionChanged, setSelectionChanged] = useState(false);
   const { failures, setFailures, report, perform } = useOperations();
   const { shortcut, readShortcut } = useShortcutStatus({ shortcutStatus, onShortcutStatus, report });
   useEffect(() => {
@@ -94,10 +95,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const style = styleOf(format);
-  const [copied, setCopied] = useState<Copied | null>(preview?.copied ?? null);
-  const [copyError, setCopyError] = useState<string | null>(null);
-  // Only the outcome, never citation or document text; kept until the next copy.
-  const [lastOutcome, setLastOutcome] = useState<string | null>(null);
   // Changes whenever a library opens, so the current query is searched again.
   const [libraryVersion, setLibraryVersion] = useState(0);
   const statusReads = useRef(0);
@@ -117,13 +114,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     }).catch(() => { if (statusReads.current === request) failStatus(); });
   };
   const { queryKey, results, current, interpretation, list, announcement, resultsQuery, error, pending: searchPending } =
-    useLibrarySearch({ search, query, interpretLocators, library, statusFailed: failures.status ?? false, libraryVersion, setActive, refreshSnapshot });
+    useLibrarySearch({ search, query, interpretLocators, library, statusFailed: failures.status ?? false, libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot });
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
   // The selection, otherwise the current pasted list or highlighted result.
   const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : list ? current : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
-  const { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput } =
-    useCitationOutput({ chosen, library, libraryVersion, format, style, showPastePreview, previewFileCitation, refreshSnapshot });
+  const { formatted, chosenKey, keyFormat, shown, previewProblem, displayedOutput } =
+    useCitationOutput({ chosen, library, libraryVersion, sessionId: state.session, isCurrentSession, format, style, showPastePreview, previewFileCitation, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
   const formatButtonRef = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
@@ -140,97 +137,53 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [searchFocused, setSearchFocused] = useState(false);
   // autoFocus can happen before React listens for focus events.
   useEffect(() => setSearchFocused(document.activeElement === input.current), []);
-  // When the picker last went away; the search waits a minute, in memory only.
-  const hiddenAt = useRef<number | null>(null);
-  // A permission detour owns the prepared shelf, even beyond the usual minute.
-  const permissionDetour = useRef(false);
-  // A search Escape cleared comes back on reopening within the same minute.
-  const escapedQuery = useRef<{ text: string; interpretLocators: boolean } | null>(null);
-  const [restored, setRestored] = useState(0);
-  // Each completed copy owns only the interaction that started it. Map identity
-  // also distinguishes removing and re-adding the same selected references.
   const snapshotRevision = library?.revision;
   const highlightedChoice = choiceKey(results.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator })));
   const latestHighlight = useRef(highlightedChoice);
   latestHighlight.current = highlightedChoice;
   const defaultChoice = list ? choiceKey(current) : highlightedChoice;
-  const latestDefaultChoice = useRef(defaultChoice);
-  latestDefaultChoice.current = defaultChoice;
-  // A selected citation owns its references independently of result highlighting.
-  const activeChoice = selected.size === 0 ? defaultChoice : null;
-  const copyContext = useRef({ selected, queryKey, format, snapshotRevision, activeChoice });
-  const before = copyContext.current;
-  if (before.selected !== selected || before.queryKey !== queryKey || before.format !== format || before.snapshotRevision !== snapshotRevision || before.activeChoice !== activeChoice) {
-    copyContext.current = { selected, queryKey, format, snapshotRevision, activeChoice };
-  }
-  const copyRequest = useRef(0);
-  const lastSuccessfulCopy = useRef(0);
-  type CopyOwner = { context: typeof copyContext.current; output: ReturnType<typeof destination.copyToken>; visibility: number; shownAt: number };
-  type CopyFlight = { choice: string; format: Choice; opening: number; owner: CopyOwner };
-  const copiesInFlight = useRef(new Set<CopyFlight>());
-  // Only the most recent ready activation owns completion. A fresh Enter can
-  // renew an outstanding citation's owner without writing or delivering twice.
-  const activeCopy = useRef<CopyFlight | null>(null);
-  const copyVisibility = useRef(0);
-  const pickerShows = useRef(0);
-  const findCopy = () => {
-    const opening = destination.copyToken().opening;
-    for (const flight of copiesInFlight.current) {
-      if (flight.choice === chosenKey && flight.format === format && flight.owner.visibility === copyVisibility.current && flight.opening === opening) return flight;
-    }
-    return null;
-  };
+  // The controller receives readiness from the existing search/preview I/O
+  // adapters. Session and interaction tickets reject an obsolete render.
+  useLayoutEffect(() => {
+    session.connect({ copyFileCitation, hidePicker, showCopiedNotice, output: destination.copyToken,
+      pinned: () => currentPin.current, consume: destination.consumeOnce, refresh: refreshSnapshot,
+      askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
+    send({ type: "view", session: state.session, interaction: state.interaction,
+      view: { queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
+        ready: destination.ready && preferences.ready, saving: destination.saving, shouldAsk: destination.shouldAsk,
+        output: destination.copyToken() } });
+  });
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
   }, [setupDone, setFailures]);
-  // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
-  const [pendingCopy, setPendingCopy] = useState<{ choice: string | null; selection: typeof selected; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken>; question?: "open" | "answered" } | null>(null);
   const sample = Boolean(library?.sample);
   const previousSample = useRef(sample);
   useEffect(() => {
     if (previousSample.current === sample) return;
     previousSample.current = sample;
-    setSelected(new Map());
-    setPendingCopy(null);
-    setCopied(null);
-    setCopyError(null);
+    send({ type: "sample" });
     input.current?.focus();
-  }, [sample]);
-  const requestCopy = (choice: string | null) => {
-    if (hiddenAt.current === null) setPendingCopy({ choice, selection: selected, queryKey,
-      format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
-  };
+  }, [sample, send]);
+  const requestCopy = (choice: string | null) => send({ type: "enter", choice, output: destination.copyToken() });
   const failStatus = () => {
-    // Cancel at the failure event, even if recovery is batched into the same render.
-    setPendingCopy(null);
+    // Cancel at the failure event, even if recovery is batched into one render.
+    cancelCopy();
     report("status");
   };
   const hide = () => {
-    copyVisibility.current += 1;
-    setPendingCopy(null);
+    send({ type: "hiding" });
     void perform("hide", hidePicker);
-  };
-  const clearSearch = () => {
-    escapedQuery.current = null;
-    setQuery("");
-    setInterpretLocators(true);
-    setSelected(new Map());
-    setActive(0);
   };
   const chooseFormat = (choice: Choice) => {
     destination.choose(choice);
-    // Only the first-paste question carries its citation through a format pick.
-    // A normal format change still cancels an earlier Enter awaiting a preview.
-    setPendingCopy(pendingCopy?.question === "open" ? { ...pendingCopy, format: choice,
-      output: destination.copyToken(), question: "answered" } : null);
+    send({ type: "question", format: choice, output: destination.copyToken(), answer: "answered" });
   };
   const questionScope = (action: () => void, keepOpen = false) => {
     action();
-    if (pendingCopy?.question !== "open") return;
-    setPendingCopy({ ...pendingCopy, format: null, output: destination.copyToken(), question: keepOpen ? "open" : "answered" });
-    if (keepOpen) formatButtonRef.current?.click();
+    send({ type: "question", format: null, output: destination.copyToken(), answer: keepOpen ? "open" : "answered" });
+    if (keepOpen && session.getSnapshot().pendingCopy?.question === "open") formatButtonRef.current?.click();
   };
 
   useEffect(() => {
@@ -279,23 +232,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const focusSearch = () => {
       searchAtShow = input.current?.value ?? "";
       resetPointer();
-      copyVisibility.current += 1;
-      pickerShows.current += 1;
-      if (!permissionDetour.current && hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) {
-        clearSearch();
-        searchAtShow = "";
-      } else if (hiddenAt.current !== null && escapedQuery.current !== null) {
-        const escaped = escapedQuery.current;
-        escapedQuery.current = null;
-        // Compare activation against the restored query; React updates the
-        // input after this handler.
-        searchAtShow ||= escaped.text;
-        setQuery((now) => (now === "" ? escaped.text : now));
-        setInterpretLocators(escaped.interpretLocators);
-        setRestored((n) => n + 1);
-      }
-      hiddenAt.current = null;
-      destination.read(true, permissionDetour.current);
+      const previousQuery = session.getSnapshot().query;
+      send({ type: "shown", now: performance.now() });
+      if (session.getSnapshot().query !== previousQuery) searchAtShow = session.getSnapshot().query;
+      destination.read(true, session.getSnapshot().permissionDetour);
       readLoginItem();
       readShortcut();
       // On X11, showing can precede native activation. WebKit restores the
@@ -311,11 +251,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       // A hidden native window may not throttle the web view: pause looping animations.
       document.documentElement.dataset.pickerHidden = "";
       resetPointer();
-      copyVisibility.current += 1;
-      hiddenAt.current = performance.now();
+      send({ type: "hidden", now: performance.now() });
       setKeysOpen(false);
       setAltHeld(false);
-      setPendingCopy(null);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
     const unlisten = onPickerShown(() => {
@@ -352,7 +290,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       acceptInitialStatus = false;
       mounted = false;
       window.removeEventListener("focus", activated);
-      copyVisibility.current += 1;
+      send({ type: "retire" });
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlistenLibrary.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
@@ -416,42 +354,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // Success is brief; warnings stay available until explicitly dismissed.
   useEffect(() => {
     if (preview || !copied || copied.warnings.length > 0) return;
-    const timer = window.setTimeout(() => setCopied(null), 2400);
+    const timer = window.setTimeout(() => send({ type: "dismiss", copied }), 2400);
     return () => window.clearTimeout(timer);
-  }, [copied, preview]);
+  }, [copied, preview, send]);
 
-  const toggle = (result?: SearchResult) => {
-    setPendingCopy(null);
-    if (!result) return;
-    setSelectionChanged(true);
-    setSelected((previous) => {
-      const next = new Map(previous);
-      if (!next.delete(idKey(result.id))) next.set(idKey(result.id), { ...result, locator: interpretation?.locator ? { ...interpretation.locator } : null });
-      return next;
-    });
-  };
-
+  const toggle = (result?: SearchResult) => send({ type: "toggle", result, locator: interpretation?.locator });
   const changeLocator = (reference: CitationReference, locator: Readonly<Locator> | null) => {
-    setPendingCopy(null);
-    setSelected((previous) => {
-      if (previous.get(idKey(reference.id)) !== reference) return previous;
-      const next = new Map(previous);
-      next.set(idKey(reference.id), { ...reference, locator: locator ? { ...locator } : null });
-      return next;
-    });
+    send({ type: "reference", reference, change: { locator: locator ? { ...locator } : null }, selectedOnly: true });
     input.current?.focus({ preventScroll: true });
   };
-
   const changeReference = (reference: CitationReference, change: Pick<CitationReference, "locator" | "form">) => {
-    setPendingCopy(null);
-    setSelectionChanged(true);
-    setSelected((previous) => {
-      const prepared = previous.get(idKey(reference.id));
-      if (prepared ? prepared !== reference : previous.size > 0) return previous;
-      const next = new Map(previous);
-      next.set(idKey(reference.id), { ...reference, ...change });
-      return next;
-    });
+    send({ type: "reference", reference, change });
   };
 
   const rowScope = useMemo(() => ({ api, current, selected, queryKey, format, snapshotRevision }), [api, current, selected, queryKey, format, snapshotRevision]);
@@ -459,118 +372,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   latestRowScope.current = rowScope;
   const contextRequest = useRef(0);
 
-  // Copy the chosen references in the chosen format.
-  const executeCopy = async (flight: CopyFlight, ticket: string, hash: string) => {
-    const request = ++copyRequest.current;
-    const ownsInteraction = () => activeCopy.current === flight && flight.owner.context === copyContext.current && flight.owner.shownAt === pickerShows.current;
-    const ownsCompletion = () => ownsInteraction() && flight.owner.visibility === copyVisibility.current && destination.isCurrentCopy(flight.owner.output);
-    let outcome: Copied;
-    try {
-      outcome = await copyFileCitation(ticket, hash);
-      outcome = { ...outcome, warnings: [...outcome.warnings, ...closestMatchWarnings(chosen)] };
-    } catch (error) {
-      const stale = nativeApi.isSnapshotChanged(error);
-      const shared = nativeApi.sharedCitationKey(error);
-      if (ownsCompletion()) setCopyError(stale ? pickerText.snapshotChanged : shared ? pickerText.sharedKey(shared) : pickerText.copyError);
-      // A retired request can reveal a replacement after the user has moved on.
-      if (stale) refreshSnapshot();
-      return;
-    }
-    // Failed or unfinished newer attempts do not retire this copy's receipt.
-    if (request > lastSuccessfulCopy.current) {
-      lastSuccessfulCopy.current = request;
-      setLastOutcome(copiedNoticeText.title);
-    }
-    const ownsFeedback = ownsCompletion();
-    if (!ownsFeedback) { destination.consumeOnce(flight.owner.output); return; }
-    setCopied(outcome);
-    const complete = () => {
-      const context = flight.owner.context;
-      const nextFormat = destination.consumeOnce(flight.owner.output);
-      const clearedSelection = new Map<string, CitationReference>();
-      copyContext.current = { ...context, format: nextFormat ?? context.format, selected: clearedSelection, activeChoice: latestDefaultChoice.current };
-      setSelected(clearedSelection);
-      permissionDetour.current = false;
-    };
-    // After a copy, reopening keeps the current search, not one cleared before it.
-    escapedQuery.current = null;
-    // Get out of the way so the user can paste, unless there is something to
-    // read or the picker is pinned beside the document.
-    if (afterCopy(outcome, currentPin.current) === "hide-and-notify") {
-      // Keep the shelf until delivery says whether macOS sent us to its guide.
-      // A return during delivery also keeps it and cancels this completion.
-      permissionDetour.current = true;
-      await perform("hide", async () => {
-        let permissionRefused = false;
-        try {
-          await hidePicker();
-          if (!ownsInteraction()) return;
-          // The notice is extra; a failure to show it never undoes the copy.
-          const delivered = await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
-          if (delivered && request === lastSuccessfulCopy.current) setLastOutcome(noticeTitle({ delivered, text: "" }));
-          permissionRefused = !!delivered && delivered.outcome === "copied" && delivered.reason === "no-permission";
-        } finally {
-          if (ownsInteraction() && !permissionRefused) complete();
-        }
-      });
-    } else complete();
-  };
-  const copy = async () => {
-    if (chosen.length === 0 || shown === "failed") return;
-    if (shown === "stale" || !chosenRevision) {
-      setCopyError(pickerText.snapshotChanged);
-      refreshSnapshot();
-      return;
-    }
-    if (!shown || typeof shown === "string" || !shown.fileTicket || !shown.fileHash) {
-      setCopyError(shown === null ? pickerText.previewNotReady : pickerText.previewError);
-      return;
-    }
-    // Every ready activation follows this path, including joins. Validation
-    // above prevents a refused preview from renewing an old copy's authority.
-    const owner = { context: copyContext.current, output: destination.copyToken(), visibility: copyVisibility.current, shownAt: pickerShows.current };
-    const flight = findCopy() ?? { choice: chosenKey, format, opening: owner.output.opening, owner };
-    flight.owner = owner;
-    activeCopy.current = flight;
-    if (copiesInFlight.current.has(flight)) return;
-    setCopied(null);
-    setCopyError(null);
-    copiesInFlight.current.add(flight);
-    try { await executeCopy(flight, shown.fileTicket, shown.fileHash); }
-    finally {
-      copiesInFlight.current.delete(flight);
-      if (activeCopy.current === flight) activeCopy.current = null;
-    }
-  };
-  // Enter, Copy or a click on a row copies what is chosen then (the row, or the
-  // citation being built), once its preview is ready; anything changing first cancels it.
   const copyChosen = () => {
     if (chosen.length > 0) requestCopy(chosenKey);
     else if (showCitations && searchPending) requestCopy(null);
   };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: copy is rebuilt every render; this runs when the waiting copy, the choice, its preview or the search changes.
-  useEffect(() => {
-    if (pendingCopy === null) return;
-    if (pendingCopy.choice !== null && chosenKey !== pendingCopy.choice || selected !== pendingCopy.selection || queryKey !== pendingCopy.queryKey
-      || pendingCopy.format !== null && format !== pendingCopy.format || !destination.isCurrentCopy(pendingCopy.output)) {
-      setPendingCopy(null);
-      return;
-    }
-    if (pendingCopy.choice === null) {
-      if (searchPending) return;
-      setPendingCopy(chosen.length > 0 ? { ...pendingCopy, choice: chosenKey } : null);
-      return;
-    }
-    if (!destination.ready || destination.saving || !preferences.ready) return;
-    if (!pendingCopy.question && destination.shouldAsk) {
-      setPendingCopy({ ...pendingCopy, question: "open" });
-      formatButtonRef.current?.click();
-      return;
-    }
-    if (pendingCopy.question === "open" || shown === null) return;
-    setPendingCopy(null);
-    void copy();
-  }, [pendingCopy, chosenKey, selected, shown, queryKey, searchPending, format, destination.ready, destination.saving, destination.shouldAsk, preferences.ready]);
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
@@ -585,7 +390,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return shared && library ? pickerText.removeReferenceIn(r.key, library) : pickerText.removeReference(r.key);
   };
   const openMore = () => {
-    setPendingCopy(null);
+    cancelCopy();
     // React Aria records the invoker before mounting its modal focus scope.
     moreButton.current?.focus();
     setMenuOpen(true);
@@ -595,13 +400,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (refocus) moreButton.current?.focus();
   };
   const runFromMenu = (operation: Operation, action: () => Promise<unknown>) => {
-    setPendingCopy(null);
+    cancelCopy();
     closeMenu(false);
     input.current?.focus();
     void perform(operation, action);
   };
   const openKeys = () => {
-    setPendingCopy(null);
+    cancelCopy();
     closeMenu(false);
     const focused = document.activeElement;
     // A menu item is gone once the menu closes; the search box takes its place.
@@ -631,13 +436,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
   const escapeStep = () => {
-    setPendingCopy(null);
+    cancelCopy();
     // Escape steps back one layer, retaining the chosen references.
     if (menuOpen) closeMenu(true);
     else if (query) {
-      escapedQuery.current = { text: query, interpretLocators };
-      setQuery("");
-      setInterpretLocators(true);
+      send({ type: "escape-search" });
       input.current?.focus();
     } else hide();
   };
@@ -648,7 +451,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const emptyState = (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
-      onClearSearch={() => { setQuery(""); setInterpretLocators(true); input.current?.focus(); }}
+      onClearSearch={() => { setQuery(""); input.current?.focus(); }}
       onSearchAll={searchAllLibraries}
       onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
       setup={
@@ -711,9 +514,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         query={query}
         onQueryChange={(value) => {
           pointer.resetHover();
-          escapedQuery.current = null;
           setQuery(value);
-          setInterpretLocators(true);
         }}
         onSearchKeyDown={(e) => {
           if (composing(e)) return;
@@ -729,10 +530,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             e.preventDefault();
           } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
-            setPendingCopy(null);
+            cancelCopy();
             followKeyboard.current = true; pointer.forgetClick();
             const step = e.key === "ArrowDown" ? 1 : -1;
-            setActive((i) => Math.min(Math.max(i + step, 0), Math.max(results.length - 1, 0)));
+            setActive(Math.min(Math.max(session.getSnapshot().active + step, 0), Math.max(results.length - 1, 0)));
           } else if (e.key === "Enter" && e.shiftKey) {
             e.preventDefault();
             toggleHighlighted();
@@ -750,7 +551,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         onFormatOpenChange={(open, reason) => {
           if (open || pendingCopy?.question !== "open" || reason === "action") return;
           // Dismissal uses the fallback for this attempt; application commands cancel it.
-          setPendingCopy(reason === "command" ? null : { ...pendingCopy, question: "answered" });
+          send({ type: "question", answer: reason === "command" ? "cancel" : "answered" });
         }}
         onceOnly={destination.onceOnly}
         onToggleOnce={() => questionScope(destination.toggleOnce, true)}
@@ -761,9 +562,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         styles
         onFormatChange={chooseFormat}
         onFormatCommand={(command) => {
-          const visibility = copyVisibility.current;
+          const visibility = session.getSnapshot().visibility;
           return {
-            isCurrent: () => visibility === copyVisibility.current && hiddenAt.current === null,
+            isCurrent: () => visibility === session.getSnapshot().visibility && session.getSnapshot().hiddenAt === null,
             run: () => {
               if (command === "more") openMore();
               else if (command === "keys") openKeys();
@@ -778,10 +579,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <Notices updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
-        onDismissCopied={() => setCopied(null)} />
+        onDismissCopied={() => send({ type: "dismiss" })} />
       {usingLocator && <div className="notices">
         <p role="status">{pickerText.usingLocator(usingLocator.label, usingLocator.value)}{" "}
-          <Button variant="quiet" size="small" onPress={() => { setInterpretLocators(false); input.current?.focus({ preventScroll: true }); }}>
+          <Button variant="quiet" size="small" onPress={() => { send({ type: "literal" }); input.current?.focus({ preventScroll: true }); }}>
             {pickerText.searchAsTyped}
           </Button>
           {canApplyLocator && <Button variant="quiet" size="small" onPress={() => changeLocator(prepared, usingLocator)}>
@@ -802,7 +603,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           onChoose={(i, r, action) => {
             // Rows of an earlier query, still shown while a newer search
             // is pending, are not acted on by a click or Shift+click (#507).
-            if (action === "toggle") setPendingCopy(null);
+            if (action === "toggle") cancelCopy();
             if (current !== results) return;
             pointer.choose(i);
             if (action === "toggle") toggle(r);
@@ -813,8 +614,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             if (current !== results || !rowContext) return;
             resetPointer();
             setActive(i);
-            const scope = rowScope, visibility = copyVisibility.current, request = ++contextRequest.current;
-            const owns = () => scope === latestRowScope.current && visibility === copyVisibility.current && request === contextRequest.current && latestHighlight.current === choiceKey([{ ...r, locator: interpretation?.locator }]);
+            const scope = rowScope, visibility = session.getSnapshot().visibility, request = ++contextRequest.current;
+            const owns = () => scope === latestRowScope.current && visibility === session.getSnapshot().visibility && request === contextRequest.current && latestHighlight.current === choiceKey([{ ...r, locator: interpretation?.locator }]);
             void rowContext(selected.has(idKey(r.id))).then((action) => {
               if (!owns()) return;
               report("rowContext", false);
@@ -824,7 +625,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) input.current?.focus({ preventScroll: true }); } });
           }}
           onToggle={(i, r) => {
-            setPendingCopy(null);
+            cancelCopy();
             if (current !== results) return;
             pointer.choose(i);
             toggle(r);

@@ -62,3 +62,19 @@ test("a failed status read ends reconciliation until a later update recovers the
   expect(result.current.pending).toBe(false);
   unmount();
 });
+
+test("reopening replaces an unfinished search and ignores its late reply", async () => {
+  const finishes: ((value: Awaited<ReturnType<typeof nativeApi.search>>) => void)[] = [];
+  const search = vi.fn<typeof nativeApi.search>(() => new Promise((resolve) => finishes.push(resolve)));
+  const library = { ...testStates[0]!.library, revision: "1" };
+  const { result, rerender, unmount } = renderHook(({ sessionId }) => useLibrarySearch({ search, library,
+    sessionId, query: "same query", interpretLocators: true, statusFailed: false, libraryVersion: 0,
+    setActive: vi.fn(), refreshSnapshot: vi.fn() }), { initialProps: { sessionId: 0 } });
+  rerender({ sessionId: 1 });
+  await act(async () => { finishes[1]!({ revision: "1", results: [{ ...testStates[1]!.results[0]!, revision: "1" }] }); });
+  const current = result.current.current;
+  await act(async () => { finishes[0]!({ revision: "1", results: [] }); });
+  expect(result.current.current).toBe(current);
+  expect(result.current.pending).toBe(false);
+  unmount();
+});

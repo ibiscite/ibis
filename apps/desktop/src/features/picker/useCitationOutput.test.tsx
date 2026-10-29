@@ -44,6 +44,23 @@ function options(overrides: Partial<Options>): Options {
   };
 }
 
+test("reopening replaces unfinished preview work but preserves a settled canonical receipt", async () => {
+  const pending: ((value: FilePreview) => void)[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const initial = options({ previewFileCitation, sessionId: 0 });
+  const { result, rerender, unmount } = renderHook(useCitationOutput, { initialProps: initial });
+  rerender({ ...initial, sessionId: 1 });
+  expect(previewFileCitation.mock.calls[0]?.[4]?.aborted).toBe(true);
+  await act(async () => { pending[1]!(preview("new session citation")); });
+  const prepared = result.current.shown;
+  await act(async () => { pending[0]!(preview("old session citation")); });
+  expect(result.current.shown).toBe(prepared);
+  rerender({ ...initial, sessionId: 2 });
+  expect(previewFileCitation).toHaveBeenCalledTimes(2);
+  expect(result.current.shown).toBe(prepared);
+  unmount();
+});
+
 const conflictMessage = "These references have conflicting citation keys. Resolve them in your library or choose a formatted style.";
 
 test("replacing, clearing and unmounting a selection aborts obsolete engine previews", () => {
