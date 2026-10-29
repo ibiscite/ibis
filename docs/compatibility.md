@@ -187,5 +187,5 @@ Only a completed run with passed `smoke.json` establishes that case. A test
 definition or a green build alone does not. These checks do not prove automatic
 insertion, all citation formats, screen-reader speech, mixed-DPI displays,
 sleep/wake, cloud folders, network drives or every editor. See
-[testing](../CONTRIBUTING.md) for assertions and measurement limits and the
+[testing](testing.md) for assertions and measurement limits and the
 [remaining manual checks](https://github.com/ibiscite/ibis/issues/79#issuecomment-6282579792).

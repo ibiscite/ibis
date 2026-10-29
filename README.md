@@ -148,7 +148,7 @@ each answer is at most 256 KiB.
 
 ## Contributing
 
-You do not need to be a programmer to help. Reporting an app where pasting fails, adding a test example, or improving documentation are all valuable. AI-assisted contributions are welcome under clear rules. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+You do not need to be a programmer to help. Reporting an app where pasting fails, adding a test example, or improving documentation are all valuable. AI-assisted contributions are welcome under clear rules. Start with [CONTRIBUTING.md](CONTRIBUTING.md). See [testing](docs/testing.md) for what the checks prove and what comes next.
 
 ## License
 
