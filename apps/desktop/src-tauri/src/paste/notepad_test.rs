@@ -3,6 +3,126 @@
 use std::process::Child;
 use std::time::{Duration, Instant};
 
+/// Only portable values cross UI Automation query threads. An absent or
+/// implausible provider identity can never identify the synthetic editor.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct EditorIdentity {
+    pub process: u32,
+    runtime: Vec<i32>,
+}
+
+impl EditorIdentity {
+    pub fn new(process: u32, runtime: Vec<i32>) -> Option<Self> {
+        (process != 0 && !runtime.is_empty() && runtime.len() <= 128).then_some(Self { process, runtime })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Stage {
+    Query,
+    Automation,
+    Window,
+    Document,
+    Foreground,
+    Editor,
+    Identity,
+    Focus,
+    Password,
+    Pattern,
+    Range,
+    Read,
+    NotEmpty,
+    Input,
+    Readback,
+}
+
+/// Fixed classifications only: never retain provider messages or text here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Failure {
+    pub stage: Stage,
+    pub code: Option<i32>,
+    pub owned: Option<bool>,
+    pub focused: Option<bool>,
+}
+
+impl Failure {
+    pub const fn new(stage: Stage) -> Self {
+        Self {
+            stage,
+            code: None,
+            owned: None,
+            focused: None,
+        }
+    }
+}
+
+pub(crate) struct Reading {
+    pub editor: EditorIdentity,
+    pub text: String,
+}
+
+/// The real Windows test and portable consumer regressions share this exact
+/// sequence. Readbacks are never inferred from successful input injection.
+pub(crate) fn qualify_paste(
+    editor: &EditorIdentity,
+    expected: &str,
+    limit: Duration,
+    read: impl Fn(&EditorIdentity) -> Result<Reading, Failure>,
+    prepare: impl FnOnce() -> Result<(), Failure>,
+    paste: impl FnOnce(&dyn Fn() -> bool) -> bool,
+) -> Result<(), Failure> {
+    let checked = || {
+        let reading = read(editor)?;
+        if reading.editor != *editor {
+            return Err(Failure {
+                focused: Some(false),
+                ..Failure::new(Stage::Identity)
+            });
+        }
+        Ok(reading.text)
+    };
+    let await_text = |wanted: &str, stage| {
+        let mut last = Failure::new(stage);
+        wait_for(limit, || match checked() {
+            Ok(text) if text.trim() == wanted => Some(()),
+            Ok(_) => {
+                last = Failure {
+                    owned: Some(true),
+                    focused: Some(true),
+                    ..Failure::new(stage)
+                };
+                None
+            }
+            Err(failure) => {
+                last = failure;
+                None
+            }
+        })
+        .ok_or(last)
+    };
+    await_text("", Stage::NotEmpty)?;
+    prepare()?;
+    let refused = std::cell::Cell::new(None);
+    if !paste(&|| match checked() {
+        Ok(text) if text.trim().is_empty() => true,
+        Ok(_) => {
+            refused.set(Some(Failure {
+                owned: Some(true),
+                focused: Some(true),
+                ..Failure::new(Stage::NotEmpty)
+            }));
+            false
+        }
+        Err(failure) => {
+            refused.set(Some(failure));
+            false
+        }
+    }) {
+        return Err(refused.get().unwrap_or(Failure::new(Stage::Input)));
+    }
+    await_text(expected, Stage::Readback)
+}
+
 pub(crate) fn wait_for<T>(limit: Duration, mut condition: impl FnMut() -> Option<T>) -> Option<T> {
     let deadline = Instant::now() + limit;
     loop {
@@ -59,6 +179,214 @@ mod tests {
     use std::cell::Cell;
     use std::io::{Read, Write};
     use std::process::{Command, Stdio};
+
+    fn editor(id: i32) -> EditorIdentity {
+        EditorIdentity::new(7, vec![42, id]).unwrap_or_else(|| panic!("synthetic editor identity"))
+    }
+
+    #[test]
+    fn one_paste_must_change_the_owned_document_not_a_same_process_search_field() {
+        use std::cell::RefCell;
+        let owner = editor(1);
+        let focus = Cell::new(1);
+        let document = RefCell::new(String::new());
+        let search = RefCell::new(String::new());
+        let sends = Cell::new(0);
+        let outcome = qualify_paste(
+            &owner,
+            "synthetic citation",
+            Duration::ZERO,
+            |_| {
+                Ok(Reading {
+                    editor: editor(focus.get()),
+                    text: if focus.get() == 1 {
+                        document.borrow().clone()
+                    } else {
+                        search.borrow().clone()
+                    },
+                })
+            },
+            || Ok(()),
+            |ready| {
+                if !ready() {
+                    return false;
+                }
+                // Focus changes after the final guard. The actual document is
+                // unchanged even though another field receives the citation.
+                focus.set(2);
+                *search.borrow_mut() = "synthetic citation".into();
+                sends.set(sends.get() + 1);
+                true
+            },
+        );
+        assert!(
+            outcome.is_err(),
+            "a search-field readback must not qualify a document paste"
+        );
+        assert!(document.borrow().is_empty());
+        assert_eq!(&*search.borrow(), "synthetic citation");
+        assert_eq!(sends.get(), 1);
+    }
+
+    #[test]
+    fn replacing_focus_before_send_refuses_input_and_an_old_editor_cannot_own_a_fresh_attempt() {
+        for replaced_before_send in [false, true] {
+            let owner = editor(2);
+            let focus = Cell::new(if replaced_before_send { 2 } else { 1 });
+            let sends = Cell::new(0);
+            let outcome = qualify_paste(
+                &owner,
+                "synthetic citation",
+                Duration::ZERO,
+                |_| {
+                    Ok(Reading {
+                        editor: editor(focus.get()),
+                        text: String::new(),
+                    })
+                },
+                || {
+                    focus.set(1);
+                    Ok(())
+                },
+                |ready| {
+                    if ready() {
+                        sends.set(sends.get() + 1);
+                        true
+                    } else {
+                        false
+                    }
+                },
+            );
+            assert_eq!(outcome.map_err(|failure| failure.stage), Err(Stage::Identity));
+            assert_eq!(sends.get(), 0);
+        }
+    }
+
+    #[test]
+    fn successful_qualification_reads_actual_document_after_exactly_one_send() {
+        let document = std::cell::RefCell::new(String::new());
+        let sends = Cell::new(0);
+        let outcome = qualify_paste(
+            &editor(1),
+            "synthetic citation",
+            Duration::ZERO,
+            |owner| {
+                Ok(Reading {
+                    editor: owner.clone(),
+                    text: document.borrow().clone(),
+                })
+            },
+            || Ok(()),
+            |ready| {
+                if !ready() {
+                    return false;
+                }
+                sends.set(sends.get() + 1);
+                *document.borrow_mut() = "synthetic citation".into();
+                true
+            },
+        );
+        assert_eq!(outcome, Ok(()));
+        assert_eq!(&*document.borrow(), "synthetic citation");
+        assert_eq!(sends.get(), 1);
+    }
+
+    #[test]
+    fn provider_failure_and_safety_refusal_never_send_or_disclose_provider_payloads() {
+        let failure = Failure {
+            code: Some(-2147467259),
+            ..Failure::new(Stage::Read)
+        };
+        let outcome = qualify_paste(
+            &editor(1),
+            "synthetic citation",
+            Duration::ZERO,
+            |_| Err(failure),
+            || Ok(()),
+            |_| panic!("failed I/O must not send"),
+        );
+        assert_eq!(outcome, Err(failure));
+        let outcome = qualify_paste(
+            &editor(1),
+            "synthetic citation",
+            Duration::ZERO,
+            |owner| {
+                Ok(Reading {
+                    editor: owner.clone(),
+                    text: String::new(),
+                })
+            },
+            || Err(Failure::new(Stage::Password)),
+            |_| panic!("refusal must not send"),
+        );
+        assert_eq!(outcome.map_err(|failure| failure.stage), Err(Stage::Password));
+        for stage in [
+            Stage::Query,
+            Stage::Automation,
+            Stage::Window,
+            Stage::Document,
+            Stage::Foreground,
+            Stage::Editor,
+            Stage::Identity,
+            Stage::Focus,
+            Stage::Password,
+            Stage::Pattern,
+            Stage::Range,
+            Stage::Read,
+            Stage::NotEmpty,
+            Stage::Input,
+            Stage::Readback,
+        ] {
+            let diagnostic = format!("{:?}", Failure::new(stage));
+            assert!(diagnostic.len() < 120);
+            assert!(!diagnostic.contains("synthetic citation"));
+            assert!(diagnostic.contains("owned: None") && diagnostic.contains("focused: None"));
+        }
+    }
+
+    #[test]
+    fn unknown_or_unbounded_editor_identity_never_qualifies() {
+        assert!(EditorIdentity::new(0, vec![1]).is_none());
+        assert!(EditorIdentity::new(7, Vec::new()).is_none());
+        assert!(EditorIdentity::new(7, vec![1; 129]).is_none());
+    }
+
+    #[test]
+    fn failed_final_readback_cannot_turn_successful_input_into_a_pass() {
+        let document = std::cell::RefCell::new(String::new());
+        let sends = Cell::new(0);
+        let failure = Failure {
+            code: Some(-2147467259),
+            owned: Some(true),
+            ..Failure::new(Stage::Read)
+        };
+        let outcome = qualify_paste(
+            &editor(1),
+            "synthetic citation",
+            Duration::ZERO,
+            |owner| {
+                if sends.get() > 0 {
+                    return Err(failure);
+                }
+                Ok(Reading {
+                    editor: owner.clone(),
+                    text: document.borrow().clone(),
+                })
+            },
+            || Ok(()),
+            |ready| {
+                if !ready() {
+                    return false;
+                }
+                sends.set(sends.get() + 1);
+                *document.borrow_mut() = "synthetic citation".into();
+                true
+            },
+        );
+        assert_eq!(outcome, Err(failure));
+        assert_eq!(&*document.borrow(), "synthetic citation");
+        assert_eq!(sends.get(), 1);
+    }
 
     #[test]
     fn delayed_activation_finishes_without_alt() {

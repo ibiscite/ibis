@@ -268,20 +268,29 @@ fn press(key: co::VK, up: bool) -> w::HwKbMouse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paste::notepad_test::{Session, activate, wait_for};
+    use crate::paste::notepad_test::{
+        EditorIdentity, Failure, Reading, Session, Stage, activate, qualify_paste, wait_for,
+    };
     use std::process::Command;
 
-    /// Never log titles or full executable paths, including on a developer's desktop.
-    fn describe_window(window: Option<&w::HWND>) -> String {
-        let Some(window) = window else {
-            return "no window".to_owned();
-        };
-        let (thread, pid) = window.GetWindowThreadProcessId();
-        format!(
-            "HWND={window}, PID={pid}, thread={thread}, class={:?}, executable={:?}",
-            window.GetClassName(),
-            front(window, false).and_then(|front| front.id)
-        )
+    fn uia<T>(result: uiautomation::errors::Result<T>, stage: Stage) -> Result<T, Failure> {
+        result.map_err(|error| Failure {
+            code: Some(error.code()),
+            ..Failure::new(stage)
+        })
+    }
+
+    fn win<T>(result: Result<T, co::ERROR>, stage: Stage) -> Result<T, Failure> {
+        result.map_err(|error| Failure {
+            code: Some(error.raw() as i32),
+            ..Failure::new(stage)
+        })
+    }
+
+    fn identity(field: &uiautomation::UIElement) -> Result<EditorIdentity, Failure> {
+        let process = uia(field.get_process_id(), Stage::Identity)?;
+        let runtime = uia(field.get_runtime_id(), Stage::Identity)?;
+        EditorIdentity::new(process, runtime).ok_or(Failure::new(Stage::Identity))
     }
 
     /// A packaged Notepad can hand off to an existing process. Match its class
@@ -305,64 +314,118 @@ mod tests {
             // which need not describe a failure. Finish the enumeration instead.
             true
         })
-        .unwrap_or_else(|error| panic!("enumerating Notepad windows: {error}"));
+        .unwrap_or_else(|error| {
+            panic!(
+                "{:?}",
+                Failure {
+                    code: Some(error.raw() as i32),
+                    ..Failure::new(Stage::Window)
+                }
+            )
+        });
         found
     }
 
     /// The caller deadline also bounds a busy Notepad UI Automation provider.
-    fn focused_text(worker: &QueryWorker, pid: u32) -> Option<String> {
+    fn focused_text(worker: &QueryWorker, owner: &EditorIdentity) -> Result<Reading, Failure> {
+        let owner = owner.clone();
         worker
             .run(Duration::from_secs(1), move || {
-                let field = uiautomation::UIAutomation::new().ok()?.get_focused_element().ok()?;
-                if field.get_process_id().ok()? != pid {
-                    return None;
+                let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
+                let field = uia(automation.get_focused_element(), Stage::Focus)?;
+                let current = identity(&field)?;
+                if current != owner {
+                    return Err(Failure {
+                        focused: Some(false),
+                        ..Failure::new(Stage::Identity)
+                    });
                 }
-                field
-                    .get_pattern::<uiautomation::patterns::UITextPattern>()
-                    .ok()?
-                    .get_document_range()
-                    .ok()?
-                    .get_text(-1)
-                    .ok()
+                if uia(field.is_password(), Stage::Password)? {
+                    return Err(Failure {
+                        focused: Some(true),
+                        ..Failure::new(Stage::Password)
+                    });
+                }
+                // Reject another field before reading any of its text. Keep
+                // COM objects on this query thread; only values leave it.
+                let pattern = uia(
+                    field.get_pattern::<uiautomation::patterns::UITextPattern>(),
+                    Stage::Pattern,
+                )?;
+                let range = uia(pattern.get_document_range(), Stage::Range)?;
+                let text = uia(range.get_text(-1), Stage::Read)?;
+                let after = uia(automation.get_focused_element(), Stage::Focus)?;
+                if identity(&after)? != owner {
+                    return Err(Failure {
+                        focused: Some(false),
+                        ..Failure::new(Stage::Identity)
+                    });
+                }
+                Ok(Reading { editor: current, text })
             })
-            .flatten()
+            .ok_or(Failure::new(Stage::Query))?
     }
 
     fn tap(key: co::VK) {
         let sent = w::SendInput(&[press(key, false), press(key, true)]);
         if sent != Ok(2) {
-            let released = w::SendInput(&[press(key, true)]);
-            panic!("foreground key tap {key:?}: {sent:?}; key release: {released:?}");
+            let _ = w::SendInput(&[press(key, true)]);
+            panic!(
+                "{:?}",
+                Failure {
+                    code: sent.err().map(|error| error.raw() as i32),
+                    ..Failure::new(Stage::Input)
+                }
+            );
         }
     }
 
     /// Recover the editor explicitly: ALT can arrive after asynchronous
     /// activation and select Notepad's menu instead of its document.
-    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Option<()> {
+    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Result<EditorIdentity, Failure> {
         worker
             .run(Duration::from_secs(1), move || {
-                let automation = uiautomation::UIAutomation::new().ok()?;
-                let root = automation.element_from_handle(hwnd.into()).ok()?;
-                let editor = automation
-                    .create_matcher()
-                    .from(root)
-                    .depth(20)
-                    .timeout(0)
-                    .filter_fn(Box::new(|field: &uiautomation::UIElement| {
-                        // Modern and classic Notepad editors; exclude search
-                        // boxes and tab controls in a restored session.
-                        Ok(matches!(field.get_classname()?.as_str(), "RichEditD2DPT" | "Edit"))
-                    }))
-                    .find_first()
-                    .ok()?;
-                if editor.get_process_id().ok()? != pid {
-                    return None;
+                let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
+                let root = uia(automation.element_from_handle(hwnd.into()), Stage::Window)?;
+                let walker = uia(automation.create_tree_walker(), Stage::Editor)?;
+                let parent_root = root.clone();
+                let compare = automation.clone();
+                let editor = uia(
+                    automation
+                        .create_matcher()
+                        .from(root)
+                        .depth(20)
+                        .timeout(0)
+                        .filter_fn(Box::new(move |field: &uiautomation::UIElement| {
+                            // Modern and classic Notepad editors; exclude search
+                            // dialogs, inactive restored tabs and nested Edit boxes.
+                            if field.get_process_id()? != pid || field.is_offscreen()? || !field.is_enabled()? {
+                                return Ok(false);
+                            }
+                            match field.get_classname()?.as_str() {
+                                "RichEditD2DPT" => Ok(true),
+                                "Edit" => compare.compare_elements(&walker.get_parent(field)?, &parent_root),
+                                _ => Ok(false),
+                            }
+                        }))
+                        .find_first(),
+                    Stage::Editor,
+                )?;
+                let owner = identity(&editor)?;
+                if owner.process != pid {
+                    return Err(Failure::new(Stage::Identity));
                 }
-                editor.set_focus().ok()?;
-                let focused = automation.get_focused_element().ok()?;
-                automation.compare_elements(&editor, &focused).ok()?.then_some(())
+                uia(editor.set_focus(), Stage::Focus)?;
+                let focused = uia(automation.get_focused_element(), Stage::Focus)?;
+                if !uia(automation.compare_elements(&editor, &focused), Stage::Focus)? || identity(&focused)? != owner {
+                    return Err(Failure {
+                        focused: Some(false),
+                        ..Failure::new(Stage::Focus)
+                    });
+                }
+                Ok(owner)
             })
-            .flatten()
+            .ok_or(Failure::new(Stage::Query))?
     }
 
     /// Neither a launcher nor a handed-off process proves exclusive ownership:
@@ -374,13 +437,6 @@ mod tests {
 
     impl Drop for Notepad {
         fn drop(&mut self) {
-            if std::thread::panicking() {
-                eprintln!("Notepad target: {}", describe_window(self.window.as_ref()));
-                eprintln!(
-                    "In front on failure: {}",
-                    describe_window(w::HWND::GetForegroundWindow().as_ref())
-                );
-            }
             eprintln!("Leaving Notepad open: its process may contain unrelated restored or shared documents.");
         }
     }
@@ -400,26 +456,48 @@ mod tests {
         let text = "[@synthetic2026]";
         let set = Command::new("powershell")
             .args(["-NoProfile", "-Command", &format!("Set-Clipboard -Value '{text}'")])
-            .status();
-        assert!(set.is_ok_and(|status| status.success()));
+            .output()
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{:?}",
+                    Failure {
+                        code: error.raw_os_error(),
+                        ..Failure::new(Stage::Input)
+                    }
+                )
+            });
+        assert!(set.status.success(), "{:?}", Failure::new(Stage::Input));
         // Open a new empty file so restored tabs cannot satisfy the readback.
         // Close our file handle before Notepad opens it on Windows.
         let file = tempfile::Builder::new()
             .prefix("ibis-notepad-")
             .suffix(".txt")
             .tempfile()
-            .unwrap_or_else(|error| panic!("creating the synthetic document: {error}"))
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{:?}",
+                    Failure {
+                        code: error.raw_os_error(),
+                        ..Failure::new(Stage::Document)
+                    }
+                )
+            })
             .into_temp_path();
         let document = file
             .file_stem()
             .and_then(|name| name.to_str())
-            .unwrap_or_else(|| panic!("synthetic document has no UTF-8 name"));
+            .unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Document)));
         let mut notepad = Notepad {
             session: Session {
-                launcher: Command::new("notepad.exe")
-                    .arg(&file)
-                    .spawn()
-                    .unwrap_or_else(|error| panic!("notepad: {error}")),
+                launcher: Command::new("notepad.exe").arg(&file).spawn().unwrap_or_else(|error| {
+                    panic!(
+                        "{:?}",
+                        Failure {
+                            code: error.raw_os_error(),
+                            ..Failure::new(Stage::Window)
+                        }
+                    )
+                }),
                 process: None,
             },
             window: None,
@@ -428,34 +506,58 @@ mod tests {
         let window = notepad
             .window
             .as_ref()
-            .unwrap_or_else(|| panic!("Notepad never opened the synthetic document"));
-        let front = front(window, true).unwrap_or_else(|| panic!("cannot inspect Notepad's process"));
-        assert!(!front.elevated);
+            .unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Window)));
+        let front = front(window, true).unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Window)));
+        assert!(!front.elevated, "{:?}", Failure::new(Stage::Window));
         let pid = window.GetWindowThreadProcessId().1;
         notepad.session.process = Some(
-            w::HPROCESS::OpenProcess(
-                co::PROCESS::QUERY_LIMITED_INFORMATION | co::PROCESS::SYNCHRONIZE,
-                false,
-                pid,
+            win(
+                w::HPROCESS::OpenProcess(
+                    co::PROCESS::QUERY_LIMITED_INFORMATION | co::PROCESS::SYNCHRONIZE,
+                    false,
+                    pid,
+                ),
+                Stage::Window,
             )
-            .unwrap_or_else(|error| panic!("retaining Notepad's process: {error}")),
+            .unwrap_or_else(|failure| panic!("{failure:?}")),
         );
         let process = notepad
             .session
             .process
             .as_ref()
-            .unwrap_or_else(|| panic!("Notepad process handle"));
-        window
-            .ShowWindowAsync(co::SW::RESTORE)
-            .unwrap_or_else(|error| panic!("restoring Notepad: {error}"));
-        let in_front = || {
-            process.WaitForSingleObject(Some(0)) == Ok(co::WAIT::TIMEOUT)
-                && window.GetWindowThreadProcessId().1 == pid
-                && window.GetWindowText().is_ok_and(|title| title.contains(document))
-                && w::HWND::GetForegroundWindow().as_ref() == Some(window)
+            .unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Window)));
+        win(window.ShowWindowAsync(co::SW::RESTORE), Stage::Window).unwrap_or_else(|failure| panic!("{failure:?}"));
+        let owned = || {
+            let current_pid = window.GetWindowThreadProcessId().1;
+            if current_pid == 0 {
+                return Err(Failure::new(Stage::Window));
+            }
+            if win(process.WaitForSingleObject(Some(0)), Stage::Window)? != co::WAIT::TIMEOUT || current_pid != pid {
+                return Err(Failure {
+                    owned: Some(false),
+                    ..Failure::new(Stage::Window)
+                });
+            }
+            if !win(window.GetWindowText(), Stage::Document)?.contains(document) {
+                return Err(Failure {
+                    owned: Some(false),
+                    ..Failure::new(Stage::Document)
+                });
+            }
+            let foreground = w::HWND::GetForegroundWindow();
+            if foreground.as_ref() != Some(window) {
+                return Err(Failure {
+                    owned: Some(true),
+                    focused: foreground.as_ref().map(|_| false),
+                    ..Failure::new(Stage::Foreground)
+                });
+            }
+            Ok(())
         };
+        let in_front = || owned().is_ok();
         let worker = QueryWorker::default();
         let hwnd = window.ptr() as isize;
+        let mut editor = None;
         if !activate(
             Duration::from_secs(5),
             || {
@@ -466,73 +568,99 @@ mod tests {
             in_front,
             || tap(co::VK::MENU),
             |used_alt| {
-                assert!(in_front(), "Notepad lost the foreground before focus recovery");
+                owned().unwrap_or_else(|failure| panic!("{failure:?}"));
                 if used_alt {
                     // Cancel menu mode even if ALT reached the newly activated
                     // window. Then focus the actual editor, not a search box.
                     tap(co::VK::ESCAPE);
                 }
-                assert!(
+                let mut last = Failure::new(Stage::Focus);
+                editor = Some(
                     wait_for(Duration::from_secs(5), || {
-                        if !in_front() {
-                            return None;
+                        let result = owned()
+                            .and_then(|()| focus_document(&worker, hwnd, pid))
+                            .and_then(|identity| {
+                                owned()?;
+                                Ok(identity)
+                            });
+                        match result {
+                            Ok(identity) => Some(identity),
+                            Err(failure) => {
+                                last = failure;
+                                None
+                            }
                         }
-                        focus_document(&worker, hwnd, pid)
                     })
-                    .is_some(),
-                    "Notepad's document never received keyboard focus"
+                    .unwrap_or_else(|| panic!("{last:?}")),
                 );
             },
         ) {
             // A timeout alone is not grounds for skipping. Verify a live,
             // usable target and an explicit OS denial of our foreground right.
-            assert_eq!(
-                process.WaitForSingleObject(Some(0)),
-                Ok(co::WAIT::TIMEOUT),
-                "Notepad exited during activation"
+            assert!(
+                win(process.WaitForSingleObject(Some(0)), Stage::Window)
+                    .unwrap_or_else(|failure| panic!("{failure:?}"))
+                    == co::WAIT::TIMEOUT,
+                "{:?}",
+                Failure::new(Stage::Window)
             );
-            assert_eq!(
-                window.GetWindowThreadProcessId().1,
-                pid,
-                "Notepad's window changed process"
+            assert!(
+                window.GetWindowThreadProcessId().1 == pid,
+                "{:?}",
+                Failure::new(Stage::Window)
             );
-            assert!(window.IsWindow() && window.IsWindowVisible() && window.IsWindowEnabled());
+            assert!(
+                window.IsWindow() && window.IsWindowVisible() && window.IsWindowEnabled(),
+                "{:?}",
+                Failure::new(Stage::Window)
+            );
             let permission = w::AllowSetForegroundWindow(Some(w::GetCurrentProcessId()));
-            let foreground = describe_window(w::HWND::GetForegroundWindow().as_ref());
             if permission == Err(co::ERROR::ACCESS_DENIED) {
                 eprintln!(
-                    "SKIP one_ctrl_v_pastes_the_clipboard_into_the_app_in_front: Windows denied the test process foreground permission (AllowSetForegroundWindow: ACCESS_DENIED) after the ALT tap and activation deadline; target: {}; in front: {foreground}",
-                    describe_window(Some(window))
+                    "UNAVAILABLE: Windows explicitly denied foreground permission after activation attempts: {:?}",
+                    Failure {
+                        code: Some(co::ERROR::ACCESS_DENIED.raw() as i32),
+                        focused: Some(false),
+                        ..Failure::new(Stage::Foreground)
+                    }
                 );
                 return;
             }
-            panic!("Notepad never came to the front; foreground permission: {permission:?}; in front: {foreground}");
+            panic!(
+                "{:?}",
+                Failure {
+                    code: permission.err().map(|error| error.raw() as i32),
+                    ..Failure::new(Stage::Foreground)
+                }
+            );
         }
-        assert!(
-            wait_for(Duration::from_secs(5), || {
-                (in_front() && focused_text(&worker, pid)?.trim().is_empty()).then_some(())
-            })
-            .is_some(),
-            "Notepad's focused document never became empty and readable"
-        );
-        assert!(
-            wait_for(Duration::from_secs(5), || (in_front()
-                && password_focused(front.pid) == Some(false))
-            .then_some(()))
-            .is_some(),
-            "Notepad's focused field was not confirmed to be a non-password field"
-        );
-        assert!(!keys_held());
-        assert!(send_paste(|| in_front()
-            && !keys_held()
-            && foreground_pid() == Some(front.pid)));
-        let pasted = wait_for(Duration::from_secs(5), || {
-            let value = focused_text(&worker, pid)?;
-            (in_front() && value.trim() == text).then_some(value)
-        });
-        assert!(
-            pasted.is_some(),
-            "one Ctrl+V did not produce exactly the citation in Notepad's focused document"
-        );
+        let editor = editor.unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Identity)));
+        qualify_paste(
+            &editor,
+            text,
+            Duration::from_secs(5),
+            |identity| {
+                owned()?;
+                let reading = focused_text(&worker, identity).map_err(|failure| Failure {
+                    owned: Some(true),
+                    ..failure
+                });
+                owned()?;
+                reading
+            },
+            || {
+                let mut last = Failure::new(Stage::Password);
+                wait_for(Duration::from_secs(5), || {
+                    if let Err(failure) = owned() {
+                        last = failure;
+                        return None;
+                    }
+                    (password_focused(front.pid) == Some(false)).then_some(())
+                })
+                .ok_or(last)
+            },
+            |ready| send_paste(|| ready() && in_front() && !keys_held() && foreground_pid() == Some(front.pid)),
+        )
+        .unwrap_or_else(|failure| panic!("{failure:?}"));
     }
 }
